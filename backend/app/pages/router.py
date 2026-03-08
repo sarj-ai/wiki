@@ -50,6 +50,52 @@ async def sync_pages(
     return {"removed": removed}
 
 
+@router.get("/{page_id}/content")
+async def get_page_content(
+    page_id: UUID,
+    force_refresh: bool = False,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Fetch the rendered content of a page's Google Doc.
+
+    Returns simplified content blocks for native rendering.
+    Uses caching -- content is only re-fetched from Google when the cache is stale.
+    """
+    from datetime import datetime, timezone
+
+    from app.docs_transformer import enrich_chips_from_html, transform_doc
+    from app.drive import export_doc_html, get_doc_content
+
+    # First, verify access
+    page = await service.get_page(db, user, page_id)
+
+    # Check cache (cache is valid if content exists and wasn't invalidated)
+    if not force_refresh and page.cached_content is not None and page.content_cached_at is not None:
+        return {"blocks": page.cached_content, "cached": True}
+
+    # Fetch from Google Docs API
+    raw_doc = get_doc_content(user, page.google_drive_id)
+    blocks = transform_doc(raw_doc)
+
+    # If any tables have smart chips, fetch the HTML export to get real values.
+    # The HTML export renders chips as actual text (the Docs API doesn't).
+    has_chips = any(b.get("type") == "table" and b.get("hasChips") for b in blocks)
+    if has_chips:
+        try:
+            html = export_doc_html(user, page.google_drive_id)
+            blocks = enrich_chips_from_html(blocks, html)
+        except Exception:
+            pass  # Gracefully fall back to placeholder if export fails
+
+    # Cache the result
+    page.cached_content = blocks
+    page.content_cached_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    return {"blocks": blocks, "cached": False}
+
+
 @router.get("/{page_id}", response_model=schemas.PageResponse)
 async def get_page(
     page_id: UUID,

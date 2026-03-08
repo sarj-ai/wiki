@@ -107,6 +107,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ workspace_id: workspaceId }),
     }),
+  getPageContent: (id: string, forceRefresh?: boolean) =>
+    fetchApi<{ blocks: Record<string, unknown>[]; cached: boolean }>(
+      `/pages/${id}/content${forceRefresh ? "?force_refresh=true" : ""}`
+    ),
 
   // Permissions
   getPagePermissions: (pageId: string) =>

@@ -209,16 +209,15 @@ export function PageTreeItem({
         )}
 
         <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-          <div className="absolute right-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/tree-item:opacity-100">
+          <div className={`absolute right-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/tree-item:opacity-100 ${isActive ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/60"}`}>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <PopoverAnchor asChild>
-                  <SidebarMenuAction
-                    showOnHover
-                    className="static opacity-100 group-hover/tree-item:opacity-100"
+                  <button
+                    className="flex size-5 items-center justify-center rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   >
                     <MoreHorizontal className="size-4" />
-                  </SidebarMenuAction>
+                  </button>
                 </PopoverAnchor>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="right" align="start" sideOffset={4}>
@@ -247,7 +246,7 @@ export function PageTreeItem({
                 e.stopPropagation();
                 onAddChild(page.id);
               }}
-              className="flex size-5 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="flex size-5 items-center justify-center rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
               <Plus className="size-3.5" />
             </button>

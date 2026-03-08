@@ -49,7 +49,7 @@ import { findPageById } from "@/lib/page-utils";
 import { useQueryClient } from "@tanstack/react-query";
 
 export function AppSidebar() {
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const { user, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
@@ -322,15 +322,15 @@ export function AppSidebar() {
               >
                 <DropdownMenuItem
                   onClick={() =>
-                    setTheme(theme === "dark" ? "light" : "dark")
+                    setTheme(resolvedTheme === "dark" ? "light" : "dark")
                   }
                 >
-                  {theme === "dark" ? (
+                  {resolvedTheme === "dark" ? (
                     <Sun className="mr-2 size-4" />
                   ) : (
                     <Moon className="mr-2 size-4" />
                   )}
-                  {theme === "dark" ? "Light mode" : "Dark mode"}
+                  {resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout}>

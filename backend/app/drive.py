@@ -203,3 +203,41 @@ def batch_check_trashed(user: User, file_ids: list[str]) -> dict[str, bool]:
 
     batch.execute()
     return results
+
+
+def get_doc_content(user: User, google_drive_id: str) -> dict:
+    """Fetch a Google Doc's full content via the Docs API.
+
+    Returns the raw document JSON from documents.get().
+    """
+    access_token = decrypt_token(user.encrypted_access_token)
+    refresh_token = (
+        decrypt_token(user.encrypted_refresh_token)
+        if user.encrypted_refresh_token
+        else None
+    )
+    creds = Credentials(
+        token=access_token,
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=settings.GOOGLE_CLIENT_ID,
+        client_secret=settings.GOOGLE_CLIENT_SECRET,
+    )
+    docs_service = build("docs", "v1", credentials=creds, static_discovery=True)
+    return docs_service.documents().get(documentId=google_drive_id).execute()
+
+
+def export_doc_html(user: User, google_drive_id: str) -> str:
+    """Export a Google Doc as HTML via the Drive API.
+
+    The HTML export renders smart chips (Person, Status, File, Date, etc.)
+    as actual text — unlike the Docs API which returns opaque placeholders.
+    """
+    service = _get_drive_service(user)
+    response = service.files().export(
+        fileId=google_drive_id,
+        mimeType="text/html",
+    ).execute()
+    if isinstance(response, bytes):
+        return response.decode("utf-8")
+    return response

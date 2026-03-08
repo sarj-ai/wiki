@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -56,16 +57,16 @@
 }
 
 :root {
-  --background: #f6efe7;
-  --foreground: #251040;
+  --background: #f4f2ef;
+  --foreground: #1a1a1a;
   --card: #ffffff;
-  --card-foreground: #251040;
+  --card-foreground: #1a1a1a;
   --popover: #ffffff;
-  --popover-foreground: #251040;
+  --popover-foreground: #1a1a1a;
   --primary: #000000;
   --primary-foreground: #ffffff;
-  --secondary: #251040;
-  --secondary-foreground: #ffffff;
+  --secondary: #D0C3DF;
+  --secondary-foreground: #251040;
   --muted: #f5f5f5;
   --muted-foreground: #737373;
   --accent: #f5f5f5;
@@ -80,11 +81,11 @@
   --chart-4: #ffb900;
   --chart-5: #fe9a00;
   --sidebar: #fafafa;
-  --sidebar-foreground: #251040;
+  --sidebar-foreground: #1a1a1a;
   --sidebar-primary: #251040;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #D0C3DF;
-  --sidebar-accent-foreground: #251040;
+  --sidebar-accent: #251040;
+  --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #e5e5e5;
   --sidebar-ring: oklch(0.708 0 0);
 
@@ -102,15 +103,15 @@
 
 .dark {
   --background: #000000;
-  --foreground: #f6efe7;
+  --foreground: #fafafa;
   --card: #171717;
-  --card-foreground: #f6efe7;
+  --card-foreground: #fafafa;
   --popover: #171717;
-  --popover-foreground: #f6efe7;
-  --primary: #6762ab;
-  --primary-foreground: #000000;
-  --secondary: #262626;
-  --secondary-foreground: #f6efe7;
+  --popover-foreground: #fafafa;
+  --primary: #fafafa;
+  --primary-foreground: #0a0a0a;
+  --secondary: #4B3483;
+  --secondary-foreground: #fafafa;
   --muted: #262626;
   --muted-foreground: #a1a1a1;
   --accent: #262626;
@@ -126,9 +127,9 @@
   --chart-5: #ff2056;
   --sidebar: #171717;
   --sidebar-foreground: #fafafa;
-  --sidebar-primary: #1447e6;
+  --sidebar-primary: #fafafa;
   --sidebar-primary-foreground: #fafafa;
-  --sidebar-accent: #262626;
+  --sidebar-accent: #4B3483;
   --sidebar-accent-foreground: #fafafa;
   --sidebar-border: #ffffff1a;
   --sidebar-ring: #737373;
@@ -140,6 +141,11 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  button,
+  [role="button"],
+  a {
+    cursor: pointer;
   }
 }
 

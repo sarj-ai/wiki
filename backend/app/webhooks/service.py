@@ -244,6 +244,8 @@ async def _handle_single_change(db: AsyncSession, change: dict) -> None:
             log.info("Drive file %s renamed to '%s' — updating page %s", file_id, new_name, page.id)
             page.title = new_name
             page.updated_at = datetime.now(timezone.utc)
+        # Always invalidate content cache when Drive reports a change
+        page.content_cached_at = None
 
 
 # ------------------------------------------------------------------

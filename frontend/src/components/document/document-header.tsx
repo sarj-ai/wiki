@@ -22,75 +22,46 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-interface DocumentHeaderProps {
+interface DocumentToolbarProps {
   page: Page;
   breadcrumbs: Page[];
   workspace: Workspace | null;
-  onChangeIcon?: (icon: string | null) => void;
-  onRename?: (newTitle: string) => void;
   onFocusMode?: () => void;
+  children?: React.ReactNode;
 }
 
-export function DocumentHeader({
+export function DocumentToolbar({
   page,
   breadcrumbs,
   workspace,
-  onChangeIcon,
-  onRename,
   onFocusMode,
-}: DocumentHeaderProps) {
+  children,
+}: DocumentToolbarProps) {
   const { open: sidebarOpen, toggleSidebar } = useSidebar();
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(page.title);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Sync edit value when page title changes externally
-  useEffect(() => {
-    if (!isEditing) setEditValue(page.title);
-  }, [page.title, isEditing]);
-
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [isEditing]);
-
-  function commitRename() {
-    const trimmed = editValue.trim();
-    if (trimmed && trimmed !== page.title) {
-      onRename?.(trimmed);
-    } else {
-      setEditValue(page.title);
-    }
-    setIsEditing(false);
-  }
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* Top bar: sidebar toggle + breadcrumb */}
-      <div className="flex items-center gap-2">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={toggleSidebar}
-              className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
-              {sidebarOpen ? (
-                <PanelLeftClose className="size-4" />
-              ) : (
-                <PanelLeft className="size-4" />
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-          </TooltipContent>
-        </Tooltip>
+    <div className="shrink-0 flex items-center gap-2 px-6 py-2 bg-background">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-white hover:bg-[#251040] dark:hover:bg-[#4B3483] transition-colors"
+          >
+            {sidebarOpen ? (
+              <PanelLeftClose className="size-4" />
+            ) : (
+              <PanelLeft className="size-4" />
+            )}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+        </TooltipContent>
+      </Tooltip>
 
-        {breadcrumbs.length > 1 && (
-          <Breadcrumb>
+      {breadcrumbs.length > 1 && (
+        <Breadcrumb>
           <BreadcrumbList>
             {workspace && (
               <>
@@ -121,15 +92,17 @@ export function DocumentHeader({
             })}
           </BreadcrumbList>
         </Breadcrumb>
-        )}
+      )}
 
+      <div className="ml-auto flex items-center gap-2">
+        {children}
         {onFocusMode && (
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 type="button"
                 onClick={onFocusMode}
-                className="ml-auto flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-white hover:bg-[#251040] dark:hover:bg-[#4B3483] transition-colors"
               >
                 <Maximize2 className="size-4" />
               </button>
@@ -137,9 +110,52 @@ export function DocumentHeader({
             <TooltipContent side="bottom">Focus mode (⌘.)</TooltipContent>
           </Tooltip>
         )}
+        <ShareButton page={page} workspace={workspace} />
       </div>
+    </div>
+  );
+}
 
-      {/* Add emoji button — shown when no icon is set */}
+interface DocumentTitleProps {
+  page: Page;
+  workspace: Workspace | null;
+  onChangeIcon?: (icon: string | null) => void;
+  onRename?: (newTitle: string) => void;
+}
+
+export function DocumentTitle({
+  page,
+  workspace,
+  onChangeIcon,
+  onRename,
+}: DocumentTitleProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(page.title);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isEditing) setEditValue(page.title);
+  }, [page.title, isEditing]);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  function commitRename() {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== page.title) {
+      onRename?.(trimmed);
+    } else {
+      setEditValue(page.title);
+    }
+    setIsEditing(false);
+  }
+
+  return (
+    <div className="flex flex-col gap-3 px-6 pt-4 pb-4">
       {onChangeIcon && !page.icon && (
         <EmojiPicker
           currentEmoji={page.icon}
@@ -155,7 +171,6 @@ export function DocumentHeader({
         </EmojiPicker>
       )}
 
-      {/* Title row */}
       <div className="flex items-start gap-3">
         {onChangeIcon && page.icon && (
           <EmojiPicker
@@ -211,7 +226,6 @@ export function DocumentHeader({
                 {page.title}
               </h1>
             )}
-            <ShareButton page={page} workspace={workspace} />
           </div>
           <div className="flex items-center gap-2">
             {page.isPrivate ? (

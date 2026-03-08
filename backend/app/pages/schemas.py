@@ -87,6 +87,22 @@ class PageResponse(BaseModel):
     updated_at: datetime
 
 
+class DocContentBlock(BaseModel):
+    """A single content block from a Google Doc."""
+    type: str  # heading, paragraph, list, image, table, horizontal_rule
+    level: int | None = None  # for headings
+    runs: list[dict] | None = None
+    ordered: bool | None = None  # for lists
+    items: list[dict] | None = None  # for lists
+    rows: list[list[dict]] | None = None  # for tables
+
+
+class DocContentResponse(BaseModel):
+    """Response for the document content endpoint."""
+    blocks: list[DocContentBlock]
+    cached: bool  # whether this was served from cache
+
+
 class PageTreeNode(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
