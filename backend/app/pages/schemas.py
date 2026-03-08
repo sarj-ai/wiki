@@ -6,10 +6,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-# ------------------------------------------------------------------
 # Sentinel for distinguishing "field not provided" from "set to None"
-# ------------------------------------------------------------------
 _UNSET = object()
+
+PageType = Literal["page", "section"]
 
 
 # ------------------------------------------------------------------
@@ -17,43 +17,42 @@ _UNSET = object()
 # ------------------------------------------------------------------
 
 class PageCreate(BaseModel):
-    title: str
+    title: str = Field(min_length=1, max_length=500)
     parent_id: UUID | None = None
     workspace_id: UUID | None = None
-    type: Literal["page", "section"] = "page"
-    icon: str | None = None
+    type: PageType = "page"
+    icon: str | None = Field(default=None, max_length=100)
 
     @field_validator("title")
     @classmethod
-    def strip_title(cls, v: str) -> str:
-        v = " ".join(v.split())  # collapse inner whitespace
+    def normalize_title(cls, v: str) -> str:
+        v = " ".join(v.split())
         if not v:
             raise ValueError("Title must not be empty")
         return v
 
 
 class PageUpdate(BaseModel):
-    """
-    All fields are optional.
+    """All fields are optional.
 
     For ``parent_id`` we need to distinguish three states:
-      - field omitted  -> do not touch parent_id
+      - field omitted     -> do not touch parent_id
       - field set to null -> move to root (parent_id = None)
-      - field set to a UUID -> re-parent to that UUID
+      - field set to UUID -> re-parent to that UUID
 
     We use a sentinel default so the service layer can tell "omitted" apart
     from "explicitly null".
     """
 
-    title: str | None = None
+    title: str | None = Field(default=None, max_length=500)
     parent_id: UUID | None = Field(default=_UNSET)  # type: ignore[assignment]
     sort_order: float | None = None
-    icon: str | None = Field(default=_UNSET)  # type: ignore[assignment]
-    cover_url: str | None = Field(default=_UNSET)  # type: ignore[assignment]
+    icon: str | None = Field(default=_UNSET, max_length=100)  # type: ignore[assignment]
+    cover_url: str | None = Field(default=_UNSET, max_length=2000)  # type: ignore[assignment]
 
     @field_validator("title")
     @classmethod
-    def strip_title(cls, v: str | None) -> str | None:
+    def normalize_title(cls, v: str | None) -> str | None:
         if v is None:
             return v
         v = " ".join(v.split())
@@ -76,7 +75,7 @@ class PageResponse(BaseModel):
     id: UUID
     parent_id: UUID | None
     title: str
-    type: str
+    type: PageType
     icon: str | None
     cover_url: str | None
     is_private: bool
@@ -87,20 +86,9 @@ class PageResponse(BaseModel):
     updated_at: datetime
 
 
-class DocContentBlock(BaseModel):
-    """A single content block from a Google Doc."""
-    type: str  # heading, paragraph, list, image, table, horizontal_rule
-    level: int | None = None  # for headings
-    runs: list[dict] | None = None
-    ordered: bool | None = None  # for lists
-    items: list[dict] | None = None  # for lists
-    rows: list[list[dict]] | None = None  # for tables
-
-
 class DocContentResponse(BaseModel):
-    """Response for the document content endpoint."""
-    blocks: list[DocContentBlock]
-    cached: bool  # whether this was served from cache
+    blocks: list[dict]
+    cached: bool
 
 
 class PageTreeNode(BaseModel):
@@ -109,7 +97,7 @@ class PageTreeNode(BaseModel):
     id: UUID
     parent_id: UUID | None
     title: str
-    type: str
+    type: PageType
     icon: str | None
     is_private: bool
     workspace_id: UUID | None

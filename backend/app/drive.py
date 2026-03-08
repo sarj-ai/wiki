@@ -10,36 +10,43 @@ from app.config import settings
 from app.models.user import User
 
 
-def _get_drive_service(user: User):
-    """Build an authenticated Drive service using the user's stored tokens.
-
-    Provides refresh_token + client credentials so the Google client library
-    can transparently refresh an expired access token.
-    """
+def build_credentials(user: User) -> Credentials:
+    """Build Google OAuth credentials from a user's encrypted tokens."""
     access_token = decrypt_token(user.encrypted_access_token)
     refresh_token = (
         decrypt_token(user.encrypted_refresh_token)
         if user.encrypted_refresh_token
         else None
     )
-    creds = Credentials(
+    return Credentials(
         token=access_token,
         refresh_token=refresh_token,
         token_uri="https://oauth2.googleapis.com/token",
         client_id=settings.GOOGLE_CLIENT_ID,
         client_secret=settings.GOOGLE_CLIENT_SECRET,
     )
-    return build("drive", "v3", credentials=creds, static_discovery=True)
 
 
-def _ensure_folder(service, name: str, parent_id: str) -> str:
+def get_drive_service(user: User):
+    """Build an authenticated Drive v3 service for the given user."""
+    return build("drive", "v3", credentials=build_credentials(user), static_discovery=True)
+
+
+def _escape_drive_query(value: str) -> str:
+    """Escape a value for use in a Drive API query string."""
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def ensure_folder(service, name: str, parent_id: str) -> str:
     """Find or create a folder with the given name under parent_id.
 
     Returns the folder's Drive ID.
     """
+    safe_name = _escape_drive_query(name)
+    safe_parent = _escape_drive_query(parent_id)
     query = (
-        f"name = '{name}' "
-        f"and '{parent_id}' in parents "
+        f"name = '{safe_name}' "
+        f"and '{safe_parent}' in parents "
         f"and mimeType = 'application/vnd.google-apps.folder' "
         f"and trashed = false"
     )
@@ -66,7 +73,7 @@ def create_folder(user: User, name: str, parent_folder_id: str) -> str:
 
     Returns the new folder's Drive ID.
     """
-    service = _get_drive_service(user)
+    service = get_drive_service(user)
     metadata = {
         "name": name,
         "mimeType": "application/vnd.google-apps.folder",
@@ -94,15 +101,15 @@ def create_google_doc(
 
     Returns (google_drive_id, drive_folder_id).
     """
-    service = _get_drive_service(user)
+    service = get_drive_service(user)
 
     if target_folder_id is not None:
         folder_id = target_folder_id
     else:
         root_id = settings.DRIVE_ROOT_FOLDER_ID
         if is_private:
-            private_root = _ensure_folder(service, "Private", root_id)
-            user_folder = _ensure_folder(service, user.email, private_root)
+            private_root = ensure_folder(service, "Private", root_id)
+            user_folder = ensure_folder(service, user.email, private_root)
             folder_id = user_folder
         else:
             folder_id = root_id
@@ -120,7 +127,7 @@ def create_google_doc(
 
 def rename_drive_file(user: User, file_id: str, new_name: str) -> None:
     """Rename a Drive file."""
-    service = _get_drive_service(user)
+    service = get_drive_service(user)
     service.files().update(fileId=file_id, body={"name": new_name}).execute()
 
 
@@ -129,10 +136,12 @@ def rename_child_folder(user: User, old_name: str, new_name: str, parent_folder_
 
     When a parent page is renamed, its children folder should match.
     """
-    service = _get_drive_service(user)
+    service = get_drive_service(user)
+    safe_name = _escape_drive_query(old_name)
+    safe_parent = _escape_drive_query(parent_folder_id)
     query = (
-        f"name = '{old_name}' "
-        f"and '{parent_folder_id}' in parents "
+        f"name = '{safe_name}' "
+        f"and '{safe_parent}' in parents "
         f"and mimeType = 'application/vnd.google-apps.folder' "
         f"and trashed = false"
     )
@@ -144,7 +153,7 @@ def rename_child_folder(user: User, old_name: str, new_name: str, parent_folder_
 
 def move_drive_file(user: User, file_id: str, new_parent_folder_id: str) -> None:
     """Move a Drive file to a different folder."""
-    service = _get_drive_service(user)
+    service = get_drive_service(user)
     # Get current parents
     file_meta = service.files().get(fileId=file_id, fields="parents").execute()
     old_parents = ",".join(file_meta.get("parents", []))
@@ -158,7 +167,7 @@ def move_drive_file(user: User, file_id: str, new_parent_folder_id: str) -> None
 
 def trash_drive_file(user: User, file_id: str) -> None:
     """Move a Drive file to the trash."""
-    service = _get_drive_service(user)
+    service = get_drive_service(user)
     service.files().update(fileId=file_id, body={"trashed": True}).execute()
 
 
@@ -167,7 +176,7 @@ def is_drive_file_trashed(user: User, file_id: str) -> bool | None:
 
     Returns True if trashed, False if not, None if file doesn't exist.
     """
-    service = _get_drive_service(user)
+    service = get_drive_service(user)
     try:
         meta = service.files().get(fileId=file_id, fields="trashed").execute()
         return meta.get("trashed", False)
@@ -181,7 +190,7 @@ def batch_check_trashed(user: User, file_ids: list[str]) -> dict[str, bool]:
     Returns a dict of {file_id: is_trashed_or_deleted}.
     Files that can't be found are considered deleted (True).
     """
-    service = _get_drive_service(user)
+    service = get_drive_service(user)
     results: dict[str, bool] = {}
 
     # Use batch requests for efficiency
@@ -210,20 +219,7 @@ def get_doc_content(user: User, google_drive_id: str) -> dict:
 
     Returns the raw document JSON from documents.get().
     """
-    access_token = decrypt_token(user.encrypted_access_token)
-    refresh_token = (
-        decrypt_token(user.encrypted_refresh_token)
-        if user.encrypted_refresh_token
-        else None
-    )
-    creds = Credentials(
-        token=access_token,
-        refresh_token=refresh_token,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=settings.GOOGLE_CLIENT_ID,
-        client_secret=settings.GOOGLE_CLIENT_SECRET,
-    )
-    docs_service = build("docs", "v1", credentials=creds, static_discovery=True)
+    docs_service = build("docs", "v1", credentials=build_credentials(user), static_discovery=True)
     return docs_service.documents().get(documentId=google_drive_id).execute()
 
 
@@ -233,7 +229,7 @@ def export_doc_html(user: User, google_drive_id: str) -> str:
     The HTML export renders smart chips (Person, Status, File, Date, etc.)
     as actual text — unlike the Docs API which returns opaque placeholders.
     """
-    service = _get_drive_service(user)
+    service = get_drive_service(user)
     response = service.files().export(
         fileId=google_drive_id,
         mimeType="text/html",

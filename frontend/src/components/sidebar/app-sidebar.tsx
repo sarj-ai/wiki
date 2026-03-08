@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Plus, Lock, Sun, Moon, LogOut, Loader2 } from "lucide-react";
@@ -43,7 +43,7 @@ import { useAuth } from "@/components/auth-provider";
 import { useWorkspaces } from "@/hooks/use-workspaces";
 import { usePageTree } from "@/hooks/use-page-tree";
 import { useLoading } from "@/components/loading-bar";
-import type { Page, Workspace } from "@/types";
+import type { Page } from "@/types";
 import { api } from "@/lib/api";
 import { findPageById } from "@/lib/page-utils";
 import { useQueryClient } from "@tanstack/react-query";
@@ -57,14 +57,17 @@ export function AppSidebar() {
   const { start, done, isLoading: isGlobalLoading } = useLoading();
   const { data: workspaces = [] } = useWorkspaces();
   const { data: allPages = [], isLoading: isTreeLoading } = usePageTree();
-  const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
   const [deletingPageId, setDeletingPageId] = useState<string | null>(null);
 
-  // Set initial workspace once loaded
-  if (workspaces.length > 0 && !activeWorkspace) {
-    setActiveWorkspace(workspaces[0]);
-  }
+  useEffect(() => {
+    if (workspaces.length > 0 && !activeWorkspaceId) {
+      setActiveWorkspaceId(workspaces[0].id);
+    }
+  }, [workspaces, activeWorkspaceId]);
+
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) ?? null;
 
   const activePageId = pathname?.startsWith("/docs/")
     ? pathname.split("/")[2] ?? null
@@ -75,10 +78,6 @@ export function AppSidebar() {
     : allPages.filter((p) => !p.isPrivate);
 
   const privatePages = allPages.filter((p) => p.isPrivate);
-
-  function handlePageSelect(_pageId: string) {
-    // Navigation is handled by Link in PageTreeItem.
-  }
 
   function countDescendants(page: Page): number {
     let count = 0;
@@ -195,11 +194,18 @@ export function AppSidebar() {
     }
   }
 
+  const handleRenamingDone = useCallback(() => {
+    if (renamingPageId) {
+      router.push(`/docs/${renamingPageId}`);
+    }
+    setRenamingPageId(null);
+  }, [renamingPageId, router]);
+
   const displayName = user?.displayName ?? user?.email ?? "";
   const initials = user?.displayName
     ? user.displayName
         .split(" ")
-        .map((n) => n[0])
+        .map((part) => part[0])
         .join("")
         .toUpperCase()
     : (user?.email?.[0] ?? "").toUpperCase();
@@ -211,7 +217,7 @@ export function AppSidebar() {
           <WorkspaceSwitcher
             workspaces={workspaces}
             activeWorkspace={activeWorkspace}
-            onWorkspaceChange={setActiveWorkspace}
+            onWorkspaceChange={(ws) => setActiveWorkspaceId(ws.id)}
           />
         )}
         {workspaces.length === 0 && (
@@ -232,20 +238,14 @@ export function AppSidebar() {
                 <PageTree
                   pages={workspacePages}
                   activePageId={activePageId}
-                  onPageSelect={handlePageSelect}
                   onAddChild={handleAddChild}
                   onDelete={setDeletingPageId}
                   onRename={handleRename}
                   onChangeIcon={handleChangeIcon}
                   onMove={handleMove}
                   renamingPageId={renamingPageId}
-                  onRenamingDone={() => {
-                    if (renamingPageId) {
-                      router.push(`/docs/${renamingPageId}`);
-                    }
-                    setRenamingPageId(null);
-                  }}
-                  loading={isTreeLoading}
+                  onRenamingDone={handleRenamingDone}
+                  isLoading={isTreeLoading}
                 />
               </SidebarGroupContent>
             </SidebarGroup>
@@ -267,20 +267,14 @@ export function AppSidebar() {
             <PageTree
               pages={privatePages}
               activePageId={activePageId}
-              onPageSelect={handlePageSelect}
               onAddChild={handleAddChild}
               onDelete={setDeletingPageId}
               onRename={handleRename}
               onChangeIcon={handleChangeIcon}
               onMove={handleMove}
               renamingPageId={renamingPageId}
-              onRenamingDone={() => {
-                    if (renamingPageId) {
-                      router.push(`/docs/${renamingPageId}`);
-                    }
-                    setRenamingPageId(null);
-                  }}
-              loading={isTreeLoading}
+              onRenamingDone={handleRenamingDone}
+              isLoading={isTreeLoading}
             />
           </SidebarGroupContent>
         </SidebarGroup>

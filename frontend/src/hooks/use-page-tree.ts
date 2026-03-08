@@ -3,7 +3,7 @@
 import { useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Page } from "@/types";
+import type { Page } from "@/types";
 
 export function usePageTree(workspaceId?: string) {
   const queryClient = useQueryClient();
@@ -21,7 +21,7 @@ export function usePageTree(workspaceId?: string) {
 
   const sync = useCallback(() => {
     api.syncPages().then((result) => {
-      if (result && result.removed > 0) {
+      if (result && (result.removed > 0 || result.added > 0 || result.updated > 0)) {
         queryClient.invalidateQueries({ queryKey: ["pages"] });
       }
     }).catch(() => {});

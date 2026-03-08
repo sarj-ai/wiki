@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Workspace } from "@/types";
+import type { Workspace } from "@/types";
 
 export function useWorkspaces() {
   return useQuery<Workspace[]>({

@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +16,24 @@ class Settings(BaseSettings):
     ALLOWED_DOMAIN: str = "sarj.ai"
     FRONTEND_URL: str = "http://localhost:3000"
     WEBHOOK_BASE_URL: str = ""  # e.g. "https://yourdomain.com" — empty disables webhook registration
+
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def secret_key_min_length(cls, v: str) -> str:
+        if len(v) < 32:
+            raise ValueError("SECRET_KEY must be at least 32 characters")
+        return v
+
+    @field_validator("FERNET_KEY")
+    @classmethod
+    def fernet_key_valid(cls, v: str) -> str:
+        from cryptography.fernet import Fernet
+
+        try:
+            Fernet(v.encode())
+        except Exception:
+            raise ValueError("FERNET_KEY must be a valid Fernet key (32 url-safe base64-encoded bytes)")
+        return v
 
 
 settings = Settings()  # type: ignore[call-arg]

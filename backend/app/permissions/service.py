@@ -3,9 +3,10 @@ from __future__ import annotations
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.access import assert_page_owner
 from app.models.page import Page, PagePermission
 from app.models.user import User
 from app.permissions.schemas import PermissionCreate
@@ -27,15 +28,6 @@ async def _get_page_or_403(db: AsyncSession, page_id: UUID) -> Page:
     return page
 
 
-def _assert_owner(page: Page, user: User) -> None:
-    """Raise 403 if the user is not the page creator."""
-    if page.created_by != user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the page owner can manage permissions",
-        )
-
-
 # ------------------------------------------------------------------
 # Public service functions
 # ------------------------------------------------------------------
@@ -47,7 +39,7 @@ async def list_permissions(
 ) -> list[PagePermission]:
     """List all permissions for a page. User must own the page."""
     page = await _get_page_or_403(db, page_id)
-    _assert_owner(page, user)
+    assert_page_owner(page, user, action="manage permissions for")
 
     result = await db.execute(
         select(PagePermission).where(PagePermission.page_id == page_id)
@@ -62,7 +54,28 @@ async def grant_permission(
 ) -> PagePermission:
     """Grant permission on a page. Only the page owner can grant permissions."""
     page = await _get_page_or_403(db, data.page_id)
-    _assert_owner(page, user)
+    assert_page_owner(page, user, action="manage permissions for")
+
+    # Check for an existing identical permission to prevent duplicates
+    filters = [
+        PagePermission.page_id == data.page_id,
+        PagePermission.permission == data.permission,
+    ]
+    if data.user_id is not None:
+        filters.append(PagePermission.user_id == data.user_id)
+    else:
+        filters.append(PagePermission.user_id.is_(None))
+    if data.workspace_id is not None:
+        filters.append(PagePermission.workspace_id == data.workspace_id)
+    else:
+        filters.append(PagePermission.workspace_id.is_(None))
+
+    existing = await db.execute(select(PagePermission).where(and_(*filters)))
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This permission already exists",
+        )
 
     perm = PagePermission(
         id=uuid4(),
@@ -96,7 +109,7 @@ async def revoke_permission(
 
     # Load the page to verify ownership
     page = await _get_page_or_403(db, perm.page_id)
-    _assert_owner(page, user)
+    assert_page_owner(page, user, action="manage permissions for")
 
     await db.delete(perm)
     await db.commit()

@@ -4,7 +4,6 @@ import { Fragment } from "react";
 import {
   CalendarDays,
   ExternalLink,
-  FileText,
   Hash,
   ImageIcon,
   LayoutGrid,
@@ -12,10 +11,14 @@ import {
   Pencil,
   User,
 } from "lucide-react";
-
-// ---------------------------------------------------------------------------
-// Status badge detection for table cells
-// ---------------------------------------------------------------------------
+import type {
+  TextRun,
+  TableCellData,
+  ListItem,
+  TocItem,
+  BlockStyle,
+  ContentBlock,
+} from "@/types";
 
 const STATUS_CLASSES: Record<string, string> = {
   "not started": "doc-status-neutral",
@@ -35,97 +38,7 @@ const STATUS_CLASSES: Record<string, string> = {
 };
 
 function getStatusClass(text: string): string | null {
-  return STATUS_CLASSES[text.trim().toLowerCase()] || null;
-}
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface TextRun {
-  text?: string;
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  strikethrough?: boolean;
-  smallCaps?: boolean;
-  link?: string;
-  superscript?: boolean;
-  subscript?: boolean;
-  color?: string;
-  backgroundColor?: string;
-  fontFamily?: string;
-  fontSize?: number;
-  type?:
-    | "image"
-    | "person"
-    | "rich_link"
-    | "footnote_ref"
-    | "equation"
-    | "auto_text"
-    | "drawing"
-    | "chart"
-    | "chip_placeholder"
-    | "date";
-  url?: string;
-  alt?: string;
-  width?: number;
-  height?: number;
-  email?: string;
-  mimeType?: string;
-  footnoteId?: string;
-  number?: string;
-}
-
-interface CellParagraph {
-  runs: TextRun[];
-  alignment?: "center" | "right" | "justify";
-}
-
-interface TableCellData {
-  content: CellParagraph[];
-  rowSpan?: number;
-  colSpan?: number;
-  backgroundColor?: string;
-  verticalAlign?: string;
-}
-
-interface ListItem {
-  runs: TextRun[];
-  nesting: number;
-}
-
-interface TocItem {
-  text: string;
-  level: number;
-  link?: string;
-}
-
-interface BlockStyle {
-  alignment?: "center" | "right" | "justify";
-  direction?: "rtl";
-  backgroundColor?: string;
-  indentStart?: number;
-}
-
-interface ContentBlock {
-  type: string;
-  level?: number;
-  runs?: TextRun[];
-  ordered?: boolean;
-  items?: ListItem[];
-  rows?: TableCellData[][];
-  hasHeader?: boolean;
-  hasChips?: boolean;
-  caption?: string;
-  columnWidths?: (number | null)[];
-  style?: BlockStyle;
-  variant?: "title" | "subtitle";
-  url?: string;
-  alt?: string;
-  width?: number;
-  height?: number;
-  tocItems?: TocItem[];
+  return STATUS_CLASSES[text.trim().toLowerCase()] ?? null;
 }
 
 interface DocViewerProps {
@@ -253,16 +166,16 @@ function RunRenderer({ runs }: { runs: TextRun[] }) {
         }
 
         // ── Regular text run ──
-        let el: React.ReactNode = run.text || "";
+        let rendered: React.ReactNode = run.text || "";
 
-        if (run.bold) el = <strong>{el}</strong>;
-        if (run.italic) el = <em>{el}</em>;
-        if (run.underline) el = <u className="decoration-foreground/30 underline-offset-[3px]">{el}</u>;
-        if (run.strikethrough) el = <s className="decoration-muted-foreground/60">{el}</s>;
+        if (run.bold) rendered = <strong>{rendered}</strong>;
+        if (run.italic) rendered = <em>{rendered}</em>;
+        if (run.underline) rendered = <u className="decoration-foreground/30 underline-offset-[3px]">{rendered}</u>;
+        if (run.strikethrough) rendered = <s className="decoration-muted-foreground/60">{rendered}</s>;
         if (run.smallCaps)
-          el = <span style={{ fontVariant: "small-caps" }}>{el}</span>;
-        if (run.superscript) el = <sup>{el}</sup>;
-        if (run.subscript) el = <sub>{el}</sub>;
+          rendered = <span style={{ fontVariant: "small-caps" }}>{rendered}</span>;
+        if (run.superscript) rendered = <sup>{rendered}</sup>;
+        if (run.subscript) rendered = <sub>{rendered}</sub>;
 
         // Inline styles (color, background, font)
         const inlineStyle: React.CSSProperties = {};
@@ -283,7 +196,7 @@ function RunRenderer({ runs }: { runs: TextRun[] }) {
               className="doc-link"
               style={hasInlineStyle ? inlineStyle : undefined}
             >
-              {el}
+              {rendered}
             </a>
           );
         }
@@ -291,12 +204,12 @@ function RunRenderer({ runs }: { runs: TextRun[] }) {
         if (hasInlineStyle) {
           return (
             <span key={i} style={inlineStyle}>
-              {el}
+              {rendered}
             </span>
           );
         }
 
-        return <Fragment key={i}>{el}</Fragment>;
+        return <Fragment key={i}>{rendered}</Fragment>;
       })}
     </>
   );
@@ -306,14 +219,14 @@ function RunRenderer({ runs }: { runs: TextRun[] }) {
 // Block style helper
 // ---------------------------------------------------------------------------
 
-function blockStyle(style?: BlockStyle): React.CSSProperties | undefined {
+function buildBlockCss(style?: BlockStyle): React.CSSProperties | undefined {
   if (!style) return undefined;
-  const s: React.CSSProperties = {};
-  if (style.alignment) s.textAlign = style.alignment;
-  if (style.direction) s.direction = style.direction;
-  if (style.backgroundColor) s.backgroundColor = style.backgroundColor;
-  if (style.indentStart) s.paddingInlineStart = `${style.indentStart}pt`;
-  return Object.keys(s).length > 0 ? s : undefined;
+  const css: React.CSSProperties = {};
+  if (style.alignment) css.textAlign = style.alignment;
+  if (style.direction) css.direction = style.direction;
+  if (style.backgroundColor) css.backgroundColor = style.backgroundColor;
+  if (style.indentStart) css.paddingInlineStart = `${style.indentStart}pt`;
+  return Object.keys(css).length > 0 ? css : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -350,13 +263,13 @@ function HeadingBlock({
     3: "doc-h3",
   };
 
-  const cls =
+  const headingClass =
     (variant && classes[variant]) ||
     headingClasses[level] ||
     "";
 
   return (
-    <Tag className={cls || undefined} style={blockStyle(style)}>
+    <Tag className={headingClass || undefined} style={buildBlockCss(style)}>
       <RunRenderer runs={runs} />
     </Tag>
   );
@@ -376,14 +289,14 @@ function ParagraphBlock({
   const hasOnlyImages = runs.every((r) => r.type === "image");
   if (hasOnlyImages) {
     return (
-      <figure className="my-8" style={blockStyle(style)}>
+      <figure className="my-8" style={buildBlockCss(style)}>
         <RunRenderer runs={runs} />
       </figure>
     );
   }
 
   return (
-    <p style={blockStyle(style)}>
+    <p style={buildBlockCss(style)}>
       <RunRenderer runs={runs} />
     </p>
   );
@@ -430,20 +343,20 @@ function DocTableBlock({
 
   // Track which cells to skip due to rowSpan/colSpan
   const skipMap = new Map<string, boolean>();
-  rows.forEach((row, ri) => {
-    let ci = 0;
+  rows.forEach((row, rowIndex) => {
+    let colIndex = 0;
     row.forEach((cell) => {
-      while (skipMap.has(`${ri}:${ci}`)) ci++;
-      const rs = cell.rowSpan || 1;
-      const cs = cell.colSpan || 1;
-      for (let dr = 0; dr < rs; dr++) {
-        for (let dc = 0; dc < cs; dc++) {
-          if (dr !== 0 || dc !== 0) {
-            skipMap.set(`${ri + dr}:${ci + dc}`, true);
+      while (skipMap.has(`${rowIndex}:${colIndex}`)) colIndex++;
+      const rowSpanCount = cell.rowSpan || 1;
+      const colSpanCount = cell.colSpan || 1;
+      for (let rowOffset = 0; rowOffset < rowSpanCount; rowOffset++) {
+        for (let colOffset = 0; colOffset < colSpanCount; colOffset++) {
+          if (rowOffset !== 0 || colOffset !== 0) {
+            skipMap.set(`${rowIndex + rowOffset}:${colIndex + colOffset}`, true);
           }
         }
       }
-      ci += cs;
+      colIndex += colSpanCount;
     });
   });
 
@@ -519,12 +432,12 @@ function DocTableBlock({
           <span className={statusClass}>{singleRun!.text!.trim()}</span>
         ) : (
           cell.content.map((para, pi) => {
-            const pStyle: React.CSSProperties = {};
-            if (para.alignment) pStyle.textAlign = para.alignment;
+            const paragraphStyle: React.CSSProperties = {};
+            if (para.alignment) paragraphStyle.textAlign = para.alignment;
             return (
               <div
                 key={pi}
-                style={Object.keys(pStyle).length > 0 ? pStyle : undefined}
+                style={Object.keys(paragraphStyle).length > 0 ? paragraphStyle : undefined}
                 className={pi > 0 ? "mt-1.5" : undefined}
               >
                 <RunRenderer runs={para.runs} />
@@ -551,15 +464,15 @@ function DocTableBlock({
             </thead>
           )}
           <tbody>
-            {bodyRows.map((row, ri) => {
-              const actualRi = hasHeader ? ri + 1 : ri;
+            {bodyRows.map((row, bodyRowIdx) => {
+              const absoluteRowIdx = hasHeader ? bodyRowIdx + 1 : bodyRowIdx;
               const sectionRow = isSectionRow(row);
 
               // Section rows: single cell spanning all columns
               if (sectionRow) {
                 const firstCell = row[0];
                 return (
-                  <tr key={ri} className="doc-table-row doc-table-section-row">
+                  <tr key={bodyRowIdx} className="doc-table-row doc-table-section-row">
                     <td colSpan={numCols} className="doc-table-td">
                       {firstCell.content.map((para, pi) => (
                         <div key={pi} className={pi > 0 ? "mt-1.5" : undefined}>
@@ -574,21 +487,21 @@ function DocTableBlock({
               // Regular rows: render cells + pad missing columns
               let colIndex = 0;
               const visibleCells: { cell: TableCellData; key: number }[] = [];
-              for (let ci = 0; ci < row.length; ci++) {
-                while (skipMap.has(`${actualRi}:${colIndex}`)) colIndex++;
-                visibleCells.push({ cell: row[ci], key: ci });
-                const cs = row[ci].colSpan || 1;
-                colIndex += cs;
+              for (let cellIdx = 0; cellIdx < row.length; cellIdx++) {
+                while (skipMap.has(`${absoluteRowIdx}:${colIndex}`)) colIndex++;
+                visibleCells.push({ cell: row[cellIdx], key: cellIdx });
+                const colSpanCount = row[cellIdx].colSpan || 1;
+                colIndex += colSpanCount;
               }
 
               // Count remaining unfilled columns (not covered by rowSpan)
               let paddingCols = 0;
-              for (let c = colIndex; c < numCols; c++) {
-                if (!skipMap.has(`${actualRi}:${c}`)) paddingCols++;
+              for (let col = colIndex; col < numCols; col++) {
+                if (!skipMap.has(`${absoluteRowIdx}:${col}`)) paddingCols++;
               }
 
               return (
-                <tr key={ri} className="doc-table-row">
+                <tr key={bodyRowIdx} className="doc-table-row">
                   {visibleCells.map(({ cell, key }) => (
                     <Fragment key={key}>{renderCell(cell, false)}</Fragment>
                   ))}
@@ -726,7 +639,7 @@ function BlockRenderer({ block }: { block: ContentBlock }) {
         />
       );
     case "table_of_contents":
-      return <TocBlock items={(block as any).items || []} />;
+      return <TocBlock items={block.tocItems ?? []} />;
     case "horizontal_rule":
       return <HorizontalRule />;
     default:

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import type { Page, Workspace, PagePermission, Permission } from "@/types";
 import { useAuth } from "@/components/auth-provider";
 import { useWorkspaces } from "@/hooks/use-workspaces";
@@ -49,7 +49,7 @@ interface ShareDialogProps {
 function getInitials(name: string): string {
   return name
     .split(" ")
-    .map((n) => n[0])
+    .map((part) => part[0])
     .join("")
     .toUpperCase()
     .slice(0, 2);
@@ -66,7 +66,7 @@ export function ShareDialog({
   const { start, done } = useLoading();
 
   const [permissions, setPermissions] = useState<PagePermission[]>([]);
-  const [isLoadingPerms, setIsLoadingPerms] = useState(false);
+  const [isLoadingPermissions, setIsLoadingPerms] = useState(false);
   const [isSharedWithWorkspace, setIsSharedWithWorkspace] = useState(!page.isPrivate);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>(
     page.workspaceId ?? ""
@@ -86,11 +86,8 @@ export function ShareDialog({
       .finally(() => setIsLoadingPerms(false));
   }, [open, page.id]);
 
-  // No search suggestions without a user directory endpoint yet
-  const suggestions = useMemo(() => {
-    // Future: call an API to search users by email
-    return [];
-  }, []);
+  // TODO: Wire up user search when directory API is available
+  const suggestions: never[] = [];
 
   async function handleChangePermission(permId: string, newPerm: Permission) {
     // Update locally for instant feedback
@@ -236,7 +233,7 @@ export function ShareDialog({
               </div>
             )}
 
-            {isLoadingPerms && (
+            {isLoadingPermissions && (
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="size-4 animate-spin text-muted-foreground" />
               </div>
@@ -292,7 +289,7 @@ export function ShareDialog({
               </div>
             ))}
 
-            {!isLoadingPerms && permissions.length === 0 && (
+            {!isLoadingPermissions && permissions.length === 0 && (
               <p className="text-sm text-muted-foreground py-2 px-2">
                 No one else has access yet.
               </p>

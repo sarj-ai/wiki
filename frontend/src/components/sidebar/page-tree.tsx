@@ -37,7 +37,6 @@ function flattenTree(pages: Page[], depth = 0, expandedIds: Set<string>): FlatIt
 interface PageTreeProps {
   pages: Page[];
   activePageId: string | null;
-  onPageSelect: (pageId: string) => void;
   onAddChild: (parentId: string) => void;
   onDelete: (pageId: string) => void;
   onRename: (pageId: string, newTitle: string) => void;
@@ -45,13 +44,12 @@ interface PageTreeProps {
   onMove?: (pageId: string, newParentId: string | null, newIndex: number) => void;
   renamingPageId?: string | null;
   onRenamingDone?: () => void;
-  loading?: boolean;
+  isLoading?: boolean;
 }
 
 export function PageTree({
   pages,
   activePageId,
-  onPageSelect,
   onAddChild,
   onDelete,
   onRename,
@@ -59,13 +57,13 @@ export function PageTree({
   onMove,
   renamingPageId,
   onRenamingDone,
-  loading,
+  isLoading,
 }: PageTreeProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [overId, setOverId] = useState<string | null>(null);
-  const [dropIntent, setDropIntent] = useState<"before" | "after" | "inside">("after");
-  const dropIntentRef = useRef<"before" | "after" | "inside">("after");
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [dropPosition, setDropPosition] = useState<"before" | "after" | "inside">("after");
+  const dropPositionRef = useRef<"before" | "after" | "inside">("after");
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -87,8 +85,8 @@ export function PageTree({
     })
   );
 
-  const activePage = activeId
-    ? flatItems.find((f) => f.page.id === activeId)?.page ?? null
+  const draggedPage = draggedId
+    ? flatItems.find((f) => f.page.id === draggedId)?.page ?? null
     : null;
 
   // Auto-expand parent chain when renamingPageId targets a nested child
@@ -115,10 +113,10 @@ export function PageTree({
   }, [renamingPageId, pages]);
 
   function handleDragStart(event: DragStartEvent) {
-    setActiveId(event.active.id as string);
+    setDraggedId(event.active.id as string);
   }
 
-  function computeIntent(active: DragMoveEvent["active"], over: NonNullable<DragMoveEvent["over"]>): "before" | "after" | "inside" {
+  function computeDropPosition(active: DragMoveEvent["active"], over: NonNullable<DragMoveEvent["over"]>): "before" | "after" | "inside" {
     const activeRect = active.rect.current.translated;
     const overRect = over.rect;
     if (activeRect && overRect) {
@@ -135,67 +133,62 @@ export function PageTree({
   function handleDragMove(event: DragMoveEvent) {
     const { over, active } = event;
     if (!over || over.id === active.id) {
-      setOverId(null);
+      setDropTargetId(null);
       return;
     }
 
-    setOverId(over.id as string);
+    setDropTargetId(over.id as string);
 
-    const intent = computeIntent(active, over);
-    dropIntentRef.current = intent;
-    setDropIntent(intent);
+    const position = computeDropPosition(active, over);
+    dropPositionRef.current = position;
+    setDropPosition(position);
   }
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
-    setActiveId(null);
-    setOverId(null);
+    setDraggedId(null);
+    setDropTargetId(null);
 
     if (!over || active.id === over.id || !onMove) return;
 
-    const draggedId = active.id as string;
+    const movedPageId = active.id as string;
     const targetId = over.id as string;
 
-    // Find the target item in the flat list
     const targetIdx = flatItems.findIndex((f) => f.page.id === targetId);
     if (targetIdx === -1) return;
 
     const targetItem = flatItems[targetIdx];
 
     // Read from ref to avoid stale closure
-    const intent = dropIntentRef.current;
+    const position = dropPositionRef.current;
 
-    if (intent === "inside") {
-      // Re-parent: make dragged page a child of target
-      onMove(draggedId, targetId, 0);
-      // Auto-expand the target so user sees the nested page
+    if (position === "inside") {
+      onMove(movedPageId, targetId, 0);
       setExpandedIds((prev) => new Set(prev).add(targetId));
     } else {
-      // Reorder: place before/after the target within the same parent
       const newParentId = targetItem.page.parentId;
 
-      // Find siblings of target
-      const siblings = newParentId
-        ? flatItems.filter(
-            (f) => f.page.parentId === newParentId && f.depth === targetItem.depth
-          )
-        : pages;
+      // Find siblings: either flat items at the same depth under the same parent,
+      // or root-level pages when there is no parent
+      const siblingIds = newParentId
+        ? flatItems
+            .filter((f) => f.page.parentId === newParentId && f.depth === targetItem.depth)
+            .map((f) => f.page.id)
+        : pages.map((p) => p.id);
 
-      const siblingIdx = siblings.findIndex(
-        (s) => (s instanceof Object && "page" in s ? s.page.id : (s as Page).id) === targetId
-      );
-      const newIndex = intent === "after" ? siblingIdx + 1 : siblingIdx;
+      const siblingIdx = siblingIds.indexOf(targetId);
+      const newIndex = position === "after" ? siblingIdx + 1 : siblingIdx;
 
-      onMove(draggedId, newParentId, newIndex);
+      onMove(movedPageId, newParentId, newIndex);
     }
   }
 
   function handleDragCancel() {
-    setActiveId(null);
-    setOverId(null);
+    setDraggedId(null);
+    setDropTargetId(null);
   }
 
-  if (loading) {
+  if (isLoading) {
     return <SidebarSkeleton />;
   }
 
@@ -223,28 +216,27 @@ export function PageTree({
               page={item.page}
               depth={item.depth}
               activePageId={activePageId}
-              onPageSelect={onPageSelect}
               onAddChild={onAddChild}
               onDelete={onDelete}
               onRename={onRename}
               onChangeIcon={onChangeIcon}
               isExpanded={expandedIds.has(item.page.id)}
               onToggleExpand={toggleExpanded}
-              isDragOver={overId === item.page.id}
-              dropIntent={overId === item.page.id ? dropIntent : undefined}
-              autoRename={renamingPageId === item.page.id}
+              isDragOver={dropTargetId === item.page.id}
+              dropPosition={dropTargetId === item.page.id ? dropPosition : undefined}
+              shouldAutoRename={renamingPageId === item.page.id}
               onRenamingDone={onRenamingDone}
             />
           ))}
         </SidebarMenu>
 
       <DragOverlay dropAnimation={null}>
-        {activePage && (
+        {draggedPage && (
           <div className="flex items-center gap-1.5 rounded-md bg-sidebar-accent px-3 py-1.5 text-sm shadow-md">
             <span className="shrink-0 text-base leading-none">
-              {activePage.icon || <FileText className="size-4" />}
+              {draggedPage.icon || <FileText className="size-4" />}
             </span>
-            <span className="truncate">{activePage.title}</span>
+            <span className="truncate">{draggedPage.title}</span>
           </div>
         )}
       </DragOverlay>

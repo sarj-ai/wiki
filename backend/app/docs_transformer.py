@@ -6,16 +6,22 @@ Covers all structural and inline element types from the Docs API v1.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 
-# Ordered glyph types from the Docs API
-_ORDERED_GLYPHS = {
+_ORDERED_GLYPHS = frozenset({
     "DECIMAL",
     "ZERO_DECIMAL",
     "UPPER_ALPHA",
     "LOWER_ALPHA",
     "UPPER_ROMAN",
     "LOWER_ROMAN",
+})
+
+_ALIGNMENT_MAP = {
+    "CENTER": "center",
+    "END": "right",
+    "JUSTIFIED": "justify",
 }
 
 
@@ -255,13 +261,7 @@ def _color_to_hex_all(color_obj: dict | None) -> str | None:
 def _dimension_pt(dim: dict | None) -> float | None:
     if not dim:
         return None
-    mag = dim.get("magnitude")
-    if mag is None:
-        return None
-    unit = dim.get("unit", "PT")
-    if unit == "PT":
-        return mag
-    return mag  # assume PT if unknown
+    return dim.get("magnitude")
 
 
 # ---------------------------------------------------------------------------
@@ -286,10 +286,8 @@ def _transform_paragraph(
     # Paragraph-level styling
     para_style: dict = {}
     alignment = style.get("alignment")
-    if alignment and alignment != "START":
-        align_map = {"CENTER": "center", "END": "right", "JUSTIFIED": "justify"}
-        if alignment in align_map:
-            para_style["alignment"] = align_map[alignment]
+    if alignment and alignment != "START" and alignment in _ALIGNMENT_MAP:
+        para_style["alignment"] = _ALIGNMENT_MAP[alignment]
 
     direction = style.get("direction")
     if direction == "RIGHT_TO_LEFT":
@@ -456,11 +454,9 @@ def _extract_runs(
             date_el = el["dateElement"]
             props = date_el.get("dateElementProperties", {})
             timestamp = props.get("timestamp", "")
-            # Format the date nicely
             if timestamp:
-                from datetime import datetime as _dt
                 try:
-                    dt = _dt.fromisoformat(timestamp.replace("Z", "+00:00"))
+                    dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
                     text = dt.strftime("%b %d, %Y %I:%M %p")
                 except (ValueError, AttributeError):
                     text = timestamp
@@ -549,14 +545,12 @@ def _extract_inline_object(
     content_uri = image_props.get("contentUri")
     if content_uri:
         size = embedded.get("size", {})
-        w = size.get("width", {})
-        h = size.get("height", {})
-        w_pt = w.get("magnitude", 0)
-        h_pt = h.get("magnitude", 0)
+        width_pt = size.get("width", {}).get("magnitude", 0)
+        height_pt = size.get("height", {}).get("magnitude", 0)
 
         # Skip tiny images (< 24pt) — these are Google Docs internal column-type
         # icons (person, status, text, date icons) that aren't publicly accessible.
-        if w_pt > 0 and h_pt > 0 and w_pt < 24 and h_pt < 24:
+        if width_pt > 0 and height_pt > 0 and width_pt < 24 and height_pt < 24:
             return None
 
         run: dict = {"type": "image", "url": content_uri}
@@ -567,10 +561,10 @@ def _extract_inline_object(
         elif title:
             run["alt"] = title
 
-        if w_pt:
-            run["width"] = w_pt
-        if h_pt:
-            run["height"] = h_pt
+        if width_pt:
+            run["width"] = width_pt
+        if height_pt:
+            run["height"] = height_pt
         return run
 
     # Embedded drawing (opaque — just note it exists)
@@ -616,12 +610,12 @@ def _extract_positioned_object(
             block["alt"] = title
 
         size = embedded.get("size", {})
-        w = size.get("width", {})
-        h = size.get("height", {})
-        if w.get("magnitude"):
-            block["width"] = w["magnitude"]
-        if h.get("magnitude"):
-            block["height"] = h["magnitude"]
+        width_pt = size.get("width", {}).get("magnitude")
+        height_pt = size.get("height", {}).get("magnitude")
+        if width_pt:
+            block["width"] = width_pt
+        if height_pt:
+            block["height"] = height_pt
         return block
 
     return None
@@ -661,16 +655,13 @@ def _transform_table(
                     para_style = content_el["paragraph"].get("paragraphStyle", {})
                     alignment = para_style.get("alignment")
                     if para_runs:
-                        # Check if any run is a chip placeholder
-                        for r in para_runs:
-                            if r.get("type") == "chip_placeholder":
+                        for run in para_runs:
+                            if run.get("type") == "chip_placeholder":
                                 has_chips = True
-                        p: dict = {"runs": para_runs}
-                        if alignment and alignment != "START":
-                            align_map = {"CENTER": "center", "END": "right", "JUSTIFIED": "justify"}
-                            if alignment in align_map:
-                                p["alignment"] = align_map[alignment]
-                        cell_content.append(p)
+                        para_block: dict = {"runs": para_runs}
+                        if alignment and alignment != "START" and alignment in _ALIGNMENT_MAP:
+                            para_block["alignment"] = _ALIGNMENT_MAP[alignment]
+                        cell_content.append(para_block)
 
             cell_data: dict = {
                 "content": cell_content if cell_content else [{"runs": []}],
@@ -718,13 +709,9 @@ def _transform_table(
     if has_chips:
         result["hasChips"] = True
 
-    # Column widths
     col_props = table.get("tableColumnProperties", [])
     if col_props:
-        widths = []
-        for cp in col_props:
-            w = _dimension_pt(cp.get("width"))
-            widths.append(w)
+        widths = [_dimension_pt(cp.get("width")) for cp in col_props]
         if any(w is not None for w in widths):
             result["columnWidths"] = widths
 

@@ -8,7 +8,6 @@ import type { Page } from "@/types";
 import {
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuAction,
 } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
@@ -34,7 +33,6 @@ interface PageTreeItemProps {
   page: Page;
   depth: number;
   activePageId: string | null;
-  onPageSelect: (pageId: string) => void;
   onAddChild: (parentId: string) => void;
   onDelete: (pageId: string) => void;
   onRename: (pageId: string, newTitle: string) => void;
@@ -42,8 +40,8 @@ interface PageTreeItemProps {
   isExpanded: boolean;
   onToggleExpand: (id: string) => void;
   isDragOver?: boolean;
-  dropIntent?: "before" | "after" | "inside";
-  autoRename?: boolean;
+  dropPosition?: "before" | "after" | "inside";
+  shouldAutoRename?: boolean;
   onRenamingDone?: () => void;
 }
 
@@ -51,7 +49,6 @@ export function PageTreeItem({
   page,
   depth,
   activePageId,
-  onPageSelect,
   onAddChild,
   onDelete,
   onRename,
@@ -59,8 +56,8 @@ export function PageTreeItem({
   isExpanded,
   onToggleExpand,
   isDragOver,
-  dropIntent,
-  autoRename,
+  dropPosition,
+  shouldAutoRename,
   onRenamingDone,
 }: PageTreeItemProps) {
   const [isRenaming, setIsRenaming] = useState(false);
@@ -70,17 +67,16 @@ export function PageTreeItem({
   const inputRef = useRef<HTMLInputElement>(null);
   const autoRenameHandled = useRef(false);
 
-  // Auto-enter rename mode for newly created pages
   useEffect(() => {
-    if (autoRename && !autoRenameHandled.current) {
+    if (shouldAutoRename && !autoRenameHandled.current) {
       autoRenameHandled.current = true;
       setRenameValue(page.title);
       setIsRenaming(true);
     }
-    if (!autoRename) {
+    if (!shouldAutoRename) {
       autoRenameHandled.current = false;
     }
-  }, [autoRename]);
+  }, [shouldAutoRename, page.title]);
 
   // Focus and select input when entering rename mode
   useEffect(() => {
@@ -112,12 +108,10 @@ export function PageTreeItem({
     [setDragNodeRef, setDropNodeRef]
   );
 
-  // Drop indicator styles
-  const dropIndicatorClass = isDragOver
-    ? dropIntent === "inside"
+  const dropIndicatorClass =
+    isDragOver && dropPosition === "inside"
       ? "ring-2 ring-sidebar-primary/50 rounded-md bg-sidebar-accent/50"
-      : ""
-    : "";
+      : "";
 
   return (
     <SidebarMenuItem
@@ -125,7 +119,7 @@ export function PageTreeItem({
       className={`relative ${isDragging ? "opacity-30" : ""}`}
     >
       {/* Drop indicator line — before */}
-      {isDragOver && dropIntent === "before" && (
+      {isDragOver && dropPosition === "before" && (
         <div
           className="absolute top-0 right-2 left-2 h-0.5 rounded-full bg-sidebar-primary"
           style={{ marginLeft: `${depth * 12}px` }}
@@ -196,10 +190,7 @@ export function PageTreeItem({
             className="flex-1 gap-1.5"
             tooltip={page.title}
           >
-            <Link
-              href={`/docs/${page.id}`}
-              onClick={() => onPageSelect(page.id)}
-            >
+            <Link href={`/docs/${page.id}`}>
               <span className="shrink-0 text-base leading-none">
                 {page.icon || <FileText className="size-4" />}
               </span>
@@ -289,7 +280,7 @@ export function PageTreeItem({
       </div>
 
       {/* Drop indicator line — after */}
-      {isDragOver && dropIntent === "after" && (
+      {isDragOver && dropPosition === "after" && (
         <div
           className="absolute bottom-0 right-2 left-2 h-0.5 rounded-full bg-sidebar-primary"
           style={{ marginLeft: `${depth * 12}px` }}

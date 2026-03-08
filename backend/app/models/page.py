@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, JSON, Text, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Text, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -12,6 +12,9 @@ class Page(Base):
     __tablename__ = "pages"
     __table_args__ = (
         CheckConstraint("type IN ('page', 'section')", name="ck_pages_type"),
+        Index("ix_pages_parent_id", "parent_id"),
+        Index("ix_pages_created_by", "created_by"),
+        Index("ix_pages_workspace_id", "workspace_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -25,7 +28,7 @@ class Page(Base):
     )
     google_drive_id: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     drive_folder_id: Mapped[str] = mapped_column(Text, nullable=False)
-    children_folder_id: Mapped[str | None] = mapped_column(Text)  # Drive folder for this page's children
+    children_folder_id: Mapped[str | None] = mapped_column(Text)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     type: Mapped[str] = mapped_column(Text, nullable=False)
     sort_order: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("0"))
@@ -40,7 +43,7 @@ class Page(Base):
     )
     icon: Mapped[str | None] = mapped_column(Text)
     cover_url: Mapped[str | None] = mapped_column(Text)
-    cached_content: Mapped[dict | None] = mapped_column(JSON)
+    cached_content: Mapped[dict | None] = mapped_column(JSONB)
     content_cached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -58,6 +61,9 @@ class PagePermission(Base):
     __tablename__ = "page_permissions"
     __table_args__ = (
         CheckConstraint("permission IN ('view', 'edit')", name="ck_page_permissions_permission"),
+        Index("ix_page_permissions_page_id", "page_id"),
+        Index("ix_page_permissions_user_id", "user_id"),
+        Index("ix_page_permissions_workspace_id", "workspace_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

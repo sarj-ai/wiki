@@ -1,9 +1,9 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { User } from "@/types";
-import { fetchCurrentUser, getLoginUrl, logout as apiLogout } from "@/lib/auth";
+import type { User } from "@/types";
+import { fetchCurrentUser, logout as apiLogout } from "@/lib/auth";
 
 interface AuthContextType {
   user: User | null;
@@ -17,7 +17,7 @@ const AuthContext = createContext<AuthContextType>({
   logout: async () => {},
 });
 
-export function useAuth() {
+export function useAuth(): AuthContextType {
   return useContext(AuthContext);
 }
 
@@ -26,12 +26,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
+  const hasCheckedAuth = useRef(false);
 
   useEffect(() => {
+    if (hasCheckedAuth.current) return;
+    hasCheckedAuth.current = true;
+
     fetchCurrentUser()
-      .then((u) => {
-        setUser(u);
-        if (!u && pathname !== "/login") {
+      .then((fetchedUser) => {
+        setUser(fetchedUser);
+        if (!fetchedUser && pathname !== "/login") {
           router.push("/login");
         }
       })

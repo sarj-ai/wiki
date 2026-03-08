@@ -1,7 +1,7 @@
-import type { Page, PagePermission } from "@/types";
+import type { Page, PagePermission, ContentBlock } from "@/types";
 import { refreshAccessToken } from "@/lib/auth";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 function snakeToCamel(str: string): string {
   return str.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
@@ -20,28 +20,24 @@ function transformKeys<T>(obj: unknown): T {
   return obj as T;
 }
 
-async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
-  let res = await fetch(`${API_URL}${path}`, {
+function buildRequestInit(options?: RequestInit): RequestInit {
+  return {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...options?.headers,
     },
     ...options,
-  });
+  };
+}
 
-  // If 401, try refreshing the token and retry once
+async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
+  let res = await fetch(`${API_URL}${path}`, buildRequestInit(options));
+
   if (res.status === 401) {
     const refreshed = await refreshAccessToken();
     if (refreshed) {
-      res = await fetch(`${API_URL}${path}`, {
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...options?.headers,
-        },
-        ...options,
-      });
+      res = await fetch(`${API_URL}${path}`, buildRequestInit(options));
     }
   }
 
@@ -49,7 +45,6 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(`API error: ${res.status}`);
   }
 
-  // 204 No Content — nothing to parse
   if (res.status === 204) {
     return undefined as T;
   }
@@ -58,69 +53,86 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   return transformKeys<T>(json);
 }
 
+function pagePath(id: string): string {
+  return `/pages/${encodeURIComponent(id)}`;
+}
+
+interface CreatePageData {
+  title: string;
+  parentId?: string;
+  workspaceId?: string;
+  type?: string;
+  icon?: string;
+}
+
+interface UpdatePageData {
+  title?: string;
+  parentId?: string | null;
+  sortOrder?: number;
+  icon?: string | null;
+}
+
+interface GrantPermissionData {
+  pageId: string;
+  userId?: string;
+  workspaceId?: string;
+  permission: string;
+}
+
+interface PageContent {
+  blocks: ContentBlock[];
+  cached: boolean;
+}
+
 export const api = {
-  // Pages
   getPageTree: () => fetchApi<Page[]>("/pages/tree"),
-  syncPages: () => fetchApi<{ removed: number }>("/pages/sync", { method: "POST" }),
-  getPage: (id: string) => fetchApi<Page>(`/pages/${id}`),
-  createPage: (data: {
-    title: string;
-    parentId?: string;
-    workspaceId?: string;
-    type?: string;
-    icon?: string;
-  }) =>
+
+  syncPages: () => fetchApi<{ removed: number; added: number; updated: number }>("/pages/sync", { method: "POST" }),
+
+  getPage: (id: string) => fetchApi<Page>(pagePath(id)),
+
+  createPage: (data: CreatePageData) =>
     fetchApi<Page>("/pages", {
       method: "POST",
       body: JSON.stringify({
         title: data.title,
         parent_id: data.parentId,
         workspace_id: data.workspaceId,
-        type: data.type || "page",
+        type: data.type ?? "page",
         icon: data.icon,
       }),
     }),
-  updatePage: (
-    id: string,
-    data: {
-      title?: string;
-      parentId?: string | null;
-      sortOrder?: number;
-      icon?: string | null;
-    }
-  ) => {
-    // Only include fields that were explicitly provided
+
+  updatePage: (id: string, data: UpdatePageData) => {
     const body: Record<string, unknown> = {};
     if (data.title !== undefined) body.title = data.title;
     if ("parentId" in data) body.parent_id = data.parentId;
     if (data.sortOrder !== undefined) body.sort_order = data.sortOrder;
     if ("icon" in data) body.icon = data.icon;
-    return fetchApi<Page>(`/pages/${id}`, {
+    return fetchApi<Page>(pagePath(id), {
       method: "PATCH",
       body: JSON.stringify(body),
     });
   },
+
   deletePage: (id: string) =>
-    fetchApi<void>(`/pages/${id}`, { method: "DELETE" }),
+    fetchApi<void>(pagePath(id), { method: "DELETE" }),
+
   publishPage: (id: string, workspaceId: string) =>
-    fetchApi<Page>(`/pages/${id}/publish`, {
+    fetchApi<Page>(`${pagePath(id)}/publish`, {
       method: "POST",
       body: JSON.stringify({ workspace_id: workspaceId }),
     }),
+
   getPageContent: (id: string, forceRefresh?: boolean) =>
-    fetchApi<{ blocks: Record<string, unknown>[]; cached: boolean }>(
-      `/pages/${id}/content${forceRefresh ? "?force_refresh=true" : ""}`
+    fetchApi<PageContent>(
+      `${pagePath(id)}/content${forceRefresh ? "?force_refresh=true" : ""}`
     ),
 
-  // Permissions
   getPagePermissions: (pageId: string) =>
-    fetchApi<PagePermission[]>(`/permissions/page/${pageId}`),
-  grantPermission: (data: {
-    pageId: string;
-    userId?: string;
-    workspaceId?: string;
-    permission: string;
-  }) =>
+    fetchApi<PagePermission[]>(`/permissions/page/${encodeURIComponent(pageId)}`),
+
+  grantPermission: (data: GrantPermissionData) =>
     fetchApi<PagePermission>("/permissions", {
       method: "POST",
       body: JSON.stringify({
@@ -130,6 +142,7 @@ export const api = {
         permission: data.permission,
       }),
     }),
+
   revokePermission: (id: string) =>
-    fetchApi<void>(`/permissions/${id}`, { method: "DELETE" }),
+    fetchApi<void>(`/permissions/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };

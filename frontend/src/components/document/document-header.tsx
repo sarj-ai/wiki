@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { Fragment, useState, useRef, useEffect } from "react";
 import type { Page, Workspace } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -11,7 +11,6 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Fragment } from "react";
 import { ShareButton } from "@/components/permissions/share-button";
 import { EmojiPicker } from "@/components/emoji-picker";
 import { SmilePlus, PanelLeftClose, PanelLeft, Maximize2 } from "lucide-react";
@@ -21,6 +20,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+
+const TOOLBAR_BUTTON_CLASS =
+  "flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-white hover:bg-[#251040] dark:hover:bg-[#4B3483] transition-colors";
 
 interface DocumentToolbarProps {
   page: Page;
@@ -46,7 +48,7 @@ export function DocumentToolbar({
           <button
             type="button"
             onClick={toggleSidebar}
-            className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-white hover:bg-[#251040] dark:hover:bg-[#4B3483] transition-colors"
+            className={TOOLBAR_BUTTON_CLASS}
           >
             {sidebarOpen ? (
               <PanelLeftClose className="size-4" />
@@ -102,7 +104,7 @@ export function DocumentToolbar({
               <button
                 type="button"
                 onClick={onFocusMode}
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-white hover:bg-[#251040] dark:hover:bg-[#4B3483] transition-colors"
+                className={TOOLBAR_BUTTON_CLASS}
               >
                 <Maximize2 className="size-4" />
               </button>

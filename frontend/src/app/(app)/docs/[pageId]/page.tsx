@@ -1,10 +1,9 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   FileQuestion,
-  Maximize2,
   Minimize2,
   PanelLeft,
   PanelLeftClose,
@@ -12,7 +11,6 @@ import {
   Eye,
   Settings2,
   RefreshCw,
-  Loader2,
 } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import {
@@ -30,23 +28,59 @@ import { DocumentToolbar, DocumentTitle } from "@/components/document/document-h
 import { DocumentIframe } from "@/components/document/document-iframe";
 import { DocumentSkeleton } from "@/components/document/document-skeleton";
 import { DocViewer } from "@/components/document/doc-viewer";
-import { Skeleton } from "@/components/ui/skeleton";
+import { ContentLoadingSkeleton } from "@/components/document/content-loading-skeleton";
+
+const EDITOR_PREF_KEY = "sarj-always-iframe";
 
 function useEditorPreference() {
   const [alwaysIframe, setAlwaysIframe] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem("sarj-always-iframe");
-    if (stored === "true") setAlwaysIframe(true);
+    setAlwaysIframe(localStorage.getItem(EDITOR_PREF_KEY) === "true");
   }, []);
 
-  function toggle() {
-    const next = !alwaysIframe;
-    setAlwaysIframe(next);
-    localStorage.setItem("sarj-always-iframe", String(next));
-  }
+  const toggle = useCallback(() => {
+    setAlwaysIframe((prev) => {
+      const next = !prev;
+      localStorage.setItem(EDITOR_PREF_KEY, String(next));
+      return next;
+    });
+  }, []);
 
   return { alwaysIframe, toggleAlwaysIframe: toggle };
+}
+
+const TOOLBAR_BUTTON_CLASS =
+  "flex size-7 items-center justify-center rounded-md transition-colors";
+const TOOLBAR_BUTTON_IDLE =
+  "text-muted-foreground hover:text-white hover:bg-[#251040] dark:hover:bg-[#4B3483]";
+const TOOLBAR_BUTTON_ACTIVE =
+  "bg-sidebar-accent text-sidebar-accent-foreground";
+
+function EditToggleButton({
+  isEditing,
+  onToggle,
+}: {
+  isEditing: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          data-edit-toggle
+          onClick={onToggle}
+          className={`${TOOLBAR_BUTTON_CLASS} ${isEditing ? TOOLBAR_BUTTON_ACTIVE : TOOLBAR_BUTTON_IDLE}`}
+        >
+          {isEditing ? <Eye className="size-4" /> : <Pencil className="size-4" />}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        {isEditing ? "View mode" : "Edit mode"}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 export default function DocumentPage({
@@ -66,23 +100,34 @@ export default function DocumentPage({
   const sidebarWasOpen = useRef(true);
   const { alwaysIframe, toggleAlwaysIframe } = useEditorPreference();
 
-  function enterFocusMode() {
+  const saveSidebarState = useCallback(() => {
     sidebarWasOpen.current = sidebarOpen;
     if (sidebarOpen) setSidebarOpen(false);
-    setFocusMode(true);
-  }
+  }, [sidebarOpen, setSidebarOpen]);
 
-  function exitFocusMode() {
+  const restoreSidebarState = useCallback(() => {
     if (sidebarWasOpen.current) setSidebarOpen(true);
+  }, [setSidebarOpen]);
+
+  const enterFocusMode = useCallback(() => {
+    saveSidebarState();
+    setFocusMode(true);
+  }, [saveSidebarState]);
+
+  const exitFocusMode = useCallback(() => {
+    restoreSidebarState();
     setFocusMode(false);
-  }
+  }, [restoreSidebarState]);
 
-  function toggleFocusMode() {
-    if (focusMode) exitFocusMode();
-    else enterFocusMode();
-  }
+  const toggleFocusMode = useCallback(() => {
+    if (focusMode) {
+      restoreSidebarState();
+    } else {
+      saveSidebarState();
+    }
+    setFocusMode((prev) => !prev);
+  }, [focusMode, saveSidebarState, restoreSidebarState]);
 
-  // Cmd+. / Ctrl+. to toggle focus mode
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === "." && (e.metaKey || e.ctrlKey)) {
@@ -92,7 +137,7 @@ export default function DocumentPage({
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  });
+  }, [toggleFocusMode]);
 
   const {
     data: page,
@@ -138,7 +183,7 @@ export default function DocumentPage({
     wasEditing.current = isEditing;
   }, [isEditing, alwaysIframe, pageId, queryClient, refetchContent]);
 
-  const contentLoading = isContentLoading || isContentFetching;
+  const isContentReady = !isContentLoading && !isContentFetching;
 
   async function handleChangeIcon(icon: string | null) {
     start();
@@ -207,7 +252,7 @@ export default function DocumentPage({
               <button
                 type="button"
                 onClick={toggleSidebar}
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-white hover:bg-[#251040] dark:hover:bg-[#4B3483] transition-colors"
+                className={`${TOOLBAR_BUTTON_CLASS} ${TOOLBAR_BUTTON_IDLE}`}
               >
                 {sidebarOpen ? (
                   <PanelLeftClose className="size-4" />
@@ -226,36 +271,17 @@ export default function DocumentPage({
           </span>
           <div className="flex items-center gap-1">
             {!alwaysIframe && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    data-edit-toggle
-                    onClick={() => setIsEditing(!isEditing)}
-                    className={`flex size-7 items-center justify-center rounded-md transition-colors ${
-                      isEditing
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-muted-foreground hover:text-white hover:bg-[#251040] dark:hover:bg-[#4B3483]"
-                    }`}
-                  >
-                    {isEditing ? (
-                      <Eye className="size-4" />
-                    ) : (
-                      <Pencil className="size-4" />
-                    )}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {isEditing ? "View mode" : "Edit mode"}
-                </TooltipContent>
-              </Tooltip>
+              <EditToggleButton
+                isEditing={isEditing}
+                onToggle={() => setIsEditing(!isEditing)}
+              />
             )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
                   onClick={exitFocusMode}
-                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-white hover:bg-[#251040] dark:hover:bg-[#4B3483] transition-colors"
+                  className={`${TOOLBAR_BUTTON_CLASS} ${TOOLBAR_BUTTON_IDLE}`}
                 >
                   <Minimize2 className="size-4" />
                 </button>
@@ -275,40 +301,17 @@ export default function DocumentPage({
         >
           <div className="flex items-center gap-1">
             {!alwaysIframe && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    data-edit-toggle
-                    onClick={() => setIsEditing(!isEditing)}
-                    className={`flex size-7 items-center justify-center rounded-md transition-colors ${
-                      isEditing
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-muted-foreground hover:text-white hover:bg-[#251040] dark:hover:bg-[#4B3483]"
-                    }`}
-                  >
-                    {isEditing ? (
-                      <Eye className="size-4" />
-                    ) : (
-                      <Pencil className="size-4" />
-                    )}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {isEditing ? "View mode" : "Edit mode"}
-                </TooltipContent>
-              </Tooltip>
+              <EditToggleButton
+                isEditing={isEditing}
+                onToggle={() => setIsEditing(!isEditing)}
+              />
             )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
                   onClick={toggleAlwaysIframe}
-                  className={`flex size-7 items-center justify-center rounded-md transition-colors ${
-                    alwaysIframe
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-muted-foreground hover:text-white hover:bg-[#251040] dark:hover:bg-[#4B3483]"
-                  }`}
+                  className={`${TOOLBAR_BUTTON_CLASS} ${alwaysIframe ? TOOLBAR_BUTTON_ACTIVE : TOOLBAR_BUTTON_IDLE}`}
                 >
                   <Settings2 className="size-4" />
                 </button>
@@ -338,36 +341,12 @@ export default function DocumentPage({
           <div className={`flex flex-1 animate-in fade-in duration-200 ${focusMode ? "" : "px-6 pb-6"}`}>
             <DocumentIframe googleDriveId={page.googleDriveId} />
           </div>
-        ) : contentLoading ? (
-          <div className="px-6 pb-6 animate-in fade-in duration-200">
-            <div className="mx-auto max-w-3xl py-4 flex flex-col gap-6">
-              <Skeleton className="h-8 w-3/5 rounded" />
-              <div className="flex flex-col gap-3">
-                <Skeleton className="h-4 w-full rounded" />
-                <Skeleton className="h-4 w-full rounded" />
-                <Skeleton className="h-4 w-4/5 rounded" />
-              </div>
-              <Skeleton className="h-6 w-2/5 rounded" />
-              <div className="flex flex-col gap-3">
-                <Skeleton className="h-4 w-full rounded" />
-                <Skeleton className="h-4 w-full rounded" />
-                <Skeleton className="h-4 w-3/4 rounded" />
-              </div>
-              <div className="flex flex-col gap-3">
-                <Skeleton className="h-4 w-full rounded" />
-                <Skeleton className="h-4 w-5/6 rounded" />
-              </div>
-              <div className="flex flex-col gap-2 pl-4">
-                <Skeleton className="h-4 w-3/5 rounded" />
-                <Skeleton className="h-4 w-2/5 rounded" />
-                <Skeleton className="h-4 w-1/2 rounded" />
-              </div>
-            </div>
-          </div>
+        ) : !isContentReady ? (
+          <ContentLoadingSkeleton />
         ) : content?.blocks ? (
           <div className="px-6 pb-6 animate-in fade-in duration-200">
             <div className="mx-auto max-w-3xl py-4">
-              <DocViewer blocks={content.blocks as any} />
+              <DocViewer blocks={content.blocks} />
             </div>
           </div>
         ) : (
