@@ -690,9 +690,31 @@ def _transform_table(
             cells.append(cell_data)
         rows.append(cells)
 
+    # Detect caption row: if the first row is marked as header and has a single
+    # cell spanning all columns (e.g. "PRODUCT ROADMAP"), treat it as a caption
+    # and promote the second row to be the header row.
+    caption = None
+    num_cols = max((len(r) for r in rows), default=0) if rows else 0
+    if has_header and len(rows) >= 2 and len(rows[0]) == 1:
+        first_cell = rows[0][0]
+        cell_span = first_cell.get("colSpan", 1)
+        if cell_span >= num_cols or num_cols <= 1:
+            # Extract caption text
+            caption_parts = []
+            for para in first_cell.get("content", []):
+                for run in para.get("runs", []):
+                    if run.get("text"):
+                        caption_parts.append(run["text"])
+            if caption_parts:
+                caption = " ".join(caption_parts).strip()
+            # Remove caption row and promote next row as header
+            rows = rows[1:]
+
     result: dict = {"type": "table", "rows": rows}
     if has_header:
         result["hasHeader"] = True
+    if caption:
+        result["caption"] = caption
     if has_chips:
         result["hasChips"] = True
 
