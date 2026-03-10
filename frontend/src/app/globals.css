@@ -736,3 +736,336 @@
   font-size: 0.875rem;
   color: var(--muted-foreground);
 }
+
+/* ── Empty document state ── */
+
+.empty-doc-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 1.25rem;
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  animation: empty-doc-icon-enter 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.empty-doc-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--primary-foreground);
+  background: var(--primary);
+  border-radius: var(--radius);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  animation: empty-doc-btn-enter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both;
+}
+
+.empty-doc-edit-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.empty-doc-edit-btn:active {
+  transform: translateY(0);
+}
+
+.empty-doc-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  animation: empty-doc-hint-enter 0.6s ease 0.8s both;
+}
+
+.empty-doc-hint-arrow {
+  display: block;
+  width: 1px;
+  height: 2rem;
+  background: linear-gradient(
+    to top,
+    var(--muted-foreground),
+    transparent
+  );
+  opacity: 0.3;
+  animation: empty-doc-arrow-grow 0.8s ease 1s both;
+}
+
+@keyframes empty-doc-icon-enter {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes empty-doc-btn-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes empty-doc-hint-enter {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes empty-doc-arrow-grow {
+  0% {
+    height: 0;
+    opacity: 0;
+  }
+  100% {
+    height: 2rem;
+    opacity: 0.3;
+  }
+}
+
+/* Toolbar edit button pulse when doc is empty */
+.edit-toggle-highlight {
+  animation: edit-toggle-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) 1.2s 3;
+}
+
+@keyframes edit-toggle-pulse {
+  0%, 100% {
+    box-shadow: none;
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--sidebar-primary) 25%, transparent);
+    background: color-mix(in srgb, var(--sidebar-primary) 12%, transparent);
+  }
+}
+
+/* ── Command Palette / Search ── */
+
+.search-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.375rem 0.625rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--background);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.search-trigger:hover {
+  border-color: var(--ring);
+  background: color-mix(in srgb, var(--foreground) 3%, var(--background));
+}
+
+.search-trigger-kbd {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0.125rem 0.375rem;
+  border-radius: calc(var(--radius) - 4px);
+  border: 1px solid var(--border);
+  background: var(--muted);
+  font-size: 0.7rem;
+  font-family: var(--font-sans);
+  color: var(--muted-foreground);
+  line-height: 1;
+}
+
+.cmd-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  padding-top: 20vh;
+  background: rgba(0, 0, 0, 0.5);
+  animation: cmd-overlay-in 0.15s ease;
+}
+
+.cmd-dialog {
+  width: 90%;
+  max-width: 560px;
+  height: fit-content;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+  animation: cmd-dialog-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 51;
+}
+
+.cmd-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.cmd-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 0.9375rem;
+  color: var(--foreground);
+}
+
+.cmd-input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.cmd-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 0.375rem;
+}
+
+.cmd-loading {
+  display: flex;
+  justify-content: center;
+  padding: 2rem 0;
+}
+
+.cmd-loading-dots {
+  display: flex;
+  gap: 0.375rem;
+}
+
+.cmd-loading-dots span {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+  animation: cmd-dot-bounce 1.2s infinite ease-in-out;
+}
+
+.cmd-loading-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.cmd-loading-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.cmd-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+
+.cmd-hint {
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+.cmd-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.cmd-item[data-selected="true"] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.cmd-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  font-size: 1.125rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.cmd-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.cmd-item-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cmd-item-snippet {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cmd-highlight {
+  background: color-mix(in srgb, var(--chart-4) 35%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.cmd-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+@keyframes cmd-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes cmd-dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes cmd-dot-bounce {
+  0%, 80%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

@@ -51,7 +51,8 @@ def ensure_folder(service, name: str, parent_id: str) -> str:
         f"and trashed = false"
     )
     results = service.files().list(
-        q=query, fields="files(id)", spaces="drive"
+        q=query, fields="files(id)", spaces="drive",
+        supportsAllDrives=True, includeItemsFromAllDrives=True,
     ).execute()
     files = results.get("files", [])
 
@@ -64,7 +65,9 @@ def ensure_folder(service, name: str, parent_id: str) -> str:
         "mimeType": "application/vnd.google-apps.folder",
         "parents": [parent_id],
     }
-    folder = service.files().create(body=metadata, fields="id").execute()
+    folder = service.files().create(
+        body=metadata, fields="id", supportsAllDrives=True,
+    ).execute()
     return folder["id"]
 
 
@@ -79,7 +82,9 @@ def create_folder(user: User, name: str, parent_folder_id: str) -> str:
         "mimeType": "application/vnd.google-apps.folder",
         "parents": [parent_folder_id],
     }
-    folder = service.files().create(body=metadata, fields="id").execute()
+    folder = service.files().create(
+        body=metadata, fields="id", supportsAllDrives=True,
+    ).execute()
     return folder["id"]
 
 
@@ -120,7 +125,9 @@ def create_google_doc(
         "mimeType": "application/vnd.google-apps.document",
         "parents": [folder_id],
     }
-    doc = service.files().create(body=doc_metadata, fields="id").execute()
+    doc = service.files().create(
+        body=doc_metadata, fields="id", supportsAllDrives=True,
+    ).execute()
 
     return doc["id"], folder_id
 
@@ -128,7 +135,9 @@ def create_google_doc(
 def rename_drive_file(user: User, file_id: str, new_name: str) -> None:
     """Rename a Drive file."""
     service = get_drive_service(user)
-    service.files().update(fileId=file_id, body={"name": new_name}).execute()
+    service.files().update(
+        fileId=file_id, body={"name": new_name}, supportsAllDrives=True,
+    ).execute()
 
 
 def rename_child_folder(user: User, old_name: str, new_name: str, parent_folder_id: str) -> None:
@@ -145,30 +154,40 @@ def rename_child_folder(user: User, old_name: str, new_name: str, parent_folder_
         f"and mimeType = 'application/vnd.google-apps.folder' "
         f"and trashed = false"
     )
-    results = service.files().list(q=query, fields="files(id)", spaces="drive").execute()
+    results = service.files().list(
+        q=query, fields="files(id)", spaces="drive",
+        supportsAllDrives=True, includeItemsFromAllDrives=True,
+    ).execute()
     files = results.get("files", [])
     if files:
-        service.files().update(fileId=files[0]["id"], body={"name": new_name}).execute()
+        service.files().update(
+            fileId=files[0]["id"], body={"name": new_name}, supportsAllDrives=True,
+        ).execute()
 
 
 def move_drive_file(user: User, file_id: str, new_parent_folder_id: str) -> None:
     """Move a Drive file to a different folder."""
     service = get_drive_service(user)
     # Get current parents
-    file_meta = service.files().get(fileId=file_id, fields="parents").execute()
+    file_meta = service.files().get(
+        fileId=file_id, fields="parents", supportsAllDrives=True,
+    ).execute()
     old_parents = ",".join(file_meta.get("parents", []))
     service.files().update(
         fileId=file_id,
         addParents=new_parent_folder_id,
         removeParents=old_parents,
         fields="id,parents",
+        supportsAllDrives=True,
     ).execute()
 
 
 def trash_drive_file(user: User, file_id: str) -> None:
     """Move a Drive file to the trash."""
     service = get_drive_service(user)
-    service.files().update(fileId=file_id, body={"trashed": True}).execute()
+    service.files().update(
+        fileId=file_id, body={"trashed": True}, supportsAllDrives=True,
+    ).execute()
 
 
 def is_drive_file_trashed(user: User, file_id: str) -> bool | None:
@@ -178,7 +197,9 @@ def is_drive_file_trashed(user: User, file_id: str) -> bool | None:
     """
     service = get_drive_service(user)
     try:
-        meta = service.files().get(fileId=file_id, fields="trashed").execute()
+        meta = service.files().get(
+            fileId=file_id, fields="trashed", supportsAllDrives=True,
+        ).execute()
         return meta.get("trashed", False)
     except Exception:
         return None  # file doesn't exist or not accessible
@@ -206,7 +227,7 @@ def batch_check_trashed(user: User, file_ids: list[str]) -> dict[str, bool]:
 
     for fid in file_ids:
         batch.add(
-            service.files().get(fileId=fid, fields="trashed"),
+            service.files().get(fileId=fid, fields="trashed", supportsAllDrives=True),
             callback=make_callback(fid),
         )
 

@@ -226,6 +226,15 @@ async def create_page(
     db.add(page)
     await db.commit()
     await db.refresh(page)
+
+    # Index title for search
+    from app.search.service import update_search_vector
+    try:
+        await update_search_vector(db, page)
+        await db.commit()
+    except Exception:
+        log.warning("Failed to update search vector for page %s", page.id)
+
     return page
 
 
@@ -258,6 +267,16 @@ async def update_page(
 
     await db.commit()
     await db.refresh(page)
+
+    # Re-index if title changed
+    if data.title is not None:
+        from app.search.service import update_search_vector
+        try:
+            await update_search_vector(db, page)
+            await db.commit()
+        except Exception:
+            log.warning("Failed to update search vector for page %s", page.id)
+
     return page
 
 
@@ -354,6 +373,14 @@ async def get_page_content(
     page.cached_content = blocks
     page.content_cached_at = datetime.now(timezone.utc)
     await db.commit()
+
+    # Update search vector with title + content text
+    from app.search.service import update_search_vector
+    try:
+        await update_search_vector(db, page)
+        await db.commit()
+    except Exception:
+        log.warning("Failed to update search vector for page %s", page.id)
 
     return {"blocks": blocks, "cached": False}
 

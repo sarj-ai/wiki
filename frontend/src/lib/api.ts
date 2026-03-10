@@ -145,4 +145,17 @@ export const api = {
 
   revokePermission: (id: string) =>
     fetchApi<void>(`/permissions/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  search: (query: string, limit?: number) =>
+    fetchApi<Array<{
+      id: string;
+      title: string;
+      icon: string | null;
+      workspaceId: string | null;
+      isPrivate: boolean;
+      parentId: string | null;
+      googleDriveId: string;
+      snippet: string | null;
+      rank: number;
+    }>>(`/search?q=${encodeURIComponent(query)}${limit ? `&limit=${limit}` : ""}`),
 };

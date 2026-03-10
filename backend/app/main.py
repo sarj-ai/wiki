@@ -12,6 +12,8 @@ from app.database import async_session
 from app.pages import pages_router
 from app.permissions import permissions_router
 from app.webhooks import webhooks_router
+from app.search import search_router
+from app.workspaces import workspaces_router
 from app.webhooks.service import register_watch_channel, renew_expiring_channels
 
 log = logging.getLogger(__name__)
@@ -67,6 +69,8 @@ app.include_router(auth_router)
 app.include_router(pages_router)
 app.include_router(permissions_router)
 app.include_router(webhooks_router)
+app.include_router(search_router)
+app.include_router(workspaces_router)
 
 
 @app.get("/health")

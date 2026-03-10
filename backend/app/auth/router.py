@@ -17,6 +17,7 @@ from app.auth.jwt import create_access_token, create_refresh_token, decode_token
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
+from app.workspaces.service import sync_user_memberships
 
 log = logging.getLogger(__name__)
 
@@ -194,11 +195,17 @@ async def callback(
     await db.commit()
     await db.refresh(user)
 
-    # 6. Issue our own JWT tokens
+    # 6. Sync workspace memberships (best-effort, don't block login)
+    try:
+        await sync_user_memberships(db, user)
+    except Exception:
+        log.warning("Failed to sync workspace memberships for %s", email, exc_info=True)
+
+    # 7. Issue our own JWT tokens
     jwt_access = create_access_token(user_id=str(user.id), email=user.email)
     jwt_refresh = create_refresh_token(user_id=str(user.id))
 
-    # 7. Set cookies and redirect to frontend (clear the oauth_state cookie)
+    # 8. Set cookies and redirect to frontend (clear the oauth_state cookie)
     redirect = RedirectResponse(url=settings.FRONTEND_URL, status_code=status.HTTP_302_FOUND)
     _set_auth_cookies(redirect, jwt_access, jwt_refresh)
     redirect.delete_cookie(key="oauth_state", path="/")

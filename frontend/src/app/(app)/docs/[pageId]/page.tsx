@@ -11,6 +11,8 @@ import {
   Eye,
   Settings2,
   RefreshCw,
+  FileText,
+  Search,
 } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import {
@@ -29,6 +31,16 @@ import { DocumentIframe } from "@/components/document/document-iframe";
 import { DocumentSkeleton } from "@/components/document/document-skeleton";
 import { DocViewer } from "@/components/document/doc-viewer";
 import { ContentLoadingSkeleton } from "@/components/document/content-loading-skeleton";
+import type { ContentBlock } from "@/types";
+
+function isDocEmpty(blocks: ContentBlock[] | undefined): boolean {
+  if (!blocks || blocks.length === 0) return true;
+  return blocks.every(
+    (b) =>
+      b.type === "paragraph" &&
+      (!b.runs || b.runs.length === 0 || b.runs.every((r) => !r.text?.trim())),
+  );
+}
 
 const EDITOR_PREF_KEY = "sarj-always-iframe";
 
@@ -60,9 +72,11 @@ const TOOLBAR_BUTTON_ACTIVE =
 function EditToggleButton({
   isEditing,
   onToggle,
+  highlight,
 }: {
   isEditing: boolean;
   onToggle: () => void;
+  highlight?: boolean;
 }) {
   return (
     <Tooltip>
@@ -71,7 +85,7 @@ function EditToggleButton({
           type="button"
           data-edit-toggle
           onClick={onToggle}
-          className={`${TOOLBAR_BUTTON_CLASS} ${isEditing ? TOOLBAR_BUTTON_ACTIVE : TOOLBAR_BUTTON_IDLE}`}
+          className={`${TOOLBAR_BUTTON_CLASS} ${isEditing ? TOOLBAR_BUTTON_ACTIVE : TOOLBAR_BUTTON_IDLE} ${highlight ? "edit-toggle-highlight" : ""}`}
         >
           {isEditing ? <Eye className="size-4" /> : <Pencil className="size-4" />}
         </button>
@@ -184,6 +198,7 @@ export default function DocumentPage({
   }, [isEditing, alwaysIframe, pageId, queryClient, refetchContent]);
 
   const isContentReady = !isContentLoading && !isContentFetching;
+  const docEmpty = isContentReady && !isEditing && isDocEmpty(content?.blocks);
 
   async function handleChangeIcon(icon: string | null) {
     start();
@@ -270,10 +285,23 @@ export default function DocumentPage({
             {page.title}
           </span>
           <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
+                  className={`${TOOLBAR_BUTTON_CLASS} ${TOOLBAR_BUTTON_IDLE}`}
+                >
+                  <Search className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Search (⌘K)</TooltipContent>
+            </Tooltip>
             {!alwaysIframe && (
               <EditToggleButton
                 isEditing={isEditing}
                 onToggle={() => setIsEditing(!isEditing)}
+                highlight={docEmpty}
               />
             )}
             <Tooltip>
@@ -304,6 +332,7 @@ export default function DocumentPage({
               <EditToggleButton
                 isEditing={isEditing}
                 onToggle={() => setIsEditing(!isEditing)}
+                highlight={docEmpty}
               />
             )}
             <Tooltip>
@@ -343,10 +372,40 @@ export default function DocumentPage({
           </div>
         ) : !isContentReady ? (
           <ContentLoadingSkeleton />
-        ) : content?.blocks ? (
+        ) : content?.blocks && !isDocEmpty(content.blocks) ? (
           <div className="px-6 pb-6 animate-in fade-in duration-200">
             <div className="mx-auto max-w-3xl py-4">
               <DocViewer blocks={content.blocks} />
+            </div>
+          </div>
+        ) : content?.blocks !== undefined ? (
+          <div className="flex-1 flex items-center justify-center animate-in fade-in duration-300">
+            <div className="flex flex-col items-center gap-5">
+              <div className="empty-doc-icon">
+                <FileText className="size-8 text-muted-foreground" />
+              </div>
+              <div className="text-center">
+                <h3 className="text-base font-medium text-foreground">
+                  This document is empty
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Start writing by switching to edit mode
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="empty-doc-edit-btn"
+              >
+                <Pencil className="size-4" />
+                Open editor
+              </button>
+              <div className="empty-doc-hint">
+                <span className="empty-doc-hint-arrow" />
+                <span className="text-xs text-muted-foreground">
+                  or click <Pencil className="inline size-3 mx-0.5" /> in the toolbar above
+                </span>
+              </div>
             </div>
           </div>
         ) : (

@@ -47,6 +47,7 @@ import type { Page } from "@/types";
 import { api } from "@/lib/api";
 import { findPageById } from "@/lib/page-utils";
 import { useQueryClient } from "@tanstack/react-query";
+import { CommandPalette } from "@/components/search/command-palette";
 
 export function AppSidebar() {
   const { resolvedTheme, setTheme } = useTheme();
@@ -223,6 +224,9 @@ export function AppSidebar() {
         {workspaces.length === 0 && (
           <div className="px-2 py-1.5 text-sm font-semibold">Sarj Docs</div>
         )}
+        <div className="px-2">
+          <CommandPalette />
+        </div>
       </SidebarHeader>
 
       <SidebarContent>

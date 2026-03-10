@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { ShareButton } from "@/components/permissions/share-button";
 import { EmojiPicker } from "@/components/emoji-picker";
-import { SmilePlus, PanelLeftClose, PanelLeft, Maximize2 } from "lucide-react";
+import { SmilePlus, PanelLeftClose, PanelLeft, Maximize2, Search } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import {
   Tooltip,
@@ -97,6 +97,20 @@ export function DocumentToolbar({
       )}
 
       <div className="ml-auto flex items-center gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+              }}
+              className={TOOLBAR_BUTTON_CLASS}
+            >
+              <Search className="size-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Search (⌘K)</TooltipContent>
+        </Tooltip>
         {children}
         {onFocusMode && (
           <Tooltip>

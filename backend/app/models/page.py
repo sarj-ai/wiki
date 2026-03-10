@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Text, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -15,6 +15,7 @@ class Page(Base):
         Index("ix_pages_parent_id", "parent_id"),
         Index("ix_pages_created_by", "created_by"),
         Index("ix_pages_workspace_id", "workspace_id"),
+        Index("ix_pages_search_vector", "search_vector", postgresql_using="gin"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -43,6 +44,7 @@ class Page(Base):
     )
     icon: Mapped[str | None] = mapped_column(Text)
     cover_url: Mapped[str | None] = mapped_column(Text)
+    search_vector: Mapped[str | None] = mapped_column(TSVECTOR)
     cached_content: Mapped[dict | None] = mapped_column(JSONB)
     content_cached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(

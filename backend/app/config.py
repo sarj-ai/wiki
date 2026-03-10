@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     ALLOWED_DOMAIN: str = "sarj.ai"
     FRONTEND_URL: str = "http://localhost:3000"
     WEBHOOK_BASE_URL: str = ""  # e.g. "https://yourdomain.com" — empty disables webhook registration
+    ADMIN_IMPERSONATE_EMAIL: str = ""  # Workspace admin email for Admin SDK impersonation
 
     @field_validator("SECRET_KEY")
     @classmethod
