@@ -1,5 +1,5 @@
-"""Workspace sync — fetch Google Groups via Admin SDK (service account)
-and sync user memberships on login (user's own token via Cloud Identity)."""
+"""Workspace sync — fetch Google Groups via Admin SDK (service account),
+scan Drive folder permissions for group access, and sync user memberships."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ import logging
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from sqlalchemy import select
+from sqlalchemy import and_, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.drive import build_credentials, ensure_folder
+from app.drive import build_credentials, ensure_folder, get_sa_drive_service
 from app.models.user import User
-from app.models.workspace import Workspace, WorkspaceMembership
+from app.models.workspace import Workspace, WorkspaceGroupAccess, WorkspaceMembership
 
 log = logging.getLogger(__name__)
 
@@ -33,6 +33,28 @@ def _get_admin_service():
     )
     delegated = credentials.with_subject(settings.ADMIN_IMPERSONATE_EMAIL)
     return build("admin", "directory_v1", credentials=delegated, static_discovery=True)
+
+
+def _get_all_domain_groups() -> set[str]:
+    """Fetch all group emails in the domain from Admin SDK."""
+    service = _get_admin_service()
+    group_emails: set[str] = set()
+    page_token = None
+
+    while True:
+        result = service.groups().list(
+            domain=settings.ALLOWED_DOMAIN,
+            pageToken=page_token,
+            maxResults=200,
+        ).execute()
+
+        for g in result.get("groups", []):
+            group_emails.add(g["email"])
+        page_token = result.get("nextPageToken")
+        if not page_token:
+            break
+
+    return group_emails
 
 
 async def sync_all_groups(db: AsyncSession) -> list[Workspace]:
@@ -73,7 +95,7 @@ async def sync_all_groups(db: AsyncSession) -> list[Workspace]:
 
         if workspace is None:
             # Create Drive folder for this workspace
-            drive_folder_id = _create_workspace_drive_folder(group_name)
+            drive_folder_id = _create_workspace_drive_folder(group_name, group_email)
 
             workspace = Workspace(
                 name=group_name,
@@ -94,30 +116,218 @@ async def sync_all_groups(db: AsyncSession) -> list[Workspace]:
     return upserted
 
 
-def _create_workspace_drive_folder(workspace_name: str) -> str:
-    """Create a Drive folder for a workspace under the Sarj Docs root.
+async def sync_folder_permissions(db: AsyncSession) -> None:
+    """Scan Drive folders and their permissions to:
+
+    1. Remove workspaces whose Drive folders have been trashed or deleted
+    2. Discover new top-level folders with group permissions and create workspaces
+    3. Update workspace_group_access for cross-group sharing
+
+    This means manually creating a folder in Drive and sharing it with a
+    Google Group will automatically create a workspace.
+    """
+    drive_service = get_sa_drive_service()
+
+    # Get all domain groups to filter permissions
+    domain_groups = _get_all_domain_groups()
+    log.info("Domain has %d groups for permission matching", len(domain_groups))
+
+    # --- Phase 1: Remove workspaces whose Drive folders are gone ---
+    result = await db.execute(select(Workspace))
+    workspaces = list(result.scalars().all())
+
+    # Collect all live (non-trashed) folders under root
+    live_folders: dict[str, str] = {}  # folder_id -> folder_name
+    page_token = None
+    while True:
+        resp = drive_service.files().list(
+            q=(
+                f"'{settings.DRIVE_ROOT_FOLDER_ID}' in parents "
+                f"and mimeType = 'application/vnd.google-apps.folder' "
+                f"and trashed = false"
+            ),
+            fields="nextPageToken,files(id,name)",
+            spaces="drive",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            pageSize=200,
+            pageToken=page_token,
+        ).execute()
+        for f in resp.get("files", []):
+            live_folders[f["id"]] = f["name"]
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+
+    # Delete workspaces whose folders are no longer live (only folder-discovered ones)
+    for ws in workspaces:
+        if ws.google_group_email is None and ws.drive_folder_id not in live_folders:
+            log.info("Removing workspace '%s' — Drive folder deleted", ws.name)
+            await db.execute(
+                delete(WorkspaceMembership).where(WorkspaceMembership.workspace_id == ws.id)
+            )
+            await db.execute(
+                delete(WorkspaceGroupAccess).where(WorkspaceGroupAccess.workspace_id == ws.id)
+            )
+            await db.delete(ws)
+
+    await db.flush()
+
+    # Re-fetch clean list after deletions
+    result = await db.execute(select(Workspace))
+    workspaces = list(result.scalars().all())
+    known_folder_ids = {ws.drive_folder_id for ws in workspaces}
+
+    # --- Phase 2: Discover new folders under Sarj Docs root ---
+    for folder_id, folder_name in live_folders.items():
+        # Skip known workspace folders and the Private folder
+        if folder_id in known_folder_ids or folder_name == "Private":
+            continue
+
+        # Check if this folder has any domain group permissions
+        try:
+            perms_result = drive_service.permissions().list(
+                fileId=folder_id,
+                fields="permissions(emailAddress,type,role)",
+                supportsAllDrives=True,
+            ).execute()
+
+            folder_groups = set()
+            for perm in perms_result.get("permissions", []):
+                if perm.get("type") == "group":
+                    email = perm.get("emailAddress", "")
+                    if email in domain_groups:
+                        folder_groups.add(email)
+
+            if folder_groups:
+                # Create workspace for this folder (no primary group —
+                # access is determined by workspace_group_access entries)
+                ws = Workspace(
+                    name=folder_name,
+                    google_group_email=None,
+                    drive_folder_id=folder_id,
+                )
+                db.add(ws)
+                await db.flush()
+                workspaces.append(ws)
+                known_folder_ids.add(folder_id)
+
+                # Add all group access entries
+                for email in folder_groups:
+                    db.add(WorkspaceGroupAccess(
+                        workspace_id=ws.id,
+                        google_group_email=email,
+                    ))
+
+                log.info(
+                    "Created workspace from Drive folder: %s (groups: %s)",
+                    folder_name, ", ".join(folder_groups),
+                )
+        except Exception:
+            log.warning("Failed to check permissions for folder %s", folder_name, exc_info=True)
+
+    await db.commit()
+
+    # --- Phase 2: Update group access for existing workspaces ---
+    # Re-fetch workspaces (may include newly created ones)
+    result = await db.execute(select(Workspace))
+    workspaces = list(result.scalars().all())
+
+    for ws in workspaces:
+        try:
+            perms_result = drive_service.permissions().list(
+                fileId=ws.drive_folder_id,
+                fields="permissions(emailAddress,type,role)",
+                supportsAllDrives=True,
+            ).execute()
+
+            group_emails: set[str] = set()
+            for perm in perms_result.get("permissions", []):
+                if perm.get("type") == "group":
+                    email = perm.get("emailAddress", "")
+                    if email in domain_groups:
+                        group_emails.add(email)
+
+            # Always include the primary group (if set)
+            if ws.google_group_email:
+                group_emails.add(ws.google_group_email)
+
+            # Get current group access entries
+            existing = await db.execute(
+                select(WorkspaceGroupAccess.google_group_email).where(
+                    WorkspaceGroupAccess.workspace_id == ws.id
+                )
+            )
+            existing_emails = {row[0] for row in existing.all()}
+
+            # Add new entries
+            for email in group_emails - existing_emails:
+                db.add(WorkspaceGroupAccess(
+                    workspace_id=ws.id,
+                    google_group_email=email,
+                ))
+                log.info("Added group access: %s -> %s", email, ws.name)
+
+            # Remove stale entries
+            stale = existing_emails - group_emails
+            if stale:
+                await db.execute(
+                    delete(WorkspaceGroupAccess).where(
+                        and_(
+                            WorkspaceGroupAccess.workspace_id == ws.id,
+                            WorkspaceGroupAccess.google_group_email.in_(stale),
+                        )
+                    )
+                )
+                log.info("Removed %d stale group access entries for %s", len(stale), ws.name)
+
+        except Exception:
+            log.warning("Failed to scan permissions for workspace %s", ws.name, exc_info=True)
+
+    await db.commit()
+    log.info("Folder permission sync complete")
+
+
+def _create_workspace_drive_folder(workspace_name: str, group_email: str) -> str:
+    """Create a Drive folder for a workspace under the Sarj Docs root
+    and grant the Google Group read/write access.
 
     Uses the service account's own credentials (not user impersonation)
     to create the folder in the shared drive.
     """
-    credentials = service_account.Credentials.from_service_account_file(
-        settings.SERVICE_ACCOUNT_KEY_PATH,
-        scopes=["https://www.googleapis.com/auth/drive"],
-    )
-    drive_service = build("drive", "v3", credentials=credentials, static_discovery=True)
-    return ensure_folder(drive_service, workspace_name, settings.DRIVE_ROOT_FOLDER_ID)
+    drive_service = get_sa_drive_service()
+    folder_id = ensure_folder(drive_service, workspace_name, settings.DRIVE_ROOT_FOLDER_ID)
+
+    # Grant the Google Group editor access to the folder
+    try:
+        drive_service.permissions().create(
+            fileId=folder_id,
+            body={
+                "type": "group",
+                "role": "writer",
+                "emailAddress": group_email,
+            },
+            supportsAllDrives=True,
+            sendNotificationEmail=False,
+        ).execute()
+        log.info("Granted %s access to folder %s", group_email, folder_id)
+    except Exception:
+        log.warning("Failed to grant %s access to folder %s", group_email, folder_id)
+
+    return folder_id
 
 
 async def sync_user_memberships(db: AsyncSession, user: User) -> list[Workspace]:
-    """Sync a user's group memberships using their own OAuth token.
+    """Sync a user's group memberships.
 
-    Fetches groups the user belongs to via the Cloud Identity API,
-    matches them against existing workspaces, and upserts memberships.
-    Returns the list of workspaces the user is a member of.
+    Matches user's groups against both:
+    1. Primary workspace groups (workspaces.google_group_email)
+    2. Additional group access (workspace_group_access table)
+
+    This means if a workspace folder has been shared with extra groups,
+    members of those groups will also get workspace access.
     """
     credentials = build_credentials(user)
-    # Use the People API / Directory API with user's own token to get their groups
-    # The user can see their own group memberships
     service = build("admin", "directory_v1", credentials=credentials, static_discovery=True)
 
     user_groups: list[dict] = []
@@ -140,17 +350,37 @@ async def sync_user_memberships(db: AsyncSession, user: User) -> list[Workspace]
             "Could not fetch groups for %s via user token, falling back to service account",
             user.email,
         )
-        # Fallback: use service account to check this user's memberships
         user_groups = _get_user_groups_via_service_account(user.email)
 
     log.info("User %s belongs to %d groups", user.email, len(user_groups))
 
-    # Match groups to existing workspaces and upsert memberships
-    group_emails = {g["email"] for g in user_groups}
+    user_group_emails = {g["email"] for g in user_groups}
+
+    # Match via primary group email
     result = await db.execute(
-        select(Workspace).where(Workspace.google_group_email.in_(group_emails))
+        select(Workspace).where(Workspace.google_group_email.in_(user_group_emails))
     )
-    matched_workspaces = list(result.scalars().all())
+    primary_workspaces = list(result.scalars().all())
+
+    # Match via workspace_group_access (folders shared with additional groups)
+    result = await db.execute(
+        select(WorkspaceGroupAccess.workspace_id).where(
+            WorkspaceGroupAccess.google_group_email.in_(user_group_emails)
+        )
+    )
+    extra_workspace_ids = {row[0] for row in result.all()}
+
+    # Combine: primary + extra
+    matched_ids = {ws.id for ws in primary_workspaces} | extra_workspace_ids
+
+    # Fetch all matched workspace objects
+    if matched_ids:
+        result = await db.execute(
+            select(Workspace).where(Workspace.id.in_(matched_ids))
+        )
+        matched_workspaces = list(result.scalars().all())
+    else:
+        matched_workspaces = []
 
     # Get existing memberships for this user
     existing = await db.execute(
@@ -167,11 +397,8 @@ async def sync_user_memberships(db: AsyncSession, user: User) -> list[Workspace]
             log.info("Added %s to workspace %s", user.email, ws.name)
 
     # Remove stale memberships (user left a group)
-    matched_ids = {ws.id for ws in matched_workspaces}
     stale_ids = existing_workspace_ids - matched_ids
     if stale_ids:
-        from sqlalchemy import and_, delete
-
         await db.execute(
             delete(WorkspaceMembership).where(
                 and_(
@@ -205,3 +432,20 @@ def _get_user_groups_via_service_account(email: str) -> list[dict]:
             break
 
     return groups
+
+
+async def sync_all_user_memberships(db: AsyncSession) -> None:
+    """Sync workspace memberships for ALL users in the database.
+
+    Uses the service account to fetch each user's groups (avoids
+    needing user tokens).
+    """
+    result = await db.execute(select(User))
+    users = list(result.scalars().all())
+    log.info("Syncing memberships for %d users", len(users))
+
+    for user in users:
+        try:
+            await sync_user_memberships(db, user)
+        except Exception:
+            log.warning("Failed to sync memberships for %s", user.email, exc_info=True)

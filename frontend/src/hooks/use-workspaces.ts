@@ -2,14 +2,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 import type { Workspace } from "@/types";
+import { api } from "@/lib/api";
 
 export function useWorkspaces() {
   return useQuery<Workspace[]>({
     queryKey: ["workspaces"],
-    queryFn: async () => {
-      // Workspaces endpoint will be added in Phase 4 (Admin SDK sync).
-      // For now, return empty — the sidebar handles this gracefully.
-      return [];
-    },
+    queryFn: () => api.getWorkspaces(),
+    refetchInterval: 60 * 1000, // Re-check every 60s
   });
 }

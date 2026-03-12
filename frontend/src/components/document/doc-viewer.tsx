@@ -20,6 +20,27 @@ import type {
   ContentBlock,
 } from "@/types";
 
+/**
+ * Returns the URL if it uses a safe protocol, or null otherwise.
+ * Prevents javascript: and data: protocol injection from untrusted content.
+ */
+function sanitizeUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url, window.location.origin);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "mailto:") {
+      return url;
+    }
+    return undefined;
+  } catch {
+    // Relative URLs (e.g. #heading-id) are safe
+    if (url.startsWith("#") || url.startsWith("/")) {
+      return url;
+    }
+    return undefined;
+  }
+}
+
 const STATUS_CLASSES: Record<string, string> = {
   "not started": "doc-status-neutral",
   "in progress": "doc-status-active",
@@ -55,10 +76,12 @@ function RunRenderer({ runs }: { runs: TextRun[] }) {
       {runs.map((run, i) => {
         // ── Images ──
         if (run.type === "image" && run.url) {
+          const safeSrc = sanitizeUrl(run.url);
+          if (!safeSrc) return <Fragment key={i} />;
           return (
             <img
               key={i}
-              src={run.url}
+              src={safeSrc}
               alt={run.alt || ""}
               className="my-6 max-w-full rounded-xl shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06] inline-block"
               style={run.width ? { maxWidth: `${run.width}pt` } : undefined}
@@ -82,10 +105,11 @@ function RunRenderer({ runs }: { runs: TextRun[] }) {
 
         // ── Rich link ──
         if (run.type === "rich_link") {
+          const safeHref = sanitizeUrl(run.link);
           return (
             <a
               key={i}
-              href={run.link}
+              href={safeHref ?? "#"}
               target="_blank"
               rel="noopener noreferrer"
               className="doc-chip-link"
@@ -98,9 +122,10 @@ function RunRenderer({ runs }: { runs: TextRun[] }) {
 
         // ── Footnote reference ──
         if (run.type === "footnote_ref") {
+          const safeId = run.footnoteId?.replace(/[^a-zA-Z0-9_-]/g, "") ?? "";
           return (
             <sup key={i} className="doc-footnote-ref">
-              <a href={`#fn-${run.footnoteId}`}>
+              <a href={`#fn-${safeId}`}>
                 {run.number}
               </a>
             </sup>
@@ -187,10 +212,11 @@ function RunRenderer({ runs }: { runs: TextRun[] }) {
         const hasInlineStyle = Object.keys(inlineStyle).length > 0;
 
         if (run.link) {
+          const safeHref = sanitizeUrl(run.link);
           return (
             <a
               key={i}
-              href={run.link}
+              href={safeHref ?? "#"}
               target="_blank"
               rel="noopener noreferrer"
               className="doc-link"
@@ -550,10 +576,13 @@ function ImageBlock({
   alt?: string;
   width?: number;
 }) {
+  const safeSrc = sanitizeUrl(url);
+  if (!safeSrc) return null;
+
   return (
     <figure className="my-8">
       <img
-        src={url}
+        src={safeSrc}
         alt={alt || ""}
         className="max-w-full rounded-xl shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06]"
         style={width ? { maxWidth: `${width}pt` } : undefined}
@@ -576,7 +605,7 @@ function TocBlock({ items }: { items: TocItem[] }) {
             style={{ paddingInlineStart: `${item.level * 1.25}rem` }}
           >
             {item.link ? (
-              <a href={item.link} className="doc-toc-link">
+              <a href={sanitizeUrl(item.link) ?? "#"} className="doc-toc-link">
                 {item.text}
               </a>
             ) : (

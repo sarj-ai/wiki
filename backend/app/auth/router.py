@@ -17,7 +17,7 @@ from app.auth.jwt import create_access_token, create_refresh_token, decode_token
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
-from app.workspaces.service import sync_user_memberships
+from app.workspaces.service import sync_all_groups, sync_folder_permissions, sync_user_memberships
 
 log = logging.getLogger(__name__)
 
@@ -72,20 +72,41 @@ def _validate_email_domain(email: str) -> None:
 
 
 @router.get("/login")
-async def login(request: Request) -> RedirectResponse:
+async def login(request: Request, db: AsyncSession = Depends(get_db)) -> RedirectResponse:
     # Generate CSRF state token and store in a short-lived cookie
     state = secrets.token_urlsafe(32)
-    params = urlencode(
-        {
-            "client_id": settings.GOOGLE_CLIENT_ID,
-            "redirect_uri": settings.GOOGLE_REDIRECT_URI,
-            "response_type": "code",
-            "scope": " ".join(OAUTH_SCOPES),
-            "access_type": "offline",
-            "prompt": "consent",
-            "state": state,
-        }
-    )
+
+    # Only force consent for new users (to obtain a refresh token).
+    # Returning users already have a refresh token stored, so skip
+    # the consent screen for a smoother login experience.
+    force_consent = True
+    access_token = request.cookies.get("access_token")
+    if access_token:
+        try:
+            payload = decode_token(access_token)
+            user_id = payload.get("sub")
+            if user_id:
+                result = await db.execute(
+                    select(User.encrypted_refresh_token).where(User.id == uuid.UUID(user_id))
+                )
+                has_refresh = result.scalar_one_or_none()
+                if has_refresh:
+                    force_consent = False
+        except Exception:
+            pass  # expired/invalid token — fall through to consent
+
+    oauth_params: dict[str, str] = {
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": " ".join(OAUTH_SCOPES),
+        "access_type": "offline",
+        "state": state,
+    }
+    if force_consent:
+        oauth_params["prompt"] = "consent"
+
+    params = urlencode(oauth_params)
     response = RedirectResponse(url=f"{GOOGLE_AUTH_URL}?{params}")
     response.set_cookie(
         key="oauth_state",
@@ -195,17 +216,44 @@ async def callback(
     await db.commit()
     await db.refresh(user)
 
-    # 6. Sync workspace memberships (best-effort, don't block login)
+    # 6. Sync workspaces and memberships (best-effort, don't block login)
     try:
+        await sync_all_groups(db)
         await sync_user_memberships(db, user)
     except Exception:
-        log.warning("Failed to sync workspace memberships for %s", email, exc_info=True)
+        log.warning("Failed to sync workspaces for %s", email, exc_info=True)
 
-    # 7. Issue our own JWT tokens
+    # 7. Scan folder permissions in background (slow — don't block login)
+    import threading
+
+    # Capture user ID and email before the session closes — don't pass
+    # detached SQLAlchemy objects across threads.
+    _bg_user_id = user.id
+
+    def _bg_folder_sync():
+        import asyncio
+        from app.database import async_session as bg_session
+
+        async def _do():
+            try:
+                async with bg_session() as s:
+                    await sync_folder_permissions(s)
+                    result = await s.execute(select(User).where(User.id == _bg_user_id))
+                    bg_user = result.scalar_one_or_none()
+                    if bg_user:
+                        await sync_user_memberships(s, bg_user)
+            except Exception:
+                log.warning("Background folder permission sync failed", exc_info=True)
+
+        asyncio.run(_do())
+
+    threading.Thread(target=_bg_folder_sync, daemon=True).start()
+
+    # 8. Issue our own JWT tokens
     jwt_access = create_access_token(user_id=str(user.id), email=user.email)
     jwt_refresh = create_refresh_token(user_id=str(user.id))
 
-    # 8. Set cookies and redirect to frontend (clear the oauth_state cookie)
+    # 9. Set cookies and redirect to frontend (clear the oauth_state cookie)
     redirect = RedirectResponse(url=settings.FRONTEND_URL, status_code=status.HTTP_302_FOUND)
     _set_auth_cookies(redirect, jwt_access, jwt_refresh)
     redirect.delete_cookie(key="oauth_state", path="/")

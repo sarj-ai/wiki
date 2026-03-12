@@ -1,13 +1,42 @@
-"""Google Drive helpers — create docs, folders, move files."""
+"""Google Drive helpers — create docs, folders, move files.
+
+Write operations (create, move, rename, trash) use the service account
+which is a Manager of the Shared Drive. Read operations (content, export)
+use the user's own OAuth token.
+"""
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
+import logging
+import threading
+
+from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
 from app.auth.encryption import decrypt_token
 from app.config import settings
 from app.models.user import User
+
+log = logging.getLogger(__name__)
+
+_DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
+
+# In-memory cache for folder IDs to avoid repeated Drive API lookups
+_folder_cache: dict[tuple[str, str], str] = {}  # (name, parent_id) -> folder_id
+
+# Thread-local service instances AND credentials — httplib2 is NOT thread-safe
+# for concurrent requests, and Credentials are mutated during token refresh.
+# Each thread gets its own isolated copies.
+_thread_local = threading.local()
+
+# Semaphore to cap concurrent Google API threads (prevents resource exhaustion)
+google_api_semaphore = asyncio.Semaphore(3)
+
+# Dedicated executor for content fetches so sync can't starve them
+content_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3, thread_name_prefix="content")
 
 
 def build_credentials(user: User) -> Credentials:
@@ -28,8 +57,41 @@ def build_credentials(user: User) -> Credentials:
 
 
 def get_drive_service(user: User):
-    """Build an authenticated Drive v3 service for the given user."""
+    """Build an authenticated Drive v3 service for the given user (reads only)."""
     return build("drive", "v3", credentials=build_credentials(user), static_discovery=True)
+
+
+def _get_sa_credentials():
+    """Get thread-local service account credentials.
+
+    Each thread gets its own Credentials instance because token refresh
+    mutates the object (self.token, self.expiry) which is not thread-safe.
+    """
+    creds = getattr(_thread_local, "sa_credentials", None)
+    if creds is not None:
+        return creds
+    creds = service_account.Credentials.from_service_account_file(
+        settings.SERVICE_ACCOUNT_KEY_PATH,
+        scopes=_DRIVE_SCOPES,
+    )
+    _thread_local.sa_credentials = creds
+    return creds
+
+
+def get_sa_drive_service():
+    """Build a Drive v3 service using the service account's own credentials.
+
+    Used for all write operations (create, move, rename, trash) on the
+    Shared Drive where the service account is a Manager.
+
+    Returns a thread-local instance to avoid httplib2 concurrency crashes.
+    """
+    svc = getattr(_thread_local, "sa_drive_service", None)
+    if svc is not None:
+        return svc
+    svc = build("drive", "v3", credentials=_get_sa_credentials(), static_discovery=True)
+    _thread_local.sa_drive_service = svc
+    return svc
 
 
 def _escape_drive_query(value: str) -> str:
@@ -40,8 +102,13 @@ def _escape_drive_query(value: str) -> str:
 def ensure_folder(service, name: str, parent_id: str) -> str:
     """Find or create a folder with the given name under parent_id.
 
+    Results are cached in memory to avoid repeated API calls.
     Returns the folder's Drive ID.
     """
+    cache_key = (name, parent_id)
+    if cache_key in _folder_cache:
+        return _folder_cache[cache_key]
+
     safe_name = _escape_drive_query(name)
     safe_parent = _escape_drive_query(parent_id)
     query = (
@@ -57,6 +124,7 @@ def ensure_folder(service, name: str, parent_id: str) -> str:
     files = results.get("files", [])
 
     if files:
+        _folder_cache[cache_key] = files[0]["id"]
         return files[0]["id"]
 
     # Create the folder
@@ -68,15 +136,16 @@ def ensure_folder(service, name: str, parent_id: str) -> str:
     folder = service.files().create(
         body=metadata, fields="id", supportsAllDrives=True,
     ).execute()
+    _folder_cache[cache_key] = folder["id"]
     return folder["id"]
 
 
 def create_folder(user: User, name: str, parent_folder_id: str) -> str:
-    """Create a new folder in Drive. Always creates (no dedup by name).
+    """Create a new folder in Drive via service account.
 
     Returns the new folder's Drive ID.
     """
-    service = get_drive_service(user)
+    service = get_sa_drive_service()
     metadata = {
         "name": name,
         "mimeType": "application/vnd.google-apps.folder",
@@ -89,24 +158,17 @@ def create_folder(user: User, name: str, parent_folder_id: str) -> str:
 
 
 def create_google_doc(
-    user: User,
+    user_email: str,
     title: str,
     *,
     is_private: bool,
     target_folder_id: str | None = None,
 ) -> tuple[str, str]:
-    """Create a Google Doc in the correct Drive folder.
-
-    If ``target_folder_id`` is given the doc is placed there directly
-    (used when nesting under a parent page).
-
-    Otherwise the root logic applies:
-    - Private pages  → Sarj Docs/Private/{email}/
-    - Workspace pages → Sarj Docs/ root (workspace folders come later).
+    """Create a Google Doc in the correct Drive folder via service account.
 
     Returns (google_drive_id, drive_folder_id).
     """
-    service = get_drive_service(user)
+    service = get_sa_drive_service()
 
     if target_folder_id is not None:
         folder_id = target_folder_id
@@ -114,7 +176,7 @@ def create_google_doc(
         root_id = settings.DRIVE_ROOT_FOLDER_ID
         if is_private:
             private_root = ensure_folder(service, "Private", root_id)
-            user_folder = ensure_folder(service, user.email, private_root)
+            user_folder = ensure_folder(service, user_email, private_root)
             folder_id = user_folder
         else:
             folder_id = root_id
@@ -129,23 +191,36 @@ def create_google_doc(
         body=doc_metadata, fields="id", supportsAllDrives=True,
     ).execute()
 
-    return doc["id"], folder_id
+    # Grant the creating user editor access
+    doc_id = doc["id"]
+    try:
+        service.permissions().create(
+            fileId=doc_id,
+            body={
+                "type": "user",
+                "role": "writer",
+                "emailAddress": user_email,
+            },
+            supportsAllDrives=True,
+            sendNotificationEmail=False,
+        ).execute()
+    except Exception:
+        log.warning("Failed to grant permission on %s to %s", doc_id, user_email)
+
+    return doc_id, folder_id
 
 
 def rename_drive_file(user: User, file_id: str, new_name: str) -> None:
-    """Rename a Drive file."""
-    service = get_drive_service(user)
+    """Rename a Drive file via service account."""
+    service = get_sa_drive_service()
     service.files().update(
         fileId=file_id, body={"name": new_name}, supportsAllDrives=True,
     ).execute()
 
 
 def rename_child_folder(user: User, old_name: str, new_name: str, parent_folder_id: str) -> None:
-    """Rename a page's children folder in Drive (if it exists).
-
-    When a parent page is renamed, its children folder should match.
-    """
-    service = get_drive_service(user)
+    """Rename a page's children folder in Drive (if it exists)."""
+    service = get_sa_drive_service()
     safe_name = _escape_drive_query(old_name)
     safe_parent = _escape_drive_query(parent_folder_id)
     query = (
@@ -166,9 +241,8 @@ def rename_child_folder(user: User, old_name: str, new_name: str, parent_folder_
 
 
 def move_drive_file(user: User, file_id: str, new_parent_folder_id: str) -> None:
-    """Move a Drive file to a different folder."""
-    service = get_drive_service(user)
-    # Get current parents
+    """Move a Drive file to a different folder via service account."""
+    service = get_sa_drive_service()
     file_meta = service.files().get(
         fileId=file_id, fields="parents", supportsAllDrives=True,
     ).execute()
@@ -183,8 +257,8 @@ def move_drive_file(user: User, file_id: str, new_parent_folder_id: str) -> None
 
 
 def trash_drive_file(user: User, file_id: str) -> None:
-    """Move a Drive file to the trash."""
-    service = get_drive_service(user)
+    """Move a Drive file to the trash via service account."""
+    service = get_sa_drive_service()
     service.files().update(
         fileId=file_id, body={"trashed": True}, supportsAllDrives=True,
     ).execute()
@@ -195,7 +269,7 @@ def is_drive_file_trashed(user: User, file_id: str) -> bool | None:
 
     Returns True if trashed, False if not, None if file doesn't exist.
     """
-    service = get_drive_service(user)
+    service = get_sa_drive_service()
     try:
         meta = service.files().get(
             fileId=file_id, fields="trashed", supportsAllDrives=True,
@@ -209,18 +283,25 @@ def batch_check_trashed(user: User, file_ids: list[str]) -> dict[str, bool]:
     """Check multiple Drive files for trashed status.
 
     Returns a dict of {file_id: is_trashed_or_deleted}.
-    Files that can't be found are considered deleted (True).
+    Only files confirmed as 404 (not found) are treated as deleted.
+    Transient errors (rate limits, timeouts) are excluded from results
+    so the caller does NOT delete those pages.
     """
-    service = get_drive_service(user)
+    from googleapiclient.errors import HttpError
+
+    service = get_sa_drive_service()
     results: dict[str, bool] = {}
 
-    # Use batch requests for efficiency
     batch = service.new_batch_http_request()
 
     def make_callback(fid: str):
         def callback(request_id, response, exception):
             if exception:
-                results[fid] = True  # can't access = treat as deleted
+                if isinstance(exception, HttpError) and exception.resp.status == 404:
+                    results[fid] = True  # confirmed deleted
+                else:
+                    # Transient error — do NOT mark as deleted, just skip
+                    log.warning("batch_check_trashed: transient error for %s: %s", fid, exception)
             else:
                 results[fid] = response.get("trashed", False)
         return callback
@@ -235,22 +316,35 @@ def batch_check_trashed(user: User, file_ids: list[str]) -> dict[str, bool]:
     return results
 
 
+def _get_sa_docs_service():
+    """Build a Docs v1 service using the service account.
+
+    Returns a thread-local instance to avoid httplib2 concurrency crashes.
+    """
+    svc = getattr(_thread_local, "sa_docs_service", None)
+    if svc is not None:
+        return svc
+    svc = build("docs", "v1", credentials=_get_sa_credentials(), static_discovery=True)
+    _thread_local.sa_docs_service = svc
+    return svc
+
+
 def get_doc_content(user: User, google_drive_id: str) -> dict:
-    """Fetch a Google Doc's full content via the Docs API.
+    """Fetch a Google Doc's full content via the Docs API (service account).
 
     Returns the raw document JSON from documents.get().
     """
-    docs_service = build("docs", "v1", credentials=build_credentials(user), static_discovery=True)
+    docs_service = _get_sa_docs_service()
     return docs_service.documents().get(documentId=google_drive_id).execute()
 
 
 def export_doc_html(user: User, google_drive_id: str) -> str:
-    """Export a Google Doc as HTML via the Drive API.
+    """Export a Google Doc as HTML via the Drive API (service account).
 
     The HTML export renders smart chips (Person, Status, File, Date, etc.)
     as actual text — unlike the Docs API which returns opaque placeholders.
     """
-    service = get_drive_service(user)
+    service = get_sa_drive_service()
     response = service.files().export(
         fileId=google_drive_id,
         mimeType="text/html",

@@ -7,18 +7,7 @@ import { Command } from "cmdk";
 import { FileText, Lock, Search, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { useWorkspaces } from "@/hooks/use-workspaces";
-
-interface SearchResult {
-  id: string;
-  title: string;
-  icon: string | null;
-  workspaceId: string | null;
-  isPrivate: boolean;
-  parentId: string | null;
-  googleDriveId: string;
-  snippet: string | null;
-  rank: number;
-}
+import type { SearchResult } from "@/types";
 
 function HighlightMatch({ text, query }: { text: string; query: string }) {
   if (!query.trim()) return <>{text}</>;
@@ -47,7 +36,7 @@ export function CommandPalette() {
   const [isSearching, setIsSearching] = useState(false);
   const router = useRouter();
   const { data: workspaces = [] } = useWorkspaces();
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const lastSearchRef = useRef(0);
   const panelRef = useRef<HTMLDivElement>(null);
 

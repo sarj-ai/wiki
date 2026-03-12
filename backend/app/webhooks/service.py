@@ -223,14 +223,19 @@ async def _handle_single_change(db: AsyncSession, service, change: dict) -> None
         return
 
     if page:
-        # Existing page — sync title and invalidate cache
-        if file_meta.get("name"):
-            new_name = file_meta["name"]
-            if new_name != page.title:
-                log.info("Drive file %s renamed to '%s' — updating page %s", file_id, new_name, page.id)
-                page.title = new_name
-                page.updated_at = datetime.now(timezone.utc)
+        # Existing page — sync title
+        new_name = file_meta.get("name")
+        if new_name and new_name != page.title:
+            log.info("Drive file %s renamed to '%s' — updating page %s", file_id, new_name, page.id)
+            page.title = new_name
+
+        # Invalidate content cache so the next viewer fetches fresh from Google
+        if page.cached_content is not None or page.content_cached_at is not None:
+            log.info("Invalidated content cache for page %s (drive file %s)", page.id, file_id)
+            page.cached_content = None
             page.content_cached_at = None
+
+        page.updated_at = datetime.now(timezone.utc)
         return
 
     # --- New file: try to ingest it ---

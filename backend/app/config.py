@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000"
     WEBHOOK_BASE_URL: str = ""  # e.g. "https://yourdomain.com" — empty disables webhook registration
     ADMIN_IMPERSONATE_EMAIL: str = ""  # Workspace admin email for Admin SDK impersonation
+    CLOUD_SCHEDULER_SA_EMAIL: str = ""  # Cloud Scheduler service account for OIDC verification
+    INTERNAL_SCHEDULER_SECRET: str = ""  # Shared secret fallback for local dev
 
     @field_validator("SECRET_KEY")
     @classmethod

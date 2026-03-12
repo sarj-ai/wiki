@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import type { Page, Workspace, PagePermission, Permission } from "@/types";
+import { useState, useEffect, useRef, useCallback } from "react";
+import type { Page, Workspace, PagePermission, Permission, UserSearchResult } from "@/types";
 import { useAuth } from "@/components/auth-provider";
 import { useWorkspaces } from "@/hooks/use-workspaces";
 import { useLoading } from "@/components/loading-bar";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import {
   Dialog,
@@ -37,6 +38,7 @@ import {
   Users,
   Crown,
   Loader2,
+  Check,
 } from "lucide-react";
 
 interface ShareDialogProps {
@@ -64,6 +66,7 @@ export function ShareDialog({
   const { user } = useAuth();
   const { data: workspaces = [] } = useWorkspaces();
   const { start, done } = useLoading();
+  const queryClient = useQueryClient();
 
   const [permissions, setPermissions] = useState<PagePermission[]>([]);
   const [isLoadingPermissions, setIsLoadingPerms] = useState(false);
@@ -74,6 +77,15 @@ export function ShareDialog({
   const [searchQuery, setSearchQuery] = useState("");
   const [invitePermission, setInvitePermission] = useState<Permission>("view");
   const [copied, setCopied] = useState(false);
+  const [publishSuccess, setPublishSuccess] = useState(false);
+
+  // User search state
+  const [suggestions, setSuggestions] = useState<UserSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [grantingUserId, setGrantingUserId] = useState<string | null>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   // Fetch permissions when dialog opens
   useEffect(() => {
@@ -86,10 +98,78 @@ export function ShareDialog({
       .finally(() => setIsLoadingPerms(false));
   }, [open, page.id]);
 
-  // TODO: Wire up user search when directory API is available
-  const suggestions: never[] = [];
+  // Reset search state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setSearchQuery("");
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, [open]);
 
-  async function handleChangePermission(permId: string, newPerm: Permission) {
+  // Debounced user search
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (value.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const results = await api.searchUsers(value.trim());
+        // Filter out users who already have permission on this page
+        const existingUserIds = new Set(
+          permissions.filter((p) => p.userId).map((p) => p.userId)
+        );
+        const filtered = results.filter((u) => !existingUserIds.has(u.id));
+        setSuggestions(filtered);
+        setShowSuggestions(true);
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+  }, [permissions]);
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  async function handleSelectUser(selectedUser: UserSearchResult) {
+    setGrantingUserId(selectedUser.id);
+    start();
+    try {
+      const newPerm = await api.grantPermission({
+        pageId: page.id,
+        userId: selectedUser.id,
+        permission: invitePermission,
+      });
+      setPermissions((prev) => [...prev, newPerm]);
+      setSearchQuery("");
+      setSuggestions([]);
+      setShowSuggestions(false);
+    } catch {
+      // Could show error toast
+    } finally {
+      setGrantingUserId(null);
+      done();
+    }
+  }
+
+  function handleChangePermission(permId: string, newPerm: Permission) {
     // Update locally for instant feedback
     setPermissions((prev) =>
       prev.map((p) => (p.id === permId ? { ...p, permission: newPerm } : p))
@@ -124,29 +204,31 @@ export function ShareDialog({
 
     start();
     try {
-      const perm = await api.grantPermission({
-        pageId: page.id,
-        workspaceId: wsId,
-        permission: "edit",
-      });
-
-      setPermissions((prev) => {
-        const withoutWorkspace = prev.filter((p) => p.workspaceId === null);
-        return [...withoutWorkspace, perm];
-      });
+      await api.publishPage(page.id, wsId);
+      setPublishSuccess(true);
+      // Refresh the sidebar tree and current page data
+      await queryClient.invalidateQueries({ queryKey: ["pages"] });
+      setTimeout(() => {
+        setPublishSuccess(false);
+        onOpenChange(false);
+      }, 1500);
     } catch {
-      // handle error
+      setPublishSuccess(false);
     } finally {
       done();
     }
   }
 
-  function handleCopyLink() {
-    navigator.clipboard.writeText(
-      `${window.location.origin}/docs/${page.id}`
-    );
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function handleCopyLink() {
+    try {
+      await navigator.clipboard.writeText(
+        `${window.location.origin}/docs/${encodeURIComponent(page.id)}`
+      );
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard access may be denied in some contexts
+    }
   }
 
   const visibilityLabel = isSharedWithWorkspace
@@ -169,18 +251,57 @@ export function ShareDialog({
         {/* Add people section */}
         <div className="px-6 py-4">
           <div className="flex gap-2">
-            <div className="relative flex-1">
+            <div className="relative flex-1" ref={searchRef}>
               <Input
                 placeholder="Search people by name or email..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onFocus={() => {
+                  if (suggestions.length > 0) setShowSuggestions(true);
+                }}
                 className="h-9"
               />
-              {suggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-md border bg-popover p-1 shadow-md">
-                  <p className="px-2 py-1.5 text-xs text-muted-foreground">
-                    User search coming soon
-                  </p>
+              {showSuggestions && (
+                <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-md border bg-popover p-1 shadow-md max-h-[200px] overflow-y-auto">
+                  {isSearching && (
+                    <div className="flex items-center justify-center py-3">
+                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                    </div>
+                  )}
+                  {!isSearching && suggestions.length === 0 && searchQuery.trim().length >= 2 && (
+                    <p className="px-2 py-2 text-sm text-muted-foreground">
+                      No users found
+                    </p>
+                  )}
+                  {suggestions.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      disabled={grantingUserId === s.id}
+                      onClick={() => handleSelectUser(s)}
+                      className="flex w-full items-center gap-3 rounded-sm px-2 py-2 text-left hover:bg-accent transition-colors disabled:opacity-50"
+                    >
+                      <Avatar className="size-7">
+                        {s.avatarUrl && (
+                          <AvatarImage src={s.avatarUrl} alt={s.displayName ?? ""} />
+                        )}
+                        <AvatarFallback className="text-xs">
+                          {getInitials(s.displayName ?? s.email)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className="text-sm font-medium truncate">
+                          {s.displayName ?? s.email}
+                        </span>
+                        <span className="text-xs text-muted-foreground truncate">
+                          {s.email}
+                        </span>
+                      </div>
+                      {grantingUserId === s.id && (
+                        <Loader2 className="size-4 animate-spin text-muted-foreground shrink-0" />
+                      )}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
@@ -250,13 +371,15 @@ export function ShareDialog({
                     {perm.workspaceId ? (
                       <Users className="size-3.5" />
                     ) : (
-                      getInitials(perm.displayName ?? "?")
+                      getInitials(perm.displayName ?? perm.email ?? "?")
                     )}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col min-w-0 flex-1">
                   <span className="text-sm font-medium truncate">
-                    {perm.displayName ?? perm.userId ?? "Unknown"}
+                    {perm.workspaceId
+                      ? (workspaces.find((w) => w.id === perm.workspaceId)?.name ?? perm.displayName ?? "Workspace")
+                      : (perm.displayName ?? perm.email ?? "Unknown")}
                   </span>
                   <span className="text-xs text-muted-foreground truncate">
                     {perm.workspaceId ? "All members" : perm.email}
@@ -335,6 +458,12 @@ export function ShareDialog({
                       ))}
                     </SelectContent>
                   </Select>
+                  {publishSuccess && (
+                    <div className="mt-2 flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                      <Check className="size-4" />
+                      <span>Page published to workspace</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

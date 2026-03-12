@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Page } from "@/types";
+
+// Minimum 5 min between Drive syncs (shared across all hook instances)
+const SYNC_COOLDOWN_MS = 300_000;
+let lastSyncTime = 0;
 
 export function usePageTree(workspaceId?: string) {
   const queryClient = useQueryClient();
@@ -20,6 +24,10 @@ export function usePageTree(workspaceId?: string) {
   });
 
   const sync = useCallback(() => {
+    const now = Date.now();
+    if (now - lastSyncTime < SYNC_COOLDOWN_MS) return;
+    lastSyncTime = now;
+
     api.syncPages().then((result) => {
       if (result && (result.removed > 0 || result.added > 0 || result.updated > 0)) {
         queryClient.invalidateQueries({ queryKey: ["pages"] });
@@ -27,16 +35,11 @@ export function usePageTree(workspaceId?: string) {
     }).catch(() => {});
   }, [queryClient]);
 
-  // Sync once on mount + every time the tab regains focus
+  // Sync once on mount + every time the tab regains focus (with cooldown)
   useEffect(() => {
     sync();
-
-    function onFocus() {
-      sync();
-    }
-
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    window.addEventListener("focus", sync);
+    return () => window.removeEventListener("focus", sync);
   }, [sync]);
 
   return query;

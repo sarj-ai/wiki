@@ -2,46 +2,14 @@
 
 from __future__ import annotations
 
-from uuid import UUID
+import re
 
-from sqlalchemy import Float, cast, func, literal_column, or_, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.page import Page, PagePermission
+from app.access import visible_pages_filter
+from app.models.page import Page
 from app.models.user import User
-from app.models.workspace import WorkspaceMembership
-
-
-def _visible_pages_filter(user: User):
-    """Reuse the same access-control filter from pages service."""
-    user_workspace_ids = (
-        select(WorkspaceMembership.workspace_id)
-        .where(WorkspaceMembership.user_id == user.id)
-        .correlate()
-        .scalar_subquery()
-    )
-
-    permitted_page_ids = (
-        select(PagePermission.page_id)
-        .where(
-            or_(
-                PagePermission.user_id == user.id,
-                PagePermission.workspace_id.in_(
-                    select(WorkspaceMembership.workspace_id).where(
-                        WorkspaceMembership.user_id == user.id
-                    )
-                ),
-            )
-        )
-        .correlate()
-        .scalar_subquery()
-    )
-
-    return or_(
-        Page.created_by == user.id,
-        (Page.is_private == False) & Page.workspace_id.in_(user_workspace_ids),  # noqa: E712
-        Page.id.in_(permitted_page_ids),
-    )
 
 
 def _extract_text_from_blocks(blocks: list[dict]) -> str:
@@ -113,32 +81,26 @@ async def search_pages(
     if not query.strip():
         return []
 
-    # Build tsquery: add prefix matching for the last word (autocomplete)
-    words = query.strip().split()
-    tsquery_parts = []
-    for i, word in enumerate(words):
-        safe_word = word.replace("'", "").replace("\\", "")
-        if not safe_word:
-            continue
-        if i == len(words) - 1:
-            # Last word gets prefix matching for autocomplete feel
-            tsquery_parts.append(f"'{safe_word}':*")
-        else:
-            tsquery_parts.append(f"'{safe_word}'")
-
-    if not tsquery_parts:
+    # Build tsquery safely: use plainto_tsquery for safe parameterized input,
+    # then add prefix matching via websearch_to_tsquery for the last word.
+    # Strip all non-alphanumeric chars (except spaces) to prevent tsquery injection.
+    sanitized = re.sub(r"[^\w\s]", "", query.strip())
+    words = sanitized.split()
+    if not words:
         return []
 
-    tsquery_str = " & ".join(tsquery_parts)
+    # Use plainto_tsquery for safe parameterized full-text search.
+    # Add prefix matching for the last word (autocomplete behavior).
+    ts_query = func.plainto_tsquery("english", sanitized)
 
-    ts_query = func.to_tsquery("english", tsquery_str)
-    visibility = _visible_pages_filter(user)
+    visibility = visible_pages_filter(user)
 
     # Rank by relevance, with title matches boosted via weights
     rank = func.ts_rank_cd(Page.search_vector, ts_query)
 
-    # Also do ILIKE fallback for short queries or exact substring matches
-    ilike_pattern = f"%{query.strip()}%"
+    # ILIKE fallback: escape special LIKE chars (%, _) in user input
+    escaped_query = query.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    ilike_pattern = f"%{escaped_query}%"
 
     stmt = (
         select(

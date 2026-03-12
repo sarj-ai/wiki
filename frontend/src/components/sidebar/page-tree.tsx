@@ -45,6 +45,7 @@ interface PageTreeProps {
   renamingPageId?: string | null;
   onRenamingDone?: () => void;
   isLoading?: boolean;
+  addingChildParentId?: string | null;
 }
 
 export function PageTree({
@@ -58,8 +59,34 @@ export function PageTree({
   renamingPageId,
   onRenamingDone,
   isLoading,
+  addingChildParentId,
 }: PageTreeProps) {
+  const EXPANDED_KEY = "sarj-expanded-ids";
+
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [expandedHydrated, setExpandedHydrated] = useState(false);
+
+  // Load from localStorage after mount to avoid hydration mismatch
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(EXPANDED_KEY);
+      if (stored) setExpandedIds(new Set(JSON.parse(stored) as string[]));
+    } catch {
+      // ignore
+    }
+    setExpandedHydrated(true);
+  }, []);
+
+  // Persist to localStorage on change (skip initial mount)
+  useEffect(() => {
+    if (!expandedHydrated) return;
+    try {
+      localStorage.setItem(EXPANDED_KEY, JSON.stringify([...expandedIds]));
+    } catch {
+      // ignore
+    }
+  }, [expandedIds, expandedHydrated]);
+
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [dropPosition, setDropPosition] = useState<"before" | "after" | "inside">("after");
@@ -89,20 +116,19 @@ export function PageTree({
     ? flatItems.find((f) => f.page.id === draggedId)?.page ?? null
     : null;
 
-  // Auto-expand parent chain when renamingPageId targets a nested child
-  useEffect(() => {
-    if (!renamingPageId) return;
-    const findAncestors = (nodes: Page[], targetId: string, ancestors: string[] = []): string[] | null => {
+  // Auto-expand parent chain to reveal a target page
+  const expandAncestors = useCallback((targetId: string) => {
+    const findAncestors = (nodes: Page[], id: string, ancestors: string[] = []): string[] | null => {
       for (const node of nodes) {
-        if (node.id === targetId) return ancestors;
+        if (node.id === id) return ancestors;
         if (node.children.length > 0) {
-          const result = findAncestors(node.children, targetId, [...ancestors, node.id]);
+          const result = findAncestors(node.children, id, [...ancestors, node.id]);
           if (result) return result;
         }
       }
       return null;
     };
-    const ancestors = findAncestors(pages, renamingPageId);
+    const ancestors = findAncestors(pages, targetId);
     if (ancestors && ancestors.length > 0) {
       setExpandedIds(prev => {
         const next = new Set(prev);
@@ -110,7 +136,17 @@ export function PageTree({
         return next;
       });
     }
-  }, [renamingPageId, pages]);
+  }, [pages]);
+
+  // Auto-expand when renaming a nested child
+  useEffect(() => {
+    if (renamingPageId) expandAncestors(renamingPageId);
+  }, [renamingPageId, expandAncestors]);
+
+  // Auto-expand when the active page is nested
+  useEffect(() => {
+    if (activePageId) expandAncestors(activePageId);
+  }, [activePageId, expandAncestors]);
 
   function handleDragStart(event: DragStartEvent) {
     setDraggedId(event.active.id as string);
@@ -226,6 +262,7 @@ export function PageTree({
               dropPosition={dropTargetId === item.page.id ? dropPosition : undefined}
               shouldAutoRename={renamingPageId === item.page.id}
               onRenamingDone={onRenamingDone}
+              isAddingChild={addingChildParentId === item.page.id}
             />
           ))}
         </SidebarMenu>

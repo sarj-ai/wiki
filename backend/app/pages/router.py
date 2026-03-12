@@ -91,6 +91,16 @@ async def update_page(
     return schemas.PageResponse.model_validate(page)
 
 
+@router.post("/{page_id}/retry", response_model=schemas.PageResponse)
+async def retry_page_creation(
+    page_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> schemas.PageResponse:
+    page = await service.retry_pending_page(db, user, page_id)
+    return schemas.PageResponse.model_validate(page)
+
+
 @router.delete("/{page_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_page(
     page_id: UUID,

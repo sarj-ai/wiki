@@ -26,21 +26,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
-  const hasCheckedAuth = useRef(false);
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
+
+  const checkAuth = useCallback(() => {
+    fetchCurrentUser().then((fetchedUser) => {
+      setUser(fetchedUser);
+      if (!fetchedUser && pathnameRef.current !== "/login") {
+        router.push("/login");
+      }
+    });
+  }, [router]);
 
   useEffect(() => {
-    if (hasCheckedAuth.current) return;
-    hasCheckedAuth.current = true;
+    checkAuth();
+    setIsLoading(false);
+  // Run once on mount only
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    fetchCurrentUser()
-      .then((fetchedUser) => {
-        setUser(fetchedUser);
-        if (!fetchedUser && pathname !== "/login") {
-          router.push("/login");
-        }
-      })
-      .finally(() => setIsLoading(false));
-  }, [pathname, router]);
+  // Re-check auth when user returns to the tab (catches expired tokens)
+  useEffect(() => {
+    function onFocus() {
+      checkAuth();
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [checkAuth]);
 
   const logout = useCallback(async () => {
     await apiLogout();

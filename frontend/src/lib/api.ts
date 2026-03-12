@@ -1,4 +1,4 @@
-import type { Page, PagePermission, ContentBlock } from "@/types";
+import type { Page, PagePermission, Permission, ContentBlock, Workspace, SearchResult, UserSearchResult } from "@/types";
 import { refreshAccessToken } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -21,13 +21,18 @@ function transformKeys<T>(obj: unknown): T {
 }
 
 function buildRequestInit(options?: RequestInit): RequestInit {
+  const { headers: extraHeaders, ...rest } = options ?? {};
   return {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...options?.headers,
+      ...(extraHeaders instanceof Headers
+        ? Object.fromEntries(extraHeaders.entries())
+        : Array.isArray(extraHeaders)
+          ? Object.fromEntries(extraHeaders)
+          : extraHeaders),
     },
-    ...options,
+    ...rest,
   };
 }
 
@@ -39,6 +44,13 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
     if (refreshed) {
       res = await fetch(`${API_URL}${path}`, buildRequestInit(options));
     }
+    if (res.status === 401) {
+      // Token expired and refresh failed — force login
+      if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+      throw new Error("Session expired");
+    }
   }
 
   if (!res.ok) {
@@ -46,7 +58,7 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   if (res.status === 204) {
-    return undefined as T;
+    return undefined as unknown as T;
   }
 
   const json = await res.json();
@@ -61,7 +73,7 @@ interface CreatePageData {
   title: string;
   parentId?: string;
   workspaceId?: string;
-  type?: string;
+  type?: "page" | "section";
   icon?: string;
 }
 
@@ -76,7 +88,7 @@ interface GrantPermissionData {
   pageId: string;
   userId?: string;
   workspaceId?: string;
-  permission: string;
+  permission: Permission;
 }
 
 interface PageContent {
@@ -85,6 +97,16 @@ interface PageContent {
 }
 
 export const api = {
+  getWorkspaces: () => fetchApi<Workspace[]>("/workspaces"),
+
+  syncWorkspaces: () => fetchApi<Workspace[]>("/workspaces/sync", { method: "POST" }),
+
+  updateWorkspace: (id: string, data: { icon?: string | null }) =>
+    fetchApi<Workspace>(`/workspaces/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
   getPageTree: () => fetchApi<Page[]>("/pages/tree"),
 
   syncPages: () => fetchApi<{ removed: number; added: number; updated: number }>("/pages/sync", { method: "POST" }),
@@ -114,6 +136,9 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
+
+  retryPage: (id: string) =>
+    fetchApi<Page>(`${pagePath(id)}/retry`, { method: "POST" }),
 
   deletePage: (id: string) =>
     fetchApi<void>(pagePath(id), { method: "DELETE" }),
@@ -147,15 +172,8 @@ export const api = {
     fetchApi<void>(`/permissions/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
   search: (query: string, limit?: number) =>
-    fetchApi<Array<{
-      id: string;
-      title: string;
-      icon: string | null;
-      workspaceId: string | null;
-      isPrivate: boolean;
-      parentId: string | null;
-      googleDriveId: string;
-      snippet: string | null;
-      rank: number;
-    }>>(`/search?q=${encodeURIComponent(query)}${limit ? `&limit=${limit}` : ""}`),
+    fetchApi<SearchResult[]>(`/search?q=${encodeURIComponent(query)}${limit ? `&limit=${limit}` : ""}`),
+
+  searchUsers: (query: string) =>
+    fetchApi<UserSearchResult[]>(`/permissions/users/search?q=${encodeURIComponent(query)}`),
 };

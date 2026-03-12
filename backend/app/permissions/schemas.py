@@ -36,3 +36,14 @@ class PermissionResponse(BaseModel):
     user_id: UUID | None
     workspace_id: UUID | None
     permission: str
+    display_name: str | None = None
+    email: str | None = None
+
+
+class UserSearchResult(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    email: str
+    display_name: str | None = None
+    avatar_url: str | None = None

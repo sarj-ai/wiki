@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { ChevronRight, Plus, MoreHorizontal, FileText, Pencil, Trash2, SmilePlus } from "lucide-react";
+import { ChevronRight, Plus, MoreHorizontal, FileText, Pencil, Trash2, SmilePlus, Loader2 } from "lucide-react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Page } from "@/types";
 import {
@@ -43,6 +43,7 @@ interface PageTreeItemProps {
   dropPosition?: "before" | "after" | "inside";
   shouldAutoRename?: boolean;
   onRenamingDone?: () => void;
+  isAddingChild?: boolean;
 }
 
 export function PageTreeItem({
@@ -59,6 +60,7 @@ export function PageTreeItem({
   dropPosition,
   shouldAutoRename,
   onRenamingDone,
+  isAddingChild,
 }: PageTreeItemProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(page.title);
@@ -132,6 +134,7 @@ export function PageTreeItem({
         {...listeners}
       >
         <button
+          type="button"
           className="flex size-6 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:text-sidebar-foreground"
           style={{ marginLeft: `${depth * 12}px` }}
           onClick={(e) => {
@@ -140,6 +143,8 @@ export function PageTreeItem({
               onToggleExpand(page.id);
             }
           }}
+          aria-label={hasChildren ? (isExpanded ? "Collapse" : "Expand") : undefined}
+          aria-expanded={hasChildren ? isExpanded : undefined}
         >
           <ChevronRight
             className={`size-3.5 transition-transform duration-200 ${
@@ -205,7 +210,9 @@ export function PageTreeItem({
               <DropdownMenuTrigger asChild>
                 <PopoverAnchor asChild>
                   <button
+                    type="button"
                     className="flex size-5 items-center justify-center rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    aria-label="Page options"
                   >
                     <MoreHorizontal className="size-4" />
                   </button>
@@ -233,13 +240,16 @@ export function PageTreeItem({
               </DropdownMenuContent>
             </DropdownMenu>
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onAddChild(page.id);
+                if (!isAddingChild) onAddChild(page.id);
               }}
+              disabled={isAddingChild}
               className="flex size-5 items-center justify-center rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              aria-label="Add child page"
             >
-              <Plus className="size-3.5" />
+              {isAddingChild ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
             </button>
           </div>
           <PopoverContent

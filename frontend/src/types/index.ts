@@ -14,7 +14,9 @@ export interface Page {
 export interface Workspace {
   id: string;
   name: string;
-  googleGroupEmail: string;
+  googleGroupEmail: string | null;
+  driveFolderId: string;
+  icon: string | null;
 }
 
 export interface User {
@@ -35,6 +37,25 @@ export interface PagePermission {
   // Denormalized for display
   displayName: string;
   email?: string;
+}
+
+export interface UserSearchResult {
+  id: string;
+  email: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+}
+
+export interface SearchResult {
+  id: string;
+  title: string;
+  icon: string | null;
+  workspaceId: string | null;
+  isPrivate: boolean;
+  parentId: string | null;
+  googleDriveId: string;
+  snippet: string | null;
+  rank: number;
 }
 
 // --- Document content types (from Google Docs API) ---
@@ -105,8 +126,19 @@ export interface BlockStyle {
   indentStart?: number;
 }
 
+/** Known block types rendered by DocViewer. API may return other types (handled as no-op). */
+export type ContentBlockType =
+  | "heading"
+  | "paragraph"
+  | "list"
+  | "table"
+  | "image"
+  | "table_of_contents"
+  | "horizontal_rule"
+  | (string & {});
+
 export interface ContentBlock {
-  type: string;
+  type: ContentBlockType;
   level?: number;
   runs?: TextRun[];
   ordered?: boolean;

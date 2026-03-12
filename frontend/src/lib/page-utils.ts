@@ -3,7 +3,7 @@ import type { Page } from "@/types";
 /**
  * Build a flat index of all pages keyed by ID from a nested page tree.
  */
-function buildPageIndex(pages: Page[]): Map<string, Page> {
+export function buildPageIndex(pages: Page[]): Map<string, Page> {
   const index = new Map<string, Page>();
 
   function walk(pageList: Page[]) {
@@ -21,25 +21,35 @@ function buildPageIndex(pages: Page[]): Map<string, Page> {
 
 /**
  * Find a page by ID in a nested page tree.
+ * Accepts an optional pre-built index to avoid redundant traversals.
  */
-export function findPageById(pageId: string, allPages: Page[]): Page | undefined {
-  const index = buildPageIndex(allPages);
-  return index.get(pageId);
+export function findPageById(
+  pageId: string,
+  allPages: Page[],
+  index?: Map<string, Page>,
+): Page | undefined {
+  const pageIndex = index ?? buildPageIndex(allPages);
+  return pageIndex.get(pageId);
 }
 
 /**
  * Returns an array of pages from the root ancestor down to the given page,
  * forming a breadcrumb trail. Walks up the parentId chain.
+ * Accepts an optional pre-built index to avoid redundant traversals.
  */
-export function getPageBreadcrumbs(pageId: string, allPages: Page[]): Page[] {
-  const index = buildPageIndex(allPages);
+export function getPageBreadcrumbs(
+  pageId: string,
+  allPages: Page[],
+  index?: Map<string, Page>,
+): Page[] {
+  const pageIndex = index ?? buildPageIndex(allPages);
   const breadcrumbs: Page[] = [];
 
-  let current = index.get(pageId);
+  let current = pageIndex.get(pageId);
   while (current) {
     breadcrumbs.unshift(current);
     if (current.parentId) {
-      current = index.get(current.parentId);
+      current = pageIndex.get(current.parentId);
     } else {
       break;
     }

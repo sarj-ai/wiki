@@ -186,6 +186,11 @@ def enrich_chips_from_html(blocks: list[dict], html: str) -> list[dict]:
         html_rows = html_tables[html_table_idx]
         block_rows = block.get("rows", [])
 
+        # If a caption row was extracted from the block, the HTML still has it
+        # as the first row.  Skip it so row indices align.
+        if block.get("caption") and html_rows:
+            html_rows = html_rows[1:]
+
         for ri, row_cells in enumerate(block_rows):
             if ri >= len(html_rows):
                 break
