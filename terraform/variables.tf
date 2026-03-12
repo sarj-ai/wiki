@@ -70,3 +70,9 @@ variable "alert_email" {
   description = "Email address for monitoring alerts"
   type        = string
 }
+
+variable "github_repo" {
+  description = "GitHub repository (owner/repo) for Workload Identity Federation"
+  type        = string
+  default     = "a-alhashemi/sarj-docs"
+}

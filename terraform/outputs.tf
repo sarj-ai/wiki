@@ -17,3 +17,13 @@ output "scheduler_sa_email" {
   description = "Cloud Scheduler service account email"
   value       = google_service_account.scheduler.email
 }
+
+output "wif_provider" {
+  description = "Workload Identity Federation provider (set as WIF_PROVIDER secret in GitHub)"
+  value       = google_iam_workload_identity_pool_provider.github.name
+}
+
+output "wif_service_account" {
+  description = "WIF service account email (set as WIF_SERVICE_ACCOUNT secret in GitHub)"
+  value       = google_service_account.github_actions.email
+}
