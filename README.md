@@ -14,7 +14,7 @@ Internal knowledge base for [@sarj.ai](https://sarj.ai), built on top of Google 
 
 ### Backend 
 
-```bash 
+```bash  
 cd backend
 uv sync
 cp .env.example .env  # fill in your values
