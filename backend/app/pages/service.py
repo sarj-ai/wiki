@@ -710,7 +710,7 @@ async def _incremental_sync(
 
     if not changes:
         _last_changes_token = new_token
-        return {"removed": 0, "added": 0, "updated": 0, "pruned": 0, "cleaned": 0, "mode": "incremental"}
+        return {"removed": 0, "added": 0, "updated": 0, "pruned": 0, "cleaned": 0}
 
     added = 0
     removed = 0
@@ -828,7 +828,7 @@ async def _incremental_sync(
         await db.commit()
 
     _last_changes_token = new_token
-    return {"removed": removed, "added": added, "updated": updated, "pruned": 0, "cleaned": 0, "mode": "incremental"}
+    return {"removed": removed, "added": added, "updated": updated, "pruned": 0, "cleaned": 0}
 
 
 async def _full_sync(db: AsyncSession, user: User) -> dict[str, int]:
