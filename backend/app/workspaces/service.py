@@ -181,6 +181,12 @@ async def sync_folder_permissions(db: AsyncSession) -> None:
     # Collect all live (non-trashed) folders under root
     live_folders = await asyncio.to_thread(_list_root_folders_sync)
 
+    async def _fetch_perms(folder_id: str) -> list[dict] | None:
+        try:
+            return await asyncio.to_thread(_list_folder_permissions_sync, folder_id)
+        except Exception:
+            return None
+
     # Delete workspaces whose folders are no longer live (only folder-discovered ones)
     for ws in workspaces:
         if ws.google_group_email is None and ws.drive_folder_id not in live_folders:
@@ -201,48 +207,54 @@ async def sync_folder_permissions(db: AsyncSession) -> None:
     known_folder_ids = {ws.drive_folder_id for ws in workspaces}
 
     # --- Phase 2: Discover new folders under Sarj Docs root ---
-    for folder_id, folder_name in live_folders.items():
-        # Skip known workspace folders and the Private folder
-        if folder_id in known_folder_ids or folder_name == "Private":
-            continue
+    new_folders = {
+        fid: fname for fid, fname in live_folders.items()
+        if fid not in known_folder_ids and fname != "Private"
+    }
 
-        # Check if this folder has any domain group permissions
-        try:
-            permissions = await asyncio.to_thread(_list_folder_permissions_sync, folder_id)
+    if new_folders:
+        # Fetch permissions for all new folders in parallel
+        new_folder_ids = list(new_folders.keys())
+        new_perm_results = await asyncio.gather(
+            *[_fetch_perms(fid) for fid in new_folder_ids]
+        )
 
-            folder_groups = set()
-            for perm in permissions:
-                if perm.get("type") == "group":
-                    email = perm.get("emailAddress", "")
-                    if email in domain_groups:
-                        folder_groups.add(email)
+        for folder_id, permissions in zip(new_folder_ids, new_perm_results):
+            if permissions is None:
+                continue
+            folder_name = new_folders[folder_id]
 
-            if folder_groups:
-                # Create workspace for this folder (no primary group —
-                # access is determined by workspace_group_access entries)
-                ws = Workspace(
-                    name=folder_name,
-                    google_group_email=None,
-                    drive_folder_id=folder_id,
-                )
-                db.add(ws)
-                await db.flush()
-                workspaces.append(ws)
-                known_folder_ids.add(folder_id)
+            try:
+                folder_groups = set()
+                for perm in permissions:
+                    if perm.get("type") == "group":
+                        email = perm.get("emailAddress", "")
+                        if email in domain_groups:
+                            folder_groups.add(email)
 
-                # Add all group access entries
-                for email in folder_groups:
-                    db.add(WorkspaceGroupAccess(
-                        workspace_id=ws.id,
-                        google_group_email=email,
-                    ))
+                if folder_groups:
+                    ws = Workspace(
+                        name=folder_name,
+                        google_group_email=None,
+                        drive_folder_id=folder_id,
+                    )
+                    db.add(ws)
+                    await db.flush()
+                    workspaces.append(ws)
+                    known_folder_ids.add(folder_id)
 
-                log.info(
-                    "Created workspace from Drive folder: %s (groups: %s)",
-                    folder_name, ", ".join(folder_groups),
-                )
-        except Exception:
-            log.warning("Failed to check permissions for folder %s", folder_name, exc_info=True)
+                    for email in folder_groups:
+                        db.add(WorkspaceGroupAccess(
+                            workspace_id=ws.id,
+                            google_group_email=email,
+                        ))
+
+                    log.info(
+                        "Created workspace from Drive folder: %s (groups: %s)",
+                        folder_name, ", ".join(folder_groups),
+                    )
+            except Exception:
+                log.warning("Failed to check permissions for folder %s", folder_name, exc_info=True)
 
     await db.commit()
 
@@ -251,12 +263,18 @@ async def sync_folder_permissions(db: AsyncSession) -> None:
     result = await db.execute(select(Workspace))
     workspaces = list(result.scalars().all())
 
-    for ws in workspaces:
-        try:
-            permissions = await asyncio.to_thread(
-                _list_folder_permissions_sync, ws.drive_folder_id
-            )
+    # Fetch all folder permissions in parallel (Drive API calls only)
+    perm_results = await asyncio.gather(
+        *[_fetch_perms(ws.drive_folder_id) for ws in workspaces]
+    )
 
+    # Process results sequentially (DB operations)
+    for ws, permissions in zip(workspaces, perm_results):
+        if permissions is None:
+            log.warning("Failed to scan permissions for workspace %s", ws.name)
+            continue
+
+        try:
             group_emails: set[str] = set()
             for perm in permissions:
                 if perm.get("type") == "group":
@@ -298,7 +316,7 @@ async def sync_folder_permissions(db: AsyncSession) -> None:
                 log.info("Removed %d stale group access entries for %s", len(stale), ws.name)
 
         except Exception:
-            log.warning("Failed to scan permissions for workspace %s", ws.name, exc_info=True)
+            log.warning("Failed to process permissions for workspace %s", ws.name, exc_info=True)
 
     await db.commit()
     log.info("Folder permission sync complete")

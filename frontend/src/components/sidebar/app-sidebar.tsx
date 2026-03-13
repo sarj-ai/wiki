@@ -115,8 +115,10 @@ export function AppSidebar() {
   async function handleSync() {
     setIsSyncing(true);
     try {
-      await api.syncWorkspaces();
-      const result = await api.syncPages();
+      const [, result] = await Promise.all([
+        api.syncWorkspaces(),
+        api.syncPages(),
+      ]);
       queryClient.invalidateQueries({ queryKey: ["workspaces"] });
       queryClient.invalidateQueries({ queryKey: ["pages"] });
       const parts: string[] = [];
