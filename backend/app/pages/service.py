@@ -18,6 +18,7 @@ from app.drive import (
     create_google_doc,
     ensure_folder,
     get_sa_drive_service,
+    is_drive_folder_empty,
     move_drive_file,
     trash_drive_file,
 )
@@ -681,7 +682,42 @@ async def _sync_drive_state_inner(db: AsyncSession, user: User) -> dict[str, int
     # --- Phase 2: Discover new Docs + update titles of existing ones ---
     added, updated = await _scan_drive_folder(db, user, settings.DRIVE_ROOT_FOLDER_ID)
 
-    return {"removed": removed, "added": added, "updated": updated}
+    # --- Phase 3: Clean up empty children folders ---
+    # Find pages that have children_folder_id set but no children in the DB.
+    # Only trash the Drive folder if it's truly empty in Drive too.
+    result = await db.execute(
+        select(Page).where(Page.children_folder_id.isnot(None))
+    )
+    parents_with_folders = list(result.scalars().all())
+
+    cleaned = 0
+    for parent in parents_with_folders:
+        child_result = await db.execute(
+            select(Page.id).where(Page.parent_id == parent.id).limit(1)
+        )
+        if child_result.scalar_one_or_none() is not None:
+            continue  # Has children, skip
+
+        # No children in DB — check if the Drive folder is actually empty
+        try:
+            empty = await asyncio.to_thread(is_drive_folder_empty, parent.children_folder_id)
+        except Exception:
+            continue
+
+        if empty:
+            try:
+                await asyncio.to_thread(trash_drive_file, user, parent.children_folder_id)
+                log.info("Sync: trashed empty children folder %s for page '%s'", parent.children_folder_id, parent.title)
+            except Exception:
+                log.warning("Sync: failed to trash folder %s", parent.children_folder_id, exc_info=True)
+                continue
+            parent.children_folder_id = None
+            cleaned += 1
+
+    if cleaned:
+        await db.commit()
+
+    return {"removed": removed, "added": added, "updated": updated, "cleaned": cleaned}
 
 
 def _list_drive_folder(folder_id: str) -> list[dict]:

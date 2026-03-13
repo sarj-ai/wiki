@@ -266,6 +266,26 @@ def trash_drive_file(user: User, file_id: str) -> None:
     ).execute()
 
 
+def is_drive_folder_empty(folder_id: str) -> bool:
+    """Check if a Drive folder contains any non-trashed files.
+
+    Returns True if the folder is empty (or doesn't exist), False otherwise.
+    """
+    service = get_sa_drive_service()
+    try:
+        resp = service.files().list(
+            q=f"'{_escape_drive_query(folder_id)}' in parents and trashed = false",
+            fields="files(id)",
+            spaces="drive",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            pageSize=1,
+        ).execute()
+        return len(resp.get("files", [])) == 0
+    except Exception:
+        return False  # On error, assume not empty (don't trash)
+
+
 def is_drive_file_trashed(user: User, file_id: str) -> bool | None:
     """Check if a Drive file is trashed or deleted.
 
