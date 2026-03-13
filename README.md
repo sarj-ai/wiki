@@ -12,7 +12,7 @@ Internal knowledge base for [@sarj.ai](https://sarj.ai), built on top of Google 
 
 ## Setup 
 
-### Backend
+### Backend 
 
 ```bash
 cd backend
