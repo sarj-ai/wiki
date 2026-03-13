@@ -116,11 +116,16 @@ export function AppSidebar() {
     setIsSyncing(true);
     try {
       await api.syncWorkspaces();
+      const result = await api.syncPages();
       queryClient.invalidateQueries({ queryKey: ["workspaces"] });
       queryClient.invalidateQueries({ queryKey: ["pages"] });
-      toast.success("Workspaces synced");
+      const parts: string[] = [];
+      if (result.added) parts.push(`${result.added} added`);
+      if (result.updated) parts.push(`${result.updated} updated`);
+      if (result.removed) parts.push(`${result.removed} removed`);
+      toast.success(parts.length ? `Synced: ${parts.join(", ")}` : "Everything up to date");
     } catch {
-      toast.error("Failed to sync workspaces");
+      toast.error("Failed to sync");
     } finally {
       setIsSyncing(false);
     }
