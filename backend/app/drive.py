@@ -340,6 +340,48 @@ def batch_check_trashed(user: User, file_ids: list[str]) -> dict[str, bool]:
     return results
 
 
+def get_drive_changes_start_token() -> str:
+    """Get the current start page token for Drive changes tracking.
+
+    Uses the shared drive ID so we only track changes within our Shared Drive.
+    """
+    service = get_sa_drive_service()
+    response = service.changes().getStartPageToken(
+        supportsAllDrives=True,
+        driveId=settings.DRIVE_ROOT_FOLDER_ID,
+    ).execute()
+    return response["startPageToken"]
+
+
+def get_drive_changes(start_token: str) -> tuple[list[dict], str]:
+    """Fetch all changes since the given start token.
+
+    Returns (list_of_changes, new_start_token).
+    Each change has: fileId, file (metadata or None if removed), removed (bool).
+    """
+    service = get_sa_drive_service()
+    changes: list[dict] = []
+    page_token = start_token
+
+    while True:
+        response = service.changes().list(
+            pageToken=page_token,
+            driveId=settings.DRIVE_ROOT_FOLDER_ID,
+            spaces="drive",
+            fields="nextPageToken,newStartPageToken,changes(fileId,file(id,name,mimeType,parents,trashed),removed,time)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            pageSize=100,
+        ).execute()
+
+        changes.extend(response.get("changes", []))
+
+        if "newStartPageToken" in response:
+            return changes, response["newStartPageToken"]
+
+        page_token = response["nextPageToken"]
+
+
 def _get_sa_docs_service():
     """Build a Docs v1 service using the service account.
 

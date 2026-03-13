@@ -205,17 +205,24 @@ export default function DocumentPage({
   }, [isEditing, alwaysIframe, pageId, queryClient, refetchContent]);
 
   const isPending = page?.googleDriveId?.startsWith("pending-") ?? false;
+  const wasPendingRef = useRef(false);
   const [pendingElapsed, setPendingElapsed] = useState(0);
 
   useEffect(() => {
     if (!isPending) {
       setPendingElapsed(0);
+      // Page just became ready — refetch content
+      if (wasPendingRef.current) {
+        queryClient.invalidateQueries({ queryKey: ["page-content", pageId] });
+      }
+      wasPendingRef.current = false;
       return;
     }
+    wasPendingRef.current = true;
     setPendingElapsed(0);
     const interval = setInterval(() => setPendingElapsed((s) => s + 1), 1000);
     return () => clearInterval(interval);
-  }, [isPending]);
+  }, [isPending, pageId, queryClient]);
   const isContentReady = !isContentLoading && !isContentFetching;
   const docEmpty = isContentReady && !isEditing && isDocEmpty(content?.blocks);
   const showIframe = !isPending && (alwaysIframe || isEditing);

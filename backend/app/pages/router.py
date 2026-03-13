@@ -29,10 +29,21 @@ async def get_page_tree(
 )
 async def create_page(
     data: schemas.PageCreate,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> schemas.PageResponse:
     page = await service.create_page(db, user, data)
+    # Create the Google Doc in the background — the page is returned
+    # immediately with a pending-* Drive ID so the user doesn't wait.
+    background_tasks.add_task(
+        service.finalize_page_creation,
+        page_id=page.id,
+        user_email=user.email,
+        title=data.title,
+        is_private=page.is_private,
+        target_folder_id=page.drive_folder_id,
+    )
     return schemas.PageResponse.model_validate(page)
 
 
