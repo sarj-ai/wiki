@@ -38,8 +38,8 @@ _is_secure = settings.FRONTEND_URL.startswith("https")
 
 _COOKIE_DEFAULTS = {
     "httponly": True,
-    "samesite": "lax",
-    "secure": _is_secure,
+    "samesite": "none",
+    "secure": True,
     "path": "/",
 }
 
