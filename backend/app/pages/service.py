@@ -800,11 +800,28 @@ async def _scan_drive_folder(
                 elif mime_type == GOOGLE_DOC_MIME:
                     existing_page = existing_pages.get(file_id)
                     if existing_page:
-                        # Existing page — sync title and invalidate cache
+                        changed = False
+                        # Sync title
                         if existing_page.title != file_name:
                             log.info("Sync: title updated '%s' -> '%s' (%s)", existing_page.title, file_name, file_id)
                             existing_page.title = file_name
                             existing_page.content_cached_at = None
+                            changed = True
+                        # Fix parent_id based on actual Drive folder location
+                        if existing_page.parent_id != parent_page_id:
+                            log.info("Sync: re-parented '%s' (%s) from %s to %s", file_name, file_id, existing_page.parent_id, parent_page_id)
+                            existing_page.parent_id = parent_page_id
+                            changed = True
+                        # Fix drive_folder_id
+                        if existing_page.drive_folder_id != folder_id:
+                            existing_page.drive_folder_id = folder_id
+                            changed = True
+                        # Fix workspace_id
+                        if existing_page.workspace_id != workspace_id:
+                            existing_page.workspace_id = workspace_id
+                            existing_page.is_private = is_private
+                            changed = True
+                        if changed:
                             existing_page.updated_at = datetime.now(timezone.utc)
                             updated += 1
                     else:
