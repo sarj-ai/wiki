@@ -153,18 +153,18 @@ async def _ensure_children_folder(db: AsyncSession, parent_page: Page) -> str:
     if parent_page.children_folder_id:
         return parent_page.children_folder_id
 
-    service = get_sa_drive_service()
-    folder_metadata = {
-        "name": parent_page.title,
-        "mimeType": "application/vnd.google-apps.folder",
-        "parents": [parent_page.drive_folder_id],
-    }
-    folder = await asyncio.to_thread(
-        lambda: service.files().create(
+    def _create_folder_sync() -> str:
+        service = get_sa_drive_service()
+        folder_metadata = {
+            "name": parent_page.title,
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [parent_page.drive_folder_id],
+        }
+        return service.files().create(
             body=folder_metadata, fields="id", supportsAllDrives=True,
-        ).execute()
-    )
-    folder_id = folder["id"]
+        ).execute()["id"]
+
+    folder_id = await asyncio.to_thread(_create_folder_sync)
     parent_page.children_folder_id = folder_id
     await db.commit()
     return folder_id
@@ -216,13 +216,12 @@ async def create_page(
             target_folder_id = workspace.drive_folder_id
     else:
         # Private root page → user's private folder
-        service = get_sa_drive_service()
-        private_root = await asyncio.to_thread(
-            ensure_folder, service, "Private", settings.DRIVE_ROOT_FOLDER_ID,
-        )
-        target_folder_id = await asyncio.to_thread(
-            ensure_folder, service, user.email, private_root,
-        )
+        def _resolve_private_folder() -> str:
+            service = get_sa_drive_service()
+            private_root = ensure_folder(service, "Private", settings.DRIVE_ROOT_FOLDER_ID)
+            return ensure_folder(service, user.email, private_root)
+
+        target_folder_id = await asyncio.to_thread(_resolve_private_folder)
 
     if target_folder_id is None:
         raise HTTPException(
@@ -321,13 +320,12 @@ async def retry_pending_page(
             target_folder_id = workspace.drive_folder_id
     else:
         # Private root page → user's private folder
-        service = get_sa_drive_service()
-        private_root = await asyncio.to_thread(
-            ensure_folder, service, "Private", settings.DRIVE_ROOT_FOLDER_ID,
-        )
-        target_folder_id = await asyncio.to_thread(
-            ensure_folder, service, user.email, private_root,
-        )
+        def _resolve_private_folder() -> str:
+            service = get_sa_drive_service()
+            private_root = ensure_folder(service, "Private", settings.DRIVE_ROOT_FOLDER_ID)
+            return ensure_folder(service, user.email, private_root)
+
+        target_folder_id = await asyncio.to_thread(_resolve_private_folder)
 
     if target_folder_id is None:
         raise HTTPException(
@@ -639,13 +637,12 @@ async def move_page_in_drive(
                 await _update_page_folder(page.id, target_folder_id)
         else:
             if page.is_private:
-                drive_service = get_sa_drive_service()
-                private_root = await asyncio.to_thread(
-                    ensure_folder, drive_service, "Private", settings.DRIVE_ROOT_FOLDER_ID,
-                )
-                target_folder_id = await asyncio.to_thread(
-                    ensure_folder, drive_service, user.email, private_root,
-                )
+                def _resolve_private_folder() -> str:
+                    svc = get_sa_drive_service()
+                    private_root = ensure_folder(svc, "Private", settings.DRIVE_ROOT_FOLDER_ID)
+                    return ensure_folder(svc, user.email, private_root)
+
+                target_folder_id = await asyncio.to_thread(_resolve_private_folder)
             else:
                 target_folder_id = settings.DRIVE_ROOT_FOLDER_ID
 
@@ -720,104 +717,112 @@ async def _incremental_sync(
     updated = 0
 
     for change in changes:
-        file_id = change["fileId"]
-        is_removed = change.get("removed", False)
-        file_meta = change.get("file")
+        file_id = change.get("fileId")
+        if not file_id:
+            continue  # Drive-level change (not file-specific), skip
 
-        if is_removed or (file_meta and file_meta.get("trashed")):
-            # File was removed/trashed — delete from DB if we have it
-            result = await db.execute(select(Page).where(Page.google_drive_id == file_id))
-            page = result.scalar_one_or_none()
-            if page:
-                await db.delete(page)
-                removed += 1
-                log.info("Incremental: removed page '%s' (%s)", page.title, file_id)
-            continue
+        try:
+            is_removed = change.get("removed", False)
+            file_meta = change.get("file")
 
-        if file_meta is None:
-            continue
+            if is_removed or (file_meta and file_meta.get("trashed")):
+                # File was removed/trashed — delete from DB if we have it
+                result = await db.execute(select(Page).where(Page.google_drive_id == file_id))
+                page = result.scalar_one_or_none()
+                if page:
+                    await db.delete(page)
+                    removed += 1
+                    log.info("Incremental: removed page '%s' (%s)", page.title, file_id)
+                continue
 
-        mime_type = file_meta.get("mimeType", "")
-        file_name = file_meta.get("name", "Untitled")
-        parents = file_meta.get("parents", [])
+            if file_meta is None:
+                continue
 
-        if mime_type == GOOGLE_DOC_MIME and parents:
-            parent_folder_id = parents[0]
+            mime_type = file_meta.get("mimeType", "")
+            file_name = file_meta.get("name", "Untitled")
+            parents = file_meta.get("parents", [])
 
-            # Check if we already have this page
-            result = await db.execute(select(Page).where(Page.google_drive_id == file_id))
-            existing = result.scalar_one_or_none()
+            if mime_type == GOOGLE_DOC_MIME and parents:
+                parent_folder_id = parents[0]
 
-            if existing:
-                changed = False
-                if existing.title != file_name:
-                    existing.title = file_name
-                    changed = True
-                # Clear content cache so it gets re-fetched
-                existing.content_cached_at = None
-                if changed:
-                    existing.updated_at = datetime.now(timezone.utc)
-                    updated += 1
-                    log.info("Incremental: updated '%s' (%s)", file_name, file_id)
+                # Check if we already have this page
+                result = await db.execute(select(Page).where(Page.google_drive_id == file_id))
+                existing = result.scalar_one_or_none()
+
+                if existing:
+                    changed = False
+                    if existing.title != file_name:
+                        existing.title = file_name
+                        changed = True
+                    # Clear content cache so it gets re-fetched
+                    existing.content_cached_at = None
+                    if changed:
+                        existing.updated_at = datetime.now(timezone.utc)
+                        updated += 1
+                        log.info("Incremental: updated '%s' (%s)", file_name, file_id)
+                    else:
+                        # Title unchanged but content may have changed — still invalidate cache
+                        existing.updated_at = datetime.now(timezone.utc)
+                        updated += 1
+                        log.info("Incremental: invalidated cache for '%s' (%s)", file_name, file_id)
                 else:
-                    # Title unchanged but content may have changed — still invalidate cache
-                    existing.updated_at = datetime.now(timezone.utc)
-                    updated += 1
-                    log.info("Incremental: invalidated cache for '%s' (%s)", file_name, file_id)
-            else:
-                # New doc — need to figure out workspace/parent from folder
-                # Look up which workspace owns this folder
-                ws_result = await db.execute(
-                    select(Workspace).where(Workspace.drive_folder_id == parent_folder_id)
-                )
-                workspace = ws_result.scalar_one_or_none()
-
-                # Check if any page uses this folder as children_folder_id
-                parent_result = await db.execute(
-                    select(Page).where(
-                        (Page.children_folder_id == parent_folder_id)
-                        | ((Page.drive_folder_id == parent_folder_id) & (Page.type == "section"))
+                    # New doc — need to figure out workspace/parent from folder
+                    # Look up which workspace owns this folder
+                    ws_result = await db.execute(
+                        select(Workspace).where(Workspace.drive_folder_id == parent_folder_id)
                     )
-                )
-                parent_page = parent_result.scalars().first()
+                    workspace = ws_result.scalar_one_or_none()
 
-                workspace_id = workspace.id if workspace else (parent_page.workspace_id if parent_page else None)
-                is_private = workspace_id is None
-                parent_page_id = parent_page.id if parent_page else None
-
-                # Check if it's in a private folder
-                if not workspace and not parent_page:
-                    # Could be in Private/{email}/ — check parent folder
-                    # For simplicity, mark as private with no parent
-                    is_private = True
-
-                sort_result = await db.execute(
-                    select(func.coalesce(func.max(Page.sort_order), 0.0)).where(
-                        Page.parent_id == parent_page_id
+                    # Check if any page uses this folder as children_folder_id
+                    parent_result = await db.execute(
+                        select(Page).where(
+                            (Page.children_folder_id == parent_folder_id)
+                            | ((Page.drive_folder_id == parent_folder_id) & (Page.type == "section"))
+                        )
                     )
-                )
-                sort_order = sort_result.scalar_one() + 1.0
+                    parent_page = parent_result.scalars().first()
 
-                new_page = Page(
-                    id=uuid4(),
-                    parent_id=parent_page_id,
-                    google_drive_id=file_id,
-                    drive_folder_id=parent_folder_id,
-                    title=file_name,
-                    type="page",
-                    sort_order=sort_order,
-                    is_private=is_private,
-                    created_by=user.id,
-                    workspace_id=workspace_id,
-                )
-                db.add(new_page)
-                added += 1
-                log.info("Incremental: added new doc '%s' (%s)", file_name, file_id)
+                    workspace_id = workspace.id if workspace else (parent_page.workspace_id if parent_page else None)
+                    is_private = workspace_id is None
+                    parent_page_id = parent_page.id if parent_page else None
 
-        elif mime_type == GOOGLE_FOLDER_MIME:
-            # Folder changes — we don't need to do much here.
-            # The important thing is if a folder was trashed (handled above).
-            pass
+                    # Check if it's in a private folder
+                    if not workspace and not parent_page:
+                        # Could be in Private/{email}/ — check parent folder
+                        # For simplicity, mark as private with no parent
+                        is_private = True
+
+                    sort_result = await db.execute(
+                        select(func.coalesce(func.max(Page.sort_order), 0.0)).where(
+                            Page.parent_id == parent_page_id
+                        )
+                    )
+                    sort_order = sort_result.scalar_one() + 1.0
+
+                    new_page = Page(
+                        id=uuid4(),
+                        parent_id=parent_page_id,
+                        google_drive_id=file_id,
+                        drive_folder_id=parent_folder_id,
+                        title=file_name,
+                        type="page",
+                        sort_order=sort_order,
+                        is_private=is_private,
+                        created_by=user.id,
+                        workspace_id=workspace_id,
+                    )
+                    db.add(new_page)
+                    added += 1
+                    log.info("Incremental: added new doc '%s' (%s)", file_name, file_id)
+
+            elif mime_type == GOOGLE_FOLDER_MIME:
+                # Folder changes — we don't need to do much here.
+                # The important thing is if a folder was trashed (handled above).
+                pass
+
+        except Exception:
+            log.warning("Incremental: failed to process change for %s, skipping", file_id, exc_info=True)
+            continue
 
     if added or removed or updated:
         await db.commit()

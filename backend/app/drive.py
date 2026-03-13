@@ -379,7 +379,12 @@ def get_drive_changes(start_token: str) -> tuple[list[dict], str]:
         if "newStartPageToken" in response:
             return changes, response["newStartPageToken"]
 
-        page_token = response["nextPageToken"]
+        next_token = response.get("nextPageToken")
+        if not next_token:
+            # Shouldn't happen, but avoid infinite loop
+            log.warning("Drive Changes API returned neither newStartPageToken nor nextPageToken")
+            return changes, start_token
+        page_token = next_token
 
 
 def _get_sa_docs_service():
