@@ -312,7 +312,7 @@ export function AppSidebar() {
             onOpenChange={() => toggleSection(workspace.id)}
           >
             <SidebarGroup>
-              <SidebarGroupLabel asChild>
+              <SidebarGroupLabel asChild className="text-sm font-semibold text-sidebar-foreground">
                 <div className="flex items-center">
                   <CollapsibleTrigger asChild>
                     <button
@@ -411,7 +411,7 @@ export function AppSidebar() {
           onOpenChange={() => toggleSection("private")}
         >
           <SidebarGroup>
-            <SidebarGroupLabel asChild>
+            <SidebarGroupLabel asChild className="text-sm font-semibold text-sidebar-foreground">
               <div className="flex items-center">
                 <CollapsibleTrigger asChild>
                   <button
@@ -422,7 +422,7 @@ export function AppSidebar() {
                     <ChevronRight className={`size-3 transition-transform ${!collapsedSections.has("private") ? "rotate-90" : ""}`} />
                   </button>
                 </CollapsibleTrigger>
-                <Lock className="mr-1 size-3" />
+                <Lock className="mr-1 size-3.5" />
                 <span className="truncate">Private</span>
               </div>
             </SidebarGroupLabel>
