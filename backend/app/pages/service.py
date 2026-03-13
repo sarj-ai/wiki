@@ -758,6 +758,42 @@ async def _scan_drive_folder(
                     existing_section = r.scalars().first()
                     if existing_section:
                         sub_parent_page_id = existing_section.id
+                    elif sub_workspace_id is not None or sub_private:
+                        # Folder doesn't match any existing page — create a
+                        # section so nested docs get proper hierarchy.
+                        # Skip special folders (Private, user email folders,
+                        # workspace root folders).
+                        is_special = (
+                            (not folder_path and file_name == "Private")
+                            or (len(folder_path) == 1 and folder_path[0] == "Private")
+                            or (not folder_path and sub_workspace_id is not None)
+                        )
+                        if not is_special:
+                            sort_result = await db.execute(
+                                select(func.coalesce(func.max(Page.sort_order), 0.0)).where(
+                                    Page.parent_id == parent_page_id
+                                )
+                            )
+                            sort_order = sort_result.scalar_one() + 1.0
+
+                            section_page = Page(
+                                id=uuid4(),
+                                parent_id=parent_page_id,
+                                google_drive_id=f"section-{file_id}",
+                                drive_folder_id=folder_id,
+                                children_folder_id=file_id,
+                                title=file_name,
+                                type="section",
+                                sort_order=sort_order,
+                                is_private=sub_private,
+                                created_by=sub_owner.id if sub_owner else user.id,
+                                workspace_id=sub_workspace_id,
+                            )
+                            db.add(section_page)
+                            existing_pages[f"section-{file_id}"] = section_page
+                            sub_parent_page_id = section_page.id
+                            added += 1
+                            log.info("Sync: created section '%s' for folder %s", file_name, file_id)
 
                     stack.append((file_id, sub_parent_page_id, sub_private, sub_owner, sub_workspace_id, sub_path))
 
