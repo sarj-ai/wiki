@@ -16,6 +16,7 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useSidebar } from "@/components/ui/sidebar";
 import {
   Tooltip,
@@ -242,7 +243,7 @@ export default function DocumentPage({
       queryClient.invalidateQueries({ queryKey: ["pages"] });
       router.replace("/");
     } catch {
-      // ignore
+      toast.error("Failed to delete page");
     }
   }
 
@@ -388,6 +389,8 @@ export default function DocumentPage({
     try {
       await api.updatePage(pageId, { icon });
       queryClient.invalidateQueries({ queryKey: ["pages"] });
+    } catch {
+      toast.error("Failed to update icon");
     } finally {
       done();
     }
@@ -399,6 +402,8 @@ export default function DocumentPage({
       await api.updatePage(pageId, { title: newTitle });
       queryClient.invalidateQueries({ queryKey: ["pages"] });
       queryClient.invalidateQueries({ queryKey: ["pages", pageId] });
+    } catch {
+      toast.error("Failed to rename page");
     } finally {
       done();
     }

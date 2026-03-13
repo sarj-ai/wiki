@@ -34,10 +34,6 @@ from app.pages.schemas import (
 
 log = logging.getLogger(__name__)
 
-# Deduplicate concurrent content fetches for the same page.
-# Maps page_id -> asyncio.Task so multiple requests share one Google API call.
-_content_locks: dict[UUID, asyncio.Lock] = {}
-
 # Prevent concurrent sync operations — only one sync at a time.
 _sync_lock = asyncio.Lock()
 
@@ -202,7 +198,7 @@ async def create_page(
     target_folder_id: str | None = None
 
     if data.parent_id is not None:
-        parent_page = await _get_page_or_404(db, data.parent_id)
+        parent_page = await get_page(db, user, data.parent_id)
         target_folder_id = await _ensure_children_folder(db, parent_page)
     elif data.workspace_id is not None:
         ws_result = await db.execute(
@@ -267,7 +263,8 @@ async def create_page(
             await update_search_vector(db, page)
             await db.commit()
         except Exception:
-            pass
+            await db.rollback()
+            log.warning("Failed to update search vector for page %s", page.id)
     except Exception:
         log.exception("Drive doc creation failed for page %s — retry later", page_id)
 
@@ -319,13 +316,20 @@ async def retry_pending_page(
             detail="Cannot determine Drive folder for this page",
         )
 
-    google_drive_id, drive_folder_id = await asyncio.to_thread(
-        create_google_doc,
-        user.email,
-        page.title,
-        is_private=page.is_private,
-        target_folder_id=target_folder_id,
-    )
+    try:
+        google_drive_id, drive_folder_id = await asyncio.to_thread(
+            create_google_doc,
+            user.email,
+            page.title,
+            is_private=page.is_private,
+            target_folder_id=target_folder_id,
+        )
+    except Exception:
+        log.exception("Retry: Drive doc creation failed for page %s", page_id)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to create document on Drive, please try again",
+        )
 
     page.google_drive_id = google_drive_id
     page.drive_folder_id = drive_folder_id
@@ -339,7 +343,8 @@ async def retry_pending_page(
         await update_search_vector(db, page)
         await db.commit()
     except Exception:
-        pass
+        await db.rollback()
+        log.warning("Failed to update search vector for page %s", page.id)
 
     return page
 
@@ -381,6 +386,7 @@ async def update_page(
             await update_search_vector(db, page)
             await db.commit()
         except Exception:
+            await db.rollback()
             log.warning("Failed to update search vector for page %s", page.id)
 
     return page
@@ -538,10 +544,6 @@ async def get_page_content(
             log.info("Content: returning cached for %s (age %.0fs)", page_id, age)
             return {"blocks": page.cached_content, "cached": True}
 
-    # Per-page lock: if 5 rapid refreshes come in, only the first hits Google API.
-    # The rest wait for the lock, then read from the freshly updated cache.
-    if page_id not in _content_locks:
-        _content_locks[page_id] = asyncio.Lock()
     # Fetch from Google Docs API (no lock/semaphore — keep it simple)
     log.info("Content: calling Google Docs API for %s", page_id)
     raw_doc = await asyncio.to_thread(get_doc_content, user, page.google_drive_id)
@@ -569,6 +571,7 @@ async def get_page_content(
         await update_search_vector(db, page)
         await db.commit()
     except Exception:
+        await db.rollback()
         log.warning("Failed to update search vector for page %s", page.id)
 
     return {"blocks": blocks, "cached": False}
@@ -776,7 +779,27 @@ async def _scan_drive_folder(
                 existing_section = r.scalars().first()
                 if existing_section:
                     sub_parent_page_id = existing_section.id
-                elif sub_workspace_id is not None or sub_private:
+                else:
+                    # Check if a sibling page with the same name exists —
+                    # this folder is likely its children_folder created by
+                    # _ensure_children_folder. Claim it instead of creating
+                    # a duplicate section.
+                    sibling_r = await db.execute(
+                        select(Page).where(
+                            Page.parent_id == parent_page_id,
+                            Page.drive_folder_id == folder_id,
+                            Page.title == file_name,
+                            Page.children_folder_id.is_(None),
+                        )
+                    )
+                    sibling_page = sibling_r.scalars().first()
+                    if sibling_page:
+                        sibling_page.children_folder_id = file_id
+                        sub_parent_page_id = sibling_page.id
+                        updated += 1
+                        log.info("Sync: claimed folder '%s' (%s) as children of page %s", file_name, file_id, sibling_page.id)
+
+                if sub_parent_page_id == parent_page_id and (sub_workspace_id is not None or sub_private):
                     # Folder doesn't match any existing page — create a
                     # section so nested docs get proper hierarchy.
                     # Skip special folders (Private, user email folders,

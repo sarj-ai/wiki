@@ -3,6 +3,7 @@ scan Drive folder permissions for group access, and sync user memberships."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from google.oauth2 import service_account
@@ -57,28 +58,31 @@ def _get_all_domain_groups() -> set[str]:
     return group_emails
 
 
-async def sync_all_groups(db: AsyncSession) -> list[Workspace]:
-    """Fetch all groups from Google Admin SDK and upsert into workspaces table.
-
-    Also creates a matching Drive folder under the root for each workspace.
-    Returns the list of upserted workspaces.
-    """
+def _fetch_all_groups_sync() -> list[dict]:
+    """Fetch all groups from Admin SDK synchronously (for use in a thread)."""
     service = _get_admin_service()
-
     groups: list[dict] = []
     page_token = None
-
     while True:
         result = service.groups().list(
             domain=settings.ALLOWED_DOMAIN,
             pageToken=page_token,
             maxResults=200,
         ).execute()
-
         groups.extend(result.get("groups", []))
         page_token = result.get("nextPageToken")
         if not page_token:
             break
+    return groups
+
+
+async def sync_all_groups(db: AsyncSession) -> list[Workspace]:
+    """Fetch all groups from Google Admin SDK and upsert into workspaces table.
+
+    Also creates a matching Drive folder under the root for each workspace.
+    Returns the list of upserted workspaces.
+    """
+    groups = await asyncio.to_thread(_fetch_all_groups_sync)
 
     log.info("Fetched %d groups from Google Admin SDK", len(groups))
 
@@ -95,7 +99,9 @@ async def sync_all_groups(db: AsyncSession) -> list[Workspace]:
 
         if workspace is None:
             # Create Drive folder for this workspace
-            drive_folder_id = _create_workspace_drive_folder(group_name, group_email)
+            drive_folder_id = await asyncio.to_thread(
+                _create_workspace_drive_folder, group_name, group_email
+            )
 
             workspace = Workspace(
                 name=group_name,
@@ -116,28 +122,10 @@ async def sync_all_groups(db: AsyncSession) -> list[Workspace]:
     return upserted
 
 
-async def sync_folder_permissions(db: AsyncSession) -> None:
-    """Scan Drive folders and their permissions to:
-
-    1. Remove workspaces whose Drive folders have been trashed or deleted
-    2. Discover new top-level folders with group permissions and create workspaces
-    3. Update workspace_group_access for cross-group sharing
-
-    This means manually creating a folder in Drive and sharing it with a
-    Google Group will automatically create a workspace.
-    """
+def _list_root_folders_sync() -> dict[str, str]:
+    """List all live folders under the Drive root (synchronous, for threading)."""
     drive_service = get_sa_drive_service()
-
-    # Get all domain groups to filter permissions
-    domain_groups = _get_all_domain_groups()
-    log.info("Domain has %d groups for permission matching", len(domain_groups))
-
-    # --- Phase 1: Remove workspaces whose Drive folders are gone ---
-    result = await db.execute(select(Workspace))
-    workspaces = list(result.scalars().all())
-
-    # Collect all live (non-trashed) folders under root
-    live_folders: dict[str, str] = {}  # folder_id -> folder_name
+    live_folders: dict[str, str] = {}
     page_token = None
     while True:
         resp = drive_service.files().list(
@@ -158,6 +146,40 @@ async def sync_folder_permissions(db: AsyncSession) -> None:
         page_token = resp.get("nextPageToken")
         if not page_token:
             break
+    return live_folders
+
+
+def _list_folder_permissions_sync(folder_id: str) -> list[dict]:
+    """List permissions for a Drive folder (synchronous, for threading)."""
+    drive_service = get_sa_drive_service()
+    perms_result = drive_service.permissions().list(
+        fileId=folder_id,
+        fields="permissions(emailAddress,type,role)",
+        supportsAllDrives=True,
+    ).execute()
+    return perms_result.get("permissions", [])
+
+
+async def sync_folder_permissions(db: AsyncSession) -> None:
+    """Scan Drive folders and their permissions to:
+
+    1. Remove workspaces whose Drive folders have been trashed or deleted
+    2. Discover new top-level folders with group permissions and create workspaces
+    3. Update workspace_group_access for cross-group sharing
+
+    This means manually creating a folder in Drive and sharing it with a
+    Google Group will automatically create a workspace.
+    """
+    # Get all domain groups to filter permissions
+    domain_groups = await asyncio.to_thread(_get_all_domain_groups)
+    log.info("Domain has %d groups for permission matching", len(domain_groups))
+
+    # --- Phase 1: Remove workspaces whose Drive folders are gone ---
+    result = await db.execute(select(Workspace))
+    workspaces = list(result.scalars().all())
+
+    # Collect all live (non-trashed) folders under root
+    live_folders = await asyncio.to_thread(_list_root_folders_sync)
 
     # Delete workspaces whose folders are no longer live (only folder-discovered ones)
     for ws in workspaces:
@@ -186,14 +208,10 @@ async def sync_folder_permissions(db: AsyncSession) -> None:
 
         # Check if this folder has any domain group permissions
         try:
-            perms_result = drive_service.permissions().list(
-                fileId=folder_id,
-                fields="permissions(emailAddress,type,role)",
-                supportsAllDrives=True,
-            ).execute()
+            permissions = await asyncio.to_thread(_list_folder_permissions_sync, folder_id)
 
             folder_groups = set()
-            for perm in perms_result.get("permissions", []):
+            for perm in permissions:
                 if perm.get("type") == "group":
                     email = perm.get("emailAddress", "")
                     if email in domain_groups:
@@ -235,14 +253,12 @@ async def sync_folder_permissions(db: AsyncSession) -> None:
 
     for ws in workspaces:
         try:
-            perms_result = drive_service.permissions().list(
-                fileId=ws.drive_folder_id,
-                fields="permissions(emailAddress,type,role)",
-                supportsAllDrives=True,
-            ).execute()
+            permissions = await asyncio.to_thread(
+                _list_folder_permissions_sync, ws.drive_folder_id
+            )
 
             group_emails: set[str] = set()
-            for perm in perms_result.get("permissions", []):
+            for perm in permissions:
                 if perm.get("type") == "group":
                     email = perm.get("emailAddress", "")
                     if email in domain_groups:
@@ -327,30 +343,35 @@ async def sync_user_memberships(db: AsyncSession, user: User) -> list[Workspace]
     This means if a workspace folder has been shared with extra groups,
     members of those groups will also get workspace access.
     """
-    credentials = build_credentials(user)
-    service = build("admin", "directory_v1", credentials=credentials, static_discovery=True)
-
-    user_groups: list[dict] = []
-    page_token = None
-
-    try:
+    def _fetch_user_groups_with_user_token() -> list[dict]:
+        credentials = build_credentials(user)
+        service = build("admin", "directory_v1", credentials=credentials, static_discovery=True)
+        groups: list[dict] = []
+        page_token = None
         while True:
             result = service.groups().list(
                 userKey=user.email,
                 pageToken=page_token,
                 maxResults=200,
             ).execute()
-
-            user_groups.extend(result.get("groups", []))
+            groups.extend(result.get("groups", []))
             page_token = result.get("nextPageToken")
             if not page_token:
                 break
+        return groups
+
+    user_groups: list[dict] = []
+
+    try:
+        user_groups = await asyncio.to_thread(_fetch_user_groups_with_user_token)
     except Exception:
         log.warning(
             "Could not fetch groups for %s via user token, falling back to service account",
             user.email,
         )
-        user_groups = _get_user_groups_via_service_account(user.email)
+        user_groups = await asyncio.to_thread(
+            _get_user_groups_via_service_account, user.email
+        )
 
     log.info("User %s belongs to %d groups", user.email, len(user_groups))
 

@@ -5,6 +5,8 @@ import { useRouter, usePathname } from "next/navigation";
 import type { User } from "@/types";
 import { fetchCurrentUser, logout as apiLogout } from "@/lib/auth";
 
+const REDIRECT_KEY = "sarj-redirect";
+
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
@@ -29,18 +31,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
 
-  const checkAuth = useCallback(() => {
-    fetchCurrentUser().then((fetchedUser) => {
+  const checkAuth = useCallback(async () => {
+    try {
+      const fetchedUser = await fetchCurrentUser();
       setUser(fetchedUser);
-      if (!fetchedUser && pathnameRef.current !== "/login") {
-        router.push("/login");
+      if (fetchedUser) {
+        // Auth succeeded — check for a saved redirect path
+        const redirect = localStorage.getItem(REDIRECT_KEY);
+        if (redirect) {
+          localStorage.removeItem(REDIRECT_KEY);
+          router.push(redirect);
+        }
+      } else if (pathnameRef.current !== "/login") {
+        localStorage.setItem(REDIRECT_KEY, pathnameRef.current);
+        window.location.href = `/login?redirect=${encodeURIComponent(pathnameRef.current)}`;
       }
-    });
+    } catch {
+      if (pathnameRef.current !== "/login") {
+        localStorage.setItem(REDIRECT_KEY, pathnameRef.current);
+        window.location.href = `/login?redirect=${encodeURIComponent(pathnameRef.current)}`;
+      }
+    } finally {
+      setIsLoading(false);
+    }
   }, [router]);
 
   useEffect(() => {
     checkAuth();
-    setIsLoading(false);
   // Run once on mount only
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -55,7 +72,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [checkAuth]);
 
   const logout = useCallback(async () => {
-    await apiLogout();
+    try {
+      await apiLogout();
+    } catch {
+      // Proceed with logout even if the API call fails
+    }
     setUser(null);
     router.push("/login");
   }, [router]);

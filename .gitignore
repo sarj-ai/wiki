@@ -1,3 +1,6 @@
 .DS_Store
 *.pem
 .claude/
+*.tfvars
+*.tfstate*
+.terraform/

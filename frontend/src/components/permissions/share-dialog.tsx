@@ -86,6 +86,7 @@ export function ShareDialog({
   const [grantingUserId, setGrantingUserId] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const searchCounterRef = useRef(0);
 
   // Fetch permissions when dialog opens
   useEffect(() => {
@@ -107,7 +108,7 @@ export function ShareDialog({
     }
   }, [open]);
 
-  // Debounced user search
+  // Debounced user search with request counter to prevent stale results
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -119,9 +120,12 @@ export function ShareDialog({
     }
 
     debounceRef.current = setTimeout(async () => {
+      const requestId = ++searchCounterRef.current;
       setIsSearching(true);
       try {
         const results = await api.searchUsers(value.trim());
+        // Only apply results if this is still the latest request
+        if (requestId !== searchCounterRef.current) return;
         // Filter out users who already have permission on this page
         const existingUserIds = new Set(
           permissions.filter((p) => p.userId).map((p) => p.userId)
@@ -130,9 +134,13 @@ export function ShareDialog({
         setSuggestions(filtered);
         setShowSuggestions(true);
       } catch {
-        setSuggestions([]);
+        if (requestId === searchCounterRef.current) {
+          setSuggestions([]);
+        }
       } finally {
-        setIsSearching(false);
+        if (requestId === searchCounterRef.current) {
+          setIsSearching(false);
+        }
       }
     }, 300);
   }, [permissions]);
@@ -167,14 +175,6 @@ export function ShareDialog({
       setGrantingUserId(null);
       done();
     }
-  }
-
-  function handleChangePermission(permId: string, newPerm: Permission) {
-    // Update locally for instant feedback
-    setPermissions((prev) =>
-      prev.map((p) => (p.id === permId ? { ...p, permission: newPerm } : p))
-    );
-    // TODO: backend doesn't have a PATCH permission endpoint yet
   }
 
   async function handleRemovePermission(permId: string) {
@@ -386,20 +386,9 @@ export function ShareDialog({
                   </span>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <Select
-                    value={perm.permission}
-                    onValueChange={(v) =>
-                      handleChangePermission(perm.id, v as Permission)
-                    }
-                  >
-                    <SelectTrigger className="h-7 w-[100px] text-xs border-none shadow-none" size="sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="view">Can view</SelectItem>
-                      <SelectItem value="edit">Can edit</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <span className="h-7 px-2 inline-flex items-center text-xs text-muted-foreground">
+                    {perm.permission === "edit" ? "Can edit" : "Can view"}
+                  </span>
                   <button
                     type="button"
                     onClick={() => handleRemovePermission(perm.id)}

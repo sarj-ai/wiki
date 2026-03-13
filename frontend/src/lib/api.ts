@@ -2,6 +2,19 @@ import type { Page, PagePermission, Permission, ContentBlock, Workspace, SearchR
 import { refreshAccessToken } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const REDIRECT_KEY = "sarj-redirect";
+
+// Deduplication for concurrent 401 refresh attempts
+let refreshPromise: Promise<boolean> | null = null;
+
+function deduplicatedRefresh(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
 
 function snakeToCamel(str: string): string {
   return str.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
@@ -40,14 +53,15 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   let res = await fetch(`${API_URL}${path}`, buildRequestInit(options));
 
   if (res.status === 401) {
-    const refreshed = await refreshAccessToken();
+    const refreshed = await deduplicatedRefresh();
     if (refreshed) {
       res = await fetch(`${API_URL}${path}`, buildRequestInit(options));
     }
     if (res.status === 401) {
       // Token expired and refresh failed — force login
       if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-        window.location.href = "/login";
+        localStorage.setItem(REDIRECT_KEY, window.location.pathname);
+        window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
       }
       throw new Error("Session expired");
     }

@@ -39,6 +39,9 @@ def _is_rate_limited(client_ip: str) -> bool:
     if len(_rate_limit_store[client_ip]) >= RATE_LIMIT_REQUESTS:
         return True
     _rate_limit_store[client_ip].append(now)
+    # Prevent unbounded growth: if too many IPs tracked, clear the store
+    if len(_rate_limit_store) > 10000:
+        _rate_limit_store.clear()
     return False
 
 

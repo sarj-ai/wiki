@@ -12,9 +12,11 @@ import concurrent.futures
 import logging
 import threading
 
+from fastapi import HTTPException
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from app.auth.encryption import decrypt_token
 from app.config import settings
@@ -287,8 +289,6 @@ def batch_check_trashed(user: User, file_ids: list[str]) -> dict[str, bool]:
     Transient errors (rate limits, timeouts) are excluded from results
     so the caller does NOT delete those pages.
     """
-    from googleapiclient.errors import HttpError
-
     service = get_sa_drive_service()
     results: dict[str, bool] = {}
 
@@ -312,7 +312,11 @@ def batch_check_trashed(user: User, file_ids: list[str]) -> dict[str, bool]:
             callback=make_callback(fid),
         )
 
-    batch.execute()
+    try:
+        batch.execute()
+    except Exception:
+        log.warning("batch_check_trashed: batch.execute() failed", exc_info=True)
+        return {}
     return results
 
 
@@ -335,7 +339,15 @@ def get_doc_content(user: User, google_drive_id: str) -> dict:
     Returns the raw document JSON from documents.get().
     """
     docs_service = _get_sa_docs_service()
-    return docs_service.documents().get(documentId=google_drive_id).execute()
+    try:
+        return docs_service.documents().get(documentId=google_drive_id).execute()
+    except HttpError as exc:
+        if exc.resp.status == 404:
+            raise HTTPException(404, "Document not found or deleted") from exc
+        if exc.resp.status == 403:
+            raise HTTPException(403, "Permission denied") from exc
+        log.error("Failed to fetch document %s: %s", google_drive_id, exc)
+        raise HTTPException(502, "Failed to fetch document content") from exc
 
 
 def export_doc_html(user: User, google_drive_id: str) -> str:
