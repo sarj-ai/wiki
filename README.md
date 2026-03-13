@@ -10,7 +10,7 @@ Internal knowledge base for [@sarj.ai](https://sarj.ai), built on top of Google 
 - **Auth:** Google OAuth 2.0 (restricted to @sarj.ai)
 - **Content:** Google Drive / Google Docs
  
-## Setup  
+## Setup   
  
 ### Backend 
  
