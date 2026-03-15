@@ -50,7 +50,7 @@ def transform_doc_with_tabs(doc: dict) -> list[dict]:
     return result
 
 
-def _collect_tabs(tabs: list[dict], result: list[dict]) -> None:
+def _collect_tabs(tabs: list[dict], result: list[dict], depth: int = 0) -> None:
     """Recursively collect tab content (handles nested child tabs)."""
     for tab in tabs:
         props = tab.get("tabProperties", {})
@@ -70,11 +70,13 @@ def _collect_tabs(tabs: list[dict], result: list[dict]) -> None:
         entry: dict = {"title": title, "blocks": blocks}
         if tab_id:
             entry["tabId"] = tab_id
+        if depth > 0:
+            entry["depth"] = depth
         result.append(entry)
 
         child_tabs = tab.get("childTabs", [])
         if child_tabs:
-            _collect_tabs(child_tabs, result)
+            _collect_tabs(child_tabs, result, depth + 1)
 
 
 def transform_doc(doc: dict) -> list[dict]:

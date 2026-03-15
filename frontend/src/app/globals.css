@@ -1210,81 +1210,128 @@
   color: var(--foreground);
 }
 
-/* ── Scroll-spy side nav ── */
+/* ── Scroll-spy side nav (Notion-style hover) ── */
 
-.doc-tab-nav {
-  position: sticky;
-  top: 1.5rem;
-  float: right;
-  margin-right: -11rem;
-  width: 9rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
+.doc-tab-nav-anchor {
+  position: fixed;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
   z-index: 10;
 }
 
-.doc-tab-nav-item {
+.doc-tab-nav-hover-zone {
+  position: relative;
+  width: 1.75rem;
+}
+
+/* Tick marks — visible by default */
+.doc-tab-nav-ticks {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.375rem 0.625rem;
-  border-radius: 0.375rem;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.25rem 0;
+  cursor: pointer;
+  opacity: 0.3;
+  transition: opacity 0.15s ease;
+}
+
+.doc-tab-nav-hover-zone:hover .doc-tab-nav-ticks {
+  opacity: 0;
+}
+
+.doc-tab-nav-tick {
+  display: block;
+  width: 18px;
+  height: 1.5px;
+  background: var(--foreground);
+  border-radius: 1px;
+  margin-left: 0;
+}
+
+.doc-tab-nav-tick[data-depth="1"] {
+  width: 12px;
+  margin-left: 6px;
+}
+
+.doc-tab-nav-tick[data-depth="2"] {
+  width: 8px;
+  margin-left: 10px;
+}
+
+.doc-tab-nav-tick-active {
+  height: 2px;
+}
+
+/* Floating card — hidden by default, shown on hover */
+.doc-tab-nav-card {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%) translateX(4px);
+  width: max-content;
+  min-width: 11rem;
+  max-width: 18rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem;
+  border-radius: 0.625rem;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.doc-tab-nav-hover-zone:hover .doc-tab-nav-card {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%) translateX(0);
+}
+
+.doc-tab-nav-item {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.75rem;
   border: none;
   background: none;
+  border-radius: 0.375rem;
   cursor: pointer;
-  transition: all 0.2s ease;
   text-align: left;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  transition: all 0.1s ease;
 }
 
 .doc-tab-nav-item:hover {
-  background: var(--muted);
+  background: var(--accent);
+  color: var(--foreground);
 }
 
-.doc-tab-nav-dot {
-  flex-shrink: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: 9999px;
-  background: var(--muted-foreground);
-  transition: all 0.2s ease;
-}
-
-.doc-tab-nav-text {
-  font-size: 0.8125rem;
-  color: var(--muted-foreground);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: color 0.2s ease;
-  font-weight: 500;
-}
-
-.doc-tab-nav-active .doc-tab-nav-dot {
-  background: var(--secondary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--secondary) 25%, transparent);
-}
-
-.dark .doc-tab-nav-active .doc-tab-nav-dot {
-  background: var(--primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent);
-}
-
-.doc-tab-nav-active .doc-tab-nav-text {
+.doc-tab-nav-active {
   color: var(--foreground);
   font-weight: 600;
 }
 
-/* On smaller screens, switch to a horizontal sticky bar */
+/* ── Subtab divider (quiet left-aligned label) ── */
+
+/* subtabs look identical to tabs */
+
+/* Hide mobile bar on desktop */
+.doc-tab-nav-mobile {
+  display: none;
+}
+
 @media (max-width: 1280px) {
-  .doc-tab-nav {
+  .doc-tab-nav-anchor {
+    float: none;
     position: sticky;
     top: 0;
-    float: none;
     margin-right: 0;
     width: 100%;
-    flex-direction: row;
-    gap: 0;
+    height: auto;
     padding: 0.5rem 0;
     margin-bottom: 1rem;
     background: color-mix(in srgb, var(--background) 90%, transparent);
@@ -1292,25 +1339,34 @@
     -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border);
     overflow-x: auto;
+    overflow-y: visible;
     scrollbar-width: none;
   }
 
-  .doc-tab-nav::-webkit-scrollbar {
+  .doc-tab-nav-anchor::-webkit-scrollbar {
     display: none;
   }
 
-  .doc-tab-nav-item {
+  .doc-tab-nav-hover-zone {
+    display: none;
+  }
+
+  .doc-tab-nav-mobile {
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+  }
+
+  .doc-tab-nav-mobile .doc-tab-nav-item {
     flex-shrink: 0;
     padding: 0.25rem 0.75rem;
     border-radius: 9999px;
+    white-space: nowrap;
+    font-size: 0.8125rem;
   }
 
-  .doc-tab-nav-active {
+  .doc-tab-nav-mobile .doc-tab-nav-active {
     background: var(--muted);
-  }
-
-  .doc-tab-nav-dot {
-    display: none;
   }
 }
 

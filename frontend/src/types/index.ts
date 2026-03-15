@@ -144,6 +144,7 @@ export interface DocTab {
   title: string;
   blocks: ContentBlock[];
   tabId?: string;
+  depth?: number;
 }
 
 export interface ContentBlock {

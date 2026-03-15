@@ -759,9 +759,9 @@ function BlockRenderer({ block }: { block: ContentBlock }) {
 // Tab divider
 // ---------------------------------------------------------------------------
 
-function TabDivider({ title, id }: { title: string; id: string }) {
+function TabDivider({ title, id, depth = 0 }: { title: string; id: string; depth?: number }) {
   return (
-    <div id={id} className="doc-tab-divider" data-tab-divider>
+    <div id={id} className={`doc-tab-divider ${depth > 0 ? "doc-tab-divider-sub" : ""}`} data-tab-divider>
       <div className="doc-tab-divider-line" />
       <span className="doc-tab-divider-label">{title}</span>
       <div className="doc-tab-divider-line" />
@@ -782,20 +782,40 @@ function TabScrollSpy({
   activeIndex: number;
   onClickTab: (id: string) => void;
 }) {
+  const navItems = tabs.map((tab, i) => {
+    const depth = tab.depth ?? 0;
+    return (
+      <button
+        key={i}
+        type="button"
+        onClick={() => onClickTab(`doc-tab-${i}`)}
+        className={`doc-tab-nav-item ${i === activeIndex ? "doc-tab-nav-active" : ""}`}
+        style={depth > 0 ? { paddingLeft: `${0.75 + depth * 1}rem` } : undefined}
+      >
+        {tab.title}
+      </button>
+    );
+  });
+
   return (
-    <nav className="doc-tab-nav">
-      {tabs.map((tab, i) => (
-        <button
-          key={i}
-          type="button"
-          onClick={() => onClickTab(`doc-tab-${i}`)}
-          className={`doc-tab-nav-item ${i === activeIndex ? "doc-tab-nav-active" : ""}`}
-        >
-          <span className="doc-tab-nav-dot" />
-          <span className="doc-tab-nav-text">{tab.title}</span>
-        </button>
-      ))}
-    </nav>
+    <div className="doc-tab-nav-anchor">
+      {/* Desktop: ticks + card on hover */}
+      <div className="doc-tab-nav-hover-zone">
+        <div className="doc-tab-nav-ticks">
+          {tabs.map((tab, i) => (
+            <span
+              key={i}
+              className={`doc-tab-nav-tick ${i === activeIndex ? "doc-tab-nav-tick-active" : ""}`}
+              data-depth={tab.depth ?? 0}
+            />
+          ))}
+        </div>
+        <nav className="doc-tab-nav-card">{navItems}</nav>
+      </div>
+
+      {/* Mobile: always visible horizontal bar */}
+      <nav className="doc-tab-nav-mobile">{navItems}</nav>
+    </div>
   );
 }
 
@@ -860,7 +880,7 @@ export function DocViewer({ tabs }: DocViewerProps) {
       <article className="doc-viewer">
         {tabs.map((tab, tabIdx) => (
           <Fragment key={tabIdx}>
-            <TabDivider title={tab.title} id={`doc-tab-${tabIdx}`} />
+            <TabDivider title={tab.title} id={`doc-tab-${tabIdx}`} depth={tab.depth} />
             {tab.blocks.map((block, blockIdx) => (
               <BlockRenderer key={`${tabIdx}-${blockIdx}`} block={block} />
             ))}
