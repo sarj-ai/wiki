@@ -22,6 +22,7 @@ from app.drive import (
     get_sa_drive_service,
     is_drive_folder_empty,
     move_drive_file,
+    rename_drive_file,
     trash_drive_file,
 )
 from app.models.page import Page
@@ -378,6 +379,12 @@ async def update_page(
 
     if data.title is not None:
         page.title = data.title
+        # Also rename the file in Google Drive (unless it's a pending doc)
+        if not page.google_drive_id.startswith("pending-"):
+            try:
+                await asyncio.to_thread(rename_drive_file, user, page.google_drive_id, data.title)
+            except Exception:
+                log.warning("Failed to rename Drive file %s", page.google_drive_id, exc_info=True)
 
     if data.parent_id is not _UNSET:
         page.parent_id = data.parent_id  # type: ignore[assignment]
@@ -751,9 +758,13 @@ async def _incremental_sync(
 
                 if existing:
                     changed = False
+                    # App is the source of truth for titles — push to Drive if diverged
                     if existing.title != file_name:
-                        existing.title = file_name
-                        changed = True
+                        try:
+                            await asyncio.to_thread(rename_drive_file, None, file_id, existing.title)
+                            log.info("Sync: renamed Drive file '%s' -> '%s'", file_name, existing.title)
+                        except Exception:
+                            log.warning("Sync: failed to rename Drive file %s", file_id, exc_info=True)
                     # Clear content cache so it gets re-fetched
                     existing.content_cached_at = None
                     if changed:
@@ -1092,10 +1103,13 @@ async def _scan_drive_folder(
                     existing_page = existing_pages.get(file_id)
                     if existing_page:
                         changed = False
-                        # Sync title
+                        # App is the source of truth — push title to Drive if diverged
                         if existing_page.title != file_name:
-                            log.info("Sync: title updated '%s' -> '%s' (%s)", existing_page.title, file_name, file_id)
-                            existing_page.title = file_name
+                            try:
+                                await asyncio.to_thread(rename_drive_file, None, file_id, existing_page.title)
+                                log.info("Sync: renamed Drive file '%s' -> '%s' (%s)", file_name, existing_page.title, file_id)
+                            except Exception:
+                                log.warning("Sync: failed to rename Drive file %s", file_id, exc_info=True)
                             existing_page.content_cached_at = None
                             changed = True
                         # Fix parent_id based on actual Drive folder location

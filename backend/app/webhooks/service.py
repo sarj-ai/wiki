@@ -223,11 +223,16 @@ async def _handle_single_change(db: AsyncSession, service, change: dict) -> None
         return
 
     if page:
-        # Existing page — sync title
-        new_name = file_meta.get("name")
-        if new_name and new_name != page.title:
-            log.info("Drive file %s renamed to '%s' — updating page %s", file_id, new_name, page.id)
-            page.title = new_name
+        # App is the source of truth for titles — push our title to Drive
+        # if they diverge, rather than overwriting from Drive.
+        drive_name = file_meta.get("name")
+        if drive_name and drive_name != page.title:
+            log.info("Drive file %s has name '%s' but app has '%s' — renaming in Drive", file_id, drive_name, page.title)
+            try:
+                from app.drive import rename_drive_file, get_sa_drive_service
+                await asyncio.to_thread(rename_drive_file, None, file_id, page.title)
+            except Exception:
+                log.warning("Failed to rename Drive file %s to match app title", file_id, exc_info=True)
 
         # Invalidate content cache so the next viewer fetches fresh from Google
         if page.cached_content is not None or page.content_cached_at is not None:
@@ -259,6 +264,17 @@ async def _try_ingest_new_file(
 
     parent_folder_id = parents[0]
     title = file_meta.get("name", "Untitled")
+
+    # Skip if a pending page exists in this folder (background creation in progress)
+    pending_result = await db.execute(
+        select(Page).where(
+            Page.google_drive_id.like("pending-%"),
+            Page.drive_folder_id == parent_folder_id,
+        )
+    )
+    if pending_result.scalar_one_or_none():
+        log.info("Skipping webhook ingest for %s — pending page exists in folder %s", file_id, parent_folder_id)
+        return
 
     # Walk up the folder chain to verify this file lives under our root folder
     # and to determine if it's in a Private/{email} path
