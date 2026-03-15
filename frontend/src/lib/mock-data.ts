@@ -14,6 +14,7 @@ export const mockWorkspaces: Workspace[] = [
     googleGroupEmail: "engineering@sarj.ai",
     driveFolderId: "mock-drive-folder-engineering",
     icon: null,
+    sortOrder: 0,
   },
   {
     id: "ws-2",
@@ -21,6 +22,7 @@ export const mockWorkspaces: Workspace[] = [
     googleGroupEmail: "marketing@sarj.ai",
     driveFolderId: "mock-drive-folder-marketing",
     icon: null,
+    sortOrder: 1,
   },
 ];
 

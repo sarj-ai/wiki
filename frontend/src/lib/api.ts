@@ -121,6 +121,12 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  reorderWorkspaces: (workspaceIds: string[]) =>
+    fetchApi<Workspace[]>("/workspaces/reorder", {
+      method: "PUT",
+      body: JSON.stringify({ workspace_ids: workspaceIds }),
+    }),
+
   getPageTree: () => fetchApi<Page[]>("/pages/tree"),
 
   syncPages: () => fetchApi<{ removed: number; added: number; updated: number }>("/pages/sync", { method: "POST" }),

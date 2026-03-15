@@ -17,6 +17,7 @@ export interface Workspace {
   googleGroupEmail: string | null;
   driveFolderId: string;
   icon: string | null;
+  sortOrder: number;
 }
 
 export interface User {

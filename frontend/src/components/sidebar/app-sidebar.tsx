@@ -1,10 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Plus, NotebookPen, Sun, Moon, LogOut, Loader2, RefreshCw, Building2 } from "lucide-react";
+import { Plus, NotebookPen, Sun, Moon, LogOut, Loader2, RefreshCw, Building2, GripVertical } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   Dialog,
   DialogContent,
@@ -62,6 +76,42 @@ const EmojiMartPicker = dynamic(() => import("@emoji-mart/react").then((m) => m.
   loading: () => <div className="h-[350px] w-[352px]" />,
 });
 
+function SortableWorkspaceItem({ workspace, children }: { workspace: Workspace; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: workspace.id,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+  };
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      {/* Inject listeners via context so the grip handle can use them */}
+      <WorkspaceDragContext.Provider value={listeners ?? {}}>
+        {children}
+      </WorkspaceDragContext.Provider>
+    </div>
+  );
+}
+
+// Context to pass drag listeners down to the grip handle
+const WorkspaceDragContext = React.createContext<Record<string, unknown>>({});
+
+function WorkspaceDragHandle() {
+  const listeners = useContext(WorkspaceDragContext);
+  return (
+    <button
+      type="button"
+      className="mr-0.5 inline-flex shrink-0 cursor-grab items-center justify-center rounded-sm p-0.5 opacity-0 group-hover/ws:opacity-100 hover:bg-sidebar-accent transition-all active:cursor-grabbing"
+      aria-label="Drag to reorder"
+      {...listeners}
+    >
+      <GripVertical className="size-3 text-muted-foreground" />
+    </button>
+  );
+}
+
 export function AppSidebar() {
   const { resolvedTheme, setTheme } = useTheme();
   const { user, logout } = useAuth();
@@ -76,6 +126,34 @@ export function AppSidebar() {
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const [addingChildParentId, setAddingChildParentId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  const workspaceSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+
+  const workspaceIds = useMemo(() => workspaces.map((ws) => ws.id), [workspaces]);
+
+  async function handleWorkspaceReorder(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = workspaces.findIndex((ws) => ws.id === active.id);
+    const newIndex = workspaces.findIndex((ws) => ws.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    // Optimistic reorder
+    const reordered = [...workspaces];
+    const [moved] = reordered.splice(oldIndex, 1);
+    reordered.splice(newIndex, 0, moved);
+    const updated = reordered.map((ws, i) => ({ ...ws, sortOrder: i }));
+    queryClient.setQueryData<Workspace[]>(["workspaces"], updated);
+
+    try {
+      await api.reorderWorkspaces(updated.map((ws) => ws.id));
+    } catch {
+      toast.error("Failed to reorder workspaces");
+      queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+    }
+  }
   const [workspaceEmojiPickerId, setWorkspaceEmojiPickerId] = useState<string | null>(null);
 
   const SECTIONS_KEY = "sarj-collapsed-sections";
@@ -311,104 +389,110 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        {/* One collapsible section per workspace */}
-        {workspaces.map((workspace) => (
-          <Collapsible
-            key={workspace.id}
-            open={!collapsedSections.has(workspace.id)}
-            onOpenChange={() => toggleSection(workspace.id)}
-          >
-            <SidebarGroup>
-              <SidebarGroupLabel asChild className="text-sm font-semibold text-sidebar-foreground">
-                <div className="flex items-center">
-                  <CollapsibleTrigger asChild>
-                    <button
-                      type="button"
-                      className="mr-1 inline-flex shrink-0 items-center justify-center rounded-sm p-0.5 hover:bg-sidebar-accent transition-colors"
-                      aria-label={`Toggle ${workspace.name}`}
-                    >
-                      <ChevronRight className={`size-3 transition-transform ${!collapsedSections.has(workspace.id) ? "rotate-90" : ""}`} />
-                    </button>
-                  </CollapsibleTrigger>
-                  <Popover
-                    open={workspaceEmojiPickerId === workspace.id}
-                    onOpenChange={(open) => setWorkspaceEmojiPickerId(open ? workspace.id : null)}
-                  >
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        className="mr-1.5 inline-flex shrink-0 items-center justify-center hover:opacity-70 transition-opacity"
-                        title="Change icon"
-                        aria-label={`Change ${workspace.name} icon`}
-                      >
-                        {workspace.icon ? (
-                          <span className="text-xl leading-none">{workspace.icon}</span>
-                        ) : (
-                          <Building2 className="size-5" />
-                        )}
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      className="w-auto p-0 border-none shadow-lg"
-                      side="right"
-                      align="start"
-                      sideOffset={8}
-                      onOpenAutoFocus={(e) => e.preventDefault()}
-                      onCloseAutoFocus={(e) => e.preventDefault()}
-                    >
-                      <EmojiMartPicker
-                        data={data}
-                        theme={resolvedTheme === "dark" ? "dark" : "light"}
-                        onEmojiSelect={(emoji: { native: string }) => {
-                          handleWorkspaceIcon(workspace.id, emoji.native);
-                          setWorkspaceEmojiPickerId(null);
-                        }}
-                        previewPosition="none"
-                        skinTonePosition="search"
-                        maxFrequentRows={2}
-                      />
-                      {workspace.icon && (
-                        <div className="border-t px-3 py-2">
+        {/* One collapsible section per workspace — drag to reorder */}
+        <DndContext sensors={workspaceSensors} collisionDetection={closestCenter} onDragEnd={handleWorkspaceReorder}>
+          <SortableContext items={workspaceIds} strategy={verticalListSortingStrategy}>
+            {workspaces.map((workspace) => (
+              <SortableWorkspaceItem key={workspace.id} workspace={workspace}>
+                <Collapsible
+                  open={!collapsedSections.has(workspace.id)}
+                  onOpenChange={() => toggleSection(workspace.id)}
+                >
+                  <SidebarGroup>
+                    <SidebarGroupLabel asChild className="text-sm font-semibold text-sidebar-foreground">
+                      <div className="group/ws flex items-center">
+                        <WorkspaceDragHandle />
+                        <CollapsibleTrigger asChild>
                           <button
                             type="button"
-                            onClick={() => {
-                              handleWorkspaceIcon(workspace.id, null);
-                              setWorkspaceEmojiPickerId(null);
-                            }}
-                            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                            className="mr-1 inline-flex shrink-0 items-center justify-center rounded-sm p-0.5 hover:bg-sidebar-accent transition-colors"
+                            aria-label={`Toggle ${workspace.name}`}
                           >
-                            Remove icon
+                            <ChevronRight className={`size-3 transition-transform ${!collapsedSections.has(workspace.id) ? "rotate-90" : ""}`} />
                           </button>
-                        </div>
-                      )}
-                    </PopoverContent>
-                  </Popover>
-                  <span className="truncate">{workspace.name}</span>
-                </div>
-              </SidebarGroupLabel>
-              <SidebarGroupAction onClick={() => handleAddRootPage(workspace.id)} title={`Add page to ${workspace.name}`} disabled={addingTo !== null}>
-                {addingTo === workspace.id ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-              </SidebarGroupAction>
-              <CollapsibleContent>
-                <SidebarGroupContent className="pl-5">
-                  <PageTree
-                    pages={pagesByWorkspace.get(workspace.id) ?? []}
-                    activePageId={activePageId}
-                    onAddChild={handleAddChild}
-                    onDelete={setDeletingPageId}
-                    onRename={handleRename}
-                    onChangeIcon={handleChangeIcon}
-                    onMove={handleMove}
-                    renamingPageId={renamingPageId}
-                    onRenamingDone={handleRenamingDone}
-                    isLoading={isTreeLoading}
-                    addingChildParentId={addingChildParentId}
-                  />
-                </SidebarGroupContent>
-              </CollapsibleContent>
-            </SidebarGroup>
-          </Collapsible>
-        ))}
+                        </CollapsibleTrigger>
+                        <Popover
+                          open={workspaceEmojiPickerId === workspace.id}
+                          onOpenChange={(open) => setWorkspaceEmojiPickerId(open ? workspace.id : null)}
+                        >
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className="mr-1.5 inline-flex shrink-0 items-center justify-center hover:opacity-70 transition-opacity"
+                              title="Change icon"
+                              aria-label={`Change ${workspace.name} icon`}
+                            >
+                              {workspace.icon ? (
+                                <span className="text-xl leading-none">{workspace.icon}</span>
+                              ) : (
+                                <Building2 className="size-5" />
+                              )}
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            className="w-auto p-0 border-none shadow-lg"
+                            side="right"
+                            align="start"
+                            sideOffset={8}
+                            onOpenAutoFocus={(e) => e.preventDefault()}
+                            onCloseAutoFocus={(e) => e.preventDefault()}
+                          >
+                            <EmojiMartPicker
+                              data={data}
+                              theme={resolvedTheme === "dark" ? "dark" : "light"}
+                              onEmojiSelect={(emoji: { native: string }) => {
+                                handleWorkspaceIcon(workspace.id, emoji.native);
+                                setWorkspaceEmojiPickerId(null);
+                              }}
+                              previewPosition="none"
+                              skinTonePosition="search"
+                              maxFrequentRows={2}
+                            />
+                            {workspace.icon && (
+                              <div className="border-t px-3 py-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleWorkspaceIcon(workspace.id, null);
+                                    setWorkspaceEmojiPickerId(null);
+                                  }}
+                                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                  Remove icon
+                                </button>
+                              </div>
+                            )}
+                          </PopoverContent>
+                        </Popover>
+                        <span className="truncate">{workspace.name}</span>
+                      </div>
+                    </SidebarGroupLabel>
+                    <SidebarGroupAction onClick={() => handleAddRootPage(workspace.id)} title={`Add page to ${workspace.name}`} disabled={addingTo !== null}>
+                      {addingTo === workspace.id ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                    </SidebarGroupAction>
+                    <CollapsibleContent>
+                      <SidebarGroupContent className="pl-5">
+                        <PageTree
+                          pages={pagesByWorkspace.get(workspace.id) ?? []}
+                          activePageId={activePageId}
+                          onAddChild={handleAddChild}
+                          onDelete={setDeletingPageId}
+                          onRename={handleRename}
+                          onChangeIcon={handleChangeIcon}
+                          onMove={handleMove}
+                          renamingPageId={renamingPageId}
+                          onRenamingDone={handleRenamingDone}
+                          isLoading={isTreeLoading}
+                          addingChildParentId={addingChildParentId}
+                        />
+                      </SidebarGroupContent>
+                    </CollapsibleContent>
+                  </SidebarGroup>
+                </Collapsible>
+              </SortableWorkspaceItem>
+            ))}
+          </SortableContext>
+        </DndContext>
 
         {workspaces.length > 0 && <SidebarSeparator />}
 

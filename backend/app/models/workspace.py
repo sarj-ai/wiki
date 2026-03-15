@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Text, text
+from sqlalchemy import DateTime, Float, ForeignKey, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -74,3 +74,4 @@ class WorkspaceUserSettings(Base):
         primary_key=True,
     )
     icon: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("0"))
