@@ -1,8 +1,11 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { codeToHtml } from "shiki";
 import {
   CalendarDays,
+  Check,
+  Copy,
   ExternalLink,
   Hash,
   ImageIcon,
@@ -18,6 +21,7 @@ import type {
   TocItem,
   BlockStyle,
   ContentBlock,
+  DocTab,
 } from "@/types";
 
 /**
@@ -63,7 +67,7 @@ function getStatusClass(text: string): string | null {
 }
 
 interface DocViewerProps {
-  blocks: ContentBlock[];
+  tabs: DocTab[];
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +191,15 @@ function RunRenderer({ runs }: { runs: TextRun[] }) {
               <Hash className="size-3 shrink-0" />
               <span>{run.text}</span>
             </span>
+          );
+        }
+
+        // ── Inline code ──
+        if (run.type === "code") {
+          return (
+            <code key={i} className="doc-inline-code">
+              {run.text}
+            </code>
           );
         }
 
@@ -618,6 +631,70 @@ function TocBlock({ items }: { items: TocItem[] }) {
   );
 }
 
+function guessLanguage(code: string): string {
+  const first = code.trimStart().slice(0, 200);
+  if (/^(import |export |const |let |var |function |class |=>|async )/.test(first)) return "typescript";
+  if (/^(def |class |import |from |if __name__|print\()/.test(first)) return "python";
+  if (/^(SELECT |INSERT |UPDATE |DELETE |CREATE |ALTER |DROP |"SELECT|"INSERT|"UPDATE|"DELETE)/i.test(first)) return "sql";
+  if (/^(package |func |import \(|type |var )/.test(first)) return "go";
+  if (/^(<\?php|namespace |use |public function)/.test(first)) return "php";
+  if (/^(#include|int main|void |printf\()/.test(first)) return "c";
+  if (/^(\$ |# |sudo |npm |yarn |pip |curl |wget |cd |ls |mkdir |echo |cat )/.test(first)) return "bash";
+  if (/^\{[\s\n]*("|')/.test(first)) return "json";
+  if (/^(<html|<div|<span|<!DOCTYPE)/i.test(first)) return "html";
+  if (/^(apiVersion:|kind:|metadata:)/.test(first)) return "yaml";
+  if (/^(FROM |RUN |CMD |COPY |EXPOSE |ENTRYPOINT )/i.test(first)) return "dockerfile";
+  return "text";
+}
+
+function CodeBlockComponent({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
+  const lang = useMemo(() => guessLanguage(code), [code]);
+
+  useEffect(() => {
+    let cancelled = false;
+    codeToHtml(code, {
+      lang,
+      theme: "github-dark-default",
+    }).then((html) => {
+      if (!cancelled) setHighlightedHtml(html);
+    }).catch(() => {
+      // Fallback to plain text if language not supported
+      if (!cancelled) setHighlightedHtml(null);
+    });
+    return () => { cancelled = true; };
+  }, [code, lang]);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [code]);
+
+  return (
+    <div className="doc-code-block">
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="doc-code-copy"
+        aria-label="Copy code"
+      >
+        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+      </button>
+      {highlightedHtml ? (
+        <div
+          className="doc-code-shiki"
+          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+        />
+      ) : (
+        <pre><code>{code}</code></pre>
+      )}
+    </div>
+  );
+}
+
 function HorizontalRule() {
   return (
     <div className="doc-hr" aria-hidden>
@@ -667,6 +744,8 @@ function BlockRenderer({ block }: { block: ContentBlock }) {
           width={block.width}
         />
       );
+    case "code_block":
+      return <CodeBlockComponent code={block.code || ""} />;
     case "table_of_contents":
       return <TocBlock items={block.tocItems ?? []} />;
     case "horizontal_rule":
@@ -677,15 +756,117 @@ function BlockRenderer({ block }: { block: ContentBlock }) {
 }
 
 // ---------------------------------------------------------------------------
+// Tab divider
+// ---------------------------------------------------------------------------
+
+function TabDivider({ title, id }: { title: string; id: string }) {
+  return (
+    <div id={id} className="doc-tab-divider" data-tab-divider>
+      <div className="doc-tab-divider-line" />
+      <span className="doc-tab-divider-label">{title}</span>
+      <div className="doc-tab-divider-line" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Scroll-spy tab nav
+// ---------------------------------------------------------------------------
+
+function TabScrollSpy({
+  tabs,
+  activeIndex,
+  onClickTab,
+}: {
+  tabs: DocTab[];
+  activeIndex: number;
+  onClickTab: (id: string) => void;
+}) {
+  return (
+    <nav className="doc-tab-nav">
+      {tabs.map((tab, i) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => onClickTab(`doc-tab-${i}`)}
+          className={`doc-tab-nav-item ${i === activeIndex ? "doc-tab-nav-active" : ""}`}
+        >
+          <span className="doc-tab-nav-dot" />
+          <span className="doc-tab-nav-text">{tab.title}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
-export function DocViewer({ blocks }: DocViewerProps) {
+export function DocViewer({ tabs }: DocViewerProps) {
+  const isMultiTab = tabs.length > 1;
+  const [activeTab, setActiveTab] = useState(0);
+  const tabRefs = useRef<Map<string, HTMLElement>>(new Map());
+
+  // Scroll-spy: observe which tab divider is at the top of the viewport
+  useEffect(() => {
+    if (!isMultiTab) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Find the topmost visible tab divider
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const idx = Number(entry.target.id.replace("doc-tab-", ""));
+            if (!Number.isNaN(idx)) setActiveTab(idx);
+          }
+        }
+      },
+      { rootMargin: "-10% 0px -80% 0px" },
+    );
+
+    // Slight delay to let DOM settle
+    const timer = setTimeout(() => {
+      document.querySelectorAll("[data-tab-divider]").forEach((el) => {
+        observer.observe(el);
+      });
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [isMultiTab, tabs]);
+
+  const scrollToTab = useCallback((id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  // Single tab — render blocks directly, no dividers
+  if (!isMultiTab) {
+    const blocks = tabs[0]?.blocks ?? [];
+    return (
+      <article className="doc-viewer">
+        {blocks.map((block, i) => (
+          <BlockRenderer key={i} block={block} />
+        ))}
+      </article>
+    );
+  }
+
   return (
-    <article className="doc-viewer">
-      {blocks.map((block, i) => (
-        <BlockRenderer key={i} block={block} />
-      ))}
-    </article>
+    <div className="doc-tabbed-layout">
+      <TabScrollSpy tabs={tabs} activeIndex={activeTab} onClickTab={scrollToTab} />
+      <article className="doc-viewer">
+        {tabs.map((tab, tabIdx) => (
+          <Fragment key={tabIdx}>
+            <TabDivider title={tab.title} id={`doc-tab-${tabIdx}`} />
+            {tab.blocks.map((block, blockIdx) => (
+              <BlockRenderer key={`${tabIdx}-${blockIdx}`} block={block} />
+            ))}
+          </Fragment>
+        ))}
+      </article>
+    </div>
   );
 }

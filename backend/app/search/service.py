@@ -39,7 +39,7 @@ async def update_search_vector(db: AsyncSession, page: Page) -> None:
     """Update a page's search_vector from its title + cached content."""
     content_text = ""
     if page.cached_content:
-        content_text = _extract_text_from_blocks(page.cached_content)
+        content_text = _extract_text_from_cached(page.cached_content)
 
     # Title gets weight A (highest), content gets weight B
     await db.execute(
@@ -146,9 +146,23 @@ async def search_pages(
     ]
 
 
-def _build_snippet(blocks: list[dict], search_lower: str, context_chars: int = 60) -> str | None:
+def _extract_text_from_cached(cached: list[dict]) -> str:
+    """Extract text from cached_content, handling both tabs and legacy flat-blocks formats."""
+    if not cached:
+        return ""
+    # Tabs format: list of {"title": ..., "blocks": [...]}
+    if isinstance(cached[0], dict) and "blocks" in cached[0]:
+        parts = []
+        for tab in cached:
+            parts.append(_extract_text_from_blocks(tab.get("blocks", [])))
+        return " ".join(parts)
+    # Legacy flat-blocks format
+    return _extract_text_from_blocks(cached)
+
+
+def _build_snippet(cached: list[dict], search_lower: str, context_chars: int = 60) -> str | None:
     """Extract a text snippet around the first match in the content."""
-    full_text = _extract_text_from_blocks(blocks)
+    full_text = _extract_text_from_cached(cached)
     if not full_text:
         return None
 

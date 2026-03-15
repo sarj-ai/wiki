@@ -24,6 +24,7 @@ An internal knowledge base for `@sarj.ai`, built on top of Google Docs. The goal
 ## Tooling Rules
 
 - **Always use `uv`** for Python dependency management, virtual environments, and running scripts. Never use `pip`, `pip3`, `venv`, or `python -m venv`.
+- **Use relative paths** in shell commands. The working directory is already the project root — don't prefix commands with the full absolute path.
 
 ---
 

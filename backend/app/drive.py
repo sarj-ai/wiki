@@ -407,7 +407,10 @@ def get_doc_content(user: User, google_drive_id: str) -> dict:
     """
     docs_service = _get_sa_docs_service()
     try:
-        return docs_service.documents().get(documentId=google_drive_id).execute()
+        return docs_service.documents().get(
+            documentId=google_drive_id,
+            includeTabsContent=True,
+        ).execute()
     except HttpError as exc:
         if exc.resp.status == 404:
             raise HTTPException(404, "Document not found or deleted") from exc
@@ -417,12 +420,18 @@ def get_doc_content(user: User, google_drive_id: str) -> dict:
         raise HTTPException(502, "Failed to fetch document content") from exc
 
 
-def export_doc_html(user: User, google_drive_id: str) -> str:
+def export_doc_html(user: User, google_drive_id: str, *, tab_id: str | None = None) -> str:
     """Export a Google Doc as HTML via the Drive API (service account).
 
     The HTML export renders smart chips (Person, Status, File, Date, etc.)
     as actual text — unlike the Docs API which returns opaque placeholders.
+
+    If tab_id is provided, exports only that specific tab using a direct
+    HTTP request with the ``?tab=`` parameter (not supported by the SDK).
     """
+    if tab_id:
+        return _export_doc_html_tab(google_drive_id, tab_id)
+
     service = get_sa_drive_service()
     response = service.files().export(
         fileId=google_drive_id,
@@ -431,3 +440,26 @@ def export_doc_html(user: User, google_drive_id: str) -> str:
     if isinstance(response, bytes):
         return response.decode("utf-8")
     return response
+
+
+def _export_doc_html_tab(google_drive_id: str, tab_id: str) -> str:
+    """Export a single tab of a Google Doc as HTML.
+
+    Uses a direct authenticated HTTP request because the Drive SDK's
+    files().export() doesn't support the ``tab`` query parameter.
+    """
+    import urllib.request
+
+    from google.auth.transport.requests import Request
+
+    creds = _get_sa_credentials()
+    if not creds.valid:
+        creds.refresh(Request())
+
+    url = (
+        f"https://docs.google.com/document/d/{google_drive_id}"
+        f"/export?format=html&tab={tab_id}"
+    )
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {creds.token}"})
+    resp = urllib.request.urlopen(req, timeout=30)
+    return resp.read().decode("utf-8")

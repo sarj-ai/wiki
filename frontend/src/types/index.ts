@@ -85,7 +85,8 @@ export interface TextRun {
     | "drawing"
     | "chart"
     | "chip_placeholder"
-    | "date";
+    | "date"
+    | "code";
   url?: string;
   alt?: string;
   width?: number;
@@ -136,7 +137,14 @@ export type ContentBlockType =
   | "image"
   | "table_of_contents"
   | "horizontal_rule"
+  | "code_block"
   | (string & {});
+
+export interface DocTab {
+  title: string;
+  blocks: ContentBlock[];
+  tabId?: string;
+}
 
 export interface ContentBlock {
   type: ContentBlockType;
@@ -156,4 +164,5 @@ export interface ContentBlock {
   width?: number;
   height?: number;
   tocItems?: TocItem[];
+  code?: string;
 }

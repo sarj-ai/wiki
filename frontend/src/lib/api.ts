@@ -1,4 +1,4 @@
-import type { Page, PagePermission, Permission, ContentBlock, Workspace, SearchResult, UserSearchResult } from "@/types";
+import type { Page, PagePermission, Permission, DocTab, Workspace, SearchResult, UserSearchResult } from "@/types";
 import { refreshAccessToken } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -106,7 +106,7 @@ interface GrantPermissionData {
 }
 
 interface PageContent {
-  blocks: ContentBlock[];
+  tabs: DocTab[];
   cached: boolean;
 }
 

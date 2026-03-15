@@ -18,11 +18,63 @@ _ORDERED_GLYPHS = frozenset({
     "LOWER_ROMAN",
 })
 
+_MONOSPACE_FONTS = frozenset({
+    "courier new", "courier", "consolas", "monaco", "menlo",
+    "source code pro", "roboto mono", "fira code", "fira mono",
+    "ibm plex mono", "jetbrains mono", "noto sans mono",
+    "ubuntu mono", "dejavu sans mono", "liberation mono",
+    "sf mono", "andale mono", "lucida console",
+})
+
 _ALIGNMENT_MAP = {
     "CENTER": "center",
     "END": "right",
     "JUSTIFIED": "justify",
 }
+
+
+def transform_doc_with_tabs(doc: dict) -> list[dict]:
+    """Transform a Google Docs document with tabs support.
+
+    Returns a list of tab dicts: [{"title": str, "blocks": [...]}, ...]
+    For single-tab docs, returns one tab.  Falls back to document.body
+    if no tabs are present (pre-tabs API responses or cached data).
+    """
+    tabs = doc.get("tabs", [])
+    if not tabs:
+        # Fallback: no tabs data — use document.body directly
+        return [{"title": "", "blocks": transform_doc(doc)}]
+
+    result: list[dict] = []
+    _collect_tabs(tabs, result)
+    return result
+
+
+def _collect_tabs(tabs: list[dict], result: list[dict]) -> None:
+    """Recursively collect tab content (handles nested child tabs)."""
+    for tab in tabs:
+        props = tab.get("tabProperties", {})
+        title = props.get("title", "")
+        tab_id = props.get("tabId", "")
+        doc_tab = tab.get("documentTab", {})
+
+        # Build a pseudo-document dict that transform_doc() can consume
+        tab_doc = {
+            "body": doc_tab.get("body", {}),
+            "inlineObjects": doc_tab.get("inlineObjects", {}),
+            "positionedObjects": doc_tab.get("positionedObjects", {}),
+            "lists": doc_tab.get("lists", {}),
+            "footnotes": doc_tab.get("footnotes", {}),
+        }
+        blocks = transform_doc(tab_doc)
+        entry: dict = {"title": title, "blocks": blocks}
+        if tab_id:
+            entry["tabId"] = tab_id
+        result.append(entry)
+
+        child_tabs = tab.get("childTabs", [])
+        if child_tabs:
+            _collect_tabs(child_tabs, result)
 
 
 def transform_doc(doc: dict) -> list[dict]:
@@ -98,6 +150,9 @@ def transform_doc(doc: dict) -> list[dict]:
             pass  # skip
 
     _flush_list(blocks, current_list)
+
+    # Post-process: detect monospace paragraphs and group into code blocks
+    blocks = _group_code_blocks(blocks)
 
     # Append footnote definitions if any were referenced
     if footnote_index:
@@ -219,6 +274,76 @@ def enrich_chips_from_html(blocks: list[dict], html: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _is_mono_paragraph(block: dict) -> bool:
+    """Check if a paragraph block is entirely monospace (code)."""
+    if block.get("type") != "paragraph":
+        return False
+    runs = block.get("runs", [])
+    if not runs:
+        return False
+    # All text-bearing runs must be monospace
+    return all(r.get("_mono") for r in runs if r.get("text", "").strip())
+
+
+def _group_code_blocks(blocks: list[dict]) -> list[dict]:
+    """Group consecutive monospace paragraphs into code_block blocks.
+
+    Empty paragraphs between monospace paragraphs are treated as blank
+    lines within the same code block (not as a break).
+
+    Also converts isolated monospace runs within normal paragraphs into
+    inline code (type: "code").
+    """
+    result: list[dict] = []
+    code_lines: list[str] = []
+    # Buffer for empty paragraphs that might sit between code lines
+    pending_empties: int = 0
+
+    def flush_code():
+        nonlocal pending_empties
+        if code_lines:
+            # Strip trailing blank lines
+            while code_lines and code_lines[-1] == "":
+                code_lines.pop()
+            result.append({"type": "code_block", "code": "\n".join(code_lines)})
+            code_lines.clear()
+        pending_empties = 0
+
+    def is_empty_paragraph(block: dict) -> bool:
+        return (
+            block.get("type") == "paragraph"
+            and (not block.get("runs") or all(not r.get("text", "").strip() for r in block["runs"]))
+        )
+
+    for block in blocks:
+        if _is_mono_paragraph(block):
+            # Commit any pending empty lines as blank lines in the code
+            for _ in range(pending_empties):
+                code_lines.append("")
+            pending_empties = 0
+            line = "".join(r.get("text", "") for r in block.get("runs", []))
+            code_lines.append(line)
+        elif is_empty_paragraph(block) and code_lines:
+            # Potentially a blank line inside a code block — buffer it
+            pending_empties += 1
+        else:
+            flush_code()
+            # Re-emit any buffered empties as normal spacer paragraphs
+            for _ in range(pending_empties):
+                result.append({"type": "paragraph", "runs": []})
+            pending_empties = 0
+            # Check for inline code: mixed paragraphs with some mono runs
+            if block.get("type") == "paragraph" and block.get("runs"):
+                for run in block["runs"]:
+                    if run.get("_mono") and run.get("text", "").strip():
+                        run["type"] = "code"
+                    run.pop("_mono", None)
+            result.append(block)
+
+    flush_code()
+    return result
 
 
 def _flush_list(blocks: list[dict], current_list: dict | None) -> None:
@@ -526,9 +651,13 @@ def _extract_text_run(text_run: dict) -> dict | None:
         if url:
             run["link"] = url
 
-    # Note: We intentionally skip foregroundColor, backgroundColor, fontFamily,
-    # and fontSize from Google Docs. These are designed for a white background
-    # and break in dark mode. Our theme handles all styling.
+    # Mark monospace font for code detection
+    font = (
+        style.get("weightedFontFamily", {}).get("fontFamily", "")
+        or style.get("fontFamily", "")
+    )
+    if font and font.lower() in _MONOSPACE_FONTS:
+        run["_mono"] = True
 
     return run
 

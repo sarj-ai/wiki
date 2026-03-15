@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ExternalLink,
   FileQuestion,
   Minimize2,
   PanelLeft,
@@ -34,14 +35,16 @@ import { DocumentIframe } from "@/components/document/document-iframe";
 import { DocumentSkeleton } from "@/components/document/document-skeleton";
 import { DocViewer } from "@/components/document/doc-viewer";
 import { ContentLoadingSkeleton } from "@/components/document/content-loading-skeleton";
-import type { ContentBlock } from "@/types";
+import type { DocTab } from "@/types";
 
-function isDocEmpty(blocks: ContentBlock[] | undefined): boolean {
-  if (!blocks || blocks.length === 0) return true;
-  return blocks.every(
-    (b) =>
-      b.type === "paragraph" &&
-      (!b.runs || b.runs.length === 0 || b.runs.every((r) => !r.text?.trim())),
+function isDocEmpty(tabs: DocTab[] | undefined): boolean {
+  if (!tabs || tabs.length === 0) return true;
+  return tabs.every((tab) =>
+    tab.blocks.every(
+      (b) =>
+        b.type === "paragraph" &&
+        (!b.runs || b.runs.length === 0 || b.runs.every((r) => !r.text?.trim())),
+    ),
   );
 }
 
@@ -224,7 +227,7 @@ export default function DocumentPage({
     return () => clearInterval(interval);
   }, [isPending, pageId, queryClient]);
   const isContentReady = !isContentLoading && !isContentFetching;
-  const docEmpty = isContentReady && !isEditing && isDocEmpty(content?.blocks);
+  const docEmpty = isContentReady && !isEditing && isDocEmpty(content?.tabs);
   const showIframe = !isPending && (alwaysIframe || isEditing);
 
   const [retrying, setRetrying] = useState(false);
@@ -328,17 +331,17 @@ export default function DocumentPage({
       return <ContentLoadingSkeleton />;
     }
 
-    if (content?.blocks && !isDocEmpty(content.blocks)) {
+    if (content?.tabs && !isDocEmpty(content.tabs)) {
       return (
         <div className="px-6 pb-6 animate-in fade-in duration-200">
-          <div className="mx-auto max-w-3xl py-4">
-            <DocViewer blocks={content.blocks} />
+          <div className="mx-auto max-w-4xl py-4">
+            <DocViewer tabs={content.tabs} />
           </div>
         </div>
       );
     }
 
-    if (content?.blocks !== undefined) {
+    if (content?.tabs !== undefined) {
       return (
         <div className="flex-1 flex items-center justify-center animate-in fade-in duration-300">
           <div className="flex flex-col items-center gap-5">
@@ -491,6 +494,23 @@ export default function DocumentPage({
               </TooltipTrigger>
               <TooltipContent side="bottom">Search (⌘K)</TooltipContent>
             </Tooltip>
+            {!isPending && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <a
+                    href={`https://docs.google.com/document/d/${page.googleDriveId}/edit`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`${TOOLBAR_BUTTON_CLASS} ${TOOLBAR_BUTTON_IDLE}`}
+                  >
+                    <ExternalLink className="size-4" />
+                  </a>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  Open in Google Docs
+                </TooltipContent>
+              </Tooltip>
+            )}
             {!alwaysIframe && !isPending && (
               <EditToggleButton
                 isEditing={isEditing}
@@ -522,6 +542,23 @@ export default function DocumentPage({
           onFocusMode={enterFocusMode}
         >
           <div className="flex items-center gap-1">
+            {!isPending && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <a
+                    href={`https://docs.google.com/document/d/${page.googleDriveId}/edit`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`${TOOLBAR_BUTTON_CLASS} ${TOOLBAR_BUTTON_IDLE}`}
+                  >
+                    <ExternalLink className="size-4" />
+                  </a>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  Open in Google Docs
+                </TooltipContent>
+              </Tooltip>
+            )}
             {!alwaysIframe && !isPending && (
               <EditToggleButton
                 isEditing={isEditing}
