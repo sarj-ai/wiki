@@ -269,7 +269,7 @@ https://docs.google.com/document/d/{DRIVE_ID}/edit?embedded=true
   --accent: #f5f5f5;
   --accent-foreground: #171717;
   --destructive: #e06000;
-  --border: #e5e5e5;
+  --border: #d5d5d5;
   --input: #e5e5e5;
   --ring: #a1a1a1;
   --chart-1: #e06000;
@@ -306,7 +306,7 @@ https://docs.google.com/document/d/{DRIVE_ID}/edit?embedded=true
 ### Dark Mode (`.dark`)
 ```css
 .dark {
-  --background: #000000;
+  --background: #161618;
   --foreground: #f6efe7;
   --card: #171717;
   --card-foreground: #f6efe7;

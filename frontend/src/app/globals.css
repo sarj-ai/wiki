@@ -72,8 +72,8 @@
   --accent: #f5f5f5;
   --accent-foreground: #171717;
   --destructive: #e06000;
-  --border: #e5e5e5;
-  --input: #e5e5e5;
+  --border: #d5d5d5;
+  --input: #d5d5d5;
   --ring: #a1a1a1;
   --chart-1: #e06000;
   --chart-2: #009689;
@@ -102,7 +102,7 @@
 }
 
 .dark {
-  --background: #000000;
+  --background: #161618;
   --foreground: #fafafa;
   --card: #171717;
   --card-foreground: #fafafa;
@@ -224,7 +224,12 @@
   margin-top: 2em !important;
   margin-bottom: 0.5em;
   padding-bottom: 0.3em;
-  border-bottom: 2px solid color-mix(in srgb, var(--secondary) 25%, var(--border));
+  border-bottom: 2px solid var(--secondary);
+}
+
+.dark .doc-viewer h1,
+.dark .doc-h1 {
+  border-bottom-color: color-mix(in srgb, var(--secondary) 50%, var(--border));
 }
 
 .doc-viewer h2,
