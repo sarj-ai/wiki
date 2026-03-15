@@ -246,7 +246,7 @@ export function DocumentTitle({
           <div className="flex items-center gap-2">
             {page.isPrivate ? (
               <Badge variant="secondary" className="text-xs">
-                Private
+                My Drafts
               </Badge>
             ) : workspace ? (
               <Badge variant="outline" className="text-xs">

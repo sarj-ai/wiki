@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
-import { FileText, Lock, Search, Users } from "lucide-react";
+import { FileText, NotebookPen, Search, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { useWorkspaces } from "@/hooks/use-workspaces";
 import type { SearchResult } from "@/types";
@@ -196,8 +196,8 @@ export function CommandPalette() {
                             <span className="cmd-item-meta">
                               {result.isPrivate ? (
                                 <>
-                                  <Lock className="size-3" />
-                                  <span>Private</span>
+                                  <NotebookPen className="size-3" />
+                                  <span>My Drafts</span>
                                 </>
                               ) : wsName ? (
                                 <>

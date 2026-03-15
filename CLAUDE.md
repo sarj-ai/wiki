@@ -55,11 +55,11 @@ Our app tree and the Google Drive folder structure are **kept in sync**. When a 
 2. Creates the Google Doc inside `Culture/`.
 3. Records the page in our DB with the `google_drive_id` (file) and `drive_folder_id` (parent folder).
 
-**Private documents** go into a per-user private folder: `Sarj Docs/Private/{user_email}/`.
+**Draft documents** go into a per-user folder: `Sarj Docs/My Drafts/{user_email}/`.
 
 **Moving a page** in our tree → FastAPI moves the Drive file to the new Drive folder (via `files.update` with `addParents`/`removeParents`).
 
-**Publishing a private page** to a workspace → FastAPI moves the Drive file from the private folder to the workspace folder and grants the Google Group read/edit access via Drive sharing.
+**Publishing a draft** to a workspace → FastAPI moves the Drive file from the "My Drafts" folder to the workspace folder and grants the Google Group read/edit access via Drive sharing.
 
 ### Drive Folder Root Structure
 ```
@@ -69,8 +69,8 @@ Sarj Docs/                        ← app root folder (shared drive or team fold
 │       └── How We Work (Doc)
 ├── Marketing/
 │   └── Brand Guidelines (Doc)
-└── Private/
-    └── ali@sarj.ai/              ← per-user private folder
+└── My Drafts/
+    └── ali@sarj.ai/              ← per-user draft folder
         └── My Draft (Doc)
 ```
 
@@ -412,7 +412,7 @@ https://docs.google.com/document/d/{DRIVE_ID}/edit?embedded=true
 | Tree structure | Adjacency list + recursive CTE | Simple, sufficient for team scale |
 | Admin SDK access | Service account + domain-wide delegation | No Super Admin required day-to-day |
 | Drive structure | Mirrors app tree | Moving pages in app = moving files in Drive |
-| Private docs location | `Sarj Docs/Private/{email}/` folder | Clear separation, easy to audit |
+| Private docs location | `Sarj Docs/My Drafts/{email}/` folder | Clear separation, easy to audit |
 | Doc import | Scan Drive root folder on demand | Ingest existing docs with group tags |
 | New doc detection | Drive Push Notifications (webhooks) | Real-time, event-driven, no polling |
 | Webhook renewal | Background APScheduler task | Channels expire every 7 days |

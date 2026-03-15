@@ -218,7 +218,7 @@ async def create_page(
         # Private root page → user's private folder
         def _resolve_private_folder() -> str:
             service = get_sa_drive_service()
-            private_root = ensure_folder(service, "Private", settings.DRIVE_ROOT_FOLDER_ID)
+            private_root = ensure_folder(service, "My Drafts", settings.DRIVE_ROOT_FOLDER_ID)
             return ensure_folder(service, user.email, private_root)
 
         target_folder_id = await asyncio.to_thread(_resolve_private_folder)
@@ -322,7 +322,7 @@ async def retry_pending_page(
         # Private root page → user's private folder
         def _resolve_private_folder() -> str:
             service = get_sa_drive_service()
-            private_root = ensure_folder(service, "Private", settings.DRIVE_ROOT_FOLDER_ID)
+            private_root = ensure_folder(service, "My Drafts", settings.DRIVE_ROOT_FOLDER_ID)
             return ensure_folder(service, user.email, private_root)
 
         target_folder_id = await asyncio.to_thread(_resolve_private_folder)
@@ -639,7 +639,7 @@ async def move_page_in_drive(
             if page.is_private:
                 def _resolve_private_folder() -> str:
                     svc = get_sa_drive_service()
-                    private_root = ensure_folder(svc, "Private", settings.DRIVE_ROOT_FOLDER_ID)
+                    private_root = ensure_folder(svc, "My Drafts", settings.DRIVE_ROOT_FOLDER_ID)
                     return ensure_folder(svc, user.email, private_root)
 
                 target_folder_id = await asyncio.to_thread(_resolve_private_folder)
@@ -1004,9 +1004,9 @@ async def _scan_drive_folder(
                     sub_workspace_id = workspace_id
                     sub_path = folder_path + [file_name]
 
-                    if not folder_path and file_name == "Private":
+                    if not folder_path and file_name == "My Drafts":
                         sub_private = True
-                    elif len(folder_path) == 1 and folder_path[0] == "Private":
+                    elif len(folder_path) == 1 and folder_path[0] == "My Drafts":
                         sub_private = True
                         r = await db.execute(select(User).where(User.email == file_name))
                         sub_owner = r.scalar_one_or_none()
@@ -1055,8 +1055,8 @@ async def _scan_drive_folder(
                         # Skip special folders (Private, user email folders,
                         # workspace root folders).
                         is_special = (
-                            (not folder_path and file_name == "Private")
-                            or (len(folder_path) == 1 and folder_path[0] == "Private")
+                            (not folder_path and file_name == "My Drafts")
+                            or (len(folder_path) == 1 and folder_path[0] == "My Drafts")
                             or (not folder_path and sub_workspace_id is not None)
                         )
                         if not is_special:

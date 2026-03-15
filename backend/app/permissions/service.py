@@ -257,6 +257,8 @@ def _search_directory(query: str, limit: int) -> list[dict]:
 
     Returns a list of dicts with keys: email, google_id, display_name, avatar_url.
     """
+    import google_auth_httplib2
+    import httplib2
     from google.oauth2 import service_account as sa
     from googleapiclient.discovery import build as api_build
     from app.config import settings as cfg
@@ -268,7 +270,12 @@ def _search_directory(query: str, limit: int) -> list[dict]:
             scopes=["https://www.googleapis.com/auth/admin.directory.user.readonly"],
         )
         delegated = credentials.with_subject(cfg.ADMIN_IMPERSONATE_EMAIL)
-        service = api_build("admin", "directory_v1", credentials=delegated, static_discovery=True)
+        authed_http = google_auth_httplib2.AuthorizedHttp(
+            delegated, http=httplib2.Http(timeout=5),
+        )
+        service = api_build(
+            "admin", "directory_v1", http=authed_http, static_discovery=True,
+        )
 
         resp = service.users().list(
             domain=cfg.ALLOWED_DOMAIN,
@@ -301,7 +308,10 @@ def _search_directory(query: str, limit: int) -> list[dict]:
             ],
         )
         delegated = credentials.with_subject(cfg.ADMIN_IMPERSONATE_EMAIL)
-        service = api_build("admin", "directory_v1", credentials=delegated, static_discovery=True)
+        authed_http = google_auth_httplib2.AuthorizedHttp(
+            delegated, http=httplib2.Http(timeout=10),
+        )
+        service = api_build("admin", "directory_v1", http=authed_http, static_discovery=True)
 
         # Get all groups in the domain
         groups_resp = service.groups().list(

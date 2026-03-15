@@ -177,7 +177,7 @@ def create_google_doc(
     else:
         root_id = settings.DRIVE_ROOT_FOLDER_ID
         if is_private:
-            private_root = ensure_folder(service, "Private", root_id)
+            private_root = ensure_folder(service, "My Drafts", root_id)
             user_folder = ensure_folder(service, user_email, private_root)
             folder_id = user_folder
         else:

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Plus, Lock, Sun, Moon, LogOut, Loader2, RefreshCw, Building2 } from "lucide-react";
+import { Plus, NotebookPen, Sun, Moon, LogOut, Loader2, RefreshCw, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -429,8 +429,8 @@ export function AppSidebar() {
                     <ChevronRight className={`size-3 transition-transform ${!collapsedSections.has("private") ? "rotate-90" : ""}`} />
                   </button>
                 </CollapsibleTrigger>
-                <Lock className="mr-1 size-3.5" />
-                <span className="truncate">Private</span>
+                <NotebookPen className="mr-1 size-3.5" />
+                <span className="truncate">My Drafts</span>
               </div>
             </SidebarGroupLabel>
             <SidebarGroupAction onClick={handleAddPrivatePage} title="Add private page" disabled={addingTo !== null}>

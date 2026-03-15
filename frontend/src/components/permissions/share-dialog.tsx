@@ -233,7 +233,7 @@ export function ShareDialog({
 
   const visibilityLabel = isSharedWithWorkspace
     ? `Shared with ${workspaces.find((w) => w.id === selectedWorkspaceId)?.name ?? "a workspace"}`
-    : "Private - only you and invited people";
+    : "My Drafts - only you and invited people";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

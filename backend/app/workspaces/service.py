@@ -209,7 +209,7 @@ async def sync_folder_permissions(db: AsyncSession) -> None:
     # --- Phase 2: Discover new folders under Sarj Docs root ---
     new_folders = {
         fid: fname for fid, fname in live_folders.items()
-        if fid not in known_folder_ids and fname != "Private"
+        if fid not in known_folder_ids and fname != "My Drafts"
     }
 
     if new_folders:

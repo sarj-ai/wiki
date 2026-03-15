@@ -273,7 +273,7 @@ async def _try_ingest_new_file(
     workspace_id: uuid.UUID | None = None
 
     # folder_chain is [root_child, ..., immediate_parent] — names from root downward
-    if len(folder_chain) >= 2 and folder_chain[0]["name"] == "Private":
+    if len(folder_chain) >= 2 and folder_chain[0]["name"] == "My Drafts":
         is_private = True
         # Second folder in chain is the user email folder
         owner_email = folder_chain[1]["name"]
