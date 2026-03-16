@@ -30,6 +30,8 @@ jobs:
 
       - name: Build for Cloudflare Workers
         run: npm run build:worker
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
 
       - name: Deploy to Cloudflare
         run: npm run deploy
