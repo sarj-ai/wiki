@@ -876,10 +876,18 @@ def _transform_toc(toc: dict) -> dict:
 
         runs = _extract_runs(para.get("elements", []), {})
         text = "".join(r.get("text", "") for r in runs)
+
+        # Extract link: TOC entries use headingId (not url) for internal links
         link = None
-        for r in runs:
-            if r.get("link"):
-                link = r["link"]
+        for el in para.get("elements", []):
+            text_style = el.get("textRun", {}).get("textStyle", {})
+            link_obj = text_style.get("link")
+            if link_obj:
+                heading_id = link_obj.get("headingId")
+                if heading_id:
+                    link = f"#heading={heading_id}"
+                elif link_obj.get("url"):
+                    link = link_obj["url"]
                 break
 
         if text.strip():
