@@ -882,7 +882,7 @@ def _transform_toc(toc: dict) -> dict:
         if text.strip():
             items.append({"text": text.strip(), "level": level, "link": link})
 
-    return {"type": "table_of_contents", "items": items}
+    return {"type": "table_of_contents", "tocItems": items}
 
 
 # ---------------------------------------------------------------------------
