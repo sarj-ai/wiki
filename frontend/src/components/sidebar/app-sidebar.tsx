@@ -1,17 +1,12 @@
 "use client";
 
-import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import React, { useContext, useEffect, useMemo } from "react";
+import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Plus, NotebookPen, Sun, Moon, LogOut, Loader2, RefreshCw, Building2, GripVertical } from "lucide-react";
-import { toast } from "sonner";
 import {
   DndContext,
   closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -57,11 +52,10 @@ import { PageTree } from "./page-tree";
 import { useAuth } from "@/components/auth-provider";
 import { useWorkspaces } from "@/hooks/use-workspaces";
 import { usePageTree } from "@/hooks/use-page-tree";
-import { useLoading } from "@/components/loading-bar";
+import { useCollapsedSections } from "@/hooks/use-collapsed-sections";
+import { useWorkspaceManagement } from "@/hooks/use-workspace-management";
+import { usePageOperations } from "@/hooks/use-page-operations";
 import type { Page, Workspace } from "@/types";
-import { api } from "@/lib/api";
-import { findPageById } from "@/lib/page-utils";
-import { useQueryClient } from "@tanstack/react-query";
 import { CommandPalette } from "@/components/search/command-palette";
 import {
   Popover,
@@ -116,118 +110,64 @@ export function AppSidebar() {
   const { resolvedTheme, setTheme } = useTheme();
   const { user, logout } = useAuth();
   const pathname = usePathname();
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  const { start, done } = useLoading();
   const { data: workspaces = [] } = useWorkspaces();
   const { data: allPages = [], isLoading: isTreeLoading } = usePageTree();
-  const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
-  const [deletingPageId, setDeletingPageId] = useState<string | null>(null);
-  const [addingTo, setAddingTo] = useState<string | null>(null);
-  const [addingChildParentId, setAddingChildParentId] = useState<string | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  const workspaceSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-  );
-
-  const workspaceIds = useMemo(() => workspaces.map((ws) => ws.id), [workspaces]);
-
-  async function handleWorkspaceReorder(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = workspaces.findIndex((ws) => ws.id === active.id);
-    const newIndex = workspaces.findIndex((ws) => ws.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    // Optimistic reorder
-    const reordered = [...workspaces];
-    const [moved] = reordered.splice(oldIndex, 1);
-    reordered.splice(newIndex, 0, moved);
-    const updated = reordered.map((ws, i) => ({ ...ws, sortOrder: i }));
-    queryClient.setQueryData<Workspace[]>(["workspaces"], updated);
-
-    try {
-      await api.reorderWorkspaces(updated.map((ws) => ws.id));
-    } catch {
-      toast.error("Failed to reorder workspaces");
-      queryClient.invalidateQueries({ queryKey: ["workspaces"] });
-    }
-  }
-  const [workspaceEmojiPickerId, setWorkspaceEmojiPickerId] = useState<string | null>(null);
-
-  const SECTIONS_KEY = "sarj-collapsed-sections";
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
-  const [sectionsHydrated, setSectionsHydrated] = useState(false);
-
-  // Load from localStorage after mount to avoid hydration mismatch
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(SECTIONS_KEY);
-      if (stored) setCollapsedSections(new Set(JSON.parse(stored) as string[]));
-    } catch {
-      // ignore
-    }
-    setSectionsHydrated(true);
-  }, []);
-
-  // Persist to localStorage on change (skip initial mount)
-  useEffect(() => {
-    if (!sectionsHydrated) return;
-    try {
-      localStorage.setItem(SECTIONS_KEY, JSON.stringify([...collapsedSections]));
-    } catch {
-      // ignore
-    }
-  }, [collapsedSections, sectionsHydrated]);
-
-  const toggleSection = useCallback((id: string) => {
-    setCollapsedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  async function handleSync() {
-    setIsSyncing(true);
-    try {
-      const [, result] = await Promise.all([
-        api.syncWorkspaces(),
-        api.syncPages(),
-      ]);
-      queryClient.invalidateQueries({ queryKey: ["workspaces"] });
-      queryClient.invalidateQueries({ queryKey: ["pages"] });
-      const parts: string[] = [];
-      if (result.added) parts.push(`${result.added} added`);
-      if (result.updated) parts.push(`${result.updated} updated`);
-      if (result.removed) parts.push(`${result.removed} removed`);
-      toast.success(parts.length ? `Synced: ${parts.join(", ")}` : "Everything up to date");
-    } catch {
-      toast.error("Failed to sync");
-    } finally {
-      setIsSyncing(false);
-    }
-  }
-
-  async function handleWorkspaceIcon(workspaceId: string, icon: string | null) {
-    // Optimistic update — reflect immediately in the UI
-    queryClient.setQueryData<Workspace[]>(["workspaces"], (old) =>
-      old?.map((ws) => (ws.id === workspaceId ? { ...ws, icon } : ws))
-    );
-    try {
-      await api.updateWorkspace(workspaceId, { icon });
-    } catch {
-      toast.error("Failed to update workspace icon");
-      queryClient.invalidateQueries({ queryKey: ["workspaces"] });
-    }
-  }
 
   const activePageId = pathname?.startsWith("/docs/")
-    ? decodeURIComponent(pathname.split("/")[2] ?? "")  || null
+    ? decodeURIComponent(pathname.split("/")[2] ?? "") || null
     : null;
 
+  // Extracted hooks
+  const { collapsedSections, toggleSection, uncollapseSection, hydrated } = useCollapsedSections();
+
+  const {
+    isSyncing,
+    handleSync,
+    workspaceSensors,
+    workspaceIds,
+    handleWorkspaceReorder,
+    emojiPickerWorkspaceId,
+    setEmojiPickerWorkspaceId,
+    handleWorkspaceIcon,
+  } = useWorkspaceManagement(workspaces);
+
+  const {
+    renamingPageId,
+    deletingPageId,
+    setDeletingPageId,
+    addingTo,
+    addingChildParentId,
+    movingPageId,
+    deletingPage,
+    deleteChildCount,
+    handleDelete,
+    handleRename,
+    handleChangeIcon,
+    handleMove,
+    handleAddChild,
+    handleAddRootPage,
+    handleAddPrivatePage,
+    handleRenamingDone,
+  } = usePageOperations(allPages, activePageId);
+
+  // Uncollapse workspace section when a new root page needs renaming
+  useEffect(() => {
+    if (!renamingPageId) return;
+    // Find the page across all workspace page lists
+    for (const ws of workspaces) {
+      const wsPages = allPages.filter((p) => p.workspaceId === ws.id);
+      if (wsPages.some((p) => p.id === renamingPageId)) {
+        uncollapseSection(ws.id);
+        return;
+      }
+    }
+    // Check private pages
+    if (allPages.filter((p) => p.isPrivate).some((p) => p.id === renamingPageId)) {
+      uncollapseSection("private");
+    }
+  }, [renamingPageId, allPages, workspaces, uncollapseSection]);
+
+  // Derived data
   const privatePages = useMemo(
     () => allPages.filter((p) => p.isPrivate),
     [allPages],
@@ -241,124 +181,7 @@ export function AppSidebar() {
     return map;
   }, [allPages, workspaces]);
 
-  function countDescendants(page: Page): number {
-    let count = 0;
-    for (const child of page.children) {
-      count += 1 + countDescendants(child);
-    }
-    return count;
-  }
-
-  const deletingPage = deletingPageId ? findPageById(deletingPageId, allPages) : null;
-  const deleteChildCount = deletingPage ? countDescendants(deletingPage) : 0;
-
-  async function handleDelete() {
-    if (!deletingPageId) return;
-    const pageId = deletingPageId;
-    setDeletingPageId(null);
-    start();
-    try {
-      await api.deletePage(pageId);
-      queryClient.invalidateQueries({ queryKey: ["pages"] });
-      if (activePageId === pageId) {
-        router.push("/");
-      }
-    } catch {
-      toast.error("Failed to delete page");
-    } finally {
-      done();
-    }
-  }
-
-  async function handleRename(pageId: string, newTitle: string) {
-    try {
-      await api.updatePage(pageId, { title: newTitle });
-      // Fire-and-forget: refetch tree in background
-      queryClient.invalidateQueries({ queryKey: ["pages"] });
-      queryClient.invalidateQueries({ queryKey: ["pages", pageId] });
-    } catch {
-      toast.error("Failed to rename page");
-    }
-  }
-
-  async function handleChangeIcon(pageId: string, icon: string | null) {
-    try {
-      await api.updatePage(pageId, { icon });
-      queryClient.invalidateQueries({ queryKey: ["pages"] });
-      queryClient.invalidateQueries({ queryKey: ["pages", pageId] });
-    } catch {
-      toast.error("Failed to update icon");
-    }
-  }
-
-  async function handleMove(pageId: string, newParentId: string | null, newIndex: number) {
-    start();
-    try {
-      const sortOrder = newIndex + 0.5;
-      await api.updatePage(pageId, { parentId: newParentId, sortOrder });
-      await queryClient.invalidateQueries({ queryKey: ["pages"] });
-    } catch {
-      toast.error("Failed to move page");
-    } finally {
-      done();
-    }
-  }
-
-  async function handleAddChild(parentId: string) {
-    setAddingChildParentId(parentId);
-    try {
-      const parentPage = findPageById(parentId, allPages);
-      const page = await api.createPage({
-        title: "Untitled",
-        parentId,
-        workspaceId: parentPage?.workspaceId ?? undefined,
-      });
-      // Show rename input immediately, refetch tree in background
-      setRenamingPageId(page.id);
-      queryClient.invalidateQueries({ queryKey: ["pages"] });
-    } catch {
-      toast.error("Failed to create page");
-    } finally {
-      setAddingChildParentId(null);
-    }
-  }
-
-  async function handleAddRootPage(workspaceId?: string) {
-    setAddingTo(workspaceId ?? "no-workspace");
-    try {
-      const page = await api.createPage({
-        title: "Untitled",
-        workspaceId,
-      });
-      setRenamingPageId(page.id);
-      queryClient.invalidateQueries({ queryKey: ["pages"] });
-    } catch {
-      toast.error("Failed to create page");
-    } finally {
-      setAddingTo(null);
-    }
-  }
-
-  async function handleAddPrivatePage() {
-    setAddingTo("private");
-    try {
-      const page = await api.createPage({ title: "Untitled" });
-      setRenamingPageId(page.id);
-      queryClient.invalidateQueries({ queryKey: ["pages"] });
-    } catch {
-      toast.error("Failed to create page");
-    } finally {
-      setAddingTo(null);
-    }
-  }
-
-  const handleRenamingDone = useCallback(() => {
-    if (renamingPageId) {
-      router.push(`/docs/${renamingPageId}`);
-    }
-    setRenamingPageId(null);
-  }, [renamingPageId, router]);
-
+  // User display helpers
   const displayName = user?.displayName ?? user?.email ?? "";
   const initials = user?.displayName
     ? user.displayName
@@ -395,7 +218,7 @@ export function AppSidebar() {
             {workspaces.map((workspace) => (
               <SortableWorkspaceItem key={workspace.id} workspace={workspace}>
                 <Collapsible
-                  open={!collapsedSections.has(workspace.id)}
+                  open={!hydrated || !collapsedSections.has(workspace.id)}
                   onOpenChange={() => toggleSection(workspace.id)}
                 >
                   <SidebarGroup>
@@ -408,12 +231,12 @@ export function AppSidebar() {
                             className="mr-1 inline-flex shrink-0 items-center justify-center rounded-sm p-0.5 hover:bg-sidebar-accent transition-colors"
                             aria-label={`Toggle ${workspace.name}`}
                           >
-                            <ChevronRight className={`size-3 transition-transform ${!collapsedSections.has(workspace.id) ? "rotate-90" : ""}`} />
+                            <ChevronRight className={`size-3 transition-transform ${!hydrated || !collapsedSections.has(workspace.id) ? "rotate-90" : ""}`} />
                           </button>
                         </CollapsibleTrigger>
                         <Popover
-                          open={workspaceEmojiPickerId === workspace.id}
-                          onOpenChange={(open) => setWorkspaceEmojiPickerId(open ? workspace.id : null)}
+                          open={emojiPickerWorkspaceId === workspace.id}
+                          onOpenChange={(open) => setEmojiPickerWorkspaceId(open ? workspace.id : null)}
                         >
                           <PopoverTrigger asChild>
                             <button
@@ -442,7 +265,7 @@ export function AppSidebar() {
                               theme={resolvedTheme === "dark" ? "dark" : "light"}
                               onEmojiSelect={(emoji: { native: string }) => {
                                 handleWorkspaceIcon(workspace.id, emoji.native);
-                                setWorkspaceEmojiPickerId(null);
+                                setEmojiPickerWorkspaceId(null);
                               }}
                               previewPosition="none"
                               skinTonePosition="search"
@@ -454,7 +277,7 @@ export function AppSidebar() {
                                   type="button"
                                   onClick={() => {
                                     handleWorkspaceIcon(workspace.id, null);
-                                    setWorkspaceEmojiPickerId(null);
+                                    setEmojiPickerWorkspaceId(null);
                                   }}
                                   className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                                 >
@@ -484,6 +307,7 @@ export function AppSidebar() {
                           onRenamingDone={handleRenamingDone}
                           isLoading={isTreeLoading}
                           addingChildParentId={addingChildParentId}
+                          movingPageId={movingPageId}
                         />
                       </SidebarGroupContent>
                     </CollapsibleContent>
@@ -498,7 +322,7 @@ export function AppSidebar() {
 
         {/* Private pages */}
         <Collapsible
-          open={!collapsedSections.has("private")}
+          open={!hydrated || !collapsedSections.has("private")}
           onOpenChange={() => toggleSection("private")}
         >
           <SidebarGroup>
@@ -510,7 +334,7 @@ export function AppSidebar() {
                     className="mr-1 inline-flex shrink-0 items-center justify-center rounded-sm p-0.5 hover:bg-sidebar-accent transition-colors"
                     aria-label="Toggle private pages"
                   >
-                    <ChevronRight className={`size-3 transition-transform ${!collapsedSections.has("private") ? "rotate-90" : ""}`} />
+                    <ChevronRight className={`size-3 transition-transform ${!hydrated || !collapsedSections.has("private") ? "rotate-90" : ""}`} />
                   </button>
                 </CollapsibleTrigger>
                 <NotebookPen className="mr-1 size-3.5" />

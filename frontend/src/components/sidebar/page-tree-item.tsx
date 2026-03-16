@@ -44,6 +44,7 @@ interface PageTreeItemProps {
   shouldAutoRename?: boolean;
   onRenamingDone?: () => void;
   isAddingChild?: boolean;
+  isMoving?: boolean;
 }
 
 export function PageTreeItem({
@@ -61,10 +62,12 @@ export function PageTreeItem({
   shouldAutoRename,
   onRenamingDone,
   isAddingChild,
+  isMoving,
 }: PageTreeItemProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(page.title);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const autoRenameHandled = useRef(false);
@@ -118,7 +121,7 @@ export function PageTreeItem({
   return (
     <SidebarMenuItem
       ref={setNodeRef}
-      className={`relative ${isDragging ? "opacity-30" : ""}`}
+      className={`relative ${isDragging ? "opacity-30" : ""} ${isMoving ? "opacity-50" : ""}`}
     >
       {/* Drop indicator line — before */}
       {isDragOver && dropPosition === "before" && (
@@ -197,7 +200,7 @@ export function PageTreeItem({
           >
             <Link href={`/docs/${page.id}`}>
               <span className="shrink-0 text-base leading-none">
-                {page.icon || <FileText className="size-4" />}
+                {isMoving ? <Loader2 className="size-4 animate-spin" /> : page.icon || <FileText className="size-4" />}
               </span>
               <span className="truncate">{page.title}</span>
             </Link>
@@ -206,7 +209,7 @@ export function PageTreeItem({
 
         <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
           <div className={`absolute right-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/tree-item:opacity-100 ${isActive ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/60"}`}>
-            <DropdownMenu>
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
               <DropdownMenuTrigger asChild>
                 <PopoverAnchor asChild>
                   <button
@@ -219,14 +222,24 @@ export function PageTreeItem({
                 </PopoverAnchor>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="right" align="start" sideOffset={4}>
-                <DropdownMenuItem onClick={() => {
-                  setRenameValue(page.title);
-                  setIsRenaming(true);
-                }}>
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setMenuOpen(false);
+                    setRenameValue(page.title);
+                    setIsRenaming(true);
+                  }}
+                >
                   <Pencil className="mr-2 size-4" />
                   Rename
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setShowEmojiPicker(true)}>
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setMenuOpen(false);
+                    setShowEmojiPicker(true);
+                  }}
+                >
                   <SmilePlus className="mr-2 size-4" />
                   Change icon
                 </DropdownMenuItem>

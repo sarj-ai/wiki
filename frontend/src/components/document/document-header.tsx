@@ -62,7 +62,7 @@ export function DocumentToolbar({
         </TooltipContent>
       </Tooltip>
 
-      {breadcrumbs.length > 1 && (
+      {(breadcrumbs.length > 1 || workspace) && (
         <Breadcrumb>
           <BreadcrumbList>
             {workspace && (

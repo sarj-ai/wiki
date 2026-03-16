@@ -46,6 +46,7 @@ interface PageTreeProps {
   onRenamingDone?: () => void;
   isLoading?: boolean;
   addingChildParentId?: string | null;
+  movingPageId?: string | null;
 }
 
 export function PageTree({
@@ -60,6 +61,7 @@ export function PageTree({
   onRenamingDone,
   isLoading,
   addingChildParentId,
+  movingPageId,
 }: PageTreeProps) {
   const EXPANDED_KEY = "sarj-expanded-ids";
 
@@ -263,6 +265,7 @@ export function PageTree({
               shouldAutoRename={renamingPageId === item.page.id}
               onRenamingDone={onRenamingDone}
               isAddingChild={addingChildParentId === item.page.id}
+              isMoving={movingPageId === item.page.id}
             />
           ))}
         </SidebarMenu>

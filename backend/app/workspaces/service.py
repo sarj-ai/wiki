@@ -1,4 +1,4 @@
-"""Workspace sync — fetch Google Groups via Admin SDK (service account),
+"""Workspace sync — orchestrate Google Admin SDK data with database operations,
 scan Drive folder permissions for group access, and sync user memberships."""
 
 from __future__ import annotations
@@ -6,8 +6,6 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
 from sqlalchemy import and_, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,65 +13,14 @@ from app.config import settings
 from app.drive import build_credentials, ensure_folder, get_sa_drive_service
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceGroupAccess, WorkspaceMembership
+from app.workspaces.admin_sdk import (
+    _fetch_all_groups_sync,
+    _fetch_user_groups_with_user_token,
+    _get_all_domain_groups,
+    _get_user_groups_via_service_account,
+)
 
 log = logging.getLogger(__name__)
-
-# Scopes for the service account (read-only directory access)
-_SA_SCOPES = [
-    "https://www.googleapis.com/auth/admin.directory.group.readonly",
-    "https://www.googleapis.com/auth/admin.directory.group.member.readonly",
-]
-
-
-def _get_admin_service():
-    """Build an Admin SDK Directory service using the service account
-    with domain-wide delegation (impersonating the admin email)."""
-    credentials = service_account.Credentials.from_service_account_file(
-        settings.SERVICE_ACCOUNT_KEY_PATH,
-        scopes=_SA_SCOPES,
-    )
-    delegated = credentials.with_subject(settings.ADMIN_IMPERSONATE_EMAIL)
-    return build("admin", "directory_v1", credentials=delegated, static_discovery=True)
-
-
-def _get_all_domain_groups() -> set[str]:
-    """Fetch all group emails in the domain from Admin SDK."""
-    service = _get_admin_service()
-    group_emails: set[str] = set()
-    page_token = None
-
-    while True:
-        result = service.groups().list(
-            domain=settings.ALLOWED_DOMAIN,
-            pageToken=page_token,
-            maxResults=200,
-        ).execute()
-
-        for g in result.get("groups", []):
-            group_emails.add(g["email"])
-        page_token = result.get("nextPageToken")
-        if not page_token:
-            break
-
-    return group_emails
-
-
-def _fetch_all_groups_sync() -> list[dict]:
-    """Fetch all groups from Admin SDK synchronously (for use in a thread)."""
-    service = _get_admin_service()
-    groups: list[dict] = []
-    page_token = None
-    while True:
-        result = service.groups().list(
-            domain=settings.ALLOWED_DOMAIN,
-            pageToken=page_token,
-            maxResults=200,
-        ).execute()
-        groups.extend(result.get("groups", []))
-        page_token = result.get("nextPageToken")
-        if not page_token:
-            break
-    return groups
 
 
 async def sync_all_groups(db: AsyncSession) -> list[Workspace]:
@@ -361,27 +308,13 @@ async def sync_user_memberships(db: AsyncSession, user: User) -> list[Workspace]
     This means if a workspace folder has been shared with extra groups,
     members of those groups will also get workspace access.
     """
-    def _fetch_user_groups_with_user_token() -> list[dict]:
-        credentials = build_credentials(user)
-        service = build("admin", "directory_v1", credentials=credentials, static_discovery=True)
-        groups: list[dict] = []
-        page_token = None
-        while True:
-            result = service.groups().list(
-                userKey=user.email,
-                pageToken=page_token,
-                maxResults=200,
-            ).execute()
-            groups.extend(result.get("groups", []))
-            page_token = result.get("nextPageToken")
-            if not page_token:
-                break
-        return groups
-
     user_groups: list[dict] = []
 
     try:
-        user_groups = await asyncio.to_thread(_fetch_user_groups_with_user_token)
+        credentials = build_credentials(user)
+        user_groups = await asyncio.to_thread(
+            _fetch_user_groups_with_user_token, credentials, user.email
+        )
     except Exception:
         log.warning(
             "Could not fetch groups for %s via user token, falling back to service account",
@@ -450,27 +383,6 @@ async def sync_user_memberships(db: AsyncSession, user: User) -> list[Workspace]
 
     await db.commit()
     return matched_workspaces
-
-
-def _get_user_groups_via_service_account(email: str) -> list[dict]:
-    """Fallback: fetch a user's groups using the service account."""
-    service = _get_admin_service()
-    groups: list[dict] = []
-    page_token = None
-
-    while True:
-        result = service.groups().list(
-            userKey=email,
-            pageToken=page_token,
-            maxResults=200,
-        ).execute()
-
-        groups.extend(result.get("groups", []))
-        page_token = result.get("nextPageToken")
-        if not page_token:
-            break
-
-    return groups
 
 
 async def sync_all_user_memberships(db: AsyncSession) -> None:
