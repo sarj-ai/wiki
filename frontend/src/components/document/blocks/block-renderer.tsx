@@ -17,6 +17,7 @@ export function BlockRenderer({ block }: { block: ContentBlock }) {
           runs={block.runs || []}
           variant={block.variant}
           style={block.style}
+          headingId={block.headingId}
         />
       );
     case "paragraph":

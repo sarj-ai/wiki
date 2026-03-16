@@ -7,11 +7,13 @@ export function HeadingBlock({
   runs,
   variant,
   style,
+  headingId,
 }: {
   level: number;
   runs: TextRun[];
   variant?: string;
   style?: BlockStyle;
+  headingId?: string;
 }) {
   const Tag = `h${Math.min(level, 6)}` as
     | "h1"
@@ -38,7 +40,7 @@ export function HeadingBlock({
     "";
 
   return (
-    <Tag className={headingClass || undefined} style={buildBlockCss(style)}>
+    <Tag id={headingId} className={headingClass || undefined} style={buildBlockCss(style)}>
       <RunRenderer runs={runs} />
     </Tag>
   );

@@ -164,6 +164,7 @@ export interface ContentBlock {
   alt?: string;
   width?: number;
   height?: number;
+  headingId?: string;
   tocItems?: TocItem[];
   code?: string;
 }

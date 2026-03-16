@@ -472,6 +472,9 @@ def _transform_paragraph(
     }
     if named_style in heading_map:
         block = {"type": "heading", "level": heading_map[named_style], "runs": runs}
+        heading_id = style.get("headingId")
+        if heading_id:
+            block["headingId"] = heading_id
         if para_style:
             block["style"] = para_style
         return block
