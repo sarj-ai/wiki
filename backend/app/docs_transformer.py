@@ -285,8 +285,11 @@ def _is_mono_paragraph(block: dict) -> bool:
     runs = block.get("runs", [])
     if not runs:
         return False
-    # All text-bearing runs must be monospace
-    return all(r.get("_mono") for r in runs if r.get("text", "").strip())
+    # All text-bearing runs must be monospace (and there must be at least one)
+    text_runs = [r for r in runs if r.get("text", "").strip()]
+    if not text_runs:
+        return False
+    return all(r.get("_mono") for r in text_runs)
 
 
 def _group_code_blocks(blocks: list[dict]) -> list[dict]:

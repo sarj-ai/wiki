@@ -60,6 +60,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         log.info("WEBHOOK_BASE_URL not set — Drive webhooks disabled")
 
+    # Clean up stale pending pages (failed Drive doc creation)
+    try:
+        from datetime import datetime, timedelta, timezone
+        from sqlalchemy import delete
+        from app.models import Page
+
+        async with async_session() as db:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+            result = await db.execute(
+                delete(Page)
+                .where(Page.google_drive_id.like("pending-%"))
+                .where(Page.created_at < cutoff)
+            )
+            if result.rowcount:
+                await db.commit()
+                log.info("Startup: cleaned up %d stale pending pages", result.rowcount)
+    except Exception:
+        log.exception("Failed to clean up stale pending pages on startup")
+
     yield
 
 

@@ -126,12 +126,12 @@ async def create_page(
 ) -> Page:
     """Create a new page.
 
-    1. Resolves the correct Drive folder synchronously (creates children
-       folder on Drive if the parent doesn't have one yet).
-    2. Saves the page to DB with the correct drive_folder_id.
-    3. Creates the Google Doc on Drive.
-    4. If doc creation fails, the page is saved with a pending-* ID
-       so the user can retry later -- but the folder is always correct.
+    1. Resolves the correct Drive folder (creates children folder on Drive
+       if the parent doesn't have one yet).
+    2. Saves the page to DB with a pending-* Drive ID.
+    3. Background task creates the Google Doc on Drive.
+
+    If Drive doc creation fails, the user can retry or delete via the UI.
     """
     if data.workspace_id is not None:
         await _verify_workspace_membership(db, user.id, data.workspace_id)
@@ -178,7 +178,7 @@ async def create_page(
             detail="Cannot determine Drive folder for this page",
         )
 
-    # --- Step 2: Save page to DB with correct folder ---
+    # --- Step 2: Save page to DB with pending Drive ID ---
     page_id = uuid4()
 
     page = Page(
@@ -235,7 +235,7 @@ async def finalize_page_creation(page_id: UUID, user_email: str, title: str, is_
 
         log.info("Background: created Drive doc for page %s -> %s", page_id, google_drive_id)
     except Exception:
-        log.exception("Background: Drive doc creation failed for page %s", page_id)
+        log.exception("Background: Drive doc creation failed for page %s — user can retry or delete", page_id)
 
 
 async def retry_pending_page(

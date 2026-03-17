@@ -34,8 +34,6 @@ async def create_page(
     db: AsyncSession = Depends(get_db),
 ) -> schemas.PageResponse:
     page = await service.create_page(db, user, data)
-    # Create the Google Doc in the background — the page is returned
-    # immediately with a pending-* Drive ID so the user doesn't wait.
     background_tasks.add_task(
         service.finalize_page_creation,
         page_id=page.id,
