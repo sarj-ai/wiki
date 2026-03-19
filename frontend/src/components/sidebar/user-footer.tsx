@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useTheme } from "next-themes";
 import { Sun, Moon, LogOut, RefreshCw } from "lucide-react";
 import {
@@ -16,11 +17,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/auth-provider";
 
 export function UserFooter({ onForceSync }: { onForceSync?: () => void }) {
   const { resolvedTheme, setTheme } = useTheme();
   const { user, logout } = useAuth();
+  const [showForceSyncDialog, setShowForceSyncDialog] = useState(false);
 
   const displayName = user?.displayName ?? user?.email ?? "";
   const initials = user?.displayName
@@ -79,7 +90,7 @@ export function UserFooter({ onForceSync }: { onForceSync?: () => void }) {
                 {resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
               </DropdownMenuItem>
               {onForceSync && (
-                <DropdownMenuItem onClick={onForceSync}>
+                <DropdownMenuItem onClick={() => setShowForceSyncDialog(true)}>
                   <RefreshCw className="mr-2 size-4" />
                   Force full sync
                 </DropdownMenuItem>
@@ -93,6 +104,31 @@ export function UserFooter({ onForceSync }: { onForceSync?: () => void }) {
           </DropdownMenu>
         </SidebarMenuItem>
       </SidebarMenu>
+
+      <Dialog open={showForceSyncDialog} onOpenChange={setShowForceSyncDialog}>
+        <DialogContent showCloseButton={false} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Force full sync?</DialogTitle>
+            <DialogDescription>
+              This will rescan all Drive folders from scratch. It may take several minutes for large folder trees.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowForceSyncDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                setShowForceSyncDialog(false);
+                onForceSync?.();
+              }}
+            >
+              <RefreshCw className="mr-2 size-4" />
+              Force sync
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </SidebarFooter>
   );
 }
