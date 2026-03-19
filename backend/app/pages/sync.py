@@ -35,19 +35,28 @@ GOOGLE_FOLDER_MIME = "application/vnd.google-apps.folder"
 _sync_lock = asyncio.Lock()
 
 # Module-level: last known Drive Changes API token.
-# Persists within a Cloud Run instance; resets on cold start (triggers full scan).
+# Persists within a single process; resets on cold start (triggers full scan).
+# Not shared across multiple Cloud Run instances — each instance tracks independently.
+# This is acceptable: webhooks handle real-time detection; incremental sync is
+# a performance optimization, and full scan is the reliable fallback.
 _last_changes_token: str | None = None
+
+# Timestamp of the last successful full scan. Used to skip expensive
+# folder scans on subsequent syncs when the data is still fresh.
+_last_full_scan_at: float = 0.0
+_FULL_SCAN_COOLDOWN = 3600  # 1 hour — skip full scan if done recently
 
 
 # ------------------------------------------------------------------
 # Public service functions
 # ------------------------------------------------------------------
 
-async def sync_drive_state(db: AsyncSession, user: User) -> dict[str, int]:
+async def sync_drive_state(db: AsyncSession, user: User, *, force: bool = False) -> dict[str, int]:
     """Sync DB with Drive: remove trashed pages, update titles, ingest new Docs.
 
     Tries incremental sync via the Drive Changes API first (much faster).
     Falls back to a full folder scan on first run or if incremental fails.
+    When force=True, always does a full scan regardless of the token.
     Skips if another sync is already running (returns zeros).
     """
     if _sync_lock.locked():
@@ -55,20 +64,36 @@ async def sync_drive_state(db: AsyncSession, user: User) -> dict[str, int]:
         return {"removed": 0, "added": 0, "updated": 0}
 
     async with _sync_lock:
-        global _last_changes_token
+        global _last_changes_token, _last_full_scan_at
+        from app.database import async_session
 
-        # Try incremental sync first (much faster)
-        if _last_changes_token is not None:
+        # Try incremental sync first (fast — only processes changes since last token)
+        if _last_changes_token is not None and not force:
             result = await _incremental_sync(db, user, _last_changes_token)
             if result is not None:
                 return result
 
-        # Fall back to full scan (first run or incremental failed)
-        result = await _full_sync(db, user)
+        # Full scan: collect from Drive first (slow, no DB needed), then apply.
+        # Uses a FRESH DB session because the request session may timeout during
+        # the long Drive collection phase.
+        log.info("Sync: collecting files from Drive...")
+        try:
+            drive_data = await _collect_drive_tree(settings.DRIVE_ROOT_FOLDER_ID)
+        except Exception:
+            log.exception("Sync: failed to collect Drive tree")
+            raise
 
-        # Save token for future incremental syncs
+        async with async_session() as fresh_db:
+            try:
+                result = await _full_sync(fresh_db, user, drive_data)
+            except Exception:
+                await fresh_db.rollback()
+                raise
+
+        # Save token so all subsequent syncs use fast incremental path
         try:
             _last_changes_token = await asyncio.to_thread(get_drive_changes_start_token)
+            log.info("Sync: saved changes token — future syncs will be incremental")
         except Exception:
             log.warning("Failed to get changes start token", exc_info=True)
 
@@ -108,6 +133,8 @@ async def _incremental_sync(
         if not file_id:
             continue  # Drive-level change (not file-specific), skip
 
+        # Use a savepoint so one failed change doesn't discard prior successes
+        savepoint = await db.begin_nested()
         try:
             is_removed = change.get("removed", False)
             file_meta = change.get("file")
@@ -120,9 +147,11 @@ async def _incremental_sync(
                     await db.delete(page)
                     removed += 1
                     log.info("Incremental: removed page '%s' (%s)", page.title, file_id)
+                await savepoint.commit()
                 continue
 
             if file_meta is None:
+                await savepoint.commit()
                 continue
 
             mime_type = file_meta.get("mimeType", "")
@@ -137,7 +166,6 @@ async def _incremental_sync(
                 existing = result.scalar_one_or_none()
 
                 if existing:
-                    changed = False
                     # App is the source of truth for titles -- push to Drive if diverged
                     if existing.title != file_name:
                         try:
@@ -147,15 +175,9 @@ async def _incremental_sync(
                             log.warning("Sync: failed to rename Drive file %s", file_id, exc_info=True)
                     # Clear content cache so it gets re-fetched
                     existing.content_cached_at = None
-                    if changed:
-                        existing.updated_at = datetime.now(timezone.utc)
-                        updated += 1
-                        log.info("Incremental: updated '%s' (%s)", file_name, file_id)
-                    else:
-                        # Title unchanged but content may have changed -- still invalidate cache
-                        existing.updated_at = datetime.now(timezone.utc)
-                        updated += 1
-                        log.info("Incremental: invalidated cache for '%s' (%s)", file_name, file_id)
+                    existing.updated_at = datetime.now(timezone.utc)
+                    updated += 1
+                    log.info("Incremental: invalidated cache for '%s' (%s)", file_name, file_id)
                 else:
                     # New doc -- need to figure out workspace/parent from folder
                     # Look up which workspace owns this folder
@@ -190,6 +212,8 @@ async def _incremental_sync(
                     )
                     sort_order = sort_result.scalar_one() + 1.0
 
+                    # created_by is None for externally-created docs discovered
+                    # by sync — the sync-triggering user should NOT become owner.
                     new_page = Page(
                         id=uuid4(),
                         parent_id=parent_page_id,
@@ -199,7 +223,7 @@ async def _incremental_sync(
                         type="page",
                         sort_order=sort_order,
                         is_private=is_private,
-                        created_by=user.id,
+                        created_by=None,
                         workspace_id=workspace_id,
                     )
                     db.add(new_page)
@@ -211,8 +235,11 @@ async def _incremental_sync(
                 # The important thing is if a folder was trashed (handled above).
                 pass
 
+            await savepoint.commit()  # Commit this savepoint on success
+
         except Exception:
             log.warning("Incremental: failed to process change for %s, skipping", file_id, exc_info=True)
+            await savepoint.rollback()  # Roll back only this change, keep prior successes
             continue
 
     if added or removed or updated:
@@ -223,18 +250,48 @@ async def _incremental_sync(
 
 
 # ------------------------------------------------------------------
+# Quick sync (trash check only, no folder scan)
+# ------------------------------------------------------------------
+
+async def _quick_sync(db: AsyncSession, user: User) -> dict[str, int]:
+    """Fast sync: only check for trashed/deleted pages. No folder scan.
+
+    Used when a full scan was done recently and we just want to clean up
+    any pages whose Drive files were trashed since the last sync.
+    """
+    visibility = visible_pages_filter(user)
+    result = await db.execute(select(Page).where(visibility))
+    pages = list(result.scalars().all())
+
+    removed = 0
+    ready_pages = [p for p in pages if not p.google_drive_id.startswith("pending-") and not p.google_drive_id.startswith("section-")]
+    if ready_pages:
+        drive_ids = [p.google_drive_id for p in ready_pages]
+        trashed_map = await asyncio.to_thread(batch_check_trashed, user, drive_ids)
+        for page in ready_pages:
+            if trashed_map.get(page.google_drive_id, False):
+                log.info("Quick sync: removing trashed page '%s'", page.title)
+                await db.delete(page)
+                removed += 1
+        if removed:
+            await db.commit()
+
+    return {"removed": removed, "added": 0, "updated": 0}
+
+
+# ------------------------------------------------------------------
 # Full sync (folder scan)
 # ------------------------------------------------------------------
 
-async def _full_sync(db: AsyncSession, user: User) -> dict[str, int]:
+async def _full_sync(db: AsyncSession, user: User, drive_data: dict) -> dict[str, int]:
     # --- Phase 1: Remove trashed/deleted pages ---
     visibility = visible_pages_filter(user)
     result = await db.execute(select(Page).where(visibility))
     pages = list(result.scalars().all())
 
     removed = 0
-    # Exclude pages still being created (pending-* Drive IDs don't exist in Drive yet)
-    ready_pages = [p for p in pages if not p.google_drive_id.startswith("pending-")]
+    # Check regular pages (not pending/section) against Drive
+    ready_pages = [p for p in pages if not p.google_drive_id.startswith("pending-") and not p.google_drive_id.startswith("section-")]
     if ready_pages:
         drive_ids = [p.google_drive_id for p in ready_pages]
         trashed_map = await asyncio.to_thread(batch_check_trashed, user, drive_ids)
@@ -243,29 +300,68 @@ async def _full_sync(db: AsyncSession, user: User) -> dict[str, int]:
                 log.info("Sync: removing page %s (Drive file %s trashed/deleted)", page.id, page.google_drive_id)
                 await db.delete(page)
                 removed += 1
-        if removed:
-            await db.commit()
+
+    # Check section pages — verify their underlying Drive folder still exists
+    section_pages = [p for p in pages if p.google_drive_id.startswith("section-") and p.children_folder_id]
+    if section_pages:
+        folder_ids = [p.children_folder_id for p in section_pages]
+        folder_trashed_map = await asyncio.to_thread(batch_check_trashed, user, folder_ids)
+        for section in section_pages:
+            if folder_trashed_map.get(section.children_folder_id, False):
+                log.info("Sync: removing section '%s' (Drive folder %s trashed/deleted)", section.title, section.children_folder_id)
+                # Orphan children to workspace root before deleting section
+                await db.execute(
+                    Page.__table__.update()
+                    .where(Page.parent_id == section.id)
+                    .values(parent_id=section.parent_id)
+                )
+                await db.delete(section)
+                removed += 1
+
+    if removed:
+        await db.commit()
 
     # --- Phase 2: Discover new Docs + update titles of existing ones ---
-    added, updated = await _scan_drive_folder(db, user, settings.DRIVE_ROOT_FOLDER_ID)
+    added, updated = await _apply_drive_tree(db, user, drive_data)
 
     # --- Phase 3: Remove childless section pages from DB ---
     # Section pages represent Drive folders discovered during scan.
     # If a section has no page descendants, it means the folder has no
     # Google Docs inside -- remove the section from the sidebar (DB) but
     # leave the Drive folder untouched.
+    # Scoped to visible pages to avoid touching other users' sections.
+    visibility = visible_pages_filter(user)
     result = await db.execute(
-        select(Page).where(Page.type == "section")
+        select(Page).where(Page.type == "section", visibility)
     )
     sections = list(result.scalars().all())
 
     pruned = 0
     for section in sections:
+        # Remove section if it has no children
         child_result = await db.execute(
             select(Page.id).where(Page.parent_id == section.id).limit(1)
         )
         if child_result.scalar_one_or_none() is not None:
-            continue  # Has children, keep it
+            # Has children — but check if the underlying Drive folder still exists
+            if section.children_folder_id:
+                try:
+                    from app.drive import is_drive_file_trashed
+                    trashed = await asyncio.to_thread(is_drive_file_trashed, None, section.children_folder_id)
+                    if trashed is True or trashed is None:
+                        # Folder trashed or deleted — remove section and orphan children to workspace root
+                        await db.execute(
+                            Page.__table__.update()
+                            .where(Page.parent_id == section.id)
+                            .values(parent_id=None)
+                        )
+                        await db.delete(section)
+                        pruned += 1
+                        log.info("Sync: removed section '%s' (Drive folder trashed)", section.title)
+                        continue
+                except Exception:
+                    pass  # Can't check — keep the section
+            continue  # Has children, folder exists — keep it
         await db.delete(section)
         pruned += 1
         log.info("Sync: pruned empty section '%s' from sidebar", section.title)
@@ -277,10 +373,12 @@ async def _full_sync(db: AsyncSession, user: User) -> dict[str, int]:
     # Non-section pages may have children_folder_id set (created by
     # _ensure_children_folder) but no children left in DB. If the Drive
     # folder is also truly empty, trash it to keep Drive tidy.
+    # Scoped to visible pages to avoid touching other users' folders.
     result = await db.execute(
         select(Page).where(
             Page.children_folder_id.isnot(None),
             Page.type != "section",
+            visibility,
         )
     )
     parents_with_folders = list(result.scalars().all())
@@ -319,27 +417,34 @@ async def _full_sync(db: AsyncSession, user: User) -> dict[str, int]:
 # Drive folder listing
 # ------------------------------------------------------------------
 
-def _list_drive_folder(folder_id: str) -> list[dict]:
-    """List all files in a Drive folder (handles pagination).
+def _list_drive_folder_with_retry(folder_id: str, max_retries: int = 2) -> list[dict]:
+    """List files in a Drive folder with retry on transient errors."""
+    import time as _time
 
-    Runs synchronously -- designed to be called from a worker thread.
-    Creates its own thread-local Drive service to avoid httplib2 concurrency issues.
-    Returns a list of file metadata dicts.
-    """
     service = get_sa_drive_service()
     files: list[dict] = []
     page_token = None
     query = f"'{_escape_drive_query(folder_id)}' in parents and trashed = false"
+
     while True:
-        resp = service.files().list(
-            q=query,
-            fields="nextPageToken,files(id,name,mimeType,parents)",
-            spaces="drive",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-            pageSize=100,
-            pageToken=page_token,
-        ).execute()
+        for attempt in range(max_retries + 1):
+            try:
+                resp = service.files().list(
+                    q=query,
+                    fields="nextPageToken,files(id,name,mimeType,parents)",
+                    spaces="drive",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    pageSize=1000,
+                    pageToken=page_token,
+                ).execute()
+                break
+            except Exception:
+                if attempt < max_retries:
+                    _time.sleep(1 * (attempt + 1))
+                    continue
+                raise
+
         files.extend(resp.get("files", []))
         page_token = resp.get("nextPageToken")
         if not page_token:
@@ -347,207 +452,254 @@ def _list_drive_folder(folder_id: str) -> list[dict]:
     return files
 
 
+async def _collect_drive_tree(root_folder_id: str) -> dict:
+    """Collect all folders and docs from Drive recursively with concurrency.
+
+    Pure Drive API work — no DB access. Uses concurrent folder listing
+    to handle large folder trees efficiently.
+
+    Returns {"folders": {id: {name, parent}}, "docs": {id: {name, parent}}}.
+    """
+    from collections import deque
+
+    all_folders: dict[str, dict] = {}
+    all_docs: dict[str, dict] = {}
+    queue: deque[str] = deque([root_folder_id])
+    visited: set[str] = set()
+    CONCURRENCY = 5
+
+    async def _fetch_one(folder_id: str) -> tuple[str, list[dict]]:
+        try:
+            result = await asyncio.to_thread(_list_drive_folder_with_retry, folder_id)
+            return folder_id, result
+        except Exception:
+            log.warning("Collect: failed to list folder %s, skipping", folder_id, exc_info=True)
+            return folder_id, []
+
+    scanned = 0
+    while queue:
+        batch = []
+        while queue and len(batch) < CONCURRENCY:
+            fid = queue.popleft()
+            if fid in visited:
+                continue
+            visited.add(fid)
+            batch.append(fid)
+
+        if not batch:
+            break
+
+        results = await asyncio.gather(*[_fetch_one(fid) for fid in batch])
+
+        for folder_id, file_list in results:
+            for f in file_list:
+                fid = f["id"]
+                fname = f.get("name", "Untitled")
+                mime = f.get("mimeType", "")
+                if mime == GOOGLE_FOLDER_MIME:
+                    all_folders[fid] = {"name": fname, "parent": folder_id}
+                    queue.append(fid)
+                elif mime == GOOGLE_DOC_MIME:
+                    all_docs[fid] = {"name": fname, "parent": folder_id}
+
+        scanned += len(batch)
+        if scanned % 50 == 0:
+            log.info("Collect: scanned %d folders so far (%d folders, %d docs found)...",
+                     scanned, len(all_folders), len(all_docs))
+
+    log.info("Collect: done — %d folders, %d docs found under root", len(all_folders), len(all_docs))
+    return {"folders": all_folders, "docs": all_docs, "root": root_folder_id}
+
+
 # ------------------------------------------------------------------
-# Recursive folder scan
+# Apply collected Drive data to DB
 # ------------------------------------------------------------------
 
-async def _scan_drive_folder(
+async def _apply_drive_tree(
     db: AsyncSession,
     user: User,
-    root_folder_id: str,
+    drive_data: dict,
 ) -> tuple[int, int]:
-    """Recursively scan a Drive folder: ingest new Docs and update titles of existing ones.
+    """Apply pre-collected Drive data to the DB: create sections and ingest docs.
 
     Returns (added, updated).
     """
-    added = 0
-    updated = 0
+    all_folders = drive_data["folders"]
+    all_docs = drive_data["docs"]
+    root_folder_id = drive_data["root"]
 
-    # Build a map of existing pages by Drive ID for title sync
+    # Pre-compute which folders need sections (have docs in subtree)
+    folders_with_docs: set[str] = set()
+    for doc_meta in all_docs.values():
+        current = doc_meta["parent"]
+        while current and current != root_folder_id:
+            if current in folders_with_docs:
+                break
+            folders_with_docs.add(current)
+            current = all_folders.get(current, {}).get("parent")
+
+    log.info("Apply: %d folders, %d docs, %d folders with docs",
+             len(all_folders), len(all_docs), len(folders_with_docs))
+
+    # Load existing DB state
     result = await db.execute(select(Page))
     existing_pages = {p.google_drive_id: p for p in result.scalars().all()}
 
-    # Scan folders recursively using a stack with parallel Drive API calls.
-    # Each entry: (folder_id, parent_page_id, is_private, owner_user, workspace_id, folder_path)
-    SCAN_CONCURRENCY = 5
-    stack: list[tuple[str, UUID | None, bool, User | None, UUID | None, list[str]]] = [
-        (root_folder_id, None, False, None, None, [])
-    ]
+    ws_result = await db.execute(select(Workspace))
+    ws_by_folder = {ws.drive_folder_id: ws for ws in ws_result.scalars().all()}
 
-    async def _fetch_one(fid: str) -> list[dict] | None:
-        try:
-            return await asyncio.to_thread(_list_drive_folder, fid)
-        except Exception:
-            log.warning("Sync: failed to list folder %s, skipping", fid, exc_info=True)
-            return None
+    user_result = await db.execute(select(User))
+    users_by_email = {u.email: u for u in user_result.scalars().all()}
 
-    while stack:
-        # Pop up to SCAN_CONCURRENCY items for parallel fetching
-        batch: list[tuple[str, UUID | None, bool, User | None, UUID | None, list[str]]] = []
-        while stack and len(batch) < SCAN_CONCURRENCY:
-            batch.append(stack.pop())
+    added = 0
+    updated = 0
+    db.autoflush = False
 
-        # Fetch all folder listings in parallel (Drive API calls only)
-        results = await asyncio.gather(*[_fetch_one(entry[0]) for entry in batch])
+    # BFS from root — create sections (parents first) then docs
+    FolderInfo = tuple[UUID | None, UUID | None, bool, User | None]  # page_id, ws_id, is_private, owner
+    folder_map: dict[str, FolderInfo] = {root_folder_id: (None, None, False, None)}
+    sort_counters: dict[UUID | None, float] = {}
 
-        # Process results sequentially (DB operations are not thread-safe)
-        for entry, file_list in zip(batch, results):
-            if file_list is None:
-                continue
-            folder_id, parent_page_id, is_private, owner_user, workspace_id, folder_path = entry
+    def _next_sort(parent_page_id: UUID | None) -> float:
+        val = sort_counters.get(parent_page_id, 0.0)
+        sort_counters[parent_page_id] = val + 1.0
+        return val + 1.0
 
-            for file_meta in file_list:
-                file_id = file_meta["id"]
-                file_name = file_meta.get("name", "Untitled")
-                mime_type = file_meta.get("mimeType", "")
+    # Sort folders by depth (BFS order) to ensure parents are created first
+    def _folder_depth(fid: str) -> int:
+        d = 0
+        cur = fid
+        while cur in all_folders:
+            cur = all_folders[cur]["parent"]
+            d += 1
+        return d
 
-                if mime_type == GOOGLE_FOLDER_MIME:
-                    sub_private = is_private
-                    sub_owner = owner_user
-                    sub_workspace_id = workspace_id
-                    sub_path = folder_path + [file_name]
+    sorted_folder_ids = sorted(all_folders.keys(), key=_folder_depth)
 
-                    if not folder_path and file_name == "My Drafts":
-                        sub_private = True
-                    elif len(folder_path) == 1 and folder_path[0] == "My Drafts":
-                        sub_private = True
-                        r = await db.execute(select(User).where(User.email == file_name))
-                        sub_owner = r.scalar_one_or_none()
+    for fid in sorted_folder_ids:
+        fmeta = all_folders[fid]
+        parent_folder = fmeta["parent"]
+        fname = fmeta["name"]
 
-                    if not is_private and not folder_path:
-                        r = await db.execute(
-                            select(Workspace).where(Workspace.drive_folder_id == file_id)
-                        )
-                        ws = r.scalar_one_or_none()
-                        if ws:
-                            sub_workspace_id = ws.id
+        if parent_folder not in folder_map:
+            continue  # Parent not reachable
 
-                    sub_parent_page_id = parent_page_id
-                    r = await db.execute(
-                        select(Page).where(
-                            (Page.children_folder_id == file_id)
-                            | ((Page.drive_folder_id == file_id) & (Page.type == "section"))
-                        )
+        parent_page_id, ws_id, is_private, owner_user = folder_map[parent_folder]
+
+        # Determine workspace/privacy
+        sub_ws_id = ws_id
+        sub_private = is_private
+        sub_owner = owner_user
+
+        if parent_folder == root_folder_id:
+            if fname == "My Drafts":
+                sub_private = True
+            elif fid in ws_by_folder:
+                sub_ws_id = ws_by_folder[fid].id
+
+        if is_private:
+            parent_name = all_folders.get(parent_folder, {}).get("name", "")
+            if parent_name == "My Drafts" and fname in users_by_email:
+                sub_owner = users_by_email[fname]
+
+        # Create section only for folders with docs in subtree
+        if fid in folders_with_docs:
+            is_ws_root = parent_folder == root_folder_id and fid in ws_by_folder
+            is_my_drafts = parent_folder == root_folder_id and fname == "My Drafts"
+            is_user_folder = is_private and (all_folders.get(parent_folder, {}).get("name") == "My Drafts")
+
+            if not is_ws_root and not is_my_drafts and not is_user_folder:
+                section_key = f"section-{fid}"
+                existing_section = existing_pages.get(section_key)
+                if existing_section:
+                    folder_map[fid] = (existing_section.id, sub_ws_id, sub_private, sub_owner)
+                    continue
+                else:
+                    section_page = Page(
+                        id=uuid4(),
+                        parent_id=parent_page_id,
+                        google_drive_id=section_key,
+                        drive_folder_id=parent_folder,
+                        children_folder_id=fid,
+                        title=fname,
+                        type="section",
+                        sort_order=_next_sort(parent_page_id),
+                        is_private=sub_private,
+                        created_by=sub_owner.id if sub_owner else None,
+                        workspace_id=sub_ws_id,
                     )
-                    existing_section = r.scalars().first()
-                    if existing_section:
-                        sub_parent_page_id = existing_section.id
-                    else:
-                        # Check if a sibling page with the same name exists --
-                        # this folder is likely its children_folder created by
-                        # _ensure_children_folder. Claim it instead of creating
-                        # a duplicate section.
-                        sibling_r = await db.execute(
-                            select(Page).where(
-                                Page.parent_id == parent_page_id,
-                                Page.drive_folder_id == folder_id,
-                                Page.title == file_name,
-                                Page.children_folder_id.is_(None),
-                            )
-                        )
-                        sibling_page = sibling_r.scalars().first()
-                        if sibling_page:
-                            sibling_page.children_folder_id = file_id
-                            sub_parent_page_id = sibling_page.id
-                            updated += 1
-                            log.info("Sync: claimed folder '%s' (%s) as children of page %s", file_name, file_id, sibling_page.id)
+                    db.add(section_page)
+                    await db.flush()
+                    existing_pages[section_key] = section_page
+                    folder_map[fid] = (section_page.id, sub_ws_id, sub_private, sub_owner)
+                    added += 1
+                    log.info("Sync: created section '%s'", fname)
+                    continue
 
-                    if sub_parent_page_id == parent_page_id and (sub_workspace_id is not None or sub_private):
-                        # Folder doesn't match any existing page -- create a
-                        # section so nested docs get proper hierarchy.
-                        # Skip special folders (Private, user email folders,
-                        # workspace root folders).
-                        is_special = (
-                            (not folder_path and file_name == "My Drafts")
-                            or (len(folder_path) == 1 and folder_path[0] == "My Drafts")
-                            or (not folder_path and sub_workspace_id is not None)
-                        )
-                        if not is_special:
-                            sort_result = await db.execute(
-                                select(func.coalesce(func.max(Page.sort_order), 0.0)).where(
-                                    Page.parent_id == parent_page_id
-                                )
-                            )
-                            sort_order = sort_result.scalar_one() + 1.0
+        # Folder without docs — pass through
+        folder_map[fid] = (parent_page_id, sub_ws_id, sub_private, sub_owner)
 
-                            section_page = Page(
-                                id=uuid4(),
-                                parent_id=parent_page_id,
-                                google_drive_id=f"section-{file_id}",
-                                drive_folder_id=folder_id,
-                                children_folder_id=file_id,
-                                title=file_name,
-                                type="section",
-                                sort_order=sort_order,
-                                is_private=sub_private,
-                                created_by=sub_owner.id if sub_owner else user.id,
-                                workspace_id=sub_workspace_id,
-                            )
-                            db.add(section_page)
-                            existing_pages[f"section-{file_id}"] = section_page
-                            sub_parent_page_id = section_page.id
-                            added += 1
-                            log.info("Sync: created section '%s' for folder %s", file_name, file_id)
+    # Now create/update docs
+    for doc_id, doc_meta in all_docs.items():
+        parent_folder = doc_meta["parent"]
+        doc_name = doc_meta["name"]
 
-                    stack.append((file_id, sub_parent_page_id, sub_private, sub_owner, sub_workspace_id, sub_path))
+        if parent_folder not in folder_map:
+            continue
 
-                elif mime_type == GOOGLE_DOC_MIME:
-                    existing_page = existing_pages.get(file_id)
-                    if existing_page:
-                        changed = False
-                        # App is the source of truth -- push title to Drive if diverged
-                        if existing_page.title != file_name:
-                            try:
-                                await asyncio.to_thread(rename_drive_file, None, file_id, existing_page.title)
-                                log.info("Sync: renamed Drive file '%s' -> '%s' (%s)", file_name, existing_page.title, file_id)
-                            except Exception:
-                                log.warning("Sync: failed to rename Drive file %s", file_id, exc_info=True)
-                            existing_page.content_cached_at = None
-                            changed = True
-                        # Fix parent_id based on actual Drive folder location
-                        if existing_page.parent_id != parent_page_id:
-                            log.info("Sync: re-parented '%s' (%s) from %s to %s", file_name, file_id, existing_page.parent_id, parent_page_id)
-                            existing_page.parent_id = parent_page_id
-                            changed = True
-                        # Fix drive_folder_id
-                        if existing_page.drive_folder_id != folder_id:
-                            existing_page.drive_folder_id = folder_id
-                            changed = True
-                        # Fix workspace_id
-                        if existing_page.workspace_id != workspace_id:
-                            existing_page.workspace_id = workspace_id
-                            existing_page.is_private = is_private
-                            changed = True
-                        if changed:
-                            existing_page.updated_at = datetime.now(timezone.utc)
-                            updated += 1
-                    else:
-                        # New Google Doc -- ingest it
-                        sort_result = await db.execute(
-                            select(func.coalesce(func.max(Page.sort_order), 0.0)).where(
-                                Page.parent_id == parent_page_id
-                            )
-                        )
-                        sort_order = sort_result.scalar_one() + 1.0
+        parent_page_id, ws_id, is_private, owner_user = folder_map[parent_folder]
 
-                        new_page = Page(
-                            id=uuid4(),
-                            parent_id=parent_page_id,
-                            google_drive_id=file_id,
-                            drive_folder_id=folder_id,
-                            title=file_name,
-                            type="page",
-                            sort_order=sort_order,
-                            is_private=is_private,
-                            created_by=owner_user.id if owner_user else user.id,
-                            workspace_id=workspace_id,
-                        )
-                        db.add(new_page)
-                        existing_pages[file_id] = new_page
-                        added += 1
-                        log.info("Sync: ingested new doc '%s' (%s)", file_name, file_id)
+        existing_page = existing_pages.get(doc_id)
+        if existing_page:
+            changed = False
+            if existing_page.title != doc_name:
+                try:
+                    await asyncio.to_thread(rename_drive_file, None, doc_id, existing_page.title)
+                except Exception:
+                    log.warning("Sync: failed to rename %s", doc_id, exc_info=True)
+                existing_page.content_cached_at = None
+                changed = True
+            if existing_page.parent_id != parent_page_id:
+                existing_page.parent_id = parent_page_id
+                changed = True
+            if existing_page.drive_folder_id != parent_folder:
+                existing_page.drive_folder_id = parent_folder
+                changed = True
+            if existing_page.workspace_id != ws_id:
+                existing_page.workspace_id = ws_id
+                existing_page.is_private = is_private
+                changed = True
+            if changed:
+                existing_page.updated_at = datetime.now(timezone.utc)
+                updated += 1
+        else:
+            new_page = Page(
+                id=uuid4(),
+                parent_id=parent_page_id,
+                google_drive_id=doc_id,
+                drive_folder_id=parent_folder,
+                title=doc_name,
+                type="page",
+                sort_order=_next_sort(parent_page_id),
+                is_private=is_private,
+                created_by=owner_user.id if owner_user else None,
+                workspace_id=ws_id,
+            )
+            db.add(new_page)
+            await db.flush()
+            existing_pages[doc_id] = new_page
+            added += 1
+            log.info("Sync: ingested '%s' (%s)", doc_name, doc_id)
+
+    db.autoflush = True
+    log.info("Scan complete: added=%d, updated=%d", added, updated)
 
     if added or updated:
-        await db.commit()
+        try:
+            await db.commit()
+            log.info("Scan: committed %d added, %d updated", added, updated)
+        except Exception:
+            log.exception("Scan: commit FAILED")
+            await db.rollback()
 
     return added, updated

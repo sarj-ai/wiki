@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
+from app.config import settings
 from app.database import get_db
 from app.models.user import User
 from app.pages import schemas, service
@@ -47,10 +48,13 @@ async def create_page(
 
 @router.post("/sync")
 async def sync_pages(
+    force: bool = False,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, int]:
-    return await service.sync_drive_state(db, user)
+    # Sync is scoped to user's visible pages (via visible_pages_filter in sync.py).
+    # All authenticated users are @sarj.ai (enforced at login), so no extra guard needed.
+    return await service.sync_drive_state(db, user, force=force)
 
 
 @router.get("/{page_id}/content")
@@ -89,10 +93,9 @@ async def update_page(
 
     page = await service.update_page(db, user, page_id, data)
 
-    if data.title is not None:
+    if data.title is not None and old_title != data.title:
         background_tasks.add_task(rename_drive_file, user, page.google_drive_id, data.title)
-        if old_title != data.title:
-            background_tasks.add_task(rename_child_folder, user, old_title, data.title, page.drive_folder_id)
+        background_tasks.add_task(rename_child_folder, user, old_title, data.title, page.drive_folder_id)
 
     if data.parent_id is not _UNSET and data.parent_id != old_parent_id:
         background_tasks.add_task(service.move_page_in_drive, user, page, data.parent_id)
