@@ -132,6 +132,16 @@ resource "google_cloud_run_v2_service" "backend" {
         }
       }
 
+      env {
+        name = "DRIVE_WEBHOOK_TOKEN"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.secrets["webhook-token"].secret_id
+            version = "latest"
+          }
+        }
+      }
+
       # Mount service account key as a file
       volume_mounts {
         name       = "sa-key"

@@ -5,6 +5,11 @@ resource "random_password" "secret_key" {
   special = true
 }
 
+resource "random_password" "webhook_token" {
+  length  = 48
+  special = false
+}
+
 locals {
   # DATABASE_URL constructed from Cloud SQL private IP
   database_url = "postgresql+asyncpg://${google_sql_user.app.name}:${var.db_password}@${google_sql_database_instance.main.private_ip_address}:5432/${google_sql_database.sarj_docs.name}"
@@ -16,6 +21,7 @@ locals {
     "google-client-id"     = var.google_client_id
     "google-client-secret" = var.google_client_secret
     "service-account-key"  = file(var.service_account_key_path)
+    "webhook-token"        = random_password.webhook_token.result
   }
 }
 
