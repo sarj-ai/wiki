@@ -618,6 +618,10 @@ async def _apply_drive_tree(
                 section_key = f"section-{fid}"
                 existing_section = existing_pages.get(section_key)
                 if existing_section:
+                    # Fix workspace_id if it wasn't propagated in a previous sync
+                    if existing_section.workspace_id != sub_ws_id:
+                        existing_section.workspace_id = sub_ws_id
+                        existing_section.is_private = sub_private
                     folder_map[fid] = (existing_section.id, sub_ws_id, sub_private, sub_owner)
                     continue
                 else:
