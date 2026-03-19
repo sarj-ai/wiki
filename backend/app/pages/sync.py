@@ -324,50 +324,56 @@ async def _full_sync(db: AsyncSession, user: User, drive_data: dict) -> dict[str
     # --- Phase 2: Discover new Docs + update titles of existing ones ---
     added, updated = await _apply_drive_tree(db, user, drive_data)
 
-    # --- Phase 3: Remove childless section pages from DB ---
-    # Section pages represent Drive folders discovered during scan.
-    # If a section has no page descendants, it means the folder has no
-    # Google Docs inside -- remove the section from the sidebar (DB) but
-    # leave the Drive folder untouched.
-    # Scoped to visible pages to avoid touching other users' sections.
+    # --- Phase 3: Remove empty section pages from DB ---
+    # Prune bottom-up: repeatedly remove leaf sections (no children) until
+    # no more can be removed. This handles nested empty sections like
+    # Security > EVIDENCE-REGISTRY (both empty).
     visibility = visible_pages_filter(user)
-    result = await db.execute(
-        select(Page).where(Page.type == "section", visibility)
-    )
-    sections = list(result.scalars().all())
 
     pruned = 0
-    for section in sections:
-        # Remove section if it has no children
-        child_result = await db.execute(
-            select(Page.id).where(Page.parent_id == section.id).limit(1)
+    while True:
+        result = await db.execute(
+            select(Page).where(Page.type == "section", visibility)
         )
-        if child_result.scalar_one_or_none() is not None:
-            # Has children — but check if the underlying Drive folder still exists
-            if section.children_folder_id:
-                try:
-                    from app.drive import is_drive_file_trashed
-                    trashed = await asyncio.to_thread(is_drive_file_trashed, None, section.children_folder_id)
-                    if trashed is True or trashed is None:
-                        # Folder trashed or deleted — remove section and orphan children to workspace root
-                        await db.execute(
-                            Page.__table__.update()
-                            .where(Page.parent_id == section.id)
-                            .values(parent_id=None)
-                        )
-                        await db.delete(section)
-                        pruned += 1
-                        log.info("Sync: removed section '%s' (Drive folder trashed)", section.title)
-                        continue
-                except Exception:
-                    pass  # Can't check — keep the section
-            continue  # Has children, folder exists — keep it
-        await db.delete(section)
-        pruned += 1
-        log.info("Sync: pruned empty section '%s' from sidebar", section.title)
+        sections = list(result.scalars().all())
+
+        pruned_this_pass = 0
+        for section in sections:
+            child_result = await db.execute(
+                select(Page.id).where(Page.parent_id == section.id).limit(1)
+            )
+            if child_result.scalar_one_or_none() is not None:
+                # Has children — but check if the underlying Drive folder still exists
+                if section.children_folder_id:
+                    try:
+                        from app.drive import is_drive_file_trashed
+                        trashed = await asyncio.to_thread(is_drive_file_trashed, None, section.children_folder_id)
+                        if trashed is True or trashed is None:
+                            await db.execute(
+                                Page.__table__.update()
+                                .where(Page.parent_id == section.id)
+                                .values(parent_id=section.parent_id)
+                            )
+                            await db.delete(section)
+                            pruned += 1
+                            pruned_this_pass += 1
+                            log.info("Sync: removed section '%s' (Drive folder trashed)", section.title)
+                            continue
+                    except Exception:
+                        pass
+                continue  # Has children, folder exists — keep it
+            await db.delete(section)
+            pruned += 1
+            pruned_this_pass += 1
+            log.info("Sync: pruned empty section '%s' from sidebar", section.title)
+
+        if pruned_this_pass:
+            await db.commit()
+        else:
+            break  # No more empty sections to prune
 
     if pruned:
-        await db.commit()
+        log.info("Sync: pruned %d empty sections total", pruned)
 
     # --- Phase 4: Clean up orphan children folders in Drive ---
     # Non-section pages may have children_folder_id set (created by
