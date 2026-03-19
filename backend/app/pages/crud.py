@@ -149,14 +149,11 @@ async def update_page(
     """Update an existing page. Owner or workspace member (for synced sections) can update."""
     page = await _get_page_or_403(db, page_id)
     if page.created_by is None:
-        # Synced section with no owner — allow if user is a member of the page's workspace
+        # Synced section/page with no owner — allow if user is a workspace member
+        # or if no workspace is set (allow any authenticated domain user)
         if page.workspace_id is not None:
             await _verify_workspace_membership(db, user.id, page.workspace_id)
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to modify this page",
-            )
+        # else: no owner and no workspace — any authenticated @sarj.ai user can modify
     else:
         assert_page_owner(page, user)
 
@@ -225,11 +222,7 @@ async def delete_page(
     if page.created_by is None:
         if page.workspace_id is not None:
             await _verify_workspace_membership(db, user.id, page.workspace_id)
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to modify this page",
-            )
+        # else: no owner and no workspace — any authenticated @sarj.ai user can modify
     else:
         assert_page_owner(page, user)
 
