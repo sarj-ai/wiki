@@ -2,7 +2,9 @@ import { Fragment } from "react";
 import { Pencil } from "lucide-react";
 import type { TableCellData } from "@/types";
 import { RunRenderer } from "./run-renderer";
-import { getStatusClass } from "./utils";
+import { getStatusClass, VALID_VERTICAL_ALIGNS } from "./utils";
+
+const VALID_TEXT_ALIGNS = new Set(["center", "right", "justify"]);
 
 export function DocTableBlock({
   rows,
@@ -83,7 +85,7 @@ export function DocTableBlock({
   ) {
     const Tag = isHeader ? "th" : "td";
     const cellStyle: React.CSSProperties = {};
-    if (cell.verticalAlign) cellStyle.verticalAlign = cell.verticalAlign;
+    if (cell.verticalAlign && VALID_VERTICAL_ALIGNS.has(cell.verticalAlign)) cellStyle.verticalAlign = cell.verticalAlign as React.CSSProperties["verticalAlign"];
 
     // Detect single status value (e.g. "In progress", "Blocked")
     const singleRun =
@@ -108,8 +110,12 @@ export function DocTableBlock({
           <span className={statusClass}>{singleRun!.text!.trim()}</span>
         ) : (
           cell.content.map((para, pi) => {
+            // Empty paragraph = newline spacer within the cell
+            if (!para.runs || para.runs.length === 0) {
+              return <div key={pi} className="h-3" aria-hidden />;
+            }
             const paragraphStyle: React.CSSProperties = {};
-            if (para.alignment) paragraphStyle.textAlign = para.alignment;
+            if (para.alignment && VALID_TEXT_ALIGNS.has(para.alignment)) paragraphStyle.textAlign = para.alignment;
             return (
               <div
                 key={pi}

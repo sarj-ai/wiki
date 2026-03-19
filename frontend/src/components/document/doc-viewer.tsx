@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import type { DocTab } from "@/types";
 import { BlockRenderer } from "./blocks";
 import { TabScrollSpy, TabDivider } from "./tab-scroll-spy";
@@ -16,7 +16,6 @@ interface DocViewerProps {
 export function DocViewer({ tabs }: DocViewerProps) {
   const isMultiTab = tabs.length > 1;
   const [activeTab, setActiveTab] = useState(0);
-  const tabRefs = useRef<Map<string, HTMLElement>>(new Map());
 
   // Scroll-spy: observe which tab divider is at the top of the viewport
   useEffect(() => {
@@ -24,12 +23,18 @@ export function DocViewer({ tabs }: DocViewerProps) {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        // Find the topmost visible tab divider
+        // Pick the topmost intersecting divider (smallest top value)
+        let topmost: IntersectionObserverEntry | null = null;
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            const idx = Number(entry.target.id.replace("doc-tab-", ""));
-            if (!Number.isNaN(idx)) setActiveTab(idx);
+            if (!topmost || entry.boundingClientRect.top < topmost.boundingClientRect.top) {
+              topmost = entry;
+            }
           }
+        }
+        if (topmost) {
+          const idx = Number(topmost.target.id.replace("doc-tab-", ""));
+          if (!Number.isNaN(idx)) setActiveTab(idx);
         }
       },
       { rootMargin: "-10% 0px -80% 0px" },

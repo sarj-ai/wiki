@@ -147,11 +147,17 @@ export interface DocTab {
   depth?: number;
 }
 
+export interface PageContent {
+  tabs: DocTab[];
+  cached: boolean;
+}
+
 export interface ContentBlock {
   type: ContentBlockType;
   level?: number;
   runs?: TextRun[];
   ordered?: boolean;
+  checklist?: boolean;
   items?: ListItem[];
   rows?: TableCellData[][];
   hasHeader?: boolean;

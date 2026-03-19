@@ -34,12 +34,19 @@ async def verify_scheduler(request: Request) -> None:
         from google.auth.transport.requests import Request as GoogleRequest
         from google.oauth2 import id_token
 
-        # Skip audience verification — Cloud Scheduler sets audience to the
-        # Cloud Run service URI, which can change on redeployment.  We verify
-        # the caller's identity via the email claim instead.
-        claims = id_token.verify_oauth2_token(token, GoogleRequest(), audience=None)
+        # INTERNAL_AUDIENCE should be set in production to the Cloud Run
+        # service URL so that the OIDC audience claim is verified.  When
+        # unset, audience verification is skipped (acceptable for local dev).
+        claims = id_token.verify_oauth2_token(
+            token, GoogleRequest(), audience=settings.INTERNAL_AUDIENCE or None
+        )
 
         email = claims.get("email", "")
+        if not settings.CLOUD_SCHEDULER_SA_EMAIL:
+            log.warning(
+                "CLOUD_SCHEDULER_SA_EMAIL is not set — skipping caller email "
+                "verification.  Set this in production to restrict access."
+            )
         if settings.CLOUD_SCHEDULER_SA_EMAIL and email != settings.CLOUD_SCHEDULER_SA_EMAIL:
             log.warning("OIDC token email mismatch: got %s, expected %s", email, settings.CLOUD_SCHEDULER_SA_EMAIL)
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Unauthorized caller")

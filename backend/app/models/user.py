@@ -23,6 +23,10 @@ class User(Base):
     encrypted_access_token: Mapped[str | None] = mapped_column(Text)
     encrypted_refresh_token: Mapped[str | None] = mapped_column(Text)
     token_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Incremented on logout to invalidate all existing JWTs
+    token_version: Mapped[int] = mapped_column(
+        default=0, server_default=text("0"), nullable=False,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

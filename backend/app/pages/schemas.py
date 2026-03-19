@@ -4,6 +4,8 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
+import math
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # Sentinel for distinguishing "field not provided" from "set to None"
@@ -50,6 +52,22 @@ class PageUpdate(BaseModel):
     icon: str | None = Field(default=_UNSET, max_length=100)  # type: ignore[assignment]
     cover_url: str | None = Field(default=_UNSET, max_length=2000)  # type: ignore[assignment]
 
+    @field_validator("sort_order")
+    @classmethod
+    def sort_order_finite(cls, v: float | None) -> float | None:
+        if v is not None and not math.isfinite(v):
+            raise ValueError("sort_order must be a finite number")
+        return v
+
+    @field_validator("cover_url")
+    @classmethod
+    def cover_url_safe_scheme(cls, v: str | None) -> str | None:
+        if v is None or v is _UNSET:
+            return v
+        if not v.startswith("https://"):
+            raise ValueError("cover_url must use https:// scheme")
+        return v
+
     @field_validator("title")
     @classmethod
     def normalize_title(cls, v: str | None) -> str | None:
@@ -84,11 +102,6 @@ class PageResponse(BaseModel):
     google_drive_id: str
     created_at: datetime
     updated_at: datetime
-
-
-class DocContentResponse(BaseModel):
-    blocks: list[dict]
-    cached: bool
 
 
 class PageTreeNode(BaseModel):

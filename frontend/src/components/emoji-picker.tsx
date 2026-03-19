@@ -7,7 +7,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { SmilePlus } from "lucide-react";
 
 const Picker = dynamic(() => import("@emoji-mart/react").then((m) => m.default), {
@@ -109,6 +109,7 @@ export function EmojiPickerDialog({
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
       >
+        <DialogTitle className="sr-only">Pick an icon</DialogTitle>
         <Picker
           data={data}
           theme={resolvedTheme === "dark" ? "dark" : "light"}

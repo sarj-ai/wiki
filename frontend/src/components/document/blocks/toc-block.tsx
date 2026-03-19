@@ -7,7 +7,9 @@ import type { TocItem } from "@/types";
  */
 function toAnchorId(link: string): string | null {
   const match = link.match(/^#heading=(.+)$/);
-  return match ? match[1] : null;
+  if (!match) return null;
+  // Sanitize to match heading-block.tsx's id sanitization
+  return match[1].replace(/[^a-zA-Z0-9_-]/g, "") || null;
 }
 
 export function TocBlock({ items }: { items: TocItem[] }) {
@@ -31,7 +33,7 @@ export function TocBlock({ items }: { items: TocItem[] }) {
           return (
             <li
               key={i}
-              style={{ paddingInlineStart: `${item.level * 1.25}rem` }}
+              style={typeof item.level === "number" && item.level > 0 ? { paddingInlineStart: `${item.level * 1.25}rem` } : undefined}
             >
               {anchorId ? (
                 <a

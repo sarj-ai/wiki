@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import jwt
 from fastapi import HTTPException, status
-from jose import JWTError, jwt
 
 from app.config import settings
 
@@ -11,23 +11,27 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 
-def create_access_token(user_id: str, email: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+def create_access_token(user_id: str, email: str, token_version: int = 0) -> str:
+    now = datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
         "email": email,
-        "exp": expire,
+        "iat": now,
+        "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
         "type": "access",
+        "tv": token_version,
     }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 
-def create_refresh_token(user_id: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+def create_refresh_token(user_id: str, token_version: int = 0) -> str:
+    now = datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
-        "exp": expire,
+        "iat": now,
+        "exp": now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
         "type": "refresh",
+        "tv": token_version,
     }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
 
@@ -36,7 +40,7 @@ def decode_token(token: str) -> dict[str, Any]:
     """Raises HTTPException(401) on invalid/expired tokens."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError:
+    except jwt.PyJWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",

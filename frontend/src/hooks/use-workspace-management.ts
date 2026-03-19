@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   PointerSensor,
@@ -32,7 +32,7 @@ export function useWorkspaceManagement(workspaces: Workspace[]) {
     [workspaces],
   );
 
-  async function handleWorkspaceReorder(event: DragEndEvent) {
+  const handleWorkspaceReorder = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIndex = workspaces.findIndex((ws) => ws.id === active.id);
@@ -52,12 +52,12 @@ export function useWorkspaceManagement(workspaces: Workspace[]) {
       toast.error("Failed to reorder workspaces");
       queryClient.invalidateQueries({ queryKey: ["workspaces"] });
     }
-  }
+  }, [workspaces, queryClient]);
 
-  async function handleWorkspaceIcon(
+  const handleWorkspaceIcon = useCallback(async (
     workspaceId: string,
     icon: string | null,
-  ) {
+  ) => {
     // Optimistic update
     queryClient.setQueryData<Workspace[]>(["workspaces"], (old) =>
       old?.map((ws) => (ws.id === workspaceId ? { ...ws, icon } : ws)),
@@ -68,14 +68,14 @@ export function useWorkspaceManagement(workspaces: Workspace[]) {
       toast.error("Failed to update workspace icon");
       queryClient.invalidateQueries({ queryKey: ["workspaces"] });
     }
-  }
+  }, [queryClient]);
 
-  async function handleSync() {
+  const handleSync = useCallback(async (force?: boolean) => {
     setIsSyncing(true);
     try {
       const [, result] = await Promise.all([
         api.syncWorkspaces(),
-        api.syncPages(),
+        api.syncPages(force),
       ]);
       queryClient.invalidateQueries({ queryKey: ["workspaces"] });
       queryClient.invalidateQueries({ queryKey: ["pages"] });
@@ -92,11 +92,14 @@ export function useWorkspaceManagement(workspaces: Workspace[]) {
     } finally {
       setIsSyncing(false);
     }
-  }
+  }, [queryClient]);
+
+  const handleForceSync = useCallback(() => handleSync(true), [handleSync]);
 
   return {
     isSyncing,
     handleSync,
+    handleForceSync,
     workspaceSensors,
     workspaceIds,
     handleWorkspaceReorder,

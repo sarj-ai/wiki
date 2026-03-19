@@ -188,7 +188,9 @@ async def search_users(
     haven't logged in yet are still discoverable.  Directory-only users are
     inserted into the DB (without tokens) so they can receive permissions.
     """
-    pattern = f"%{query.lower()}%"
+    # Escape ILIKE special chars to prevent wildcard injection (% matches all, _ matches any char)
+    escaped = query.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{escaped}%"
     stmt = select(User).where(
         (User.email.ilike(pattern)) | (User.display_name.ilike(pattern))
     )
@@ -359,7 +361,8 @@ async def grant_permission(
     page = await _get_page_or_403(db, data.page_id)
     assert_page_owner(page, user, action="manage permissions for")
 
-    # Check for an existing identical permission to prevent duplicates
+    # Check for an existing identical permission to prevent duplicates.
+    # Uses FOR UPDATE to serialize concurrent grants on the same page.
     filters = [
         PagePermission.page_id == data.page_id,
         PagePermission.permission == data.permission,
@@ -373,7 +376,9 @@ async def grant_permission(
     else:
         filters.append(PagePermission.workspace_id.is_(None))
 
-    existing = await db.execute(select(PagePermission).where(and_(*filters)))
+    existing = await db.execute(
+        select(PagePermission).where(and_(*filters)).with_for_update()
+    )
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

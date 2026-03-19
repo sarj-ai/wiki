@@ -54,15 +54,32 @@ async def update_search_vector(db: AsyncSession, page: Page) -> None:
     )
 
 
+_REINDEX_BATCH = 100
+
+
 async def reindex_all(db: AsyncSession) -> int:
-    """Rebuild search_vector for all pages from title + cached_content."""
-    result = await db.execute(select(Page))
-    pages = list(result.scalars().all())
+    """Rebuild search_vector for all pages from title + cached_content.
+
+    Processes in batches to avoid loading the entire table (with large
+    JSONB cached_content columns) into memory at once.
+    """
     count = 0
-    for page in pages:
-        await update_search_vector(db, page)
-        count += 1
-    await db.commit()
+    offset = 0
+    while True:
+        result = await db.execute(
+            select(Page)
+            .order_by(Page.id)
+            .offset(offset)
+            .limit(_REINDEX_BATCH)
+        )
+        batch = list(result.scalars().all())
+        if not batch:
+            break
+        for page in batch:
+            await update_search_vector(db, page)
+            count += 1
+        await db.commit()
+        offset += _REINDEX_BATCH
     return count
 
 

@@ -6,23 +6,8 @@ import { DocumentSkeleton } from "@/components/document/document-skeleton";
 import { DocViewer } from "@/components/document/doc-viewer";
 import { ContentLoadingSkeleton } from "@/components/document/content-loading-skeleton";
 import { DocumentPendingState } from "@/components/document/document-pending-state";
-import type { DocTab } from "@/types";
-
-function isDocEmpty(tabs: DocTab[] | undefined): boolean {
-  if (!tabs || tabs.length === 0) return true;
-  return tabs.every((tab) =>
-    tab.blocks.every(
-      (b) =>
-        b.type === "paragraph" &&
-        (!b.runs || b.runs.length === 0 || b.runs.every((r) => !r.text?.trim())),
-    ),
-  );
-}
-
-interface PageContent {
-  tabs: DocTab[];
-  cached: boolean;
-}
+import { isDocEmpty } from "@/lib/page-utils";
+import type { PageContent } from "@/types";
 
 interface DocumentContentProps {
   // State flags

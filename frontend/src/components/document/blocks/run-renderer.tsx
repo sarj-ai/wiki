@@ -8,7 +8,7 @@ import {
   User,
 } from "lucide-react";
 import type { TextRun } from "@/types";
-import { sanitizeUrl } from "./utils";
+import { sanitizeUrl, isValidCssColor, isValidCssFont } from "./utils";
 
 export function RunRenderer({ runs }: { runs: TextRun[] }) {
   return (
@@ -144,7 +144,15 @@ export function RunRenderer({ runs }: { runs: TextRun[] }) {
         }
 
         // ── Regular text run ──
-        let rendered: React.ReactNode = run.text || "";
+        // Convert \n to <br> so line breaks within a paragraph are preserved
+        let rendered: React.ReactNode = run.text?.includes("\n")
+          ? run.text.split("\n").map((part, j, arr) => (
+              <Fragment key={j}>
+                {part}
+                {j < arr.length - 1 && <br />}
+              </Fragment>
+            ))
+          : (run.text || "");
 
         if (run.bold) rendered = <strong>{rendered}</strong>;
         if (run.italic) rendered = <em>{rendered}</em>;
@@ -155,12 +163,12 @@ export function RunRenderer({ runs }: { runs: TextRun[] }) {
         if (run.superscript) rendered = <sup>{rendered}</sup>;
         if (run.subscript) rendered = <sub>{rendered}</sub>;
 
-        // Inline styles (color, background, font)
+        // Inline styles (color, background, font) — validated to prevent CSS injection
         const inlineStyle: React.CSSProperties = {};
-        if (run.color) inlineStyle.color = run.color;
-        if (run.backgroundColor) inlineStyle.backgroundColor = run.backgroundColor;
-        if (run.fontFamily) inlineStyle.fontFamily = run.fontFamily;
-        if (run.fontSize) inlineStyle.fontSize = `${run.fontSize}pt`;
+        if (run.color && isValidCssColor(run.color)) inlineStyle.color = run.color;
+        if (run.backgroundColor && isValidCssColor(run.backgroundColor)) inlineStyle.backgroundColor = run.backgroundColor;
+        if (run.fontFamily && isValidCssFont(run.fontFamily)) inlineStyle.fontFamily = run.fontFamily;
+        if (typeof run.fontSize === "number" && isFinite(run.fontSize)) inlineStyle.fontSize = `${run.fontSize}pt`;
 
         const hasInlineStyle = Object.keys(inlineStyle).length > 0;
 

@@ -145,9 +145,19 @@ async def reorder_workspaces(
     db: AsyncSession = Depends(get_db),
 ) -> list[WorkspaceOut]:
     """Persist the user's preferred workspace order."""
+    # Filter to workspaces the user is actually a member of
+    membership_result = await db.execute(
+        select(WorkspaceMembership.workspace_id).where(
+            WorkspaceMembership.user_id == current_user.id
+        )
+    )
+    member_ws_ids = {str(row[0]) for row in membership_result.all()}
+
     settings = await _get_user_settings(db, current_user.id)
 
     for i, ws_id in enumerate(data.workspace_ids):
+        if ws_id not in member_ws_ids:
+            continue  # skip workspaces user doesn't belong to
         if ws_id in settings:
             settings[ws_id].sort_order = float(i)
         else:

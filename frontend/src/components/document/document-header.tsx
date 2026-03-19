@@ -62,7 +62,7 @@ export function DocumentToolbar({
         </TooltipContent>
       </Tooltip>
 
-      {(breadcrumbs.length > 1 || workspace) && (
+      {(breadcrumbs.length > 1 || workspace || page.isPrivate) && (
         <Breadcrumb>
           <BreadcrumbList>
             {workspace && (
@@ -70,6 +70,16 @@ export function DocumentToolbar({
                 <BreadcrumbItem>
                   <BreadcrumbLink href="/">
                     {workspace.name}
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+              </>
+            )}
+            {page.isPrivate && !workspace && (
+              <>
+                <BreadcrumbItem>
+                  <BreadcrumbLink href="/">
+                    My Drafts
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />
@@ -102,6 +112,7 @@ export function DocumentToolbar({
             <button
               type="button"
               onClick={() => {
+                // Trigger CommandPalette's Cmd+K listener — coupled to command-palette.tsx
                 window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
               }}
               className={TOOLBAR_BUTTON_CLASS}
@@ -237,6 +248,15 @@ export function DocumentTitle({
                     setIsEditing(true);
                   }
                 }}
+                onKeyDown={(e) => {
+                  if (onRename && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    setIsEditing(true);
+                  }
+                }}
+                role={onRename ? "button" : undefined}
+                tabIndex={onRename ? 0 : undefined}
+                aria-label={onRename ? "Click to rename" : undefined}
                 title={onRename ? "Click to rename" : undefined}
               >
                 {page.title}

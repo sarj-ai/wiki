@@ -42,15 +42,25 @@ export function getStatusClass(text: string): string | null {
   return STATUS_CLASSES[text.trim().toLowerCase()] ?? null;
 }
 
+export const isValidCssColor = (v: string) => /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$|^rgba?\([^)]+\)$/.test(v);
+export const isValidCssFont = (v: string) => /^[a-zA-Z0-9\s,'"_-]+$/.test(v);
+export const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && isFinite(v);
+
+const VALID_ALIGNMENTS = new Set(["center", "right", "justify"]);
+const VALID_DIRECTIONS = new Set(["rtl"]);
+const VALID_VERTICAL_ALIGNS = new Set(["top", "middle", "bottom", "baseline"]);
+
 export function buildBlockCss(style?: BlockStyle): React.CSSProperties | undefined {
   if (!style) return undefined;
   const css: React.CSSProperties = {};
-  if (style.alignment) css.textAlign = style.alignment;
-  if (style.direction) css.direction = style.direction;
-  if (style.backgroundColor) css.backgroundColor = style.backgroundColor;
-  if (style.indentStart) css.paddingInlineStart = `${style.indentStart}pt`;
+  if (style.alignment && VALID_ALIGNMENTS.has(style.alignment)) css.textAlign = style.alignment;
+  if (style.direction && VALID_DIRECTIONS.has(style.direction)) css.direction = style.direction;
+  if (style.backgroundColor && isValidCssColor(style.backgroundColor)) css.backgroundColor = style.backgroundColor;
+  if (isFiniteNumber(style.indentStart)) css.paddingInlineStart = `${style.indentStart}pt`;
   return Object.keys(css).length > 0 ? css : undefined;
 }
+
+export { VALID_VERTICAL_ALIGNS };
 
 export function guessLanguage(code: string): string {
   const first = code.trimStart().slice(0, 200);

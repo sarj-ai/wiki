@@ -29,9 +29,16 @@ CHANNEL_TTL = timedelta(hours=12)
 # ------------------------------------------------------------------
 
 async def _get_any_user(db: AsyncSession) -> User | None:
-    """Get any user with a refresh token to act on behalf of the app."""
+    """Get any user with a refresh token to act on behalf of the app.
+
+    Prefers the user whose token was most recently updated, since that
+    token is most likely to still be valid.
+    """
     result = await db.execute(
-        select(User).where(User.encrypted_refresh_token.isnot(None)).limit(1)
+        select(User)
+        .where(User.encrypted_refresh_token.isnot(None))
+        .order_by(User.token_expiry.desc().nullslast())
+        .limit(1)
     )
     return result.scalar_one_or_none()
 
@@ -74,6 +81,14 @@ async def register_watch_channel(db: AsyncSession) -> DriveWebhookChannel | None
         "address": webhook_url,
         "expiration": expiry_ms,
     }
+
+    if settings.DRIVE_WEBHOOK_TOKEN:
+        body["token"] = settings.DRIVE_WEBHOOK_TOKEN
+    else:
+        log.warning(
+            "DRIVE_WEBHOOK_TOKEN is not set — webhook requests will not be "
+            "verified. Set this in production for security."
+        )
 
     resp = await asyncio.to_thread(
         service.changes().watch(pageToken=start_page_token, body=body).execute

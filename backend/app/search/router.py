@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.user import User
-from app.search.service import reindex_all, search_pages
+from app.search.service import search_pages
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -20,12 +20,4 @@ async def search(
 ) -> list[dict]:
     return await search_pages(db, user, q, limit=limit)
 
-
-@router.post("/reindex")
-async def reindex(
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> dict:
-    """Rebuild search vectors for all pages from cached content."""
-    count = await reindex_all(db)
-    return {"reindexed": count}
+# Reindex endpoint moved to /internal/reindex (requires scheduler auth).

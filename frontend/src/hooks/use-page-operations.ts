@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -19,6 +19,12 @@ export function usePageOperations(allPages: Page[], activePageId: string | null)
   const router = useRouter();
   const { start, done } = useLoading();
 
+  // Use refs for values accessed inside async callbacks to avoid stale closures
+  const allPagesRef = useRef(allPages);
+  allPagesRef.current = allPages;
+  const activePageIdRef = useRef(activePageId);
+  activePageIdRef.current = activePageId;
+
   const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
   const [deletingPageId, setDeletingPageId] = useState<string | null>(null);
   const [addingTo, setAddingTo] = useState<string | null>(null);
@@ -28,23 +34,25 @@ export function usePageOperations(allPages: Page[], activePageId: string | null)
   const [movingPageId, setMovingPageId] = useState<string | null>(null);
 
   // --- Derived values for delete confirmation dialog ---
+  // Memoized to avoid tree traversal on every render when no delete dialog is open.
+  const { deletingPage, deleteChildCount } = useMemo(() => {
+    if (!deletingPageId) return { deletingPage: null, deleteChildCount: 0 };
 
-  function countDescendants(page: Page): number {
-    let count = 0;
-    for (const child of page.children) {
-      count += 1 + countDescendants(child);
+    function countDescendants(page: Page): number {
+      let count = 0;
+      for (const child of page.children) {
+        count += 1 + countDescendants(child);
+      }
+      return count;
     }
-    return count;
-  }
 
-  const deletingPage = deletingPageId
-    ? findPageById(deletingPageId, allPages)
-    : null;
-  const deleteChildCount = deletingPage ? countDescendants(deletingPage) : 0;
+    const page = findPageById(deletingPageId, allPages) ?? null;
+    return { deletingPage: page, deleteChildCount: page ? countDescendants(page) : 0 };
+  }, [deletingPageId, allPages]);
 
-  // --- Handlers ---
+  // --- Handlers (wrapped in useCallback to prevent stale closures) ---
 
-  async function handleDelete() {
+  const handleDelete = useCallback(async () => {
     if (!deletingPageId) return;
     const pageId = deletingPageId;
     setDeletingPageId(null);
@@ -52,7 +60,7 @@ export function usePageOperations(allPages: Page[], activePageId: string | null)
     try {
       await api.deletePage(pageId);
       queryClient.invalidateQueries({ queryKey: ["pages"] });
-      if (activePageId === pageId) {
+      if (activePageIdRef.current === pageId) {
         router.push("/");
       }
     } catch {
@@ -60,9 +68,9 @@ export function usePageOperations(allPages: Page[], activePageId: string | null)
     } finally {
       done();
     }
-  }
+  }, [deletingPageId, queryClient, router, start, done]);
 
-  async function handleRename(pageId: string, newTitle: string) {
+  const handleRename = useCallback(async (pageId: string, newTitle: string) => {
     try {
       await api.updatePage(pageId, { title: newTitle });
       queryClient.invalidateQueries({ queryKey: ["pages"] });
@@ -70,9 +78,9 @@ export function usePageOperations(allPages: Page[], activePageId: string | null)
     } catch {
       toast.error("Failed to rename page");
     }
-  }
+  }, [queryClient]);
 
-  async function handleChangeIcon(pageId: string, icon: string | null) {
+  const handleChangeIcon = useCallback(async (pageId: string, icon: string | null) => {
     try {
       await api.updatePage(pageId, { icon });
       queryClient.invalidateQueries({ queryKey: ["pages"] });
@@ -80,13 +88,13 @@ export function usePageOperations(allPages: Page[], activePageId: string | null)
     } catch {
       toast.error("Failed to update icon");
     }
-  }
+  }, [queryClient]);
 
-  async function handleMove(
+  const handleMove = useCallback(async (
     pageId: string,
     newParentId: string | null,
     newIndex: number,
-  ) {
+  ) => {
     setMovingPageId(pageId);
     start();
     try {
@@ -99,12 +107,12 @@ export function usePageOperations(allPages: Page[], activePageId: string | null)
       setMovingPageId(null);
       done();
     }
-  }
+  }, [queryClient, start, done]);
 
-  async function handleAddChild(parentId: string) {
+  const handleAddChild = useCallback(async (parentId: string) => {
     setAddingChildParentId(parentId);
     try {
-      const parentPage = findPageById(parentId, allPages);
+      const parentPage = findPageById(parentId, allPagesRef.current);
       const page = await api.createPage({
         title: "Untitled",
         parentId,
@@ -117,9 +125,9 @@ export function usePageOperations(allPages: Page[], activePageId: string | null)
     } finally {
       setAddingChildParentId(null);
     }
-  }
+  }, [queryClient]);
 
-  async function handleAddRootPage(workspaceId?: string) {
+  const handleAddRootPage = useCallback(async (workspaceId?: string) => {
     setAddingTo(workspaceId ?? "no-workspace");
     try {
       const page = await api.createPage({
@@ -133,9 +141,9 @@ export function usePageOperations(allPages: Page[], activePageId: string | null)
     } finally {
       setAddingTo(null);
     }
-  }
+  }, [queryClient]);
 
-  async function handleAddPrivatePage() {
+  const handleAddPrivatePage = useCallback(async () => {
     setAddingTo("private");
     try {
       const page = await api.createPage({ title: "Untitled" });
@@ -146,7 +154,7 @@ export function usePageOperations(allPages: Page[], activePageId: string | null)
     } finally {
       setAddingTo(null);
     }
-  }
+  }, [queryClient]);
 
   const handleRenamingDone = useCallback(() => {
     if (renamingPageId) {

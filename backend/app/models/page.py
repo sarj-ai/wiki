@@ -63,6 +63,10 @@ class PagePermission(Base):
     __tablename__ = "page_permissions"
     __table_args__ = (
         CheckConstraint("permission IN ('view', 'edit')", name="ck_page_permissions_permission"),
+        CheckConstraint(
+            "user_id IS NOT NULL OR workspace_id IS NOT NULL",
+            name="ck_page_permissions_at_least_one_grantee",
+        ),
         Index("ix_page_permissions_page_id", "page_id"),
         Index("ix_page_permissions_user_id", "user_id"),
         Index("ix_page_permissions_workspace_id", "workspace_id"),

@@ -39,8 +39,11 @@ export function HeadingBlock({
     headingClasses[level] ||
     "";
 
+  // Sanitize headingId to only allow safe characters for a DOM id
+  const safeId = headingId?.replace(/[^a-zA-Z0-9_-]/g, "") || undefined;
+
   return (
-    <Tag id={headingId} className={headingClass || undefined} style={buildBlockCss(style)}>
+    <Tag id={safeId} className={headingClass || undefined} style={buildBlockCss(style)}>
       <RunRenderer runs={runs} />
     </Tag>
   );

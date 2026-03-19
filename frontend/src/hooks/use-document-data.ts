@@ -8,24 +8,8 @@ import { api } from "@/lib/api";
 import { useLoading } from "@/components/loading-bar";
 import { usePageTree } from "@/hooks/use-page-tree";
 import { useWorkspaces } from "@/hooks/use-workspaces";
-import { getPageBreadcrumbs } from "@/lib/page-utils";
-import type { Page, Workspace, DocTab } from "@/types";
-
-function isDocEmpty(tabs: DocTab[] | undefined): boolean {
-  if (!tabs || tabs.length === 0) return true;
-  return tabs.every((tab) =>
-    tab.blocks.every(
-      (b) =>
-        b.type === "paragraph" &&
-        (!b.runs || b.runs.length === 0 || b.runs.every((r) => !r.text?.trim())),
-    ),
-  );
-}
-
-interface PageContent {
-  tabs: DocTab[];
-  cached: boolean;
-}
+import { getPageBreadcrumbs, isDocEmpty } from "@/lib/page-utils";
+import type { Page, PageContent, Workspace } from "@/types";
 
 export interface UseDocumentDataReturn {
   // Page metadata
@@ -96,7 +80,7 @@ export function useDocumentData(pageId: string): UseDocumentDataReturn {
       forceRefreshRef.current = false;
       return api.getPageContent(pageId, force);
     },
-    enabled: !!page,
+    enabled: !!page && page.type !== "section",
     retry: false,
   });
 
@@ -195,30 +179,37 @@ export function useDocumentData(pageId: string): UseDocumentDataReturn {
   );
 
   // ── Force-refresh content (for edit→view transitions) ──
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const forceRefreshContent = useCallback(() => {
     forceRefreshRef.current = true;
     queryClient.removeQueries({ queryKey: ["page-content", pageId] });
     // Give React Query a tick to process the removal, then refetch
-    setTimeout(() => refetchContent(), 50);
+    clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = setTimeout(() => refetchContent(), 50);
   }, [pageId, queryClient, refetchContent]);
 
-  // ── Auto-refresh content when tab becomes visible ──
+  // Clean up the timer on unmount
+  useEffect(() => {
+    return () => clearTimeout(refreshTimerRef.current);
+  }, []);
+
+  // ── Auto-refresh content when tab becomes visible (with cooldown) ──
+  // Uses invalidateQueries (not removeQueries) to avoid a loading flash —
+  // stale data is shown while the refetch happens in the background.
+  const lastRefreshRef = useRef(0);
   useEffect(() => {
     function handleVisibilityChange() {
       if (document.visibilityState === "visible" && page && !isPending) {
-        forceRefreshContent();
+        const now = Date.now();
+        if (now - lastRefreshRef.current > 5000) {
+          lastRefreshRef.current = now;
+          queryClient.invalidateQueries({ queryKey: ["page-content", pageId] });
+        }
       }
     }
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [page, isPending, forceRefreshContent]);
-
-  // ── Redirect on not found ──
-  useEffect(() => {
-    if (!isLoading && (error || !page)) {
-      router.replace("/");
-    }
-  }, [isLoading, error, page, router]);
+  }, [page, isPending, pageId, queryClient]);
 
   return {
     page,

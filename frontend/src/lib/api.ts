@@ -1,5 +1,6 @@
-import type { Page, PagePermission, Permission, DocTab, Workspace, SearchResult, UserSearchResult } from "@/types";
+import type { Page, PageContent, PagePermission, Permission, Workspace, SearchResult, UserSearchResult } from "@/types";
 import { refreshAccessToken } from "@/lib/auth";
+import { sanitizeRedirectPath } from "@/lib/url-utils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const REDIRECT_KEY = "sarj-redirect";
@@ -60,8 +61,9 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
     if (res.status === 401) {
       // Token expired and refresh failed — force login
       if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-        localStorage.setItem(REDIRECT_KEY, window.location.pathname);
-        window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+        const safePath = sanitizeRedirectPath(window.location.pathname);
+        localStorage.setItem(REDIRECT_KEY, safePath);
+        window.location.href = `/login?redirect=${encodeURIComponent(safePath)}`;
       }
       throw new Error("Session expired");
     }
@@ -105,10 +107,7 @@ interface GrantPermissionData {
   permission: Permission;
 }
 
-interface PageContent {
-  tabs: DocTab[];
-  cached: boolean;
-}
+
 
 export const api = {
   getWorkspaces: () => fetchApi<Workspace[]>("/workspaces"),
@@ -129,7 +128,7 @@ export const api = {
 
   getPageTree: () => fetchApi<Page[]>("/pages/tree"),
 
-  syncPages: () => fetchApi<{ removed: number; added: number; updated: number }>("/pages/sync", { method: "POST" }),
+  syncPages: (force?: boolean) => fetchApi<{ removed: number; added: number; updated: number }>(`/pages/sync${force ? "?force=true" : ""}`, { method: "POST" }),
 
   getPage: (id: string) => fetchApi<Page>(pagePath(id)),
 

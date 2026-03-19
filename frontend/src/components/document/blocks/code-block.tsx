@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { codeToHtml } from "shiki";
 import { Check, Copy } from "lucide-react";
 import { guessLanguage } from "./utils";
@@ -9,6 +9,7 @@ export function CodeBlockComponent({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
   const lang = useMemo(() => guessLanguage(code), [code]);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -24,10 +25,18 @@ export function CodeBlockComponent({ code }: { code: string }) {
     return () => { cancelled = true; };
   }, [code, lang]);
 
+  // Clean up copy timer on unmount
+  useEffect(() => {
+    return () => clearTimeout(copyTimerRef.current);
+  }, []);
+
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(code).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      // Clipboard API may be denied in some contexts — fail silently
     });
   }, [code]);
 

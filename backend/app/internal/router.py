@@ -27,6 +27,18 @@ async def renew_webhooks() -> dict:
     return {"status": "ok"}
 
 
+@router.post("/reindex")
+async def reindex() -> dict:
+    """Rebuild search vectors for all pages from cached content."""
+    from app.search.service import reindex_all
+
+    async with async_session() as db:
+        count = await reindex_all(db)
+
+    log.info("Reindex complete: %d pages (via Cloud Scheduler)", count)
+    return {"reindexed": count}
+
+
 @router.post("/sync-workspaces")
 async def sync_workspaces() -> dict:
     """Sync Google Groups, folder permissions, and user memberships."""

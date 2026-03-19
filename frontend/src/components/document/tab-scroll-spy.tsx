@@ -27,7 +27,7 @@ export function TabScrollSpy({
         type="button"
         onClick={() => onClickTab(`doc-tab-${i}`)}
         className={`doc-tab-nav-item ${i === activeIndex ? "doc-tab-nav-active" : ""}`}
-        style={depth > 0 ? { paddingLeft: `${0.75 + depth * 1}rem` } : undefined}
+        style={typeof depth === "number" && depth > 0 ? { paddingLeft: `${0.75 + depth * 1}rem` } : undefined}
       >
         {tab.title}
       </button>
