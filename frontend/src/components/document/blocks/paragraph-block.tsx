@@ -10,7 +10,7 @@ export function ParagraphBlock({
   style?: BlockStyle;
 }) {
   if (!runs || runs.length === 0) {
-    return <div className="h-4" aria-hidden />;
+    return <div className="h-3" aria-hidden />;
   }
 
   const hasImages = runs.some((r) => r.type === "image");

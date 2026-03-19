@@ -27,6 +27,7 @@ export function BlockRenderer({ block }: { block: ContentBlock }) {
         <ListBlock
           ordered={block.ordered || false}
           items={block.items || []}
+          checklist={block.checklist}
         />
       );
     case "table":

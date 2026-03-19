@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { ChevronRight, Plus, MoreHorizontal, FileText, Pencil, Trash2, SmilePlus, Loader2 } from "lucide-react";
+import { ChevronRight, Plus, MoreHorizontal, FileText, FolderClosed, Pencil, Trash2, SmilePlus, Loader2 } from "lucide-react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Page } from "@/types";
 import {
@@ -15,19 +15,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import dynamic from "next/dynamic";
-import { useTheme } from "next-themes";
-import {
-  Popover,
-  PopoverContent,
-  PopoverAnchor,
-} from "@/components/ui/popover";
-import data from "@emoji-mart/data";
-
-const EmojiMartPicker = dynamic(() => import("@emoji-mart/react").then((m) => m.default), {
-  ssr: false,
-  loading: () => <div className="h-[350px] w-[352px]" />,
-});
+import { EmojiPickerDialog } from "@/components/emoji-picker";
 
 interface PageTreeItemProps {
   page: Page;
@@ -45,9 +33,10 @@ interface PageTreeItemProps {
   onRenamingDone?: () => void;
   isAddingChild?: boolean;
   isMoving?: boolean;
+  isHighlighted?: boolean;
 }
 
-export function PageTreeItem({
+export const PageTreeItem = React.memo(function PageTreeItem({
   page,
   depth,
   activePageId,
@@ -63,6 +52,7 @@ export function PageTreeItem({
   onRenamingDone,
   isAddingChild,
   isMoving,
+  isHighlighted,
 }: PageTreeItemProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(page.title);
@@ -92,7 +82,6 @@ export function PageTreeItem({
       });
     }
   }, [isRenaming]);
-  const { resolvedTheme } = useTheme();
   const hasChildren = page.children.length > 0;
   const isActive = activePageId === page.id;
 
@@ -121,7 +110,7 @@ export function PageTreeItem({
   return (
     <SidebarMenuItem
       ref={setNodeRef}
-      className={`relative ${isDragging ? "opacity-30" : ""} ${isMoving ? "opacity-50" : ""}`}
+      className={`relative ${isDragging ? "opacity-30" : ""} ${isMoving ? "opacity-50" : ""} ${isHighlighted ? "sidebar-highlight-pulse" : ""}`}
     >
       {/* Drop indicator line — before */}
       {isDragOver && dropPosition === "before" && (
@@ -148,9 +137,11 @@ export function PageTreeItem({
           }}
           aria-label={hasChildren ? (isExpanded ? "Collapse" : "Expand") : undefined}
           aria-expanded={hasChildren ? isExpanded : undefined}
+          aria-hidden={!hasChildren}
+          tabIndex={hasChildren ? 0 : -1}
         >
           <ChevronRight
-            className={`size-3.5 transition-transform duration-200 ${
+            className={`${page.type === "section" ? "size-3" : "size-3.5"} transition-transform duration-200 ${
               hasChildren ? "opacity-100" : "opacity-0"
             } ${isExpanded ? "rotate-90" : ""}`}
           />
@@ -159,7 +150,7 @@ export function PageTreeItem({
         {isRenaming ? (
           <div className="flex-1 flex items-center gap-1.5 px-2">
             <span className="shrink-0 text-base leading-none">
-              {page.icon || <FileText className="size-4" />}
+              {page.icon || (page.type === "section" ? <FolderClosed className="size-4" /> : <FileText className="size-4" />)}
             </span>
             <input
               ref={inputRef}
@@ -200,34 +191,41 @@ export function PageTreeItem({
           >
             <Link href={`/docs/${page.id}`}>
               <span className="shrink-0 text-base leading-none">
-                {isMoving ? <Loader2 className="size-4 animate-spin" /> : page.icon || <FileText className="size-4" />}
+                {isMoving ? <Loader2 className="size-4 animate-spin" /> : page.icon || (page.type === "section" ? <FolderClosed className="size-4" /> : <FileText className="size-4" />)}
               </span>
-              <span className="truncate">{page.title}</span>
+              <span className="truncate" title={page.title}>{page.title}</span>
             </Link>
           </SidebarMenuButton>
         )}
 
-        <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-          <div className={`absolute right-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/tree-item:opacity-100 ${isActive ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/60"}`}>
+        <div className={`absolute right-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/tree-item:opacity-100 ${isActive ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/60"}`}>
             <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
               <DropdownMenuTrigger asChild>
-                <PopoverAnchor asChild>
-                  <button
-                    type="button"
-                    className="flex size-5 items-center justify-center rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                    aria-label="Page options"
-                  >
-                    <MoreHorizontal className="size-4" />
-                  </button>
-                </PopoverAnchor>
+                <button
+                  type="button"
+                  className="flex size-5 items-center justify-center rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  aria-label="Page options"
+                >
+                  <MoreHorizontal className="size-4" />
+                </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="right" align="start" sideOffset={4}>
+              <DropdownMenuContent
+                side="right"
+                align="start"
+                sideOffset={4}
+                onCloseAutoFocus={(e) => {
+                  // Prevent focus restoration when rename is about to activate
+                  if (isRenaming) e.preventDefault();
+                }}
+              >
                 <DropdownMenuItem
                   onSelect={(e) => {
                     e.preventDefault();
                     setMenuOpen(false);
-                    setRenameValue(page.title);
-                    setIsRenaming(true);
+                    setTimeout(() => {
+                      setRenameValue(page.title);
+                      setIsRenaming(true);
+                    }, 100);
                   }}
                 >
                   <Pencil className="mr-2 size-4" />
@@ -265,41 +263,19 @@ export function PageTreeItem({
               {isAddingChild ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
             </button>
           </div>
-          <PopoverContent
-            className="w-auto p-0 border-none shadow-lg"
-            side="right"
-            align="start"
-            sideOffset={8}
-            onOpenAutoFocus={(e) => e.preventDefault()}
-            onCloseAutoFocus={(e) => e.preventDefault()}
-          >
-            <EmojiMartPicker
-              data={data}
-              theme={resolvedTheme === "dark" ? "dark" : "light"}
-              onEmojiSelect={(emoji: { native: string }) => {
-                onChangeIcon(page.id, emoji.native);
-                setShowEmojiPicker(false);
-              }}
-              previewPosition="none"
-              skinTonePosition="search"
-              maxFrequentRows={2}
-            />
-            {page.icon && (
-              <div className="border-t px-3 py-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChangeIcon(page.id, null);
-                    setShowEmojiPicker(false);
-                  }}
-                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Remove icon
-                </button>
-              </div>
-            )}
-          </PopoverContent>
-        </Popover>
+        <EmojiPickerDialog
+          currentEmoji={page.icon}
+          onEmojiSelect={(emoji) => {
+            onChangeIcon(page.id, emoji);
+            setShowEmojiPicker(false);
+          }}
+          onRemove={page.icon ? () => {
+            onChangeIcon(page.id, null);
+            setShowEmojiPicker(false);
+          } : undefined}
+          open={showEmojiPicker}
+          onOpenChange={setShowEmojiPicker}
+        />
       </div>
 
       {/* Drop indicator line — after */}
@@ -311,4 +287,4 @@ export function PageTreeItem({
       )}
     </SidebarMenuItem>
   );
-}
+});

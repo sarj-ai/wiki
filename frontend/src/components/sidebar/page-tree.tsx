@@ -18,6 +18,8 @@ import { SidebarMenu } from "@/components/ui/sidebar";
 import { PageTreeItem } from "./page-tree-item";
 import { SidebarSkeleton } from "./sidebar-skeleton";
 
+const EXPANDED_KEY = "sarj-expanded-ids";
+
 interface FlatItem {
   page: Page;
   depth: number;
@@ -63,7 +65,6 @@ export function PageTree({
   addingChildParentId,
   movingPageId,
 }: PageTreeProps) {
-  const EXPANDED_KEY = "sarj-expanded-ids";
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [expandedHydrated, setExpandedHydrated] = useState(false);
@@ -149,6 +150,35 @@ export function PageTree({
   useEffect(() => {
     if (activePageId) expandAncestors(activePageId);
   }, [activePageId, expandAncestors]);
+
+  // Listen for "expand section" events from the document page
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    function handleExpandSection(e: Event) {
+      const detail = (e as CustomEvent).detail;
+      const targetId = detail?.pageId as string;
+      if (!targetId) return;
+
+      // Expand the section + its ancestors
+      setExpandedIds((prev) => {
+        const next = new Set(prev);
+        next.add(targetId);
+        return next;
+      });
+      expandAncestors(targetId);
+
+      // Highlight briefly
+      setHighlightedId(targetId);
+      clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = setTimeout(() => setHighlightedId(null), 1500);
+    }
+    window.addEventListener("sarj:expand-section", handleExpandSection);
+    return () => {
+      window.removeEventListener("sarj:expand-section", handleExpandSection);
+      clearTimeout(highlightTimerRef.current);
+    };
+  }, [expandAncestors]);
 
   function handleDragStart(event: DragStartEvent) {
     setDraggedId(event.active.id as string);
@@ -266,6 +296,7 @@ export function PageTree({
               onRenamingDone={onRenamingDone}
               isAddingChild={addingChildParentId === item.page.id}
               isMoving={movingPageId === item.page.id}
+              isHighlighted={highlightedId === item.page.id}
             />
           ))}
         </SidebarMenu>

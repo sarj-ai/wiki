@@ -71,7 +71,7 @@
   --muted-foreground: #737373;
   --accent: #f5f5f5;
   --accent-foreground: #171717;
-  --destructive: #e06000;
+  --destructive: #dc2626;
   --border: #d5d5d5;
   --input: #d5d5d5;
   --ring: #a1a1a1;
@@ -116,7 +116,7 @@
   --muted-foreground: #a1a1a1;
   --accent: #262626;
   --accent-foreground: #fafafa;
-  --destructive: #e06000;
+  --destructive: #f87171;
   --border: #ffffff1a;
   --input: #ffffff26;
   --ring: #737373;
@@ -190,7 +190,17 @@
 }
 
 .doc-viewer > * + * {
-  margin-top: 1.25em;
+  margin-top: 0.75em;
+}
+
+/* Empty paragraph spacers: no margin between consecutive spacers,
+   but keep normal margin between a spacer and content */
+.doc-viewer > [aria-hidden] + [aria-hidden] {
+  margin-top: 0;
+}
+.doc-viewer > * + [aria-hidden],
+.doc-viewer > [aria-hidden] + *:not([aria-hidden]) {
+  margin-top: 0.25em;
 }
 
 .doc-viewer ::selection {
@@ -221,9 +231,9 @@
   font-weight: 700;
   letter-spacing: -0.025em;
   line-height: 1.3;
-  margin-top: 2em !important;
-  margin-bottom: 0.5em;
-  padding-bottom: 0.3em;
+  margin-top: 1.4em !important;
+  margin-bottom: 0.25em;
+  padding-bottom: 0.2em;
   border-bottom: 2px solid var(--secondary);
 }
 
@@ -238,8 +248,8 @@
   font-weight: 650;
   letter-spacing: -0.02em;
   line-height: 1.35;
-  margin-top: 1.75em !important;
-  margin-bottom: 0.4em;
+  margin-top: 1.2em !important;
+  margin-bottom: 0.2em;
 }
 
 .doc-viewer h3,
@@ -248,15 +258,15 @@
   font-weight: 600;
   letter-spacing: -0.015em;
   line-height: 1.4;
-  margin-top: 1.5em !important;
-  margin-bottom: 0.3em;
+  margin-top: 1em !important;
+  margin-bottom: 0.15em;
 }
 
 .doc-viewer h4 {
   font-size: 1.1rem;
   font-weight: 600;
   line-height: 1.45;
-  margin-top: 1.25em !important;
+  margin-top: 0.8em !important;
 }
 
 .doc-viewer h5,
@@ -264,7 +274,7 @@
   font-size: 1rem;
   font-weight: 600;
   line-height: 1.5;
-  margin-top: 1em !important;
+  margin-top: 0.6em !important;
   color: var(--muted-foreground);
 }
 
@@ -273,11 +283,11 @@
 .doc-h1 + *,
 .doc-h2 + *,
 .doc-h3 + * {
-  margin-top: 0.5em !important;
+  margin-top: 0.25em !important;
 }
 
 .doc-viewer p {
-  margin-top: 0.75em;
+  margin-top: 0.35em;
   margin-bottom: 0;
 }
 
@@ -317,7 +327,7 @@
 
 .doc-ul,
 .doc-ol {
-  margin-top: 0.75em;
+  margin-top: 0.35em;
   margin-bottom: 0;
   padding-inline-start: 1.5em;
 }
@@ -346,6 +356,34 @@
   background-color: var(--secondary);
 }
 
+/* Nested bullet styles: disc → circle → square */
+.doc-ul > li[data-nesting="1"]::before {
+  background-color: transparent;
+  border: 1.5px solid var(--secondary);
+}
+
+.doc-ul > li[data-nesting="2"]::before {
+  border-radius: 1px;
+  background-color: var(--secondary);
+}
+
+.doc-ul > li[data-nesting="3"]::before {
+  border-radius: 1px;
+  background-color: transparent;
+  border: 1.5px solid var(--secondary);
+}
+
+.doc-ul > li[data-nesting="4"]::before {
+  border-radius: 50%;
+  background-color: var(--secondary);
+}
+
+.doc-ul > li[data-nesting="5"]::before {
+  border-radius: 50%;
+  background-color: transparent;
+  border: 1.5px solid var(--secondary);
+}
+
 .doc-ol {
   list-style: decimal;
 }
@@ -358,9 +396,38 @@
 
 .doc-ul > li,
 .doc-ol > li {
-  padding-top: 0.15em;
-  padding-bottom: 0.15em;
+  padding-top: 0.05em;
+  padding-bottom: 0.05em;
   line-height: 1.7;
+}
+
+/* ── Checklists ── */
+
+.doc-checklist {
+  list-style: none;
+  margin-top: 0.35em;
+  margin-bottom: 0;
+  padding-inline-start: 1.5em;
+}
+
+.doc-checklist > li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  padding-top: 0.05em;
+  padding-bottom: 0.05em;
+  line-height: 1.7;
+}
+
+.doc-checklist-box {
+  flex-shrink: 0;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--muted-foreground);
+  border-radius: 3px;
+  position: relative;
+  top: 0.15em;
 }
 
 /* ── Tables ── */
@@ -414,6 +481,8 @@
 
 .doc-table {
   width: 100%;
+  max-width: 100%;
+  table-layout: auto;
   border-collapse: collapse;
   font-size: 0.875rem;
   line-height: 1.6;
@@ -433,6 +502,8 @@
   color: var(--muted-foreground);
   background: color-mix(in srgb, var(--foreground) 2%, var(--card));
   white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .dark .doc-table-th {
@@ -446,6 +517,7 @@
   border-top: 1px solid var(--border);
   overflow-wrap: break-word;
   word-wrap: break-word;
+  word-break: break-word;
 }
 
 .doc-table tbody tr:first-child .doc-table-td {
@@ -1399,5 +1471,25 @@
   40% {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+/* Sidebar highlight pulse — used when "Show contents" expands a section */
+.sidebar-highlight-pulse {
+  animation: sidebar-pulse 1.5s ease-out;
+}
+
+@keyframes sidebar-pulse {
+  0% {
+    background-color: var(--sidebar-accent);
+    box-shadow: 0 0 0 0 var(--sidebar-accent);
+  }
+  30% {
+    background-color: var(--sidebar-accent);
+    box-shadow: 0 0 8px 2px var(--sidebar-accent);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 0 transparent;
   }
 }
