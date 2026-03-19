@@ -21,6 +21,23 @@ An internal knowledge base for `@sarj.ai`, built on top of Google Docs. The goal
 
 ---
 
+## Backend Module Structure
+
+```
+app/
+  auth/             — OAuth flow, JWT, encryption, dependencies
+  docs_transformer/ — Google Docs API → content blocks (13 modules)
+  drive/            — Drive API helpers: credentials, files, folders, content, changes
+  pages/            — CRUD, content, background tasks, sync, tree, helpers
+  permissions/      — Page sharing and access control
+  search/           — Full-text search with PostgreSQL tsvector
+  webhooks/         — Drive push notification handling
+  workspaces/       — Google Groups sync, workspace management
+  internal/         — Cloud Scheduler endpoints (reindex, webhook renewal)
+```
+
+---
+
 ## Tooling Rules
 
 - **Always use `uv`** for Python dependency management, virtual environments, and running scripts. Never use `pip`, `pip3`, `venv`, or `python -m venv`.
@@ -43,6 +60,11 @@ An internal knowledge base for `@sarj.ai`, built on top of Google Docs. The goal
 - **Domain restriction**: Only `@sarj.ai` emails may authenticate. Enforced in FastAPI — never trust the client.
 - **Token storage**: Google OAuth access + refresh tokens stored server-side, encrypted at rest (Fernet/AES). Never sent to the client.
 - **Session**: FastAPI issues its own signed JWT after validating the Google OAuth callback. The client uses this JWT for all API calls.
+- **JWT token versioning**: Each user has a `token_version` field. Logout increments `token_version`, invalidating all previously issued JWTs. The version is embedded in the JWT payload and checked on every request.
+- **Refresh token rotation**: Refresh tokens are rotated on use — each refresh issues a new access + refresh token pair.
+- **Cookie security**: JWT cookies use `max_age` matching JWT expiry, `SameSite=lax` in development, `SameSite=none` in production (cross-origin).
+- **Webhook verification**: Drive webhooks are verified via `DRIVE_WEBHOOK_TOKEN` matched against the `X-Goog-Channel-Token` header.
+- **Internal endpoints**: Cloud Scheduler endpoints verify OIDC tokens against `INTERNAL_AUDIENCE` (Cloud Run service URL). In local dev, a shared secret (`INTERNAL_SCHEDULER_SECRET`, min 32 chars) is used instead.
 - **Admin SDK**: A GCP service account with domain-wide delegation is used to call the Admin Directory API as a service (not as the user). The service account JSON key is stored as a backend environment variable only.
 
 ---
@@ -86,6 +108,15 @@ Sarj Docs/                        ← app root folder (shared drive or team fold
 - FastAPI fetches the changed file's metadata, determines its folder path, infers the workspace, and upserts the `pages` record.
 - Webhook channel registrations expire every 7 days — a background task re-registers them automatically.
 
+### Sync Architecture
+
+- **Two-pass scan**: Pass 1 concurrently collects all folders and docs from Drive (no DB access). Pass 2 applies the collected data to the database in bulk. This avoids DB connection timeouts during long Drive API traversals.
+- **Smart section creation**: Only folders that have at least one doc in their subtree become section pages. This prevents phantom empty sections from appearing in the sidebar.
+- **Section Drive IDs**: Section pages use synthetic `section-{folder_id}` as their `google_drive_id` to distinguish them from actual Google Docs.
+- **Incremental sync**: After the initial full scan, subsequent syncs use the Drive Changes API (`changes.list` with a saved `startPageToken`) to process only new or modified files.
+- **Force sync**: Passing `?force=true` to the sync endpoint triggers a full rescan, ignoring the saved change token.
+- **Synced page ownership**: Pages created by sync have `created_by=NULL`, meaning all workspace members can modify them (no single owner).
+
 ---
 
 ## Database Schema
@@ -124,6 +155,7 @@ users:
   encrypted_access_token   TEXT   -- Fernet-encrypted
   encrypted_refresh_token  TEXT   -- Fernet-encrypted
   token_expiry             TIMESTAMPTZ
+  token_version            INTEGER NOT NULL DEFAULT 0  -- incremented on logout to invalidate all JWTs
   created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
 
 workspace_memberships:
@@ -137,7 +169,7 @@ page_permissions:
   user_id       UUID REFERENCES users(id) ON DELETE CASCADE NULL
   workspace_id  UUID REFERENCES workspaces(id) ON DELETE CASCADE NULL
   permission    TEXT NOT NULL CHECK(permission IN ('view', 'edit'))
-  -- at least one of user_id or workspace_id must be non-null (enforced in app layer)
+  CHECK (user_id IS NOT NULL OR workspace_id IS NOT NULL)  -- DB-level constraint
 
 drive_webhook_channels:
   channel_id      TEXT PRIMARY KEY       -- Google-assigned channel ID
@@ -262,13 +294,13 @@ https://docs.google.com/document/d/{DRIVE_ID}/edit?embedded=true
   --popover-foreground: #251040;
   --primary: #000000;
   --primary-foreground: #ffffff;
-  --secondary: #251040;
+  --secondary: #D0C3DF;
   --secondary-foreground: #ffffff;
   --muted: #f5f5f5;
   --muted-foreground: #737373;
   --accent: #f5f5f5;
   --accent-foreground: #171717;
-  --destructive: #e06000;
+  --destructive: #dc2626;
   --border: #d5d5d5;
   --input: #e5e5e5;
   --ring: #a1a1a1;
@@ -314,13 +346,13 @@ https://docs.google.com/document/d/{DRIVE_ID}/edit?embedded=true
   --popover-foreground: #f6efe7;
   --primary: #6762ab;
   --primary-foreground: #000000;
-  --secondary: #262626;
+  --secondary: #4B3483;
   --secondary-foreground: #f6efe7;
   --muted: #262626;
   --muted-foreground: #a1a1a1;
   --accent: #262626;
   --accent-foreground: #fafafa;
-  --destructive: #e06000;
+  --destructive: #f87171;
   --border: #ffffff1a;
   --input: #ffffff26;
   --ring: #737373;
@@ -405,6 +437,17 @@ https://docs.google.com/document/d/{DRIVE_ID}/edit?embedded=true
 
 ---
 
+## Configuration Settings
+
+| Variable | Description | Required |
+|---|---|---|
+| `SHARED_DRIVE_ID` | Shared Drive ID for Changes API. Leave empty if using folder-level service account access. | Optional |
+| `DRIVE_WEBHOOK_TOKEN` | Token for verifying Drive webhook `X-Goog-Channel-Token` header. Auto-generated via Terraform. | Yes |
+| `INTERNAL_AUDIENCE` | Cloud Run service URL used for OIDC audience verification on internal endpoints. | Yes (prod) |
+| `INTERNAL_SCHEDULER_SECRET` | Shared secret for local dev internal endpoint access. Minimum 32 characters. | Yes (dev) |
+
+---
+
 ## Decisions Log
 
 | Decision | Choice | Rationale |
@@ -418,3 +461,8 @@ https://docs.google.com/document/d/{DRIVE_ID}/edit?embedded=true
 | New doc detection | Drive Push Notifications (webhooks) | Real-time, event-driven, no polling |
 | Webhook renewal | Background APScheduler task | Channels expire every 7 days |
 | Iframe auth | Browser session passthrough | Works because all users are @sarj.ai Workspace members |
+| JWT library | PyJWT | Replaced python-jose; actively maintained |
+| Sync approach | Two-pass (collect from Drive, then apply to DB) | Avoids DB connection timeouts during long Drive traversals |
+| Section creation | Only for folders with docs in subtree | Prevents phantom empty sections in sidebar |
+| Token revocation | `token_version` on User model, embedded in JWT | Logout invalidates all tokens without a blocklist |
+| Content cache | 60-second TTL | Balances content freshness vs Google API call volume |

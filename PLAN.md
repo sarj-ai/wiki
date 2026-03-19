@@ -1,29 +1,31 @@
 # Sarj Docs — Build Plan
 
-> Last updated: 2026-03-05
+> Last updated: 2026-03-19
 
 ## Progress Overview
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | GCP Setup | **Pending** (manual, user-side) |
+| 1 | GCP Setup | ✅ Done |
 | 2 | Backend Foundation | ✅ Done |
 | 3 | Authentication | ✅ Done |
-| 4 | Workspace Sync | **Blocked** on Phase 1 |
+| 4 | Workspace Sync | ✅ Done |
 | 5 | Sidebar Tree API | ✅ Done |
-| 6 | Drive Import & Webhooks | **Blocked** on Phase 1 |
+| 6 | Drive Import & Webhooks | ✅ Done |
 | 7 | Frontend Foundation | ✅ Done |
 | 8 | Sidebar UI | ✅ Done |
 | 9 | Document View | ✅ Done |
 | 10 | Permissions UI | ✅ Done |
 | 11a | Frontend Auth Flow | ✅ Done |
-| 11b | Data Layer (React Query + Hooks) | ✅ Done (mock fallback) |
+| 11b | Data Layer (React Query + Hooks) | ✅ Done |
 | 11c | Backend: GET page + Permissions CRUD | ✅ Done |
 | 11d | Schema Fixes (trigger + constraint) | ✅ Done |
 | 11e | Drag-and-Drop | ✅ Done (sibling reorder) |
 | 11f | Loading States & Toasts | ✅ Done |
-| 11g | Search | **Stretch** — not started |
-| 12 | Wire Frontend to Real API | **Ready** after Phase 1 |
+| 11g | Search | ✅ Done (PostgreSQL tsvector full-text search) |
+| 12 | Module Split & Code Quality | ✅ Done |
+| 13 | Security Hardening | ✅ Done |
+| 14 | Sync Rewrite | ✅ Done |
 
 ---
 
@@ -45,39 +47,62 @@ backend/
 │       └── 002_schema_fixes.py            # updated_at trigger + at_least_one_grantee constraint
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                             # FastAPI app, CORS, auth + pages + permissions routers
+│   ├── main.py                             # FastAPI app, CORS, all routers
 │   ├── config.py                           # pydantic-settings
 │   ├── database.py                         # Async SQLAlchemy engine/session/Base
 │   ├── models/
 │   │   ├── __init__.py                     # Re-exports all models
-│   │   ├── user.py                         # User
+│   │   ├── user.py                         # User (with token_version)
 │   │   ├── workspace.py                    # Workspace, WorkspaceMembership
 │   │   ├── page.py                         # Page, PagePermission
 │   │   └── drive_webhook.py               # DriveWebhookChannel
 │   ├── auth/
 │   │   ├── __init__.py
 │   │   ├── router.py                       # /auth/login, callback, logout, me, refresh
-│   │   ├── jwt.py                          # JWT create/decode (access + refresh, type-safe)
+│   │   ├── jwt.py                          # JWT create/decode (access + refresh, token_version)
 │   │   ├── encryption.py                   # Fernet encrypt/decrypt Google tokens
 │   │   └── dependencies.py                # get_current_user (cookie-first, header fallback)
+│   ├── docs_transformer/                   # Google Docs API → content blocks (13 modules)
+│   ├── drive/
+│   │   ├── credentials.py                 # Service account + user credential helpers
+│   │   ├── files.py                       # Drive file operations
+│   │   ├── folders.py                     # Folder chain creation, traversal
+│   │   ├── content.py                     # Doc content fetching
+│   │   └── changes.py                     # Drive Changes API for incremental sync
 │   ├── pages/
-│   │   ├── __init__.py
-│   │   ├── router.py                       # /pages/tree, GET/{id}, CRUD, publish
-│   │   ├── schemas.py                      # PageCreate, PageUpdate (sentinel pattern), PageTreeNode, etc.
-│   │   └── service.py                      # Tree query, CRUD, access control (_visible_pages_filter)
-│   └── permissions/
-│       ├── __init__.py
-│       ├── router.py                       # GET /permissions/page/{id}, POST, DELETE
-│       ├── schemas.py                      # PermissionCreate (with validator), PermissionResponse
-│       └── service.py                      # list, grant, revoke (owner-only enforcement)
+│   │   ├── router.py                       # /pages/tree, GET/{id}, CRUD, publish, content
+│   │   ├── schemas.py                      # PageCreate, PageUpdate, PageTreeNode, etc.
+│   │   ├── service.py                      # Tree query, CRUD, access control
+│   │   ├── sync.py                        # Two-pass Drive sync (full + incremental)
+│   │   ├── background.py                  # Background task helpers
+│   │   ├── tree.py                        # Tree building utilities
+│   │   └── helpers.py                     # Shared page helpers
+│   ├── permissions/
+│   │   ├── router.py                       # GET /permissions/page/{id}, POST, DELETE
+│   │   ├── schemas.py                      # PermissionCreate (with validator), PermissionResponse
+│   │   └── service.py                      # list, grant, revoke (owner-only enforcement)
+│   ├── search/
+│   │   ├── router.py                       # GET /search?q=...
+│   │   └── service.py                      # PostgreSQL tsvector full-text search
+│   ├── webhooks/
+│   │   ├── router.py                       # POST /webhooks/drive
+│   │   └── service.py                      # Webhook verification + change processing
+│   ├── workspaces/
+│   │   ├── router.py                       # GET /workspaces, POST /workspaces/sync
+│   │   ├── schemas.py                      # WorkspaceResponse
+│   │   └── service.py                      # Admin SDK: groups sync, membership sync
+│   └── internal/
+│       ├── router.py                       # Cloud Scheduler endpoints (reindex, webhook renewal)
+│       └── dependencies.py                # OIDC audience verification
 ```
 
 **Key details:**
-- Auth: Google OAuth → JWT in HTTP-only cookies, Fernet-encrypted Google tokens in DB
+- Auth: Google OAuth → JWT in HTTP-only cookies, Fernet-encrypted Google tokens in DB, token versioning for logout
 - Pages API: Tree endpoint uses single query + Python tree build, shared `_visible_pages_filter` for access control
-- Permissions: Owner-only management, at_least_one_grantee validation
-- Page CRUD uses **placeholder Drive IDs** — real Drive integration pending Phase 6
-- Migration 002 adds `updated_at` trigger on pages + CHECK constraint on page_permissions
+- Permissions: Owner-only management, at_least_one_grantee validation (DB CHECK constraint)
+- Drive sync: Two-pass architecture (collect from Drive, then apply to DB) with incremental Changes API support
+- Search: PostgreSQL tsvector full-text search
+- Internal endpoints: OIDC-verified Cloud Scheduler endpoints for reindex and webhook renewal
 
 ### Frontend (`frontend/`)
 
@@ -127,7 +152,7 @@ frontend/
 ```
 
 **Key details:**
-- Auth: Login page, AuthProvider context, auto-redirect (commented out for dev)
+- Auth: Login page, AuthProvider context, auto-redirect on 401
 - Data layer: React Query hooks for page tree, workspaces, current user — all fall back to mock data when backend is unavailable
 - API client: Full typed wrapper with 401 → token refresh → retry logic
 - Sidebar: Drag-and-drop reorder (siblings only, per-level DnD contexts), toast feedback
@@ -137,67 +162,35 @@ frontend/
 
 ---
 
-## What's Remaining
+## Completed Phases (Detail)
 
-### Phase 1 — GCP Setup (manual, user-side)
+### Phase 12 — Module Split & Code Quality
 
-- [ ] Create GCP project (or use existing)
-- [ ] Enable APIs: Google Drive API, Google Admin SDK
-- [ ] Create OAuth 2.0 credentials (Web Application)
-  - Redirect URI: `http://localhost:8000/auth/callback`
-  - Copy Client ID + Client Secret
-- [ ] Create Service Account
-  - Download JSON key file
-  - Enable domain-wide delegation
-- [ ] In Google Admin → Security → API Controls → Domain-wide Delegation:
-  - Add service account Client ID with scopes:
-    - `https://www.googleapis.com/auth/admin.directory.group.readonly`
-    - `https://www.googleapis.com/auth/admin.directory.group.member.readonly`
-- [ ] Create `Sarj Docs` root folder in Google Drive, note the folder ID
-- [ ] Decide admin email for service account impersonation
-- [ ] Fill in `backend/.env` with all credentials
+- Split monolithic `pages/service.py` into focused modules: `sync.py`, `background.py`, `tree.py`, `helpers.py`
+- Split `drive/service.py` into `credentials.py`, `files.py`, `folders.py`, `content.py`, `changes.py`
+- Created `docs_transformer/` package (13 modules) for Google Docs API → structured content block conversion
+- Created `search/` package with PostgreSQL tsvector full-text search
+- Created `webhooks/` package for Drive push notification handling
+- Created `workspaces/` package for Google Groups sync and workspace management
+- Created `internal/` package for Cloud Scheduler endpoints
 
-### Phase 4 — Workspace Sync (blocked on Phase 1)
+### Phase 13 — Security Hardening
 
-- [ ] Add `GOOGLE_ADMIN_IMPERSONATE_EMAIL` to config.py
-- [ ] Create `app/workspaces/` package:
-  - `service.py` — Admin SDK client (service account + domain-wide delegation), fetch groups → upsert workspaces, fetch user memberships → upsert workspace_memberships
-  - `router.py` — `GET /workspaces` (list user's workspaces), `POST /workspaces/sync` (trigger manual sync)
-  - `schemas.py` — WorkspaceResponse
-- [ ] Hook workspace membership sync into the auth callback (on login, refresh user's group memberships)
-- [ ] Register router in `main.py`
+- JWT token versioning: `token_version` on User model, embedded in JWT, incremented on logout
+- Refresh token rotation on use
+- Cookie security: `max_age` matching JWT expiry, `SameSite=lax` (dev) / `SameSite=none` (prod)
+- Drive webhook verification via `DRIVE_WEBHOOK_TOKEN` and `X-Goog-Channel-Token` header
+- Internal endpoint OIDC audience verification via `INTERNAL_AUDIENCE`
+- Replaced python-jose with PyJWT (actively maintained)
 
-### Phase 6 — Drive Import & Webhooks (blocked on Phase 1)
+### Phase 14 — Sync Rewrite
 
-- [ ] Create `app/drive/` package:
-  - `service.py` — Drive API client helpers (create doc, create folder chain, move file, set permissions)
-  - `import_service.py` — Scan Drive root folder recursively, match folders to workspaces, upsert pages
-  - `webhook_service.py` — Register/renew webhook channels, process change notifications
-  - `router.py` — `POST /admin/import`, `POST /webhooks/drive`
-- [ ] Add `WEBHOOK_BASE_URL` to config.py
-- [ ] Wire Drive API calls into page CRUD (replace placeholder IDs):
-  - `create_page` → create Google Doc in correct folder
-  - `update_page` (re-parent) → move file in Drive
-  - `delete_page` → trash file in Drive
-  - `publish_page` → move file + grant Google Group permissions
-- [ ] APScheduler background task for webhook channel renewal (every 6 days)
-- [ ] Register router in `main.py`
-
-### Phase 12 — Wire Frontend to Real API (after Phase 1 + backend running)
-
-- [ ] Enable auth redirect in `auth-provider.tsx` (uncomment router.push to /login)
-- [ ] Wire sidebar components to use `usePageTree`, `useWorkspaces`, `useCurrentUser` hooks instead of direct mock data imports
-- [ ] Wire document view to fetch page by ID from API (`api.getPage`)
-- [ ] Wire share dialog to real permissions API (`api.getPagePermissions`, `grantPermission`, `revokePermission`)
-- [ ] Wire page create/rename/delete actions to API mutations with React Query `useMutation` + cache invalidation
-- [ ] Wire drag-and-drop reorder to call `api.updatePage` with new sort_order
-- [ ] Add error boundaries for API failures
-- [ ] Remove mock data fallbacks once backend is stable
-
-### Phase 11g — Search (stretch goal)
-
-- [ ] `GET /pages/search?q=...` backend endpoint (title search with `ILIKE`)
-- [ ] Command palette / search bar in frontend (Cmd+K)
+- Two-pass sync: Pass 1 collects all folders/docs from Drive concurrently (no DB access), Pass 2 applies to DB
+- Smart section creation: only folders with docs in their subtree get section pages
+- Incremental sync via Drive Changes API with saved `startPageToken`
+- Force sync option (`?force=true`) for full rescan
+- Section pages use synthetic `section-{folder_id}` Drive IDs
+- Synced pages have `created_by=NULL` (workspace members can modify)
 
 ---
 
@@ -210,7 +203,7 @@ Browser (Next.js)
     │  JWT in HTTP-only cookie
     ▼
 FastAPI
-    ├── Validates JWT (get_current_user)
+    ├── Validates JWT (get_current_user + token_version check)
     ├── Enforces access control (DB queries)
     ├── Calls Google Drive API (user's encrypted tokens)
     ├── Calls Google Admin SDK (service account)
