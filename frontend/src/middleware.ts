@@ -19,7 +19,9 @@ export function middleware(request: NextRequest) {
   const isAuthenticated = hasAccess || hasRefresh;
 
   // Unauthenticated user hitting a protected route → redirect to login
-  if (!isAuthenticated) {
+  // Skip if on the root path — the AuthProvider handles refresh there,
+  // and the user may have just completed OAuth (cookies in-flight).
+  if (!isAuthenticated && pathname !== "/") {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
@@ -29,7 +31,6 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Protect all routes except login, public assets, and API/internal paths
   matcher: [
     "/((?!login|_next/static|_next/image|favicon\\.ico|api).*)",
   ],
