@@ -79,19 +79,6 @@ async def get_page_tree(db: AsyncSession, user: User) -> list[PageTreeNode]:
     )
     pages = list(result.scalars().all())
 
-    # Debug: log page count and check for permission-based pages
-    from app.models.page import PagePermission
-    perm_count = await db.execute(
-        select(PagePermission).where(PagePermission.user_id == user.id)
-    )
-    user_perms = list(perm_count.scalars().all())
-    log.info(
-        "Tree for %s: %d pages visible, %d direct permissions",
-        user.email, len(pages), len(user_perms),
-    )
-    for up in user_perms:
-        log.info("  Perm: page_id=%s, permission=%s", up.page_id, up.permission)
-
     # Resolve last_edited_by user info (email + display name)
     editor_ids = {p.last_edited_by for p in pages if p.last_edited_by}
     user_info: dict[UUID, tuple[str, str | None]] = {}
