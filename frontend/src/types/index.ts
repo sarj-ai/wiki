@@ -16,6 +16,7 @@ export interface Page {
   createdByName?: string | null;
   createdByEmail?: string | null;
   createdByAvatar?: string | null;
+  currentUserPermission?: "owner" | "edit" | "view" | null;
 }
 
 export interface Workspace {

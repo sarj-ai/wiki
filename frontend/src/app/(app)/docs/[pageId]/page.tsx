@@ -253,7 +253,7 @@ export default function DocumentPage({
                 </TooltipContent>
               </Tooltip>
             )}
-            {!alwaysIframe && !isPending && (
+            {!alwaysIframe && !isPending && page?.currentUserPermission !== "view" && (
               <EditToggleButton
                 isEditing={isEditing}
                 onToggle={() => setIsEditing(!isEditing)}
@@ -303,7 +303,7 @@ export default function DocumentPage({
                 </TooltipContent>
               </Tooltip>
             )}
-            {!alwaysIframe && !isPending && (
+            {!alwaysIframe && !isPending && page?.currentUserPermission !== "view" && (
               <EditToggleButton
                 isEditing={isEditing}
                 onToggle={() => setIsEditing(!isEditing)}

@@ -19,8 +19,12 @@ from app.pages.schemas import _UNSET
 router = APIRouter(prefix="/pages", tags=["pages"])
 
 
-async def _enrich_page_response(db: AsyncSession, page: Page) -> schemas.PageResponse:
-    """Build a PageResponse with denormalized creator and editor info."""
+async def _enrich_page_response(db: AsyncSession, page: Page, user: User) -> schemas.PageResponse:
+    """Build a PageResponse with denormalized creator/editor info and user permission."""
+    from app.models.page import PagePermission
+    from app.models.workspace import WorkspaceMembership
+    from sqlalchemy import or_
+
     resp = schemas.PageResponse.model_validate(page)
     if page.created_by:
         result = await db.execute(select(User).where(User.id == page.created_by))
@@ -35,6 +39,38 @@ async def _enrich_page_response(db: AsyncSession, page: Page) -> schemas.PageRes
         if editor:
             resp.last_edited_by_email = editor.email
             resp.last_edited_by_name = editor.display_name
+
+    # Compute the current user's effective permission
+    if page.created_by == user.id:
+        resp.current_user_permission = "owner"
+    elif not page.is_private and page.workspace_id:
+        wm = await db.execute(
+            select(WorkspaceMembership).where(
+                WorkspaceMembership.user_id == user.id,
+                WorkspaceMembership.workspace_id == page.workspace_id,
+            )
+        )
+        if wm.scalar_one_or_none() is not None:
+            resp.current_user_permission = "edit"
+    if resp.current_user_permission is None:
+        # Check explicit permission (direct or via workspace)
+        user_ws_ids = select(WorkspaceMembership.workspace_id).where(WorkspaceMembership.user_id == user.id)
+        perm_result = await db.execute(
+            select(PagePermission.permission).where(
+                PagePermission.page_id == page.id,
+                or_(
+                    PagePermission.user_id == user.id,
+                    PagePermission.workspace_id.in_(user_ws_ids),
+                ),
+            ).order_by(
+                # Prefer "edit" over "view"
+                PagePermission.permission.asc()
+            ).limit(1)
+        )
+        perm_row = perm_result.scalar_one_or_none()
+        if perm_row:
+            resp.current_user_permission = perm_row
+
     return resp
 
 
@@ -66,7 +102,7 @@ async def create_page(
         is_private=page.is_private,
         target_folder_id=page.drive_folder_id,
     )
-    return await _enrich_page_response(db, page)
+    return await _enrich_page_response(db, page, user)
 
 
 @router.post("/sync")
@@ -144,7 +180,7 @@ async def get_page(
     db: AsyncSession = Depends(get_db),
 ) -> schemas.PageResponse:
     page = await service.get_page(db, user, page_id)
-    return await _enrich_page_response(db, page)
+    return await _enrich_page_response(db, page, user)
 
 
 @router.patch("/{page_id}", response_model=schemas.PageResponse)
@@ -170,7 +206,7 @@ async def update_page(
     if data.parent_id is not _UNSET and data.parent_id != old_parent_id:
         background_tasks.add_task(service.move_page_in_drive, user, page, data.parent_id)
 
-    return await _enrich_page_response(db, page)
+    return await _enrich_page_response(db, page, user)
 
 
 @router.post("/{page_id}/retry", response_model=schemas.PageResponse)
@@ -180,7 +216,7 @@ async def retry_page_creation(
     db: AsyncSession = Depends(get_db),
 ) -> schemas.PageResponse:
     page = await service.retry_pending_page(db, user, page_id)
-    return await _enrich_page_response(db, page)
+    return await _enrich_page_response(db, page, user)
 
 
 @router.delete("/{page_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -201,4 +237,4 @@ async def publish_page(
     db: AsyncSession = Depends(get_db),
 ) -> schemas.PageResponse:
     page = await service.publish_page(db, user, page_id, data)
-    return await _enrich_page_response(db, page)
+    return await _enrich_page_response(db, page, user)

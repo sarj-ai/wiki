@@ -110,6 +110,8 @@ class PageResponse(BaseModel):
     created_by_avatar: str | None = None
     last_edited_by_email: str | None = None
     last_edited_by_name: str | None = None
+    # Current user's effective permission on this page
+    current_user_permission: str | None = None
 
 
 class PageTreeNode(BaseModel):
