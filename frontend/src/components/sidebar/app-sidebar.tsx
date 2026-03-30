@@ -20,6 +20,7 @@ import type { Page } from "@/types";
 import { CommandPalette } from "@/components/search/command-palette";
 import { WorkspaceSection } from "./workspace-section";
 import { StarredSection } from "./starred-section";
+import { SharedWithMeSection } from "./shared-with-me-section";
 import { PrivateSection } from "./private-section";
 import { UserFooter } from "./user-footer";
 import { DeletePageDialog } from "./delete-dialog";
@@ -131,8 +132,17 @@ export function AppSidebar() {
     return map;
   }, [allPages, workspaces]);
 
+  // Pages that belong to workspaces the user is NOT a member of
+  // (shared via explicit permission)
+  const sharedWithMePages = useMemo(() => {
+    const wsIds = new Set(workspaces.map((w) => w.id));
+    return allPages.filter(
+      (p) => !p.isPrivate && p.workspaceId && !wsIds.has(p.workspaceId)
+    );
+  }, [allPages, workspaces]);
+
   const allSectionIds = useMemo(
-    () => ["starred", ...workspaces.map((w) => w.id), "private"],
+    () => ["starred", ...workspaces.map((w) => w.id), "shared", "private"],
     [workspaces],
   );
   const allCollapsed = hydrated && allSectionIds.length > 0 && allSectionIds.every((id) => collapsedSections.has(id));
@@ -224,6 +234,18 @@ export function AppSidebar() {
         />
 
         {workspaces.length > 0 && <SidebarSeparator />}
+
+        {sharedWithMePages.length > 0 && (
+          <>
+            <SharedWithMeSection
+              pages={sharedWithMePages}
+              activePageId={activePageId}
+              collapsed={hydrated && collapsedSections.has("shared")}
+              onToggle={() => toggleSection("shared")}
+            />
+            <SidebarSeparator />
+          </>
+        )}
 
         <PrivateSection
           privatePages={privatePages}
