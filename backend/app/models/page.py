@@ -38,6 +38,10 @@ class Page(Base):
         UUID(as_uuid=True),
         ForeignKey("users.id"),
     )
+    last_edited_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+    )
     workspace_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("workspaces.id"),
@@ -91,3 +95,27 @@ class PagePermission(Base):
         ForeignKey("workspaces.id", ondelete="CASCADE"),
     )
     permission: Mapped[str] = mapped_column(Text, nullable=False)
+    inheritable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+
+
+class StarredPage(Base):
+    __tablename__ = "starred_pages"
+    __table_args__ = (
+        Index("ix_starred_pages_user_id", "user_id"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    page_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("pages.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    starred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )

@@ -13,13 +13,33 @@ import {
 } from "@/components/ui/breadcrumb";
 import { ShareButton } from "@/components/permissions/share-button";
 import { EmojiPicker } from "@/components/emoji-picker";
-import { SmilePlus, PanelLeftClose, PanelLeft, Maximize2, Search } from "lucide-react";
+import { SmilePlus, PanelLeftClose, PanelLeft, Maximize2, Search, Star } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+
+function formatRelativeTime(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diffMs = now - then;
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin === 1) return "1 min ago";
+  if (diffMin < 60) return `${diffMin} mins ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr === 1) return "1 hour ago";
+  if (diffHr < 24) return `${diffHr} hours ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay === 1) return "yesterday";
+  if (diffDay < 30) return `${diffDay} days ago`;
+  const diffMo = Math.floor(diffDay / 30);
+  if (diffMo === 1) return "1 month ago";
+  if (diffMo < 12) return `${diffMo} months ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
 
 const TOOLBAR_BUTTON_CLASS =
   "flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-white hover:bg-[#251040] dark:hover:bg-[#4B3483] transition-colors";
@@ -29,6 +49,8 @@ interface DocumentToolbarProps {
   breadcrumbs: Page[];
   workspace: Workspace | null;
   onFocusMode?: () => void;
+  isStarred?: boolean;
+  onToggleStar?: () => void;
   children?: React.ReactNode;
 }
 
@@ -37,6 +59,8 @@ export function DocumentToolbar({
   breadcrumbs,
   workspace,
   onFocusMode,
+  isStarred,
+  onToggleStar,
   children,
 }: DocumentToolbarProps) {
   const { open: sidebarOpen, toggleSidebar } = useSidebar();
@@ -135,6 +159,22 @@ export function DocumentToolbar({
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">Focus mode (⌘.)</TooltipContent>
+          </Tooltip>
+        )}
+        {onToggleStar && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onToggleStar}
+                className="flex size-8 items-center justify-center rounded-md transition-colors hover:bg-accent"
+              >
+                <Star className={`size-3.5 ${isStarred ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"}`} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {isStarred ? "Unstar" : "Star"}
+            </TooltipContent>
           </Tooltip>
         )}
         <ShareButton page={page} workspace={workspace} />
@@ -273,6 +313,13 @@ export function DocumentTitle({
                 {workspace.name}
               </Badge>
             ) : null}
+            {page.updatedAt && (
+              <span className="text-xs text-muted-foreground">
+                Edited {formatRelativeTime(page.updatedAt)}
+                {(page.lastEditedByName || page.lastEditedByEmail) &&
+                  ` by ${page.lastEditedByName ?? page.lastEditedByEmail!.split("@")[0]}`}
+              </span>
+            )}
           </div>
         </div>
       </div>

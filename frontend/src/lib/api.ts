@@ -1,4 +1,4 @@
-import type { Page, PageContent, PagePermission, Permission, Workspace, SearchResult, UserSearchResult } from "@/types";
+import type { Page, PageContent, PagePermission, Permission, Workspace, SearchResult, UserSearchResult, WorkspaceSearchResult, ImportFormat, ImportJob } from "@/types";
 import { refreshAccessToken } from "@/lib/auth";
 import { sanitizeRedirectPath } from "@/lib/url-utils";
 
@@ -36,16 +36,23 @@ function transformKeys<T>(obj: unknown): T {
 
 function buildRequestInit(options?: RequestInit): RequestInit {
   const { headers: extraHeaders, ...rest } = options ?? {};
+  const headers = new Headers({
+    "Content-Type": "application/json",
+    ...(extraHeaders instanceof Headers
+      ? Object.fromEntries(extraHeaders.entries())
+      : Array.isArray(extraHeaders)
+        ? Object.fromEntries(extraHeaders)
+        : extraHeaders),
+  });
+
+  // Don't set Content-Type for FormData — browser sets multipart boundary automatically
+  if (options?.body instanceof FormData) {
+    headers.delete("Content-Type");
+  }
+
   return {
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(extraHeaders instanceof Headers
-        ? Object.fromEntries(extraHeaders.entries())
-        : Array.isArray(extraHeaders)
-          ? Object.fromEntries(extraHeaders)
-          : extraHeaders),
-    },
+    headers,
     ...rest,
   };
 }
@@ -105,6 +112,7 @@ interface GrantPermissionData {
   userId?: string;
   workspaceId?: string;
   permission: Permission;
+  recursive?: boolean;
 }
 
 
@@ -184,15 +192,52 @@ export const api = {
         user_id: data.userId,
         workspace_id: data.workspaceId,
         permission: data.permission,
+        recursive: data.recursive ?? false,
       }),
     }),
 
-  revokePermission: (id: string) =>
-    fetchApi<void>(`/permissions/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  updatePermission: (id: string, permission: Permission) =>
+    fetchApi<PagePermission>(`/permissions/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ permission }),
+    }),
+
+  revokePermission: (id: string, recursive?: boolean) =>
+    fetchApi<void>(`/permissions/${encodeURIComponent(id)}${recursive ? "?recursive=true" : ""}`, { method: "DELETE" }),
 
   search: (query: string, limit?: number) =>
     fetchApi<SearchResult[]>(`/search?q=${encodeURIComponent(query)}${limit ? `&limit=${limit}` : ""}`),
 
   searchUsers: (query: string) =>
     fetchApi<UserSearchResult[]>(`/permissions/users/search?q=${encodeURIComponent(query)}`),
+
+  searchWorkspaces: (query: string) =>
+    fetchApi<WorkspaceSearchResult[]>(`/permissions/workspaces/search?q=${encodeURIComponent(query)}`),
+
+  getStarredPages: () =>
+    fetchApi<string[]>("/pages/starred"),
+
+  starPage: (pageId: string) =>
+    fetchApi<void>(`${pagePath(pageId)}/star`, { method: "POST" }),
+
+  unstarPage: (pageId: string) =>
+    fetchApi<void>(`${pagePath(pageId)}/star`, { method: "DELETE" }),
+
+  getImportFormats: () =>
+    fetchApi<ImportFormat[]>("/imports/formats"),
+
+  startImport: (file: File, format: string, parentId?: string, workspaceId?: string) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("format", format);
+    if (parentId) formData.append("parent_id", parentId);
+    if (workspaceId) formData.append("workspace_id", workspaceId);
+    return fetchApi<ImportJob>("/imports/upload", {
+      method: "POST",
+      body: formData,
+    });
+  },
+
+  getImportStatus: (jobId: string) =>
+    fetchApi<ImportJob>(`/imports/${jobId}/status`),
 };

@@ -49,6 +49,9 @@ interface PageTreeProps {
   isLoading?: boolean;
   addingChildParentId?: string | null;
   movingPageId?: string | null;
+  starredIds?: Set<string>;
+  onToggleStar?: (pageId: string) => void;
+  onImport?: (pageId: string) => void;
 }
 
 export function PageTree({
@@ -64,6 +67,9 @@ export function PageTree({
   isLoading,
   addingChildParentId,
   movingPageId,
+  starredIds,
+  onToggleStar,
+  onImport,
 }: PageTreeProps) {
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -297,6 +303,9 @@ export function PageTree({
               isAddingChild={addingChildParentId === item.page.id}
               isMoving={movingPageId === item.page.id}
               isHighlighted={highlightedId === item.page.id}
+              isStarred={starredIds?.has(item.page.id)}
+              onToggleStar={onToggleStar}
+              onImport={onImport}
             />
           ))}
         </SidebarMenu>

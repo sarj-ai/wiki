@@ -21,6 +21,7 @@ import {
 import { useDocumentData } from "@/hooks/use-document-data";
 import { useEditorPreference } from "@/hooks/use-editor-preference";
 import { useFocusMode } from "@/hooks/use-focus-mode";
+import { useStarredPages } from "@/hooks/use-starred-pages";
 import { DocumentToolbar, DocumentTitle } from "@/components/document/document-header";
 import { DocumentSkeleton } from "@/components/document/document-skeleton";
 import { DocumentContent } from "@/components/document/document-content";
@@ -74,6 +75,7 @@ export default function DocumentPage({
   }, [pageId]);
 
   const { alwaysIframe, toggleAlwaysIframe } = useEditorPreference();
+  const { starredIds, toggleStar } = useStarredPages();
   const {
     focusMode,
     sidebarOpen,
@@ -135,6 +137,8 @@ export default function DocumentPage({
           page={page}
           breadcrumbs={breadcrumbs}
           workspace={workspace}
+          isStarred={starredIds.has(page.id)}
+          onToggleStar={() => toggleStar(page.id)}
         >
           <div />
         </DocumentToolbar>
@@ -278,6 +282,8 @@ export default function DocumentPage({
           breadcrumbs={breadcrumbs}
           workspace={workspace}
           onFocusMode={enterFocusMode}
+          isStarred={starredIds.has(page.id)}
+          onToggleStar={() => toggleStar(page.id)}
         >
           <div className="flex items-center gap-1">
             {!isPending && (

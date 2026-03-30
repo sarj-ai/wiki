@@ -7,9 +7,13 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.docs_transformer import enrich_chips_from_html, transform_doc_with_tabs
+from app.drive import export_doc_html, get_doc_content, get_drive_service
 from app.models.user import User
+from app.search.service import update_search_vector
 
 log = logging.getLogger(__name__)
 
@@ -26,8 +30,6 @@ async def get_page_content(
     Uses caching -- content is only re-fetched from Google when stale or forced.
     A per-page lock deduplicates concurrent requests so only one hits the API.
     """
-    from app.docs_transformer import enrich_chips_from_html, transform_doc_with_tabs
-    from app.drive import export_doc_html, get_doc_content
     from app.pages.crud import get_page
 
     log.info("Content: fetching page %s", page_id)
@@ -78,10 +80,37 @@ async def get_page_content(
 
     page.cached_content = tabs
     page.content_cached_at = datetime.now(timezone.utc)
+
+    # Update last-edited metadata from Drive only on forced refresh.
+    # Uses the user's credentials (not service account) to see lastModifyingUser.
+    if force_refresh:
+        try:
+            user_service = get_drive_service(user)
+            file_meta = await asyncio.to_thread(
+                lambda: user_service.files().get(
+                    fileId=page.google_drive_id,
+                    fields="modifiedTime,lastModifyingUser(emailAddress)",
+                    supportsAllDrives=True,
+                ).execute()
+            )
+            drive_modified = file_meta.get("modifiedTime")
+            if drive_modified:
+                drive_dt = datetime.fromisoformat(drive_modified.replace("Z", "+00:00"))
+                # Only update if Drive timestamp is newer than what we have
+                if page.updated_at is None or abs((drive_dt - page.updated_at).total_seconds()) > 2:
+                    page.updated_at = drive_dt
+            editor_email = (file_meta.get("lastModifyingUser") or {}).get("emailAddress")
+            if editor_email and not editor_email.endswith(".iam.gserviceaccount.com"):
+                result = await db.execute(select(User).where(User.email == editor_email))
+                editor = result.scalar_one_or_none()
+                if editor and page.last_edited_by != editor.id:
+                    page.last_edited_by = editor.id
+        except Exception:
+            log.debug("Failed to fetch Drive metadata for %s", page_id, exc_info=True)
+
     await db.commit()
 
     # Update search vector with title + content text
-    from app.search.service import update_search_vector
     try:
         await update_search_vector(db, page)
         await db.commit()

@@ -1,12 +1,18 @@
 "use client";
 
-import { Plus, NotebookPen, Loader2, ChevronRight } from "lucide-react";
+import { Plus, NotebookPen, Loader2, ChevronRight, Upload } from "lucide-react";
 import {
   SidebarGroup,
   SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
 } from "@/components/ui/sidebar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { PageTree } from "./page-tree";
 import type { Page } from "@/types";
@@ -28,6 +34,10 @@ interface PrivateSectionProps {
   isTreeLoading: boolean;
   addingTo: string | null;
   addingChildParentId: string | null;
+  starredIds?: Set<string>;
+  onToggleStar?: (pageId: string) => void;
+  onImport?: (pageId: string) => void;
+  onImportToDrafts?: () => void;
 }
 
 export function PrivateSection({
@@ -47,6 +57,10 @@ export function PrivateSection({
   isTreeLoading,
   addingTo,
   addingChildParentId,
+  starredIds,
+  onToggleStar,
+  onImport,
+  onImportToDrafts,
 }: PrivateSectionProps) {
   return (
     <Collapsible
@@ -69,9 +83,25 @@ export function PrivateSection({
             <span className="truncate">My Drafts</span>
           </div>
         </SidebarGroupLabel>
-        <SidebarGroupAction onClick={handleAddPrivatePage} title="Add private page" disabled={addingTo !== null}>
-          {addingTo === "private" ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-        </SidebarGroupAction>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarGroupAction title="Add to My Drafts">
+              {addingTo === "private" ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+            </SidebarGroupAction>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="start">
+            <DropdownMenuItem onClick={handleAddPrivatePage}>
+              <Plus className="mr-2 size-4" />
+              New page
+            </DropdownMenuItem>
+            {onImportToDrafts && (
+              <DropdownMenuItem onClick={onImportToDrafts}>
+                <Upload className="mr-2 size-4" />
+                Import pages
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <CollapsibleContent>
           <SidebarGroupContent className="pl-5">
             <PageTree
@@ -86,6 +116,9 @@ export function PrivateSection({
               onRenamingDone={handleRenamingDone}
               isLoading={isTreeLoading}
               addingChildParentId={addingChildParentId}
+              starredIds={starredIds}
+              onToggleStar={onToggleStar}
+              onImport={onImport}
             />
           </SidebarGroupContent>
         </CollapsibleContent>

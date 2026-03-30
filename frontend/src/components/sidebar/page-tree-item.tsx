@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { ChevronRight, Plus, MoreHorizontal, FileText, FolderClosed, Pencil, Trash2, SmilePlus, Loader2 } from "lucide-react";
+import { ChevronRight, Plus, MoreHorizontal, FileText, FolderClosed, Pencil, Trash2, SmilePlus, Loader2, Star, StarOff, Upload } from "lucide-react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Page } from "@/types";
 import {
@@ -34,6 +34,9 @@ interface PageTreeItemProps {
   isAddingChild?: boolean;
   isMoving?: boolean;
   isHighlighted?: boolean;
+  isStarred?: boolean;
+  onToggleStar?: (pageId: string) => void;
+  onImport?: (pageId: string) => void;
 }
 
 export const PageTreeItem = React.memo(function PageTreeItem({
@@ -53,6 +56,9 @@ export const PageTreeItem = React.memo(function PageTreeItem({
   isAddingChild,
   isMoving,
   isHighlighted,
+  isStarred,
+  onToggleStar,
+  onImport,
 }: PageTreeItemProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(page.title);
@@ -194,11 +200,14 @@ export const PageTreeItem = React.memo(function PageTreeItem({
                 {isMoving ? <Loader2 className="size-4 animate-spin" /> : page.icon || (page.type === "section" ? <FolderClosed className="size-4" /> : <FileText className="size-4" />)}
               </span>
               <span className="truncate" title={page.title}>{page.title}</span>
+              {isStarred && (
+                <Star className="size-2.5 shrink-0 fill-yellow-400 text-yellow-400" />
+              )}
             </Link>
           </SidebarMenuButton>
         )}
 
-        <div className={`absolute right-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/tree-item:opacity-100 ${isActive ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/60"}`}>
+        <div className={`absolute right-0.5 flex items-center gap-0.5 rounded-md bg-sidebar px-0.5 opacity-0 transition-opacity group-hover/tree-item:opacity-100 ${isActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/60"}`}>
             <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
               <DropdownMenuTrigger asChild>
                 <button
@@ -241,6 +250,29 @@ export const PageTreeItem = React.memo(function PageTreeItem({
                   <SmilePlus className="mr-2 size-4" />
                   Change icon
                 </DropdownMenuItem>
+                {onToggleStar && (
+                  <DropdownMenuItem
+                    onClick={() => onToggleStar(page.id)}
+                  >
+                    {isStarred ? (
+                      <>
+                        <StarOff className="mr-2 size-4" />
+                        Unstar
+                      </>
+                    ) : (
+                      <>
+                        <Star className="mr-2 size-4" />
+                        Star
+                      </>
+                    )}
+                  </DropdownMenuItem>
+                )}
+                {onImport && (
+                  <DropdownMenuItem onClick={() => onImport(page.id)}>
+                    <Upload className="mr-2 size-4" />
+                    Import pages
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   className="text-destructive"
                   onClick={() => onDelete(page.id)}

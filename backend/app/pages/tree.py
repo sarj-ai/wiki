@@ -20,12 +20,19 @@ log = logging.getLogger(__name__)
 # Tree helpers
 # ------------------------------------------------------------------
 
-def _build_tree(pages: list[Page]) -> list[PageTreeNode]:
-    """Build a nested tree from a flat list of Page rows."""
+def _build_tree(
+    pages: list[Page],
+    user_info: dict[UUID, tuple[str, str | None]] | None = None,
+) -> list[PageTreeNode]:
+    """Build a nested tree from a flat list of Page rows.
+
+    ``user_info`` maps user ID → (email, display_name).
+    """
     node_map: dict[UUID, PageTreeNode] = {}
     children_map: dict[UUID | None, list[PageTreeNode]] = {}
 
     for p in pages:
+        editor_info = (user_info or {}).get(p.last_edited_by) if p.last_edited_by else None
         node = PageTreeNode(
             id=p.id,
             parent_id=p.parent_id,
@@ -36,6 +43,9 @@ def _build_tree(pages: list[Page]) -> list[PageTreeNode]:
             workspace_id=p.workspace_id,
             sort_order=p.sort_order,
             google_drive_id=p.google_drive_id,
+            updated_at=p.updated_at,
+            last_edited_by_email=editor_info[0] if editor_info else None,
+            last_edited_by_name=editor_info[1] if editor_info else None,
         )
         node_map[p.id] = node
         children_map.setdefault(p.parent_id, []).append(node)
@@ -63,4 +73,16 @@ async def get_page_tree(db: AsyncSession, user: User) -> list[PageTreeNode]:
         select(Page).where(visibility).order_by(Page.sort_order)
     )
     pages = list(result.scalars().all())
-    return _build_tree(pages)
+
+    # Resolve last_edited_by user info (email + display name)
+    editor_ids = {p.last_edited_by for p in pages if p.last_edited_by}
+    user_info: dict[UUID, tuple[str, str | None]] = {}
+    if editor_ids:
+        from app.models.user import User as UserModel
+
+        users_result = await db.execute(
+            select(UserModel.id, UserModel.email, UserModel.display_name).where(UserModel.id.in_(editor_ids))
+        )
+        user_info = {row[0]: (row[1], row[2]) for row in users_result.all()}
+
+    return _build_tree(pages, user_info)

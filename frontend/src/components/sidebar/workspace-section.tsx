@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useContext } from "react";
-import { Plus, Loader2, Building2, GripVertical, ChevronRight } from "lucide-react";
+import { Plus, Loader2, Building2, GripVertical, ChevronRight, Upload } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -22,6 +22,12 @@ import {
   SidebarGroupLabel,
 } from "@/components/ui/sidebar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { EmojiPicker } from "@/components/emoji-picker";
 import { PageTree } from "./page-tree";
 import type { Page, Workspace } from "@/types";
@@ -88,6 +94,10 @@ interface WorkspaceSectionProps {
   addingTo: string | null;
   addingChildParentId: string | null;
   movingPageId: string | null;
+  starredIds?: Set<string>;
+  onToggleStar?: (pageId: string) => void;
+  onImport?: (pageId: string) => void;
+  onImportToWorkspace?: (workspaceId: string) => void;
 }
 
 export function WorkspaceSection({
@@ -115,6 +125,10 @@ export function WorkspaceSection({
   addingTo,
   addingChildParentId,
   movingPageId,
+  starredIds,
+  onToggleStar,
+  onImport,
+  onImportToWorkspace,
 }: WorkspaceSectionProps) {
   return (
     <DndContext sensors={workspaceSensors} collisionDetection={closestCenter} onDragEnd={handleWorkspaceReorder}>
@@ -167,9 +181,25 @@ export function WorkspaceSection({
                     <span className="truncate">{workspace.name}</span>
                   </div>
                 </SidebarGroupLabel>
-                <SidebarGroupAction onClick={() => handleAddRootPage(workspace.id)} title={`Add page to ${workspace.name}`} disabled={addingTo !== null}>
-                  {addingTo === workspace.id ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-                </SidebarGroupAction>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <SidebarGroupAction title={`Add to ${workspace.name}`}>
+                      {addingTo === workspace.id ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                    </SidebarGroupAction>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="right" align="start">
+                    <DropdownMenuItem onClick={() => handleAddRootPage(workspace.id)}>
+                      <Plus className="mr-2 size-4" />
+                      New page
+                    </DropdownMenuItem>
+                    {onImportToWorkspace && (
+                      <DropdownMenuItem onClick={() => onImportToWorkspace(workspace.id)}>
+                        <Upload className="mr-2 size-4" />
+                        Import pages
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <CollapsibleContent>
                   <SidebarGroupContent className="pl-5">
                     <PageTree
@@ -185,6 +215,9 @@ export function WorkspaceSection({
                       isLoading={isTreeLoading}
                       addingChildParentId={addingChildParentId}
                       movingPageId={movingPageId}
+                      starredIds={starredIds}
+                      onToggleStar={onToggleStar}
+                      onImport={onImport}
                     />
                   </SidebarGroupContent>
                 </CollapsibleContent>

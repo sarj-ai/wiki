@@ -102,6 +102,14 @@ class PageResponse(BaseModel):
     google_drive_id: str
     created_at: datetime
     updated_at: datetime
+    created_by: UUID | None = None
+    last_edited_by: UUID | None = None
+    # Denormalized info (populated by the router)
+    created_by_name: str | None = None
+    created_by_email: str | None = None
+    created_by_avatar: str | None = None
+    last_edited_by_email: str | None = None
+    last_edited_by_name: str | None = None
 
 
 class PageTreeNode(BaseModel):
@@ -116,4 +124,7 @@ class PageTreeNode(BaseModel):
     workspace_id: UUID | None
     sort_order: float
     google_drive_id: str
+    updated_at: datetime | None = None
+    last_edited_by_email: str | None = None
+    last_edited_by_name: str | None = None
     children: list[PageTreeNode] = []

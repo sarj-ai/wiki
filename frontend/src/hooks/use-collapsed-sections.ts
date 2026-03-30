@@ -59,5 +59,13 @@ export function useCollapsedSections() {
     });
   }, []);
 
-  return { collapsedSections, toggleSection, uncollapseSection, hydrated } as const;
+  const collapseAll = useCallback((sectionIds: string[]) => {
+    setCollapsedSections(new Set(sectionIds));
+  }, []);
+
+  const expandAll = useCallback(() => {
+    setCollapsedSections(new Set());
+  }, []);
+
+  return { collapsedSections, toggleSection, uncollapseSection, collapseAll, expandAll, hydrated } as const;
 }

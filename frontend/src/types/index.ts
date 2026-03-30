@@ -9,6 +9,13 @@ export interface Page {
   workspaceId: string | null;
   sortOrder: number;
   children: Page[];
+  updatedAt?: string;
+  lastEditedByEmail?: string;
+  lastEditedByName?: string;
+  createdBy?: string | null;
+  createdByName?: string | null;
+  createdByEmail?: string | null;
+  createdByAvatar?: string | null;
 }
 
 export interface Workspace {
@@ -38,6 +45,7 @@ export interface PagePermission {
   // Denormalized for display
   displayName: string;
   email?: string;
+  avatarUrl?: string;
 }
 
 export interface UserSearchResult {
@@ -45,6 +53,12 @@ export interface UserSearchResult {
   email: string;
   displayName: string | null;
   avatarUrl: string | null;
+}
+
+export interface WorkspaceSearchResult {
+  id: string;
+  name: string;
+  googleGroupEmail: string | null;
 }
 
 export interface SearchResult {
@@ -57,6 +71,21 @@ export interface SearchResult {
   googleDriveId: string;
   snippet: string | null;
   rank: number;
+}
+
+export interface ImportFormat {
+  id: string;
+  name: string;
+}
+
+export interface ImportJob {
+  id: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  totalItems: number;
+  processedItems: number;
+  errorMessage: string | null;
+  createdAt: string;
+  completedAt: string | null;
 }
 
 // --- Document content types (from Google Docs API) ---
