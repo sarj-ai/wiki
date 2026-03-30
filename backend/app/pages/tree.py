@@ -56,10 +56,15 @@ def _build_tree(
             key=lambda n: n.sort_order,
         )
 
-    return sorted(
-        children_map.get(None, []),
-        key=lambda n: n.sort_order,
-    )
+    # Collect root nodes + orphans (pages whose parent isn't in the visible set).
+    # Orphans are promoted to root level so shared pages with inaccessible
+    # parents still appear in the sidebar.
+    roots = list(children_map.get(None, []))
+    for parent_id, children in children_map.items():
+        if parent_id is not None and parent_id not in node_map:
+            roots.extend(children)
+
+    return sorted(roots, key=lambda n: n.sort_order)
 
 
 # ------------------------------------------------------------------
