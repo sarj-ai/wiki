@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import async_session
 from app.drive import get_drive_service
+from app.drive.files import is_drive_file_trashed
 from app.models.drive_webhook import DriveWebhookChannel
 from app.models.page import Page
 from app.models.user import User
@@ -223,19 +224,27 @@ async def _handle_single_change(db: AsyncSession, service, change: dict) -> None
     )
     page = result.scalar_one_or_none()
 
-    if change.get("removed"):
+    if change.get("removed") or change.get("file", {}).get("trashed"):
         if page:
-            log.info("Drive file %s permanently deleted — removing page %s", file_id, page.id)
-            await db.delete(page)
+            # Verify actual file state before deleting — the Changes API can
+            # report incomplete/misleading metadata (e.g. when a doc is simply
+            # opened in Google Docs).
+            trashed = await asyncio.to_thread(is_drive_file_trashed, None, file_id)
+            if trashed is None:
+                # File no longer accessible (truly deleted)
+                log.info("Drive file %s confirmed gone — removing page %s", file_id, page.id)
+                await db.delete(page)
+            elif trashed:
+                log.info("Drive file %s confirmed trashed — removing page %s", file_id, page.id)
+                await db.delete(page)
+            else:
+                log.info(
+                    "Drive file %s reported removed/trashed but files.get says it's fine — keeping page %s",
+                    file_id, page.id,
+                )
         return
 
     file_meta = change.get("file", {})
-
-    if file_meta.get("trashed"):
-        if page:
-            log.info("Drive file %s trashed — removing page %s", file_id, page.id)
-            await db.delete(page)
-        return
 
     if page:
         # App is the source of truth for titles — push our title to Drive

@@ -77,9 +77,6 @@ export function useWorkspaceManagement(workspaces: Workspace[]) {
         api.syncWorkspaces(),
         api.syncPages(force),
       ]);
-      queryClient.invalidateQueries({ queryKey: ["workspaces"] });
-      queryClient.invalidateQueries({ queryKey: ["pages"] });
-      queryClient.invalidateQueries({ queryKey: ["page-content"] });
       const parts: string[] = [];
       if (result.added) parts.push(`${result.added} added`);
       if (result.updated) parts.push(`${result.updated} updated`);
@@ -90,6 +87,11 @@ export function useWorkspaceManagement(workspaces: Workspace[]) {
     } catch {
       toast.error("Failed to sync");
     } finally {
+      // Always refresh cached data — even if sync failed, the tree
+      // endpoint may return fresh data from a previous successful sync.
+      queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+      queryClient.invalidateQueries({ queryKey: ["pages"] });
+      queryClient.invalidateQueries({ queryKey: ["page-content"] });
       setIsSyncing(false);
     }
   }, [queryClient]);

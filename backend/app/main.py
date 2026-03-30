@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from app.auth.router import router as auth_router
 from app.config import settings
 from app.database import async_session
+from app.imports import imports_router
 from app.internal import internal_router
 from app.pages import pages_router
 from app.permissions import permissions_router
@@ -112,7 +113,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.FRONTEND_URL],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -133,6 +134,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 app.include_router(auth_router)
+app.include_router(imports_router)
 app.include_router(internal_router)
 app.include_router(pages_router)
 app.include_router(permissions_router)

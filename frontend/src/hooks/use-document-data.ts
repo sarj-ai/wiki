@@ -110,7 +110,10 @@ export function useDocumentData(pageId: string): UseDocumentDataReturn {
   }, [isPending, pageId, queryClient]);
 
   // ── Derived state ──
-  const isContentReady = !isContentLoading && !isContentFetching;
+  // Show content as ready once the initial load completes. Background
+  // refetches (isFetching) should NOT trigger the loading skeleton —
+  // React Query keeps the stale data visible during refetch.
+  const isContentReady = !isContentLoading;
   const docEmpty = isContentReady && isDocEmpty(content?.tabs);
 
   const workspace = page?.workspaceId
@@ -179,19 +182,13 @@ export function useDocumentData(pageId: string): UseDocumentDataReturn {
   );
 
   // ── Force-refresh content (for edit→view transitions) ──
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Uses invalidateQueries instead of removeQueries so the cached content
+  // stays visible while the fresh data loads in the background. This
+  // prevents the blank/skeleton flash on edit→view transitions.
   const forceRefreshContent = useCallback(() => {
     forceRefreshRef.current = true;
-    queryClient.removeQueries({ queryKey: ["page-content", pageId] });
-    // Give React Query a tick to process the removal, then refetch
-    clearTimeout(refreshTimerRef.current);
-    refreshTimerRef.current = setTimeout(() => refetchContent(), 50);
-  }, [pageId, queryClient, refetchContent]);
-
-  // Clean up the timer on unmount
-  useEffect(() => {
-    return () => clearTimeout(refreshTimerRef.current);
-  }, []);
+    queryClient.invalidateQueries({ queryKey: ["page-content", pageId] });
+  }, [pageId, queryClient]);
 
   // ── Auto-refresh content when tab becomes visible (with cooldown) ──
   // Uses invalidateQueries (not removeQueries) to avoid a loading flash —

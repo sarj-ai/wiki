@@ -18,6 +18,7 @@ from app.drive import (
     get_drive_changes,
     get_drive_changes_start_token,
     get_sa_drive_service,
+    is_drive_file_trashed,
     is_drive_folder_empty,
     rename_drive_file,
     trash_drive_file,
@@ -69,14 +70,16 @@ async def sync_drive_state(db: AsyncSession, user: User, *, force: bool = False)
 
         # Try incremental sync first (fast — only processes changes since last token)
         if _last_changes_token is not None and not force:
+            log.info("Sync: attempting incremental sync (token=%s...)", _last_changes_token[:12])
             result = await _incremental_sync(db, user, _last_changes_token)
             if result is not None:
+                log.info("Sync: incremental complete: %s", result)
                 return result
 
         # Full scan: collect from Drive first (slow, no DB needed), then apply.
         # Uses a FRESH DB session because the request session may timeout during
         # the long Drive collection phase.
-        log.info("Sync: collecting files from Drive...")
+        log.info("Sync: starting FULL scan (force=%s, token=%s)", force, _last_changes_token is not None)
         try:
             drive_data = await _collect_drive_tree(settings.DRIVE_ROOT_FOLDER_ID)
         except Exception:
@@ -86,7 +89,9 @@ async def sync_drive_state(db: AsyncSession, user: User, *, force: bool = False)
         async with async_session() as fresh_db:
             try:
                 result = await _full_sync(fresh_db, user, drive_data)
+                log.info("Sync: full scan complete: %s", result)
             except Exception:
+                log.exception("Sync: full scan failed during DB apply phase")
                 await fresh_db.rollback()
                 raise
 
@@ -140,13 +145,21 @@ async def _incremental_sync(
             file_meta = change.get("file")
 
             if is_removed or (file_meta and file_meta.get("trashed")):
-                # File was removed/trashed -- delete from DB if we have it
+                # Verify actual file state before deleting — Changes API can
+                # report misleading metadata.
                 result = await db.execute(select(Page).where(Page.google_drive_id == file_id))
                 page = result.scalar_one_or_none()
                 if page:
-                    await db.delete(page)
-                    removed += 1
-                    log.info("Incremental: removed page '%s' (%s)", page.title, file_id)
+                    trashed = await asyncio.to_thread(is_drive_file_trashed, None, file_id)
+                    if trashed is None or trashed is True:
+                        await db.delete(page)
+                        removed += 1
+                        log.info("Incremental: removed page '%s' (%s, confirmed)", page.title, file_id)
+                    else:
+                        log.info(
+                            "Incremental: file %s reported removed/trashed but still exists — keeping '%s'",
+                            file_id, page.title,
+                        )
                 await savepoint.commit()
                 continue
 
