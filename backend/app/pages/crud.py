@@ -195,6 +195,7 @@ async def update_page(
         page.cover_url = data.cover_url  # type: ignore[assignment]
 
     page.updated_at = datetime.now(timezone.utc)
+    page.last_edited_by = user.id
 
     await db.commit()
     await db.refresh(page)

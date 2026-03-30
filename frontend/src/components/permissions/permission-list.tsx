@@ -1,28 +1,39 @@
 "use client";
 
-import type { PagePermission, User, Workspace } from "@/types";
+import type { PagePermission, Permission, User, Workspace } from "@/types";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar";
-import { Users, Crown, X, Loader2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Users, Crown, Loader2 } from "lucide-react";
 import { getInitials } from "./utils";
 
 interface PermissionListProps {
   permissions: PagePermission[];
   owner: User | null;
+  ownerFallbackWorkspace?: Workspace | null;
   workspaces: Workspace[];
   isLoading: boolean;
   onRemove: (permissionId: string) => void;
+  onChangePermission: (permissionId: string, permission: Permission) => void;
 }
 
 export function PermissionList({
   permissions,
   owner,
+  ownerFallbackWorkspace,
   workspaces,
   isLoading,
   onRemove,
+  onChangePermission,
 }: PermissionListProps) {
   return (
     <div>
@@ -31,7 +42,7 @@ export function PermissionList({
       </p>
       <div className="flex flex-col gap-1 max-h-[200px] overflow-y-auto">
         {/* Owner row */}
-        {owner && (
+        {owner ? (
           <div className="flex items-center gap-3 rounded-md px-2 py-2">
             <Avatar className="size-7">
               {owner.avatarUrl && (
@@ -52,12 +63,30 @@ export function PermissionList({
                 {owner.email}
               </span>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
               <Crown className="size-3.5" />
-              <span>Owner</span>
-            </div>
+              Owner
+            </span>
           </div>
-        )}
+        ) : ownerFallbackWorkspace ? (
+          <div className="flex items-center gap-3 rounded-md px-2 py-2">
+            <div className="flex size-7 items-center justify-center rounded-full bg-secondary">
+              <Users className="size-3.5 text-secondary-foreground" />
+            </div>
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="text-sm font-medium truncate">
+                {ownerFallbackWorkspace.name}
+              </span>
+              <span className="text-xs text-muted-foreground truncate">
+                {ownerFallbackWorkspace.googleGroupEmail ?? "All members"}
+              </span>
+            </div>
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Users className="size-3.5" />
+              Workspace
+            </span>
+          </div>
+        ) : null}
 
         {isLoading && (
           <div className="flex items-center justify-center py-4">
@@ -69,9 +98,12 @@ export function PermissionList({
         {permissions.map((perm) => (
           <div
             key={perm.id}
-            className="flex items-center gap-3 rounded-md px-2 py-2 group hover:bg-accent/50 transition-colors"
+            className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-accent/50 transition-colors"
           >
             <Avatar className="size-7">
+              {perm.avatarUrl && (
+                <AvatarImage src={perm.avatarUrl} alt={perm.displayName ?? ""} />
+              )}
               <AvatarFallback className="text-xs">
                 {perm.workspaceId ? (
                   <Users className="size-3.5" />
@@ -92,23 +124,29 @@ export function PermissionList({
                 {perm.workspaceId ? "All members" : perm.email}
               </span>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <span className="h-7 px-2 inline-flex items-center text-xs text-muted-foreground">
-                {perm.permission === "edit" ? "Can edit" : "Can view"}
-              </span>
-              <button
-                type="button"
-                onClick={() => onRemove(perm.id)}
-                className="size-7 inline-flex items-center justify-center rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground hover:bg-accent transition-all"
-                aria-label="Remove"
-              >
-                <X className="size-3.5" />
-              </button>
-            </div>
+            <Select
+              value={perm.permission}
+              onValueChange={(v) => {
+                if (v === "remove") {
+                  onRemove(perm.id);
+                } else {
+                  onChangePermission(perm.id, v as Permission);
+                }
+              }}
+            >
+              <SelectTrigger className="h-7 border-0 bg-transparent text-xs text-muted-foreground shadow-none hover:bg-accent w-auto gap-1 px-2" size="sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value="view">Can view</SelectItem>
+                <SelectItem value="edit">Can edit</SelectItem>
+                <SelectItem value="remove" className="text-destructive focus:text-destructive">Remove</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         ))}
 
-        {!isLoading && permissions.length === 0 && (
+        {!isLoading && permissions.length === 0 && !owner && !ownerFallbackWorkspace && (
           <p className="text-sm text-muted-foreground py-2 px-2">
             No one else has access yet.
           </p>

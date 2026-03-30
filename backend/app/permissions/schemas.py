@@ -16,12 +16,17 @@ class PermissionCreate(BaseModel):
     user_id: UUID | None = None
     workspace_id: UUID | None = None
     permission: Literal["view", "edit"]
+    recursive: bool = False
 
     @model_validator(mode="after")
     def at_least_one_grantee(self) -> Self:
         if self.user_id is None and self.workspace_id is None:
             raise ValueError("Either user_id or workspace_id must be provided")
         return self
+
+
+class PermissionUpdate(BaseModel):
+    permission: Literal["view", "edit"]
 
 
 # ------------------------------------------------------------------
@@ -38,6 +43,7 @@ class PermissionResponse(BaseModel):
     permission: str
     display_name: str | None = None
     email: str | None = None
+    avatar_url: str | None = None
 
 
 class UserSearchResult(BaseModel):
@@ -47,3 +53,11 @@ class UserSearchResult(BaseModel):
     email: str
     display_name: str | None = None
     avatar_url: str | None = None
+
+
+class WorkspaceSearchResult(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    google_group_email: str | None = None

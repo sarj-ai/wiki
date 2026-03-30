@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { Permission, PagePermission, UserSearchResult } from "@/types";
+import type { Permission, PagePermission, UserSearchResult, WorkspaceSearchResult } from "@/types";
 import { useLoading } from "@/components/loading-bar";
 import { api } from "@/lib/api";
 import { Input } from "@/components/ui/input";
@@ -17,17 +17,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2, Users } from "lucide-react";
 import { getInitials } from "./utils";
+
+type SearchSuggestion =
+  | { kind: "user"; data: UserSearchResult }
+  | { kind: "workspace"; data: WorkspaceSearchResult };
 
 interface UserSearchInputProps {
   pageId: string;
+  pageType: "page" | "section";
   permissions: PagePermission[];
   onSelectUser: (newPermission: PagePermission) => void;
 }
 
 export function UserSearchInput({
   pageId,
+  pageType,
   permissions,
   onSelectUser,
 }: UserSearchInputProps) {
@@ -35,15 +51,19 @@ export function UserSearchInput({
 
   const [searchQuery, setSearchQuery] = useState("");
   const [invitePermission, setInvitePermission] = useState<Permission>("view");
-  const [suggestions, setSuggestions] = useState<UserSearchResult[]>([]);
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [grantingUserId, setGrantingUserId] = useState<string | null>(null);
+  const [grantingId, setGrantingId] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
   const searchCounterRef = useRef(0);
 
-  // Debounced user search with request counter to prevent stale results
+  // Recursive share confirmation state
+  const [pendingGrant, setPendingGrant] = useState<SearchSuggestion | null>(null);
+  const [showRecursiveDialog, setShowRecursiveDialog] = useState(false);
+
+  // Debounced search for users and workspaces
   const handleSearchChange = useCallback(
     (value: string) => {
       setSearchQuery(value);
@@ -59,15 +79,29 @@ export function UserSearchInput({
         const requestId = ++searchCounterRef.current;
         setIsSearching(true);
         try {
-          const results = await api.searchUsers(value.trim());
-          // Only apply results if this is still the latest request
+          const [users, workspaces] = await Promise.all([
+            api.searchUsers(value.trim()),
+            api.searchWorkspaces(value.trim()),
+          ]);
           if (requestId !== searchCounterRef.current) return;
-          // Filter out users who already have permission on this page
+
           const existingUserIds = new Set(
             permissions.filter((p) => p.userId).map((p) => p.userId)
           );
-          const filtered = results.filter((u) => !existingUserIds.has(u.id));
-          setSuggestions(filtered);
+          const existingWorkspaceIds = new Set(
+            permissions.filter((p) => p.workspaceId).map((p) => p.workspaceId)
+          );
+
+          const merged: SearchSuggestion[] = [
+            ...workspaces
+              .filter((ws) => !existingWorkspaceIds.has(ws.id))
+              .map((ws) => ({ kind: "workspace" as const, data: ws })),
+            ...users
+              .filter((u) => !existingUserIds.has(u.id))
+              .map((u) => ({ kind: "user" as const, data: u })),
+          ];
+
+          setSuggestions(merged);
           setShowSuggestions(true);
         } catch {
           if (requestId === searchCounterRef.current) {
@@ -94,14 +128,17 @@ export function UserSearchInput({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  async function handleSelectUser(selectedUser: UserSearchResult) {
-    setGrantingUserId(selectedUser.id);
+  async function executeGrant(suggestion: SearchSuggestion, recursive: boolean) {
+    const id = suggestion.data.id;
+    setGrantingId(id);
     start();
     try {
       const newPerm = await api.grantPermission({
         pageId,
-        userId: selectedUser.id,
+        userId: suggestion.kind === "user" ? id : undefined,
+        workspaceId: suggestion.kind === "workspace" ? id : undefined,
         permission: invitePermission,
+        recursive,
       });
       onSelectUser(newPerm);
       setSearchQuery("");
@@ -110,84 +147,180 @@ export function UserSearchInput({
     } catch {
       // Could show error toast
     } finally {
-      setGrantingUserId(null);
+      setGrantingId(null);
       done();
     }
   }
 
+  function handleSelect(suggestion: SearchSuggestion) {
+    if (pageType === "section") {
+      // Section page — ask about recursive sharing
+      setPendingGrant(suggestion);
+      setShowRecursiveDialog(true);
+    } else {
+      executeGrant(suggestion, false);
+    }
+  }
+
+  function handleRecursiveConfirm(recursive: boolean) {
+    setShowRecursiveDialog(false);
+    if (pendingGrant) {
+      executeGrant(pendingGrant, recursive);
+      setPendingGrant(null);
+    }
+  }
+
+  const pendingName = pendingGrant
+    ? pendingGrant.kind === "workspace"
+      ? pendingGrant.data.name
+      : (pendingGrant.data.displayName ?? pendingGrant.data.email)
+    : "";
+
   return (
-    <div className="flex gap-2">
-      <div className="relative flex-1" ref={searchRef}>
-        <Input
-          placeholder="Search people by name or email..."
-          value={searchQuery}
-          onChange={(e) => handleSearchChange(e.target.value)}
-          onFocus={() => {
-            if (suggestions.length > 0) setShowSuggestions(true);
-          }}
-          className="h-9"
-        />
-        {showSuggestions && (
-          <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-md border bg-popover p-1 shadow-md max-h-[200px] overflow-y-auto">
-            {isSearching && (
-              <div className="flex items-center justify-center py-3">
-                <Loader2 className="size-4 animate-spin text-muted-foreground" />
-              </div>
-            )}
-            {!isSearching &&
-              suggestions.length === 0 &&
-              searchQuery.trim().length >= 2 && (
-                <p className="px-2 py-2 text-sm text-muted-foreground">
-                  No users found
-                </p>
-              )}
-            {suggestions.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                disabled={grantingUserId === s.id}
-                onClick={() => handleSelectUser(s)}
-                className="flex w-full items-center gap-3 rounded-sm px-2 py-2 text-left hover:bg-accent transition-colors disabled:opacity-50"
-              >
-                <Avatar className="size-7">
-                  {s.avatarUrl && (
-                    <AvatarImage
-                      src={s.avatarUrl}
-                      alt={s.displayName ?? ""}
-                    />
-                  )}
-                  <AvatarFallback className="text-xs">
-                    {getInitials(s.displayName ?? s.email)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex flex-col min-w-0 flex-1">
-                  <span className="text-sm font-medium truncate">
-                    {s.displayName ?? s.email}
-                  </span>
-                  <span className="text-xs text-muted-foreground truncate">
-                    {s.email}
-                  </span>
+    <>
+      <div className="flex gap-2">
+        <div className="relative flex-1" ref={searchRef}>
+          <Input
+            placeholder="Search people or groups..."
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            onFocus={() => {
+              if (suggestions.length > 0) setShowSuggestions(true);
+            }}
+            className="h-9"
+          />
+          {showSuggestions && (
+            <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-md border bg-popover p-1 shadow-md max-h-[200px] overflow-y-auto">
+              {isSearching && (
+                <div className="flex items-center justify-center py-3">
+                  <Loader2 className="size-4 animate-spin text-muted-foreground" />
                 </div>
-                {grantingUserId === s.id && (
-                  <Loader2 className="size-4 animate-spin text-muted-foreground shrink-0" />
+              )}
+              {!isSearching &&
+                suggestions.length === 0 &&
+                searchQuery.trim().length >= 2 && (
+                  <p className="px-2 py-2 text-sm text-muted-foreground">
+                    No results found
+                  </p>
                 )}
-              </button>
-            ))}
-          </div>
-        )}
+              {suggestions.map((s) => {
+                const id = s.data.id;
+                const isGranting = grantingId === id;
+
+                if (s.kind === "workspace") {
+                  return (
+                    <button
+                      key={`ws-${id}`}
+                      type="button"
+                      disabled={isGranting}
+                      onClick={() => handleSelect(s)}
+                      className="flex w-full items-center gap-3 rounded-sm px-2 py-2 text-left hover:bg-accent transition-colors disabled:opacity-50"
+                    >
+                      <div className="flex size-7 items-center justify-center rounded-full bg-secondary">
+                        <Users className="size-3.5 text-secondary-foreground" />
+                      </div>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className="text-sm font-medium truncate">
+                          {s.data.name}
+                        </span>
+                        <span className="text-xs text-muted-foreground truncate">
+                          {s.data.googleGroupEmail ?? "Group"}
+                        </span>
+                      </div>
+                      {isGranting && (
+                        <Loader2 className="size-4 animate-spin text-muted-foreground shrink-0" />
+                      )}
+                    </button>
+                  );
+                }
+
+                return (
+                  <button
+                    key={`u-${id}`}
+                    type="button"
+                    disabled={isGranting}
+                    onClick={() => handleSelect(s)}
+                    className="flex w-full items-center gap-3 rounded-sm px-2 py-2 text-left hover:bg-accent transition-colors disabled:opacity-50"
+                  >
+                    <Avatar className="size-7">
+                      {s.data.avatarUrl && (
+                        <AvatarImage
+                          src={s.data.avatarUrl}
+                          alt={s.data.displayName ?? ""}
+                        />
+                      )}
+                      <AvatarFallback className="text-xs">
+                        {getInitials(s.data.displayName ?? s.data.email)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <span className="text-sm font-medium truncate">
+                        {s.data.displayName ?? s.data.email}
+                      </span>
+                      <span className="text-xs text-muted-foreground truncate">
+                        {s.data.email}
+                      </span>
+                    </div>
+                    {isGranting && (
+                      <Loader2 className="size-4 animate-spin text-muted-foreground shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <Select
+          value={invitePermission}
+          onValueChange={(v) => setInvitePermission(v as Permission)}
+        >
+          <SelectTrigger className="w-[110px] h-9" size="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="view">Can view</SelectItem>
+            <SelectItem value="edit">Can edit</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
-      <Select
-        value={invitePermission}
-        onValueChange={(v) => setInvitePermission(v as Permission)}
-      >
-        <SelectTrigger className="w-[110px] h-9" size="sm">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="view">Can view</SelectItem>
-          <SelectItem value="edit">Can edit</SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
+
+      {/* Recursive share confirmation */}
+      <AlertDialog open={showRecursiveDialog} onOpenChange={setShowRecursiveDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Share with sub-pages?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  This section has existing sub-pages. How should{" "}
+                  <span className="font-medium text-foreground">{pendingName}</span>
+                  &apos;s access work?
+                </p>
+                <ul className="list-disc pl-5 space-y-1.5">
+                  <li>
+                    <span className="font-medium text-foreground">Include all sub-pages</span>
+                    {" "}&mdash; grants access to every existing page in this section.
+                    New pages added later will also inherit this access automatically.
+                  </li>
+                  <li>
+                    <span className="font-medium text-foreground">This page only</span>
+                    {" "}&mdash; only shares this specific page. Sub-pages and any
+                    new pages added later will not be affected.
+                  </li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => handleRecursiveConfirm(false)}>
+              This page only
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => handleRecursiveConfirm(true)}>
+              Include all sub-pages
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

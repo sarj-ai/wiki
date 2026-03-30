@@ -19,12 +19,99 @@ from app.drive import (
     get_sa_drive_service,
     move_drive_file,
 )
-from app.models.page import Page
+from app.models.page import Page, PagePermission
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.pages.helpers import _ensure_children_folder, _get_page_or_403
+from app.permissions.service import _grant_drive_permission
 
 log = logging.getLogger(__name__)
+
+
+async def _grant_inherited_drive_access(db: AsyncSession, page: Page) -> None:
+    """Grant Drive access based on inheritable permissions from ancestors.
+
+    Uses a recursive CTE to find all ancestors, then batch-fetches
+    inheritable permissions and resolves emails in bulk.
+    Best-effort: failures are logged but don't propagate.
+    """
+    if page.google_drive_id.startswith("pending-") or page.google_drive_id.startswith("section-"):
+        return
+
+    # Recursive CTE to collect all ancestor IDs in one query.
+    # Base case: the immediate parent. Recursive step: walk up via parent_id.
+    base = select(Page.id, Page.parent_id).where(Page.id == page.parent_id)
+    cte = base.cte(name="ancestors", recursive=True)
+    recursive = select(Page.id, Page.parent_id).where(
+        Page.id == cte.c.parent_id
+    )
+    cte = cte.union_all(recursive)
+
+    ancestor_result = await db.execute(select(cte.c.id))
+    ancestor_ids = [row[0] for row in ancestor_result.all()]
+
+    if not ancestor_ids:
+        return
+
+    # Batch-fetch all inheritable permissions from all ancestors
+    perm_result = await db.execute(
+        select(PagePermission).where(
+            PagePermission.page_id.in_(ancestor_ids),
+            PagePermission.inheritable == True,  # noqa: E712
+        )
+    )
+    perm_rows = list(perm_result.scalars().all())
+
+    if not perm_rows:
+        return
+
+    # Batch-fetch all referenced users and workspaces
+    user_ids = {p.user_id for p in perm_rows if p.user_id is not None}
+    workspace_ids = {p.workspace_id for p in perm_rows if p.workspace_id is not None}
+
+    users_by_id: dict[UUID, User] = {}
+    if user_ids:
+        u_result = await db.execute(select(User).where(User.id.in_(user_ids)))
+        users_by_id = {u.id: u for u in u_result.scalars().all()}
+
+    workspaces_by_id: dict[UUID, Workspace] = {}
+    if workspace_ids:
+        ws_result = await db.execute(select(Workspace).where(Workspace.id.in_(workspace_ids)))
+        workspaces_by_id = {ws.id: ws for ws in ws_result.scalars().all()}
+
+    role_map = {"view": "reader", "edit": "writer"}
+
+    for perm in perm_rows:
+        # Resolve email from pre-fetched data
+        email: str | None = None
+        perm_type = "user"
+        if perm.user_id is not None:
+            u = users_by_id.get(perm.user_id)
+            if u:
+                email = u.email
+        elif perm.workspace_id is not None:
+            ws = workspaces_by_id.get(perm.workspace_id)
+            if ws and ws.google_group_email:
+                email = ws.google_group_email
+                perm_type = "group"
+
+        if not email:
+            continue
+
+        role = role_map.get(perm.permission, "reader")
+        try:
+            await asyncio.to_thread(
+                _grant_drive_permission,
+                page.google_drive_id,
+                email,
+                role,
+                perm_type=perm_type,
+            )
+        except Exception:
+            log.warning(
+                "Failed to grant inherited Drive perm on %s to %s",
+                page.google_drive_id, email, exc_info=True,
+            )
 
 
 async def finalize_page_creation(page_id: UUID, user_email: str, title: str, is_private: bool, target_folder_id: str) -> None:
@@ -48,6 +135,9 @@ async def finalize_page_creation(page_id: UUID, user_email: str, title: str, is_
             page.google_drive_id = google_drive_id
             page.drive_folder_id = drive_folder_id
             await db.commit()
+
+            # Grant Drive access for inherited permissions from ancestors
+            await _grant_inherited_drive_access(db, page)
 
             from app.search.service import update_search_vector
             try:

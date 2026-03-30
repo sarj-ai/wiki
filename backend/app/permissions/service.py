@@ -8,11 +8,11 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.access import assert_page_owner
+from app.access import assert_can_manage_permissions
 from app.drive import get_sa_drive_service
 from app.models.page import Page, PagePermission
 from app.models.user import User
-from app.models.workspace import Workspace
+from app.models.workspace import Workspace, WorkspaceMembership
 from app.permissions.schemas import PermissionCreate
 
 log = logging.getLogger(__name__)
@@ -22,6 +22,9 @@ _PERM_TO_DRIVE_ROLE: dict[str, str] = {
     "view": "reader",
     "edit": "writer",
 }
+
+# Limit concurrent Drive API calls to avoid quota issues
+_DRIVE_SEMAPHORE = asyncio.Semaphore(5)
 
 
 # ------------------------------------------------------------------
@@ -86,12 +89,17 @@ def _is_pending_drive_id(google_drive_id: str) -> bool:
     return google_drive_id.startswith("pending-")
 
 
+def _is_skippable_drive_id(google_drive_id: str) -> bool:
+    """Check whether the drive ID should be skipped for Drive API calls."""
+    return _is_pending_drive_id(google_drive_id) or google_drive_id.startswith("section-")
+
+
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
 
 async def _get_page_or_403(db: AsyncSession, page_id: UUID) -> Page:
-    """Fetch a page by id or raise 403 (never 404 — don't leak existence)."""
+    """Fetch a page by id or raise 403 (never 404 -- don't leak existence)."""
     result = await db.execute(select(Page).where(Page.id == page_id))
     page = result.scalar_one_or_none()
     if page is None:
@@ -127,6 +135,47 @@ async def _resolve_email_for_permission(
 
 
 # ------------------------------------------------------------------
+# Descendant & inheritance helpers
+# ------------------------------------------------------------------
+
+async def _get_descendant_page_ids(db: AsyncSession, page_id: UUID) -> list[UUID]:
+    """Get all descendant page IDs (excluding the root) via recursive CTE."""
+    base = select(Page.id).where(Page.parent_id == page_id)
+    cte = base.cte(name="descendants", recursive=True)
+    recursive = select(Page.id).join(cte, Page.parent_id == cte.c.id)
+    cte = cte.union_all(recursive)
+
+    result = await db.execute(select(cte.c.id))
+    return [row[0] for row in result.all()]
+
+
+async def _drive_grant_with_semaphore(
+    file_id: str,
+    email: str,
+    role: str,
+    *,
+    perm_type: str = "user",
+) -> None:
+    """Grant a Drive permission with concurrency limiting."""
+    async with _DRIVE_SEMAPHORE:
+        try:
+            await asyncio.to_thread(
+                _grant_drive_permission, file_id, email, role, perm_type=perm_type,
+            )
+        except Exception:
+            log.warning("Failed to grant Drive perm on %s", file_id, exc_info=True)
+
+
+async def _drive_revoke_with_semaphore(file_id: str, email: str) -> None:
+    """Revoke a Drive permission with concurrency limiting."""
+    async with _DRIVE_SEMAPHORE:
+        try:
+            await asyncio.to_thread(_revoke_drive_permission, file_id, email)
+        except Exception:
+            log.warning("Failed to revoke Drive perm on %s", file_id, exc_info=True)
+
+
+# ------------------------------------------------------------------
 # Public service functions
 # ------------------------------------------------------------------
 
@@ -135,19 +184,32 @@ async def list_permissions(
     user: User,
     page_id: UUID,
 ) -> list[dict]:
-    """List all permissions for a page. User must own the page."""
+    """List all permissions for a page. Owner or workspace member can list."""
     page = await _get_page_or_403(db, page_id)
-    assert_page_owner(page, user, action="manage permissions for")
+    await assert_can_manage_permissions(db, page, user)
 
     result = await db.execute(
         select(PagePermission).where(PagePermission.page_id == page_id)
     )
     perms = list(result.scalars().all())
 
-    # Enrich with display_name and email
+    # Batch-fetch all referenced users and workspaces to avoid N+1
+    user_ids = {p.user_id for p in perms if p.user_id is not None}
+    workspace_ids = {p.workspace_id for p in perms if p.workspace_id is not None}
+
+    users_by_id: dict[UUID, User] = {}
+    if user_ids:
+        u_result = await db.execute(select(User).where(User.id.in_(user_ids)))
+        users_by_id = {u.id: u for u in u_result.scalars().all()}
+
+    workspaces_by_id: dict[UUID, Workspace] = {}
+    if workspace_ids:
+        ws_result = await db.execute(select(Workspace).where(Workspace.id.in_(workspace_ids)))
+        workspaces_by_id = {ws.id: ws for ws in ws_result.scalars().all()}
+
     enriched = []
     for perm in perms:
-        row = {
+        row: dict = {
             "id": perm.id,
             "page_id": perm.page_id,
             "user_id": perm.user_id,
@@ -155,18 +217,16 @@ async def list_permissions(
             "permission": perm.permission,
             "display_name": None,
             "email": None,
+            "avatar_url": None,
         }
         if perm.user_id is not None:
-            u = await db.execute(select(User).where(User.id == perm.user_id))
-            u_obj = u.scalar_one_or_none()
+            u_obj = users_by_id.get(perm.user_id)
             if u_obj:
                 row["display_name"] = u_obj.display_name
                 row["email"] = u_obj.email
+                row["avatar_url"] = u_obj.avatar_url
         elif perm.workspace_id is not None:
-            ws = await db.execute(
-                select(Workspace).where(Workspace.id == perm.workspace_id)
-            )
-            ws_obj = ws.scalar_one_or_none()
+            ws_obj = workspaces_by_id.get(perm.workspace_id)
             if ws_obj:
                 row["display_name"] = ws_obj.name
                 row["email"] = ws_obj.google_group_email
@@ -230,7 +290,7 @@ async def search_users(
         )
         user_obj = existing.scalar_one_or_none()
         if user_obj is None:
-            # Insert a stub user record (no tokens — they haven't logged in)
+            # Insert a stub user record (no tokens -- they haven't logged in)
             user_obj = User(
                 id=uuid4(),
                 email=du["email"],
@@ -248,6 +308,36 @@ async def search_users(
 
     await db.commit()
     return db_users
+
+
+async def search_workspaces(
+    db: AsyncSession,
+    query: str,
+    *,
+    user_id: UUID,
+    limit: int = 5,
+) -> list[Workspace]:
+    """Search workspaces by name or group email that the user is a member of."""
+    escaped = query.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{escaped}%"
+
+    # Only return workspaces the user belongs to
+    user_workspace_ids = (
+        select(WorkspaceMembership.workspace_id)
+        .where(WorkspaceMembership.user_id == user_id)
+    )
+
+    stmt = (
+        select(Workspace)
+        .where(
+            Workspace.id.in_(user_workspace_ids),
+            (Workspace.name.ilike(pattern))
+            | (Workspace.google_group_email.ilike(pattern)),
+        )
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
 
 
 def _search_directory(query: str, limit: int) -> list[dict]:
@@ -357,9 +447,13 @@ async def grant_permission(
     user: User,
     data: PermissionCreate,
 ) -> PagePermission:
-    """Grant permission on a page. Only the page owner can grant permissions."""
+    """Grant permission on a page. Owner or workspace member can grant.
+
+    When ``data.recursive`` is True, the same permission is also granted
+    to every descendant page.
+    """
     page = await _get_page_or_403(db, data.page_id)
-    assert_page_owner(page, user, action="manage permissions for")
+    await assert_can_manage_permissions(db, page, user)
 
     # Check for an existing identical permission to prevent duplicates.
     # Uses FOR UPDATE to serialize concurrent grants on the same page.
@@ -391,46 +485,46 @@ async def grant_permission(
         user_id=data.user_id,
         workspace_id=data.workspace_id,
         permission=data.permission,
+        inheritable=data.recursive,
     )
-
     db.add(perm)
     await db.commit()
     await db.refresh(perm)
 
-    # ---- Grant Drive-level access (best-effort) ----
-    if not _is_pending_drive_id(page.google_drive_id):
+    # ---- Best-effort Drive sharing ----
+    # Resolve email once; reuse for root + descendants.
+    email_info = await _resolve_email_for_permission(db, perm)
+    if email_info is not None:
+        email, perm_type = email_info
         drive_role = _PERM_TO_DRIVE_ROLE.get(data.permission, "reader")
 
-        # Resolve email and type for the grantee
-        email_info = await _resolve_email_for_permission(db, perm)
-        if email_info is not None:
-            email, perm_type = email_info
+        # Grant on the root page itself
+        if not _is_skippable_drive_id(page.google_drive_id):
             try:
                 await asyncio.to_thread(
-                    _grant_drive_permission,
-                    page.google_drive_id,
-                    email,
-                    drive_role,
-                    perm_type=perm_type,
-                )
-                log.info(
-                    "Granted Drive %s access on %s to %s (%s)",
-                    drive_role, page.google_drive_id, email, perm_type,
+                    _grant_drive_permission, page.google_drive_id, email, drive_role, perm_type=perm_type,
                 )
             except Exception:
-                log.warning(
-                    "Failed to grant Drive permission on %s to %s — "
-                    "DB permission was saved, Drive sharing skipped",
-                    page.google_drive_id,
-                    email,
-                    exc_info=True,
+                log.warning("Failed to grant Drive perm on %s", page.google_drive_id, exc_info=True)
+
+        # Recursive: also grant Drive access on existing descendants (parallel)
+        if data.recursive:
+            descendant_ids = await _get_descendant_page_ids(db, data.page_id)
+            if descendant_ids:
+                desc_result = await db.execute(
+                    select(Page).where(Page.id.in_(descendant_ids))
                 )
-        else:
-            log.warning(
-                "Could not resolve email for permission %s — "
-                "Drive sharing skipped",
-                perm.id,
-            )
+                tasks = []
+                for desc_page in desc_result.scalars():
+                    if _is_skippable_drive_id(desc_page.google_drive_id):
+                        continue
+                    tasks.append(
+                        _drive_grant_with_semaphore(
+                            desc_page.google_drive_id, email, drive_role, perm_type=perm_type,
+                        )
+                    )
+                if tasks:
+                    await asyncio.gather(*tasks)
 
     return perm
 
@@ -439,8 +533,16 @@ async def revoke_permission(
     db: AsyncSession,
     user: User,
     permission_id: UUID,
+    *,
+    recursive: bool = False,
 ) -> None:
-    """Revoke a permission. Only the page owner can revoke."""
+    """Revoke a permission.
+
+    Deletes the single DB record. If the permission was inheritable,
+    descendants automatically lose access (ancestor-walk check handles it).
+    ``recursive`` controls whether Drive-level access is also revoked
+    from existing descendant files.
+    """
     result = await db.execute(
         select(PagePermission).where(PagePermission.id == permission_id)
     )
@@ -451,35 +553,85 @@ async def revoke_permission(
             detail="Permission not found or access denied",
         )
 
-    # Load the page to verify ownership
+    # Load the page to verify permission management access
     page = await _get_page_or_403(db, perm.page_id)
-    assert_page_owner(page, user, action="manage permissions for")
+    await assert_can_manage_permissions(db, page, user)
 
-    # ---- Revoke Drive-level access (best-effort) ----
-    if not _is_pending_drive_id(page.google_drive_id):
-        email_info = await _resolve_email_for_permission(db, perm)
-        if email_info is not None:
-            email, _perm_type = email_info
-            try:
-                await asyncio.to_thread(
-                    _revoke_drive_permission,
-                    page.google_drive_id,
-                    email,
-                )
-            except Exception:
-                log.warning(
-                    "Failed to revoke Drive permission on %s for %s — "
-                    "DB permission will still be deleted",
-                    page.google_drive_id,
-                    email,
-                    exc_info=True,
-                )
-        else:
-            log.warning(
-                "Could not resolve email for permission %s — "
-                "Drive revocation skipped",
-                permission_id,
-            )
+    was_inheritable = perm.inheritable
+    email_info = await _resolve_email_for_permission(db, perm)
 
+    # Delete the DB record -- ancestor-walk handles descendant visibility
     await db.delete(perm)
     await db.commit()
+
+    # ---- Best-effort Drive revocation ----
+    if email_info is None:
+        return
+
+    email, _pt = email_info
+
+    # Revoke on this page
+    if not _is_skippable_drive_id(page.google_drive_id):
+        try:
+            await asyncio.to_thread(_revoke_drive_permission, page.google_drive_id, email)
+        except Exception:
+            log.warning("Failed to revoke Drive perm on %s", page.google_drive_id, exc_info=True)
+
+    # If it was inheritable, also revoke Drive access on descendants (parallel)
+    if was_inheritable:
+        descendant_ids = await _get_descendant_page_ids(db, page.id)
+        if descendant_ids:
+            desc_result = await db.execute(
+                select(Page).where(Page.id.in_(descendant_ids))
+            )
+            tasks = []
+            for desc_page in desc_result.scalars():
+                if _is_skippable_drive_id(desc_page.google_drive_id):
+                    continue
+                tasks.append(
+                    _drive_revoke_with_semaphore(desc_page.google_drive_id, email)
+                )
+            if tasks:
+                await asyncio.gather(*tasks)
+
+
+async def update_permission(
+    db: AsyncSession,
+    user: User,
+    permission_id: UUID,
+    new_permission: str,
+) -> PagePermission:
+    """Change a permission's level (view / edit)."""
+    result = await db.execute(
+        select(PagePermission).where(PagePermission.id == permission_id)
+    )
+    perm = result.scalar_one_or_none()
+    if perm is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission not found or access denied",
+        )
+
+    page = await _get_page_or_403(db, perm.page_id)
+    await assert_can_manage_permissions(db, page, user)
+
+    old_permission = perm.permission
+    perm.permission = new_permission
+    await db.commit()
+    await db.refresh(perm)
+
+    # Update Drive-level access (best-effort): revoke old, grant new
+    if old_permission != new_permission and not _is_skippable_drive_id(page.google_drive_id):
+        email_info = await _resolve_email_for_permission(db, perm)
+        if email_info:
+            email, perm_type = email_info
+            new_role = _PERM_TO_DRIVE_ROLE.get(new_permission, "reader")
+            try:
+                # Drive replaces existing permission for the same email
+                await asyncio.to_thread(
+                    _grant_drive_permission, page.google_drive_id, email, new_role, perm_type=perm_type,
+                )
+            except Exception:
+                log.warning("Failed to update Drive perm on %s", page.google_drive_id, exc_info=True)
+
+    return perm

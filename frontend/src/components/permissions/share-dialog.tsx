@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { Page, Workspace, PagePermission } from "@/types";
+import type { Page, Workspace, PagePermission, Permission } from "@/types";
 import { useAuth } from "@/components/auth-provider";
 import { useWorkspaces } from "@/hooks/use-workspaces";
 import { useLoading } from "@/components/loading-bar";
@@ -57,6 +57,19 @@ export function ShareDialog({
     setPermissions((prev) => [...prev, newPerm]);
   }
 
+  async function handleChangePermission(permId: string, permission: Permission) {
+    const prev = permissions;
+    // Optimistic update
+    setPermissions((perms) =>
+      perms.map((p) => (p.id === permId ? { ...p, permission } : p))
+    );
+    try {
+      await api.updatePermission(permId, permission);
+    } catch {
+      setPermissions(prev); // revert
+    }
+  }
+
   async function handleRemovePermission(permId: string) {
     start();
     try {
@@ -104,6 +117,7 @@ export function ShareDialog({
             <UserSearchInput
               key={open ? "open" : "closed"}
               pageId={page.id}
+              pageType={page.type}
               permissions={permissions}
               onSelectUser={handleUserSelected}
             />
@@ -116,10 +130,25 @@ export function ShareDialog({
         <div className="px-6 py-4">
           <PermissionList
             permissions={permissions}
-            owner={user}
+            owner={
+              page.createdBy && page.createdByEmail
+                ? {
+                    id: page.createdBy,
+                    email: page.createdByEmail,
+                    displayName: page.createdByName ?? null,
+                    avatarUrl: page.createdByAvatar ?? null,
+                  }
+                : null
+            }
+            ownerFallbackWorkspace={
+              !page.createdBy && page.workspaceId
+                ? workspaces.find((w) => w.id === page.workspaceId) ?? null
+                : null
+            }
             workspaces={workspaces}
             isLoading={isLoadingPermissions}
             onRemove={handleRemovePermission}
+            onChangePermission={handleChangePermission}
           />
         </div>
 
