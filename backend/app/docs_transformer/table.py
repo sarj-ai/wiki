@@ -93,7 +93,11 @@ def _transform_table(
     if has_chips:
         result["hasChips"] = True
 
-    col_props = table.get("tableColumnProperties", [])
+    # Column widths live in tableStyle.tableColumnProperties (not top-level)
+    col_props = (
+        table.get("tableStyle", {}).get("tableColumnProperties", [])
+        or table.get("tableColumnProperties", [])
+    )
     if col_props:
         widths = [_dimension_pt(cp.get("width")) for cp in col_props]
         if any(w is not None for w in widths):
