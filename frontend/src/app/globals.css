@@ -587,6 +587,8 @@
   background: color-mix(in srgb, var(--secondary) 20%, transparent);
   color: var(--foreground);
   vertical-align: baseline;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .dark .doc-chip-person {
