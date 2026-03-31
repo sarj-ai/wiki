@@ -101,6 +101,11 @@ export function DocTableBlock({
         : null;
     const statusClass = singleRun ? getStatusClass(singleRun.text!) : null;
 
+    // Get paragraph alignment for the first (and only) paragraph when it's a status cell
+    const statusAlignment = statusClass && cell.content[0]?.alignment && VALID_TEXT_ALIGNS.has(cell.content[0].alignment)
+      ? cell.content[0].alignment
+      : undefined;
+
     return (
       <Tag
         rowSpan={cell.rowSpan && cell.rowSpan > 1 ? cell.rowSpan : undefined}
@@ -109,7 +114,9 @@ export function DocTableBlock({
         className={isHeader ? "doc-table-th" : "doc-table-td"}
       >
         {statusClass ? (
-          <span className={statusClass}>{singleRun!.text!.trim()}</span>
+          <div style={statusAlignment ? { textAlign: statusAlignment as React.CSSProperties["textAlign"] } : undefined}>
+            <span className={statusClass}>{singleRun!.text!.trim()}</span>
+          </div>
         ) : (
           cell.content.map((para, pi) => {
             // Empty paragraph = newline spacer within the cell
