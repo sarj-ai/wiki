@@ -73,7 +73,7 @@ export function DocumentContent({
   if (content?.tabs && !isDocEmpty(content.tabs)) {
     return (
       <div className="px-6 pb-6 animate-in fade-in duration-200">
-        <div className="mx-auto max-w-4xl py-4">
+        <div className={`mx-auto py-4 ${focusMode ? "max-w-6xl" : "max-w-4xl"}`}>
           <DocViewer tabs={content.tabs} />
         </div>
       </div>

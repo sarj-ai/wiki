@@ -37,6 +37,7 @@ export function BlockRenderer({ block }: { block: ContentBlock }) {
           hasHeader={block.hasHeader}
           hasChips={block.hasChips}
           caption={block.caption}
+          columnWidths={block.columnWidths}
         />
       );
     case "image":

@@ -11,11 +11,13 @@ export function DocTableBlock({
   hasHeader,
   hasChips,
   caption,
+  columnWidths,
 }: {
   rows: TableCellData[][];
   hasHeader?: boolean;
   hasChips?: boolean;
   caption?: string;
+  columnWidths?: (number | null)[];
 }) {
   if (!rows || rows.length === 0) return null;
 
@@ -136,6 +138,13 @@ export function DocTableBlock({
       {caption && <div className="doc-table-caption">{caption}</div>}
       <div className="doc-table-container">
         <table className="doc-table">
+          {columnWidths && columnWidths.some((w) => w != null) && (
+            <colgroup>
+              {columnWidths.map((w, i) => (
+                <col key={i} style={w != null ? { width: `${w}pt` } : undefined} />
+              ))}
+            </colgroup>
+          )}
           {headerRow && (
             <thead>
               <tr>
