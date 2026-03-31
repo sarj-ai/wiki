@@ -137,20 +137,17 @@ export function DocTableBlock({
     <div className="doc-table-wrapper not-prose">
       {caption && <div className="doc-table-caption">{caption}</div>}
       <div className="doc-table-container">
-        <table
-          className="doc-table"
-          style={columnWidths?.some((w) => w != null) ? { tableLayout: "fixed" } : undefined}
-        >
-          {columnWidths && columnWidths.some((w) => w != null) && (
-            <colgroup>
-              {(() => {
-                const total = columnWidths.reduce<number>((s, w) => s + (w ?? 0), 0);
-                return columnWidths.map((w, i) => (
-                  <col key={i} style={w != null && total > 0 ? { width: `${((w / total) * 100).toFixed(1)}%` } : undefined} />
-                ));
-              })()}
-            </colgroup>
-          )}
+        <table className="doc-table">
+          {columnWidths && columnWidths.some((w) => w != null) && (() => {
+            const total = columnWidths.reduce<number>((s, w) => s + (w ?? 0), 0);
+            return total > 0 ? (
+              <colgroup>
+                {columnWidths.map((w, i) => (
+                  <col key={i} style={w != null ? { width: `${((w / total) * 100).toFixed(1)}%` } : undefined} />
+                ))}
+              </colgroup>
+            ) : null;
+          })()}
           {headerRow && (
             <thead>
               <tr>
