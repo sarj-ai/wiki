@@ -98,7 +98,26 @@ export function usePageOperations(allPages: Page[], activePageId: string | null)
     setMovingPageId(pageId);
     start();
     try {
-      const sortOrder = newIndex + 0.5;
+      // Find siblings under the new parent to compute a proper sort order
+      const allPages = allPagesRef.current;
+      const siblings = (newParentId
+        ? findPageById(newParentId, allPages)?.children ?? []
+        : allPages
+      ).filter((p) => p.id !== pageId).sort((a, b) => a.sortOrder - b.sortOrder);
+
+      let sortOrder: number;
+      if (siblings.length === 0) {
+        sortOrder = 1;
+      } else if (newIndex <= 0) {
+        sortOrder = siblings[0].sortOrder - 1;
+      } else if (newIndex >= siblings.length) {
+        sortOrder = siblings[siblings.length - 1].sortOrder + 1;
+      } else {
+        const before = siblings[newIndex - 1].sortOrder;
+        const after = siblings[newIndex].sortOrder;
+        sortOrder = (before + after) / 2;
+      }
+
       await api.updatePage(pageId, { parentId: newParentId, sortOrder });
       await queryClient.invalidateQueries({ queryKey: ["pages"] });
     } catch {
