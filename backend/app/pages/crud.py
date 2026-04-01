@@ -146,17 +146,10 @@ async def update_page(
     page_id: UUID,
     data: PageUpdate,
 ) -> Page:
-    """Update an existing page. Owner or workspace member (for sections) can update."""
+    """Update an existing page. Workspace members can update workspace pages; owner for private."""
     page = await _get_page_or_403(db, page_id)
-    if page.type == "section":
-        # Sections are synced from Drive — any workspace member can modify them.
-        # If no workspace is set, any authenticated domain user can modify.
-        if page.workspace_id is not None:
-            await _verify_workspace_membership(db, user.id, page.workspace_id)
-    elif page.created_by is None:
-        # Non-section page with no owner — allow workspace members or any domain user
-        if page.workspace_id is not None:
-            await _verify_workspace_membership(db, user.id, page.workspace_id)
+    if page.workspace_id is not None:
+        await _verify_workspace_membership(db, user.id, page.workspace_id)
     else:
         assert_page_owner(page, user)
 
