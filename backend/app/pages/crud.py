@@ -223,13 +223,11 @@ async def delete_page(
     Collects all descendant Drive file IDs first, then trashes them.
     """
     page = await _get_page_or_403(db, page_id)
-    if page.type == "section":
-        if page.workspace_id is not None:
-            await _verify_workspace_membership(db, user.id, page.workspace_id)
-    elif page.created_by is None:
-        if page.workspace_id is not None:
-            await _verify_workspace_membership(db, user.id, page.workspace_id)
+    if page.workspace_id is not None:
+        # Workspace pages: any workspace member can delete
+        await _verify_workspace_membership(db, user.id, page.workspace_id)
     else:
+        # Private pages: only the owner can delete
         assert_page_owner(page, user)
 
     # Collect all descendant Drive IDs + folder IDs via recursive CTE
