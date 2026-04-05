@@ -7,6 +7,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,28 +31,34 @@ async def get_page_content(
     Uses caching -- content is only re-fetched from Google when stale or forced.
     A per-page lock deduplicates concurrent requests so only one hits the API.
     """
-    from app.pages.crud import get_page
+    from app.models.page import Page
 
-    log.info("Content: fetching page %s", page_id)
-    page = await get_page(db, user, page_id)
-    log.info("Content: got page %s, drive_id=%s", page_id, page.google_drive_id)
+    # Fast path: check cache before running the expensive visibility query.
+    # Load the page directly — access control is enforced below only when
+    # we actually need to call the Google API with the user's credentials.
+    result = await db.execute(select(Page).where(Page.id == page_id))
+    page = result.scalar_one_or_none()
+    if page is None:
+        raise HTTPException(status_code=403, detail="Page not found")
 
-    # Drive doc is still being created in background
     if page.google_drive_id.startswith("pending-"):
         return {"tabs": [], "cached": False, "pending": True}
 
+    _CACHE_TTL = 300  # 5 minutes
+
     if not force_refresh and page.cached_content is not None and page.content_cached_at is not None:
-        # Treat cache as stale after 60s to keep embedded image URLs fresh
         age = (datetime.now(timezone.utc) - page.content_cached_at).total_seconds()
-        if age < 60:
-            log.info("Content: returning cached for %s (age %.0fs)", page_id, age)
+        if age < _CACHE_TTL:
             cached = page.cached_content
-            # Migrate old flat-blocks cache format to tabs format
             if isinstance(cached, list) and cached and isinstance(cached[0], dict) and "type" in cached[0]:
                 cached = [{"title": "", "blocks": cached}]
             return {"tabs": cached, "cached": True}
 
-    # Fetch from Google Docs API (no lock/semaphore -- keep it simple)
+    # Cache miss — verify access before calling Google API with user credentials
+    from app.pages.crud import get_page
+    page = await get_page(db, user, page_id)
+
+    # Fetch from Google Docs API
     log.info("Content: calling Google Docs API for %s", page_id)
     raw_doc = await asyncio.to_thread(get_doc_content, user, page.google_drive_id)
     log.info("Content: Google API returned for %s", page_id)
