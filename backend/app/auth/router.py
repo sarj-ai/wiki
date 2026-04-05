@@ -180,8 +180,14 @@ async def callback(
         token_expiry = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(seconds=expires_in)
 
     # 5. Upsert user in database
+    # Look up by google_id first, then by email (stub users from share/search
+    # may exist with a different google_id from the Admin Directory API).
     result = await db.execute(select(User).where(User.google_id == google_id))
     user = result.scalar_one_or_none()
+
+    if user is None:
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
 
     if user is None:
         user = User(
@@ -195,6 +201,7 @@ async def callback(
         )
         db.add(user)
     else:
+        user.google_id = google_id
         user.email = email
         user.display_name = display_name
         user.avatar_url = avatar_url
