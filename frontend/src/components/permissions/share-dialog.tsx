@@ -102,7 +102,7 @@ export function ShareDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[520px] gap-0 p-0">
         {/* Header */}
-        <DialogHeader className="px-6 pt-6 pb-4">
+        <DialogHeader className="pl-6 pr-12 pt-6 pb-4">
           <DialogTitle className="break-words">
             Share &ldquo;{page.title}&rdquo;
           </DialogTitle>

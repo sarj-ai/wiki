@@ -68,7 +68,9 @@ export function PermissionList({
               Owner
             </span>
           </div>
-        ) : ownerFallbackWorkspace ? (
+        ) : null}
+
+        {ownerFallbackWorkspace && (
           <div className="flex items-center gap-3 rounded-md px-2 py-2">
             <div className="flex size-7 items-center justify-center rounded-full bg-secondary">
               <Users className="size-3.5 text-secondary-foreground" />
@@ -86,7 +88,7 @@ export function PermissionList({
               Workspace
             </span>
           </div>
-        ) : null}
+        )}
 
         {isLoading && (
           <div className="flex items-center justify-center py-4">
