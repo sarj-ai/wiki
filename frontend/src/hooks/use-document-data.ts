@@ -59,7 +59,10 @@ export function useDocumentData(pageId: string): UseDocumentDataReturn {
   } = useQuery({
     queryKey: ["pages", pageId],
     queryFn: () => api.getPage(pageId),
-    retry: false,
+    retry: 2,
+    // Keep showing the cached page while refetching on tab focus,
+    // instead of flashing "Page not found" on a temporary auth failure.
+    placeholderData: (prev) => prev,
     refetchInterval: (query) => {
       const p = query.state.data;
       return p?.googleDriveId?.startsWith("pending-") ? 1000 : false;
