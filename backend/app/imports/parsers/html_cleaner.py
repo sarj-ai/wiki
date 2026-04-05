@@ -72,11 +72,21 @@ def clean_notion_html(html: str) -> str:
     # Convert Notion TOC nav to a simple div
     html = re.sub(r'<nav[^>]*>(.*?)</nav>', r"<div>\1</div>", html, flags=re.DOTALL)
 
+    # Preserve list-style-type on <li> (Google Docs needs it for bullets vs checkboxes)
+    html = re.sub(
+        r'<li\s+style="[^"]*?(list-style-type:\s*\w+)[^"]*"',
+        r'<li data-lst="\1"',
+        html,
+    )
+
     # Strip class, style, id, dir attributes
     html = re.sub(r'\s+class="[^"]*"', "", html)
     html = re.sub(r'\s+style="[^"]*"', "", html)
     html = re.sub(r'\s+id="[^"]*"', "", html)
     html = re.sub(r'\s+dir="[^"]*"', "", html)
+
+    # Restore preserved list-style-type
+    html = re.sub(r' data-lst="([^"]*)"', r' style="\1"', html)
 
     # Clean up empty elements
     html = re.sub(r"<div>\s*</div>", "", html)
