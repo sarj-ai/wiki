@@ -100,10 +100,10 @@ export function ShareDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px] gap-0 p-0">
+      <DialogContent className="sm:max-w-[520px] gap-0 p-0">
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4">
-          <DialogTitle className="truncate">
+          <DialogTitle className="break-words">
             Share &ldquo;{page.title}&rdquo;
           </DialogTitle>
           <DialogDescription>{visibilityLabel}</DialogDescription>
@@ -141,7 +141,7 @@ export function ShareDialog({
                 : null
             }
             ownerFallbackWorkspace={
-              !page.createdBy && page.workspaceId
+              page.workspaceId
                 ? workspaces.find((w) => w.id === page.workspaceId) ?? null
                 : null
             }
