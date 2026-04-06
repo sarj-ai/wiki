@@ -40,10 +40,15 @@ export function DocTableBlock({
     });
   });
 
-  // If the first row is a single merged cell (section title like "DECISIONS MADE AT ANY PHASE"),
+  // Detect section rows (single cell spanning all columns = group header)
+  const numCols = rows.length > 0
+    ? Math.max(...rows.map(row => row.reduce((sum, cell) => sum + (cell.colSpan || 1), 0)))
+    : 0;
+
+  // If the first row is a merged section title (like "DECISIONS MADE AT ANY PHASE"),
   // keep it in the body and use the second row as the actual header.
   const firstRowIsSectionTitle = hasHeader && rows.length >= 2
-    && rows[0].length === 1 && (rows[0][0].colSpan || 1) > 1;
+    && rows[0].length > 0 && (rows[0][0].colSpan || 1) >= numCols && numCols > 1;
 
   const headerRow = hasHeader
     ? (firstRowIsSectionTitle ? rows[1] : rows[0])
@@ -51,11 +56,6 @@ export function DocTableBlock({
   const bodyRows = hasHeader
     ? (firstRowIsSectionTitle ? [rows[0], ...rows.slice(2)] : rows.slice(1))
     : rows;
-
-  // Detect section rows (single cell spanning all columns = group header)
-  const numCols = rows.length > 0
-    ? Math.max(...rows.map(row => row.reduce((sum, cell) => sum + (cell.colSpan || 1), 0)))
-    : 0;
 
   function isSectionRow(row: TableCellData[]): boolean {
     if (numCols <= 1) return false;
