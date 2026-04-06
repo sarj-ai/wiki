@@ -117,13 +117,16 @@ async def callback(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
+    def _error_redirect(error: str) -> RedirectResponse:
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}/login?error={error}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
     # Verify CSRF state parameter matches the cookie
     expected_state = request.cookies.get("oauth_state")
     if not expected_state or not secrets.compare_digest(state, expected_state):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid OAuth state parameter",
-        )
+        return _error_redirect("auth_failed")
 
     # 1. Exchange authorization code for tokens
     async with httpx.AsyncClient() as client:
@@ -140,10 +143,7 @@ async def callback(
 
         if token_response.status_code != 200:
             log.warning("Google token exchange failed: %s", token_response.status_code)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to exchange authorization code",
-            )
+            return _error_redirect("auth_failed")
 
         token_data = token_response.json()
         google_access_token: str = token_data["access_token"]
@@ -157,10 +157,7 @@ async def callback(
         )
 
     if userinfo_response.status_code != 200:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to fetch user info from Google",
-        )
+        return _error_redirect("auth_failed")
 
     userinfo = userinfo_response.json()
     email: str = userinfo["email"]
@@ -169,84 +166,91 @@ async def callback(
     avatar_url: str | None = userinfo.get("picture")
 
     # 3. Domain restriction — strictly enforced server-side
-    _validate_email_domain(email)
+    parts = email.rsplit("@", 1)
+    if len(parts) != 2 or parts[1] != settings.ALLOWED_DOMAIN:
+        return _error_redirect("domain_restricted")
 
-    # 4. Encrypt Google tokens before storage
-    encrypted_access = encrypt_token(google_access_token)
-    encrypted_refresh = encrypt_token(google_refresh_token) if google_refresh_token else None
+    try:
+        # 4. Encrypt Google tokens before storage
+        encrypted_access = encrypt_token(google_access_token)
+        encrypted_refresh = encrypt_token(google_refresh_token) if google_refresh_token else None
 
-    token_expiry = None
-    if expires_in is not None:
-        token_expiry = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(seconds=expires_in)
+        token_expiry = None
+        if expires_in is not None:
+            token_expiry = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(seconds=expires_in)
 
-    # 5. Upsert user in database
-    # Look up by google_id first, then by email (stub users from share/search
-    # may exist with a different google_id from the Admin Directory API).
-    result = await db.execute(select(User).where(User.google_id == google_id))
-    user = result.scalar_one_or_none()
-
-    if user is None:
-        result = await db.execute(select(User).where(User.email == email))
+        # 5. Upsert user in database
+        # Look up by google_id first, then by email (stub users from share/search
+        # may exist with a different google_id from the Admin Directory API).
+        result = await db.execute(select(User).where(User.google_id == google_id))
         user = result.scalar_one_or_none()
 
-    if user is None:
-        user = User(
-            email=email,
-            google_id=google_id,
-            display_name=display_name,
-            avatar_url=avatar_url,
-            encrypted_access_token=encrypted_access,
-            encrypted_refresh_token=encrypted_refresh,
-            token_expiry=token_expiry,
-        )
-        db.add(user)
-    else:
-        user.google_id = google_id
-        user.email = email
-        user.display_name = display_name
-        user.avatar_url = avatar_url
-        user.encrypted_access_token = encrypted_access
-        if encrypted_refresh is not None:
-            user.encrypted_refresh_token = encrypted_refresh
-        user.token_expiry = token_expiry
+        if user is None:
+            result = await db.execute(select(User).where(User.email == email))
+            user = result.scalar_one_or_none()
 
-    await db.commit()
-    await db.refresh(user)
+        if user is None:
+            user = User(
+                email=email,
+                google_id=google_id,
+                display_name=display_name,
+                avatar_url=avatar_url,
+                encrypted_access_token=encrypted_access,
+                encrypted_refresh_token=encrypted_refresh,
+                token_expiry=token_expiry,
+            )
+            db.add(user)
+        else:
+            user.google_id = google_id
+            user.email = email
+            user.display_name = display_name
+            user.avatar_url = avatar_url
+            user.encrypted_access_token = encrypted_access
+            if encrypted_refresh is not None:
+                user.encrypted_refresh_token = encrypted_refresh
+            user.token_expiry = token_expiry
 
-    # 6. Sync workspaces and memberships (best-effort, don't block login)
-    try:
-        await sync_all_groups(db)
-        await sync_user_memberships(db, user)
-    except Exception:
-        log.warning("Failed to sync workspaces for %s", email, exc_info=True)
+        await db.commit()
+        await db.refresh(user)
 
-    # 7. Scan folder permissions in background (slow — don't block login)
-    _bg_user_id = user.id
-
-    async def _bg_folder_sync() -> None:
-        from app.database import async_session as bg_session
-
+        # 6. Sync workspaces and memberships (best-effort, don't block login)
         try:
-            async with bg_session() as s:
-                await sync_folder_permissions(s)
-                result = await s.execute(select(User).where(User.id == _bg_user_id))
-                bg_user = result.scalar_one_or_none()
-                if bg_user:
-                    await sync_user_memberships(s, bg_user)
+            await sync_all_groups(db)
+            await sync_user_memberships(db, user)
         except Exception:
-            log.warning("Background folder permission sync failed", exc_info=True)
+            log.warning("Failed to sync workspaces for %s", email, exc_info=True)
 
-    background_tasks.add_task(_bg_folder_sync)
+        # 7. Scan folder permissions in background (slow — don't block login)
+        _bg_user_id = user.id
 
-    # 8. Issue our own JWT tokens (embed token_version for revocation)
-    jwt_access = create_access_token(user_id=str(user.id), email=user.email, token_version=user.token_version)
-    jwt_refresh = create_refresh_token(user_id=str(user.id), token_version=user.token_version)
+        async def _bg_folder_sync() -> None:
+            from app.database import async_session as bg_session
 
-    # 9. Set cookies and redirect to frontend (clear the oauth_state cookie)
-    redirect = RedirectResponse(url=settings.FRONTEND_URL, status_code=status.HTTP_302_FOUND)
-    _set_auth_cookies(redirect, jwt_access, jwt_refresh)
-    redirect.delete_cookie(key="oauth_state", path="/")
-    return redirect
+            try:
+                async with bg_session() as s:
+                    await sync_folder_permissions(s)
+                    result = await s.execute(select(User).where(User.id == _bg_user_id))
+                    bg_user = result.scalar_one_or_none()
+                    if bg_user:
+                        await sync_user_memberships(s, bg_user)
+            except Exception:
+                log.warning("Background folder permission sync failed", exc_info=True)
+
+        background_tasks.add_task(_bg_folder_sync)
+
+        # 8. Issue our own JWT tokens (embed token_version for revocation)
+        jwt_access = create_access_token(user_id=str(user.id), email=user.email, token_version=user.token_version)
+        jwt_refresh = create_refresh_token(user_id=str(user.id), token_version=user.token_version)
+
+        # 9. Set cookies and redirect to frontend (clear the oauth_state cookie)
+        redirect = RedirectResponse(url=settings.FRONTEND_URL, status_code=status.HTTP_302_FOUND)
+        _set_auth_cookies(redirect, jwt_access, jwt_refresh)
+        redirect.delete_cookie(key="oauth_state", path="/")
+        return redirect
+
+    except Exception:
+        log.exception("Auth callback failed for %s", email)
+        return _error_redirect("server_error")
 
 
 @router.post("/logout")
