@@ -40,8 +40,17 @@ export function DocTableBlock({
     });
   });
 
-  const headerRow = hasHeader ? rows[0] : null;
-  const bodyRows = hasHeader ? rows.slice(1) : rows;
+  // If the first row is a single merged cell (section title like "DECISIONS MADE AT ANY PHASE"),
+  // keep it in the body and use the second row as the actual header.
+  const firstRowIsSectionTitle = hasHeader && rows.length >= 2
+    && rows[0].length === 1 && (rows[0][0].colSpan || 1) > 1;
+
+  const headerRow = hasHeader
+    ? (firstRowIsSectionTitle ? rows[1] : rows[0])
+    : null;
+  const bodyRows = hasHeader
+    ? (firstRowIsSectionTitle ? [rows[0], ...rows.slice(2)] : rows.slice(1))
+    : rows;
 
   // Detect section rows (single cell spanning all columns = group header)
   const numCols = rows.length > 0
