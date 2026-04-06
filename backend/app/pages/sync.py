@@ -637,6 +637,19 @@ async def _apply_drive_tree(
                         existing_section.is_private = sub_private
                     folder_map[fid] = (existing_section.id, sub_ws_id, sub_private, sub_owner)
                     continue
+
+                # Check if a page already uses this folder as its children_folder_id.
+                # This happens when pages are created as children in the app — the app
+                # creates a Drive folder and sets children_folder_id on the parent page.
+                # The sync should NOT create a duplicate section for that folder.
+                parent_with_folder = await db.execute(
+                    select(Page).where(Page.children_folder_id == fid)
+                )
+                owner_page = parent_with_folder.scalar_one_or_none()
+                if owner_page:
+                    folder_map[fid] = (owner_page.id, sub_ws_id, sub_private, sub_owner)
+                    continue
+
                 else:
                     section_page = Page(
                         id=uuid4(),
