@@ -412,11 +412,13 @@
 
 .doc-checklist > li {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 0.5em;
-  padding-top: 0.05em;
-  padding-bottom: 0.05em;
+  padding-top: 0.2em;
+  padding-bottom: 0.2em;
   line-height: 1.7;
+  white-space: normal;
+  tab-size: 2;
 }
 
 .doc-checklist-box {
