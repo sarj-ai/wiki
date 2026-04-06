@@ -136,6 +136,26 @@ def _extract_text_run(text_run: dict) -> dict | None:
     if style.get("baselineOffset") == "SUBSCRIPT":
         run["subscript"] = True
 
+    # Text color
+    fg = style.get("foregroundColor", {}).get("color", {}).get("rgbColor", {})
+    if fg:
+        r = round(fg.get("red", 0) * 255)
+        g = round(fg.get("green", 0) * 255)
+        b = round(fg.get("blue", 0) * 255)
+        # Skip black/near-black (default text color)
+        if not (r < 10 and g < 10 and b < 10):
+            run["color"] = f"#{r:02x}{g:02x}{b:02x}"
+
+    # Text background color
+    bg = style.get("backgroundColor", {}).get("color", {}).get("rgbColor", {})
+    if bg:
+        r = round(bg.get("red", 0) * 255)
+        g = round(bg.get("green", 0) * 255)
+        b = round(bg.get("blue", 0) * 255)
+        # Skip white/near-white (default)
+        if not (r > 245 and g > 245 and b > 245):
+            run["backgroundColor"] = f"#{r:02x}{g:02x}{b:02x}"
+
     link = style.get("link")
     if link:
         url = link.get("url")

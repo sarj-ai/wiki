@@ -56,7 +56,19 @@ def _transform_table(
             if col_span > 1:
                 cell_data["colSpan"] = col_span
 
-            # Skip cell backgroundColor — Google Docs colors break in dark mode.
+            # Extract cell background color
+            bg = cell_style.get("backgroundColor", {})
+            if bg:
+                r = bg.get("color", {}).get("rgbColor", {})
+                red = r.get("red", 0)
+                green = r.get("green", 0)
+                blue = r.get("blue", 0)
+                # Skip white/near-white backgrounds (default)
+                if not (red > 0.95 and green > 0.95 and blue > 0.95):
+                    ri_val = round(red * 255)
+                    gi_val = round(green * 255)
+                    bi_val = round(blue * 255)
+                    cell_data["backgroundColor"] = f"rgba({ri_val},{gi_val},{bi_val},0.15)"
 
             v_align = cell_style.get("contentAlignment")
             if v_align and v_align != "TOP":
