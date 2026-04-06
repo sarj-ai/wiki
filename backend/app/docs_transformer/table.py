@@ -14,20 +14,18 @@ def _transform_table(
     has_header = False
     has_chips = False
 
-    # Track cells covered by rowSpan/colSpan to skip them
-    covered: set[tuple[int, int]] = set()
-
     for ri, row in enumerate(table.get("tableRows", [])):
         row_style = row.get("tableRowStyle", {})
         if ri == 0 and row_style.get("tableHeader"):
             has_header = True
 
         cells: list[dict] = []
-        col_idx = 0
+        skip_count = 0
         for cell in row.get("tableCells", []):
-            # Skip to the next uncovered column
-            while (ri, col_idx) in covered:
-                col_idx += 1
+            # Skip cells covered by a previous cell's colSpan
+            if skip_count > 0:
+                skip_count -= 1
+                continue
             cell_style = cell.get("tableCellStyle", {})
             row_span = cell_style.get("rowSpan", 1)
             col_span = cell_style.get("columnSpan", 1)
@@ -84,12 +82,9 @@ def _transform_table(
 
             cells.append(cell_data)
 
-            # Mark cells covered by this cell's rowSpan/colSpan
-            for dr in range(row_span):
-                for dc in range(col_span):
-                    if dr != 0 or dc != 0:
-                        covered.add((ri + dr, col_idx + dc))
-            col_idx += col_span
+            # Skip the next (colSpan - 1) cells in the API response
+            if col_span > 1:
+                skip_count = col_span - 1
 
         rows.append(cells)
 
