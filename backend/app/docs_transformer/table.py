@@ -96,7 +96,10 @@ def _transform_table(
     if has_header and len(rows) >= 2 and len(rows[0]) == 1:
         first_cell = rows[0][0]
         cell_span = first_cell.get("colSpan", 1)
-        if cell_span >= num_cols or num_cols <= 1:
+        has_bg = first_cell.get("backgroundColor") is not None
+        # Don't extract as caption if the row has a background color —
+        # it's a styled section header that should stay in the table.
+        if not has_bg and (cell_span >= num_cols or num_cols <= 1):
             # Extract caption text
             caption_parts = []
             for para in first_cell.get("content", []):
