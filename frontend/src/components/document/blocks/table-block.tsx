@@ -88,7 +88,7 @@ export function DocTableBlock({
     const Tag = isHeader ? "th" : "td";
     const cellStyle: React.CSSProperties = {};
     if (cell.verticalAlign && VALID_VERTICAL_ALIGNS.has(cell.verticalAlign)) cellStyle.verticalAlign = cell.verticalAlign as React.CSSProperties["verticalAlign"];
-    if (cell.backgroundColor) cellStyle.backgroundColor = cell.backgroundColor;
+    if (cell.backgroundColor) cellStyle.backgroundColor = `color-mix(in srgb, ${cell.backgroundColor} 12%, transparent)`;
 
     // Detect single status value (e.g. "In progress", "Blocked")
     const singleRun =

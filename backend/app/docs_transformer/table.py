@@ -14,13 +14,20 @@ def _transform_table(
     has_header = False
     has_chips = False
 
+    # Track cells covered by rowSpan/colSpan to skip them
+    covered: set[tuple[int, int]] = set()
+
     for ri, row in enumerate(table.get("tableRows", [])):
         row_style = row.get("tableRowStyle", {})
         if ri == 0 and row_style.get("tableHeader"):
             has_header = True
 
         cells: list[dict] = []
+        col_idx = 0
         for cell in row.get("tableCells", []):
+            # Skip to the next uncovered column
+            while (ri, col_idx) in covered:
+                col_idx += 1
             cell_style = cell.get("tableCellStyle", {})
             row_span = cell_style.get("rowSpan", 1)
             col_span = cell_style.get("columnSpan", 1)
@@ -63,18 +70,27 @@ def _transform_table(
                 red = r.get("red", 0)
                 green = r.get("green", 0)
                 blue = r.get("blue", 0)
-                # Skip white/near-white backgrounds (default)
-                if not (red > 0.95 and green > 0.95 and blue > 0.95):
+                # Skip white/near-white and light gray backgrounds
+                # (default bg + Google's header gray are handled by CSS)
+                if not (red > 0.9 and green > 0.9 and blue > 0.9):
                     ri_val = round(red * 255)
                     gi_val = round(green * 255)
                     bi_val = round(blue * 255)
-                    cell_data["backgroundColor"] = f"rgba({ri_val},{gi_val},{bi_val},0.15)"
+                    cell_data["backgroundColor"] = f"#{ri_val:02x}{gi_val:02x}{bi_val:02x}"
 
             v_align = cell_style.get("contentAlignment")
             if v_align and v_align != "TOP":
                 cell_data["verticalAlign"] = v_align.lower()
 
             cells.append(cell_data)
+
+            # Mark cells covered by this cell's rowSpan/colSpan
+            for dr in range(row_span):
+                for dc in range(col_span):
+                    if dr != 0 or dc != 0:
+                        covered.add((ri + dr, col_idx + dc))
+            col_idx += col_span
+
         rows.append(cells)
 
     # Detect caption row: if the first row is marked as header and has a single
