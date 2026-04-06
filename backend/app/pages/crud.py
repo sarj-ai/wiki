@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.access import assert_page_owner, visible_pages_filter
 from app.config import settings
 from app.drive import (
+    copy_google_doc,
     ensure_folder,
     get_sa_drive_service,
     move_drive_file,
@@ -359,5 +360,140 @@ async def publish_page(
                 )
             except Exception:
                 log.exception("Failed to move children folder %s to workspace folder", children_folder_id)
+
+    return page
+
+
+async def duplicate_page(db: AsyncSession, user: User, page_id: UUID) -> Page:
+    """Duplicate a page by copying its Google Doc."""
+    page = await get_page(db, user, page_id)
+
+    if page.google_drive_id.startswith("pending-") or page.google_drive_id.startswith("section-"):
+        raise HTTPException(status_code=400, detail="Cannot duplicate this page type")
+
+    # Copy the Drive doc
+    new_title = f"Copy of {page.title}"
+    new_drive_id = await asyncio.to_thread(
+        copy_google_doc, page.google_drive_id, new_title, page.drive_folder_id,
+    )
+
+    # Grant the user editor access on the copy
+    service = get_sa_drive_service()
+    try:
+        await asyncio.to_thread(
+            lambda: service.permissions().create(
+                fileId=new_drive_id,
+                body={"type": "user", "role": "writer", "emailAddress": user.email},
+                supportsAllDrives=True,
+                sendNotificationEmail=False,
+            ).execute()
+        )
+    except Exception:
+        pass  # best-effort
+
+    # Calculate sort order (after the original)
+    result = await db.execute(
+        select(func.coalesce(func.max(Page.sort_order), 0.0)).where(
+            Page.parent_id == page.parent_id,
+            Page.workspace_id == page.workspace_id,
+        )
+    )
+    sort_order = result.scalar_one() + 1.0
+
+    new_page = Page(
+        id=uuid4(),
+        parent_id=page.parent_id,
+        google_drive_id=new_drive_id,
+        drive_folder_id=page.drive_folder_id,
+        title=new_title,
+        type="page",
+        sort_order=sort_order,
+        is_private=page.is_private,
+        created_by=user.id,
+        workspace_id=page.workspace_id,
+    )
+    db.add(new_page)
+    await db.commit()
+    await db.refresh(new_page)
+    return new_page
+
+
+async def move_to_workspace(
+    db: AsyncSession,
+    user: User,
+    page_id: UUID,
+    target_workspace_id: UUID,
+) -> Page:
+    """Move a page (and descendants) to a different workspace."""
+    page = await _get_page_or_403(db, page_id)
+
+    # Must be a member of the target workspace
+    await _verify_workspace_membership(db, user.id, target_workspace_id)
+
+    # Must have permission on the source page
+    if page.workspace_id is not None:
+        await _verify_workspace_membership(db, user.id, page.workspace_id)
+    else:
+        assert_page_owner(page, user)
+
+    # Can't move to the same workspace
+    if page.workspace_id == target_workspace_id:
+        raise HTTPException(status_code=400, detail="Page is already in this workspace")
+
+    # Look up the target workspace's Drive folder
+    ws_result = await db.execute(select(Workspace).where(Workspace.id == target_workspace_id))
+    workspace = ws_result.scalar_one_or_none()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Calculate sort_order for the workspace root level
+    result = await db.execute(
+        select(func.coalesce(func.max(Page.sort_order), 0.0)).where(
+            Page.workspace_id == target_workspace_id,
+            Page.parent_id.is_(None),
+        )
+    )
+    new_sort_order = result.scalar_one() + 1.0
+
+    # Update the page
+    old_drive_id = page.google_drive_id
+    children_folder_id = page.children_folder_id
+    page.parent_id = None  # becomes root in new workspace
+    page.workspace_id = target_workspace_id
+    page.is_private = False
+    page.drive_folder_id = workspace.drive_folder_id
+    page.sort_order = new_sort_order
+    page.updated_at = datetime.now(timezone.utc)
+
+    # Update all descendants
+    descendant_cte = (
+        select(Page.id)
+        .where(Page.parent_id == page.id)
+        .cte(name="descendants", recursive=True)
+    )
+    descendant_cte = descendant_cte.union_all(
+        select(Page.id).join(descendant_cte, Page.parent_id == descendant_cte.c.id)
+    )
+    await db.execute(
+        Page.__table__.update()
+        .where(Page.id.in_(select(descendant_cte.c.id)))
+        .values(workspace_id=target_workspace_id, is_private=False)
+    )
+
+    await db.commit()
+    await db.refresh(page)
+
+    # Move Drive files (best-effort)
+    if not old_drive_id.startswith("pending-") and not old_drive_id.startswith("section-"):
+        try:
+            await asyncio.to_thread(move_drive_file, user, old_drive_id, workspace.drive_folder_id)
+        except Exception:
+            log.exception("Failed to move Drive file %s", old_drive_id)
+
+    if children_folder_id:
+        try:
+            await asyncio.to_thread(move_drive_file, user, children_folder_id, workspace.drive_folder_id)
+        except Exception:
+            log.exception("Failed to move children folder %s", children_folder_id)
 
     return page

@@ -52,6 +52,8 @@ interface PageTreeProps {
   starredIds?: Set<string>;
   onToggleStar?: (pageId: string) => void;
   onImport?: (pageId: string) => void;
+  onDuplicate?: (pageId: string) => void;
+  onMoveToWorkspace?: (pageId: string) => void;
 }
 
 export function PageTree({
@@ -70,6 +72,8 @@ export function PageTree({
   starredIds,
   onToggleStar,
   onImport,
+  onDuplicate,
+  onMoveToWorkspace,
 }: PageTreeProps) {
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -306,6 +310,8 @@ export function PageTree({
               isStarred={starredIds?.has(item.page.id)}
               onToggleStar={onToggleStar}
               onImport={onImport}
+              onDuplicate={onDuplicate}
+              onMoveToWorkspace={onMoveToWorkspace}
             />
           ))}
         </SidebarMenu>

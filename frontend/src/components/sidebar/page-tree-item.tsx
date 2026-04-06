@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { ChevronRight, Plus, MoreHorizontal, FileText, FolderClosed, Pencil, Trash2, SmilePlus, Loader2, Star, StarOff, Upload } from "lucide-react";
+import { ChevronRight, Plus, MoreHorizontal, FileText, FolderClosed, Pencil, Trash2, SmilePlus, Loader2, Star, StarOff, Upload, Copy, ArrowRightLeft } from "lucide-react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Page } from "@/types";
 import {
@@ -37,6 +37,8 @@ interface PageTreeItemProps {
   isStarred?: boolean;
   onToggleStar?: (pageId: string) => void;
   onImport?: (pageId: string) => void;
+  onDuplicate?: (pageId: string) => void;
+  onMoveToWorkspace?: (pageId: string) => void;
 }
 
 export const PageTreeItem = React.memo(function PageTreeItem({
@@ -59,6 +61,8 @@ export const PageTreeItem = React.memo(function PageTreeItem({
   isStarred,
   onToggleStar,
   onImport,
+  onDuplicate,
+  onMoveToWorkspace,
 }: PageTreeItemProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(page.title);
@@ -271,6 +275,18 @@ export const PageTreeItem = React.memo(function PageTreeItem({
                   <DropdownMenuItem onClick={() => onImport(page.id)}>
                     <Upload className="mr-2 size-4" />
                     Import pages
+                  </DropdownMenuItem>
+                )}
+                {onDuplicate && page.type === "page" && (
+                  <DropdownMenuItem onClick={() => onDuplicate(page.id)}>
+                    <Copy className="mr-2 size-4" />
+                    Duplicate
+                  </DropdownMenuItem>
+                )}
+                {onMoveToWorkspace && !page.isPrivate && (
+                  <DropdownMenuItem onClick={() => onMoveToWorkspace(page.id)}>
+                    <ArrowRightLeft className="mr-2 size-4" />
+                    Move to workspace
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem

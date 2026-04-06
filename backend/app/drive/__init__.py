@@ -13,6 +13,7 @@ from app.drive.credentials import (
 )
 from app.drive.files import (
     batch_check_trashed,
+    copy_google_doc,
     create_google_doc,
     is_drive_file_trashed,
     move_drive_file,
@@ -38,6 +39,7 @@ __all__ = [
     "create_folder",
     "is_drive_folder_empty",
     # files
+    "copy_google_doc",
     "create_google_doc",
     "rename_drive_file",
     "rename_child_folder",

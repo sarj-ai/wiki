@@ -68,6 +68,18 @@ def create_google_doc(
     return doc_id, folder_id
 
 
+def copy_google_doc(source_file_id: str, new_title: str, target_folder_id: str) -> str:
+    """Copy a Google Doc via service account. Returns the new file ID."""
+    service = get_sa_drive_service()
+    doc = service.files().copy(
+        fileId=source_file_id,
+        body={"name": new_title, "parents": [target_folder_id]},
+        fields="id",
+        supportsAllDrives=True,
+    ).execute()
+    return doc["id"]
+
+
 def rename_drive_file(user: User | None, file_id: str, new_name: str) -> None:
     """Rename a Drive file via service account."""
     service = get_sa_drive_service()

@@ -32,6 +32,7 @@ export function usePageOperations(allPages: Page[], activePageId: string | null)
     null,
   );
   const [movingPageId, setMovingPageId] = useState<string | null>(null);
+  const [duplicatingPageId, setDuplicatingPageId] = useState<string | null>(null);
 
   // --- Derived values for delete confirmation dialog ---
   // Memoized to avoid tree traversal on every render when no delete dialog is open.
@@ -175,6 +176,35 @@ export function usePageOperations(allPages: Page[], activePageId: string | null)
     }
   }, [queryClient]);
 
+  const handleDuplicate = useCallback(async (pageId: string) => {
+    setDuplicatingPageId(pageId);
+    start();
+    try {
+      const newPage = await api.duplicatePage(pageId);
+      await queryClient.invalidateQueries({ queryKey: ["pages"] });
+      toast.success("Page duplicated");
+      router.push(`/docs/${newPage.id}`);
+    } catch {
+      toast.error("Failed to duplicate page");
+    } finally {
+      setDuplicatingPageId(null);
+      done();
+    }
+  }, [queryClient, router, start, done]);
+
+  const handleMoveToWorkspace = useCallback(async (pageId: string, workspaceId: string) => {
+    start();
+    try {
+      await api.moveToWorkspace(pageId, workspaceId);
+      await queryClient.invalidateQueries({ queryKey: ["pages"] });
+      toast.success("Page moved to workspace");
+    } catch {
+      toast.error("Failed to move page");
+    } finally {
+      done();
+    }
+  }, [queryClient, start, done]);
+
   const handleRenamingDone = useCallback(() => {
     if (renamingPageId) {
       router.push(`/docs/${renamingPageId}`);
@@ -190,6 +220,7 @@ export function usePageOperations(allPages: Page[], activePageId: string | null)
     addingTo,
     addingChildParentId,
     movingPageId,
+    duplicatingPageId,
     // Delete dialog helpers
     deletingPage,
     deleteChildCount,
@@ -202,5 +233,7 @@ export function usePageOperations(allPages: Page[], activePageId: string | null)
     handleAddRootPage,
     handleAddPrivatePage,
     handleRenamingDone,
+    handleDuplicate,
+    handleMoveToWorkspace,
   } as const;
 }

@@ -83,6 +83,10 @@ class PublishRequest(BaseModel):
     workspace_id: UUID
 
 
+class MoveToWorkspaceRequest(BaseModel):
+    workspace_id: UUID
+
+
 # ------------------------------------------------------------------
 # Response schemas
 # ------------------------------------------------------------------

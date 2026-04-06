@@ -17,7 +17,9 @@ from app.pages.content import (  # noqa: F401
 from app.pages.crud import (  # noqa: F401
     create_page,
     delete_page,
+    duplicate_page,
     get_page,
+    move_to_workspace,
     publish_page,
     update_page,
 )

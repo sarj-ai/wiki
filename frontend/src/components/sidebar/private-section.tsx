@@ -38,6 +38,8 @@ interface PrivateSectionProps {
   onToggleStar?: (pageId: string) => void;
   onImport?: (pageId: string) => void;
   onImportToDrafts?: () => void;
+  onDuplicate?: (pageId: string) => void;
+  onMoveToWorkspace?: (pageId: string) => void;
 }
 
 export function PrivateSection({
@@ -61,6 +63,8 @@ export function PrivateSection({
   onToggleStar,
   onImport,
   onImportToDrafts,
+  onDuplicate,
+  onMoveToWorkspace,
 }: PrivateSectionProps) {
   return (
     <Collapsible
@@ -119,6 +123,8 @@ export function PrivateSection({
               starredIds={starredIds}
               onToggleStar={onToggleStar}
               onImport={onImport}
+              onDuplicate={onDuplicate}
+              onMoveToWorkspace={onMoveToWorkspace}
             />
           </SidebarGroupContent>
         </CollapsibleContent>

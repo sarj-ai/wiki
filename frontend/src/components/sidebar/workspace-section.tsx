@@ -98,6 +98,8 @@ interface WorkspaceSectionProps {
   onToggleStar?: (pageId: string) => void;
   onImport?: (pageId: string) => void;
   onImportToWorkspace?: (workspaceId: string) => void;
+  onDuplicate?: (pageId: string) => void;
+  onMoveToWorkspace?: (pageId: string) => void;
 }
 
 export function WorkspaceSection({
@@ -129,6 +131,8 @@ export function WorkspaceSection({
   onToggleStar,
   onImport,
   onImportToWorkspace,
+  onDuplicate,
+  onMoveToWorkspace,
 }: WorkspaceSectionProps) {
   return (
     <DndContext sensors={workspaceSensors} collisionDetection={closestCenter} onDragEnd={handleWorkspaceReorder}>
@@ -218,6 +222,8 @@ export function WorkspaceSection({
                       starredIds={starredIds}
                       onToggleStar={onToggleStar}
                       onImport={onImport}
+                      onDuplicate={onDuplicate}
+                      onMoveToWorkspace={onMoveToWorkspace}
                     />
                   </SidebarGroupContent>
                 </CollapsibleContent>

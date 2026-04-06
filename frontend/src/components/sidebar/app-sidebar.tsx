@@ -24,6 +24,7 @@ import { SharedWithMeSection } from "./shared-with-me-section";
 import { PrivateSection } from "./private-section";
 import { UserFooter } from "./user-footer";
 import { DeletePageDialog } from "./delete-dialog";
+import { MoveToWorkspaceDialog } from "./move-to-workspace-dialog";
 import { ImportDialog } from "@/components/import/import-dialog";
 
 export function AppSidebar() {
@@ -72,9 +73,37 @@ export function AppSidebar() {
     handleAddRootPage,
     handleAddPrivatePage,
     handleRenamingDone,
+    handleDuplicate,
+    handleMoveToWorkspace,
   } = usePageOperations(allPages, activePageId);
 
   const { starredIds, toggleStar } = useStarredPages();
+
+  // Move-to-workspace dialog state
+  const [movePageId, setMovePageId] = useState<string | null>(null);
+
+  const movePageData = useMemo(() => {
+    if (!movePageId) return null;
+    const findPage = (pages: Page[], id: string): Page | null => {
+      for (const p of pages) {
+        if (p.id === id) return p;
+        const found = findPage(p.children, id);
+        if (found) return found;
+      }
+      return null;
+    };
+    return findPage(allPages, movePageId);
+  }, [movePageId, allPages]);
+
+  const openMoveToWorkspace = useCallback((pageId: string) => {
+    setMovePageId(pageId);
+  }, []);
+
+  const confirmMoveToWorkspace = useCallback(async (workspaceId: string) => {
+    if (!movePageId) return;
+    await handleMoveToWorkspace(movePageId, workspaceId);
+    setMovePageId(null);
+  }, [movePageId, handleMoveToWorkspace]);
 
   // Import dialog state
   const [importTarget, setImportTarget] = useState<{ parentId?: string; workspaceId?: string } | null>(null);
@@ -231,6 +260,8 @@ export function AppSidebar() {
           onToggleStar={toggleStar}
           onImport={handleImport}
           onImportToWorkspace={handleImportToWorkspace}
+          onDuplicate={handleDuplicate}
+          onMoveToWorkspace={openMoveToWorkspace}
         />
 
         {workspaces.length > 0 && <SidebarSeparator />}
@@ -268,6 +299,8 @@ export function AppSidebar() {
           onToggleStar={toggleStar}
           onImport={handleImport}
           onImportToDrafts={handleImportToDrafts}
+          onDuplicate={handleDuplicate}
+          onMoveToWorkspace={openMoveToWorkspace}
         />
       </SidebarContent>
 
@@ -280,6 +313,14 @@ export function AppSidebar() {
         deleteChildCount={deleteChildCount}
         onClose={() => setDeletingPageId(null)}
         onConfirm={handleDelete}
+      />
+
+      <MoveToWorkspaceDialog
+        open={movePageId !== null}
+        onOpenChange={(open) => { if (!open) setMovePageId(null); }}
+        workspaces={workspaces}
+        currentWorkspaceId={movePageData?.workspaceId ?? null}
+        onConfirm={confirmMoveToWorkspace}
       />
 
       <ImportDialog

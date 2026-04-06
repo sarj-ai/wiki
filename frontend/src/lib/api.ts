@@ -223,6 +223,15 @@ export const api = {
   unstarPage: (pageId: string) =>
     fetchApi<void>(`${pagePath(pageId)}/star`, { method: "DELETE" }),
 
+  duplicatePage: (pageId: string) =>
+    fetchApi<Page>(`${pagePath(pageId)}/duplicate`, { method: "POST" }),
+
+  moveToWorkspace: (pageId: string, workspaceId: string) =>
+    fetchApi<Page>(`${pagePath(pageId)}/move-workspace`, {
+      method: "POST",
+      body: JSON.stringify({ workspace_id: workspaceId }),
+    }),
+
   getImportFormats: () =>
     fetchApi<ImportFormat[]>("/imports/formats"),
 

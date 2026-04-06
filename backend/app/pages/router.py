@@ -163,6 +163,16 @@ async def unstar_page(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post("/{page_id}/duplicate", response_model=schemas.PageResponse, status_code=status.HTTP_201_CREATED)
+async def duplicate_page(
+    page_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> schemas.PageResponse:
+    page = await service.duplicate_page(db, user, page_id)
+    return await _enrich_page_response(db, page, user)
+
+
 @router.get("/{page_id}/content")
 async def get_page_content(
     page_id: UUID,
@@ -237,4 +247,15 @@ async def publish_page(
     db: AsyncSession = Depends(get_db),
 ) -> schemas.PageResponse:
     page = await service.publish_page(db, user, page_id, data)
+    return await _enrich_page_response(db, page, user)
+
+
+@router.post("/{page_id}/move-workspace", response_model=schemas.PageResponse)
+async def move_to_workspace(
+    page_id: UUID,
+    data: schemas.MoveToWorkspaceRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> schemas.PageResponse:
+    page = await service.move_to_workspace(db, user, page_id, data.workspace_id)
     return await _enrich_page_response(db, page, user)
