@@ -153,7 +153,7 @@ export function DocTableBlock({
     <div className="doc-table-wrapper not-prose">
       {caption && <div className="doc-table-caption">{caption}</div>}
       <div className="doc-table-container">
-        <table className="doc-table">
+        <table className={`doc-table${columnWidths && columnWidths.some((w) => w != null) ? ' doc-table-fixed' : ''}`}>
           {columnWidths && columnWidths.some((w) => w != null) && (() => {
             const total = columnWidths.reduce<number>((s, w) => s + (w ?? 0), 0);
             return total > 0 ? (
@@ -167,7 +167,7 @@ export function DocTableBlock({
           {(sectionTitleRow || headerRow) && (
             <thead>
               {sectionTitleRow && (
-                <tr className="doc-table-section-row">
+                <tr className="doc-table-title-row">
                   {sectionTitleRow.map((cell, ci) => (
                     <Fragment key={ci}>{renderCell(cell, true)}</Fragment>
                   ))}
@@ -184,7 +184,8 @@ export function DocTableBlock({
           )}
           <tbody>
             {bodyRows.map((row, bodyRowIdx) => {
-              const absoluteRowIdx = hasHeader ? bodyRowIdx + 1 : bodyRowIdx;
+              const headerOffset = sectionTitleRow ? 2 : (hasHeader ? 1 : 0);
+              const absoluteRowIdx = bodyRowIdx + headerOffset;
               const sectionRow = isSectionRow(row);
 
               // Section rows: single cell spanning all columns

@@ -498,6 +498,10 @@
   line-height: 1.6;
 }
 
+.doc-table.doc-table-fixed {
+  table-layout: fixed;
+}
+
 .doc-table thead {
   border-bottom: 2px solid color-mix(in srgb, var(--secondary) 30%, var(--border));
 }
@@ -513,7 +517,7 @@
   background: color-mix(in srgb, var(--foreground) 2%, var(--card));
   white-space: normal;
   overflow-wrap: break-word;
-  word-break: break-word;
+  word-break: normal;
 }
 
 .dark .doc-table-th {
@@ -526,8 +530,7 @@
   vertical-align: top;
   border-top: 1px solid var(--border);
   overflow-wrap: break-word;
-  word-wrap: break-word;
-  word-break: break-word;
+  word-break: normal;
 }
 
 .doc-table tbody tr:first-child .doc-table-td {
@@ -546,11 +549,19 @@
   background: color-mix(in srgb, var(--secondary) 8%, transparent);
 }
 
+/* Table title row (first merged row like "A Single Vertical Cycle") */
+.doc-table-title-row .doc-table-th {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--foreground);
+}
+
 /* Section rows (group headers within a table) */
 .doc-table-section-row .doc-table-td {
   background: color-mix(in srgb, var(--secondary) 8%, transparent);
   border-top: 1px solid color-mix(in srgb, var(--secondary) 15%, var(--border));
-  border-left: 3px solid var(--secondary);
   font-weight: 600;
   color: var(--foreground);
   padding-top: 0.5rem;
@@ -561,7 +572,8 @@
   background: color-mix(in srgb, var(--secondary) 12%, transparent);
 }
 
-.doc-table-section-row:hover {
+.doc-table-section-row:hover,
+.doc-table-title-row:hover {
   background: transparent !important;
 }
 

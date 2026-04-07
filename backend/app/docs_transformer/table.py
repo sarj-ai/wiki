@@ -14,21 +14,36 @@ def _transform_table(
     has_header = False
     has_chips = False
 
+    # Track cells covered by rowSpan from previous rows: set of (row, col)
+    row_span_covered: set[tuple[int, int]] = set()
+
     for ri, row in enumerate(table.get("tableRows", [])):
         row_style = row.get("tableRowStyle", {})
         if ri == 0 and row_style.get("tableHeader"):
             has_header = True
 
         cells: list[dict] = []
+        col_idx = 0
         skip_count = 0
         for cell in row.get("tableCells", []):
             # Skip cells covered by a previous cell's colSpan
             if skip_count > 0:
                 skip_count -= 1
                 continue
+
+            # Skip cells covered by rowSpan from previous rows
+            if (ri, col_idx) in row_span_covered:
+                col_idx += 1
+                continue
+
             cell_style = cell.get("tableCellStyle", {})
             row_span = cell_style.get("rowSpan", 1)
             col_span = cell_style.get("columnSpan", 1)
+
+            # Mark cells covered by this cell's rowSpan for future rows
+            for r_offset in range(1, row_span):
+                for c_offset in range(col_span):
+                    row_span_covered.add((ri + r_offset, col_idx + c_offset))
 
             # Extract cell content (can be multiple paragraphs)
             cell_content: list[dict] = []
@@ -81,6 +96,7 @@ def _transform_table(
                 cell_data["verticalAlign"] = v_align.lower()
 
             cells.append(cell_data)
+            col_idx += col_span
 
             # Skip the next (colSpan - 1) cells in the API response
             if col_span > 1:
