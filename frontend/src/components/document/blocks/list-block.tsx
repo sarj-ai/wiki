@@ -23,7 +23,9 @@ export function ListBlock({
             }
           >
             <span className="doc-checklist-box" aria-hidden="true" />
-            <RunRenderer runs={item.runs} />
+            <span className="doc-checklist-content">
+              <RunRenderer runs={item.runs} />
+            </span>
           </li>
         ))}
       </ul>

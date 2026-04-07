@@ -417,8 +417,13 @@
   padding-top: 0.2em;
   padding-bottom: 0.2em;
   line-height: 1.7;
+}
+
+.doc-checklist-content {
+  flex: 1;
+  min-width: 0;
   white-space: normal;
-  tab-size: 2;
+  word-break: break-word;
 }
 
 .doc-checklist-box {
