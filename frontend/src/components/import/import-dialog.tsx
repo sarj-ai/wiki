@@ -104,7 +104,7 @@ export function ImportDialog({ open, onOpenChange, parentId, workspaceId }: Impo
         <DialogHeader className="px-6 pt-6 pb-4">
           <DialogTitle>Import pages</DialogTitle>
           <DialogDescription>
-            Upload a Notion HTML export (.zip) to import pages into this section.
+            Upload a Notion export (.zip) or a Markdown file (.md) to import pages.
           </DialogDescription>
         </DialogHeader>
 
@@ -133,8 +133,8 @@ export function ImportDialog({ open, onOpenChange, parentId, workspaceId }: Impo
                     </>
                   ) : (
                     <>
-                      <p className="text-sm font-medium">Choose a zip file</p>
-                      <p className="text-xs text-muted-foreground">Notion HTML export</p>
+                      <p className="text-sm font-medium">Choose a file</p>
+                      <p className="text-xs text-muted-foreground">Notion export (.zip) or Markdown (.md)</p>
                     </>
                   )}
                 </div>
@@ -142,7 +142,7 @@ export function ImportDialog({ open, onOpenChange, parentId, workspaceId }: Impo
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".zip"
+                accept=".zip,.md,.html"
                 onChange={handleFileChange}
                 className="hidden"
               />

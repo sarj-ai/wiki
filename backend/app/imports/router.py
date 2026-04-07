@@ -78,7 +78,6 @@ async def upload_import(
 
     # Save uploaded file to temp dir
     extract_dir = Path(tempfile.mkdtemp(prefix="sarj-import-"))
-    tmp_path = extract_dir / "upload.zip"
     try:
         content = await file.read()
 
@@ -88,34 +87,37 @@ async def upload_import(
                 detail="Uploaded file is empty",
             )
 
-        tmp_path.write_bytes(content)
+        filename = file.filename or "upload"
+        is_zip = filename.endswith(".zip") or zipfile.is_zipfile(
+            __import__("io").BytesIO(content)
+        )
 
-        # Validate it's a zip file
-        if not zipfile.is_zipfile(tmp_path):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Uploaded file is not a valid zip archive",
-            )
+        if is_zip:
+            tmp_path = extract_dir / "upload.zip"
+            tmp_path.write_bytes(content)
 
-        # Extract the zip
-        with zipfile.ZipFile(tmp_path) as zf:
-            zf.extractall(extract_dir)
+            with zipfile.ZipFile(tmp_path) as zf:
+                zf.extractall(extract_dir)
 
-        # Remove the upload zip after extraction
-        tmp_path.unlink(missing_ok=True)
+            tmp_path.unlink(missing_ok=True)
 
-        # Notion sometimes wraps the export in a nested zip — extract inner zips
-        for inner_zip in list(extract_dir.rglob("*.zip")):
-            with zipfile.ZipFile(inner_zip) as izf:
-                izf.extractall(inner_zip.parent)
-            inner_zip.unlink()
+            # Notion sometimes wraps the export in a nested zip
+            for inner_zip in list(extract_dir.rglob("*.zip")):
+                with zipfile.ZipFile(inner_zip) as izf:
+                    izf.extractall(inner_zip.parent)
+                inner_zip.unlink()
 
-        # Notion zips often have a single top-level folder — unwrap it
-        actual_dir = extract_dir
-        subdirs = [d for d in extract_dir.iterdir() if d.is_dir() and not d.name.startswith(".") and d.name != "__MACOSX"]
-        has_content = any(extract_dir.glob("*.html")) or any(extract_dir.glob("*.md"))
-        if len(subdirs) == 1 and not has_content:
-            actual_dir = subdirs[0]
+            # Unwrap single top-level folder
+            actual_dir = extract_dir
+            subdirs = [d for d in extract_dir.iterdir() if d.is_dir() and not d.name.startswith(".") and d.name != "__MACOSX"]
+            has_files = any(extract_dir.glob("*.html")) or any(extract_dir.glob("*.md"))
+            if len(subdirs) == 1 and not has_files:
+                actual_dir = subdirs[0]
+        else:
+            # Single file upload (.md or .html) — save directly
+            actual_dir = extract_dir
+            dest = extract_dir / filename
+            dest.write_bytes(content)
             # Check one more level — Notion can double-nest
             inner_subdirs = [d for d in actual_dir.iterdir() if d.is_dir() and not d.name.startswith(".") and d.name != "__MACOSX"]
             inner_has_content = any(actual_dir.glob("*.html")) or any(actual_dir.glob("*.md"))

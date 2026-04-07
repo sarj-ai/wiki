@@ -433,8 +433,11 @@
   height: 14px;
   border: 2px solid var(--muted-foreground);
   border-radius: 3px;
-  position: relative;
-  top: 0.15em;
+  margin-top: 0.35em;
+}
+
+.doc-checklist > li {
+  align-items: flex-start;
 }
 
 /* ── Tables ── */
