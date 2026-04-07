@@ -88,28 +88,11 @@ def _transform_table(
 
         rows.append(cells)
 
-    # Detect caption row: if the first row is marked as header and has a single
-    # cell spanning all columns (e.g. "PRODUCT ROADMAP"), treat it as a caption
-    # and promote the second row to be the header row.
+    # NOTE: Caption extraction disabled — it was pulling styled section
+    # header rows (like "DECISIONS MADE AT ANY PHASE") out of the table,
+    # breaking the layout. These rows are now handled by the frontend's
+    # isSectionRow detection which keeps them inside the table.
     caption = None
-    num_cols = max((len(r) for r in rows), default=0) if rows else 0
-    if has_header and len(rows) >= 2 and len(rows[0]) == 1:
-        first_cell = rows[0][0]
-        cell_span = first_cell.get("colSpan", 1)
-        has_bg = first_cell.get("backgroundColor") is not None
-        # Don't extract as caption if the row has a background color —
-        # it's a styled section header that should stay in the table.
-        if not has_bg and (cell_span >= num_cols or num_cols <= 1):
-            # Extract caption text
-            caption_parts = []
-            for para in first_cell.get("content", []):
-                for run in para.get("runs", []):
-                    if run.get("text"):
-                        caption_parts.append(run["text"])
-            if caption_parts:
-                caption = " ".join(caption_parts).strip()
-            # Remove caption row and promote next row as header
-            rows = rows[1:]
 
     result: dict = {"type": "table", "rows": rows}
     if has_header:

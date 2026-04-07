@@ -50,11 +50,12 @@ export function DocTableBlock({
   const firstRowIsSectionTitle = hasHeader && rows.length >= 2
     && rows[0].length > 0 && (rows[0][0].colSpan || 1) >= numCols && numCols > 1;
 
+  const sectionTitleRow = firstRowIsSectionTitle ? rows[0] : null;
   const headerRow = hasHeader
     ? (firstRowIsSectionTitle ? rows[1] : rows[0])
     : null;
   const bodyRows = hasHeader
-    ? (firstRowIsSectionTitle ? [rows[0], ...rows.slice(2)] : rows.slice(1))
+    ? (firstRowIsSectionTitle ? rows.slice(2) : rows.slice(1))
     : rows;
 
   function isSectionRow(row: TableCellData[]): boolean {
@@ -163,13 +164,22 @@ export function DocTableBlock({
               </colgroup>
             ) : null;
           })()}
-          {headerRow && (
+          {(sectionTitleRow || headerRow) && (
             <thead>
-              <tr>
-                {headerRow.map((cell, ci) => (
-                  <Fragment key={ci}>{renderCell(cell, true)}</Fragment>
-                ))}
-              </tr>
+              {sectionTitleRow && (
+                <tr className="doc-table-section-row">
+                  {sectionTitleRow.map((cell, ci) => (
+                    <Fragment key={ci}>{renderCell(cell, true)}</Fragment>
+                  ))}
+                </tr>
+              )}
+              {headerRow && (
+                <tr>
+                  {headerRow.map((cell, ci) => (
+                    <Fragment key={ci}>{renderCell(cell, true)}</Fragment>
+                  ))}
+                </tr>
+              )}
             </thead>
           )}
           <tbody>
