@@ -11,6 +11,7 @@ from app.sidebar.cache import (
     invalidate_drive,
     invalidate_folder,
 )
+from app.sidebar.router import router as sidebar_router
 from app.sidebar.singleflight import Singleflight
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "get_folder_children",
     "invalidate_drive",
     "invalidate_folder",
+    "sidebar_router",
 ]

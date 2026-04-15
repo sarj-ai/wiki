@@ -12,11 +12,15 @@ from fastapi.responses import JSONResponse
 from app.auth.router import router as auth_router
 from app.config import settings
 from app.database import async_session
+from app.drive.search_router import router as drive_search_router
+from app.extras import extras_router
+from app.files import files_router
 from app.imports import imports_router
 from app.internal import internal_router
 from app.pages import pages_router
 from app.permissions import permissions_router
 from app.search import search_router
+from app.sidebar import sidebar_router
 from app.webhooks import webhooks_router
 from app.webhooks.service import register_watch_channel
 from app.workspaces import workspaces_router
@@ -154,6 +158,13 @@ app.include_router(permissions_router)
 app.include_router(webhooks_router)
 app.include_router(search_router)
 app.include_router(workspaces_router)
+
+# Navigator routers — coexist with legacy routers on the feature branch.
+# Sub-PR C5 deletes the legacy ones.
+app.include_router(sidebar_router)
+app.include_router(files_router)
+app.include_router(extras_router)
+app.include_router(drive_search_router)
 
 
 @app.get("/health")
