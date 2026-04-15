@@ -100,9 +100,7 @@ class PagePermission(Base):
 
 class StarredPage(Base):
     __tablename__ = "starred_pages"
-    __table_args__ = (
-        Index("ix_starred_pages_user_id", "user_id"),
-    )
+    __table_args__ = (Index("ix_starred_pages_user_id", "user_id"),)
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

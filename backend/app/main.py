@@ -1,10 +1,11 @@
 import logging
 import time
 from collections import defaultdict
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from collections.abc import AsyncIterator
+from datetime import UTC
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -15,10 +16,10 @@ from app.imports import imports_router
 from app.internal import internal_router
 from app.pages import pages_router
 from app.permissions import permissions_router
-from app.webhooks import webhooks_router
 from app.search import search_router
-from app.workspaces import workspaces_router
+from app.webhooks import webhooks_router
 from app.webhooks.service import register_watch_channel
+from app.workspaces import workspaces_router
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ def _is_rate_limited(client_ip: str) -> bool:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # Startup
     logging.basicConfig(level=logging.INFO)
 
@@ -71,20 +72,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Clean up stale pending pages (failed Drive doc creation)
     try:
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
+
         from sqlalchemy import delete
+
         from app.models import Page
 
         async with async_session() as db:
-            cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+            cutoff = datetime.now(UTC) - timedelta(days=7)
             result = await db.execute(
                 delete(Page)
                 .where(Page.google_drive_id.like("pending-%"))
                 .where(Page.created_at < cutoff)
             )
-            if result.rowcount:
+            rowcount = result.rowcount  # type: ignore[attr-defined]
+            if rowcount:
                 await db.commit()
-                log.info("Startup: cleaned up %d stale pending pages", result.rowcount)
+                log.info("Startup: cleaned up %d stale pending pages", rowcount)
     except Exception:
         log.exception("Failed to clean up stale pending pages on startup")
 
@@ -95,10 +99,16 @@ app = FastAPI(title="Sarj Docs API", lifespan=lifespan)
 
 
 @app.middleware("http")
-async def rate_limit_middleware(request: Request, call_next):
+async def rate_limit_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     # Skip rate limiting for health, internal, and auth login/callback (not refresh)
     path = request.url.path
-    if path in ("/health",) or path.startswith("/internal/") or path in ("/auth/login", "/auth/callback", "/auth/logout"):
+    if (
+        path in ("/health",)
+        or path.startswith("/internal/")
+        or path in ("/auth/login", "/auth/callback", "/auth/logout")
+    ):
         return await call_next(request)
     client_ip = request.client.host if request.client else "unknown"
     if _is_rate_limited(client_ip):
@@ -119,7 +129,10 @@ app.add_middleware(
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
+async def global_exception_handler(
+    request: Request,
+    exc: Exception,  # noqa: ARG001 — FastAPI signature requirement
+) -> JSONResponse:
     """Catch unhandled exceptions and return a proper JSON 500 response.
 
     Without this, unhandled exceptions produce a plain-text response that
@@ -144,10 +157,10 @@ app.include_router(workspaces_router)
 
 
 @app.get("/health")
-async def health_check() -> dict:
+async def health_check() -> dict[str, str]:
     from sqlalchemy import text
 
-    result: dict = {"status": "ok"}
+    result: dict[str, str] = {"status": "ok"}
     try:
         async with async_session() as db:
             await db.execute(text("SELECT 1"))

@@ -6,11 +6,11 @@ import logging
 
 from googleapiclient.errors import HttpError
 
+from app.config import settings
 from app.drive._helpers import _escape_drive_query
 from app.drive.credentials import get_sa_drive_service
 from app.drive.folders import ensure_folder
-from app.config import settings
-from app.models.user import User  # noqa: F401 — kept for backward-compat signatures
+from app.models.user import User
 
 log = logging.getLogger(__name__)
 

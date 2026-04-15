@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import Any, cast
 
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
+from googleapiclient.discovery import Resource, build
 
 from app.auth.encryption import decrypt_token
 from app.config import settings
@@ -27,27 +28,30 @@ _SA_SERVICE_TTL = 300  # 5 minutes
 
 def build_credentials(user: User) -> Credentials:
     """Build Google OAuth credentials from a user's encrypted tokens."""
+    if user.encrypted_access_token is None:
+        raise ValueError(f"User {user.id} has no encrypted_access_token")
     access_token = decrypt_token(user.encrypted_access_token)
     refresh_token = (
-        decrypt_token(user.encrypted_refresh_token)
-        if user.encrypted_refresh_token
-        else None
+        decrypt_token(user.encrypted_refresh_token) if user.encrypted_refresh_token else None
     )
-    return Credentials(
+    return Credentials(  # type: ignore[no-untyped-call]
         token=access_token,
         refresh_token=refresh_token,
-        token_uri="https://oauth2.googleapis.com/token",
+        token_uri="https://oauth2.googleapis.com/token",  # noqa: S106 — public OAuth endpoint
         client_id=settings.GOOGLE_CLIENT_ID,
         client_secret=settings.GOOGLE_CLIENT_SECRET,
     )
 
 
-def get_drive_service(user: User):
+def get_drive_service(user: User) -> Resource:
     """Build an authenticated Drive v3 service for the given user (reads only)."""
-    return build("drive", "v3", credentials=build_credentials(user), static_discovery=True)
+    return cast(
+        "Resource",
+        build("drive", "v3", credentials=build_credentials(user), static_discovery=True),
+    )
 
 
-def _get_sa_credentials():
+def _get_sa_credentials() -> Any:  # noqa: ANN401 — google's SA creds class is untyped
     """Get thread-local service account credentials.
 
     Each thread gets its own Credentials instance because token refresh
@@ -56,7 +60,7 @@ def _get_sa_credentials():
     creds = getattr(_thread_local, "sa_credentials", None)
     if creds is not None:
         return creds
-    creds = service_account.Credentials.from_service_account_file(
+    creds = service_account.Credentials.from_service_account_file(  # type: ignore[no-untyped-call]
         settings.SERVICE_ACCOUNT_KEY_PATH,
         scopes=_DRIVE_SCOPES,
     )
@@ -64,7 +68,7 @@ def _get_sa_credentials():
     return creds
 
 
-def get_sa_drive_service():
+def get_sa_drive_service() -> Resource:
     """Build a Drive v3 service using the service account's own credentials.
 
     Used for all write operations (create, move, rename, trash) on the
@@ -77,14 +81,14 @@ def get_sa_drive_service():
     svc = getattr(_thread_local, "sa_drive_service", None)
     ts = getattr(_thread_local, "sa_drive_service_ts", 0)
     if svc is not None and (time.monotonic() - ts) < _SA_SERVICE_TTL:
-        return svc
+        return cast("Resource", svc)
     svc = build("drive", "v3", credentials=_get_sa_credentials(), static_discovery=True)
     _thread_local.sa_drive_service = svc
     _thread_local.sa_drive_service_ts = time.monotonic()
-    return svc
+    return cast("Resource", svc)
 
 
-def _get_sa_docs_service():
+def _get_sa_docs_service() -> Resource:
     """Build a Docs v1 service using the service account.
 
     Returns a thread-local instance to avoid httplib2 concurrency crashes.
@@ -93,8 +97,8 @@ def _get_sa_docs_service():
     svc = getattr(_thread_local, "sa_docs_service", None)
     ts = getattr(_thread_local, "sa_docs_service_ts", 0)
     if svc is not None and (time.monotonic() - ts) < _SA_SERVICE_TTL:
-        return svc
+        return cast("Resource", svc)
     svc = build("docs", "v1", credentials=_get_sa_credentials(), static_discovery=True)
     _thread_local.sa_docs_service = svc
     _thread_local.sa_docs_service_ts = time.monotonic()
-    return svc
+    return cast("Resource", svc)

@@ -8,7 +8,7 @@ import time
 from fastapi import HTTPException
 from googleapiclient.errors import HttpError
 
-from app.drive.credentials import _get_sa_credentials, get_sa_drive_service, _get_sa_docs_service
+from app.drive.credentials import _get_sa_credentials, _get_sa_docs_service, get_sa_drive_service
 from app.models.user import User
 
 log = logging.getLogger(__name__)

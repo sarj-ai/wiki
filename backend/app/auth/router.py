@@ -1,7 +1,8 @@
 import logging
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from typing import Literal
 from urllib.parse import urlencode
 
 import httpx
@@ -24,7 +25,7 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
-GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105 — public OAuth endpoint, not a credential
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 OAUTH_SCOPES = [
@@ -35,15 +36,10 @@ OAUTH_SCOPES = [
 ]
 
 _is_secure = settings.FRONTEND_URL.startswith("https")
+_SAMESITE: Literal["lax", "strict", "none"] = "none" if _is_secure else "lax"
 
 # SameSite=none is required for cross-origin cookie auth (frontend ≠ backend domain).
 # In local dev (HTTP), use lax since browsers reject SameSite=none without Secure.
-_COOKIE_DEFAULTS = {
-    "httponly": True,
-    "samesite": "lax" if not _is_secure else "none",
-    "secure": _is_secure,
-    "path": "/",
-}
 
 
 class UserProfile(BaseModel):
@@ -58,13 +54,33 @@ _REFRESH_MAX_AGE = 7 * 86400  # 7 days (matches JWT expiry)
 
 
 def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
-    response.set_cookie(key="access_token", value=access_token, max_age=_ACCESS_MAX_AGE, **_COOKIE_DEFAULTS)
-    response.set_cookie(key="refresh_token", value=refresh_token, max_age=_REFRESH_MAX_AGE, **_COOKIE_DEFAULTS)
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        max_age=_ACCESS_MAX_AGE,
+        httponly=True,
+        samesite=_SAMESITE,
+        secure=_is_secure,
+        path="/",
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        max_age=_REFRESH_MAX_AGE,
+        httponly=True,
+        samesite=_SAMESITE,
+        secure=_is_secure,
+        path="/",
+    )
 
 
 def _clear_auth_cookies(response: Response) -> None:
-    response.delete_cookie(key="access_token", **_COOKIE_DEFAULTS)
-    response.delete_cookie(key="refresh_token", **_COOKIE_DEFAULTS)
+    response.delete_cookie(
+        key="access_token", httponly=True, samesite=_SAMESITE, secure=_is_secure, path="/"
+    )
+    response.delete_cookie(
+        key="refresh_token", httponly=True, samesite=_SAMESITE, secure=_is_secure, path="/"
+    )
 
 
 def _validate_email_domain(email: str) -> None:
@@ -78,7 +94,7 @@ def _validate_email_domain(email: str) -> None:
 
 
 @router.get("/login")
-async def login(request: Request) -> RedirectResponse:
+async def login(_request: Request) -> RedirectResponse:
     # Generate CSRF state token and store in a short-lived cookie
     state = secrets.token_urlsafe(32)
 
@@ -177,7 +193,7 @@ async def callback(
 
         token_expiry = None
         if expires_in is not None:
-            token_expiry = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(seconds=expires_in)
+            token_expiry = datetime.now(UTC).replace(microsecond=0) + timedelta(seconds=expires_in)
 
         # 5. Upsert user in database
         # Look up by google_id first, then by email (stub users from share/search
@@ -239,7 +255,9 @@ async def callback(
         background_tasks.add_task(_bg_folder_sync)
 
         # 8. Issue our own JWT tokens (embed token_version for revocation)
-        jwt_access = create_access_token(user_id=str(user.id), email=user.email, token_version=user.token_version)
+        jwt_access = create_access_token(
+            user_id=str(user.id), email=user.email, token_version=user.token_version
+        )
         jwt_refresh = create_refresh_token(user_id=str(user.id), token_version=user.token_version)
 
         # 9. Set cookies and redirect to frontend (clear the oauth_state cookie)
@@ -273,7 +291,9 @@ async def logout(
                     user.token_version += 1
                     await db.commit()
         except Exception:
-            pass  # Best-effort — clear cookies regardless
+            log.warning(
+                "logout: failed to bump token_version; proceeding to clear cookies", exc_info=True
+            )
 
     response = JSONResponse(content={"message": "logged out"})
     _clear_auth_cookies(response)
@@ -328,7 +348,9 @@ async def refresh(
             detail="Token has been revoked",
         )
 
-    new_access = create_access_token(user_id=str(user.id), email=user.email, token_version=user.token_version)
+    new_access = create_access_token(
+        user_id=str(user.id), email=user.email, token_version=user.token_version
+    )
     new_refresh = create_refresh_token(user_id=str(user.id), token_version=user.token_version)
 
     response = JSONResponse(content={"message": "refreshed"})

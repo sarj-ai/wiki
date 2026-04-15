@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import logging
 
-from app.drive.credentials import get_sa_drive_service
 from app.config import settings
+from app.drive.credentials import get_sa_drive_service
 
 log = logging.getLogger(__name__)
 

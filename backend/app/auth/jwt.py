@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
@@ -12,7 +12,7 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 
 def create_access_token(user_id: str, email: str, token_version: int = 0) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": user_id,
         "email": email,
@@ -25,7 +25,7 @@ def create_access_token(user_id: str, email: str, token_version: int = 0) -> str
 
 
 def create_refresh_token(user_id: str, token_version: int = 0) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": user_id,
         "iat": now,

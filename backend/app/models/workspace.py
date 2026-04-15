@@ -32,6 +32,7 @@ class WorkspaceGroupAccess(Base):
     Discovered by scanning Drive folder permissions. This allows a workspace
     folder to be shared with multiple groups beyond the primary group.
     """
+
     __tablename__ = "workspace_group_access"
 
     workspace_id: Mapped[uuid.UUID] = mapped_column(
@@ -40,7 +41,8 @@ class WorkspaceGroupAccess(Base):
         primary_key=True,
     )
     google_group_email: Mapped[str] = mapped_column(
-        Text, primary_key=True,
+        Text,
+        primary_key=True,
     )
 
 
@@ -61,6 +63,7 @@ class WorkspaceMembership(Base):
 
 class WorkspaceUserSettings(Base):
     """Per-user settings for a workspace (e.g. custom icon)."""
+
     __tablename__ = "workspace_user_settings"
 
     user_id: Mapped[uuid.UUID] = mapped_column(

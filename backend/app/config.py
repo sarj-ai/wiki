@@ -15,12 +15,18 @@ class Settings(BaseSettings):
     FERNET_KEY: str
     ALLOWED_DOMAIN: str = "sarj.ai"
     FRONTEND_URL: str = "http://localhost:3000"
-    WEBHOOK_BASE_URL: str = ""  # e.g. "https://yourdomain.com" — empty disables webhook registration
+    WEBHOOK_BASE_URL: str = (
+        ""  # e.g. "https://yourdomain.com" — empty disables webhook registration
+    )
     ADMIN_IMPERSONATE_EMAIL: str = ""  # Workspace admin email for Admin SDK impersonation
     CLOUD_SCHEDULER_SA_EMAIL: str = ""  # Cloud Scheduler service account for OIDC verification
     INTERNAL_SCHEDULER_SECRET: str = ""  # Shared secret fallback for local dev
-    INTERNAL_AUDIENCE: str = ""  # Cloud Run service URL used as OIDC audience for internal endpoints
-    SHARED_DRIVE_ID: str = ""  # Shared Drive ID for incremental Changes API — only needed if SA has drive-level access
+    INTERNAL_AUDIENCE: str = (
+        ""  # Cloud Run service URL used as OIDC audience for internal endpoints
+    )
+    SHARED_DRIVE_ID: str = (
+        ""  # Shared Drive ID for incremental Changes API — only needed if SA has drive-level access
+    )
     DRIVE_WEBHOOK_TOKEN: str = ""  # Token sent with Drive webhook registrations for verification
 
     @field_validator("SECRET_KEY")
@@ -44,8 +50,10 @@ class Settings(BaseSettings):
 
         try:
             Fernet(v.encode())
-        except Exception:
-            raise ValueError("FERNET_KEY must be a valid Fernet key (32 url-safe base64-encoded bytes)")
+        except Exception as e:
+            raise ValueError(
+                "FERNET_KEY must be a valid Fernet key (32 url-safe base64-encoded bytes)"
+            ) from e
         return v
 
 
