@@ -107,9 +107,7 @@ async def create_file(
         body = {"name": name, "mimeType": mime_type, "parents": [parent_folder_id]}
         try:
             raw = (
-                service.files()
-                .create(body=body, fields=_FIELDS, supportsAllDrives=True)
-                .execute()
+                service.files().create(body=body, fields=_FIELDS, supportsAllDrives=True).execute()
             )
         except HttpError as e:
             _raise_from_http_error(e)

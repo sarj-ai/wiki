@@ -276,8 +276,16 @@ async def test_search_drive_empty_query_returns_empty(patch_drive_service: Any) 
 async def test_search_across_drives_fans_out(patch_drive_service: Any) -> None:
     service = _FakeService(
         files_pages=[
-            {"files": [{"id": "a", "name": "A", "mimeType": "x", "parents": ["d1"], "driveId": "d1"}]},
-            {"files": [{"id": "b", "name": "B", "mimeType": "x", "parents": ["d2"], "driveId": "d2"}]},
+            {
+                "files": [
+                    {"id": "a", "name": "A", "mimeType": "x", "parents": ["d1"], "driveId": "d1"}
+                ]
+            },
+            {
+                "files": [
+                    {"id": "b", "name": "B", "mimeType": "x", "parents": ["d2"], "driveId": "d2"}
+                ]
+            },
         ]
     )
     patch_drive_service(service)

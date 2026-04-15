@@ -79,10 +79,7 @@ async def search_drive(
         return []
 
     escaped = _escape_query_value(query.strip())
-    q = (
-        f"(name contains '{escaped}' or fullText contains '{escaped}') "
-        f"and trashed=false"
-    )
+    q = f"(name contains '{escaped}' or fullText contains '{escaped}') and trashed=false"
 
     def _sync() -> list[SearchResult]:
         service = get_drive_service(user)
@@ -282,9 +279,7 @@ async def search_across_drives(
     if not drive_ids or not query.strip():
         return []
 
-    tasks = [
-        search_drive(user, drive_id, query, limit=limit_per_drive) for drive_id in drive_ids
-    ]
+    tasks = [search_drive(user, drive_id, query, limit=limit_per_drive) for drive_id in drive_ids]
     results = await asyncio.gather(*tasks)
     merged: list[SearchResult] = []
     for per_drive in results:

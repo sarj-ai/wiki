@@ -49,9 +49,7 @@ async def list_doc_icons(db: AsyncSession) -> list[DocIconRead]:
     tiny fraction of total files.
     """
     rows = (await db.execute(select(DocIcon))).scalars().all()
-    return [
-        DocIconRead(drive_id=r.drive_id, icon=r.icon, cover_url=r.cover_url) for r in rows
-    ]
+    return [DocIconRead(drive_id=r.drive_id, icon=r.icon, cover_url=r.cover_url) for r in rows]
 
 
 async def upsert_doc_icon(
@@ -113,10 +111,10 @@ async def upsert_folder_icon(
 
 async def list_folder_icons(db: AsyncSession, user: User) -> list[FolderIconRead]:
     rows = (
-        await db.execute(
-            select(UserFolderIcon).where(UserFolderIcon.user_id == user.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(UserFolderIcon).where(UserFolderIcon.user_id == user.id)))
+        .scalars()
+        .all()
+    )
     return [FolderIconRead(folder_drive_id=r.folder_drive_id, icon=r.icon) for r in rows]
 
 
@@ -146,10 +144,10 @@ async def upsert_sort_orders(
 
 async def list_sort_orders(db: AsyncSession, user: User) -> list[SortOrderRead]:
     rows = (
-        await db.execute(
-            select(UserSortOrder).where(UserSortOrder.user_id == user.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(UserSortOrder).where(UserSortOrder.user_id == user.id)))
+        .scalars()
+        .all()
+    )
     return [SortOrderRead(drive_id=r.drive_id, sort_order=r.sort_order) for r in rows]
 
 
