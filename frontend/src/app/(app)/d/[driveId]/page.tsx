@@ -2,11 +2,12 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useParams } from "next/navigation";
-import { navigatorApi } from "@/lib/navigator-api";
+import { notFound, useParams } from "next/navigation";
+import { navigatorApi, ApiError } from "@/lib/navigator-api";
 import { useDrives, useDriveTree } from "@/hooks/use-navigator-tree";
 import { FileViewer } from "@/components/navigator-document/file-viewer";
 import { NavigatorToolbar } from "@/components/navigator-document/navigator-toolbar";
+import { NavigatorNotFound } from "@/components/navigator-not-found";
 import type { DriveNode, FileResponse } from "@/types/navigator";
 import { MIME_FOLDER } from "@/types/navigator";
 
@@ -76,11 +77,22 @@ export default function FilePage() {
     );
   }
 
+  // 404 from the backend means either the file truly doesn't exist or
+  // it's outside the Navigator's strict shared-drive scope (My Drive
+  // files, non-member shared drives). Route through Next's notFound()
+  // so the (app)/not-found.tsx boundary renders — that keeps the
+  // sidebar mounted and the themed empty-state view consistent with
+  // unmatched routes elsewhere in the app.
+  if (fileQuery.isError && fileQuery.error instanceof ApiError && fileQuery.error.status === 404) {
+    notFound();
+  }
+
   if (fileQuery.isError || !fileQuery.data) {
     return (
-      <div className="text-destructive flex h-full items-center justify-center text-sm">
-        Failed to load this file. Check that you have access in Google Drive.
-      </div>
+      <NavigatorNotFound
+        title="Can't load this file"
+        description="Something went wrong fetching this file from Google Drive. Try again in a moment, or pick another file from the sidebar."
+      />
     );
   }
 
