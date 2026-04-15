@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -37,6 +37,7 @@ export function NamePromptDialog({
 }: NamePromptDialogProps) {
   const [value, setValue] = useState(defaultValue);
   const [submitting, setSubmitting] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Reset the field whenever the dialog opens so consecutive uses don't
   // carry over a stale value from the previous run.
@@ -58,7 +59,24 @@ export function NamePromptDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
+      <DialogContent
+        className="max-w-sm"
+        // Take over the open-auto-focus cycle: prevent radix's
+        // default "focus the first focusable child" behavior (which
+        // competes with our Input's autoFocus and strips any text
+        // selection) and do the focus + select ourselves on the
+        // next animation frame, so the dialog's open transition
+        // has settled before we call .select().
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          requestAnimationFrame(() => {
+            const el = inputRef.current;
+            if (!el) return;
+            el.focus();
+            el.select();
+          });
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
@@ -73,10 +91,10 @@ export function NamePromptDialog({
           <div className="space-y-1.5">
             <Label htmlFor="name-prompt-input">Name</Label>
             <Input
+              ref={inputRef}
               id="name-prompt-input"
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              autoFocus
               disabled={submitting}
             />
           </div>

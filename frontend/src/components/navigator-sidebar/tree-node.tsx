@@ -137,44 +137,56 @@ export function TreeNode({
 
   return (
     <>
-      <SidebarMenuButton
-        onClick={() => setExpanded(!expanded)}
-        className="pr-14"
-        style={{ paddingLeft: chevronPadding }}
-        aria-expanded={expanded}
-        title={node.name}
-      >
-        <ChevronRight
-          className={cn("size-3.5 shrink-0 transition-transform", expanded && "rotate-90")}
-        />
-        <span className="shrink-0" style={{ width: ICON_COLUMN_WIDTH - 4 }} aria-hidden="true" />
-        <span className="truncate">{node.name}</span>
-      </SidebarMenuButton>
-      <div className="absolute top-1/2 z-10 -translate-y-1/2" style={{ left: iconLeft }}>
-        <EmojiPickerPopover value={iconEmoji} onChange={handleFolderIconChange}>
-          <button
-            type="button"
-            aria-label="Change folder icon"
-            // Matches the file-row icon: hover uses the full sidebar
-            // highlight tokens so folder and file icons share the
-            // same pickable affordance and automatically flip with
-            // the theme.
-            className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors"
-          >
-            {folderIconContent}
-          </button>
-        </EmojiPickerPopover>
+      {/*
+        Wrap the header row (button + absolute icon + absolute row
+        actions) in its own positioned container so the absolutes
+        anchor to the ROW'S height, not the whole SidebarMenuItem's
+        height. Without this wrapper, when the folder expands the
+        SidebarMenuItem's height grows to include every child row,
+        and ``top-1/2 -translate-y-1/2`` ends up parking the folder
+        icon in the middle of the expanded group instead of on the
+        header.
+      */}
+      <div className="relative">
+        <SidebarMenuButton
+          onClick={() => setExpanded(!expanded)}
+          className="pr-14"
+          style={{ paddingLeft: chevronPadding }}
+          aria-expanded={expanded}
+          title={node.name}
+        >
+          <ChevronRight
+            className={cn("size-3.5 shrink-0 transition-transform", expanded && "rotate-90")}
+          />
+          <span className="shrink-0" style={{ width: ICON_COLUMN_WIDTH - 4 }} aria-hidden="true" />
+          <span className="truncate">{node.name}</span>
+        </SidebarMenuButton>
+        <div className="absolute top-1/2 z-10 -translate-y-1/2" style={{ left: iconLeft }}>
+          <EmojiPickerPopover value={iconEmoji} onChange={handleFolderIconChange}>
+            <button
+              type="button"
+              aria-label="Change folder icon"
+              // Matches the file-row icon: hover uses the full sidebar
+              // highlight tokens so folder and file icons share the
+              // same pickable affordance and automatically flip with
+              // the theme.
+              className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors"
+            >
+              {folderIconContent}
+            </button>
+          </EmojiPickerPopover>
+        </div>
+        <RowActions>
+          <CreateFileMenu parentFolderId={node.id} />
+          <ItemMenu
+            fileId={node.id}
+            driveId={driveId}
+            parentFolderId={parentFolderId}
+            currentName={node.name}
+            isFolder
+          />
+        </RowActions>
       </div>
-      <RowActions>
-        <CreateFileMenu parentFolderId={node.id} />
-        <ItemMenu
-          fileId={node.id}
-          driveId={driveId}
-          parentFolderId={parentFolderId}
-          currentName={node.name}
-          isFolder
-        />
-      </RowActions>
       {expanded && (
         // Flatten the nested sub so recursion doesn't compound margins
         // across levels — depth indentation lives on the row content
