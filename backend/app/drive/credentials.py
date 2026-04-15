@@ -51,7 +51,7 @@ def get_drive_service(user: User) -> Resource:
     )
 
 
-def _get_sa_credentials() -> Any:  # noqa: ANN401 — google's SA creds class is untyped
+def _get_sa_credentials() -> Any:
     """Get thread-local service account credentials.
 
     Each thread gets its own Credentials instance because token refresh
