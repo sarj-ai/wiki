@@ -721,15 +721,21 @@ All six review #1 decisions are locked in (§11). Remaining items before code st
 - [x] §11.3 — Drive OAuth scope: **keep `drive` (full access)**
 - [x] §11.4 — old URLs: **break at cutover**
 - [x] §11.5 — dark mode on doc body: **regression accepted**
-- [x] §11.6 — search: **Drive Search API from day one** (validated in rev 4 spike — works)
+- [x] §11.6 — search: **Drive Search API from day one** (shipped as a Cmd+K command palette with lazy snippet preview — rev 8)
+- [x] §11.7 — no custom share dialog; users click Open-in-Google-Docs (rev 8, replaces the original "click the native button inside the iframe" plan after the `frame-ancestors` discovery)
+- [x] §11.8 — Forms open in a new tab permanently (rev 8, after verifying the Forms editor hard-gates in cross-origin iframes regardless of creation path)
 - [x] Drive Search spike — **complete (§17)**
 - [x] Tree walker latency spike — **complete (§17)**
-- [ ] Plan rev 4 reviewed and approved
-- [ ] Sub-PR B-prime checklist document merged to `feat/navigator-pivot` (just the checklist — the human migration itself can happen any time up to cutover night)
+- [x] Plan rev 8 reviewed — iframe-capability discoveries + implementation amendments landed 2026-04-16
+- [x] Sub-PR B-prime checklist document merged to `feat/navigator-pivot` (`e1e98e1`)
 - [ ] Human content migration out of `0AI_dKpHiz__7Uk9PVA` complete and verified **before the cutover PR merges to main** (not gated to any earlier sub-PR)
-- [ ] `feat/navigator-pivot` branch cut from `main`
+- [x] `feat/navigator-pivot` branch cut from `main`
 - [ ] Draft cutover PR opened against `main` for visibility
-- [ ] Sub-PR A kicked off
+- [x] Sub-PR A kicked off and merged (`df2b7db` backend tooling, `0b4dd67` frontend tooling, `10ee859` CI, `7ff8467` python bump)
+- [x] Sub-PR B infra hardening landed on the feature branch (`4760f07` — GCLB + Cloudflare WAF + Secret Manager cleanup + branch-protection script). Still needs an operator with GCP + Cloudflare creds to run `terraform apply`.
+- [x] Sub-PR C backend pivot merged to the feature branch (`d677040` through `55c47b9` + rev 8 strict-scoping hardening in `f58552b`)
+- [x] Sub-PR D frontend pivot merged to the feature branch (D1–D6 + rev 8 sidebar polish / command palette / icon editing in `8c1d1a2`, `53a7c46`, `f843f7a`)
+- [x] Sub-PR E staging validation — dev-based pass complete (`53e6343` runbook + `6b54bef` rev 8 reframe as cutover-night runbook)
 
 ---
 
