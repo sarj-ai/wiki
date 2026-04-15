@@ -36,17 +36,17 @@ resource "google_sql_database_instance" "main" {
 
     database_flags {
       name  = "shared_buffers"
-      value = "32768"  # 32 MB (in 8KB pages) — default ~128 MB is too much for f1-micro
+      value = "32768" # 32 MB (in 8KB pages) — default ~128 MB is too much for f1-micro
     }
 
     database_flags {
       name  = "work_mem"
-      value = "2048"  # 2 MB — limit per-query sort/hash memory
+      value = "2048" # 2 MB — limit per-query sort/hash memory
     }
 
     database_flags {
       name  = "maintenance_work_mem"
-      value = "32768"  # 32 MB — for VACUUM, index builds
+      value = "32768" # 32 MB — for VACUUM, index builds
     }
   }
 

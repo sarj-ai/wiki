@@ -1,17 +1,17 @@
 # Service accounts and IAM bindings
+#
+# The Navigator only needs one runtime service account — the Cloud
+# Run backend — because the pivot removed:
+#   * Cloud Scheduler jobs (no more webhook renewal or group sync)
+#   * Admin SDK domain-wide-delegation
+#   * Drive push webhook handlers
+# The old ``sarj-docs-scheduler`` SA was dropped alongside
+# terraform/scheduler.tf.
 
 # Cloud Run backend service account
 resource "google_service_account" "backend" {
   account_id   = "sarj-docs-backend"
   display_name = "Sarj Docs Backend (Cloud Run)"
-
-  depends_on = [google_project_service.apis["iam.googleapis.com"]]
-}
-
-# Cloud Scheduler service account
-resource "google_service_account" "scheduler" {
-  account_id   = "sarj-docs-scheduler"
-  display_name = "Sarj Docs Cloud Scheduler"
 
   depends_on = [google_project_service.apis["iam.googleapis.com"]]
 }
@@ -23,16 +23,11 @@ resource "google_project_iam_member" "backend_cloudsql" {
   member  = "serviceAccount:${google_service_account.backend.email}"
 }
 
-# Scheduler SA can invoke the backend Cloud Run service
-resource "google_cloud_run_v2_service_iam_member" "scheduler_invoker" {
-  project  = var.project_id
-  name     = google_cloud_run_v2_service.backend.name
-  location = var.region
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${google_service_account.scheduler.email}"
-}
-
-# Allow public access to the backend (app handles its own auth via JWT)
+# Allow public access to the backend — JWT + @sarj.ai domain
+# enforcement at the app layer is the real auth boundary. The GCLB
+# + Cloudflare layer on top (see loadbalancer.tf / cloudflare.tf)
+# terminates TLS, applies WAF rules, and scrubs bad traffic before
+# it reaches Cloud Run.
 resource "google_cloud_run_v2_service_iam_member" "backend_public" {
   project  = var.project_id
   name     = google_cloud_run_v2_service.backend.name

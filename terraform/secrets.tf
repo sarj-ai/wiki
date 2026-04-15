@@ -1,13 +1,14 @@
-# Secret Manager — store all sensitive configuration
+# Secret Manager — all sensitive configuration consumed by the
+# Navigator backend at runtime. Non-sensitive config (allowed domain,
+# frontend URL, OAuth redirect URI) stays as plaintext env vars in
+# cloudrun.tf. Secrets the legacy Sarj Docs backend needed — the
+# drive webhook token and the domain-wide-delegation service account
+# key — were removed during the pivot to the Navigator and no longer
+# exist here.
 
 resource "random_password" "secret_key" {
   length  = 64
   special = true
-}
-
-resource "random_password" "webhook_token" {
-  length  = 48
-  special = false
 }
 
 locals {
@@ -20,8 +21,6 @@ locals {
     "fernet-key"           = var.fernet_key
     "google-client-id"     = var.google_client_id
     "google-client-secret" = var.google_client_secret
-    "service-account-key"  = file(var.service_account_key_path)
-    "webhook-token"        = random_password.webhook_token.result
   }
 }
 

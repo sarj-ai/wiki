@@ -1,5 +1,5 @@
 output "backend_url" {
-  description = "Cloud Run backend service URL"
+  description = "Cloud Run backend service URL (not the public URL — that's lb_ip / backend_domain)"
   value       = google_cloud_run_v2_service.backend.uri
 }
 
@@ -13,9 +13,9 @@ output "cloud_sql_private_ip" {
   value       = google_sql_database_instance.main.private_ip_address
 }
 
-output "scheduler_sa_email" {
-  description = "Cloud Scheduler service account email"
-  value       = google_service_account.scheduler.email
+output "lb_ip" {
+  description = "Global HTTPS LB anycast IP — point Cloudflare's proxied A record at this"
+  value       = google_compute_global_address.backend_lb.address
 }
 
 output "wif_provider" {

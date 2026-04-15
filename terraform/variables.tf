@@ -20,17 +20,6 @@ variable "backend_domain" {
   type        = string
 }
 
-variable "drive_root_folder_id" {
-  description = "Google Drive root folder ID for Sarj Docs"
-  type        = string
-}
-
-variable "admin_impersonate_email" {
-  description = "Workspace admin email for Admin SDK impersonation"
-  type        = string
-  default     = "nasr@sarj.ai"
-}
-
 variable "db_tier" {
   description = "Cloud SQL machine tier"
   type        = string
@@ -61,11 +50,6 @@ variable "fernet_key" {
   sensitive   = true
 }
 
-variable "service_account_key_path" {
-  description = "Local path to the GCP service account JSON key file"
-  type        = string
-}
-
 variable "alert_email" {
   description = "Email address for monitoring alerts"
   type        = string
@@ -75,4 +59,25 @@ variable "github_repo" {
   description = "GitHub repository (owner/repo) for Workload Identity Federation"
   type        = string
   default     = "a-alhashemi/sarj-docs"
+}
+
+# ---------------------------------------------------------------------------
+# Sub-PR B — perimeter security (load balancer + Cloudflare WAF)
+# ---------------------------------------------------------------------------
+
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token with Zone:Edit + Firewall:Edit scopes"
+  type        = string
+  sensitive   = true
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID for sarj.ai"
+  type        = string
+}
+
+variable "cloudflare_zone_name" {
+  description = "Cloudflare zone name — typically sarj.ai"
+  type        = string
+  default     = "sarj.ai"
 }

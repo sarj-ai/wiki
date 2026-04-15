@@ -1,13 +1,24 @@
-project_id               = "sarj-docs"
-region                   = "me-central1"
-frontend_url             = "https://docs.sarj.ai"
-backend_domain           = "api-docs.sarj.ai"
-drive_root_folder_id     = "<your-drive-folder-id>"
-admin_impersonate_email  = "nasr@sarj.ai"
-db_tier                  = "db-f1-micro"
-db_password              = "<strong-password>"
-google_client_id         = "<oauth-client-id>"
-google_client_secret     = "<oauth-client-secret>"
-fernet_key               = "<fernet-key>"
-service_account_key_path = "../backend/service-account-key.json"
-alert_email              = "alerts@sarj.ai"
+project_id     = "sarj-docs"
+region         = "me-central1"
+frontend_url   = "https://navigator.sarj.ai"
+backend_domain = "api-navigator.sarj.ai"
+db_tier        = "db-f1-micro"
+db_password    = "<strong-password>"
+
+# Google OAuth credentials — create at console.cloud.google.com
+# under APIs & Services → Credentials → OAuth 2.0 Client IDs.
+google_client_id     = "<oauth-client-id>"
+google_client_secret = "<oauth-client-secret>"
+
+# Fernet key for encrypting per-user OAuth tokens at rest in Postgres.
+# Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+fernet_key = "<fernet-key>"
+
+alert_email = "alerts@sarj.ai"
+
+# Cloudflare — required for Sub-PR B perimeter (see cloudflare.tf).
+# API token must have Zone:Edit + Firewall Services:Edit scopes,
+# scoped to the sarj.ai zone only.
+cloudflare_api_token = "<cloudflare-api-token>"
+cloudflare_zone_id   = "<cloudflare-zone-id>"
+cloudflare_zone_name = "sarj.ai"
