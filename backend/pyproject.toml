@@ -2,7 +2,7 @@
 name = "sarj-docs-backend"
 version = "0.1.0"
 description = "Internal knowledge base API for Sarj"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
@@ -41,7 +41,7 @@ build-backend = "hatchling.build"
 # then so we don't waste effort fixing code we're about to remove.
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 100
 extend-exclude = [
     "alembic/versions",
@@ -102,7 +102,7 @@ ignore = [
 known-first-party = ["app"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 strict = true
 warn_unreachable = true
 warn_redundant_casts = true
