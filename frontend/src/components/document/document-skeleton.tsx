@@ -23,8 +23,8 @@ export function DocumentSkeleton() {
       </div>
 
       {/* Iframe placeholder */}
-      <div className="flex flex-1 min-h-0 px-6 pb-6">
-        <Skeleton className="h-full w-full min-h-[400px] rounded-lg" />
+      <div className="flex min-h-0 flex-1 px-6 pb-6">
+        <Skeleton className="h-full min-h-[400px] w-full rounded-lg" />
       </div>
     </div>
   );

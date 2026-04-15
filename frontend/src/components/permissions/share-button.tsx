@@ -19,18 +19,13 @@ export function ShareButton({ page, workspace }: ShareButtonProps) {
       <Button
         variant="outline"
         size="sm"
-        className="gap-2 hover:bg-[#251040] hover:text-white hover:border-[#251040] dark:hover:bg-[#4B3483] dark:hover:text-white dark:hover:border-[#4B3483]"
+        className="gap-2 hover:border-[#251040] hover:bg-[#251040] hover:text-white dark:hover:border-[#4B3483] dark:hover:bg-[#4B3483] dark:hover:text-white"
         onClick={() => setOpen(true)}
       >
         <UserPlus className="size-4" />
         Share
       </Button>
-      <ShareDialog
-        page={page}
-        workspace={workspace}
-        open={open}
-        onOpenChange={setOpen}
-      />
+      <ShareDialog page={page} workspace={workspace} open={open} onOpenChange={setOpen} />
     </>
   );
 }

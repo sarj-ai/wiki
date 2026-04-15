@@ -20,22 +20,20 @@ export function DocumentIframe({ googleDriveId }: DocumentIframeProps) {
 
   if (!embedUrl) {
     return (
-      <div className="flex flex-1 items-center justify-center min-h-0">
-        <p className="text-sm text-muted-foreground">Invalid document ID.</p>
+      <div className="flex min-h-0 flex-1 items-center justify-center">
+        <p className="text-muted-foreground text-sm">Invalid document ID.</p>
       </div>
     );
   }
 
   return (
-    <div className="relative flex-1 min-h-0">
+    <div className="relative min-h-0 flex-1">
       {/* Loading overlay */}
       {isLoading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg border border-border bg-card">
+        <div className="border-border bg-card absolute inset-0 z-10 flex items-center justify-center rounded-lg border">
           <div className="flex flex-col items-center gap-3">
-            <div className="size-8 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
-            <p className="text-sm text-muted-foreground">
-              Loading document...
-            </p>
+            <div className="border-muted-foreground/30 border-t-muted-foreground size-8 animate-spin rounded-full border-2" />
+            <p className="text-muted-foreground text-sm">Loading document...</p>
           </div>
         </div>
       )}
@@ -44,7 +42,7 @@ export function DocumentIframe({ googleDriveId }: DocumentIframeProps) {
       <iframe
         src={embedUrl}
         title="Google Doc"
-        className="size-full rounded-lg border border-border bg-card"
+        className="border-border bg-card size-full rounded-lg border"
         onLoad={() => setIsLoading(false)}
         allow="clipboard-write"
         sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-popups-to-escape-sandbox"

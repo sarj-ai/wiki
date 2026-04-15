@@ -28,18 +28,13 @@ test.describe("Drag & drop loading state (Fix 9)", () => {
     }
 
     // Start drag from first item
-    await page.mouse.move(
-      firstBox.x + firstBox.width / 2,
-      firstBox.y + firstBox.height / 2
-    );
+    await page.mouse.move(firstBox.x + firstBox.width / 2, firstBox.y + firstBox.height / 2);
     await page.mouse.down();
 
     // Move to second item position
-    await page.mouse.move(
-      secondBox.x + secondBox.width / 2,
-      secondBox.y + secondBox.height / 2,
-      { steps: 10 }
-    );
+    await page.mouse.move(secondBox.x + secondBox.width / 2, secondBox.y + secondBox.height / 2, {
+      steps: 10,
+    });
 
     // Check for drag overlay presence (DnD Kit creates a drag overlay)
     const dragOverlay = page.locator("[data-dnd-overlay],.shadow-md");
@@ -55,24 +50,18 @@ test.describe("Drag & drop loading state (Fix 9)", () => {
     for (let i = 0; i < Math.min(itemCount, 5); i++) {
       const item = pageItems.nth(i);
       if (await item.isVisible()) {
-        const opacity = await item.evaluate(
-          (el) => window.getComputedStyle(el).opacity
-        );
+        const opacity = await item.evaluate((el) => window.getComputedStyle(el).opacity);
         expect(parseFloat(opacity)).toBeGreaterThanOrEqual(0.9);
       }
     }
   });
 
-  test("After move completes, opacity returns to normal", async ({
-    page,
-  }) => {
+  test("After move completes, opacity returns to normal", async ({ page }) => {
     // Intercept move API call
     const moveResponsePromise = page
       .waitForResponse(
-        (resp) =>
-          resp.url().includes("/pages/") &&
-          resp.request().method() === "PATCH",
-        { timeout: 5_000 }
+        (resp) => resp.url().includes("/pages/") && resp.request().method() === "PATCH",
+        { timeout: 5_000 },
       )
       .catch(() => null);
 
@@ -83,9 +72,7 @@ test.describe("Drag & drop loading state (Fix 9)", () => {
     for (let i = 0; i < Math.min(itemCount, 5); i++) {
       const item = pageItems.nth(i);
       if (await item.isVisible()) {
-        const opacity = await item.evaluate(
-          (el) => window.getComputedStyle(el).opacity
-        );
+        const opacity = await item.evaluate((el) => window.getComputedStyle(el).opacity);
         expect(parseFloat(opacity)).toBeGreaterThanOrEqual(0.9);
       }
     }

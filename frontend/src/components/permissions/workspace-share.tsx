@@ -21,15 +21,11 @@ interface WorkspaceShareProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function WorkspaceShare({
-  page,
-  workspaces,
-  onOpenChange,
-}: WorkspaceShareProps) {
+export function WorkspaceShare({ page, workspaces, onOpenChange }: WorkspaceShareProps) {
   const { start, done } = useLoading();
   const queryClient = useQueryClient();
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(
-    page.workspaceId ?? (workspaces[0]?.id ?? ""),
+    page.workspaceId ?? workspaces[0]?.id ?? "",
   );
   const [isPublishing, setIsPublishing] = useState(false);
 
@@ -65,9 +61,7 @@ export function WorkspaceShare({
           <Check className="size-4 text-green-600 dark:text-green-400" />
           <span>
             Published to{" "}
-            <span className="font-medium">
-              {publishedWorkspace?.name ?? "workspace"}
-            </span>
+            <span className="font-medium">{publishedWorkspace?.name ?? "workspace"}</span>
           </span>
         </div>
       </div>
@@ -77,18 +71,15 @@ export function WorkspaceShare({
   // Private — show publish flow
   return (
     <div className="px-6 py-4">
-      <div className="flex flex-col gap-0.5 mb-3">
+      <div className="mb-3 flex flex-col gap-0.5">
         <span className="text-sm font-medium">Publish to workspace</span>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-muted-foreground text-xs">
           Make this page visible to all workspace members
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <Select
-          value={selectedWorkspaceId}
-          onValueChange={setSelectedWorkspaceId}
-        >
-          <SelectTrigger className="flex-1 h-9" size="sm">
+        <Select value={selectedWorkspaceId} onValueChange={setSelectedWorkspaceId}>
+          <SelectTrigger className="h-9 flex-1" size="sm">
             <SelectValue placeholder="Select a workspace..." />
           </SelectTrigger>
           <SelectContent>
@@ -99,16 +90,8 @@ export function WorkspaceShare({
             ))}
           </SelectContent>
         </Select>
-        <Button
-          size="sm"
-          onClick={handlePublish}
-          disabled={!selectedWorkspaceId || isPublishing}
-        >
-          {isPublishing ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            "Publish"
-          )}
+        <Button size="sm" onClick={handlePublish} disabled={!selectedWorkspaceId || isPublishing}>
+          {isPublishing ? <Loader2 className="size-4 animate-spin" /> : "Publish"}
         </Button>
       </div>
     </div>

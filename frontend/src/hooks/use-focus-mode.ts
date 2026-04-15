@@ -4,11 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSidebar } from "@/components/ui/sidebar";
 
 export function useFocusMode() {
-  const {
-    open: sidebarOpen,
-    setOpen: setSidebarOpen,
-    toggleSidebar,
-  } = useSidebar();
+  const { open: sidebarOpen, setOpen: setSidebarOpen, toggleSidebar } = useSidebar();
   const [focusMode, setFocusMode] = useState(false);
   const sidebarWasOpen = useRef(true);
 

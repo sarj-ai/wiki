@@ -1,4 +1,15 @@
-import type { Page, PageContent, PagePermission, Permission, Workspace, SearchResult, UserSearchResult, WorkspaceSearchResult, ImportFormat, ImportJob } from "@/types";
+import type {
+  Page,
+  PageContent,
+  PagePermission,
+  Permission,
+  Workspace,
+  SearchResult,
+  UserSearchResult,
+  WorkspaceSearchResult,
+  ImportFormat,
+  ImportJob,
+} from "@/types";
 import { refreshAccessToken } from "@/lib/auth";
 import { sanitizeRedirectPath } from "@/lib/url-utils";
 
@@ -25,10 +36,7 @@ function transformKeys<T>(obj: unknown): T {
   if (Array.isArray(obj)) return obj.map(transformKeys) as T;
   if (obj && typeof obj === "object") {
     return Object.fromEntries(
-      Object.entries(obj).map(([key, val]) => [
-        snakeToCamel(key),
-        transformKeys(val),
-      ])
+      Object.entries(obj).map(([key, val]) => [snakeToCamel(key), transformKeys(val)]),
     ) as T;
   }
   return obj as T;
@@ -115,8 +123,6 @@ interface GrantPermissionData {
   recursive?: boolean;
 }
 
-
-
 export const api = {
   getWorkspaces: () => fetchApi<Workspace[]>("/workspaces"),
 
@@ -136,7 +142,11 @@ export const api = {
 
   getPageTree: () => fetchApi<Page[]>("/pages/tree"),
 
-  syncPages: (force?: boolean) => fetchApi<{ removed: number; added: number; updated: number }>(`/pages/sync${force ? "?force=true" : ""}`, { method: "POST" }),
+  syncPages: (force?: boolean) =>
+    fetchApi<{ removed: number; added: number; updated: number }>(
+      `/pages/sync${force ? "?force=true" : ""}`,
+      { method: "POST" },
+    ),
 
   getPage: (id: string) => fetchApi<Page>(pagePath(id)),
 
@@ -164,11 +174,9 @@ export const api = {
     });
   },
 
-  retryPage: (id: string) =>
-    fetchApi<Page>(`${pagePath(id)}/retry`, { method: "POST" }),
+  retryPage: (id: string) => fetchApi<Page>(`${pagePath(id)}/retry`, { method: "POST" }),
 
-  deletePage: (id: string) =>
-    fetchApi<void>(pagePath(id), { method: "DELETE" }),
+  deletePage: (id: string) => fetchApi<void>(pagePath(id), { method: "DELETE" }),
 
   publishPage: (id: string, workspaceId: string) =>
     fetchApi<Page>(`${pagePath(id)}/publish`, {
@@ -177,9 +185,7 @@ export const api = {
     }),
 
   getPageContent: (id: string, forceRefresh?: boolean) =>
-    fetchApi<PageContent>(
-      `${pagePath(id)}/content${forceRefresh ? "?force_refresh=true" : ""}`
-    ),
+    fetchApi<PageContent>(`${pagePath(id)}/content${forceRefresh ? "?force_refresh=true" : ""}`),
 
   getPagePermissions: (pageId: string) =>
     fetchApi<PagePermission[]>(`/permissions/page/${encodeURIComponent(pageId)}`),
@@ -203,25 +209,28 @@ export const api = {
     }),
 
   revokePermission: (id: string, recursive?: boolean) =>
-    fetchApi<void>(`/permissions/${encodeURIComponent(id)}${recursive ? "?recursive=true" : ""}`, { method: "DELETE" }),
+    fetchApi<void>(`/permissions/${encodeURIComponent(id)}${recursive ? "?recursive=true" : ""}`, {
+      method: "DELETE",
+    }),
 
   search: (query: string, limit?: number) =>
-    fetchApi<SearchResult[]>(`/search?q=${encodeURIComponent(query)}${limit ? `&limit=${limit}` : ""}`),
+    fetchApi<SearchResult[]>(
+      `/search?q=${encodeURIComponent(query)}${limit ? `&limit=${limit}` : ""}`,
+    ),
 
   searchUsers: (query: string) =>
     fetchApi<UserSearchResult[]>(`/permissions/users/search?q=${encodeURIComponent(query)}`),
 
   searchWorkspaces: (query: string) =>
-    fetchApi<WorkspaceSearchResult[]>(`/permissions/workspaces/search?q=${encodeURIComponent(query)}`),
+    fetchApi<WorkspaceSearchResult[]>(
+      `/permissions/workspaces/search?q=${encodeURIComponent(query)}`,
+    ),
 
-  getStarredPages: () =>
-    fetchApi<string[]>("/pages/starred"),
+  getStarredPages: () => fetchApi<string[]>("/pages/starred"),
 
-  starPage: (pageId: string) =>
-    fetchApi<void>(`${pagePath(pageId)}/star`, { method: "POST" }),
+  starPage: (pageId: string) => fetchApi<void>(`${pagePath(pageId)}/star`, { method: "POST" }),
 
-  unstarPage: (pageId: string) =>
-    fetchApi<void>(`${pagePath(pageId)}/star`, { method: "DELETE" }),
+  unstarPage: (pageId: string) => fetchApi<void>(`${pagePath(pageId)}/star`, { method: "DELETE" }),
 
   duplicatePage: (pageId: string) =>
     fetchApi<Page>(`${pagePath(pageId)}/duplicate`, { method: "POST" }),
@@ -232,8 +241,7 @@ export const api = {
       body: JSON.stringify({ workspace_id: workspaceId }),
     }),
 
-  getImportFormats: () =>
-    fetchApi<ImportFormat[]>("/imports/formats"),
+  getImportFormats: () => fetchApi<ImportFormat[]>("/imports/formats"),
 
   startImport: (file: File, format: string, parentId?: string, workspaceId?: string) => {
     const formData = new FormData();
@@ -247,6 +255,5 @@ export const api = {
     });
   },
 
-  getImportStatus: (jobId: string) =>
-    fetchApi<ImportJob>(`/imports/${jobId}/status`),
+  getImportStatus: (jobId: string) => fetchApi<ImportJob>(`/imports/${jobId}/status`),
 };

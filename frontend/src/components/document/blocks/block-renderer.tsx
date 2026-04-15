@@ -41,13 +41,7 @@ export function BlockRenderer({ block }: { block: ContentBlock }) {
         />
       );
     case "image":
-      return (
-        <ImageBlock
-          url={block.url || ""}
-          alt={block.alt}
-          width={block.width}
-        />
-      );
+      return <ImageBlock url={block.url || ""} alt={block.alt} width={block.width} />;
     case "code_block":
       return <CodeBlockComponent code={block.code || ""} />;
     case "table_of_contents":

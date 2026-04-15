@@ -71,8 +71,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     checkAuth();
-  // Run once on mount only
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Run once on mount only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Re-check auth when user returns to the tab (catches expired tokens)
@@ -101,8 +101,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, logout }}>
-      {children}
-    </AuthContext.Provider>
+    <AuthContext.Provider value={{ user, isLoading, logout }}>{children}</AuthContext.Provider>
   );
 }

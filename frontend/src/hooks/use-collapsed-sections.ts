@@ -10,9 +10,7 @@ const STORAGE_KEY = "sarj-collapsed-sections";
  * hydration mismatches.
  */
 export function useCollapsedSections() {
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
-    new Set(),
-  );
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [hydrated, setHydrated] = useState(false);
 
   // Load from localStorage after mount to avoid hydration mismatch
@@ -32,10 +30,7 @@ export function useCollapsedSections() {
   useEffect(() => {
     if (!hydrated) return;
     try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify([...collapsedSections]),
-      );
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([...collapsedSections]));
     } catch {
       // ignore
     }
@@ -67,5 +62,12 @@ export function useCollapsedSections() {
     setCollapsedSections(new Set());
   }, []);
 
-  return { collapsedSections, toggleSection, uncollapseSection, collapseAll, expandAll, hydrated } as const;
+  return {
+    collapsedSections,
+    toggleSection,
+    uncollapseSection,
+    collapseAll,
+    expandAll,
+    hydrated,
+  } as const;
 }

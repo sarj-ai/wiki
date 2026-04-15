@@ -13,17 +13,22 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
   if (!query.trim()) return <>{text}</>;
 
   const words = query.trim().toLowerCase().split(/\s+/);
-  const regex = new RegExp(`(${words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "gi");
+  const regex = new RegExp(
+    `(${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
+    "gi",
+  );
   const parts = text.split(regex);
 
   return (
     <>
       {parts.map((part, i) =>
-        words.some(w => part.toLowerCase() === w) ? (
-          <mark key={i} className="cmd-highlight">{part}</mark>
+        words.some((w) => part.toLowerCase() === w) ? (
+          <mark key={i} className="cmd-highlight">
+            {part}
+          </mark>
         ) : (
           <span key={i}>{part}</span>
-        )
+        ),
       )}
     </>
   );
@@ -64,37 +69,34 @@ export function CommandPalette() {
   }, [open]);
 
   // Debounced search
-  const doSearch = useCallback(
-    (value: string) => {
-      setQuery(value);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+  const doSearch = useCallback((value: string) => {
+    setQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
 
-      if (!value.trim()) {
+    if (!value.trim()) {
+      setResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    const now = Date.now();
+    const timeSinceLast = now - lastSearchRef.current;
+    // Fire immediately if it's been >300ms since last search, otherwise debounce
+    const delay = timeSinceLast > 300 ? 0 : 100;
+
+    setIsSearching(true);
+    debounceRef.current = setTimeout(async () => {
+      lastSearchRef.current = Date.now();
+      try {
+        const res = await api.search(value.trim());
+        setResults(res);
+      } catch {
         setResults([]);
+      } finally {
         setIsSearching(false);
-        return;
       }
-
-      const now = Date.now();
-      const timeSinceLast = now - lastSearchRef.current;
-      // Fire immediately if it's been >300ms since last search, otherwise debounce
-      const delay = timeSinceLast > 300 ? 0 : 100;
-
-      setIsSearching(true);
-      debounceRef.current = setTimeout(async () => {
-        lastSearchRef.current = Date.now();
-        try {
-          const res = await api.search(value.trim());
-          setResults(res);
-        } catch {
-          setResults([]);
-        } finally {
-          setIsSearching(false);
-        }
-      }, delay);
-    },
-    [],
-  );
+    }, delay);
+  }, []);
 
   function handleSelect(id: string) {
     setOpen(false);
@@ -116,116 +118,114 @@ export function CommandPalette() {
   return (
     <>
       {/* Trigger button for sidebar */}
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="search-trigger"
-      >
-        <Search className="size-4 text-muted-foreground" />
-        <span className="text-sm text-muted-foreground">Search...</span>
+      <button type="button" onClick={() => setOpen(true)} className="search-trigger">
+        <Search className="text-muted-foreground size-4" />
+        <span className="text-muted-foreground text-sm">Search...</span>
         <kbd className="search-trigger-kbd">
           <span className="text-xs">&#8984;</span>K
         </kbd>
       </button>
 
       {/* Portal the overlay + panel to body */}
-      {open && typeof document !== "undefined" && createPortal(
-        <div className="cmd-overlay" onClick={handleBackdropClick}>
-          <div ref={panelRef} className="cmd-dialog">
-            <Command shouldFilter={false} label="Search documents">
-              <div className="cmd-input-wrapper">
-                <Search className="size-4 text-muted-foreground shrink-0" />
-                <Command.Input
-                  value={query}
-                  onValueChange={doSearch}
-                  placeholder="Search documents..."
-                  className="cmd-input"
-                  autoFocus
-                />
-                {query && (
-                  <button
-                    type="button"
-                    onClick={() => doSearch("")}
-                    className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded bg-muted"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="cmd-overlay" onClick={handleBackdropClick}>
+            <div ref={panelRef} className="cmd-dialog">
+              <Command shouldFilter={false} label="Search documents">
+                <div className="cmd-input-wrapper">
+                  <Search className="text-muted-foreground size-4 shrink-0" />
+                  <Command.Input
+                    value={query}
+                    onValueChange={doSearch}
+                    placeholder="Search documents..."
+                    className="cmd-input"
+                    autoFocus
+                  />
+                  {query && (
+                    <button
+                      type="button"
+                      onClick={() => doSearch("")}
+                      className="text-muted-foreground hover:text-foreground bg-muted rounded px-1.5 py-0.5 text-xs"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
 
-              <Command.List className="cmd-list">
-                {isSearching && (
-                  <Command.Loading className="cmd-loading">
-                    <div className="cmd-loading-dots">
-                      <span />
-                      <span />
-                      <span />
-                    </div>
-                  </Command.Loading>
-                )}
+                <Command.List className="cmd-list">
+                  {isSearching && (
+                    <Command.Loading className="cmd-loading">
+                      <div className="cmd-loading-dots">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                    </Command.Loading>
+                  )}
 
-                {!isSearching && query.trim() && results.length === 0 && (
-                  <Command.Empty className="cmd-empty">
-                    No documents found for &ldquo;{query}&rdquo;
-                  </Command.Empty>
-                )}
+                  {!isSearching && query.trim() && results.length === 0 && (
+                    <Command.Empty className="cmd-empty">
+                      No documents found for &ldquo;{query}&rdquo;
+                    </Command.Empty>
+                  )}
 
-                {results.length > 0 && (
-                  <Command.Group>
-                    {results.map((result) => {
-                      const wsName = getWorkspaceName(result.workspaceId);
-                      return (
-                        <Command.Item
-                          key={result.id}
-                          value={result.id}
-                          onSelect={() => handleSelect(result.id)}
-                          className="cmd-item"
-                        >
-                          <span className="cmd-item-icon">
-                            {result.icon || <FileText className="size-4 text-muted-foreground" />}
-                          </span>
-                          <div className="cmd-item-content">
-                            <span className="cmd-item-title">
-                              <HighlightMatch text={result.title} query={query} />
+                  {results.length > 0 && (
+                    <Command.Group>
+                      {results.map((result) => {
+                        const wsName = getWorkspaceName(result.workspaceId);
+                        return (
+                          <Command.Item
+                            key={result.id}
+                            value={result.id}
+                            onSelect={() => handleSelect(result.id)}
+                            className="cmd-item"
+                          >
+                            <span className="cmd-item-icon">
+                              {result.icon || <FileText className="text-muted-foreground size-4" />}
                             </span>
-                            {result.snippet && (
-                              <span className="cmd-item-snippet">
-                                <HighlightMatch text={result.snippet} query={query} />
+                            <div className="cmd-item-content">
+                              <span className="cmd-item-title">
+                                <HighlightMatch text={result.title} query={query} />
                               </span>
-                            )}
-                            <span className="cmd-item-meta">
-                              {result.isPrivate ? (
-                                <>
-                                  <NotebookPen className="size-3" />
-                                  <span>My Drafts</span>
-                                </>
-                              ) : wsName ? (
-                                <>
-                                  <Users className="size-3" />
-                                  <span>{wsName}</span>
-                                </>
-                              ) : null}
-                            </span>
-                          </div>
-                        </Command.Item>
-                      );
-                    })}
-                  </Command.Group>
-                )}
+                              {result.snippet && (
+                                <span className="cmd-item-snippet">
+                                  <HighlightMatch text={result.snippet} query={query} />
+                                </span>
+                              )}
+                              <span className="cmd-item-meta">
+                                {result.isPrivate ? (
+                                  <>
+                                    <NotebookPen className="size-3" />
+                                    <span>My Drafts</span>
+                                  </>
+                                ) : wsName ? (
+                                  <>
+                                    <Users className="size-3" />
+                                    <span>{wsName}</span>
+                                  </>
+                                ) : null}
+                              </span>
+                            </div>
+                          </Command.Item>
+                        );
+                      })}
+                    </Command.Group>
+                  )}
 
-                {!query.trim() && (
-                  <div className="cmd-hint">
-                    <p className="text-sm text-muted-foreground">
-                      Type to search across all your documents
-                    </p>
-                  </div>
-                )}
-              </Command.List>
-            </Command>
-          </div>
-        </div>,
-        document.body,
-      )}
+                  {!query.trim() && (
+                    <div className="cmd-hint">
+                      <p className="text-muted-foreground text-sm">
+                        Type to search across all your documents
+                      </p>
+                    </div>
+                  )}
+                </Command.List>
+              </Command>
+            </div>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

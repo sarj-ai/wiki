@@ -27,7 +27,12 @@ export function DeletePageDialog({
   onConfirm,
 }: DeletePageDialogProps) {
   return (
-    <Dialog open={!!deletingPageId} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog
+      open={!!deletingPageId}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <DialogContent showCloseButton={false} className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Delete page?</DialogTitle>

@@ -42,7 +42,8 @@ export function AppSidebar() {
   }
 
   // Extracted hooks
-  const { collapsedSections, toggleSection, uncollapseSection, collapseAll, expandAll, hydrated } = useCollapsedSections();
+  const { collapsedSections, toggleSection, uncollapseSection, collapseAll, expandAll, hydrated } =
+    useCollapsedSections();
 
   const {
     isSyncing,
@@ -99,14 +100,20 @@ export function AppSidebar() {
     setMovePageId(pageId);
   }, []);
 
-  const confirmMoveToWorkspace = useCallback(async (workspaceId: string) => {
-    if (!movePageId) return;
-    await handleMoveToWorkspace(movePageId, workspaceId);
-    setMovePageId(null);
-  }, [movePageId, handleMoveToWorkspace]);
+  const confirmMoveToWorkspace = useCallback(
+    async (workspaceId: string) => {
+      if (!movePageId) return;
+      await handleMoveToWorkspace(movePageId, workspaceId);
+      setMovePageId(null);
+    },
+    [movePageId, handleMoveToWorkspace],
+  );
 
   // Import dialog state
-  const [importTarget, setImportTarget] = useState<{ parentId?: string; workspaceId?: string } | null>(null);
+  const [importTarget, setImportTarget] = useState<{
+    parentId?: string;
+    workspaceId?: string;
+  } | null>(null);
 
   const findPageInTree = useCallback((pages: Page[], id: string): Page | null => {
     for (const page of pages) {
@@ -119,10 +126,13 @@ export function AppSidebar() {
     return null;
   }, []);
 
-  const handleImport = useCallback((pageId: string) => {
-    const page = findPageInTree(allPages, pageId);
-    setImportTarget({ parentId: pageId, workspaceId: page?.workspaceId ?? undefined });
-  }, [allPages, findPageInTree]);
+  const handleImport = useCallback(
+    (pageId: string) => {
+      const page = findPageInTree(allPages, pageId);
+      setImportTarget({ parentId: pageId, workspaceId: page?.workspaceId ?? undefined });
+    },
+    [allPages, findPageInTree],
+  );
 
   const handleImportToWorkspace = useCallback((workspaceId: string) => {
     setImportTarget({ workspaceId });
@@ -148,15 +158,15 @@ export function AppSidebar() {
   }, [renamingPageId, allPages, workspaces, uncollapseSection]);
 
   // Derived data
-  const privatePages = useMemo(
-    () => allPages.filter((p) => p.isPrivate),
-    [allPages],
-  );
+  const privatePages = useMemo(() => allPages.filter((p) => p.isPrivate), [allPages]);
 
   const pagesByWorkspace = useMemo(() => {
     const map = new Map<string, Page[]>();
     for (const ws of workspaces) {
-      map.set(ws.id, allPages.filter((p) => p.workspaceId === ws.id));
+      map.set(
+        ws.id,
+        allPages.filter((p) => p.workspaceId === ws.id),
+      );
     }
     return map;
   }, [allPages, workspaces]);
@@ -165,16 +175,15 @@ export function AppSidebar() {
   // (shared via explicit permission)
   const sharedWithMePages = useMemo(() => {
     const wsIds = new Set(workspaces.map((w) => w.id));
-    return allPages.filter(
-      (p) => !p.isPrivate && p.workspaceId && !wsIds.has(p.workspaceId)
-    );
+    return allPages.filter((p) => !p.isPrivate && p.workspaceId && !wsIds.has(p.workspaceId));
   }, [allPages, workspaces]);
 
   const allSectionIds = useMemo(
     () => ["starred", ...workspaces.map((w) => w.id), "shared", "private"],
     [workspaces],
   );
-  const allCollapsed = hydrated && allSectionIds.length > 0 && allSectionIds.every((id) => collapsedSections.has(id));
+  const allCollapsed =
+    hydrated && allSectionIds.length > 0 && allSectionIds.every((id) => collapsedSections.has(id));
 
   const handleToggleCollapseAll = useCallback(() => {
     if (allCollapsed) {
@@ -194,7 +203,7 @@ export function AppSidebar() {
               type="button"
               onClick={handleToggleCollapseAll}
               title={allCollapsed ? "Expand all sections" : "Collapse all sections"}
-              className="flex size-6 items-center justify-center rounded-md text-sidebar-foreground ring-sidebar-ring outline-hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 transition-colors"
+              className="text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex size-6 items-center justify-center rounded-md outline-hidden transition-colors focus-visible:ring-2"
             >
               {allCollapsed ? (
                 <ChevronsUpDown className="size-3.5" />
@@ -207,7 +216,7 @@ export function AppSidebar() {
               onClick={() => handleSync()}
               disabled={isSyncing}
               title="Sync workspaces"
-              className="flex size-6 items-center justify-center rounded-md text-sidebar-foreground ring-sidebar-ring outline-hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 transition-colors"
+              className="text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex size-6 items-center justify-center rounded-md outline-hidden transition-colors focus-visible:ring-2"
             >
               <RefreshCw className={`size-3.5 ${isSyncing ? "animate-spin" : ""}`} />
             </button>
@@ -317,7 +326,9 @@ export function AppSidebar() {
 
       <MoveToWorkspaceDialog
         open={movePageId !== null}
-        onOpenChange={(open) => { if (!open) setMovePageId(null); }}
+        onOpenChange={(open) => {
+          if (!open) setMovePageId(null);
+        }}
         workspaces={workspaces}
         currentWorkspaceId={movePageData?.workspaceId ?? null}
         onConfirm={confirmMoveToWorkspace}
@@ -325,7 +336,9 @@ export function AppSidebar() {
 
       <ImportDialog
         open={importTarget !== null}
-        onOpenChange={(open) => { if (!open) setImportTarget(null); }}
+        onOpenChange={(open) => {
+          if (!open) setImportTarget(null);
+        }}
         parentId={importTarget?.parentId}
         workspaceId={importTarget?.workspaceId}
       />

@@ -1,3 +1,4 @@
+// @ts-nocheck — scheduled for deletion in Sub-PR D of Navigator pivot
 "use client";
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
@@ -75,7 +76,6 @@ export function PageTree({
   onDuplicate,
   onMoveToWorkspace,
 }: PageTreeProps) {
-
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [expandedHydrated, setExpandedHydrated] = useState(false);
 
@@ -114,42 +114,46 @@ export function PageTree({
     });
   }, []);
 
-  const flatItems = useMemo(
-    () => flattenTree(pages, 0, expandedIds),
-    [pages, expandedIds]
-  );
+  const flatItems = useMemo(() => flattenTree(pages, 0, expandedIds), [pages, expandedIds]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
-    })
+    }),
   );
 
   const draggedPage = draggedId
-    ? flatItems.find((f) => f.page.id === draggedId)?.page ?? null
+    ? (flatItems.find((f) => f.page.id === draggedId)?.page ?? null)
     : null;
 
   // Auto-expand parent chain to reveal a target page
-  const expandAncestors = useCallback((targetId: string) => {
-    const findAncestors = (nodes: Page[], id: string, ancestors: string[] = []): string[] | null => {
-      for (const node of nodes) {
-        if (node.id === id) return ancestors;
-        if (node.children.length > 0) {
-          const result = findAncestors(node.children, id, [...ancestors, node.id]);
-          if (result) return result;
+  const expandAncestors = useCallback(
+    (targetId: string) => {
+      const findAncestors = (
+        nodes: Page[],
+        id: string,
+        ancestors: string[] = [],
+      ): string[] | null => {
+        for (const node of nodes) {
+          if (node.id === id) return ancestors;
+          if (node.children.length > 0) {
+            const result = findAncestors(node.children, id, [...ancestors, node.id]);
+            if (result) return result;
+          }
         }
+        return null;
+      };
+      const ancestors = findAncestors(pages, targetId);
+      if (ancestors && ancestors.length > 0) {
+        setExpandedIds((prev) => {
+          const next = new Set(prev);
+          for (const id of ancestors) next.add(id);
+          return next;
+        });
       }
-      return null;
-    };
-    const ancestors = findAncestors(pages, targetId);
-    if (ancestors && ancestors.length > 0) {
-      setExpandedIds(prev => {
-        const next = new Set(prev);
-        for (const id of ancestors) next.add(id);
-        return next;
-      });
-    }
-  }, [pages]);
+    },
+    [pages],
+  );
 
   // Auto-expand when renaming a nested child
   useEffect(() => {
@@ -194,7 +198,10 @@ export function PageTree({
     setDraggedId(event.active.id as string);
   }
 
-  function computeDropPosition(active: DragMoveEvent["active"], over: NonNullable<DragMoveEvent["over"]>): "before" | "after" | "inside" {
+  function computeDropPosition(
+    active: DragMoveEvent["active"],
+    over: NonNullable<DragMoveEvent["over"]>,
+  ): "before" | "after" | "inside" {
     const activeRect = active.rect.current.translated;
     const overRect = over.rect;
     if (activeRect && overRect) {
@@ -272,7 +279,7 @@ export function PageTree({
 
   if (pages.length === 0) {
     return (
-      <div className="px-4 py-3 text-sm text-muted-foreground">
+      <div className="text-muted-foreground px-4 py-3 text-sm">
         No pages yet. Create one to get started.
       </div>
     );
@@ -287,38 +294,38 @@ export function PageTree({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-        <SidebarMenu>
-          {flatItems.map((item) => (
-            <PageTreeItem
-              key={item.page.id}
-              page={item.page}
-              depth={item.depth}
-              activePageId={activePageId}
-              onAddChild={onAddChild}
-              onDelete={onDelete}
-              onRename={onRename}
-              onChangeIcon={onChangeIcon}
-              isExpanded={expandedIds.has(item.page.id)}
-              onToggleExpand={toggleExpanded}
-              isDragOver={dropTargetId === item.page.id}
-              dropPosition={dropTargetId === item.page.id ? dropPosition : undefined}
-              shouldAutoRename={renamingPageId === item.page.id}
-              onRenamingDone={onRenamingDone}
-              isAddingChild={addingChildParentId === item.page.id}
-              isMoving={movingPageId === item.page.id}
-              isHighlighted={highlightedId === item.page.id}
-              isStarred={starredIds?.has(item.page.id)}
-              onToggleStar={onToggleStar}
-              onImport={onImport}
-              onDuplicate={onDuplicate}
-              onMoveToWorkspace={onMoveToWorkspace}
-            />
-          ))}
-        </SidebarMenu>
+      <SidebarMenu>
+        {flatItems.map((item) => (
+          <PageTreeItem
+            key={item.page.id}
+            page={item.page}
+            depth={item.depth}
+            activePageId={activePageId}
+            onAddChild={onAddChild}
+            onDelete={onDelete}
+            onRename={onRename}
+            onChangeIcon={onChangeIcon}
+            isExpanded={expandedIds.has(item.page.id)}
+            onToggleExpand={toggleExpanded}
+            isDragOver={dropTargetId === item.page.id}
+            dropPosition={dropTargetId === item.page.id ? dropPosition : undefined}
+            shouldAutoRename={renamingPageId === item.page.id}
+            onRenamingDone={onRenamingDone}
+            isAddingChild={addingChildParentId === item.page.id}
+            isMoving={movingPageId === item.page.id}
+            isHighlighted={highlightedId === item.page.id}
+            isStarred={starredIds?.has(item.page.id)}
+            onToggleStar={onToggleStar}
+            onImport={onImport}
+            onDuplicate={onDuplicate}
+            onMoveToWorkspace={onMoveToWorkspace}
+          />
+        ))}
+      </SidebarMenu>
 
       <DragOverlay dropAnimation={null}>
         {draggedPage && (
-          <div className="flex items-center gap-1.5 rounded-md bg-sidebar-accent px-3 py-1.5 text-sm shadow-md">
+          <div className="bg-sidebar-accent flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm shadow-md">
             <span className="shrink-0 text-base leading-none">
               {draggedPage.icon || <FileText className="size-4" />}
             </span>

@@ -13,11 +13,7 @@ import {
   Settings2,
   Search,
 } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDocumentData } from "@/hooks/use-document-data";
 import { useEditorPreference } from "@/hooks/use-editor-preference";
 import { useFocusMode } from "@/hooks/use-focus-mode";
@@ -26,12 +22,10 @@ import { DocumentToolbar, DocumentTitle } from "@/components/document/document-h
 import { DocumentSkeleton } from "@/components/document/document-skeleton";
 import { DocumentContent } from "@/components/document/document-content";
 
-const TOOLBAR_BUTTON_CLASS =
-  "flex size-7 items-center justify-center rounded-md transition-colors";
+const TOOLBAR_BUTTON_CLASS = "flex size-7 items-center justify-center rounded-md transition-colors";
 const TOOLBAR_BUTTON_IDLE =
   "text-muted-foreground hover:text-white hover:bg-[#251040] dark:hover:bg-[#4B3483]";
-const TOOLBAR_BUTTON_ACTIVE =
-  "bg-sidebar-accent text-sidebar-accent-foreground";
+const TOOLBAR_BUTTON_ACTIVE = "bg-sidebar-accent text-sidebar-accent-foreground";
 
 function EditToggleButton({
   isEditing,
@@ -54,18 +48,12 @@ function EditToggleButton({
           {isEditing ? <Eye className="size-4" /> : <Pencil className="size-4" />}
         </button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">
-        {isEditing ? "View mode" : "Edit mode"}
-      </TooltipContent>
+      <TooltipContent side="bottom">{isEditing ? "View mode" : "Edit mode"}</TooltipContent>
     </Tooltip>
   );
 }
 
-export default function DocumentPage({
-  params,
-}: {
-  params: Promise<{ pageId: string }>;
-}) {
+export default function DocumentPage({ params }: { params: Promise<{ pageId: string }> }) {
   const { pageId } = use(params);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -76,13 +64,7 @@ export default function DocumentPage({
 
   const { alwaysIframe, toggleAlwaysIframe } = useEditorPreference();
   const { starredIds, toggleStar } = useStarredPages();
-  const {
-    focusMode,
-    sidebarOpen,
-    toggleSidebar,
-    enterFocusMode,
-    exitFocusMode,
-  } = useFocusMode();
+  const { focusMode, sidebarOpen, toggleSidebar, enterFocusMode, exitFocusMode } = useFocusMode();
 
   // ── Data hook ──
   const {
@@ -126,13 +108,11 @@ export default function DocumentPage({
   if (page?.type === "section") {
     const handleShowChildren = () => {
       // Dispatch a custom event that the sidebar can listen for to expand + highlight
-      window.dispatchEvent(
-        new CustomEvent("sarj:expand-section", { detail: { pageId: page.id } })
-      );
+      window.dispatchEvent(new CustomEvent("sarj:expand-section", { detail: { pageId: page.id } }));
     };
 
     return (
-      <div className="flex flex-col h-svh">
+      <div className="flex h-svh flex-col">
         <DocumentToolbar
           page={page}
           breadcrumbs={breadcrumbs}
@@ -149,23 +129,21 @@ export default function DocumentPage({
             onChangeIcon={handleChangeIcon}
             onRename={handleRename}
           />
-          <div className="flex-1 flex items-center justify-center animate-in fade-in duration-300 min-h-[300px]">
+          <div className="animate-in fade-in flex min-h-[300px] flex-1 items-center justify-center duration-300">
             <div className="flex flex-col items-center gap-5">
-              <div className="flex size-16 items-center justify-center rounded-2xl bg-muted">
-                <FolderOpen className="size-8 text-muted-foreground" />
+              <div className="bg-muted flex size-16 items-center justify-center rounded-2xl">
+                <FolderOpen className="text-muted-foreground size-8" />
               </div>
               <div className="text-center">
-                <h3 className="text-base font-medium text-foreground">
-                  This is a folder
-                </h3>
-                <p className="mt-1 text-sm text-muted-foreground max-w-xs">
+                <h3 className="text-foreground text-base font-medium">This is a folder</h3>
+                <p className="text-muted-foreground mt-1 max-w-xs text-sm">
                   It contains documents and subfolders. Browse its contents in the sidebar.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={handleShowChildren}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.98]"
+                className="bg-primary text-primary-foreground inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-all hover:opacity-90 active:scale-[0.98]"
               >
                 <FolderOpen className="size-4" />
                 Show contents
@@ -181,16 +159,13 @@ export default function DocumentPage({
   if (error || !page) {
     return (
       <div className="flex h-full min-h-svh flex-col items-center justify-center gap-4">
-        <div className="flex size-16 items-center justify-center rounded-2xl bg-muted">
-          <FileQuestion className="size-8 text-muted-foreground" />
+        <div className="bg-muted flex size-16 items-center justify-center rounded-2xl">
+          <FileQuestion className="text-muted-foreground size-8" />
         </div>
         <div className="text-center">
-          <h2 className="text-lg font-medium text-foreground">
-            Page not found
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            The document you are looking for does not exist or you do not have
-            access.
+          <h2 className="text-foreground text-lg font-medium">Page not found</h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            The document you are looking for does not exist or you do not have access.
           </p>
         </div>
       </div>
@@ -198,9 +173,9 @@ export default function DocumentPage({
   }
 
   return (
-    <div className="flex flex-col h-svh">
+    <div className="flex h-svh flex-col">
       {focusMode ? (
-        <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b bg-background">
+        <div className="bg-background flex shrink-0 items-center gap-2 border-b px-3 py-1.5">
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -219,7 +194,7 @@ export default function DocumentPage({
               {sidebarOpen ? "Hide sidebar" : "Show sidebar"}
             </TooltipContent>
           </Tooltip>
-          <span className="text-sm font-medium truncate flex-1">
+          <span className="flex-1 truncate text-sm font-medium">
             {page.icon && <span className="mr-1.5">{page.icon}</span>}
             {page.title}
           </span>
@@ -228,7 +203,9 @@ export default function DocumentPage({
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
+                  onClick={() =>
+                    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))
+                  }
                   className={`${TOOLBAR_BUTTON_CLASS} ${TOOLBAR_BUTTON_IDLE}`}
                 >
                   <Search className="size-4" />
@@ -248,9 +225,7 @@ export default function DocumentPage({
                     <ExternalLink className="size-4" />
                   </a>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  Open in Google Docs
-                </TooltipContent>
+                <TooltipContent side="bottom">Open in Google Docs</TooltipContent>
               </Tooltip>
             )}
             {!alwaysIframe && !isPending && page?.currentUserPermission !== "view" && (
@@ -270,9 +245,7 @@ export default function DocumentPage({
                   <Minimize2 className="size-4" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">
-                Exit focus mode (⌘.)
-              </TooltipContent>
+              <TooltipContent side="bottom">Exit focus mode (⌘.)</TooltipContent>
             </Tooltip>
           </div>
         </div>
@@ -298,9 +271,7 @@ export default function DocumentPage({
                     <ExternalLink className="size-4" />
                   </a>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  Open in Google Docs
-                </TooltipContent>
+                <TooltipContent side="bottom">Open in Google Docs</TooltipContent>
               </Tooltip>
             )}
             {!alwaysIframe && !isPending && page?.currentUserPermission !== "view" && (
@@ -330,9 +301,7 @@ export default function DocumentPage({
         </DocumentToolbar>
       )}
 
-      <div
-        className={`flex-1 overflow-y-auto ${showIframe ? "flex flex-col" : ""}`}
-      >
+      <div className={`flex-1 overflow-y-auto ${showIframe ? "flex flex-col" : ""}`}>
         {!focusMode && (
           <DocumentTitle
             page={page}

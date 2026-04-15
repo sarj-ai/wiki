@@ -28,12 +28,7 @@ interface ShareDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function ShareDialog({
-  page,
-  workspace,
-  open,
-  onOpenChange,
-}: ShareDialogProps) {
+export function ShareDialog({ page, workspace, open, onOpenChange }: ShareDialogProps) {
   const { user } = useAuth();
   const { data: workspaces = [] } = useWorkspaces();
   const { start, done } = useLoading();
@@ -60,9 +55,7 @@ export function ShareDialog({
   async function handleChangePermission(permId: string, permission: Permission) {
     const prev = permissions;
     // Optimistic update
-    setPermissions((perms) =>
-      perms.map((p) => (p.id === permId ? { ...p, permission } : p))
-    );
+    setPermissions((perms) => perms.map((p) => (p.id === permId ? { ...p, permission } : p)));
     try {
       await api.updatePermission(permId, permission);
     } catch {
@@ -85,7 +78,7 @@ export function ShareDialog({
   async function handleCopyLink() {
     try {
       await navigator.clipboard.writeText(
-        `${window.location.origin}/docs/${encodeURIComponent(page.id)}`
+        `${window.location.origin}/docs/${encodeURIComponent(page.id)}`,
       );
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -94,18 +87,17 @@ export function ShareDialog({
     }
   }
 
-  const visibilityLabel = !page.isPrivate && page.workspaceId
-    ? `Shared with ${workspaces.find((w) => w.id === page.workspaceId)?.name ?? "a workspace"}`
-    : "My Drafts - only you and invited people";
+  const visibilityLabel =
+    !page.isPrivate && page.workspaceId
+      ? `Shared with ${workspaces.find((w) => w.id === page.workspaceId)?.name ?? "a workspace"}`
+      : "My Drafts - only you and invited people";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px] gap-0 p-0">
+      <DialogContent className="gap-0 p-0 sm:max-w-[520px]">
         {/* Header */}
-        <DialogHeader className="pl-6 pr-12 pt-6 pb-4">
-          <DialogTitle className="break-words">
-            Share &ldquo;{page.title}&rdquo;
-          </DialogTitle>
+        <DialogHeader className="pt-6 pr-12 pb-4 pl-6">
+          <DialogTitle className="break-words">Share &ldquo;{page.title}&rdquo;</DialogTitle>
           <DialogDescription>{visibilityLabel}</DialogDescription>
         </DialogHeader>
 
@@ -141,9 +133,7 @@ export function ShareDialog({
                 : null
             }
             ownerFallbackWorkspace={
-              page.workspaceId
-                ? workspaces.find((w) => w.id === page.workspaceId) ?? null
-                : null
+              page.workspaceId ? (workspaces.find((w) => w.id === page.workspaceId) ?? null) : null
             }
             workspaces={workspaces}
             isLoading={isLoadingPermissions}
@@ -157,23 +147,14 @@ export function ShareDialog({
         {/* Visibility toggle */}
         {workspaces.length > 0 && (
           <>
-            <WorkspaceShare
-              page={page}
-              workspaces={workspaces}
-              onOpenChange={onOpenChange}
-            />
+            <WorkspaceShare page={page} workspaces={workspaces} onOpenChange={onOpenChange} />
             <Separator />
           </>
         )}
 
         {/* Footer */}
         <DialogFooter className="px-6 py-4 sm:justify-between">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleCopyLink}
-            className="gap-2"
-          >
+          <Button variant="outline" size="sm" onClick={handleCopyLink} className="gap-2">
             <Link2 className="size-4" />
             {copied ? "Copied!" : "Copy link"}
           </Button>

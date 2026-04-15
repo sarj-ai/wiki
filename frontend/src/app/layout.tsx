@@ -20,9 +20,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}
-      >
+      <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
@@ -31,9 +29,7 @@ export default function RootLayout({
         >
           <QueryProvider>
             <AuthProvider>
-              <LoadingProvider>
-                {children}
-              </LoadingProvider>
+              <LoadingProvider>{children}</LoadingProvider>
             </AuthProvider>
           </QueryProvider>
           <Toaster position="bottom-right" />

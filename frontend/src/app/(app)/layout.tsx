@@ -14,9 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <AppSidebar />
       </ErrorBoundary>
       <main className="flex-1 overflow-auto">
-        <ErrorBoundary>
-          {children}
-        </ErrorBoundary>
+        <ErrorBoundary>{children}</ErrorBoundary>
       </main>
     </SidebarProvider>
   );

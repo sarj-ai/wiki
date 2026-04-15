@@ -1,8 +1,20 @@
 import type { DocTab } from "@/types";
 
-export function TabDivider({ title, id, depth = 0 }: { title: string; id: string; depth?: number }) {
+export function TabDivider({
+  title,
+  id,
+  depth = 0,
+}: {
+  title: string;
+  id: string;
+  depth?: number;
+}) {
   return (
-    <div id={id} className={`doc-tab-divider ${depth > 0 ? "doc-tab-divider-sub" : ""}`} data-tab-divider>
+    <div
+      id={id}
+      className={`doc-tab-divider ${depth > 0 ? "doc-tab-divider-sub" : ""}`}
+      data-tab-divider
+    >
       <div className="doc-tab-divider-line" />
       <span className="doc-tab-divider-label">{title}</span>
       <div className="doc-tab-divider-line" />
@@ -27,7 +39,11 @@ export function TabScrollSpy({
         type="button"
         onClick={() => onClickTab(`doc-tab-${i}`)}
         className={`doc-tab-nav-item ${i === activeIndex ? "doc-tab-nav-active" : ""}`}
-        style={typeof depth === "number" && depth > 0 ? { paddingLeft: `${0.75 + depth * 1}rem` } : undefined}
+        style={
+          typeof depth === "number" && depth > 0
+            ? { paddingLeft: `${0.75 + depth * 1}rem` }
+            : undefined
+        }
       >
         {tab.title}
       </button>

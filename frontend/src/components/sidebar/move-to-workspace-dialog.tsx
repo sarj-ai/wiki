@@ -67,7 +67,8 @@ export function MoveToWorkspaceDialog({
           <SelectContent>
             {availableWorkspaces.map((ws) => (
               <SelectItem key={ws.id} value={ws.id}>
-                {ws.icon ? `${ws.icon} ` : ""}{ws.name}
+                {ws.icon ? `${ws.icon} ` : ""}
+                {ws.name}
               </SelectItem>
             ))}
           </SelectContent>

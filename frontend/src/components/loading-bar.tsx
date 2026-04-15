@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useRef,
-  useState,
-} from "react";
+import { createContext, useCallback, useContext, useRef, useState } from "react";
 
 interface LoadingContextType {
   start: () => void;
@@ -50,8 +44,8 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
 
 function LoadingBar() {
   return (
-    <div className="fixed top-0 left-0 right-0 z-[9999] h-0.5">
-      <div className="h-full bg-primary animate-loading-bar" />
+    <div className="fixed top-0 right-0 left-0 z-[9999] h-0.5">
+      <div className="bg-primary animate-loading-bar h-full" />
     </div>
   );
 }

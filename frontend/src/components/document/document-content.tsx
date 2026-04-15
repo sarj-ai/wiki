@@ -60,7 +60,9 @@ export function DocumentContent({
 
   if (showIframe) {
     return (
-      <div className={`flex flex-1 animate-in fade-in duration-200 ${focusMode ? "" : "px-6 pb-6"}`}>
+      <div
+        className={`animate-in fade-in flex flex-1 duration-200 ${focusMode ? "" : "px-6 pb-6"}`}
+      >
         <DocumentIframe googleDriveId={googleDriveId} />
       </div>
     );
@@ -72,7 +74,7 @@ export function DocumentContent({
 
   if (content?.tabs && !isDocEmpty(content.tabs)) {
     return (
-      <div className="px-6 pb-6 animate-in fade-in duration-200">
+      <div className="animate-in fade-in px-6 pb-6 duration-200">
         <div className={`mx-auto py-4 ${focusMode ? "max-w-6xl" : "max-w-4xl"}`}>
           <DocViewer tabs={content.tabs} />
         </div>
@@ -82,31 +84,25 @@ export function DocumentContent({
 
   if (content?.tabs !== undefined) {
     return (
-      <div className="flex-1 flex items-center justify-center animate-in fade-in duration-300">
+      <div className="animate-in fade-in flex flex-1 items-center justify-center duration-300">
         <div className="flex flex-col items-center gap-5">
           <div className="empty-doc-icon">
-            <FileText className="size-8 text-muted-foreground" />
+            <FileText className="text-muted-foreground size-8" />
           </div>
           <div className="text-center">
-            <h3 className="text-base font-medium text-foreground">
-              This document is empty
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <h3 className="text-foreground text-base font-medium">This document is empty</h3>
+            <p className="text-muted-foreground mt-1 text-sm">
               Start writing by switching to edit mode
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onStartEditing}
-            className="empty-doc-edit-btn"
-          >
+          <button type="button" onClick={onStartEditing} className="empty-doc-edit-btn">
             <Pencil className="size-4" />
             Open editor
           </button>
           <div className="empty-doc-hint">
             <span className="empty-doc-hint-arrow" />
-            <span className="text-xs text-muted-foreground">
-              or click <Pencil className="inline size-3 mx-0.5" /> in the toolbar above
+            <span className="text-muted-foreground text-xs">
+              or click <Pencil className="mx-0.5 inline size-3" /> in the toolbar above
             </span>
           </div>
         </div>
@@ -115,15 +111,13 @@ export function DocumentContent({
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center">
+    <div className="flex flex-1 items-center justify-center">
       <div className="flex flex-col items-center gap-3">
-        <p className="text-sm text-muted-foreground">
-          Unable to load document content.
-        </p>
+        <p className="text-muted-foreground text-sm">Unable to load document content.</p>
         <button
           type="button"
           onClick={onRefetchContent}
-          className="flex items-center gap-2 text-sm text-primary hover:underline"
+          className="text-primary flex items-center gap-2 text-sm hover:underline"
         >
           <RefreshCw className="size-4" />
           Retry

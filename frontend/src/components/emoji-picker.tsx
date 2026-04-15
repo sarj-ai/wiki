@@ -2,11 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { SmilePlus } from "lucide-react";
 
@@ -43,15 +39,15 @@ export function EmojiPicker({
         {children ?? (
           <button
             type="button"
-            className="flex size-8 items-center justify-center rounded-md text-lg hover:bg-accent transition-colors"
+            className="hover:bg-accent flex size-8 items-center justify-center rounded-md text-lg transition-colors"
             title="Pick icon"
           >
-            {currentEmoji || <SmilePlus className="size-4 text-muted-foreground" />}
+            {currentEmoji || <SmilePlus className="text-muted-foreground size-4" />}
           </button>
         )}
       </PopoverTrigger>
       <PopoverContent
-        className="w-auto p-0 border-none shadow-lg"
+        className="w-auto border-none p-0 shadow-lg"
         side="right"
         align="start"
         sideOffset={8}
@@ -73,7 +69,7 @@ export function EmojiPicker({
             <button
               type="button"
               onClick={onRemove}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="text-muted-foreground hover:text-foreground text-xs transition-colors"
             >
               Remove icon
             </button>
@@ -104,7 +100,7 @@ export function EmojiPickerDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-auto max-w-none p-0 border-none shadow-lg gap-0"
+        className="w-auto max-w-none gap-0 border-none p-0 shadow-lg"
         showCloseButton={false}
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
@@ -125,7 +121,7 @@ export function EmojiPickerDialog({
             <button
               type="button"
               onClick={onRemove}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="text-muted-foreground hover:text-foreground text-xs transition-colors"
             >
               Remove icon
             </button>

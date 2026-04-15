@@ -2,13 +2,7 @@ import type { TextRun, BlockStyle } from "@/types";
 import { RunRenderer } from "./run-renderer";
 import { buildBlockCss } from "./utils";
 
-export function ParagraphBlock({
-  runs,
-  style,
-}: {
-  runs: TextRun[];
-  style?: BlockStyle;
-}) {
+export function ParagraphBlock({ runs, style }: { runs: TextRun[]; style?: BlockStyle }) {
   if (!runs || runs.length === 0) {
     return <div className="h-3" aria-hidden />;
   }

@@ -9,11 +9,7 @@ import {
   type SensorDescriptor,
   type SensorOptions,
 } from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  useSortable,
-} from "@dnd-kit/sortable";
+import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
   SidebarGroup,
@@ -35,7 +31,13 @@ import type { Page, Workspace } from "@/types";
 // Context to pass drag listeners down to the grip handle
 const WorkspaceDragContext = React.createContext<Record<string, unknown>>({});
 
-function SortableWorkspaceItem({ workspace, children }: { workspace: Workspace; children: React.ReactNode }) {
+function SortableWorkspaceItem({
+  workspace,
+  children,
+}: {
+  workspace: Workspace;
+  children: React.ReactNode;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: workspace.id,
   });
@@ -58,11 +60,11 @@ function WorkspaceDragHandle() {
   return (
     <button
       type="button"
-      className="mr-0.5 inline-flex shrink-0 cursor-grab items-center justify-center rounded-sm p-0.5 opacity-0 group-hover/ws:opacity-100 hover:bg-sidebar-accent transition-all active:cursor-grabbing"
+      className="hover:bg-sidebar-accent mr-0.5 inline-flex shrink-0 cursor-grab items-center justify-center rounded-sm p-0.5 opacity-0 transition-all group-hover/ws:opacity-100 active:cursor-grabbing"
       aria-label="Drag to reorder"
       {...listeners}
     >
-      <GripVertical className="size-3 text-muted-foreground" />
+      <GripVertical className="text-muted-foreground size-3" />
     </button>
   );
 }
@@ -135,7 +137,11 @@ export function WorkspaceSection({
   onMoveToWorkspace,
 }: WorkspaceSectionProps) {
   return (
-    <DndContext sensors={workspaceSensors} collisionDetection={closestCenter} onDragEnd={handleWorkspaceReorder}>
+    <DndContext
+      sensors={workspaceSensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleWorkspaceReorder}
+    >
       <SortableContext items={workspaceIds} strategy={verticalListSortingStrategy}>
         {workspaces.map((workspace) => (
           <SortableWorkspaceItem key={workspace.id} workspace={workspace}>
@@ -144,16 +150,21 @@ export function WorkspaceSection({
               onOpenChange={() => toggleSection(workspace.id)}
             >
               <SidebarGroup>
-                <SidebarGroupLabel asChild className="text-sm font-semibold text-sidebar-foreground">
+                <SidebarGroupLabel
+                  asChild
+                  className="text-sidebar-foreground text-sm font-semibold"
+                >
                   <div className="group/ws flex items-center">
                     <WorkspaceDragHandle />
                     <CollapsibleTrigger asChild>
                       <button
                         type="button"
-                        className="mr-1 inline-flex shrink-0 items-center justify-center rounded-sm p-0.5 hover:bg-sidebar-accent transition-colors"
+                        className="hover:bg-sidebar-accent mr-1 inline-flex shrink-0 items-center justify-center rounded-sm p-0.5 transition-colors"
                         aria-label={`Toggle ${workspace.name}`}
                       >
-                        <ChevronRight className={`size-3 transition-transform ${!hydrated || !collapsedSections.has(workspace.id) ? "rotate-90" : ""}`} />
+                        <ChevronRight
+                          className={`size-3 transition-transform ${!hydrated || !collapsedSections.has(workspace.id) ? "rotate-90" : ""}`}
+                        />
                       </button>
                     </CollapsibleTrigger>
                     <EmojiPicker
@@ -162,16 +173,20 @@ export function WorkspaceSection({
                         handleWorkspaceIcon(workspace.id, emoji);
                         setEmojiPickerWorkspaceId(null);
                       }}
-                      onRemove={workspace.icon ? () => {
-                        handleWorkspaceIcon(workspace.id, null);
-                        setEmojiPickerWorkspaceId(null);
-                      } : undefined}
+                      onRemove={
+                        workspace.icon
+                          ? () => {
+                              handleWorkspaceIcon(workspace.id, null);
+                              setEmojiPickerWorkspaceId(null);
+                            }
+                          : undefined
+                      }
                       open={emojiPickerWorkspaceId === workspace.id}
                       onOpenChange={(open) => setEmojiPickerWorkspaceId(open ? workspace.id : null)}
                     >
                       <button
                         type="button"
-                        className="mr-1.5 inline-flex shrink-0 items-center justify-center hover:opacity-70 transition-opacity"
+                        className="mr-1.5 inline-flex shrink-0 items-center justify-center transition-opacity hover:opacity-70"
                         title="Change icon"
                         aria-label={`Change ${workspace.name} icon`}
                       >
@@ -188,7 +203,11 @@ export function WorkspaceSection({
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <SidebarGroupAction title={`Add to ${workspace.name}`}>
-                      {addingTo === workspace.id ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                      {addingTo === workspace.id ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Plus className="size-4" />
+                      )}
                     </SidebarGroupAction>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent side="right" align="start">

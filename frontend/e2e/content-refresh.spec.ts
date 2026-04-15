@@ -16,9 +16,8 @@ test.describe("Content refresh on view mode (Fix 5)", () => {
 
     // Watch for network request to content endpoint after sync
     const contentRequest = page.waitForRequest(
-      (req) =>
-        req.url().includes("/content") || req.url().includes("/pages/"),
-      { timeout: 10_000 }
+      (req) => req.url().includes("/content") || req.url().includes("/pages/"),
+      { timeout: 10_000 },
     );
 
     await syncBtn.click();
@@ -33,9 +32,7 @@ test.describe("Content refresh on view mode (Fix 5)", () => {
     });
   });
 
-  test("Edit → view transition triggers content refetch", async ({
-    page,
-  }) => {
+  test("Edit → view transition triggers content refetch", async ({ page }) => {
     // Find the edit toggle button
     const editToggle = page.locator("[data-edit-toggle]");
     const hasEditToggle = await editToggle.isVisible().catch(() => false);
@@ -48,10 +45,9 @@ test.describe("Content refresh on view mode (Fix 5)", () => {
       // Watch for content fetch when switching back to view
       const contentFetch = page.waitForResponse(
         (resp) =>
-          (resp.url().includes("/content") ||
-            resp.url().includes("/pages/")) &&
+          (resp.url().includes("/content") || resp.url().includes("/pages/")) &&
           resp.request().method() === "GET",
-        { timeout: 10_000 }
+        { timeout: 10_000 },
       );
 
       // Switch back to view mode

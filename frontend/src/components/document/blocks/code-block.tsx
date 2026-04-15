@@ -16,13 +16,17 @@ export function CodeBlockComponent({ code }: { code: string }) {
     codeToHtml(code, {
       lang,
       theme: "github-dark-default",
-    }).then((html) => {
-      if (!cancelled) setHighlightedHtml(html);
-    }).catch(() => {
-      // Fallback to plain text if language not supported
-      if (!cancelled) setHighlightedHtml(null);
-    });
-    return () => { cancelled = true; };
+    })
+      .then((html) => {
+        if (!cancelled) setHighlightedHtml(html);
+      })
+      .catch(() => {
+        // Fallback to plain text if language not supported
+        if (!cancelled) setHighlightedHtml(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [code, lang]);
 
   // Clean up copy timer on unmount
@@ -31,32 +35,29 @@ export function CodeBlockComponent({ code }: { code: string }) {
   }, []);
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(code).then(() => {
-      setCopied(true);
-      clearTimeout(copyTimerRef.current);
-      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {
-      // Clipboard API may be denied in some contexts — fail silently
-    });
+    navigator.clipboard
+      .writeText(code)
+      .then(() => {
+        setCopied(true);
+        clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {
+        // Clipboard API may be denied in some contexts — fail silently
+      });
   }, [code]);
 
   return (
     <div className="doc-code-block">
-      <button
-        type="button"
-        onClick={handleCopy}
-        className="doc-code-copy"
-        aria-label="Copy code"
-      >
+      <button type="button" onClick={handleCopy} className="doc-code-copy" aria-label="Copy code">
         {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
       </button>
       {highlightedHtml ? (
-        <div
-          className="doc-code-shiki"
-          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-        />
+        <div className="doc-code-shiki" dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
       ) : (
-        <pre><code>{code}</code></pre>
+        <pre>
+          <code>{code}</code>
+        </pre>
       )}
     </div>
   );

@@ -19,7 +19,7 @@ export function useStarredPages() {
       const isStarred = starredSet.has(pageId);
       // Optimistic update
       queryClient.setQueryData<string[]>(["starred-pages"], (prev = []) =>
-        isStarred ? prev.filter((id) => id !== pageId) : [...prev, pageId]
+        isStarred ? prev.filter((id) => id !== pageId) : [...prev, pageId],
       );
       try {
         if (isStarred) {
@@ -32,7 +32,7 @@ export function useStarredPages() {
         queryClient.invalidateQueries({ queryKey: ["starred-pages"] });
       }
     },
-    [starredSet, queryClient]
+    [starredSet, queryClient],
   );
 
   return { starredIds: starredSet, toggleStar, ...rest };

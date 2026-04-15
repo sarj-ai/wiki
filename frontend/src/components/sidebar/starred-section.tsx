@@ -35,29 +35,35 @@ function buildPageMap(pages: Page[]): Map<string, Page> {
   return map;
 }
 
-export function StarredSection({ starredIds, allPages, activePageId, collapsed, onToggle }: StarredSectionProps) {
+export function StarredSection({
+  starredIds,
+  allPages,
+  activePageId,
+  collapsed,
+  onToggle,
+}: StarredSectionProps) {
   const pageMap = useMemo(() => buildPageMap(allPages), [allPages]);
 
   if (starredIds.size === 0) return null;
 
-  const starredPages = [...starredIds]
-    .map((id) => pageMap.get(id))
-    .filter(Boolean) as Page[];
+  const starredPages = [...starredIds].map((id) => pageMap.get(id)).filter(Boolean) as Page[];
 
   if (starredPages.length === 0) return null;
 
   return (
     <Collapsible open={!collapsed} onOpenChange={onToggle}>
       <SidebarGroup>
-        <SidebarGroupLabel asChild className="text-sm font-semibold text-sidebar-foreground">
+        <SidebarGroupLabel asChild className="text-sidebar-foreground text-sm font-semibold">
           <div className="flex items-center">
             <CollapsibleTrigger asChild>
               <button
                 type="button"
-                className="mr-1 inline-flex shrink-0 items-center justify-center rounded-sm p-0.5 hover:bg-sidebar-accent transition-colors"
+                className="hover:bg-sidebar-accent mr-1 inline-flex shrink-0 items-center justify-center rounded-sm p-0.5 transition-colors"
                 aria-label="Toggle starred"
               >
-                <ChevronRight className={`size-3 transition-transform ${!collapsed ? "rotate-90" : ""}`} />
+                <ChevronRight
+                  className={`size-3 transition-transform ${!collapsed ? "rotate-90" : ""}`}
+                />
               </button>
             </CollapsibleTrigger>
             <Star className="mr-1 size-3.5 fill-yellow-400 text-yellow-400" />
@@ -69,15 +75,9 @@ export function StarredSection({ starredIds, allPages, activePageId, collapsed, 
             <SidebarMenu>
               {starredPages.map((page) => (
                 <SidebarMenuItem key={page.id}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={activePageId === page.id}
-                    className="h-7"
-                  >
+                  <SidebarMenuButton asChild isActive={activePageId === page.id} className="h-7">
                     <Link href={`/docs/${encodeURIComponent(page.id)}`}>
-                      <span className="shrink-0 text-base leading-none">
-                        {page.icon ?? ""}
-                      </span>
+                      <span className="shrink-0 text-base leading-none">{page.icon ?? ""}</span>
                       <span className="truncate text-sm">{page.title}</span>
                     </Link>
                   </SidebarMenuButton>

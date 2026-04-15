@@ -72,15 +72,17 @@ export function PrivateSection({
       onOpenChange={() => toggleSection("private")}
     >
       <SidebarGroup>
-        <SidebarGroupLabel asChild className="text-sm font-semibold text-sidebar-foreground">
+        <SidebarGroupLabel asChild className="text-sidebar-foreground text-sm font-semibold">
           <div className="flex items-center">
             <CollapsibleTrigger asChild>
               <button
                 type="button"
-                className="mr-1 inline-flex shrink-0 items-center justify-center rounded-sm p-0.5 hover:bg-sidebar-accent transition-colors"
+                className="hover:bg-sidebar-accent mr-1 inline-flex shrink-0 items-center justify-center rounded-sm p-0.5 transition-colors"
                 aria-label="Toggle private pages"
               >
-                <ChevronRight className={`size-3 transition-transform ${!hydrated || !collapsedSections.has("private") ? "rotate-90" : ""}`} />
+                <ChevronRight
+                  className={`size-3 transition-transform ${!hydrated || !collapsedSections.has("private") ? "rotate-90" : ""}`}
+                />
               </button>
             </CollapsibleTrigger>
             <NotebookPen className="mr-1 size-3.5" />
@@ -90,7 +92,11 @@ export function PrivateSection({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <SidebarGroupAction title="Add to My Drafts">
-              {addingTo === "private" ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+              {addingTo === "private" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Plus className="size-4" />
+              )}
             </SidebarGroupAction>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="right" align="start">

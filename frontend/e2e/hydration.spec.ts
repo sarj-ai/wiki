@@ -1,9 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("Hydration mismatch (Fix 6)", () => {
-  test("Collapsed section + hard reload → no hydration errors", async ({
-    page,
-  }) => {
+  test("Collapsed section + hard reload → no hydration errors", async ({ page }) => {
     // Collect console errors
     const consoleErrors: string[] = [];
     page.on("console", (msg) => {
@@ -16,9 +14,7 @@ test.describe("Hydration mismatch (Fix 6)", () => {
     await page.waitForSelector('a[href*="/docs/"]', { timeout: 15_000 });
 
     // Collapse a workspace section
-    const toggleBtn = page
-      .locator('button[aria-label*="Toggle"]')
-      .first();
+    const toggleBtn = page.locator('button[aria-label*="Toggle"]').first();
     const isExpanded = await toggleBtn
       .locator("svg")
       .evaluate((el) => el.classList.contains("rotate-90"))
@@ -41,7 +37,7 @@ test.describe("Hydration mismatch (Fix 6)", () => {
       (e) =>
         e.toLowerCase().includes("hydration") ||
         e.toLowerCase().includes("did not match") ||
-        e.toLowerCase().includes("server rendered")
+        e.toLowerCase().includes("server rendered"),
     );
 
     expect(hydrationErrors).toHaveLength(0);
@@ -52,9 +48,7 @@ test.describe("Hydration mismatch (Fix 6)", () => {
     await page.waitForSelector('a[href*="/docs/"]', { timeout: 15_000 });
 
     // Collapse a section
-    const toggleBtn = page
-      .locator('button[aria-label*="Toggle"]')
-      .first();
+    const toggleBtn = page.locator('button[aria-label*="Toggle"]').first();
     await toggleBtn.click();
     await page.waitForTimeout(300);
 

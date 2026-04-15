@@ -1,9 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("Empty TOC (Fix 8)", () => {
-  test("Page with empty TOC → no .doc-toc element rendered", async ({
-    page,
-  }) => {
+  test("Page with empty TOC → no .doc-toc element rendered", async ({ page }) => {
     await page.goto("/");
     await page.waitForSelector('a[href*="/docs/"]', { timeout: 15_000 });
 

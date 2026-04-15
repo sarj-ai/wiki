@@ -23,29 +23,29 @@ export class ErrorBoundary extends React.Component<Props, State> {
     return { hasError: true };
   }
 
-  componentDidUpdate(prevProps: Props) {
+  override componentDidUpdate(prevProps: Props) {
     // Reset error state when resetKey changes (e.g. route navigation)
     if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
       this.setState({ hasError: false });
     }
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+  override componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("ErrorBoundary caught:", error, errorInfo);
   }
 
-  render() {
+  override render() {
     if (this.state.hasError) {
       return (
         this.props.fallback ?? (
           <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-3 p-8">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               Something went wrong rendering this section.
             </p>
             <button
               type="button"
               onClick={() => this.setState({ hasError: false })}
-              className="text-sm text-primary underline hover:no-underline"
+              className="text-primary text-sm underline hover:no-underline"
             >
               Try again
             </button>

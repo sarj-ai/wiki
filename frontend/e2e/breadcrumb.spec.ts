@@ -6,9 +6,7 @@ test.describe("Breadcrumb workspace name (Fix 4)", () => {
     await page.waitForSelector('a[href*="/docs/"]', { timeout: 15_000 });
   });
 
-  test("Root-level workspace page → breadcrumb shows workspace name", async ({
-    page,
-  }) => {
+  test("Root-level workspace page → breadcrumb shows workspace name", async ({ page }) => {
     // Click a workspace page (first visible page link)
     const firstPage = page.locator("a[href*='/docs/']").first();
     await firstPage.click();
@@ -23,13 +21,9 @@ test.describe("Breadcrumb workspace name (Fix 4)", () => {
     await expect(items).not.toHaveCount(0);
   });
 
-  test("Nested page → breadcrumb shows full chain with workspace", async ({
-    page,
-  }) => {
+  test("Nested page → breadcrumb shows full chain with workspace", async ({ page }) => {
     // Look for a nested page (expand a parent first)
-    const expandBtn = page
-      .locator('button[aria-label="Expand"]')
-      .first();
+    const expandBtn = page.locator('button[aria-label="Expand"]').first();
     const hasNested = await expandBtn.isVisible().catch(() => false);
 
     if (hasNested) {
@@ -51,21 +45,16 @@ test.describe("Breadcrumb workspace name (Fix 4)", () => {
     }
   });
 
-  test("Private draft → no workspace name in breadcrumb", async ({
-    page,
-  }) => {
+  test("Private draft → no workspace name in breadcrumb", async ({ page }) => {
     // Find the My Drafts section and get a page link inside it
     const myDraftsSection = page.getByText("My Drafts").first();
     await expect(myDraftsSection).toBeVisible({ timeout: 10_000 });
 
     // Ensure My Drafts is expanded
-    const myDraftsToggle = page.locator(
-      'button[aria-label="Toggle private pages"]'
-    );
+    const myDraftsToggle = page.locator('button[aria-label="Toggle private pages"]');
     if (await myDraftsToggle.isVisible()) {
       // Check if collapsed by looking for page links after the toggle
-      const draftLinks = myDraftsSection
-        .locator("~ * a[href*='/docs/']");
+      const draftLinks = myDraftsSection.locator("~ * a[href*='/docs/']");
       const visibleCount = await draftLinks.count().catch(() => 0);
       if (visibleCount === 0) {
         await myDraftsToggle.click();

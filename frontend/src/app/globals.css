@@ -65,7 +65,7 @@
   --popover-foreground: #1a1a1a;
   --primary: #000000;
   --primary-foreground: #ffffff;
-  --secondary: #D0C3DF;
+  --secondary: #d0c3df;
   --secondary-foreground: #251040;
   --muted: #f5f5f5;
   --muted-foreground: #737373;
@@ -93,11 +93,11 @@
 
   --shadow-2xs: 0 1px 3px 0px rgb(0 0 0 / 0.05);
   --shadow-xs: 0 1px 3px 0px rgb(0 0 0 / 0.05);
-  --shadow-sm: 0 1px 3px 0px rgb(0 0 0 / 0.10), 0 1px 2px -1px rgb(0 0 0 / 0.10);
-  --shadow: 0 1px 3px 0px rgb(0 0 0 / 0.10), 0 1px 2px -1px rgb(0 0 0 / 0.10);
-  --shadow-md: 0 1px 3px 0px rgb(0 0 0 / 0.10), 0 2px 4px -1px rgb(0 0 0 / 0.10);
-  --shadow-lg: 0 1px 3px 0px rgb(0 0 0 / 0.10), 0 4px 6px -1px rgb(0 0 0 / 0.10);
-  --shadow-xl: 0 1px 3px 0px rgb(0 0 0 / 0.10), 0 8px 10px -1px rgb(0 0 0 / 0.10);
+  --shadow-sm: 0 1px 3px 0px rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow: 0 1px 3px 0px rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 1px 3px 0px rgb(0 0 0 / 0.1), 0 2px 4px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 1px 3px 0px rgb(0 0 0 / 0.1), 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 1px 3px 0px rgb(0 0 0 / 0.1), 0 8px 10px -1px rgb(0 0 0 / 0.1);
   --shadow-2xl: 0 1px 3px 0px rgb(0 0 0 / 0.25);
 }
 
@@ -110,7 +110,7 @@
   --popover-foreground: #fafafa;
   --primary: #fafafa;
   --primary-foreground: #0a0a0a;
-  --secondary: #4B3483;
+  --secondary: #4b3483;
   --secondary-foreground: #fafafa;
   --muted: #262626;
   --muted-foreground: #a1a1a1;
@@ -129,7 +129,7 @@
   --sidebar-foreground: #fafafa;
   --sidebar-primary: #fafafa;
   --sidebar-primary-foreground: #fafafa;
-  --sidebar-accent: #4B3483;
+  --sidebar-accent: #4b3483;
   --sidebar-accent-foreground: #fafafa;
   --sidebar-border: #ffffff1a;
   --sidebar-ring: #737373;
@@ -469,7 +469,9 @@
 }
 
 .dark .doc-table-container {
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.02), 0 2px 8px 0 rgb(0 0 0 / 0.3);
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.02),
+    0 2px 8px 0 rgb(0 0 0 / 0.3);
 }
 
 .doc-table-container::-webkit-scrollbar {
@@ -774,13 +776,7 @@
 .doc-hr-line {
   width: 100%;
   height: 1px;
-  background: linear-gradient(
-    to right,
-    transparent,
-    var(--border),
-    var(--border),
-    transparent
-  );
+  background: linear-gradient(to right, transparent, var(--border), var(--border), transparent);
 }
 
 /* ── Inline Code ── */
@@ -941,7 +937,9 @@
   font-size: 0.875rem;
   color: var(--foreground);
   text-decoration: none;
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
   border-radius: 0;
 }
 
@@ -979,7 +977,9 @@
   color: var(--primary-foreground);
   background: var(--primary);
   border-radius: var(--radius);
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
   animation: empty-doc-btn-enter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both;
 }
 
@@ -1004,11 +1004,7 @@
   display: block;
   width: 1px;
   height: 2rem;
-  background: linear-gradient(
-    to top,
-    var(--muted-foreground),
-    transparent
-  );
+  background: linear-gradient(to top, var(--muted-foreground), transparent);
   opacity: 0.3;
   animation: empty-doc-arrow-grow 0.8s ease 1s both;
 }
@@ -1061,7 +1057,8 @@
 }
 
 @keyframes edit-toggle-pulse {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: none;
   }
   50% {
@@ -1082,7 +1079,9 @@
   border: 1px solid var(--border);
   background: var(--background);
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .search-trigger:hover {
@@ -1382,7 +1381,9 @@
   box-shadow: var(--shadow-lg);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
 }
 
 .doc-tab-nav-hover-zone:hover .doc-tab-nav-card {
@@ -1472,8 +1473,12 @@
 }
 
 @keyframes cmd-overlay-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes cmd-dialog-in {
@@ -1488,7 +1493,9 @@
 }
 
 @keyframes cmd-dot-bounce {
-  0%, 80%, 100% {
+  0%,
+  80%,
+  100% {
     opacity: 0.3;
     transform: scale(0.8);
   }

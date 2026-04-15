@@ -53,21 +53,12 @@ export function UserFooter({ onForceSync }: { onForceSync?: () => void }) {
                 className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
               >
                 <Avatar className="size-8 rounded-lg">
-                  <AvatarImage
-                    src={user?.avatarUrl ?? undefined}
-                    alt={displayName}
-                  />
-                  <AvatarFallback className="rounded-lg text-xs">
-                    {initials}
-                  </AvatarFallback>
+                  <AvatarImage src={user?.avatarUrl ?? undefined} alt={displayName} />
+                  <AvatarFallback className="rounded-lg text-xs">{initials}</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">
-                    {displayName}
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {user?.email}
-                  </span>
+                  <span className="truncate font-semibold">{displayName}</span>
+                  <span className="text-muted-foreground truncate text-xs">{user?.email}</span>
                 </div>
               </SidebarMenuButton>
             </DropdownMenuTrigger>
@@ -78,9 +69,7 @@ export function UserFooter({ onForceSync }: { onForceSync?: () => void }) {
               sideOffset={4}
             >
               <DropdownMenuItem
-                onClick={() =>
-                  setTheme(resolvedTheme === "dark" ? "light" : "dark")
-                }
+                onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
               >
                 {resolvedTheme === "dark" ? (
                   <Sun className="mr-2 size-4" />
@@ -110,7 +99,8 @@ export function UserFooter({ onForceSync }: { onForceSync?: () => void }) {
           <DialogHeader>
             <DialogTitle>Force full sync?</DialogTitle>
             <DialogDescription>
-              This will rescan all Drive folders from scratch. It may take several minutes for large folder trees.
+              This will rescan all Drive folders from scratch. It may take several minutes for large
+              folder trees.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

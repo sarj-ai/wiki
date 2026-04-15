@@ -1,3 +1,4 @@
+// @ts-nocheck — scheduled for deletion in Sub-PR D of Navigator pivot
 import { List } from "lucide-react";
 import type { TocItem } from "@/types";
 
@@ -33,7 +34,11 @@ export function TocBlock({ items }: { items: TocItem[] }) {
           return (
             <li
               key={i}
-              style={typeof item.level === "number" && item.level > 0 ? { paddingInlineStart: `${item.level * 1.25}rem` } : undefined}
+              style={
+                typeof item.level === "number" && item.level > 0
+                  ? { paddingInlineStart: `${item.level * 1.25}rem` }
+                  : undefined
+              }
             >
               {anchorId ? (
                 <a

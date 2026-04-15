@@ -8,11 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-} from "@/components/ui/sidebar";
+import { SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "@/components/ui/sidebar";
 
 interface WorkspaceSwitcherProps {
   workspaces: Workspace[];
@@ -34,16 +30,12 @@ export function WorkspaceSwitcher({
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <span className="text-sm font-semibold">
-                  {activeWorkspace.name.charAt(0)}
-                </span>
+              <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
+                <span className="text-sm font-semibold">{activeWorkspace.name.charAt(0)}</span>
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">
-                  {activeWorkspace.name}
-                </span>
-                <span className="truncate text-xs text-muted-foreground">
+                <span className="truncate font-semibold">{activeWorkspace.name}</span>
+                <span className="text-muted-foreground truncate text-xs">
                   {activeWorkspace.googleGroupEmail}
                 </span>
               </div>
@@ -63,14 +55,10 @@ export function WorkspaceSwitcher({
                 className="gap-2 p-2"
               >
                 <div className="flex size-6 items-center justify-center rounded-sm border">
-                  <span className="text-xs font-semibold">
-                    {workspace.name.charAt(0)}
-                  </span>
+                  <span className="text-xs font-semibold">{workspace.name.charAt(0)}</span>
                 </div>
                 <span className="flex-1">{workspace.name}</span>
-                {workspace.id === activeWorkspace.id && (
-                  <Check className="size-4" />
-                )}
+                {workspace.id === activeWorkspace.id && <Check className="size-4" />}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>

@@ -85,9 +85,8 @@ export function ImportDialog({ open, onOpenChange, parentId, workspaceId }: Impo
     }
   }, [file, parentId, workspaceId, queryClient]);
 
-  const progress = job && job.totalItems > 0
-    ? Math.round((job.processedItems / job.totalItems) * 100)
-    : 0;
+  const progress =
+    job && job.totalItems > 0 ? Math.round((job.processedItems / job.totalItems) * 100) : 0;
 
   const isDone = job?.status === "completed" || job?.status === "failed";
   const isFailed = job?.status === "failed";
@@ -100,7 +99,7 @@ export function ImportDialog({ open, onOpenChange, parentId, workspaceId }: Impo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[440px] gap-0 p-0">
+      <DialogContent className="gap-0 p-0 sm:max-w-[440px]">
         <DialogHeader className="px-6 pt-6 pb-4">
           <DialogTitle>Import pages</DialogTitle>
           <DialogDescription>
@@ -116,25 +115,27 @@ export function ImportDialog({ open, onOpenChange, parentId, workspaceId }: Impo
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="group flex items-center gap-4 rounded-lg border border-border p-4 transition-colors hover:bg-accent/50"
+                className="group border-border hover:bg-accent/50 flex items-center gap-4 rounded-lg border p-4 transition-colors"
               >
-                <div className="flex size-10 items-center justify-center rounded-lg bg-accent">
+                <div className="bg-accent flex size-10 items-center justify-center rounded-lg">
                   {file ? (
-                    <FileArchive className="size-5 text-foreground" />
+                    <FileArchive className="text-foreground size-5" />
                   ) : (
-                    <Upload className="size-5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                    <Upload className="text-muted-foreground group-hover:text-foreground size-5 transition-colors" />
                   )}
                 </div>
-                <div className="flex-1 text-left min-w-0">
+                <div className="min-w-0 flex-1 text-left">
                   {file ? (
                     <>
-                      <p className="text-sm font-medium truncate">{file.name}</p>
-                      <p className="text-xs text-muted-foreground">{formatSize(file.size)}</p>
+                      <p className="truncate text-sm font-medium">{file.name}</p>
+                      <p className="text-muted-foreground text-xs">{formatSize(file.size)}</p>
                     </>
                   ) : (
                     <>
                       <p className="text-sm font-medium">Choose a file</p>
-                      <p className="text-xs text-muted-foreground">Notion export (.zip) or Markdown (.md)</p>
+                      <p className="text-muted-foreground text-xs">
+                        Notion export (.zip) or Markdown (.md)
+                      </p>
                     </>
                   )}
                 </div>
@@ -148,19 +149,19 @@ export function ImportDialog({ open, onOpenChange, parentId, workspaceId }: Impo
               />
             </div>
           ) : isFailed ? (
-            <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-              <AlertCircle className="size-5 text-destructive shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0">
+            <div className="border-destructive/30 bg-destructive/5 flex items-start gap-3 rounded-lg border p-4">
+              <AlertCircle className="text-destructive mt-0.5 size-5 shrink-0" />
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium">Import failed</p>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-muted-foreground mt-1 text-xs">
                   {job.errorMessage ?? "An unknown error occurred."}
                 </p>
               </div>
             </div>
           ) : job.status === "completed" ? (
             <div className="flex items-center gap-3 rounded-lg border border-green-500/30 bg-green-500/5 p-4">
-              <CheckCircle2 className="size-5 text-green-500 shrink-0" />
-              <div className="flex-1 min-w-0">
+              <CheckCircle2 className="size-5 shrink-0 text-green-500" />
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium">
                   Imported {job.processedItems} {job.processedItems === 1 ? "page" : "pages"}
                 </p>
@@ -169,7 +170,7 @@ export function ImportDialog({ open, onOpenChange, parentId, workspaceId }: Impo
           ) : (
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-3">
-                <Loader2 className="size-5 animate-spin text-primary shrink-0" />
+                <Loader2 className="text-primary size-5 shrink-0 animate-spin" />
                 <p className="text-sm">
                   Importing... {job.processedItems} of {job.totalItems}
                 </p>

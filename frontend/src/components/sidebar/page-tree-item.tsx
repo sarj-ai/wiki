@@ -2,13 +2,25 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { ChevronRight, Plus, MoreHorizontal, FileText, FolderClosed, Pencil, Trash2, SmilePlus, Loader2, Star, StarOff, Upload, Copy, ArrowRightLeft } from "lucide-react";
+import {
+  ChevronRight,
+  Plus,
+  MoreHorizontal,
+  FileText,
+  FolderClosed,
+  Pencil,
+  Trash2,
+  SmilePlus,
+  Loader2,
+  Star,
+  StarOff,
+  Upload,
+  Copy,
+  ArrowRightLeft,
+} from "lucide-react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Page } from "@/types";
-import {
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from "@/components/ui/sidebar";
+import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -109,7 +121,7 @@ export const PageTreeItem = React.memo(function PageTreeItem({
       setDragNodeRef(node);
       setDropNodeRef(node);
     },
-    [setDragNodeRef, setDropNodeRef]
+    [setDragNodeRef, setDropNodeRef],
   );
 
   const dropIndicatorClass =
@@ -125,7 +137,7 @@ export const PageTreeItem = React.memo(function PageTreeItem({
       {/* Drop indicator line — before */}
       {isDragOver && dropPosition === "before" && (
         <div
-          className="absolute top-0 right-2 left-2 h-0.5 rounded-full bg-sidebar-primary"
+          className="bg-sidebar-primary absolute top-0 right-2 left-2 h-0.5 rounded-full"
           style={{ marginLeft: `${depth * 12}px` }}
         />
       )}
@@ -137,7 +149,7 @@ export const PageTreeItem = React.memo(function PageTreeItem({
       >
         <button
           type="button"
-          className="flex size-6 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:text-sidebar-foreground"
+          className="text-sidebar-foreground/60 hover:text-sidebar-foreground flex size-6 shrink-0 items-center justify-center rounded-md"
           style={{ marginLeft: `${depth * 12}px` }}
           onClick={(e) => {
             e.stopPropagation();
@@ -158,9 +170,14 @@ export const PageTreeItem = React.memo(function PageTreeItem({
         </button>
 
         {isRenaming ? (
-          <div className="flex-1 flex items-center gap-1.5 px-2">
+          <div className="flex flex-1 items-center gap-1.5 px-2">
             <span className="shrink-0 text-base leading-none">
-              {page.icon || (page.type === "section" ? <FolderClosed className="size-4" /> : <FileText className="size-4" />)}
+              {page.icon ||
+                (page.type === "section" ? (
+                  <FolderClosed className="size-4" />
+                ) : (
+                  <FileText className="size-4" />
+                ))}
             </span>
             <input
               ref={inputRef}
@@ -189,7 +206,7 @@ export const PageTreeItem = React.memo(function PageTreeItem({
                 setIsRenaming(false);
                 onRenamingDone?.();
               }}
-              className="h-7 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+              className="border-input bg-background focus:ring-ring h-7 w-full rounded-md border px-2 text-sm outline-none focus:ring-1"
             />
           </div>
         ) : (
@@ -201,126 +218,140 @@ export const PageTreeItem = React.memo(function PageTreeItem({
           >
             <Link href={`/docs/${page.id}`}>
               <span className="shrink-0 text-base leading-none">
-                {isMoving ? <Loader2 className="size-4 animate-spin" /> : page.icon || (page.type === "section" ? <FolderClosed className="size-4" /> : <FileText className="size-4" />)}
+                {isMoving ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  page.icon ||
+                  (page.type === "section" ? (
+                    <FolderClosed className="size-4" />
+                  ) : (
+                    <FileText className="size-4" />
+                  ))
+                )}
               </span>
-              <span className="truncate" title={page.title}>{page.title}</span>
-              {isStarred && (
-                <Star className="size-2.5 shrink-0 fill-yellow-400 text-yellow-400" />
-              )}
+              <span className="truncate" title={page.title}>
+                {page.title}
+              </span>
+              {isStarred && <Star className="size-2.5 shrink-0 fill-yellow-400 text-yellow-400" />}
             </Link>
           </SidebarMenuButton>
         )}
 
-        <div className={`absolute right-0.5 flex items-center gap-0.5 rounded-md bg-sidebar px-0.5 opacity-0 transition-opacity group-hover/tree-item:opacity-100 ${isActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/60"}`}>
-            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="flex size-5 items-center justify-center rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                  aria-label="Page options"
-                >
-                  <MoreHorizontal className="size-4" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side="right"
-                align="start"
-                sideOffset={4}
-                onCloseAutoFocus={(e) => {
-                  // Prevent focus restoration when rename is about to activate
-                  if (isRenaming) e.preventDefault();
+        <div
+          className={`bg-sidebar absolute right-0.5 flex items-center gap-0.5 rounded-md px-0.5 opacity-0 transition-opacity group-hover/tree-item:opacity-100 ${isActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/60"}`}
+        >
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex size-5 items-center justify-center rounded-md"
+                aria-label="Page options"
+              >
+                <MoreHorizontal className="size-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="right"
+              align="start"
+              sideOffset={4}
+              onCloseAutoFocus={(e) => {
+                // Prevent focus restoration when rename is about to activate
+                if (isRenaming) e.preventDefault();
+              }}
+            >
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setMenuOpen(false);
+                  setTimeout(() => {
+                    setRenameValue(page.title);
+                    setIsRenaming(true);
+                  }, 100);
                 }}
               >
-                <DropdownMenuItem
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    setMenuOpen(false);
-                    setTimeout(() => {
-                      setRenameValue(page.title);
-                      setIsRenaming(true);
-                    }, 100);
-                  }}
-                >
-                  <Pencil className="mr-2 size-4" />
-                  Rename
+                <Pencil className="mr-2 size-4" />
+                Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setMenuOpen(false);
+                  setShowEmojiPicker(true);
+                }}
+              >
+                <SmilePlus className="mr-2 size-4" />
+                Change icon
+              </DropdownMenuItem>
+              {onToggleStar && (
+                <DropdownMenuItem onClick={() => onToggleStar(page.id)}>
+                  {isStarred ? (
+                    <>
+                      <StarOff className="mr-2 size-4" />
+                      Unstar
+                    </>
+                  ) : (
+                    <>
+                      <Star className="mr-2 size-4" />
+                      Star
+                    </>
+                  )}
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    setMenuOpen(false);
-                    setShowEmojiPicker(true);
-                  }}
-                >
-                  <SmilePlus className="mr-2 size-4" />
-                  Change icon
+              )}
+              {onImport && (
+                <DropdownMenuItem onClick={() => onImport(page.id)}>
+                  <Upload className="mr-2 size-4" />
+                  Import pages
                 </DropdownMenuItem>
-                {onToggleStar && (
-                  <DropdownMenuItem
-                    onClick={() => onToggleStar(page.id)}
-                  >
-                    {isStarred ? (
-                      <>
-                        <StarOff className="mr-2 size-4" />
-                        Unstar
-                      </>
-                    ) : (
-                      <>
-                        <Star className="mr-2 size-4" />
-                        Star
-                      </>
-                    )}
-                  </DropdownMenuItem>
-                )}
-                {onImport && (
-                  <DropdownMenuItem onClick={() => onImport(page.id)}>
-                    <Upload className="mr-2 size-4" />
-                    Import pages
-                  </DropdownMenuItem>
-                )}
-                {onDuplicate && page.type === "page" && (
-                  <DropdownMenuItem onClick={() => onDuplicate(page.id)}>
-                    <Copy className="mr-2 size-4" />
-                    Duplicate
-                  </DropdownMenuItem>
-                )}
-                {onMoveToWorkspace && !page.isPrivate && (
-                  <DropdownMenuItem onClick={() => onMoveToWorkspace(page.id)}>
-                    <ArrowRightLeft className="mr-2 size-4" />
-                    Move to workspace
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={() => onDelete(page.id)}
-                >
-                  <Trash2 className="mr-2 size-4" />
-                  Delete
+              )}
+              {onDuplicate && page.type === "page" && (
+                <DropdownMenuItem onClick={() => onDuplicate(page.id)}>
+                  <Copy className="mr-2 size-4" />
+                  Duplicate
                 </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!isAddingChild) onAddChild(page.id);
-              }}
-              disabled={isAddingChild}
-              className="flex size-5 items-center justify-center rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              aria-label="Add child page"
-            >
-              {isAddingChild ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
-            </button>
-          </div>
+              )}
+              {onMoveToWorkspace && !page.isPrivate && (
+                <DropdownMenuItem onClick={() => onMoveToWorkspace(page.id)}>
+                  <ArrowRightLeft className="mr-2 size-4" />
+                  Move to workspace
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem className="text-destructive" onClick={() => onDelete(page.id)}>
+                <Trash2 className="mr-2 size-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isAddingChild) onAddChild(page.id);
+            }}
+            disabled={isAddingChild}
+            className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex size-5 items-center justify-center rounded-md"
+            aria-label="Add child page"
+          >
+            {isAddingChild ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Plus className="size-3.5" />
+            )}
+          </button>
+        </div>
         <EmojiPickerDialog
           currentEmoji={page.icon}
           onEmojiSelect={(emoji) => {
             onChangeIcon(page.id, emoji);
             setShowEmojiPicker(false);
           }}
-          onRemove={page.icon ? () => {
-            onChangeIcon(page.id, null);
-            setShowEmojiPicker(false);
-          } : undefined}
+          onRemove={
+            page.icon
+              ? () => {
+                  onChangeIcon(page.id, null);
+                  setShowEmojiPicker(false);
+                }
+              : undefined
+          }
           open={showEmojiPicker}
           onOpenChange={setShowEmojiPicker}
         />
@@ -329,7 +360,7 @@ export const PageTreeItem = React.memo(function PageTreeItem({
       {/* Drop indicator line — after */}
       {isDragOver && dropPosition === "after" && (
         <div
-          className="absolute bottom-0 right-2 left-2 h-0.5 rounded-full bg-sidebar-primary"
+          className="bg-sidebar-primary absolute right-2 bottom-0 left-2 h-0.5 rounded-full"
           style={{ marginLeft: `${depth * 12}px` }}
         />
       )}

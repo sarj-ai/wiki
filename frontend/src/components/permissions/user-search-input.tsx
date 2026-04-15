@@ -5,11 +5,7 @@ import type { Permission, PagePermission, UserSearchResult, WorkspaceSearchResul
 import { useLoading } from "@/components/loading-bar";
 import { api } from "@/lib/api";
 import { Input } from "@/components/ui/input";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Select,
   SelectContent,
@@ -85,11 +81,9 @@ export function UserSearchInput({
           ]);
           if (requestId !== searchCounterRef.current) return;
 
-          const existingUserIds = new Set(
-            permissions.filter((p) => p.userId).map((p) => p.userId)
-          );
+          const existingUserIds = new Set(permissions.filter((p) => p.userId).map((p) => p.userId));
           const existingWorkspaceIds = new Set(
-            permissions.filter((p) => p.workspaceId).map((p) => p.workspaceId)
+            permissions.filter((p) => p.workspaceId).map((p) => p.workspaceId),
           );
 
           const merged: SearchSuggestion[] = [
@@ -114,7 +108,7 @@ export function UserSearchInput({
         }
       }, 300);
     },
-    [permissions]
+    [permissions],
   );
 
   // Close suggestions on outside click
@@ -190,19 +184,15 @@ export function UserSearchInput({
             className="h-9"
           />
           {showSuggestions && (
-            <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-md border bg-popover p-1 shadow-md max-h-[200px] overflow-y-auto">
+            <div className="bg-popover absolute top-full right-0 left-0 z-50 mt-1 max-h-[200px] overflow-y-auto rounded-md border p-1 shadow-md">
               {isSearching && (
                 <div className="flex items-center justify-center py-3">
-                  <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                  <Loader2 className="text-muted-foreground size-4 animate-spin" />
                 </div>
               )}
-              {!isSearching &&
-                suggestions.length === 0 &&
-                searchQuery.trim().length >= 2 && (
-                  <p className="px-2 py-2 text-sm text-muted-foreground">
-                    No results found
-                  </p>
-                )}
+              {!isSearching && suggestions.length === 0 && searchQuery.trim().length >= 2 && (
+                <p className="text-muted-foreground px-2 py-2 text-sm">No results found</p>
+              )}
               {suggestions.map((s) => {
                 const id = s.data.id;
                 const isGranting = grantingId === id;
@@ -214,21 +204,19 @@ export function UserSearchInput({
                       type="button"
                       disabled={isGranting}
                       onClick={() => handleSelect(s)}
-                      className="flex w-full items-center gap-3 rounded-sm px-2 py-2 text-left hover:bg-accent transition-colors disabled:opacity-50"
+                      className="hover:bg-accent flex w-full items-center gap-3 rounded-sm px-2 py-2 text-left transition-colors disabled:opacity-50"
                     >
-                      <div className="flex size-7 items-center justify-center rounded-full bg-secondary">
-                        <Users className="size-3.5 text-secondary-foreground" />
+                      <div className="bg-secondary flex size-7 items-center justify-center rounded-full">
+                        <Users className="text-secondary-foreground size-3.5" />
                       </div>
-                      <div className="flex flex-col min-w-0 flex-1">
-                        <span className="text-sm font-medium truncate">
-                          {s.data.name}
-                        </span>
-                        <span className="text-xs text-muted-foreground truncate">
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate text-sm font-medium">{s.data.name}</span>
+                        <span className="text-muted-foreground truncate text-xs">
                           {s.data.googleGroupEmail ?? "Group"}
                         </span>
                       </div>
                       {isGranting && (
-                        <Loader2 className="size-4 animate-spin text-muted-foreground shrink-0" />
+                        <Loader2 className="text-muted-foreground size-4 shrink-0 animate-spin" />
                       )}
                     </button>
                   );
@@ -240,29 +228,24 @@ export function UserSearchInput({
                     type="button"
                     disabled={isGranting}
                     onClick={() => handleSelect(s)}
-                    className="flex w-full items-center gap-3 rounded-sm px-2 py-2 text-left hover:bg-accent transition-colors disabled:opacity-50"
+                    className="hover:bg-accent flex w-full items-center gap-3 rounded-sm px-2 py-2 text-left transition-colors disabled:opacity-50"
                   >
                     <Avatar className="size-7">
                       {s.data.avatarUrl && (
-                        <AvatarImage
-                          src={s.data.avatarUrl}
-                          alt={s.data.displayName ?? ""}
-                        />
+                        <AvatarImage src={s.data.avatarUrl} alt={s.data.displayName ?? ""} />
                       )}
                       <AvatarFallback className="text-xs">
                         {getInitials(s.data.displayName ?? s.data.email)}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="flex flex-col min-w-0 flex-1">
-                      <span className="text-sm font-medium truncate">
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-sm font-medium">
                         {s.data.displayName ?? s.data.email}
                       </span>
-                      <span className="text-xs text-muted-foreground truncate">
-                        {s.data.email}
-                      </span>
+                      <span className="text-muted-foreground truncate text-xs">{s.data.email}</span>
                     </div>
                     {isGranting && (
-                      <Loader2 className="size-4 animate-spin text-muted-foreground shrink-0" />
+                      <Loader2 className="text-muted-foreground size-4 shrink-0 animate-spin" />
                     )}
                   </button>
                 );
@@ -274,7 +257,7 @@ export function UserSearchInput({
           value={invitePermission}
           onValueChange={(v) => setInvitePermission(v as Permission)}
         >
-          <SelectTrigger className="w-[110px] h-9" size="sm">
+          <SelectTrigger className="h-9 w-[110px]" size="sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -290,22 +273,22 @@ export function UserSearchInput({
           <AlertDialogHeader>
             <AlertDialogTitle>Share with sub-pages?</AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="space-y-3 text-sm text-muted-foreground">
+              <div className="text-muted-foreground space-y-3 text-sm">
                 <p>
                   This section has existing sub-pages. How should{" "}
-                  <span className="font-medium text-foreground">{pendingName}</span>
+                  <span className="text-foreground font-medium">{pendingName}</span>
                   &apos;s access work?
                 </p>
-                <ul className="list-disc pl-5 space-y-1.5">
+                <ul className="list-disc space-y-1.5 pl-5">
                   <li>
-                    <span className="font-medium text-foreground">Include all sub-pages</span>
-                    {" "}&mdash; grants access to every existing page in this section.
-                    New pages added later will also inherit this access automatically.
+                    <span className="text-foreground font-medium">Include all sub-pages</span>{" "}
+                    &mdash; grants access to every existing page in this section. New pages added
+                    later will also inherit this access automatically.
                   </li>
                   <li>
-                    <span className="font-medium text-foreground">This page only</span>
-                    {" "}&mdash; only shares this specific page. Sub-pages and any
-                    new pages added later will not be affected.
+                    <span className="text-foreground font-medium">This page only</span> &mdash; only
+                    shares this specific page. Sub-pages and any new pages added later will not be
+                    affected.
                   </li>
                 </ul>
               </div>

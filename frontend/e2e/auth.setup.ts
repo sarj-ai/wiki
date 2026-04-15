@@ -21,7 +21,7 @@ const authFile = "e2e/auth.json";
 setup("verify auth state exists", async () => {
   if (!fs.existsSync(authFile)) {
     throw new Error(
-      `Missing ${authFile}. Run:\n  npx playwright codegen --save-storage=e2e/auth.json http://localhost:3000\nto create it.`
+      `Missing ${authFile}. Run:\n  npx playwright codegen --save-storage=e2e/auth.json http://localhost:3000\nto create it.`,
     );
   }
 

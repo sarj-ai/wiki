@@ -1,3 +1,4 @@
+// @ts-nocheck — scheduled for deletion in Sub-PR D of Navigator pivot
 import { Fragment } from "react";
 import { Pencil } from "lucide-react";
 import type { TableCellData } from "@/types";
@@ -41,22 +42,23 @@ export function DocTableBlock({
   });
 
   // Detect section rows (single cell spanning all columns = group header)
-  const numCols = rows.length > 0
-    ? Math.max(...rows.map(row => row.reduce((sum, cell) => sum + (cell.colSpan || 1), 0)))
-    : 0;
+  const numCols =
+    rows.length > 0
+      ? Math.max(...rows.map((row) => row.reduce((sum, cell) => sum + (cell.colSpan || 1), 0)))
+      : 0;
 
   // If the first row is a merged section title (like "DECISIONS MADE AT ANY PHASE"),
   // keep it in the body and use the second row as the actual header.
-  const firstRowIsSectionTitle = hasHeader && rows.length >= 2
-    && rows[0].length > 0 && (rows[0][0].colSpan || 1) >= numCols && numCols > 1;
+  const firstRowIsSectionTitle =
+    hasHeader &&
+    rows.length >= 2 &&
+    rows[0].length > 0 &&
+    (rows[0][0].colSpan || 1) >= numCols &&
+    numCols > 1;
 
   const sectionTitleRow = firstRowIsSectionTitle ? rows[0] : null;
-  const headerRow = hasHeader
-    ? (firstRowIsSectionTitle ? rows[1] : rows[0])
-    : null;
-  const bodyRows = hasHeader
-    ? (firstRowIsSectionTitle ? rows.slice(2) : rows.slice(1))
-    : rows;
+  const headerRow = hasHeader ? (firstRowIsSectionTitle ? rows[1] : rows[0]) : null;
+  const bodyRows = hasHeader ? (firstRowIsSectionTitle ? rows.slice(2) : rows.slice(1)) : rows;
 
   function isSectionRow(row: TableCellData[]): boolean {
     if (numCols <= 1) return false;
@@ -69,17 +71,12 @@ export function DocTableBlock({
       const firstHasContent = row[0]?.content.some((para) =>
         para.runs.some((run) => run.text?.trim()),
       );
-      const restEmpty = row.slice(1).every(
-        (cell) =>
-          !cell.content.some((para) =>
-            para.runs.some((run) => run.text?.trim()),
-          ),
-      );
+      const restEmpty = row
+        .slice(1)
+        .every((cell) => !cell.content.some((para) => para.runs.some((run) => run.text?.trim())));
       if (firstHasContent && restEmpty) {
         const firstRuns = row[0].content.flatMap((p) => p.runs);
-        const allBold = firstRuns.every(
-          (run) => run.bold || !run.text?.trim(),
-        );
+        const allBold = firstRuns.every((run) => run.bold || !run.text?.trim());
         const text = firstRuns
           .map((r) => r.text || "")
           .join("")
@@ -91,14 +88,13 @@ export function DocTableBlock({
     return false;
   }
 
-  function renderCell(
-    cell: TableCellData,
-    isHeader: boolean,
-  ) {
+  function renderCell(cell: TableCellData, isHeader: boolean) {
     const Tag = isHeader ? "th" : "td";
     const cellStyle: React.CSSProperties = {};
-    if (cell.verticalAlign && VALID_VERTICAL_ALIGNS.has(cell.verticalAlign)) cellStyle.verticalAlign = cell.verticalAlign as React.CSSProperties["verticalAlign"];
-    if (cell.backgroundColor) cellStyle.backgroundColor = `color-mix(in srgb, ${cell.backgroundColor} 12%, transparent)`;
+    if (cell.verticalAlign && VALID_VERTICAL_ALIGNS.has(cell.verticalAlign))
+      cellStyle.verticalAlign = cell.verticalAlign as React.CSSProperties["verticalAlign"];
+    if (cell.backgroundColor)
+      cellStyle.backgroundColor = `color-mix(in srgb, ${cell.backgroundColor} 12%, transparent)`;
 
     // Detect single status value (e.g. "In progress", "Blocked")
     const singleRun =
@@ -113,7 +109,11 @@ export function DocTableBlock({
     const statusClass = singleRun ? getStatusClass(singleRun.text!) : null;
 
     // Apply paragraph alignment to the cell itself for status badges
-    if (statusClass && cell.content[0]?.alignment && VALID_TEXT_ALIGNS.has(cell.content[0].alignment)) {
+    if (
+      statusClass &&
+      cell.content[0]?.alignment &&
+      VALID_TEXT_ALIGNS.has(cell.content[0].alignment)
+    ) {
       cellStyle.textAlign = cell.content[0].alignment as React.CSSProperties["textAlign"];
     }
 
@@ -133,7 +133,8 @@ export function DocTableBlock({
               return <div key={pi} className="h-3" aria-hidden />;
             }
             const paragraphStyle: React.CSSProperties = {};
-            if (para.alignment && VALID_TEXT_ALIGNS.has(para.alignment)) paragraphStyle.textAlign = para.alignment;
+            if (para.alignment && VALID_TEXT_ALIGNS.has(para.alignment))
+              paragraphStyle.textAlign = para.alignment;
             return (
               <div
                 key={pi}
@@ -153,17 +154,26 @@ export function DocTableBlock({
     <div className="doc-table-wrapper not-prose">
       {caption && <div className="doc-table-caption">{caption}</div>}
       <div className="doc-table-container">
-        <table className={`doc-table${columnWidths && columnWidths.some((w) => w != null) ? ' doc-table-fixed' : ''}`}>
-          {columnWidths && columnWidths.some((w) => w != null) && (() => {
-            const total = columnWidths.reduce<number>((s, w) => s + (w ?? 0), 0);
-            return total > 0 ? (
-              <colgroup>
-                {columnWidths.map((w, i) => (
-                  <col key={i} style={w != null ? { width: `${((w / total) * 100).toFixed(1)}%` } : undefined} />
-                ))}
-              </colgroup>
-            ) : null;
-          })()}
+        <table
+          className={`doc-table${columnWidths && columnWidths.some((w) => w != null) ? "doc-table-fixed" : ""}`}
+        >
+          {columnWidths &&
+            columnWidths.some((w) => w != null) &&
+            (() => {
+              const total = columnWidths.reduce<number>((s, w) => s + (w ?? 0), 0);
+              return total > 0 ? (
+                <colgroup>
+                  {columnWidths.map((w, i) => (
+                    <col
+                      key={i}
+                      style={
+                        w != null ? { width: `${((w / total) * 100).toFixed(1)}%` } : undefined
+                      }
+                    />
+                  ))}
+                </colgroup>
+              ) : null;
+            })()}
           {(sectionTitleRow || headerRow) && (
             <thead>
               {sectionTitleRow && (
@@ -184,7 +194,7 @@ export function DocTableBlock({
           )}
           <tbody>
             {bodyRows.map((row, bodyRowIdx) => {
-              const headerOffset = sectionTitleRow ? 2 : (hasHeader ? 1 : 0);
+              const headerOffset = sectionTitleRow ? 2 : hasHeader ? 1 : 0;
               const absoluteRowIdx = bodyRowIdx + headerOffset;
               const sectionRow = isSectionRow(row);
 
@@ -242,12 +252,9 @@ export function DocTableBlock({
             Some values use smart chips.{" "}
             <button
               type="button"
-              className="underline underline-offset-2 hover:text-foreground transition-colors"
+              className="hover:text-foreground underline underline-offset-2 transition-colors"
               onClick={() => {
-                const editBtn =
-                  document.querySelector<HTMLButtonElement>(
-                    "[data-edit-toggle]",
-                  );
+                const editBtn = document.querySelector<HTMLButtonElement>("[data-edit-toggle]");
                 editBtn?.click();
               }}
             >

@@ -1,14 +1,6 @@
 import { sanitizeUrl } from "./utils";
 
-export function ImageBlock({
-  url,
-  alt,
-  width,
-}: {
-  url: string;
-  alt?: string;
-  width?: number;
-}) {
+export function ImageBlock({ url, alt, width }: { url: string; alt?: string; width?: number }) {
   const safeSrc = sanitizeUrl(url);
   if (!safeSrc) return null;
 

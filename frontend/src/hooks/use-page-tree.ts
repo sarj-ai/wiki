@@ -28,11 +28,14 @@ export function usePageTree(workspaceId?: string) {
     if (now - lastSyncTime < SYNC_COOLDOWN_MS) return;
     lastSyncTime = now;
 
-    api.syncPages().then((result) => {
-      if (result && (result.removed > 0 || result.added > 0 || result.updated > 0)) {
-        queryClient.invalidateQueries({ queryKey: ["pages"] });
-      }
-    }).catch(() => {});
+    api
+      .syncPages()
+      .then((result) => {
+        if (result && (result.removed > 0 || result.added > 0 || result.updated > 0)) {
+          queryClient.invalidateQueries({ queryKey: ["pages"] });
+        }
+      })
+      .catch(() => {});
   }, [queryClient]);
 
   // Sync once on mount + every time the tab regains focus (with cooldown)

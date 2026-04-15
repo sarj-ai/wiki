@@ -41,9 +41,7 @@ test.describe("Share dialog & publish flow (Fix 3)", () => {
     }
   });
 
-  test("Already-published page → shows static Published to text", async ({
-    page,
-  }) => {
+  test("Already-published page → shows static Published to text", async ({ page }) => {
     await page.goto("/");
     await page.waitForSelector('a[href*="/docs/"]', { timeout: 15_000 });
 
@@ -61,9 +59,7 @@ test.describe("Share dialog & publish flow (Fix 3)", () => {
 
       // If this page is published, verify the static text
       const publishedText = dialog.getByText(/Published to/);
-      const isPublished = await publishedText
-        .isVisible()
-        .catch(() => false);
+      const isPublished = await publishedText.isVisible().catch(() => false);
 
       if (isPublished) {
         await expect(publishedText).toBeVisible();
@@ -99,8 +95,7 @@ test.describe("Share dialog & publish flow (Fix 3)", () => {
       if (canPublish) {
         // Intercept the publish API call
         const publishPromise = page.waitForResponse(
-          (resp) =>
-            resp.url().includes("/publish") && resp.request().method() === "POST"
+          (resp) => resp.url().includes("/publish") && resp.request().method() === "POST",
         );
 
         await publishBtn.click();

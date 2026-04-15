@@ -1,12 +1,5 @@
 import { Fragment } from "react";
-import {
-  CalendarDays,
-  ExternalLink,
-  Hash,
-  ImageIcon,
-  LayoutGrid,
-  User,
-} from "lucide-react";
+import { CalendarDays, ExternalLink, Hash, ImageIcon, LayoutGrid, User } from "lucide-react";
 import type { TextRun } from "@/types";
 import { sanitizeUrl, isValidCssColor, isValidCssFont } from "./utils";
 
@@ -23,7 +16,7 @@ export function RunRenderer({ runs }: { runs: TextRun[] }) {
               key={i}
               src={safeSrc}
               alt={run.alt || ""}
-              className="my-6 max-w-full rounded-xl shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06] block"
+              className="my-6 block max-w-full rounded-xl shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06]"
               style={run.width ? { maxWidth: `${run.width}pt` } : undefined}
               width={run.width ? Math.round(run.width * 1.333) : undefined}
               height={run.height ? Math.round(run.height * 1.333) : undefined}
@@ -36,11 +29,7 @@ export function RunRenderer({ runs }: { runs: TextRun[] }) {
         // ── Person mention ──
         if (run.type === "person") {
           return (
-            <span
-              key={i}
-              className="doc-chip-person"
-              title={run.email}
-            >
+            <span key={i} className="doc-chip-person" title={run.email}>
               <User className="size-3 shrink-0" />
               <span>{run.text}</span>
             </span>
@@ -69,9 +58,7 @@ export function RunRenderer({ runs }: { runs: TextRun[] }) {
           const safeId = run.footnoteId?.replace(/[^a-zA-Z0-9_-]/g, "") ?? "";
           return (
             <sup key={i} className="doc-footnote-ref">
-              <a href={`#fn-${safeId}`}>
-                {run.number}
-              </a>
+              <a href={`#fn-${safeId}`}>{run.number}</a>
             </sup>
           );
         }
@@ -152,23 +139,27 @@ export function RunRenderer({ runs }: { runs: TextRun[] }) {
                 {j < arr.length - 1 && <br />}
               </Fragment>
             ))
-          : (run.text || "");
+          : run.text || "";
 
         if (run.bold) rendered = <strong>{rendered}</strong>;
         if (run.italic) rendered = <em>{rendered}</em>;
-        if (run.underline) rendered = <u className="decoration-foreground/30 underline-offset-[3px]">{rendered}</u>;
-        if (run.strikethrough) rendered = <s className="decoration-muted-foreground/60">{rendered}</s>;
-        if (run.smallCaps)
-          rendered = <span style={{ fontVariant: "small-caps" }}>{rendered}</span>;
+        if (run.underline)
+          rendered = <u className="decoration-foreground/30 underline-offset-[3px]">{rendered}</u>;
+        if (run.strikethrough)
+          rendered = <s className="decoration-muted-foreground/60">{rendered}</s>;
+        if (run.smallCaps) rendered = <span style={{ fontVariant: "small-caps" }}>{rendered}</span>;
         if (run.superscript) rendered = <sup>{rendered}</sup>;
         if (run.subscript) rendered = <sub>{rendered}</sub>;
 
         // Inline styles (color, background, font) — validated to prevent CSS injection
         const inlineStyle: React.CSSProperties = {};
         if (run.color && isValidCssColor(run.color)) inlineStyle.color = run.color;
-        if (run.backgroundColor && isValidCssColor(run.backgroundColor)) inlineStyle.backgroundColor = run.backgroundColor;
-        if (run.fontFamily && isValidCssFont(run.fontFamily)) inlineStyle.fontFamily = run.fontFamily;
-        if (typeof run.fontSize === "number" && isFinite(run.fontSize)) inlineStyle.fontSize = `${run.fontSize}pt`;
+        if (run.backgroundColor && isValidCssColor(run.backgroundColor))
+          inlineStyle.backgroundColor = run.backgroundColor;
+        if (run.fontFamily && isValidCssFont(run.fontFamily))
+          inlineStyle.fontFamily = run.fontFamily;
+        if (typeof run.fontSize === "number" && isFinite(run.fontSize))
+          inlineStyle.fontSize = `${run.fontSize}pt`;
 
         const hasInlineStyle = Object.keys(inlineStyle).length > 0;
 

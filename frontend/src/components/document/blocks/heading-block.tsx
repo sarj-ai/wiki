@@ -15,13 +15,7 @@ export function HeadingBlock({
   style?: BlockStyle;
   headingId?: string;
 }) {
-  const Tag = `h${Math.min(level, 6)}` as
-    | "h1"
-    | "h2"
-    | "h3"
-    | "h4"
-    | "h5"
-    | "h6";
+  const Tag = `h${Math.min(level, 6)}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
 
   const classes: Record<string, string> = {
     title: "doc-title",
@@ -34,10 +28,7 @@ export function HeadingBlock({
     3: "doc-h3",
   };
 
-  const headingClass =
-    (variant && classes[variant]) ||
-    headingClasses[level] ||
-    "";
+  const headingClass = (variant && classes[variant]) || headingClasses[level] || "";
 
   // Sanitize headingId to only allow safe characters for a DOM id
   const safeId = headingId?.replace(/[^a-zA-Z0-9_-]/g, "") || undefined;
