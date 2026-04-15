@@ -2,14 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { ChevronRight, HardDrive } from "lucide-react";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { useDriveTree, useFolderFiles } from "@/hooks/use-navigator-tree";
@@ -18,6 +17,7 @@ import { MIME_DOC, MIME_FOLDER } from "@/types/navigator";
 import { TreeNode } from "./tree-node";
 import { FileRow } from "./file-row";
 import { CreateFileMenu } from "./create-file-menu";
+import { SortableItem } from "./sortable-item";
 
 interface DriveSectionProps {
   drive: DriveSummary;
@@ -71,8 +71,7 @@ export function DriveSection({
     return map;
   }, [folderIcons]);
 
-  // Doc icon overrides are intentionally empty in D2. D4/D5 will wire
-  // them through — until then files fall back to their static type icon.
+  // Doc icon overrides are intentionally empty in D2. D5 wires them in.
   const docIconOverrides = useMemo(() => new Map<string, string | null>(), []);
 
   const sortOrderMap = useMemo(() => {
@@ -96,6 +95,13 @@ export function DriveSection({
     const filtered = showNonDocFiles ? raw : raw.filter((n) => n.mimeType === MIME_DOC);
     return sortNodes(filtered, sortOrderMap);
   }, [rootFilesQuery.data, showNonDocFiles, sortOrderMap]);
+
+  // Items at the drive-root share one SortableContext so reorders at
+  // this level stay independent from reorders inside any subfolder.
+  const rootItemIds = useMemo(
+    () => [...rootFolders.map((n) => n.id), ...rootFiles.map((n) => n.id)],
+    [rootFolders, rootFiles],
+  );
 
   return (
     <SidebarGroup>
@@ -129,39 +135,47 @@ export function DriveSection({
                 <span className="text-destructive px-2 py-1 text-xs">Failed to load drive</span>
               </SidebarMenuItem>
             )}
-            {!treeQuery.isLoading &&
-              rootFolders.map((folder) => (
-                <SidebarMenuItem key={folder.id} className="group/navitem relative">
-                  <TreeNode
-                    node={folder}
-                    driveId={drive.id}
-                    childrenByParent={childrenByParent}
-                    activeDriveId={activeDriveId}
-                    showNonDocFiles={showNonDocFiles}
-                    folderIconOverride={folderIconMap.get(folder.id) ?? null}
-                    iconOverrides={folderIconMap}
-                    docIconOverrides={docIconOverrides}
-                    depth={0}
-                  />
-                </SidebarMenuItem>
-              ))}
+            {!treeQuery.isLoading && (
+              <SortableContext
+                id={`parent:${drive.id}`}
+                items={rootItemIds}
+                strategy={verticalListSortingStrategy}
+              >
+                {rootFolders.map((folder) => (
+                  <SortableItem key={folder.id} id={folder.id} variant="item">
+                    <TreeNode
+                      node={folder}
+                      driveId={drive.id}
+                      parentFolderId={null}
+                      childrenByParent={childrenByParent}
+                      sortOrderMap={sortOrderMap}
+                      activeDriveId={activeDriveId}
+                      showNonDocFiles={showNonDocFiles}
+                      folderIconOverride={folderIconMap.get(folder.id) ?? null}
+                      iconOverrides={folderIconMap}
+                      docIconOverrides={docIconOverrides}
+                      depth={0}
+                    />
+                  </SortableItem>
+                ))}
+                {rootFiles.map((file) => (
+                  <SortableItem key={file.id} id={file.id} variant="item">
+                    <FileRow
+                      node={file}
+                      driveId={drive.id}
+                      parentFolderId={null}
+                      activeDriveId={activeDriveId}
+                      iconOverride={docIconOverrides.get(file.id) ?? null}
+                    />
+                  </SortableItem>
+                ))}
+              </SortableContext>
+            )}
             {rootFilesQuery.isLoading && (
               <SidebarMenuItem>
                 <span className="text-muted-foreground px-2 py-1 text-xs">Loading files…</span>
               </SidebarMenuItem>
             )}
-            {rootFiles.map((file) => (
-              <SidebarMenuSub key={file.id}>
-                <SidebarMenuSubItem className="group/navitem relative">
-                  <FileRow
-                    node={file}
-                    driveId={drive.id}
-                    activeDriveId={activeDriveId}
-                    iconOverride={docIconOverrides.get(file.id) ?? null}
-                  />
-                </SidebarMenuSubItem>
-              </SidebarMenuSub>
-            ))}
             {!treeQuery.isLoading &&
               rootFolders.length === 0 &&
               rootFiles.length === 0 &&

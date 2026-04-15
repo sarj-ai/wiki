@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { FolderInput, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -20,18 +20,27 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useDeleteFile, useRenameFile } from "@/hooks/use-navigator-mutations";
+import { MoveFileDialog } from "./move-file-dialog";
 
 interface ItemMenuProps {
   fileId: string;
   driveId: string | null;
+  parentFolderId: string | null;
   currentName: string;
   isFolder: boolean;
 }
 
-export function ItemMenu({ fileId, driveId, currentName, isFolder }: ItemMenuProps) {
+export function ItemMenu({
+  fileId,
+  driveId,
+  parentFolderId,
+  currentName,
+  isFolder,
+}: ItemMenuProps) {
   const renameFile = useRenameFile();
   const deleteFile = useDeleteFile();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [movingFile, setMovingFile] = useState(false);
 
   const handleRename = async () => {
     const next = window.prompt("Rename to", currentName);
@@ -75,6 +84,13 @@ export function ItemMenu({ fileId, driveId, currentName, isFolder }: ItemMenuPro
             Rename
           </DropdownMenuItem>
           <DropdownMenuItem
+            onClick={() => setMovingFile(true)}
+            className="flex items-center gap-2 text-sm"
+          >
+            <FolderInput className="size-4" />
+            Move to…
+          </DropdownMenuItem>
+          <DropdownMenuItem
             onClick={() => setConfirmingDelete(true)}
             className="text-destructive focus:text-destructive flex items-center gap-2 text-sm"
           >
@@ -100,6 +116,14 @@ export function ItemMenu({ fileId, driveId, currentName, isFolder }: ItemMenuPro
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <MoveFileDialog
+        open={movingFile}
+        onOpenChange={setMovingFile}
+        fileId={fileId}
+        fileName={currentName}
+        currentDriveId={driveId}
+        currentParentFolderId={parentFolderId}
+      />
     </>
   );
 }

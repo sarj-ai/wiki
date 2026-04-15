@@ -17,6 +17,7 @@ import {
 } from "@/hooks/use-navigator-tree";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { DriveSection } from "./drive-section";
+import { SidebarDndContext } from "./sidebar-dnd-context";
 
 export function NavigatorSidebar() {
   const pathname = usePathname();
@@ -54,27 +55,29 @@ export function NavigatorSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <ErrorBoundary>
-          {drivesQuery.isLoading && (
-            <div className="text-muted-foreground px-3 py-2 text-xs">Loading drives…</div>
-          )}
-          {drivesQuery.isError && (
-            <div className="text-destructive px-3 py-2 text-xs">Failed to load drives</div>
-          )}
-          {visibleDrives.map((drive, index) => (
-            <div key={drive.id}>
-              <DriveSection
-                drive={drive}
-                activeDriveId={activeDriveId}
-                showNonDocFiles={showNonDocFiles}
-                folderIcons={folderIconsQuery.data ?? []}
-                sortOrders={sortOrdersQuery.data ?? []}
-              />
-              {index < visibleDrives.length - 1 && <SidebarSeparator />}
-            </div>
-          ))}
-          {!drivesQuery.isLoading && visibleDrives.length === 0 && (
-            <div className="text-muted-foreground px-3 py-2 text-xs">No accessible drives</div>
-          )}
+          <SidebarDndContext>
+            {drivesQuery.isLoading && (
+              <div className="text-muted-foreground px-3 py-2 text-xs">Loading drives…</div>
+            )}
+            {drivesQuery.isError && (
+              <div className="text-destructive px-3 py-2 text-xs">Failed to load drives</div>
+            )}
+            {visibleDrives.map((drive, index) => (
+              <div key={drive.id}>
+                <DriveSection
+                  drive={drive}
+                  activeDriveId={activeDriveId}
+                  showNonDocFiles={showNonDocFiles}
+                  folderIcons={folderIconsQuery.data ?? []}
+                  sortOrders={sortOrdersQuery.data ?? []}
+                />
+                {index < visibleDrives.length - 1 && <SidebarSeparator />}
+              </div>
+            ))}
+            {!drivesQuery.isLoading && visibleDrives.length === 0 && (
+              <div className="text-muted-foreground px-3 py-2 text-xs">No accessible drives</div>
+            )}
+          </SidebarDndContext>
         </ErrorBoundary>
       </SidebarContent>
       <SidebarRail />

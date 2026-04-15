@@ -2,6 +2,7 @@
 
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem } from "@/components/ui/sidebar";
 import { renderMimeIcon } from "@/lib/file-icons";
 import { cn } from "@/lib/utils";
@@ -11,17 +12,31 @@ import { useFolderFiles } from "@/hooks/use-navigator-tree";
 import { FileRow } from "./file-row";
 import { CreateFileMenu } from "./create-file-menu";
 import { ItemMenu } from "./item-menu";
+import { SortableItem } from "./sortable-item";
 
 interface TreeNodeProps {
   node: DriveNode;
   driveId: string;
+  parentFolderId: string | null;
   childrenByParent: Map<string, DriveNode[]>;
+  sortOrderMap: Map<string, number>;
   activeDriveId: string | null;
   showNonDocFiles: boolean;
   folderIconOverride?: string | null;
   iconOverrides: Map<string, string | null>;
   docIconOverrides: Map<string, string | null>;
   depth: number;
+}
+
+function sortNodes(nodes: DriveNode[], sortOrderMap: Map<string, number>): DriveNode[] {
+  return [...nodes].sort((a, b) => {
+    const aOverride = sortOrderMap.get(a.id);
+    const bOverride = sortOrderMap.get(b.id);
+    if (aOverride !== undefined && bOverride !== undefined) return aOverride - bOverride;
+    if (aOverride !== undefined) return -1;
+    if (bOverride !== undefined) return 1;
+    return a.name.localeCompare(b.name);
+  });
 }
 
 // Overlay containing the hover-revealed "+" and "..." actions for a
@@ -38,7 +53,9 @@ function RowActions({ children }: { children: React.ReactNode }) {
 export function TreeNode({
   node,
   driveId,
+  parentFolderId,
   childrenByParent,
+  sortOrderMap,
   activeDriveId,
   showNonDocFiles,
   folderIconOverride,
@@ -60,20 +77,26 @@ export function TreeNode({
       <FileRow
         node={node}
         driveId={driveId}
+        parentFolderId={parentFolderId}
         activeDriveId={activeDriveId}
         iconOverride={docIconOverrides.get(node.id) ?? null}
       />
     );
   }
 
-  const subFolders = childrenByParent.get(node.id) ?? [];
+  const subFolders = sortNodes(childrenByParent.get(node.id) ?? [], sortOrderMap);
   // Drop subfolders from lazyFiles to avoid duplication — the tree walker
   // already covers folders. Files come only from the lazy call.
   const lazyOnlyFiles = (lazyFiles ?? []).filter((n) => n.mimeType !== MIME_FOLDER);
-  const visibleFiles = showNonDocFiles
+  const filteredFiles = showNonDocFiles
     ? lazyOnlyFiles
     : lazyOnlyFiles.filter((n) => n.mimeType === "application/vnd.google-apps.document");
+  const visibleFiles = sortNodes(filteredFiles, sortOrderMap);
 
+  // Each expanded folder is its own SortableContext so within-folder
+  // drag-drop reorder works without tripping on siblings in other
+  // parents. containerId matches our "parent:..." convention.
+  const sortableItems = [...subFolders.map((n) => n.id), ...visibleFiles.map((n) => n.id)];
   const iconEmoji = folderIconOverride ?? null;
 
   return (
@@ -95,40 +118,55 @@ export function TreeNode({
       </SidebarMenuButton>
       <RowActions>
         <CreateFileMenu parentFolderId={node.id} />
-        <ItemMenu fileId={node.id} driveId={driveId} currentName={node.name} isFolder />
+        <ItemMenu
+          fileId={node.id}
+          driveId={driveId}
+          parentFolderId={parentFolderId}
+          currentName={node.name}
+          isFolder
+        />
       </RowActions>
       {expanded && (
         <SidebarMenuSub>
-          {subFolders.map((child) => (
-            <SidebarMenuSubItem key={child.id} className="group/navitem relative">
-              <TreeNode
-                node={child}
-                driveId={driveId}
-                childrenByParent={childrenByParent}
-                activeDriveId={activeDriveId}
-                showNonDocFiles={showNonDocFiles}
-                folderIconOverride={iconOverrides.get(child.id) ?? null}
-                iconOverrides={iconOverrides}
-                docIconOverrides={docIconOverrides}
-                depth={depth + 1}
-              />
-            </SidebarMenuSubItem>
-          ))}
+          <SortableContext
+            id={`parent:${node.id}`}
+            items={sortableItems}
+            strategy={verticalListSortingStrategy}
+          >
+            {subFolders.map((child) => (
+              <SortableItem key={child.id} id={child.id} variant="subitem">
+                <TreeNode
+                  node={child}
+                  driveId={driveId}
+                  parentFolderId={node.id}
+                  childrenByParent={childrenByParent}
+                  sortOrderMap={sortOrderMap}
+                  activeDriveId={activeDriveId}
+                  showNonDocFiles={showNonDocFiles}
+                  folderIconOverride={iconOverrides.get(child.id) ?? null}
+                  iconOverrides={iconOverrides}
+                  docIconOverrides={docIconOverrides}
+                  depth={depth + 1}
+                />
+              </SortableItem>
+            ))}
+            {visibleFiles.map((file) => (
+              <SortableItem key={file.id} id={file.id} variant="subitem">
+                <FileRow
+                  node={file}
+                  driveId={driveId}
+                  parentFolderId={node.id}
+                  activeDriveId={activeDriveId}
+                  iconOverride={docIconOverrides.get(file.id) ?? null}
+                />
+              </SortableItem>
+            ))}
+          </SortableContext>
           {filesLoading && (
             <SidebarMenuSubItem>
               <span className="text-muted-foreground px-2 py-1 text-xs">Loading files…</span>
             </SidebarMenuSubItem>
           )}
-          {visibleFiles.map((file) => (
-            <SidebarMenuSubItem key={file.id} className="group/navitem relative">
-              <FileRow
-                node={file}
-                driveId={driveId}
-                activeDriveId={activeDriveId}
-                iconOverride={docIconOverrides.get(file.id) ?? null}
-              />
-            </SidebarMenuSubItem>
-          ))}
           {!filesLoading && subFolders.length === 0 && visibleFiles.length === 0 && (
             <SidebarMenuSubItem>
               <span className="text-muted-foreground px-2 py-1 text-xs">Empty</span>
