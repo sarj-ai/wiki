@@ -18,6 +18,8 @@ import {
 import { ErrorBoundary } from "@/components/error-boundary";
 import { DriveSection } from "./drive-section";
 import { SidebarDndContext } from "./sidebar-dnd-context";
+import { DriveSearchBox } from "./drive-search-box";
+import { PreferencesMenu } from "./preferences-menu";
 
 export function NavigatorSidebar() {
   const pathname = usePathname();
@@ -49,8 +51,12 @@ export function NavigatorSidebar() {
   return (
     <Sidebar>
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 py-1.5">
+        <div className="flex items-center justify-between gap-2 px-2 py-1.5">
           <span className="text-sm font-semibold">Navigator</span>
+          <PreferencesMenu />
+        </div>
+        <div className="px-2 pb-1">
+          <DriveSearchBox />
         </div>
       </SidebarHeader>
       <SidebarContent>

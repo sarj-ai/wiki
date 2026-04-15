@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { navigatorApi, type CreateFileInput } from "@/lib/navigator-api";
+import { navigatorApi, type CreateFileInput, type PreferencesInput } from "@/lib/navigator-api";
 import { navigatorKeys } from "@/hooks/use-navigator-tree";
 import type { SortOrder } from "@/types/navigator";
 
@@ -87,6 +87,18 @@ export function useBulkSetSortOrders() {
     mutationFn: (items: SortOrder[]) => navigatorApi.bulkSetSortOrders(items),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: navigatorKeys.sortOrders });
+    },
+  });
+}
+
+export function useSetPreferences() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PreferencesInput) => navigatorApi.setPreferences(payload),
+    onSuccess: (prefs) => {
+      // Overwrite the preferences cache so the sidebar picks up the
+      // new visibility flags immediately without a refetch round-trip.
+      qc.setQueryData(navigatorKeys.preferences, prefs);
     },
   });
 }
