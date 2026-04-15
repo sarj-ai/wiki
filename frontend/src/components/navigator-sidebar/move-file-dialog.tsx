@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Folder, HardDrive } from "lucide-react";
+import { ChevronRight, Folder, HardDrive, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -200,7 +200,15 @@ export function MoveFileDialog({
   const disabledId = currentParentFolderId ?? currentDriveId ?? "";
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        // Block dismissal while the move is in flight so the user
+        // can't escape-dismiss the spinner mid-request.
+        if (moveFile.isPending) return;
+        onOpenChange(next);
+      }}
+    >
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Move &ldquo;{fileName}&rdquo;</DialogTitle>
@@ -224,11 +232,22 @@ export function MoveFileDialog({
           </div>
         </ScrollArea>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={moveFile.isPending}
+          >
             Cancel
           </Button>
           <Button onClick={handleConfirm} disabled={!selectedId || moveFile.isPending}>
-            Move
+            {moveFile.isPending ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Moving…
+              </>
+            ) : (
+              "Move"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

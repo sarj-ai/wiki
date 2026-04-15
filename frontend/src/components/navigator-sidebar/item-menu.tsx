@@ -1,8 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { Copy, FolderInput, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Copy, FolderInput, Loader2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -43,6 +43,7 @@ export function ItemMenu({
   isFolder,
 }: ItemMenuProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const renameFile = useRenameFile();
   const deleteFile = useDeleteFile();
   const copyFile = useCopyFile();
@@ -80,10 +81,21 @@ export function ItemMenu({
   };
 
   const handleDelete = async () => {
-    setConfirmingDelete(false);
+    // Keep the dialog open while the delete is in flight so the
+    // confirm button can show a spinner and block double-clicks —
+    // closing eagerly and relying on the toast leaves the user
+    // without any feedback during the round-trip.
     try {
-      await deleteFile.mutateAsync({ fileId, driveId });
+      await deleteFile.mutateAsync({ fileId, driveId, parentFolderId });
+      setConfirmingDelete(false);
       toast.success(isFolder ? "Folder moved to trash" : "File moved to trash");
+      // If the user is currently viewing the deleted file's iframe,
+      // route them back to the landing page — otherwise the viewer
+      // would hang on a file that now 404s (or worse, keep showing
+      // the iframe of a trashed doc).
+      if (pathname === `/d/${encodeURIComponent(fileId)}`) {
+        router.push("/");
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Delete failed";
       toast.error(message);
@@ -136,7 +148,15 @@ export function ItemMenu({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+      <AlertDialog
+        open={confirmingDelete}
+        onOpenChange={(open) => {
+          // Block closing while the delete is in flight so the user
+          // can't escape-dismiss the spinner mid-request.
+          if (deleteFile.isPending) return;
+          setConfirmingDelete(open);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -148,8 +168,26 @@ export function ItemMenu({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Move to trash</AlertDialogAction>
+            <AlertDialogCancel disabled={deleteFile.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                // radix closes the alert on click by default. Override
+                // that so the dialog stays open until the delete
+                // settles — the `onOpenChange` guard above enforces it.
+                e.preventDefault();
+                void handleDelete();
+              }}
+              disabled={deleteFile.isPending}
+            >
+              {deleteFile.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Moving to trash…
+                </>
+              ) : (
+                "Move to trash"
+              )}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -24,12 +24,16 @@ function fileToNode(file: FileResponse): DriveNode {
 // this is purely UX smoothing, not source-of-truth.
 function injectNewFileIntoCaches(qc: QueryClient, file: FileResponse): void {
   const node = fileToNode(file);
-  const parentId = file.parentFolderId;
+  // Root-level files live in ``folderFiles(driveId)`` — the drive-root
+  // listing is keyed by the drive id, not by null. Fall back to the
+  // drive id when the file has no parent folder so the optimistic
+  // insert lands in the same cache the sidebar actually reads.
+  const parentKey = file.parentFolderId ?? file.driveId;
 
   // 1. Folder-files cache: append to the parent folder's listing so an
   // already-expanded folder paints the new row on the next render.
-  if (parentId) {
-    qc.setQueryData<DriveNode[] | undefined>(navigatorKeys.folderFiles(parentId), (prev) => {
+  if (parentKey) {
+    qc.setQueryData<DriveNode[] | undefined>(navigatorKeys.folderFiles(parentKey), (prev) => {
       if (!prev) return prev;
       if (prev.some((n) => n.id === node.id)) return prev;
       return [...prev, node];
@@ -137,13 +141,55 @@ export function useCopyFile() {
   });
 }
 
+// Strip a deleted node from every cache the sidebar reads so the row
+// disappears the instant the mutation settles. Same rationale as
+// ``injectNewFileIntoCaches`` — Drive's listing index lags the trash
+// call, so an eager refetch would return a listing that still
+// contains the file and make it flash back into the sidebar.
+function removeFileFromCaches(
+  qc: QueryClient,
+  fileId: string,
+  parentFolderId: string | null,
+  driveId: string | null,
+): void {
+  // Root-level files live under ``folderFiles(driveId)`` — the drive
+  // section treats ``parentFolderId === null`` as "this drive's root"
+  // and fetches via ``useFolderFiles(drive.id)``. Fall back to the
+  // drive id so the removal lands in the same cache the sidebar reads.
+  const parentKey = parentFolderId ?? driveId;
+  if (parentKey) {
+    qc.setQueryData<DriveNode[] | undefined>(navigatorKeys.folderFiles(parentKey), (prev) => {
+      if (!prev) return prev;
+      return prev.filter((n) => n.id !== fileId);
+    });
+  }
+  if (driveId) {
+    // Folders live in the drive tree; files don't. The filter is a
+    // no-op for files so it's safe to run unconditionally.
+    qc.setQueryData<DriveTree | undefined>(navigatorKeys.driveTree(driveId), (prev) => {
+      if (!prev) return prev;
+      return { ...prev, folders: prev.folders.filter((f) => f.id !== fileId) };
+    });
+  }
+  // Drop any stale per-file metadata so a re-navigation doesn't
+  // show cached info for a file that's now in trash.
+  qc.removeQueries({ queryKey: ["navigator", "file", fileId] });
+}
+
 export function useDeleteFile() {
-  const invalidate = useInvalidateTrees();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ fileId, driveId: _driveId }: { fileId: string; driveId: string | null }) =>
-      navigatorApi.deleteFile(fileId),
-    onSuccess: (_void, { driveId }) => {
-      invalidate([driveId]);
+    mutationFn: ({
+      fileId,
+      driveId: _driveId,
+      parentFolderId: _parentFolderId,
+    }: {
+      fileId: string;
+      driveId: string | null;
+      parentFolderId: string | null;
+    }) => navigatorApi.deleteFile(fileId),
+    onSuccess: (_void, { fileId, driveId, parentFolderId }) => {
+      removeFileFromCaches(qc, fileId, parentFolderId, driveId);
     },
   });
 }
