@@ -166,6 +166,7 @@ export function DriveSection({
                       parentFolderId={null}
                       activeDriveId={activeDriveId}
                       iconOverride={docIconOverrides.get(file.id) ?? null}
+                      depth={0}
                     />
                   </SortableItem>
                 ))}

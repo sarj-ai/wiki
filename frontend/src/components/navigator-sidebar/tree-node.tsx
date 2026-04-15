@@ -80,6 +80,7 @@ export function TreeNode({
         parentFolderId={parentFolderId}
         activeDriveId={activeDriveId}
         iconOverride={docIconOverrides.get(node.id) ?? null}
+        depth={depth}
       />
     );
   }
@@ -104,7 +105,9 @@ export function TreeNode({
       <SidebarMenuButton
         onClick={() => setExpanded((v) => !v)}
         className="pr-14"
+        style={{ paddingLeft: `${depth * 12 + 8}px` }}
         aria-expanded={expanded}
+        title={node.name}
       >
         <ChevronRight
           className={cn("size-3.5 shrink-0 transition-transform", expanded && "rotate-90")}
@@ -127,7 +130,10 @@ export function TreeNode({
         />
       </RowActions>
       {expanded && (
-        <SidebarMenuSub>
+        // Flatten the nested sub so recursion doesn't compound margins
+        // across levels — depth indentation lives on the row content
+        // itself via paddingLeft so 8+ levels still have room to breathe.
+        <SidebarMenuSub className="mx-0 gap-0.5 border-l-0 px-0">
           <SortableContext
             id={`parent:${node.id}`}
             items={sortableItems}
@@ -158,6 +164,7 @@ export function TreeNode({
                   parentFolderId={node.id}
                   activeDriveId={activeDriveId}
                   iconOverride={docIconOverrides.get(file.id) ?? null}
+                  depth={depth + 1}
                 />
               </SortableItem>
             ))}

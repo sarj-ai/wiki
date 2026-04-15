@@ -2,13 +2,7 @@
 
 import { useMemo } from "react";
 import { usePathname } from "next/navigation";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarRail,
-  SidebarSeparator,
-} from "@/components/ui/sidebar";
+import { Sidebar, SidebarContent, SidebarHeader, SidebarSeparator } from "@/components/ui/sidebar";
 import {
   useDrives,
   useFolderIcons,
@@ -20,6 +14,8 @@ import { DriveSection } from "./drive-section";
 import { SidebarDndContext } from "./sidebar-dnd-context";
 import { DriveSearchBox } from "./drive-search-box";
 import { PreferencesMenu } from "./preferences-menu";
+import { NavigatorFooter } from "./navigator-footer";
+import { SidebarResizeHandle } from "./resize-handle";
 
 export function NavigatorSidebar() {
   const pathname = usePathname();
@@ -86,7 +82,8 @@ export function NavigatorSidebar() {
           </SidebarDndContext>
         </ErrorBoundary>
       </SidebarContent>
-      <SidebarRail />
+      <NavigatorFooter />
+      <SidebarResizeHandle />
     </Sidebar>
   );
 }

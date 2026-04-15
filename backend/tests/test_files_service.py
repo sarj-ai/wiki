@@ -16,8 +16,24 @@ import pytest
 from fastapi import HTTPException
 from googleapiclient.errors import HttpError
 
+from app.drive.schemas import DriveSummary
 from app.files import service as files_service
 from app.models.user import User
+
+
+def _patch_member_drive(monkeypatch: pytest.MonkeyPatch, drive_id: str) -> None:
+    """Pretend ``drive_id`` is a shared drive the test user is a member of.
+
+    The files service now calls ``list_user_drives`` as part of its
+    strict-scope check — any test that exercises a successful read or
+    write path has to stub it out or the check walks all the way down
+    into Drive credentials and blows up on the fake user.
+    """
+
+    async def _fake_list(_user: User) -> list[DriveSummary]:
+        return [DriveSummary(id=drive_id, name="Stub Drive")]
+
+    monkeypatch.setattr(files_service, "list_user_drives", _fake_list)
 
 
 def _user() -> User:
@@ -106,6 +122,7 @@ async def test_create_success_returns_file_response(monkeypatch: pytest.MonkeyPa
             return _FakeFiles()
 
     monkeypatch.setattr(files_service, "get_drive_service", lambda _u: _FakeService())
+    _patch_member_drive(monkeypatch, "d1")
     result = await files_service.create_file(
         _user(),
         parent_folder_id="p",
@@ -115,3 +132,63 @@ async def test_create_success_returns_file_response(monkeypatch: pytest.MonkeyPa
     assert result.id == "new-id"
     assert result.parent_folder_id == "p"
     assert result.drive_id == "d1"
+
+
+async def test_get_file_rejects_my_drive(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Files without a driveId (My Drive) must be hidden from the Navigator."""
+
+    class _FakeFiles:
+        def get(self, **_: Any) -> _FakeFiles:
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            return {
+                "id": "my-drive-file",
+                "name": "Personal",
+                "mimeType": "application/vnd.google-apps.document",
+                "parents": [],
+                # No driveId — file lives in the user's My Drive.
+            }
+
+    class _FakeService:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    monkeypatch.setattr(files_service, "get_drive_service", lambda _u: _FakeService())
+    # list_user_drives shouldn't even be reached — the driveId is None.
+    _patch_member_drive(monkeypatch, "irrelevant")
+
+    with pytest.raises(HTTPException) as excinfo:
+        await files_service.get_file(_user(), "my-drive-file")
+    assert excinfo.value.status_code == 404
+
+
+async def test_get_file_rejects_non_member_shared_drive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shared-drive files still fail the check if the user isn't a member."""
+
+    class _FakeFiles:
+        def get(self, **_: Any) -> _FakeFiles:
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            return {
+                "id": "foreign-file",
+                "name": "Not mine",
+                "mimeType": "application/vnd.google-apps.document",
+                "parents": ["foreign-drive"],
+                "driveId": "foreign-drive",
+            }
+
+    class _FakeService:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    monkeypatch.setattr(files_service, "get_drive_service", lambda _u: _FakeService())
+    # User is only a member of "other-drive", not the file's drive.
+    _patch_member_drive(monkeypatch, "other-drive")
+
+    with pytest.raises(HTTPException) as excinfo:
+        await files_service.get_file(_user(), "foreign-file")
+    assert excinfo.value.status_code == 404

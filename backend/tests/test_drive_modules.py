@@ -283,3 +283,86 @@ async def test_search_across_drives_fans_out(patch_drive_service: Any) -> None:
     patch_drive_service(service)
     results = await search_mod.search_across_drives(_user(), ["d1", "d2"], "q")
     assert [r.id for r in results] == ["a", "b"]
+
+
+# ---------------------------------------------------------------------------
+# snippet extraction — pure function, no Drive calls
+# ---------------------------------------------------------------------------
+
+
+def test_extract_snippet_basic_match() -> None:
+    text = "The quick brown fox jumps over the lazy dog under the tree"
+    result = search_mod.extract_snippet(text, "brown", context_chars=10)
+    assert result is not None
+    snippet, word = result
+    assert "brown" in snippet
+    assert word == "brown"
+
+
+def test_extract_snippet_case_insensitive() -> None:
+    text = "Deploy the BACKEND to production on Friday"
+    result = search_mod.extract_snippet(text, "backend", context_chars=20)
+    assert result is not None
+    snippet, _ = result
+    assert "BACKEND" in snippet
+
+
+def test_extract_snippet_picks_first_word_with_match() -> None:
+    text = "Alpha comes first then bravo appears here in the middle somewhere"
+    result = search_mod.extract_snippet(text, "charlie bravo alpha", context_chars=20)
+    assert result is not None
+    _, word = result
+    # alpha occurs at index 0 (as "Alpha"), bravo later, charlie never
+    # — so alpha wins. matched_word is sliced from the original text
+    # preserving its casing so the frontend can highlight the exact
+    # characters that appeared in the doc.
+    assert word == "Alpha"
+
+
+def test_extract_snippet_prefix_fallback_plural() -> None:
+    """Drive's full-text search stems "phases" → "phase"; we mirror that.
+
+    Without the prefix fallback the snippet extractor would return
+    ``None`` whenever the user's query word is a stemmed variant of
+    the text in the doc, and the command palette would show an
+    unhelpful "we couldn't locate the match" message instead of real
+    context.
+    """
+    text = "The project has one phase left before the launch is ready to go"
+    result = search_mod.extract_snippet(text, "phases", context_chars=20)
+    assert result is not None
+    snippet, word = result
+    assert "phase" in snippet.lower()
+    # The prefix that actually matched is the shortened "phase" — the
+    # full 6-char query word didn't hit, so we fell back to 5 chars.
+    assert word.lower() == "phase"
+
+
+def test_extract_snippet_skips_short_words() -> None:
+    text = "Longest word here is collaborator with many characters around it"
+    # "of" is 2 chars and should be skipped; "collaborator" should match.
+    result = search_mod.extract_snippet(text, "of collaborator", context_chars=10)
+    assert result is not None
+    _, word = result
+    assert word == "collaborator"
+
+
+def test_extract_snippet_no_match_returns_none() -> None:
+    text = "There is nothing interesting in here at all"
+    assert search_mod.extract_snippet(text, "missing") is None
+
+
+def test_extract_snippet_empty_inputs() -> None:
+    assert search_mod.extract_snippet("", "hello") is None
+    assert search_mod.extract_snippet("hello world", "") is None
+
+
+def test_extract_snippet_collapses_whitespace_and_ellipsis() -> None:
+    text = "prefix text       here   with     weird   spacing and a match token near the middle of"
+    result = search_mod.extract_snippet(text, "match", context_chars=15)
+    assert result is not None
+    snippet, _ = result
+    # Multiple spaces collapsed to single
+    assert "   " not in snippet
+    # Prefix ellipsis because we trimmed from the left
+    assert snippet.startswith("…")

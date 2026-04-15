@@ -13,6 +13,7 @@ interface FileRowProps {
   parentFolderId: string | null;
   activeDriveId: string | null;
   iconOverride: string | null;
+  depth: number;
 }
 
 export function FileRow({
@@ -21,6 +22,7 @@ export function FileRow({
   parentFolderId,
   activeDriveId,
   iconOverride,
+  depth,
 }: FileRowProps) {
   const pathname = usePathname();
   const href = `/d/${encodeURIComponent(node.id)}`;
@@ -28,8 +30,13 @@ export function FileRow({
 
   return (
     <>
-      <SidebarMenuButton asChild isActive={isActive} className="pr-8">
-        <Link href={href}>
+      <SidebarMenuButton
+        asChild
+        isActive={isActive}
+        className="pr-8"
+        style={{ paddingLeft: `${depth * 12 + 8}px` }}
+      >
+        <Link href={href} title={node.name}>
           {iconOverride ? (
             <span className="text-base leading-none">{iconOverride}</span>
           ) : (

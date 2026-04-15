@@ -28,6 +28,14 @@ from app.models.user import User
 router = APIRouter(prefix="/extras", tags=["extras"])
 
 
+@router.get("/doc-icons")
+async def list_doc_icons(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> list[DocIconRead]:
+    return await service.list_doc_icons(db)
+
+
 @router.get("/doc-icons/{drive_id}")
 async def read_doc_icon(
     drive_id: str,

@@ -39,6 +39,21 @@ async def get_doc_icon(db: AsyncSession, drive_id: str) -> DocIconRead | None:
     return DocIconRead(drive_id=row.drive_id, icon=row.icon, cover_url=row.cover_url)
 
 
+async def list_doc_icons(db: AsyncSession) -> list[DocIconRead]:
+    """Return every doc_icons row so the sidebar can render overrides.
+
+    Doc icons are globally shared across all users (unlike folder
+    icons, which are per-user), so a single list call populates the
+    override map for the entire sidebar in one round trip. Cheap —
+    the table is bounded by the count of customized Docs, which is a
+    tiny fraction of total files.
+    """
+    rows = (await db.execute(select(DocIcon))).scalars().all()
+    return [
+        DocIconRead(drive_id=r.drive_id, icon=r.icon, cover_url=r.cover_url) for r in rows
+    ]
+
+
 async def upsert_doc_icon(
     db: AsyncSession,
     drive_id: str,
