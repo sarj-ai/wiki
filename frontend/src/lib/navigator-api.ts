@@ -9,6 +9,7 @@ import type {
   FileResponse,
   FolderIcon,
   Preferences,
+  SnippetResult,
   SortOrder,
 } from "@/types/navigator";
 
@@ -156,6 +157,8 @@ export const navigatorApi = {
     fetchApi<void>(`/files/${encodeURIComponent(fileId)}`, { method: "DELETE" }),
 
   // ---- Extras: doc icons (global) --------------------------------------
+  listDocIcons: () => fetchApi<DocIcon[]>("/extras/doc-icons"),
+
   getDocIcon: (driveId: string) =>
     fetchApi<DocIcon>(`/extras/doc-icons/${encodeURIComponent(driveId)}`),
 
@@ -215,5 +218,10 @@ export const navigatorApi = {
     const params = new URLSearchParams({ q: query });
     if (limitPerDrive !== undefined) params.set("limit_per_drive", String(limitPerDrive));
     return fetchApi<DriveSearchResult[]>(`/drive-search?${params.toString()}`);
+  },
+
+  driveSearchSnippet: (fileId: string, query: string) => {
+    const params = new URLSearchParams({ file_id: fileId, q: query });
+    return fetchApi<SnippetResult>(`/drive-search/snippet?${params.toString()}`);
   },
 };

@@ -1,16 +1,19 @@
 "use client";
 
 import { ChevronRight } from "lucide-react";
-import { useState } from "react";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { toast } from "sonner";
 import { SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem } from "@/components/ui/sidebar";
 import { renderMimeIcon } from "@/lib/file-icons";
 import { cn } from "@/lib/utils";
 import type { DriveNode } from "@/types/navigator";
 import { MIME_FOLDER } from "@/types/navigator";
 import { useFolderFiles } from "@/hooks/use-navigator-tree";
+import { useExpandedFolder } from "@/hooks/use-expanded-folders";
+import { useSetFolderIcon } from "@/hooks/use-navigator-mutations";
 import { FileRow } from "./file-row";
 import { CreateFileMenu } from "./create-file-menu";
+import { EmojiPickerPopover } from "./emoji-picker-popover";
 import { ItemMenu } from "./item-menu";
 import { SortableItem } from "./sortable-item";
 
@@ -28,6 +31,11 @@ interface TreeNodeProps {
   depth: number;
 }
 
+// Width reserved for the absolute-positioned icon column. Kept in
+// sync with file-row.tsx so file and folder rows share the exact
+// same horizontal rhythm at every depth.
+const ICON_COLUMN_WIDTH = 24;
+
 function sortNodes(nodes: DriveNode[], sortOrderMap: Map<string, number>): DriveNode[] {
   return [...nodes].sort((a, b) => {
     const aOverride = sortOrderMap.get(a.id);
@@ -40,11 +48,11 @@ function sortNodes(nodes: DriveNode[], sortOrderMap: Map<string, number>): Drive
 }
 
 // Overlay containing the hover-revealed "+" and "..." actions for a
-// folder row. Sits absolutely-positioned on top of the SidebarMenuButton
-// so it doesn't steal layout from the folder label.
+// folder row. Vertically centered so the ``...`` button lines up with
+// the icon and name instead of clinging to the top edge of the row.
 function RowActions({ children }: { children: React.ReactNode }) {
   return (
-    <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover/navitem:opacity-100 focus-within:opacity-100">
+    <div className="absolute top-1/2 right-1 z-20 flex -translate-y-1/2 items-center gap-0.5 opacity-0 group-hover/navitem:opacity-100 focus-within:opacity-100">
       {children}
     </div>
   );
@@ -64,13 +72,16 @@ export function TreeNode({
   depth,
 }: TreeNodeProps) {
   const isFolder = node.mimeType === MIME_FOLDER;
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useExpandedFolder(node.id);
   // Only call the lazy file query once the user expands; the hook reads
   // from the React Query cache on subsequent expands so flicker is ~0.
   const { data: lazyFiles, isLoading: filesLoading } = useFolderFiles(
     isFolder ? node.id : null,
     expanded,
   );
+  // Icon mutation lives at the top of the component so the hook
+  // order is stable across folder vs non-folder branches below.
+  const setFolderIcon = useSetFolderIcon();
 
   if (!isFolder) {
     return (
@@ -100,25 +111,60 @@ export function TreeNode({
   const sortableItems = [...subFolders.map((n) => n.id), ...visibleFiles.map((n) => n.id)];
   const iconEmoji = folderIconOverride ?? null;
 
+  const handleFolderIconChange = async (next: string | null) => {
+    try {
+      await setFolderIcon.mutateAsync({ folderDriveId: node.id, icon: next });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update icon";
+      toast.error(message);
+    }
+  };
+
+  const folderIconContent = iconEmoji ? (
+    <span className="text-base leading-none">{iconEmoji}</span>
+  ) : (
+    renderMimeIcon(node.mimeType, "size-4 shrink-0")
+  );
+
+  // Layout mirrors file-row.tsx: the chevron stays inside the expand
+  // button, but the folder icon is pulled out into an absolutely-
+  // positioned overlay. This guarantees that clicking the icon can
+  // never trigger the button's expand/collapse handler via event
+  // bubbling — the icon click lives in a different subtree entirely,
+  // so radix Popover's toggle runs cleanly.
+  const chevronPadding = `${depth * 12 + 8}px`;
+  const iconLeft = `${depth * 12 + 8 + 18}px`; // chevron width (~14) + gap
+
   return (
     <>
       <SidebarMenuButton
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => setExpanded(!expanded)}
         className="pr-14"
-        style={{ paddingLeft: `${depth * 12 + 8}px` }}
+        style={{ paddingLeft: chevronPadding }}
         aria-expanded={expanded}
         title={node.name}
       >
         <ChevronRight
           className={cn("size-3.5 shrink-0 transition-transform", expanded && "rotate-90")}
         />
-        {iconEmoji ? (
-          <span className="text-base leading-none">{iconEmoji}</span>
-        ) : (
-          renderMimeIcon(node.mimeType, "size-4 shrink-0")
-        )}
+        <span className="shrink-0" style={{ width: ICON_COLUMN_WIDTH - 4 }} aria-hidden="true" />
         <span className="truncate">{node.name}</span>
       </SidebarMenuButton>
+      <div className="absolute top-1/2 z-10 -translate-y-1/2" style={{ left: iconLeft }}>
+        <EmojiPickerPopover value={iconEmoji} onChange={handleFolderIconChange}>
+          <button
+            type="button"
+            aria-label="Change folder icon"
+            // Matches the file-row icon: hover uses the full sidebar
+            // highlight tokens so folder and file icons share the
+            // same pickable affordance and automatically flip with
+            // the theme.
+            className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors"
+          >
+            {folderIconContent}
+          </button>
+        </EmojiPickerPopover>
+      </div>
       <RowActions>
         <CreateFileMenu parentFolderId={node.id} />
         <ItemMenu

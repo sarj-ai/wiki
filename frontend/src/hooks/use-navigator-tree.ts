@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { navigatorApi } from "@/lib/navigator-api";
 import type {
+  DocIcon,
   DriveNode,
   DriveSummary,
   DriveTree,
@@ -18,6 +19,7 @@ export const navigatorKeys = {
   folderFiles: (folderId: string) => ["navigator", "folder-files", folderId] as const,
   preferences: ["navigator", "preferences"] as const,
   folderIcons: ["navigator", "folder-icons"] as const,
+  docIcons: ["navigator", "doc-icons"] as const,
   sortOrders: ["navigator", "sort-orders"] as const,
 };
 
@@ -57,6 +59,13 @@ export function useFolderIcons() {
   return useQuery<FolderIcon[]>({
     queryKey: navigatorKeys.folderIcons,
     queryFn: () => navigatorApi.listFolderIcons(),
+  });
+}
+
+export function useDocIcons() {
+  return useQuery<DocIcon[]>({
+    queryKey: navigatorKeys.docIcons,
+    queryFn: () => navigatorApi.listDocIcons(),
   });
 }
 

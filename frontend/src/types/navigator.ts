@@ -65,3 +65,10 @@ export interface DriveSearchResult {
   parentId: string | null;
   modifiedTime: string | null;
 }
+
+export interface SnippetResult {
+  fileId: string;
+  mimeType: string;
+  snippet: string | null;
+  matchTerm: string | null;
+}

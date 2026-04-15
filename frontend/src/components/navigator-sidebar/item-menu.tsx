@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useDeleteFile, useRenameFile } from "@/hooks/use-navigator-mutations";
 import { MoveFileDialog } from "./move-file-dialog";
+import { NamePromptDialog } from "./name-prompt-dialog";
 
 interface ItemMenuProps {
   fileId: string;
@@ -41,12 +42,12 @@ export function ItemMenu({
   const deleteFile = useDeleteFile();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [movingFile, setMovingFile] = useState(false);
+  const [renaming, setRenaming] = useState(false);
 
-  const handleRename = async () => {
-    const next = window.prompt("Rename to", currentName);
-    if (!next || next.trim() === "" || next === currentName) return;
+  const handleRenameSubmit = async (next: string) => {
+    if (next === currentName) return;
     try {
-      await renameFile.mutateAsync({ fileId, name: next.trim() });
+      await renameFile.mutateAsync({ fileId, name: next });
       toast.success("Renamed");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Rename failed";
@@ -79,7 +80,10 @@ export function ItemMenu({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-40">
-          <DropdownMenuItem onClick={handleRename} className="flex items-center gap-2 text-sm">
+          <DropdownMenuItem
+            onClick={() => setRenaming(true)}
+            className="flex items-center gap-2 text-sm"
+          >
             <Pencil className="size-4" />
             Rename
           </DropdownMenuItem>
@@ -123,6 +127,14 @@ export function ItemMenu({
         fileName={currentName}
         currentDriveId={driveId}
         currentParentFolderId={parentFolderId}
+      />
+      <NamePromptDialog
+        open={renaming}
+        onOpenChange={setRenaming}
+        title={isFolder ? "Rename folder" : "Rename file"}
+        defaultValue={currentName}
+        confirmLabel="Rename"
+        onConfirm={handleRenameSubmit}
       />
     </>
   );

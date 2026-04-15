@@ -1,11 +1,27 @@
 import type { NextConfig } from "next";
 
-// Allowed Google domains for iframe embedding (see PIVOT_PLAN.md §8.1).
-// CSP frame-src must permit every origin the Navigator embeds.
+// Every Google-owned origin the Navigator needs to iframe or talk to.
+// Google Docs' Share dialog loads nested people-picker frames from
+// several of these hosts (contacts.google.com, apis.google.com,
+// accounts.google.com), so the embedded /edit URL silently fails when
+// frame-src is locked down to docs/drive only — the top frame loads
+// but the share dialog's inner frame gets CSP-blocked with no visible
+// error, and the button click appears to do nothing.
 const GOOGLE_FRAME_SRC = [
-  "https://docs.google.com",
-  "https://drive.google.com",
+  "https://*.google.com",
+  "https://*.gstatic.com",
   "https://*.googleusercontent.com",
+].join(" ");
+
+// Same rationale for connect-src: the share dialog makes fetch calls
+// to the Google People / Contacts APIs which live on *.googleapis.com
+// and clients6.google.com. Without these the dialog's JS runs but
+// every API call is blocked by CSP and the UI does nothing.
+const GOOGLE_CONNECT_SRC = [
+  "https://*.google.com",
+  "https://*.googleapis.com",
+  "https://*.googleusercontent.com",
+  "https://*.gstatic.com",
 ].join(" ");
 
 // The Navigator frontend always runs at a different origin from the
@@ -31,9 +47,9 @@ const CSP_DIRECTIVES = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://lh3.googleusercontent.com https://*.googleusercontent.com",
-  "font-src 'self' data:",
-  `connect-src 'self' ${BACKEND_API_ORIGIN} https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com`,
+  "img-src 'self' data: blob: https://*.google.com https://*.gstatic.com https://*.googleusercontent.com",
+  "font-src 'self' data: https://*.gstatic.com",
+  `connect-src 'self' ${BACKEND_API_ORIGIN} ${GOOGLE_CONNECT_SRC}`,
   `frame-src 'self' ${GOOGLE_FRAME_SRC}`,
   "frame-ancestors 'self'",
   "base-uri 'self'",

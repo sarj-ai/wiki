@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ChevronRight, HardDrive } from "lucide-react";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import {
@@ -11,7 +11,8 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { useDriveTree, useFolderFiles } from "@/hooks/use-navigator-tree";
+import { useDocIcons, useDriveTree, useFolderFiles } from "@/hooks/use-navigator-tree";
+import { useExpandedDrive } from "@/hooks/use-expanded-folders";
 import type { DriveNode, DriveSummary, FolderIcon, SortOrder } from "@/types/navigator";
 import { MIME_DOC, MIME_FOLDER } from "@/types/navigator";
 import { TreeNode } from "./tree-node";
@@ -58,7 +59,7 @@ export function DriveSection({
   folderIcons,
   sortOrders,
 }: DriveSectionProps) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useExpandedDrive(drive.id);
   const treeQuery = useDriveTree(drive.id);
   // Drive-root files: treat the drive id as a folder id and lazy-load on
   // expand. Backend maps directly to `'{drive_id}' in parents` which Drive
@@ -71,8 +72,12 @@ export function DriveSection({
     return map;
   }, [folderIcons]);
 
-  // Doc icon overrides are intentionally empty in D2. D5 wires them in.
-  const docIconOverrides = useMemo(() => new Map<string, string | null>(), []);
+  const docIconsQuery = useDocIcons();
+  const docIconOverrides = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const d of docIconsQuery.data ?? []) map.set(d.driveId, d.icon);
+    return map;
+  }, [docIconsQuery.data]);
 
   const sortOrderMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -109,7 +114,7 @@ export function DriveSection({
         <SidebarGroupLabel asChild>
           <button
             type="button"
-            onClick={() => setExpanded((v) => !v)}
+            onClick={() => setExpanded(!expanded)}
             className="flex w-full items-center gap-1 pr-7"
             aria-expanded={expanded}
           >

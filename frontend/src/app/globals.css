@@ -79,13 +79,20 @@
   --chart-3: #104e64;
   --chart-4: #ffb900;
   --chart-5: #fe9a00;
-  --sidebar: #fafafa;
+  /* Sidebar base surface mirrors the main background so the sidebar
+     and Navigator toolbar read as one unified chrome. --sidebar-accent
+     stays on the deep Sarj purple and represents the ACTIVE/selected
+     row. The hover state uses a translucent version of the same
+     token (``bg-sidebar-accent/40``) in the shadcn sidebar button so
+     hover reads as a softer purple tint distinct from the solid
+     highlight. */
+  --sidebar: #f4f2ef;
   --sidebar-foreground: #1a1a1a;
   --sidebar-primary: #251040;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #251040;
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #e5e5e5;
+  --sidebar-border: #d5d5d5;
   --sidebar-ring: oklch(0.708 0 0);
 
   --radius: 0.625rem;
@@ -124,12 +131,16 @@
   --chart-3: #fe9a00;
   --chart-4: #ad46ff;
   --chart-5: #ff2056;
-  --sidebar: #171717;
+  /* Match --background so the sidebar and Navigator toolbar share the
+     exact same surface color in dark mode. Deep Sarj purple remains
+     the highlight color; hover picks up a softer translucent tint
+     via ``bg-sidebar-accent/40`` on the shadcn button. */
+  --sidebar: #161618;
   --sidebar-foreground: #fafafa;
   --sidebar-primary: #fafafa;
   --sidebar-primary-foreground: #fafafa;
   --sidebar-accent: #4b3483;
-  --sidebar-accent-foreground: #fafafa;
+  --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #ffffff1a;
   --sidebar-ring: #737373;
 }

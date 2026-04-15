@@ -102,3 +102,27 @@ export function useSetPreferences() {
     },
   });
 }
+
+export function useSetDocIcon() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ driveId, icon }: { driveId: string; icon: string | null }) =>
+      navigatorApi.setDocIcon(driveId, { icon }),
+    onSuccess: () => {
+      // Doc icons are global — one refetch updates the map for the
+      // whole sidebar. Simpler than patching the cached array by hand.
+      qc.invalidateQueries({ queryKey: navigatorKeys.docIcons });
+    },
+  });
+}
+
+export function useSetFolderIcon() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ folderDriveId, icon }: { folderDriveId: string; icon: string | null }) =>
+      navigatorApi.setFolderIcon(folderDriveId, icon),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: navigatorKeys.folderIcons });
+    },
+  });
+}
