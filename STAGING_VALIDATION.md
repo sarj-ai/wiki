@@ -1,22 +1,51 @@
-# Navigator Staging Validation — Sub-PR E
+# Navigator Validation — Sub-PR E (dev-based) + Cutover-Night Runbook
 
-**Status:** Runbook. Execute top-to-bottom before Sub-PR F (cutover) can be marked ready.
-**Environment:** staging deployment of `feat/navigator-pivot`. Not prod.
-**Accounts:** two real `@sarj.ai` accounts are required. Call them **User A** (day-one cold-cache tester) and **User B** (warm-cache tester + propagation counterparty).
+**Status update (2026-04-16):** Sarj has no staging environment. Sub-PR E's "staging validation" was performed against the local dev stack over the pivot session — findings are recorded inline in each section below as ✅ / ❌ / ⚠️. The doc remains in the repo as a cutover-night runbook so the operator has a single source of truth on the day of the prod deploy.
+**Environment:** local dev (`localhost:3000` frontend ↔ `localhost:8000` backend) for the Sub-PR E pass. Production prod deploy walks this same list at cutover.
+**Accounts:** the pivot author's own `@sarj.ai` account (`aalhashemi@sarj.ai`) with real shared-drive membership. Some propagation-between-users tests are deferred until a second `@sarj.ai` account is available on the day of the cutover.
 **Source of truth for this runbook:** `PIVOT_PLAN.md` §12 (Sub-PR E), §13 (risks), §17 (spike findings). If a section here contradicts the plan, the plan wins.
 
-Every section below has an **expected** and an **actual** slot. Fill in the actual result as you go. Anything marked **go/no-go gate** blocks the cutover outright — if it fails, stop and escalate before touching prod.
+Every section below has a **finding** slot with what was observed in dev. Anything marked **go/no-go gate** is still a hard gate on the cutover itself — cutover-night retest is mandatory even if the dev pass was green.
+
+## Dev-pass summary (2026-04-16)
+
+| § | Check | Dev finding |
+|---|---|---|
+| §1 | Third-party cookies in Chrome | ✅ Not the blocker for any observed issue. Tested with `[*.]google.com` allowed; app behavior identical. |
+| §2 | CSP iframe loads (Docs / Sheets / Slides / Drawings / PDF / image) | ✅ All six load inside the iframe with no CSP violations in DevTools console. |
+| §3 | Tree walker latency per drive (folders-only, cold) | ✅ Matches spike — Engineering cold walk ~6s, small drives ~1.4s each, progressive rendering works; drives populate independently. |
+| §4 | Cache sharing across users | ⚠️ Partial — only one test account available locally. The `drive_tree_cache` row is confirmed populated and served on warm loads. Cross-user retest is a cutover-night item. |
+| §5 | Drive Search API | ✅ Full-text, name, type, and multi-word queries all return via `/drive-search`. Backed by the new `Cmd+K` command palette with lazy per-result snippet preview via `/drive-search/snippet`. Prefix-truncation fallback (`phases` → `phase`) verified with a unit test. |
+| §6 | Rename / move / delete propagation | ⚠️ Partial — dev pass covers single-user CRUD (create, rename via themed dialog, move via Move-To dialog, drag-drop reorder, delete via trash). Cross-user observation deferred until cutover-night. |
+| §7 | Content migration verification | ⬜ Not applicable in dev. The hidden `0AI_dKpHiz__7Uk9PVA` drive migration is a cutover-night prerequisite and lives entirely outside the code path. See Sub-PR B-prime. |
+| §8 | Full happy path (login → sidebar → open doc → etc.) | ✅ Walked end-to-end dozens of times during iterative development. Progressive sidebar, iframe loads, create menu, rename, move-to, trash, Drive Search, preferences dialog, theme toggle, logout, hard-refresh persistence, sidebar resize, expanded-folder persistence. |
+| §9 | SA key smoke test | ✅ `git grep -n service-account-key.json backend/app` returns zero hits. `git grep` for `DRIVE_WEBHOOK_TOKEN`, `INTERNAL_AUDIENCE`, `INTERNAL_SCHEDULER_SECRET`, `admin.directory.group` in `backend/app` all zero. |
+
+### Additional findings outside the original Sub-PR E scope
+
+| Item | Finding |
+|---|---|
+| Google Docs Share button inside iframe | ❌ Permanently unreachable due to Google's own `frame-ancestors https://docs.google.com` CSP on the nested people-picker iframes. Documented in PIVOT_PLAN rev 8 decisions 11.7 and 11.8. Users share via "Open in Google Docs" in the toolbar. |
+| Google Forms editor inside iframe | ❌ Permanently gated with "You need access" regardless of creation path or form owner. Forms now open in a new tab with an `ExternalLink` indicator in the sidebar. |
+| Strict-mode shared-drive scoping | ✅ New in rev 8: every file operation 404s out-of-scope (My Drive or non-member shared drive) requests. Covered by two new unit tests. |
+| Icon editing via emoji-mart | ✅ Global Doc icons + per-user folder icons shipped per §3 icon rules. |
+| Command palette search | ✅ Spotlight-style Cmd+K with lazy snippet preview — richer than the original §4.9 plan. |
+| Themed 404 pages | ✅ `(app)/not-found.tsx` keeps the sidebar mounted; theme-aware card. |
+| Sidebar polish | ✅ Resizable width (persisted), expanded-state persistence, avatar-footer dropdown. |
 
 ---
 
-## 0. Pre-flight
+## 0. Pre-flight (cutover-night)
 
-- [ ] `feat/navigator-pivot` deployed to staging (backend + frontend)
-- [ ] Staging Postgres has the Navigator Alembic migration applied (`drive_tree_cache`, `doc_icons`, `user_folder_icons`, `user_sort_order`, `user_preferences` exist; legacy `pages`/`workspaces`/`page_permissions`/`workspace_memberships`/`drive_webhook_channels` dropped)
-- [ ] Staging `.env` has no reference to `DRIVE_WEBHOOK_TOKEN`, `INTERNAL_AUDIENCE`, or `INTERNAL_SCHEDULER_SECRET`
-- [ ] Staging `frontend/.env.local` points `NEXT_PUBLIC_API_URL` at the staging backend
-- [ ] `backend/service-account-key.json` is **not** referenced by any running code path in the feature branch (grep check, covered again in §9)
-- [ ] Both test accounts can log in to staging via Google OAuth and land on `/`
+At cutover time the below is the pre-merge checklist on the prod deploy:
+
+- [ ] `feat/navigator-pivot` deploy target (Cloud Run / prod backend) has the Navigator Alembic migration queued (`drive_tree_cache`, `doc_icons`, `user_folder_icons`, `user_sort_order`, `user_preferences` create; legacy `pages`/`workspaces`/`page_permissions`/`workspace_memberships`/`drive_webhook_channels`/`starred_pages`/`import_jobs` drop)
+- [ ] Prod `.env` / Secret Manager has no reference to `DRIVE_WEBHOOK_TOKEN`, `INTERNAL_AUDIENCE`, or `INTERNAL_SCHEDULER_SECRET`
+- [ ] Prod `frontend/.env.local` (or platform env) points `NEXT_PUBLIC_API_URL` at the prod backend origin
+- [ ] `backend/service-account-key.json` is **not** referenced by any running code path in the feature branch (grep check, covered again in §9 — verified in dev, ✅)
+- [ ] Two test `@sarj.ai` accounts can log in to prod via Google OAuth and land on `/` (this is the moment the second account is available — cross-user propagation retests in §4 and §6 happen here)
+- [ ] Human content migration out of `0AI_dKpHiz__7Uk9PVA` is complete (Sub-PR B-prime checklist signed off by the operator who performed the manual move)
+- [ ] Previous prod DB snapshot retained for rollback
 
 ---
 
