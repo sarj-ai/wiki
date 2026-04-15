@@ -54,6 +54,11 @@ class Singleflight:
             result = await fn()
         except BaseException as exc:
             fut.set_exception(exc)
+            # Mark the exception "retrieved" so Python doesn't log a
+            # warning when there are no concurrent waiters on `fut`.
+            # Concurrent waiters will still see the exception via
+            # their own `await fut`.
+            fut.exception()
             async with self._lock:
                 self._inflight.pop(key, None)
             raise
