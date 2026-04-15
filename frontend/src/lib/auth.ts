@@ -1,6 +1,11 @@
-import type { User } from "@/types";
-
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+export interface User {
+  id: string;
+  email: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+}
 
 export function getLoginUrl(): string {
   return `${API_URL}/auth/login`;

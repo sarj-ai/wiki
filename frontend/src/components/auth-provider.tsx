@@ -2,8 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import type { User } from "@/types";
-import { fetchCurrentUser, refreshAccessToken, logout as apiLogout } from "@/lib/auth";
+import { fetchCurrentUser, refreshAccessToken, logout as apiLogout, type User } from "@/lib/auth";
 import { sanitizeRedirectPath } from "@/lib/url-utils";
 
 const REDIRECT_KEY = "sarj-redirect";
