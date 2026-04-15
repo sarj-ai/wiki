@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.files import service
-from app.files.schemas import FileCreate, FileMove, FileRename, FileResponse
+from app.files.schemas import FileCopy, FileCreate, FileMove, FileRename, FileResponse
 from app.models.user import User
 from app.sidebar.cache import invalidate_drive
 
@@ -85,6 +85,18 @@ async def move_file(
     await _invalidate_drive_of(db, source)
 
     result = await service.move_file(user, file_id, payload.new_parent_folder_id)
+    await _invalidate_drive_of(db, result)
+    return result
+
+
+@router.post("/{file_id}/copy", status_code=status.HTTP_201_CREATED)
+async def copy_file(
+    file_id: str,
+    payload: FileCopy,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> FileResponse:
+    result = await service.copy_file(user, file_id, payload.name)
     await _invalidate_drive_of(db, result)
     return result
 

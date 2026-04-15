@@ -153,6 +153,12 @@ export const navigatorApi = {
       body: JSON.stringify({ new_parent_folder_id: newParentFolderId }),
     }),
 
+  copyFile: (fileId: string, name: string) =>
+    fetchApi<FileResponse>(`/files/${encodeURIComponent(fileId)}/copy`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+
   deleteFile: (fileId: string) =>
     fetchApi<void>(`/files/${encodeURIComponent(fileId)}`, { method: "DELETE" }),
 

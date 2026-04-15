@@ -31,7 +31,7 @@ from googleapiclient.errors import HttpError
 
 from app.drive.credentials import get_drive_service
 from app.drive.drives import list_user_drives
-from app.drive.schemas import NAVIGATOR_SUPPORTED_MIME_TYPES
+from app.drive.schemas import MIME_FOLDER, NAVIGATOR_SUPPORTED_MIME_TYPES
 from app.files.schemas import FileResponse
 from app.models.user import User
 
@@ -185,6 +185,57 @@ async def move_file(
     result = await asyncio.to_thread(_sync)
     # Destination scope check — reject moves *out* of the Navigator's
     # visible surface (e.g. into My Drive or a non-member drive).
+    await _ensure_in_member_drive(user, result.drive_id)
+    return result
+
+
+async def copy_file(user: User, file_id: str, new_name: str) -> FileResponse:
+    """Duplicate ``file_id`` as a sibling with ``new_name``.
+
+    Drive's ``files.copy`` endpoint handles every non-folder mime
+    type — Docs, Sheets, Slides, Drawings, Forms, PDFs, images, and
+    generic binary files all copy server-side in one call. Folders
+    are explicitly rejected here with a 400 rather than surfacing
+    Google's rather opaque 403 ``cannotCopyFile``; recursive folder
+    copy would need a tree walk and isn't worth it for the feature.
+
+    The copy inherits the source's parent folder automatically —
+    Drive's default behavior — so "duplicate this" lands the new
+    file as a sibling without any extra parent wiring on our side.
+    Source scope is checked before the copy call via ``get_file``
+    so a caller with just a file id can't clone an out-of-scope
+    file. Destination scope is checked after the copy so the result
+    still has to live in a member drive (true by default since the
+    source did).
+    """
+    # Source scope check first so we never issue a Drive copy for a
+    # file the caller shouldn't even be able to see.
+    source = await get_file(user, file_id)
+    if source.mime_type == MIME_FOLDER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Folders can't be duplicated — copy individual files instead",
+        )
+
+    def _sync() -> FileResponse:
+        service = get_drive_service(user)
+        try:
+            raw = (
+                service.files()
+                .copy(
+                    fileId=file_id,
+                    body={"name": new_name},
+                    fields=_FIELDS,
+                    supportsAllDrives=True,
+                )
+                .execute()
+            )
+        except HttpError as e:
+            _raise_from_http_error(e)
+            raise
+        return _to_response(raw)
+
+    result = await asyncio.to_thread(_sync)
     await _ensure_in_member_drive(user, result.drive_id)
     return result
 

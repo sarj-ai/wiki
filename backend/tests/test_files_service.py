@@ -163,6 +163,82 @@ async def test_get_file_rejects_my_drive(monkeypatch: pytest.MonkeyPatch) -> Non
     assert excinfo.value.status_code == 404
 
 
+async def test_copy_file_rejects_folder(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Folders return 400 before any Drive copy call is issued."""
+
+    class _FakeFiles:
+        def get(self, **_: Any) -> _FakeFiles:
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            return {
+                "id": "folder-id",
+                "name": "Some Folder",
+                "mimeType": "application/vnd.google-apps.folder",
+                "parents": ["p"],
+                "driveId": "d1",
+            }
+
+    class _FakeService:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    monkeypatch.setattr(files_service, "get_drive_service", lambda _u: _FakeService())
+    _patch_member_drive(monkeypatch, "d1")
+
+    with pytest.raises(HTTPException) as excinfo:
+        await files_service.copy_file(_user(), "folder-id", "Copy of Some Folder")
+    assert excinfo.value.status_code == 400
+
+
+async def test_copy_file_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Non-folder copy returns the new file's metadata as a FileResponse."""
+    calls: dict[str, Any] = {}
+
+    class _FakeFiles:
+        def get(self, **_: Any) -> _FakeFiles:
+            self._mode = "get"
+            return self
+
+        def copy(self, **kwargs: Any) -> _FakeFiles:
+            calls["copy_kwargs"] = kwargs
+            self._mode = "copy"
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            if self._mode == "get":
+                return {
+                    "id": "src-id",
+                    "name": "Architecture Notes",
+                    "mimeType": "application/vnd.google-apps.document",
+                    "parents": ["p"],
+                    "driveId": "d1",
+                }
+            return {
+                "id": "copy-id",
+                "name": "Copy of Architecture Notes",
+                "mimeType": "application/vnd.google-apps.document",
+                "parents": ["p"],
+                "driveId": "d1",
+                "modifiedTime": "2026-04-15T00:00:00Z",
+            }
+
+    class _FakeService:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    monkeypatch.setattr(files_service, "get_drive_service", lambda _u: _FakeService())
+    _patch_member_drive(monkeypatch, "d1")
+
+    result = await files_service.copy_file(_user(), "src-id", "Copy of Architecture Notes")
+    assert result.id == "copy-id"
+    assert result.name == "Copy of Architecture Notes"
+    assert result.drive_id == "d1"
+    assert calls["copy_kwargs"]["fileId"] == "src-id"
+    assert calls["copy_kwargs"]["body"] == {"name": "Copy of Architecture Notes"}
+    assert calls["copy_kwargs"]["supportsAllDrives"] is True
+
+
 async def test_get_file_rejects_non_member_shared_drive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

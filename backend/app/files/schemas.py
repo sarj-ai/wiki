@@ -21,6 +21,12 @@ class FileMove(BaseModel):
     new_parent_folder_id: str
 
 
+class FileCopy(BaseModel):
+    """Duplicate a file — the copy inherits the source's parent folder."""
+
+    name: str
+
+
 class FileResponse(BaseModel):
     id: str
     name: str

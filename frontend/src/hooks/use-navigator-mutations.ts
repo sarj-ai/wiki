@@ -1,9 +1,53 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { navigatorApi, type CreateFileInput, type PreferencesInput } from "@/lib/navigator-api";
 import { navigatorKeys } from "@/hooks/use-navigator-tree";
-import type { SortOrder } from "@/types/navigator";
+import type { DriveNode, DriveTree, FileResponse, SortOrder } from "@/types/navigator";
+import { MIME_FOLDER } from "@/types/navigator";
+
+// Turns a fresh FileResponse into a DriveNode so it can be spliced
+// straight into the sidebar caches without waiting for a refetch.
+function fileToNode(file: FileResponse): DriveNode {
+  return {
+    id: file.id,
+    name: file.name,
+    mimeType: file.mimeType,
+    parentId: file.parentFolderId ?? null,
+    modifiedTime: file.modifiedTime ?? null,
+  };
+}
+
+// Inject a brand-new file/folder into every cache the sidebar reads so
+// the new row paints instantly on the optimistic path. The subsequent
+// refetch (kicked off by invalidateQueries) will reconcile any drift —
+// this is purely UX smoothing, not source-of-truth.
+function injectNewFileIntoCaches(qc: QueryClient, file: FileResponse): void {
+  const node = fileToNode(file);
+  const parentId = file.parentFolderId;
+
+  // 1. Folder-files cache: append to the parent folder's listing so an
+  // already-expanded folder paints the new row on the next render.
+  if (parentId) {
+    qc.setQueryData<DriveNode[] | undefined>(navigatorKeys.folderFiles(parentId), (prev) => {
+      if (!prev) return prev;
+      if (prev.some((n) => n.id === node.id)) return prev;
+      return [...prev, node];
+    });
+  }
+
+  // 2. Drive-tree cache: only matters for new folders — the tree walker
+  // only holds folders, so a new file changes nothing there. A new
+  // folder goes into `folders` with its parent link so it shows up as
+  // a child without waiting for the background walk.
+  if (file.driveId && file.mimeType === MIME_FOLDER) {
+    qc.setQueryData<DriveTree | undefined>(navigatorKeys.driveTree(file.driveId), (prev) => {
+      if (!prev) return prev;
+      if (prev.folders.some((f) => f.id === node.id)) return prev;
+      return { ...prev, folders: [...prev.folders, node] };
+    });
+  }
+}
 
 // Writes invalidate the drive-tree cache for whichever drive the
 // affected file belongs to (or both source and destination on a
@@ -23,11 +67,19 @@ function useInvalidateTrees() {
 }
 
 export function useCreateFile() {
-  const invalidate = useInvalidateTrees();
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateFileInput) => navigatorApi.createFile(input),
     onSuccess: (file) => {
-      invalidate([file.driveId]);
+      // Splice the new file into the local caches and STOP — do NOT
+      // invalidate folder-files here. Drive's file index lags a few
+      // seconds behind files.create/copy, so an immediate refetch
+      // would return a listing that's still missing the new row and
+      // overwrite the optimistic insert, causing it to flash in and
+      // out of the sidebar. The cache mutation uses the authoritative
+      // server response as its source of truth, so skipping the
+      // refetch is safe.
+      injectNewFileIntoCaches(qc, file);
     },
   });
 }
@@ -66,6 +118,21 @@ export function useMoveFile() {
     onSuccess: ({ result, sourceDriveId }) => {
       invalidate([sourceDriveId, result.driveId]);
       qc.invalidateQueries({ queryKey: ["navigator", "file", result.id] });
+    },
+  });
+}
+
+export function useCopyFile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ fileId, name }: { fileId: string; name: string }) =>
+      navigatorApi.copyFile(fileId, name),
+    onSuccess: (file) => {
+      // Same no-invalidate rationale as useCreateFile: Drive's listing
+      // lags copy by a couple of seconds, so an eager refetch races
+      // the optimistic insert and the new row disappears before Drive
+      // catches up.
+      injectNewFileIntoCaches(qc, file);
     },
   });
 }
