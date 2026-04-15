@@ -6,7 +6,7 @@ from typing import Literal
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -18,7 +18,6 @@ from app.auth.jwt import create_access_token, create_refresh_token, decode_token
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
-from app.workspaces.service import sync_all_groups, sync_folder_permissions, sync_user_memberships
 
 log = logging.getLogger(__name__)
 
@@ -130,7 +129,6 @@ async def callback(
     request: Request,
     code: str,
     state: str,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
     def _error_redirect(error: str) -> RedirectResponse:
@@ -229,32 +227,7 @@ async def callback(
         await db.commit()
         await db.refresh(user)
 
-        # 6. Sync workspaces and memberships (best-effort, don't block login)
-        try:
-            await sync_all_groups(db)
-            await sync_user_memberships(db, user)
-        except Exception:
-            log.warning("Failed to sync workspaces for %s", email, exc_info=True)
-
-        # 7. Scan folder permissions in background (slow — don't block login)
-        _bg_user_id = user.id
-
-        async def _bg_folder_sync() -> None:
-            from app.database import async_session as bg_session
-
-            try:
-                async with bg_session() as s:
-                    await sync_folder_permissions(s)
-                    result = await s.execute(select(User).where(User.id == _bg_user_id))
-                    bg_user = result.scalar_one_or_none()
-                    if bg_user:
-                        await sync_user_memberships(s, bg_user)
-            except Exception:
-                log.warning("Background folder permission sync failed", exc_info=True)
-
-        background_tasks.add_task(_bg_folder_sync)
-
-        # 8. Issue our own JWT tokens (embed token_version for revocation)
+        # 6. Issue our own JWT tokens (embed token_version for revocation)
         jwt_access = create_access_token(
             user_id=str(user.id), email=user.email, token_version=user.token_version
         )

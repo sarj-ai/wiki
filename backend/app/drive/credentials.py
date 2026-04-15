@@ -1,29 +1,21 @@
-"""Credential management and thread-local service instances."""
+"""User-scoped Drive credential management.
+
+The Navigator has no service account in the read or write path
+(PIVOT_PLAN.md §8.2). Every Drive call is attributed to a real user
+via their encrypted OAuth tokens, which makes Drive's audit log
+useful and eliminates an entire class of ACL divergence bugs.
+"""
 
 from __future__ import annotations
 
-import threading
-import time
-from typing import Any, cast
+from typing import cast
 
-from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import Resource, build
 
 from app.auth.encryption import decrypt_token
 from app.config import settings
 from app.models.user import User
-
-_DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
-
-# Thread-local service instances AND credentials — httplib2 is NOT thread-safe
-# for concurrent requests, and Credentials are mutated during token refresh.
-# Each thread gets its own isolated copies.
-_thread_local = threading.local()
-
-# Rebuild Google API service instances after this many seconds to avoid
-# stale HTTP connections (e.g., after Cloud Run freeze/thaw cycles).
-_SA_SERVICE_TTL = 300  # 5 minutes
 
 
 def build_credentials(user: User) -> Credentials:
@@ -44,61 +36,8 @@ def build_credentials(user: User) -> Credentials:
 
 
 def get_drive_service(user: User) -> Resource:
-    """Build an authenticated Drive v3 service for the given user (reads only)."""
+    """Build an authenticated Drive v3 service for the given user."""
     return cast(
         "Resource",
         build("drive", "v3", credentials=build_credentials(user), static_discovery=True),
     )
-
-
-def _get_sa_credentials() -> Any:
-    """Get thread-local service account credentials.
-
-    Each thread gets its own Credentials instance because token refresh
-    mutates the object (self.token, self.expiry) which is not thread-safe.
-    """
-    creds = getattr(_thread_local, "sa_credentials", None)
-    if creds is not None:
-        return creds
-    creds = service_account.Credentials.from_service_account_file(  # type: ignore[no-untyped-call]
-        settings.SERVICE_ACCOUNT_KEY_PATH,
-        scopes=_DRIVE_SCOPES,
-    )
-    _thread_local.sa_credentials = creds
-    return creds
-
-
-def get_sa_drive_service() -> Resource:
-    """Build a Drive v3 service using the service account's own credentials.
-
-    Used for all write operations (create, move, rename, trash) on the
-    Shared Drive where the service account is a Manager.
-
-    Returns a thread-local instance to avoid httplib2 concurrency crashes.
-    Rebuilds after _SA_SERVICE_TTL seconds to avoid stale connections
-    (e.g., after Cloud Run freeze/thaw).
-    """
-    svc = getattr(_thread_local, "sa_drive_service", None)
-    ts = getattr(_thread_local, "sa_drive_service_ts", 0)
-    if svc is not None and (time.monotonic() - ts) < _SA_SERVICE_TTL:
-        return cast("Resource", svc)
-    svc = build("drive", "v3", credentials=_get_sa_credentials(), static_discovery=True)
-    _thread_local.sa_drive_service = svc
-    _thread_local.sa_drive_service_ts = time.monotonic()
-    return cast("Resource", svc)
-
-
-def _get_sa_docs_service() -> Resource:
-    """Build a Docs v1 service using the service account.
-
-    Returns a thread-local instance to avoid httplib2 concurrency crashes.
-    Rebuilds after _SA_SERVICE_TTL seconds.
-    """
-    svc = getattr(_thread_local, "sa_docs_service", None)
-    ts = getattr(_thread_local, "sa_docs_service_ts", 0)
-    if svc is not None and (time.monotonic() - ts) < _SA_SERVICE_TTL:
-        return cast("Resource", svc)
-    svc = build("docs", "v1", credentials=_get_sa_credentials(), static_discovery=True)
-    _thread_local.sa_docs_service = svc
-    _thread_local.sa_docs_service_ts = time.monotonic()
-    return cast("Resource", svc)

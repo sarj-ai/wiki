@@ -11,7 +11,6 @@ os.environ.setdefault("FERNET_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("SECRET_KEY", "x" * 40)
 os.environ.setdefault("GOOGLE_CLIENT_ID", "test-client-id")
 os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-client-secret")
-os.environ.setdefault("DRIVE_ROOT_FOLDER_ID", "test-drive-id")
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost:5432/test")
 
 from app.auth.encryption import decrypt_token, encrypt_token
