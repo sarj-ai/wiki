@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/sidebar/app-sidebar";
+import { NavigatorSidebar } from "@/components/navigator-sidebar/navigator-sidebar";
 import { ErrorBoundary } from "@/components/error-boundary";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -11,7 +11,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <SidebarProvider defaultOpen={defaultOpen}>
       <ErrorBoundary>
-        <AppSidebar />
+        <NavigatorSidebar />
       </ErrorBoundary>
       <main className="flex-1 overflow-auto">
         <ErrorBoundary>{children}</ErrorBoundary>
