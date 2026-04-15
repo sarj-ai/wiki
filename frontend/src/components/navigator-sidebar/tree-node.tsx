@@ -9,9 +9,12 @@ import type { DriveNode } from "@/types/navigator";
 import { MIME_FOLDER } from "@/types/navigator";
 import { useFolderFiles } from "@/hooks/use-navigator-tree";
 import { FileRow } from "./file-row";
+import { CreateFileMenu } from "./create-file-menu";
+import { ItemMenu } from "./item-menu";
 
 interface TreeNodeProps {
   node: DriveNode;
+  driveId: string;
   childrenByParent: Map<string, DriveNode[]>;
   activeDriveId: string | null;
   showNonDocFiles: boolean;
@@ -21,8 +24,20 @@ interface TreeNodeProps {
   depth: number;
 }
 
+// Overlay containing the hover-revealed "+" and "..." actions for a
+// folder row. Sits absolutely-positioned on top of the SidebarMenuButton
+// so it doesn't steal layout from the folder label.
+function RowActions({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover/navitem:opacity-100 focus-within:opacity-100">
+      {children}
+    </div>
+  );
+}
+
 export function TreeNode({
   node,
+  driveId,
   childrenByParent,
   activeDriveId,
   showNonDocFiles,
@@ -44,6 +59,7 @@ export function TreeNode({
     return (
       <FileRow
         node={node}
+        driveId={driveId}
         activeDriveId={activeDriveId}
         iconOverride={docIconOverrides.get(node.id) ?? null}
       />
@@ -64,7 +80,7 @@ export function TreeNode({
     <>
       <SidebarMenuButton
         onClick={() => setExpanded((v) => !v)}
-        className="group/folder"
+        className="pr-14"
         aria-expanded={expanded}
       >
         <ChevronRight
@@ -77,12 +93,17 @@ export function TreeNode({
         )}
         <span className="truncate">{node.name}</span>
       </SidebarMenuButton>
+      <RowActions>
+        <CreateFileMenu parentFolderId={node.id} />
+        <ItemMenu fileId={node.id} driveId={driveId} currentName={node.name} isFolder />
+      </RowActions>
       {expanded && (
         <SidebarMenuSub>
           {subFolders.map((child) => (
-            <SidebarMenuSubItem key={child.id}>
+            <SidebarMenuSubItem key={child.id} className="group/navitem relative">
               <TreeNode
                 node={child}
+                driveId={driveId}
                 childrenByParent={childrenByParent}
                 activeDriveId={activeDriveId}
                 showNonDocFiles={showNonDocFiles}
@@ -99,9 +120,10 @@ export function TreeNode({
             </SidebarMenuSubItem>
           )}
           {visibleFiles.map((file) => (
-            <SidebarMenuSubItem key={file.id}>
+            <SidebarMenuSubItem key={file.id} className="group/navitem relative">
               <FileRow
                 node={file}
+                driveId={driveId}
                 activeDriveId={activeDriveId}
                 iconOverride={docIconOverrides.get(file.id) ?? null}
               />

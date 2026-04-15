@@ -12,12 +12,12 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { useDriveTree } from "@/hooks/use-navigator-tree";
+import { useDriveTree, useFolderFiles } from "@/hooks/use-navigator-tree";
 import type { DriveNode, DriveSummary, FolderIcon, SortOrder } from "@/types/navigator";
 import { MIME_DOC, MIME_FOLDER } from "@/types/navigator";
 import { TreeNode } from "./tree-node";
 import { FileRow } from "./file-row";
-import { useFolderFiles } from "@/hooks/use-navigator-tree";
+import { CreateFileMenu } from "./create-file-menu";
 
 interface DriveSectionProps {
   drive: DriveSummary;
@@ -99,18 +99,23 @@ export function DriveSection({
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel asChild>
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex w-full items-center gap-1"
-          aria-expanded={expanded}
-        >
-          <ChevronRight className={cn("size-3 transition-transform", expanded && "rotate-90")} />
-          <HardDrive className="size-3.5" />
-          <span className="truncate">{drive.name}</span>
-        </button>
-      </SidebarGroupLabel>
+      <div className="group/driveheader relative">
+        <SidebarGroupLabel asChild>
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="flex w-full items-center gap-1 pr-7"
+            aria-expanded={expanded}
+          >
+            <ChevronRight className={cn("size-3 transition-transform", expanded && "rotate-90")} />
+            <HardDrive className="size-3.5" />
+            <span className="truncate">{drive.name}</span>
+          </button>
+        </SidebarGroupLabel>
+        <div className="absolute top-1 right-1 opacity-0 group-hover/driveheader:opacity-100 focus-within:opacity-100">
+          <CreateFileMenu parentFolderId={drive.id} />
+        </div>
+      </div>
       {expanded && (
         <SidebarGroupContent>
           <SidebarMenu>
@@ -126,9 +131,10 @@ export function DriveSection({
             )}
             {!treeQuery.isLoading &&
               rootFolders.map((folder) => (
-                <SidebarMenuItem key={folder.id}>
+                <SidebarMenuItem key={folder.id} className="group/navitem relative">
                   <TreeNode
                     node={folder}
+                    driveId={drive.id}
                     childrenByParent={childrenByParent}
                     activeDriveId={activeDriveId}
                     showNonDocFiles={showNonDocFiles}
@@ -146,9 +152,10 @@ export function DriveSection({
             )}
             {rootFiles.map((file) => (
               <SidebarMenuSub key={file.id}>
-                <SidebarMenuSubItem>
+                <SidebarMenuSubItem className="group/navitem relative">
                   <FileRow
                     node={file}
+                    driveId={drive.id}
                     activeDriveId={activeDriveId}
                     iconOverride={docIconOverrides.get(file.id) ?? null}
                   />
