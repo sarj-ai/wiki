@@ -1,10 +1,8 @@
-"""Files service — error mapping and payload shape.
+"""FilesService — error mapping and strict-scope checks.
 
-Full CRUD round-trips are covered at the router layer in integration
-tests. Here we focus on the two bits that can silently go wrong:
-
-- Drive HTTP error → HTTPException status mapping
-- Unsupported mimeType rejection at create time
+Exercises ``GoogleFilesService`` directly with a fake ``DriveResource``
+stubbed in via ``build_drive_client`` and an injected fake ``DriveService``
+that returns a canned member-drive list.
 """
 
 from __future__ import annotations
@@ -16,24 +14,40 @@ import pytest
 from fastapi import HTTPException
 from googleapiclient.errors import HttpError
 
-from app.drive.schemas import DriveSummary
+from app.drive.schemas import DriveNode, DriveSummary, DriveTree, SearchResult, SnippetResult
+from app.drive.service import DriveService
 from app.files import service as files_service
+from app.files.service import GoogleFilesService
 from app.models.user import User
 
 
-def _patch_member_drive(monkeypatch: pytest.MonkeyPatch, drive_id: str) -> None:
-    """Pretend ``drive_id`` is a shared drive the test user is a member of.
+class _FakeDriveService(DriveService):
+    """Fake ``DriveService`` that only answers ``list_drives``."""
 
-    The files service now calls ``list_user_drives`` as part of its
-    strict-scope check — any test that exercises a successful read or
-    write path has to stub it out or the check walks all the way down
-    into Drive credentials and blows up on the fake user.
-    """
+    def __init__(self, drives: list[DriveSummary]) -> None:
+        self._drives = drives
 
-    async def _fake_list(_user: User) -> list[DriveSummary]:
-        return [DriveSummary(id=drive_id, name="Stub Drive")]
+    async def list_drives(self) -> list[DriveSummary]:
+        return list(self._drives)
 
-    monkeypatch.setattr(files_service, "list_user_drives", _fake_list)
+    async def walk_drive_folders(self, drive_id: str) -> DriveTree:
+        raise NotImplementedError
+
+    async def list_folder_children(self, folder_id: str) -> list[DriveNode]:
+        raise NotImplementedError
+
+    async def search_drive(
+        self, drive_id: str, query: str, *, limit: int = 50
+    ) -> list[SearchResult]:
+        raise NotImplementedError
+
+    async def search_across_drives(
+        self, drive_ids: list[str], query: str, *, limit_per_drive: int = 20
+    ) -> list[SearchResult]:
+        raise NotImplementedError
+
+    async def fetch_snippet(self, file_id: str, query: str) -> SnippetResult:
+        raise NotImplementedError
 
 
 def _user() -> User:
@@ -45,6 +59,11 @@ def _user() -> User:
     return u
 
 
+def _svc(member_drive_id: str | None = None) -> GoogleFilesService:
+    drives = [DriveSummary(id=member_drive_id, name="Stub Drive")] if member_drive_id else []
+    return GoogleFilesService(user=_user(), drive=_FakeDriveService(drives))
+
+
 class _FakeResp:
     def __init__(self, status: int) -> None:
         self.status = status
@@ -52,13 +71,16 @@ class _FakeResp:
 
 
 def _make_http_error(status_code: int) -> HttpError:
-    return HttpError(_FakeResp(status_code), b'{"error": "test"}')
+    return HttpError(_FakeResp(status_code), b'{"error": "test"}')  # type: ignore[arg-type]
+
+
+def _patch_client(monkeypatch: pytest.MonkeyPatch, client: Any) -> None:
+    monkeypatch.setattr(files_service, "build_drive_client", lambda _u: client)
 
 
 async def test_create_rejects_unsupported_mime_type() -> None:
     with pytest.raises(HTTPException) as excinfo:
-        await files_service.create_file(
-            _user(),
+        await _svc("d1").create(
             parent_folder_id="p",
             name="x",
             mime_type="application/x-evil",
@@ -74,13 +96,13 @@ async def test_http_404_maps_to_404(monkeypatch: pytest.MonkeyPatch) -> None:
         def execute(self) -> dict[str, Any]:
             raise _make_http_error(404)
 
-    class _FakeService:
+    class _FakeClient:
         def files(self) -> _FakeFiles:
             return _FakeFiles()
 
-    monkeypatch.setattr(files_service, "get_drive_service", lambda _u: _FakeService())
+    _patch_client(monkeypatch, _FakeClient())
     with pytest.raises(HTTPException) as excinfo:
-        await files_service.get_file(_user(), "missing")
+        await _svc("d1").get("missing")
     assert excinfo.value.status_code == 404
 
 
@@ -92,13 +114,13 @@ async def test_http_500_maps_to_502(monkeypatch: pytest.MonkeyPatch) -> None:
         def execute(self) -> dict[str, Any]:
             raise _make_http_error(500)
 
-    class _FakeService:
+    class _FakeClient:
         def files(self) -> _FakeFiles:
             return _FakeFiles()
 
-    monkeypatch.setattr(files_service, "get_drive_service", lambda _u: _FakeService())
+    _patch_client(monkeypatch, _FakeClient())
     with pytest.raises(HTTPException) as excinfo:
-        await files_service.get_file(_user(), "x")
+        await _svc("d1").get("x")
     assert excinfo.value.status_code == 502
 
 
@@ -117,14 +139,12 @@ async def test_create_success_returns_file_response(monkeypatch: pytest.MonkeyPa
                 "modifiedTime": "2026-04-15T00:00:00Z",
             }
 
-    class _FakeService:
+    class _FakeClient:
         def files(self) -> _FakeFiles:
             return _FakeFiles()
 
-    monkeypatch.setattr(files_service, "get_drive_service", lambda _u: _FakeService())
-    _patch_member_drive(monkeypatch, "d1")
-    result = await files_service.create_file(
-        _user(),
+    _patch_client(monkeypatch, _FakeClient())
+    result = await _svc("d1").create(
         parent_folder_id="p",
         name="Doc",
         mime_type="application/vnd.google-apps.document",
@@ -134,7 +154,7 @@ async def test_create_success_returns_file_response(monkeypatch: pytest.MonkeyPa
     assert result.drive_id == "d1"
 
 
-async def test_get_file_rejects_my_drive(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_get_rejects_my_drive(monkeypatch: pytest.MonkeyPatch) -> None:
     """Files without a driveId (My Drive) must be hidden from the Navigator."""
 
     class _FakeFiles:
@@ -150,22 +170,17 @@ async def test_get_file_rejects_my_drive(monkeypatch: pytest.MonkeyPatch) -> Non
                 # No driveId — file lives in the user's My Drive.
             }
 
-    class _FakeService:
+    class _FakeClient:
         def files(self) -> _FakeFiles:
             return _FakeFiles()
 
-    monkeypatch.setattr(files_service, "get_drive_service", lambda _u: _FakeService())
-    # list_user_drives shouldn't even be reached — the driveId is None.
-    _patch_member_drive(monkeypatch, "irrelevant")
-
+    _patch_client(monkeypatch, _FakeClient())
     with pytest.raises(HTTPException) as excinfo:
-        await files_service.get_file(_user(), "my-drive-file")
+        await _svc("irrelevant").get("my-drive-file")
     assert excinfo.value.status_code == 404
 
 
-async def test_copy_file_rejects_folder(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Folders return 400 before any Drive copy call is issued."""
-
+async def test_copy_rejects_folder(monkeypatch: pytest.MonkeyPatch) -> None:
     class _FakeFiles:
         def get(self, **_: Any) -> _FakeFiles:
             return self
@@ -179,20 +194,17 @@ async def test_copy_file_rejects_folder(monkeypatch: pytest.MonkeyPatch) -> None
                 "driveId": "d1",
             }
 
-    class _FakeService:
+    class _FakeClient:
         def files(self) -> _FakeFiles:
             return _FakeFiles()
 
-    monkeypatch.setattr(files_service, "get_drive_service", lambda _u: _FakeService())
-    _patch_member_drive(monkeypatch, "d1")
-
+    _patch_client(monkeypatch, _FakeClient())
     with pytest.raises(HTTPException) as excinfo:
-        await files_service.copy_file(_user(), "folder-id", "Copy of Some Folder")
+        await _svc("d1").copy("folder-id", "Copy of Some Folder")
     assert excinfo.value.status_code == 400
 
 
-async def test_copy_file_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Non-folder copy returns the new file's metadata as a FileResponse."""
+async def test_copy_success(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: dict[str, Any] = {}
 
     class _FakeFiles:
@@ -223,14 +235,12 @@ async def test_copy_file_success(monkeypatch: pytest.MonkeyPatch) -> None:
                 "modifiedTime": "2026-04-15T00:00:00Z",
             }
 
-    class _FakeService:
+    class _FakeClient:
         def files(self) -> _FakeFiles:
             return _FakeFiles()
 
-    monkeypatch.setattr(files_service, "get_drive_service", lambda _u: _FakeService())
-    _patch_member_drive(monkeypatch, "d1")
-
-    result = await files_service.copy_file(_user(), "src-id", "Copy of Architecture Notes")
+    _patch_client(monkeypatch, _FakeClient())
+    result = await _svc("d1").copy("src-id", "Copy of Architecture Notes")
     assert result.id == "copy-id"
     assert result.name == "Copy of Architecture Notes"
     assert result.drive_id == "d1"
@@ -239,11 +249,9 @@ async def test_copy_file_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls["copy_kwargs"]["supportsAllDrives"] is True
 
 
-async def test_get_file_rejects_non_member_shared_drive(
+async def test_get_rejects_non_member_shared_drive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Shared-drive files still fail the check if the user isn't a member."""
-
     class _FakeFiles:
         def get(self, **_: Any) -> _FakeFiles:
             return self
@@ -257,14 +265,12 @@ async def test_get_file_rejects_non_member_shared_drive(
                 "driveId": "foreign-drive",
             }
 
-    class _FakeService:
+    class _FakeClient:
         def files(self) -> _FakeFiles:
             return _FakeFiles()
 
-    monkeypatch.setattr(files_service, "get_drive_service", lambda _u: _FakeService())
+    _patch_client(monkeypatch, _FakeClient())
     # User is only a member of "other-drive", not the file's drive.
-    _patch_member_drive(monkeypatch, "other-drive")
-
     with pytest.raises(HTTPException) as excinfo:
-        await files_service.get_file(_user(), "foreign-file")
+        await _svc("other-drive").get("foreign-file")
     assert excinfo.value.status_code == 404

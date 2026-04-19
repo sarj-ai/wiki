@@ -1,9 +1,12 @@
-"""Drive module tests using a fake Drive service.
+"""DriveService + snippet helper tests.
 
-Mocks at ``get_drive_service`` so the real Google client library is
-never imported in the test path. The fake records the params each
-``files().list()``/``drives().list()`` call received so we can
-assert the q-string, corpora scoping, and pagination semantics.
+``GoogleDriveService`` is exercised with a fake ``DriveResource`` stubbed
+in via ``build_drive_client``. The fake records every kwarg the service
+passes so we can assert the q-string, corpora scoping, and pagination
+semantics that matter for correctness.
+
+The pure snippet helpers have no Drive dependency; they're tested with
+plain string inputs.
 """
 
 from __future__ import annotations
@@ -13,10 +16,10 @@ from typing import Any
 
 import pytest
 
-from app.drive import drives as drives_mod
-from app.drive import search as search_mod
-from app.drive import tree_walker as tw
+from app.drive import service as drive_service_mod
 from app.drive.schemas import MIME_FOLDER
+from app.drive.service import GoogleDriveService
+from app.drive.snippets import extract_snippet
 from app.models.user import User
 
 
@@ -65,7 +68,7 @@ class _FakeFilesListable(_FakeListable):
         return self
 
 
-class _FakeService:
+class _FakeClient:
     def __init__(
         self,
         *,
@@ -85,24 +88,26 @@ class _FakeService:
 
 
 @pytest.fixture
-def patch_drive_service(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
-    """Return a helper that patches ``get_drive_service`` in every module."""
+def patch_drive_client(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+    """Return a helper that patches ``build_drive_client`` inside the service module."""
 
-    def _install(service: _FakeService) -> None:
-        monkeypatch.setattr(drives_mod, "get_drive_service", lambda _u: service)
-        monkeypatch.setattr(tw, "get_drive_service", lambda _u: service)
-        monkeypatch.setattr(search_mod, "get_drive_service", lambda _u: service)
+    def _install(client: _FakeClient) -> None:
+        monkeypatch.setattr(drive_service_mod, "build_drive_client", lambda _u: client)
 
     return _install
 
 
+def _svc() -> GoogleDriveService:
+    return GoogleDriveService(_user())
+
+
 # ---------------------------------------------------------------------------
-# drives.list_user_drives
+# list_drives
 # ---------------------------------------------------------------------------
 
 
-async def test_list_user_drives_paginates_until_empty_token(patch_drive_service: Any) -> None:
-    service = _FakeService(
+async def test_list_drives_paginates_until_empty_token(patch_drive_client: Any) -> None:
+    client = _FakeClient(
         drives_pages=[
             {
                 "drives": [{"id": "d1", "name": "Engineering"}],
@@ -113,17 +118,17 @@ async def test_list_user_drives_paginates_until_empty_token(patch_drive_service:
             },
         ]
     )
-    patch_drive_service(service)
-    result = await drives_mod.list_user_drives(_user())
+    patch_drive_client(client)
+    result = await _svc().list_drives()
 
     assert [d.id for d in result] == ["d1", "d2"]
     assert [d.name for d in result] == ["Engineering", "Marketing"]
-    assert len(service.drives_captured) == 2
-    assert service.drives_captured[1].get("pageToken") == "t1"
+    assert len(client.drives_captured) == 2
+    assert client.drives_captured[1].get("pageToken") == "t1"
 
 
-async def test_list_user_drives_skips_entries_missing_fields(patch_drive_service: Any) -> None:
-    service = _FakeService(
+async def test_list_drives_skips_entries_missing_fields(patch_drive_client: Any) -> None:
+    client = _FakeClient(
         drives_pages=[
             {
                 "drives": [
@@ -135,20 +140,20 @@ async def test_list_user_drives_skips_entries_missing_fields(patch_drive_service
             }
         ]
     )
-    patch_drive_service(service)
-    result = await drives_mod.list_user_drives(_user())
+    patch_drive_client(client)
+    result = await _svc().list_drives()
     assert [d.id for d in result] == ["d1"]
 
 
 # ---------------------------------------------------------------------------
-# tree_walker
+# walk_drive_folders + list_folder_children
 # ---------------------------------------------------------------------------
 
 
 async def test_walk_drive_folders_uses_corpora_drive_and_folder_query(
-    patch_drive_service: Any,
+    patch_drive_client: Any,
 ) -> None:
-    service = _FakeService(
+    client = _FakeClient(
         files_pages=[
             {
                 "files": [
@@ -168,16 +173,16 @@ async def test_walk_drive_folders_uses_corpora_drive_and_folder_query(
             }
         ]
     )
-    patch_drive_service(service)
+    patch_drive_client(client)
 
-    tree = await tw.walk_drive_folders(_user(), "the-drive")
+    tree = await _svc().walk_drive_folders("the-drive")
     assert tree.drive_id == "the-drive"
     assert [f.id for f in tree.folders] == ["f1", "f2"]
     # Root-level folder is normalized: parent_id None, not the drive id.
     assert tree.folders[0].parent_id is None
     assert tree.folders[1].parent_id == "f1"
 
-    call = service.files_captured[0]
+    call = client.files_captured[0]
     assert call["corpora"] == "drive"
     assert call["driveId"] == "the-drive"
     assert call["includeItemsFromAllDrives"] is True
@@ -186,8 +191,8 @@ async def test_walk_drive_folders_uses_corpora_drive_and_folder_query(
     assert "trashed=false" in call["q"]
 
 
-async def test_walk_drive_folders_paginates(patch_drive_service: Any) -> None:
-    service = _FakeService(
+async def test_walk_drive_folders_paginates(patch_drive_client: Any) -> None:
+    client = _FakeClient(
         files_pages=[
             {
                 "files": [
@@ -202,14 +207,14 @@ async def test_walk_drive_folders_paginates(patch_drive_service: Any) -> None:
             },
         ]
     )
-    patch_drive_service(service)
-    tree = await tw.walk_drive_folders(_user(), "d")
+    patch_drive_client(client)
+    tree = await _svc().walk_drive_folders("d")
     assert [f.id for f in tree.folders] == ["f1", "f2"]
-    assert service.files_captured[1].get("pageToken") == "NEXT"
+    assert client.files_captured[1].get("pageToken") == "NEXT"
 
 
-async def test_list_folder_children_queries_by_parent(patch_drive_service: Any) -> None:
-    service = _FakeService(
+async def test_list_folder_children_queries_by_parent(patch_drive_client: Any) -> None:
+    client = _FakeClient(
         files_pages=[
             {
                 "files": [
@@ -223,24 +228,24 @@ async def test_list_folder_children_queries_by_parent(patch_drive_service: Any) 
             }
         ]
     )
-    patch_drive_service(service)
-    children = await tw.list_folder_children(_user(), "folder-x")
+    patch_drive_client(client)
+    children = await _svc().list_folder_children("folder-x")
     assert [c.id for c in children] == ["doc1"]
     assert children[0].parent_id == "folder-x"
-    call = service.files_captured[0]
+    call = client.files_captured[0]
     assert "'folder-x' in parents" in call["q"]
     assert call["corpora"] == "allDrives"
 
 
 # ---------------------------------------------------------------------------
-# search
+# search_drive + search_across_drives
 # ---------------------------------------------------------------------------
 
 
 async def test_search_drive_escapes_quotes_and_passes_scoping(
-    patch_drive_service: Any,
+    patch_drive_client: Any,
 ) -> None:
-    service = _FakeService(
+    client = _FakeClient(
         files_pages=[
             {
                 "files": [
@@ -255,26 +260,26 @@ async def test_search_drive_escapes_quotes_and_passes_scoping(
             }
         ]
     )
-    patch_drive_service(service)
-    results = await search_mod.search_drive(_user(), "d1", "O'Brien")
+    patch_drive_client(client)
+    results = await _svc().search_drive("d1", "O'Brien")
     assert [r.id for r in results] == ["s1"]
-    call = service.files_captured[0]
-    # Single-quote escaped as backslash-quote in Drive q-string
+    call = client.files_captured[0]
+    # Single-quote escaped as backslash-quote in Drive q-string.
     assert r"O\'Brien" in call["q"]
     assert call["corpora"] == "drive"
     assert call["driveId"] == "d1"
 
 
-async def test_search_drive_empty_query_returns_empty(patch_drive_service: Any) -> None:
-    service = _FakeService()
-    patch_drive_service(service)
-    assert await search_mod.search_drive(_user(), "d1", "   ") == []
-    # No API calls were made
-    assert service.files_captured == []
+async def test_search_drive_empty_query_returns_empty(patch_drive_client: Any) -> None:
+    client = _FakeClient()
+    patch_drive_client(client)
+    assert await _svc().search_drive("d1", "   ") == []
+    # No API calls were made.
+    assert client.files_captured == []
 
 
-async def test_search_across_drives_fans_out(patch_drive_service: Any) -> None:
-    service = _FakeService(
+async def test_search_across_drives_fans_out(patch_drive_client: Any) -> None:
+    client = _FakeClient(
         files_pages=[
             {
                 "files": [
@@ -288,9 +293,9 @@ async def test_search_across_drives_fans_out(patch_drive_service: Any) -> None:
             },
         ]
     )
-    patch_drive_service(service)
-    results = await search_mod.search_across_drives(_user(), ["d1", "d2"], "q")
-    assert [r.id for r in results] == ["a", "b"]
+    patch_drive_client(client)
+    results = await _svc().search_across_drives(["d1", "d2"], "q")
+    assert {r.id for r in results} == {"a", "b"}
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +305,7 @@ async def test_search_across_drives_fans_out(patch_drive_service: Any) -> None:
 
 def test_extract_snippet_basic_match() -> None:
     text = "The quick brown fox jumps over the lazy dog under the tree"
-    result = search_mod.extract_snippet(text, "brown", context_chars=10)
+    result = extract_snippet(text, "brown", context_chars=10)
     assert result is not None
     snippet, word = result
     assert "brown" in snippet
@@ -309,7 +314,7 @@ def test_extract_snippet_basic_match() -> None:
 
 def test_extract_snippet_case_insensitive() -> None:
     text = "Deploy the BACKEND to production on Friday"
-    result = search_mod.extract_snippet(text, "backend", context_chars=20)
+    result = extract_snippet(text, "backend", context_chars=20)
     assert result is not None
     snippet, _ = result
     assert "BACKEND" in snippet
@@ -317,39 +322,28 @@ def test_extract_snippet_case_insensitive() -> None:
 
 def test_extract_snippet_picks_first_word_with_match() -> None:
     text = "Alpha comes first then bravo appears here in the middle somewhere"
-    result = search_mod.extract_snippet(text, "charlie bravo alpha", context_chars=20)
+    result = extract_snippet(text, "charlie bravo alpha", context_chars=20)
     assert result is not None
     _, word = result
-    # alpha occurs at index 0 (as "Alpha"), bravo later, charlie never
-    # — so alpha wins. matched_word is sliced from the original text
-    # preserving its casing so the frontend can highlight the exact
-    # characters that appeared in the doc.
+    # alpha occurs at index 0 (as "Alpha"), bravo later, charlie never —
+    # so alpha wins. matched_word preserves the original casing.
     assert word == "Alpha"
 
 
 def test_extract_snippet_prefix_fallback_plural() -> None:
-    """Drive's full-text search stems "phases" → "phase"; we mirror that.
-
-    Without the prefix fallback the snippet extractor would return
-    ``None`` whenever the user's query word is a stemmed variant of
-    the text in the doc, and the command palette would show an
-    unhelpful "we couldn't locate the match" message instead of real
-    context.
-    """
+    # Drive's full-text search stems "phases" → "phase"; we mirror that.
     text = "The project has one phase left before the launch is ready to go"
-    result = search_mod.extract_snippet(text, "phases", context_chars=20)
+    result = extract_snippet(text, "phases", context_chars=20)
     assert result is not None
     snippet, word = result
     assert "phase" in snippet.lower()
-    # The prefix that actually matched is the shortened "phase" — the
-    # full 6-char query word didn't hit, so we fell back to 5 chars.
+    # The prefix that actually matched is the shortened "phase".
     assert word.lower() == "phase"
 
 
 def test_extract_snippet_skips_short_words() -> None:
     text = "Longest word here is collaborator with many characters around it"
-    # "of" is 2 chars and should be skipped; "collaborator" should match.
-    result = search_mod.extract_snippet(text, "of collaborator", context_chars=10)
+    result = extract_snippet(text, "of collaborator", context_chars=10)
     assert result is not None
     _, word = result
     assert word == "collaborator"
@@ -357,20 +351,18 @@ def test_extract_snippet_skips_short_words() -> None:
 
 def test_extract_snippet_no_match_returns_none() -> None:
     text = "There is nothing interesting in here at all"
-    assert search_mod.extract_snippet(text, "missing") is None
+    assert extract_snippet(text, "missing") is None
 
 
 def test_extract_snippet_empty_inputs() -> None:
-    assert search_mod.extract_snippet("", "hello") is None
-    assert search_mod.extract_snippet("hello world", "") is None
+    assert extract_snippet("", "hello") is None
+    assert extract_snippet("hello world", "") is None
 
 
 def test_extract_snippet_collapses_whitespace_and_ellipsis() -> None:
     text = "prefix text       here   with     weird   spacing and a match token near the middle of"
-    result = search_mod.extract_snippet(text, "match", context_chars=15)
+    result = extract_snippet(text, "match", context_chars=15)
     assert result is not None
     snippet, _ = result
-    # Multiple spaces collapsed to single
     assert "   " not in snippet
-    # Prefix ellipsis because we trimmed from the left
     assert snippet.startswith("…")

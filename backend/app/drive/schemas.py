@@ -76,3 +76,12 @@ class SearchResult(BaseModel):
     drive_id: str | None = None
     parent_id: str | None = None
     modified_time: str | None = None
+
+
+class SnippetResult(BaseModel):
+    """Snippet fetched from a file's plain-text export."""
+
+    file_id: str
+    mime_type: str
+    snippet: str | None = None
+    match_term: str | None = None

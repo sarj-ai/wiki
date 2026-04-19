@@ -38,6 +38,6 @@ def build_credentials(user: User) -> Credentials:
     )
 
 
-def get_drive_service(user: User) -> DriveResource:
-    """Build an authenticated Drive v3 service for the given user."""
+def build_drive_client(user: User) -> DriveResource:
+    """Build an authenticated Drive v3 API client for the given user."""
     return build("drive", "v3", credentials=build_credentials(user), static_discovery=True)
