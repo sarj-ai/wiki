@@ -1,31 +1,31 @@
-import uuid
+"""FastAPI dependencies for auth: current-user resolution + AuthService wiring."""
 
+from __future__ import annotations
+
+import uuid
+from collections.abc import AsyncIterator
+
+import httpx
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import decode_token
+from app.auth.service import AuthService, GoogleAuthService
 from app.database import get_db
 from app.models.user import User
 
 
-def _extract_token(request: Request) -> str:
-    """Extract JWT from cookie (browser) or Authorization header (API clients).
+async def http_client_dep() -> AsyncIterator[httpx.AsyncClient]:
+    async with httpx.AsyncClient() as client:
+        yield client
 
-    Cookie takes priority so browser sessions work seamlessly.
-    """
-    token = request.cookies.get("access_token")
-    if token:
-        return token
 
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        return auth_header.removeprefix("Bearer ")
-
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Not authenticated",
-    )
+def auth_service_dep(
+    db: AsyncSession = Depends(get_db),
+    http: httpx.AsyncClient = Depends(http_client_dep),
+) -> AuthService:
+    return GoogleAuthService(db=db, http_client=http)
 
 
 async def get_current_user(
@@ -51,7 +51,6 @@ async def get_current_user(
             detail="User not found",
         )
 
-    # Check token_version — tokens issued before logout are rejected
     token_tv = payload.get("tv", 0)
     if token_tv != user.token_version:
         raise HTTPException(
@@ -60,3 +59,18 @@ async def get_current_user(
         )
 
     return user
+
+
+def _extract_token(request: Request) -> str:
+    # Cookie first so browser sessions work seamlessly; Authorization
+    # header fallback for non-browser clients.
+    token = request.cookies.get("access_token")
+    if token:
+        return token
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        return auth_header.removeprefix("Bearer ")
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+    )
