@@ -182,9 +182,7 @@ class GoogleAuthService(AuthService):
 
     async def _upsert_user(self, info: _Userinfo, tokens: _GoogleTokens) -> User:
         encrypted_access = encrypt_token(tokens.access_token)
-        encrypted_refresh = (
-            encrypt_token(tokens.refresh_token) if tokens.refresh_token else None
-        )
+        encrypted_refresh = encrypt_token(tokens.refresh_token) if tokens.refresh_token else None
         token_expiry = (
             datetime.now(UTC).replace(microsecond=0) + timedelta(seconds=tokens.expires_in)
             if tokens.expires_in is not None
@@ -235,9 +233,7 @@ class GoogleAuthService(AuthService):
         access = create_access_token(
             user_id=str(user.id), email=user.email, token_version=user.token_version
         )
-        refresh = create_refresh_token(
-            user_id=str(user.id), token_version=user.token_version
-        )
+        refresh = create_refresh_token(user_id=str(user.id), token_version=user.token_version)
         return AuthSession(jwt_access=access, jwt_refresh=refresh)
 
 

@@ -43,9 +43,7 @@ class ExtrasService(ABC):
     @abstractmethod
     async def get_doc_icon(self, drive_id: str) -> DocIconRead | None: ...
     @abstractmethod
-    async def upsert_doc_icon(
-        self, drive_id: str, payload: DocIconWrite
-    ) -> DocIconRead: ...
+    async def upsert_doc_icon(self, drive_id: str, payload: DocIconWrite) -> DocIconRead: ...
 
     # Folder icons (per-user overrides).
     @abstractmethod
@@ -79,9 +77,7 @@ class PostgresExtrasService(ExtrasService):
 
     async def list_doc_icons(self) -> list[DocIconRead]:
         rows = (await self._db.execute(select(DocIcon))).scalars().all()
-        return [
-            DocIconRead(drive_id=r.drive_id, icon=r.icon, cover_url=r.cover_url) for r in rows
-        ]
+        return [DocIconRead(drive_id=r.drive_id, icon=r.icon, cover_url=r.cover_url) for r in rows]
 
     async def get_doc_icon(self, drive_id: str) -> DocIconRead | None:
         row = await self._db.get(DocIcon, drive_id)
@@ -89,9 +85,7 @@ class PostgresExtrasService(ExtrasService):
             return None
         return DocIconRead(drive_id=row.drive_id, icon=row.icon, cover_url=row.cover_url)
 
-    async def upsert_doc_icon(
-        self, drive_id: str, payload: DocIconWrite
-    ) -> DocIconRead:
+    async def upsert_doc_icon(self, drive_id: str, payload: DocIconWrite) -> DocIconRead:
         stmt = (
             pg_insert(DocIcon)
             .values(

@@ -170,8 +170,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
                     "refreshed_by": pg_insert(DriveTreeCache).excluded.refreshed_by,
                 },
                 where=(
-                    pg_insert(DriveTreeCache).excluded.refreshed_at
-                    > DriveTreeCache.refreshed_at
+                    pg_insert(DriveTreeCache).excluded.refreshed_at > DriveTreeCache.refreshed_at
                 ),
             )
         )
@@ -180,5 +179,3 @@ class PostgresSidebarCacheService(SidebarCacheService):
 
     async def _load_row(self, db: AsyncSession, drive_id: str) -> DriveTreeCache | None:
         return await db.get(DriveTreeCache, drive_id)
-
-

@@ -217,9 +217,7 @@ class GoogleDriveService(DriveService):
             if not page_token:
                 return out
 
-    def _search_drive_sync(
-        self, drive_id: str, query: str, limit: int
-    ) -> list[SearchResult]:
+    def _search_drive_sync(self, drive_id: str, query: str, limit: int) -> list[SearchResult]:
         escaped = escape_query_value(query)
         q = f"(name contains '{escaped}' or fullText contains '{escaped}') and trashed=false"
         client = self._client()

@@ -42,9 +42,7 @@ class FilesService(ABC):
     """Contract for Drive file CRUD against a member shared drive."""
 
     @abstractmethod
-    async def create(
-        self, parent_folder_id: str, name: str, mime_type: str
-    ) -> FileResponse: ...
+    async def create(self, parent_folder_id: str, name: str, mime_type: str) -> FileResponse: ...
 
     @abstractmethod
     async def get(self, file_id: str) -> FileResponse: ...
@@ -69,9 +67,7 @@ class GoogleFilesService(FilesService):
         self._user = user
         self._drive = drive
 
-    async def create(
-        self, parent_folder_id: str, name: str, mime_type: str
-    ) -> FileResponse:
+    async def create(self, parent_folder_id: str, name: str, mime_type: str) -> FileResponse:
         if mime_type not in NAVIGATOR_SUPPORTED_MIME_TYPES:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -133,15 +129,11 @@ class GoogleFilesService(FilesService):
                 detail="File not available in the Navigator",
             )
 
-    def _create_sync(
-        self, parent_folder_id: str, name: str, mime_type: str
-    ) -> FileResponse:
+    def _create_sync(self, parent_folder_id: str, name: str, mime_type: str) -> FileResponse:
         client = self._client()
         body: File = {"name": name, "mimeType": mime_type, "parents": [parent_folder_id]}
         try:
-            raw = (
-                client.files().create(body=body, fields=_FIELDS, supportsAllDrives=True).execute()
-            )
+            raw = client.files().create(body=body, fields=_FIELDS, supportsAllDrives=True).execute()
         except HttpError as e:
             _raise_from_http_error(e)
             raise  # unreachable — _raise_from_http_error always raises
@@ -151,9 +143,7 @@ class GoogleFilesService(FilesService):
         client = self._client()
         try:
             raw = (
-                client.files()
-                .get(fileId=file_id, fields=_FIELDS, supportsAllDrives=True)
-                .execute()
+                client.files().get(fileId=file_id, fields=_FIELDS, supportsAllDrives=True).execute()
             )
         except HttpError as e:
             _raise_from_http_error(e)
