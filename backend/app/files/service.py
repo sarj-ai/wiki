@@ -23,7 +23,6 @@ anything that isn't in a member shared drive.
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -34,8 +33,6 @@ from app.drive.drives import list_user_drives
 from app.drive.schemas import MIME_FOLDER, NAVIGATOR_SUPPORTED_MIME_TYPES
 from app.files.schemas import FileResponse
 from app.models.user import User
-
-log = logging.getLogger(__name__)
 
 _FIELDS = "id,name,mimeType,parents,driveId,modifiedTime"
 

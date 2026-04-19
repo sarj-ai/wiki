@@ -14,9 +14,9 @@ See PIVOT_PLAN.md §4.2 and §7.1 for the UX contract:
 from __future__ import annotations
 
 import asyncio
-import logging
 from datetime import UTC, datetime, timedelta
 
+from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,8 +27,6 @@ from app.drive.tree_walker import list_folder_children, walk_drive_folders
 from app.models.navigator import DriveTreeCache
 from app.models.user import User
 from app.sidebar.singleflight import Singleflight
-
-log = logging.getLogger(__name__)
 
 # Stale-while-revalidate window. Reads older than this still serve the
 # cached tree but trigger an async refresh in the background.
@@ -125,7 +123,7 @@ async def _refresh_drive_in_background(user: User, drive_id: str) -> None:
             lambda: _walk_and_save(user, drive_id),
         )
     except Exception:
-        log.exception("background drive refresh failed drive=%s", drive_id)
+        logger.exception("background drive refresh failed drive={}", drive_id)
 
 
 async def get_folder_children(user: User, folder_id: str) -> list[DriveNode]:

@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     FERNET_KEY: str
     ALLOWED_DOMAIN: str = "sarj.ai"
     FRONTEND_URL: str = "http://localhost:3000"
+    LOG_JSON: bool = False
+    LOG_LEVEL: str = "INFO"
 
     @field_validator("SECRET_KEY")
     @classmethod

@@ -14,17 +14,15 @@ this module just handles one drive at a time.
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Any
 
 from googleapiclient.errors import HttpError
+from loguru import logger
 from pydantic import BaseModel
 
 from app.drive.credentials import get_drive_service
 from app.drive.schemas import SearchResult
 from app.models.user import User
-
-log = logging.getLogger(__name__)
 
 # Google Workspace types that expose a clean text/plain export. Other
 # types (PDF, images, Forms) either can't export as text or their text
@@ -95,8 +93,8 @@ async def search_drive(
         try:
             resp = service.files().list(**params).execute()
         except HttpError:
-            log.exception(
-                "search_drive failed user=%s drive=%s q=%r",
+            logger.exception(
+                "search_drive failed user={} drive={} q={!r}",
                 user.id,
                 drive_id,
                 query,
@@ -225,7 +223,7 @@ async def fetch_snippet(user: User, file_id: str, query: str) -> SnippetResult:
                 .execute()
             )
         except HttpError:
-            log.exception("snippet metadata fetch failed file=%s", file_id)
+            logger.exception("snippet metadata fetch failed file={}", file_id)
             return SnippetResult(file_id=file_id, mime_type="", snippet=None)
 
         mime_type = meta.get("mimeType", "")
@@ -239,7 +237,7 @@ async def fetch_snippet(user: User, file_id: str, query: str) -> SnippetResult:
         try:
             raw = service.files().export(fileId=file_id, mimeType="text/plain").execute()
         except HttpError:
-            log.exception("snippet export failed file=%s", file_id)
+            logger.exception("snippet export failed file={}", file_id)
             return SnippetResult(file_id=file_id, mime_type=mime_type, snippet=None)
 
         if isinstance(raw, bytes):

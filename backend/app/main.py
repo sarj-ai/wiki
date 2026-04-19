@@ -1,4 +1,3 @@
-import logging
 import time
 from collections import defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -7,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from loguru import logger
 
 from app.auth.router import router as auth_router
 from app.config import settings
@@ -14,10 +14,8 @@ from app.database import async_session
 from app.drive.search_router import router as drive_search_router
 from app.extras import extras_router
 from app.files import files_router
+from app.logging_config import configure_logging
 from app.sidebar import sidebar_router
-
-log = logging.getLogger(__name__)
-
 
 # ---------------------------------------------------------------------------
 # Simple in-memory rate limiter (per-IP, sliding window)
@@ -50,7 +48,7 @@ def _is_rate_limited(client_ip: str) -> bool:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    logging.basicConfig(level=logging.INFO)
+    configure_logging(json=settings.LOG_JSON, level=settings.LOG_LEVEL)
     yield
 
 
@@ -87,13 +85,9 @@ async def global_exception_handler(
     request: Request,
     exc: Exception,  # noqa: ARG001 — FastAPI signature requirement
 ) -> JSONResponse:
-    """Catch unhandled exceptions and return a proper JSON 500 response.
-
-    Without this, unhandled exceptions produce a plain-text response that
-    doesn't include CORS headers, causing the browser to block the response
-    entirely (hiding the actual error from the frontend).
-    """
-    log.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    # Without this, unhandled exceptions produce a plain-text response missing
+    # CORS headers, so the browser blocks the response and hides the real error.
+    logger.exception("Unhandled exception on {} {}", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"},

@@ -16,6 +16,7 @@ dependencies = [
     "google-auth-oauthlib>=1.2.0",
     "pydantic-settings>=2.7.0",
     "pyjwt>=2.12.1",
+    "loguru>=0.7.3",
 ]
 
 [dependency-groups]

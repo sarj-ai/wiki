@@ -18,16 +18,14 @@ Both functions wrap the sync Google API client in ``asyncio.to_thread``.
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Any
 
 from googleapiclient.errors import HttpError
+from loguru import logger
 
 from app.drive.credentials import get_drive_service
 from app.drive.schemas import MIME_FOLDER, NAVIGATOR_SUPPORTED_MIME_TYPES, DriveNode, DriveTree
 from app.models.user import User
-
-log = logging.getLogger(__name__)
 
 
 def _build_mime_clause() -> str:
@@ -90,8 +88,8 @@ async def walk_drive_folders(user: User, drive_id: str) -> DriveTree:
             try:
                 resp = service.files().list(**params).execute()
             except HttpError:
-                log.exception(
-                    "walk_drive_folders failed user=%s drive=%s",
+                logger.exception(
+                    "walk_drive_folders failed user={} drive={}",
                     user.id,
                     drive_id,
                 )
@@ -132,8 +130,8 @@ async def list_folder_children(user: User, folder_id: str) -> list[DriveNode]:
             try:
                 resp = service.files().list(**params).execute()
             except HttpError:
-                log.exception(
-                    "list_folder_children failed user=%s folder=%s",
+                logger.exception(
+                    "list_folder_children failed user={} folder={}",
                     user.id,
                     folder_id,
                 )

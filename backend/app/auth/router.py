@@ -1,4 +1,3 @@
-import logging
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -8,6 +7,7 @@ from urllib.parse import urlencode
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
+from loguru import logger
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,8 +18,6 @@ from app.auth.jwt import create_access_token, create_refresh_token, decode_token
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
-
-log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -156,7 +154,7 @@ async def callback(
         )
 
         if token_response.status_code != 200:
-            log.warning("Google token exchange failed: %s", token_response.status_code)
+            logger.warning("Google token exchange failed: {}", token_response.status_code)
             return _error_redirect("auth_failed")
 
         token_data = token_response.json()
@@ -240,7 +238,7 @@ async def callback(
         return redirect
 
     except Exception:
-        log.exception("Auth callback failed for %s", email)
+        logger.exception("Auth callback failed for {}", email)
         return _error_redirect("server_error")
 
 
@@ -264,8 +262,8 @@ async def logout(
                     user.token_version += 1
                     await db.commit()
         except Exception:
-            log.warning(
-                "logout: failed to bump token_version; proceeding to clear cookies", exc_info=True
+            logger.opt(exception=True).warning(
+                "logout: failed to bump token_version; proceeding to clear cookies"
             )
 
     response = JSONResponse(content={"message": "logged out"})

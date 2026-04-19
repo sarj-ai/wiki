@@ -9,15 +9,13 @@ in the sidebar and any drive that doesn't is safe to hide.
 from __future__ import annotations
 
 import asyncio
-import logging
 
 from googleapiclient.errors import HttpError
+from loguru import logger
 
 from app.drive.credentials import get_drive_service
 from app.drive.schemas import DriveSummary
 from app.models.user import User
-
-log = logging.getLogger(__name__)
 
 
 async def list_user_drives(user: User) -> list[DriveSummary]:
@@ -45,7 +43,7 @@ async def list_user_drives(user: User) -> list[DriveSummary]:
             try:
                 resp = service.drives().list(**params).execute()
             except HttpError:
-                log.exception("drives.list failed for user=%s", user.id)
+                logger.exception("drives.list failed for user={}", user.id)
                 return out
             for d in resp.get("drives", []):
                 drive_id = d.get("id")
