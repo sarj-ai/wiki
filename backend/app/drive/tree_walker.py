@@ -18,7 +18,7 @@ Both functions wrap the sync Google API client in ``asyncio.to_thread``.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from googleapiclient.errors import HttpError
 from loguru import logger
@@ -26,6 +26,9 @@ from loguru import logger
 from app.drive.credentials import get_drive_service
 from app.drive.schemas import MIME_FOLDER, NAVIGATOR_SUPPORTED_MIME_TYPES, DriveNode, DriveTree
 from app.models.user import User
+
+if TYPE_CHECKING:
+    from googleapiclient._apis.drive.v3.schemas import File
 
 
 def _build_mime_clause() -> str:
@@ -40,7 +43,7 @@ def _build_mime_clause() -> str:
     return f"({quoted})"
 
 
-def _node_from_api(raw: dict[str, Any], drive_id: str) -> DriveNode:
+def _node_from_api(raw: File, drive_id: str) -> DriveNode:
     """Convert a Drive API file dict into a ``DriveNode``.
 
     Drive returns ``parents`` as a list where files/folders inside the

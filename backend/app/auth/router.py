@@ -80,16 +80,6 @@ def _clear_auth_cookies(response: Response) -> None:
     )
 
 
-def _validate_email_domain(email: str) -> None:
-    """Enforce @sarj.ai domain restriction. Raises HTTPException(403) on failure."""
-    parts = email.rsplit("@", 1)
-    if len(parts) != 2 or parts[1] != settings.ALLOWED_DOMAIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Only @{settings.ALLOWED_DOMAIN} accounts are allowed",
-        )
-
-
 @router.get("/login")
 async def login(_request: Request) -> RedirectResponse:
     # Generate CSRF state token and store in a short-lived cookie

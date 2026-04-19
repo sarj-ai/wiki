@@ -23,7 +23,7 @@ anything that isn't in a member shared drive.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, status
 from googleapiclient.errors import HttpError
@@ -34,10 +34,13 @@ from app.drive.schemas import MIME_FOLDER, NAVIGATOR_SUPPORTED_MIME_TYPES
 from app.files.schemas import FileResponse
 from app.models.user import User
 
+if TYPE_CHECKING:
+    from googleapiclient._apis.drive.v3.schemas import File
+
 _FIELDS = "id,name,mimeType,parents,driveId,modifiedTime"
 
 
-def _to_response(raw: dict[str, Any]) -> FileResponse:
+def _to_response(raw: File) -> FileResponse:
     parents = raw.get("parents") or []
     return FileResponse(
         id=raw["id"],
@@ -101,7 +104,7 @@ async def create_file(
 
     def _sync() -> FileResponse:
         service = get_drive_service(user)
-        body = {"name": name, "mimeType": mime_type, "parents": [parent_folder_id]}
+        body: File = {"name": name, "mimeType": mime_type, "parents": [parent_folder_id]}
         try:
             raw = (
                 service.files().create(body=body, fields=_FIELDS, supportsAllDrives=True).execute()
@@ -125,12 +128,13 @@ async def rename_file(user: User, file_id: str, new_name: str) -> FileResponse:
 
     def _sync() -> FileResponse:
         service = get_drive_service(user)
+        body: File = {"name": new_name}
         try:
             raw = (
                 service.files()
                 .update(
                     fileId=file_id,
-                    body={"name": new_name},
+                    body=body,
                     fields=_FIELDS,
                     supportsAllDrives=True,
                 )
@@ -216,12 +220,13 @@ async def copy_file(user: User, file_id: str, new_name: str) -> FileResponse:
 
     def _sync() -> FileResponse:
         service = get_drive_service(user)
+        body: File = {"name": new_name}
         try:
             raw = (
                 service.files()
                 .copy(
                     fileId=file_id,
-                    body={"name": new_name},
+                    body=body,
                     fields=_FIELDS,
                     supportsAllDrives=True,
                 )
@@ -243,10 +248,11 @@ async def trash_file(user: User, file_id: str) -> None:
 
     def _sync() -> None:
         service = get_drive_service(user)
+        body: File = {"trashed": True}
         try:
             service.files().update(
                 fileId=file_id,
-                body={"trashed": True},
+                body=body,
                 supportsAllDrives=True,
             ).execute()
         except HttpError as e:

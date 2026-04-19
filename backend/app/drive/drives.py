@@ -9,6 +9,7 @@ in the sidebar and any drive that doesn't is safe to hide.
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 from googleapiclient.errors import HttpError
 from loguru import logger
@@ -34,7 +35,7 @@ async def list_user_drives(user: User) -> list[DriveSummary]:
         out: list[DriveSummary] = []
         page_token: str | None = None
         while True:
-            params: dict[str, object] = {
+            params: dict[str, Any] = {
                 "pageSize": 100,
                 "fields": "nextPageToken,drives(id,name)",
             }

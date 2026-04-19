@@ -7,7 +7,7 @@ endpoints without translation.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 # Google Workspace mime types the Navigator displays.
 MIME_FOLDER = "application/vnd.google-apps.folder"
@@ -63,8 +63,8 @@ class DriveTree(BaseModel):
     """
 
     drive_id: str
-    folders: list[DriveNode] = Field(default_factory=list)
-    files: list[DriveNode] = Field(default_factory=list)
+    folders: list[DriveNode] = []
+    files: list[DriveNode] = []
 
 
 class SearchResult(BaseModel):

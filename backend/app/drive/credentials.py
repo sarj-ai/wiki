@@ -8,14 +8,17 @@ useful and eliminates an entire class of ACL divergence bugs.
 
 from __future__ import annotations
 
-from typing import cast
+from typing import TYPE_CHECKING
 
 from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import Resource, build
+from googleapiclient.discovery import build
 
 from app.auth.encryption import decrypt_token
 from app.config import settings
 from app.models.user import User
+
+if TYPE_CHECKING:
+    from googleapiclient._apis.drive.v3.resources import DriveResource
 
 
 def build_credentials(user: User) -> Credentials:
@@ -35,9 +38,6 @@ def build_credentials(user: User) -> Credentials:
     )
 
 
-def get_drive_service(user: User) -> Resource:
+def get_drive_service(user: User) -> DriveResource:
     """Build an authenticated Drive v3 service for the given user."""
-    return cast(
-        "Resource",
-        build("drive", "v3", credentials=build_credentials(user), static_discovery=True),
-    )
+    return build("drive", "v3", credentials=build_credentials(user), static_discovery=True)

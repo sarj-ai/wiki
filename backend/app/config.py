@@ -44,4 +44,4 @@ class Settings(BaseSettings):
         return v
 
 
-settings = Settings()  # type: ignore[call-arg]
+settings = Settings()  # type: ignore[call-arg]  # ty: ignore[missing-argument]

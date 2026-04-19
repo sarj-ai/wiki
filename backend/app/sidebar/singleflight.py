@@ -36,14 +36,12 @@ class Singleflight:
 
     async def do(self, key: str, fn: Callable[[], Awaitable[T]]) -> T:
         """Run ``fn`` once per key across concurrent callers."""
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future[T] = loop.create_future()
         async with self._lock:
             existing = self._inflight.get(key)
             if existing is None:
-                loop = asyncio.get_running_loop()
-                fut: asyncio.Future[T] = loop.create_future()
                 self._inflight[key] = fut
-            else:
-                fut = None  # type: ignore[assignment]
 
         # Release the lock BEFORE awaiting the existing future. Awaiting
         # under the lock would serialize every waiter through it.

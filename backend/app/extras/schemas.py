@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class DocIconWrite(BaseModel):
@@ -36,7 +36,7 @@ class SortOrderWrite(BaseModel):
 class SortOrderBulkWrite(BaseModel):
     """Bulk reorder: one update per moved item."""
 
-    items: list[SortOrderWrite] = Field(default_factory=list)
+    items: list[SortOrderWrite] = []
 
 
 class SortOrderRead(BaseModel):
