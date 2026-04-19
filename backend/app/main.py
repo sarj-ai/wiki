@@ -12,10 +12,10 @@ from app.auth.router import router as auth_router
 from app.config import settings
 from app.database import async_session
 from app.drive.search_router import router as drive_search_router
-from app.extras import extras_router
-from app.files import files_router
+from app.extras.router import router as extras_router
+from app.files.router import router as files_router
 from app.logging_config import configure_logging
-from app.sidebar import sidebar_router
+from app.sidebar.router import router as sidebar_router
 
 # ---------------------------------------------------------------------------
 # Simple in-memory rate limiter (per-IP, sliding window)
