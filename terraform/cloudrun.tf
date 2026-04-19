@@ -20,6 +20,13 @@ resource "google_cloud_run_v2_service" "backend" {
   name     = "sarj-docs-backend"
   location = var.region
 
+  # Restrict ingress to the internal load balancer. Without this, the
+  # auto-generated ``*.run.app`` hostname is publicly reachable and
+  # bypasses the entire Cloudflare + GCLB + Cloud Armor perimeter.
+  # Traffic must now arrive via ``google_compute_global_forwarding_rule.backend_https``
+  # in loadbalancer.tf — direct hits to the run.app URL are rejected.
+  ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+
   # CI/CD manages the container image — don't let Terraform overwrite it
   lifecycle {
     ignore_changes = [template[0].containers[0].image]

@@ -53,31 +53,38 @@ resource "google_compute_backend_service" "backend" {
   }
 }
 
-# Cloud Armor — the GCP-side WAF, runs in parallel with Cloudflare
-# so there's defense in depth. Set to max-strength OWASP rules plus
-# an allowlist for Google's own OAuth redirect traffic on
-# /auth/callback (which carries a bearer-shaped query param that can
-# otherwise trip SQLi signatures).
+# Cloud Armor — GCP-side WAF paired with the Cloudflare edge.
+#
+# Rule-priority notes (Cloud Armor evaluates lowest priority first
+# and the first matching terminal action short-circuits the rest):
+#
+#   500-540   OWASP WAF rules. Deny on match, continue on no-match —
+#             run before the allowlist so a malicious request from a
+#             Cloudflare IP still gets blocked.
+#   600-620   Cloudflare IP allowlist. Cloudflare publishes 15 IPv4
+#             ranges and 7 IPv6 ranges; ``SRC_IPS_V1`` caps at 10 per
+#             rule, so we split across three rules. Refresh from
+#             https://www.cloudflare.com/ips/ on cutover night and at
+#             least quarterly.
+#   2147483647 (default)  Deny everything else. Direct hits to the GCLB
+#             IP from non-Cloudflare sources and direct hits to the
+#             Cloud Run run.app URL (rejected earlier by
+#             ``INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER``) are closed.
+#
+# Rate limiting is intentionally NOT done here. ``rate_based_ban`` with
+# ``conform_action = allow`` short-circuits evaluation, which either
+# (a) runs before the allowlist and lets non-Cloudflare traffic through
+# under the burst threshold, or (b) runs after the allowlist and never
+# fires. The FastAPI in-process limiter (``main.py``) handles
+# per-IP throttling at the application layer, and Cloudflare's edge
+# rate limiting covers global burst protection.
 resource "google_compute_security_policy" "backend_armor" {
   name = "sarj-docs-backend-armor"
-
-  # Default: allow; rules below block specific classes.
-  rule {
-    action   = "allow"
-    priority = 2147483647
-    match {
-      versioned_expr = "SRC_IPS_V1"
-      config {
-        src_ip_ranges = ["*"]
-      }
-    }
-    description = "default allow"
-  }
 
   # OWASP ModSecurity Core Rule Set — preconfigured WAF rules.
   rule {
     action   = "deny(403)"
-    priority = 1000
+    priority = 500
     match {
       expr {
         expression = "evaluatePreconfiguredExpr('xss-v33-stable')"
@@ -88,7 +95,7 @@ resource "google_compute_security_policy" "backend_armor" {
 
   rule {
     action   = "deny(403)"
-    priority = 1010
+    priority = 510
     match {
       expr {
         expression = "evaluatePreconfiguredExpr('sqli-v33-stable', ['owasp-crs-v030301-id942100-sqli'])"
@@ -99,7 +106,7 @@ resource "google_compute_security_policy" "backend_armor" {
 
   rule {
     action   = "deny(403)"
-    priority = 1020
+    priority = 520
     match {
       expr {
         expression = "evaluatePreconfiguredExpr('lfi-v33-stable')"
@@ -110,7 +117,7 @@ resource "google_compute_security_policy" "backend_armor" {
 
   rule {
     action   = "deny(403)"
-    priority = 1030
+    priority = 530
     match {
       expr {
         expression = "evaluatePreconfiguredExpr('rfi-v33-stable')"
@@ -121,7 +128,7 @@ resource "google_compute_security_policy" "backend_armor" {
 
   rule {
     action   = "deny(403)"
-    priority = 1040
+    priority = 540
     match {
       expr {
         expression = "evaluatePreconfiguredExpr('rce-v33-stable')"
@@ -130,27 +137,81 @@ resource "google_compute_security_policy" "backend_armor" {
     description = "block RCE"
   }
 
-  # Adaptive rate limiting — 100 req/min/IP baseline.
+  # Cloudflare IPv4 set 1 (first 10 of 15 published ranges).
   rule {
-    action   = "rate_based_ban"
-    priority = 2000
+    action   = "allow"
+    priority = 600
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = [
+          "173.245.48.0/20",
+          "103.21.244.0/22",
+          "103.22.200.0/22",
+          "103.31.4.0/22",
+          "141.101.64.0/18",
+          "108.162.192.0/18",
+          "190.93.240.0/20",
+          "188.114.96.0/20",
+          "197.234.240.0/22",
+          "198.41.128.0/17",
+        ]
+      }
+    }
+    description = "allow Cloudflare IPv4 (1/3)"
+  }
+
+  # Cloudflare IPv4 set 2 (remaining 5) + Cloudflare IPv6 set 1 (first 5).
+  rule {
+    action   = "allow"
+    priority = 610
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = [
+          "162.158.0.0/15",
+          "104.16.0.0/13",
+          "104.24.0.0/14",
+          "172.64.0.0/13",
+          "131.0.72.0/22",
+          "2400:cb00::/32",
+          "2606:4700::/32",
+          "2803:f800::/32",
+          "2405:b500::/32",
+          "2405:8100::/32",
+        ]
+      }
+    }
+    description = "allow Cloudflare IPv4 (2/3) + IPv6 (1/2)"
+  }
+
+  # Cloudflare IPv6 set 2 (remaining 2).
+  rule {
+    action   = "allow"
+    priority = 620
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = [
+          "2a06:98c0::/29",
+          "2c0f:f248::/32",
+        ]
+      }
+    }
+    description = "allow Cloudflare IPv6 (2/2)"
+  }
+
+  # Default: deny. Traffic that doesn't come through Cloudflare is rejected.
+  rule {
+    action   = "deny(403)"
+    priority = 2147483647
     match {
       versioned_expr = "SRC_IPS_V1"
       config {
         src_ip_ranges = ["*"]
       }
     }
-    rate_limit_options {
-      conform_action = "allow"
-      exceed_action  = "deny(429)"
-      enforce_on_key = "IP"
-      rate_limit_threshold {
-        count        = 100
-        interval_sec = 60
-      }
-      ban_duration_sec = 600
-    }
-    description = "rate-limit to 100 req/min/IP, 10-minute ban on burst"
+    description = "default deny — non-Cloudflare traffic"
   }
 }
 
