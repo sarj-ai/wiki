@@ -40,8 +40,11 @@ export function NamePromptDialog({
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Reset the field whenever the dialog opens so consecutive uses don't
-  // carry over a stale value from the previous run.
+  // carry over a stale value from the previous run. The "reset on transition"
+  // pattern is the whole point of this effect — setState on open is the
+  // feature, not a bug.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (open) setValue(defaultValue);
   }, [open, defaultValue]);
 

@@ -29,7 +29,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
-  pathnameRef.current = pathname;
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -68,11 +70,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [router]);
 
-  useEffect(() => {
-    checkAuth();
-    // Run once on mount only
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Intentional mount-only auth probe; checkAuth triggers setState via
+  // setUser/setIsLoading, which is the whole point of running it here.
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  useEffect(() => void checkAuth(), []);
 
   // Re-check auth when user returns to the tab (catches expired tokens)
   // Cooldown prevents flooding the API on rapid alt-tabbing
