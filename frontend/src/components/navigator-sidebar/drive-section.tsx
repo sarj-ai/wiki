@@ -300,13 +300,11 @@ export function DriveSection({
                   <span className="text-muted-foreground px-2 py-1 text-xs">Loading files…</span>
                 </SidebarMenuItem>
               )}
-              {!treeQuery.isLoading &&
-                rootItems.length === 0 &&
-                !rootFilesQuery.isLoading && (
-                  <SidebarMenuItem>
-                    <span className="text-muted-foreground px-2 py-1 text-xs">Empty drive</span>
-                  </SidebarMenuItem>
-                )}
+              {!treeQuery.isLoading && rootItems.length === 0 && !rootFilesQuery.isLoading && (
+                <SidebarMenuItem>
+                  <span className="text-muted-foreground px-2 py-1 text-xs">Empty drive</span>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
           {/*
