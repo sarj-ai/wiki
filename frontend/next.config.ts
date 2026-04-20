@@ -41,11 +41,16 @@ const BACKEND_API_ORIGIN = (() => {
 
 // Content-Security-Policy directives for the Navigator.
 // 'unsafe-inline' on style-src is required for Tailwind's injected styles.
-// 'unsafe-eval' is NOT included — if Next.js dev mode complains, narrow the
-// directive further rather than opening it up.
+// 'unsafe-eval' is ONLY added in development — Next.js Turbopack + React
+// dev mode use eval() for HMR and callstack reconstruction. Production
+// builds keep the strict 'script-src' with no eval.
+const IS_DEV = process.env.NODE_ENV !== "production";
+const SCRIPT_SRC = IS_DEV
+  ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+  : "script-src 'self' 'unsafe-inline'";
 const CSP_DIRECTIVES = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  SCRIPT_SRC,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://*.google.com https://*.gstatic.com https://*.googleusercontent.com",
   "font-src 'self' data: https://*.gstatic.com",

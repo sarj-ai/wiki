@@ -4,3 +4,5 @@
 *.tfvars
 *.tfstate*
 .terraform/
+.mcp.json
+.playwright-mcp/
