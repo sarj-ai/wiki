@@ -98,6 +98,13 @@ export function FileRow({
       >
         <Link
           href={href}
+          // HTML5 native anchor drag is on by default. Chrome treats
+          // drag-and-drop of an anchor back onto the same page as a
+          // navigation to ``href`` — bypassing click handlers entirely.
+          // That was the path through which dnd-kit reorders landed the
+          // user on the dragged file's URL. Disabling native drag lets
+          // dnd-kit's PointerSensor own the drag lifecycle cleanly.
+          draggable={false}
           title={isForm ? `${node.name} — opens in a new tab` : node.name}
           target={isForm ? "_blank" : undefined}
           rel={isForm ? "noopener noreferrer" : undefined}

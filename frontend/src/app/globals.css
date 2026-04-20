@@ -185,3 +185,21 @@
 .animate-loading-bar {
   animation: loading-bar 1.2s ease-in-out infinite;
 }
+
+/* ------------------------------------------------------------------
+   Sortable-row drop animation kill switch.
+
+   DragOverlay keeps the source row hidden during drag, but a stray
+   CSS transition on ANY descendant (shadcn's button sizing, chevron
+   rotation, icon button colors, anything) can still fire when the
+   row repaints on drop and read to users as the name text sliding
+   back to its pre-drop slot. Nuke every descendant transition at CSS
+   level — the Navigator sidebar doesn't rely on any of them (no
+   icon-mode collapse; chevron rotate is acceptable instant).
+------------------------------------------------------------------ */
+[data-slot="sidebar-menu-item"],
+[data-slot="sidebar-menu-item"] *,
+[data-slot="sidebar-menu-sub-item"],
+[data-slot="sidebar-menu-sub-item"] * {
+  transition-property: none !important;
+}

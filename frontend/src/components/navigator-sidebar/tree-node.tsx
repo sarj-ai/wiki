@@ -23,6 +23,13 @@ interface TreeNodeProps {
   parentFolderId: string | null;
   childrenByParent: Map<string, DriveNode[]>;
   sortOrderMap: Map<string, number>;
+  // Per-container optimistic reorder set on drop. Keyed by
+  // ``parent:<id>``. TreeNode reads its own container key and, if
+  // present, uses that order verbatim — bypassing the prop-drilling
+  // lag between onMutate's cache write and the sortOrderMap prop
+  // propagating down, which otherwise showed rows in the pre-drop
+  // order for several frames.
+  optimisticByContainer: Map<string, string[]>;
   activeDriveId: string | null;
   showNonDocFiles: boolean;
   folderIconOverride?: string | null;
@@ -36,14 +43,22 @@ interface TreeNodeProps {
 // same horizontal rhythm at every depth.
 const ICON_COLUMN_WIDTH = 24;
 
-function sortNodes(nodes: DriveNode[], sortOrderMap: Map<string, number>): DriveNode[] {
-  return [...nodes].sort((a, b) => {
-    const aOverride = sortOrderMap.get(a.id);
-    const bOverride = sortOrderMap.get(b.id);
-    if (aOverride !== undefined && bOverride !== undefined) return aOverride - bOverride;
-    if (aOverride !== undefined) return -1;
-    if (bOverride !== undefined) return 1;
-    return a.name.localeCompare(b.name);
+type ChildItem = { type: "folder"; node: DriveNode } | { type: "file"; node: DriveNode };
+
+// Merged sort across subfolders AND files — same rationale as
+// drive-section's sortRootItems. A drop that interleaves the two
+// categories must survive the mutation round-trip; sorting each side
+// independently causes the optimistic-to-canonical transition to
+// rearrange rows, which dnd-kit animates as a post-drop bounce.
+function sortChildItems(items: ChildItem[], sortOrderMap: Map<string, number>): ChildItem[] {
+  return [...items].sort((a, b) => {
+    const ao = sortOrderMap.get(a.node.id);
+    const bo = sortOrderMap.get(b.node.id);
+    if (ao !== undefined && bo !== undefined) return ao - bo;
+    if (ao !== undefined) return -1;
+    if (bo !== undefined) return 1;
+    if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
+    return a.node.name.localeCompare(b.node.name);
   });
 }
 
@@ -64,6 +79,7 @@ export function TreeNode({
   parentFolderId,
   childrenByParent,
   sortOrderMap,
+  optimisticByContainer,
   activeDriveId,
   showNonDocFiles,
   folderIconOverride,
@@ -96,19 +112,43 @@ export function TreeNode({
     );
   }
 
-  const subFolders = sortNodes(childrenByParent.get(node.id) ?? [], sortOrderMap);
   // Drop subfolders from lazyFiles to avoid duplication — the tree walker
   // already covers folders. Files come only from the lazy call.
   const lazyOnlyFiles = (lazyFiles ?? []).filter((n) => n.mimeType !== MIME_FOLDER);
   const filteredFiles = showNonDocFiles
     ? lazyOnlyFiles
     : lazyOnlyFiles.filter((n) => n.mimeType === "application/vnd.google-apps.document");
-  const visibleFiles = sortNodes(filteredFiles, sortOrderMap);
+
+  const allChildren: ChildItem[] = [
+    ...(childrenByParent.get(node.id) ?? []).map((n): ChildItem => ({ type: "folder", node: n })),
+    ...filteredFiles.map((n): ChildItem => ({ type: "file", node: n })),
+  ];
+
+  // If a drop just happened in THIS folder, the optimistic map has the
+  // final order keyed by id. Honour it verbatim and skip sortOrderMap,
+  // which would otherwise be stale for several frames post-drop.
+  const optimisticOrder = optimisticByContainer.get(`parent:${node.id}`);
+  const childItems: ChildItem[] = optimisticOrder
+    ? (() => {
+        const byId = new Map<string, ChildItem>(allChildren.map((c) => [c.node.id, c]));
+        const ordered: ChildItem[] = [];
+        for (const id of optimisticOrder) {
+          const hit = byId.get(id);
+          if (hit) ordered.push(hit);
+        }
+        // Surface any newly-arrived children not yet in the optimistic
+        // list (rare but possible if the folder gained items mid-drag).
+        for (const child of allChildren) {
+          if (!optimisticOrder.includes(child.node.id)) ordered.push(child);
+        }
+        return ordered;
+      })()
+    : sortChildItems(allChildren, sortOrderMap);
 
   // Each expanded folder is its own SortableContext so within-folder
   // drag-drop reorder works without tripping on siblings in other
   // parents. containerId matches our "parent:..." convention.
-  const sortableItems = [...subFolders.map((n) => n.id), ...visibleFiles.map((n) => n.id)];
+  const sortableItems = childItems.map((c) => c.node.id);
   const iconEmoji = folderIconOverride ?? null;
 
   const handleFolderIconChange = async (next: string | null) => {
@@ -197,42 +237,44 @@ export function TreeNode({
             items={sortableItems}
             strategy={verticalListSortingStrategy}
           >
-            {subFolders.map((child) => (
-              <SortableItem key={child.id} id={child.id} variant="subitem">
-                <TreeNode
-                  node={child}
-                  driveId={driveId}
-                  parentFolderId={node.id}
-                  childrenByParent={childrenByParent}
-                  sortOrderMap={sortOrderMap}
-                  activeDriveId={activeDriveId}
-                  showNonDocFiles={showNonDocFiles}
-                  folderIconOverride={iconOverrides.get(child.id) ?? null}
-                  iconOverrides={iconOverrides}
-                  docIconOverrides={docIconOverrides}
-                  depth={depth + 1}
-                />
-              </SortableItem>
-            ))}
-            {visibleFiles.map((file) => (
-              <SortableItem key={file.id} id={file.id} variant="subitem">
-                <FileRow
-                  node={file}
-                  driveId={driveId}
-                  parentFolderId={node.id}
-                  activeDriveId={activeDriveId}
-                  iconOverride={docIconOverrides.get(file.id) ?? null}
-                  depth={depth + 1}
-                />
-              </SortableItem>
-            ))}
+            {childItems.map(({ type, node: child }) =>
+              type === "folder" ? (
+                <SortableItem key={child.id} id={child.id} variant="subitem">
+                  <TreeNode
+                    node={child}
+                    driveId={driveId}
+                    parentFolderId={node.id}
+                    childrenByParent={childrenByParent}
+                    sortOrderMap={sortOrderMap}
+                    optimisticByContainer={optimisticByContainer}
+                    activeDriveId={activeDriveId}
+                    showNonDocFiles={showNonDocFiles}
+                    folderIconOverride={iconOverrides.get(child.id) ?? null}
+                    iconOverrides={iconOverrides}
+                    docIconOverrides={docIconOverrides}
+                    depth={depth + 1}
+                  />
+                </SortableItem>
+              ) : (
+                <SortableItem key={child.id} id={child.id} variant="subitem">
+                  <FileRow
+                    node={child}
+                    driveId={driveId}
+                    parentFolderId={node.id}
+                    activeDriveId={activeDriveId}
+                    iconOverride={docIconOverrides.get(child.id) ?? null}
+                    depth={depth + 1}
+                  />
+                </SortableItem>
+              ),
+            )}
           </SortableContext>
           {filesLoading && (
             <SidebarMenuSubItem>
               <span className="text-muted-foreground px-2 py-1 text-xs">Loading files…</span>
             </SidebarMenuSubItem>
           )}
-          {!filesLoading && subFolders.length === 0 && visibleFiles.length === 0 && (
+          {!filesLoading && childItems.length === 0 && (
             <SidebarMenuSubItem>
               <span className="text-muted-foreground px-2 py-1 text-xs">Empty</span>
             </SidebarMenuSubItem>

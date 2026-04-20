@@ -198,7 +198,30 @@ export function useBulkSetSortOrders() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (items: SortOrder[]) => navigatorApi.bulkSetSortOrders(items),
-    onSuccess: () => {
+    // Optimistic update: write the new orders into the cache before
+    // the server round-trip so the sidebar re-renders in the final
+    // order on the same tick dnd-kit clears its drag transform.
+    // IMPORTANT: this callback must stay synchronous. An ``await``
+    // inside ``onMutate`` — even ``qc.cancelQueries`` — defers the
+    // ``setQueryData`` call by a microtask, so React commits one
+    // render with the OLD orders first. Visually that reads as the
+    // dropped row flashing back to its original slot before snapping
+    // to the new one, i.e., "movement down then back up". Skipping
+    // ``cancelQueries`` is safe here because we also invalidate in
+    // ``onSettled``; the refetch there races with nothing.
+    onMutate: (items) => {
+      const previous = qc.getQueryData<SortOrder[]>(navigatorKeys.sortOrders) ?? [];
+      const byId = new Map(previous.map((s) => [s.driveId, s] as const));
+      for (const item of items) byId.set(item.driveId, item);
+      qc.setQueryData<SortOrder[]>(navigatorKeys.sortOrders, Array.from(byId.values()));
+      return { previous };
+    },
+    onError: (_err, _items, context) => {
+      if (context) {
+        qc.setQueryData(navigatorKeys.sortOrders, context.previous);
+      }
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: navigatorKeys.sortOrders });
     },
   });
