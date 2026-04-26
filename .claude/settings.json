@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "sarj-agentic": {
+      "source": {
+        "source": "github",
+        "repo": "sarj-ai/agentic"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "sarj-audit@sarj-agentic": true
+  }
+}

@@ -47,6 +47,16 @@ Routers never call Google APIs or the DB directly — they resolve a service via
 4. If a technical choice or API behavior is uncertain, ask — don't invent.
 5. Deliver iteratively; don't rewrite the app in one response.
 
+## Code standards
+
+Audit commands at `/sarj-audit:*` (from the `sarj-agentic` plugin, enabled via `.claude/settings.json`) check these. Apply them when writing or reviewing code:
+
+- **Stepdown rule** — Each file reads top-to-bottom. Exported/public functions sit at the top (below imports / types / constants); each function only calls helpers defined below it. Reader sees intent before implementation.
+- **Library-first** — Don't hand-roll what a well-maintained package already covers (date math, slugs, retries, debounce, CSV, UUIDs, etc.). Reach for the package; reserve hand-rolling for cases where the library would be heavier than what it replaces.
+- **Move logic down the stack** — Push work to the lowest layer that can handle it: client → server (server components / loaders, not `useEffect` fetches); app code → SQL (filter / group / sort / join in the query, not in JS); raw HTML → shadcn primitives (`Button`, `Select`, `Dialog`, etc., not hand-rolled `<button>` / `<div>` patterns).
+- **Service layer + DI** — already enforced (Architecture rules #3): business logic in `XxxService` behind ABCs, wired via FastAPI `Depends`; routers stay thin.
+- **Strict linting** — `ruff`, `mypy --strict`, `pyright --strict`, `ty`, `vulture` on every change (see Tooling). Don't downgrade rules to `warn` to silence them — fix the violation.
+
 ## Auth & security
 
 - Google OAuth 2.0 only; domain-restricted to `@sarj.ai` in `AuthService._enforce_domain`.
