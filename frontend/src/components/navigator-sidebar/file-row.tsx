@@ -1,15 +1,18 @@
 "use client";
 
+import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+
+import type { DriveNode } from "@/types/navigator";
+
 import { SidebarMenuButton } from "@/components/ui/sidebar";
+import { useSetDocIcon } from "@/hooks/use-navigator-mutations";
 import { renderMimeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
-import { useSetDocIcon } from "@/hooks/use-navigator-mutations";
-import type { DriveNode } from "@/types/navigator";
 import { MIME_DOC, MIME_FORM } from "@/types/navigator";
+
 import { EmojiPickerPopover } from "./emoji-picker-popover";
 import { ItemMenu } from "./item-menu";
 

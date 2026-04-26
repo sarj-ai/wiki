@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
+
 import { fetchCurrentUser, refreshAccessToken, logout as apiLogout, type User } from "@/lib/auth";
 import { sanitizeRedirectPath } from "@/lib/url-utils";
 
@@ -16,7 +17,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isLoading: true,
-  logout: async () => {},
+  logout: () => Promise.resolve(),
 });
 
 export function useAuth(): AuthContextType {
@@ -83,11 +84,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const now = Date.now();
       if (now - lastAuthCheckRef.current > 30_000) {
         lastAuthCheckRef.current = now;
-        checkAuth();
+        void checkAuth();
       }
     }
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    return () => { window.removeEventListener("focus", onFocus); };
   }, [checkAuth]);
 
   const logout = useCallback(async () => {

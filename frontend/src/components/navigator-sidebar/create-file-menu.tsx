@@ -1,15 +1,19 @@
 "use client";
 
+import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Plus } from "lucide-react";
 import { toast } from "sonner";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useCreateFile } from "@/hooks/use-navigator-mutations";
+import { isGoogleWorkspaceType, renderMimeIcon } from "@/lib/file-icons";
+import { openUrlFor } from "@/lib/file-urls";
 import {
   MIME_DOC,
   MIME_DRAWING,
@@ -18,9 +22,7 @@ import {
   MIME_SHEET,
   MIME_SLIDE,
 } from "@/types/navigator";
-import { useCreateFile } from "@/hooks/use-navigator-mutations";
-import { isGoogleWorkspaceType, renderMimeIcon } from "@/lib/file-icons";
-import { openUrlFor } from "@/lib/file-urls";
+
 import { NamePromptDialog } from "./name-prompt-dialog";
 
 interface CreateFileMenuProps {
@@ -89,7 +91,7 @@ export function CreateFileMenu({ parentFolderId, compact = true }: CreateFileMen
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); }}
             className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex size-5 shrink-0 items-center justify-center rounded outline-none"
             aria-label="Create item"
           >
@@ -100,7 +102,7 @@ export function CreateFileMenu({ parentFolderId, compact = true }: CreateFileMen
           {CREATE_TYPES.map((type) => (
             <DropdownMenuItem
               key={type.mimeType}
-              onClick={() => pickType(type)}
+              onClick={() => { pickType(type); }}
               className="flex items-center gap-2 text-sm"
             >
               {renderMimeIcon(type.mimeType, "size-4")}

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
+
 import { GeistMono } from "geist/font/mono";
+import localFont from "next/font/local";
+
 import { ThemeProvider } from "@/components/theme-provider";
 
 const nunito = localFont({
@@ -13,10 +15,11 @@ const nunito = localFont({
   variable: "--font-nunito",
   display: "swap",
 });
-import { QueryProvider } from "@/components/query-provider";
 import { AuthProvider } from "@/components/auth-provider";
-import { Toaster } from "@/components/ui/sonner";
 import { GlobalLoadingBar } from "@/components/loading-bar";
+import { QueryProvider } from "@/components/query-provider";
+import { Toaster } from "@/components/ui/sonner";
+
 import "./globals.css";
 
 export const metadata: Metadata = {

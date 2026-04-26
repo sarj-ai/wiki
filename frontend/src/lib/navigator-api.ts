@@ -1,4 +1,3 @@
-import { apiClient } from "@/lib/api-client";
 import type {
   DocIcon,
   DriveNode,
@@ -12,6 +11,8 @@ import type {
   SnippetResult,
   SortOrder,
 } from "@/types/navigator";
+
+import { apiClient } from "@/lib/api-client";
 
 // Re-export so existing call sites that catch ApiError keep working.
 export { ApiError } from "@/lib/api-client";

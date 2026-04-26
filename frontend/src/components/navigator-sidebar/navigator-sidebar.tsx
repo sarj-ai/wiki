@@ -1,18 +1,20 @@
 "use client";
 
-import { useMemo } from "react";
 import { usePathname } from "next/navigation";
-import { Sidebar, SidebarContent, SidebarHeader, SidebarSeparator } from "@/components/ui/sidebar";
+import { useMemo } from "react";
+
+import { ErrorBoundary } from "@/components/error-boundary";
 import { SarjLogo } from "@/components/sarj-logo";
+import { Sidebar, SidebarContent, SidebarHeader, SidebarSeparator } from "@/components/ui/sidebar";
 import {
   useDrives,
   useFolderIcons,
   usePreferences,
   useSortOrders,
 } from "@/hooks/use-navigator-tree";
-import { ErrorBoundary } from "@/components/error-boundary";
-import { DriveSection } from "./drive-section";
+
 import { DriveSearchBox } from "./drive-search-box";
+import { DriveSection } from "./drive-section";
 import { NavigatorFooter } from "./navigator-footer";
 import { SidebarResizeHandle } from "./resize-handle";
 
@@ -24,7 +26,7 @@ export function NavigatorSidebar() {
   const sortOrdersQuery = useSortOrders();
 
   const activeDriveId: string | null = useMemo(() => {
-    if (!pathname?.startsWith("/d/")) return null;
+    if (!pathname.startsWith("/d/")) return null;
     try {
       return decodeURIComponent(pathname.split("/")[2] ?? "") || null;
     } catch {

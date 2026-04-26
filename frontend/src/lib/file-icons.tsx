@@ -1,3 +1,5 @@
+import type { ReactElement } from "react";
+
 import {
   ClipboardList,
   FileType2,
@@ -8,7 +10,7 @@ import {
   Presentation,
   Table,
 } from "lucide-react";
-import type { ReactElement } from "react";
+
 import {
   MIME_DOC,
   MIME_DRAWING,

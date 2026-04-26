@@ -1,6 +1,7 @@
 "use client";
 
 import { Search } from "lucide-react";
+
 import { useCommandPaletteState } from "@/hooks/use-command-palette";
 
 /**
@@ -17,7 +18,7 @@ export function DriveSearchBox() {
   return (
     <button
       type="button"
-      onClick={() => setOpen(true)}
+      onClick={() => { setOpen(true); }}
       className="border-input bg-background hover:bg-accent/40 text-muted-foreground flex h-8 w-full items-center gap-2 rounded-md border px-2 text-xs outline-none"
       aria-label="Open search"
     >

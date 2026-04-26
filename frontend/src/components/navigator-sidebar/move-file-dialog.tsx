@@ -1,9 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Folder, HardDrive, Loader2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
+
+import type { DriveNode, DriveTree } from "@/types/navigator";
+
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -12,12 +16,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
-import { navigatorKeys, useDrives } from "@/hooks/use-navigator-tree";
 import { useMoveFile } from "@/hooks/use-navigator-mutations";
-import type { DriveNode, DriveTree } from "@/types/navigator";
+import { navigatorKeys, useDrives } from "@/hooks/use-navigator-tree";
+import { cn } from "@/lib/utils";
 
 interface MoveFileDialogProps {
   open: boolean;
@@ -69,7 +71,7 @@ function FolderRow({
           isDisabled && "pointer-events-none opacity-40",
         )}
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
-        onClick={() => !isDisabled && onSelect(folder.id)}
+        onClick={() => { if (!isDisabled) onSelect(folder.id); }}
       >
         <button
           type="button"
@@ -135,7 +137,7 @@ function DriveRow({ driveId, driveName, selectedId, onSelect, disabledId }: Driv
           selectedId === driveId && "bg-accent",
           isDriveDisabled && "pointer-events-none opacity-40",
         )}
-        onClick={() => !isDriveDisabled && onSelect(driveId)}
+        onClick={() => { if (!isDriveDisabled) onSelect(driveId); }}
       >
         <button
           type="button"
@@ -234,12 +236,12 @@ export function MoveFileDialog({
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => onOpenChange(false)}
+            onClick={() => { onOpenChange(false); }}
             disabled={moveFile.isPending}
           >
             Cancel
           </Button>
-          <Button onClick={handleConfirm} disabled={!selectedId || moveFile.isPending}>
+          <Button onClick={() => { void handleConfirm(); }} disabled={!selectedId || moveFile.isPending}>
             {moveFile.isPending ? (
               <>
                 <Loader2 className="size-4 animate-spin" />

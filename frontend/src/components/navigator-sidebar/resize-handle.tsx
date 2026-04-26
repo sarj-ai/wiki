@@ -63,7 +63,7 @@ export function SidebarResizeHandle() {
 
     const onMove = (moveEvent: PointerEvent) => {
       pendingX = moveEvent.clientX;
-      if (rafId === null) rafId = requestAnimationFrame(apply);
+      rafId ??= requestAnimationFrame(apply);
     };
 
     const onUp = (upEvent: PointerEvent) => {

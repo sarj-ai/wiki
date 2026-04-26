@@ -44,7 +44,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
             </p>
             <button
               type="button"
-              onClick={() => this.setState({ hasError: false })}
+              onClick={() => { this.setState({ hasError: false }); }}
               className="text-primary text-sm underline hover:no-underline"
             >
               Try again

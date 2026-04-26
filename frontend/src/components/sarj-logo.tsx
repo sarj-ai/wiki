@@ -1,11 +1,12 @@
 import Image from "next/image";
+
 import { cn } from "@/lib/utils";
 
-type SarjLogoProps = {
+interface SarjLogoProps {
   size?: number;
   className?: string;
   priority?: boolean;
-};
+}
 
 export function SarjLogo({ size = 32, className, priority = false }: SarjLogoProps) {
   const dimensions = { width: size, height: size };

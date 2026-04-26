@@ -1,16 +1,16 @@
 "use client";
 
 import { notFound, useParams } from "next/navigation";
-import { ApiError } from "@/lib/navigator-api";
-import { useFile } from "@/hooks/use-navigator-tree";
+
 import { FileViewer } from "@/components/navigator-document/file-viewer";
 import { NavigatorToolbar } from "@/components/navigator-document/navigator-toolbar";
 import { NavigatorNotFound } from "@/components/navigator-not-found";
+import { useFile } from "@/hooks/use-navigator-tree";
+import { ApiError } from "@/lib/navigator-api";
 
 export default function FilePage() {
   const params = useParams<{ driveId: string }>();
-  const fileId = params.driveId ?? null;
-  const fileQuery = useFile(fileId);
+  const fileQuery = useFile(params.driveId);
 
   if (fileQuery.isLoading) {
     return (

@@ -1,11 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { ChevronRight, ExternalLink } from "lucide-react";
+import Link from "next/link";
 import { Fragment } from "react";
+
+import type { BreadcrumbItem } from "@/types/navigator";
+
 import { iframeShowsOwnTitle, openInGoogleLabel, renderMimeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
-import type { BreadcrumbItem } from "@/types/navigator";
 
 interface NavigatorToolbarProps {
   fileId: string;

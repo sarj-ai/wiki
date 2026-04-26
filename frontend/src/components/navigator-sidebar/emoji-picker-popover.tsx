@@ -1,9 +1,10 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import dynamic from "next/dynamic";
+
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useIsClient } from "@/hooks/use-is-client";
 
 /**
@@ -48,13 +49,12 @@ const Picker = dynamic(() => import("@emoji-mart/react").then((m) => m.default),
 });
 
 // Emoji-mart's dataset is the biggest dep — also dynamically imported
-// so it's only fetched alongside the picker. The cast matches emoji-
-// mart's loose `data` prop type.
-let cachedData: unknown = null;
-async function loadEmojiData(): Promise<unknown> {
-  if (cachedData) return cachedData;
-  const mod = (await import("@emoji-mart/data")) as { default: unknown };
-  cachedData = mod.default;
+// so it's only fetched alongside the picker. Cache the in-flight
+// Promise (not the resolved value) so two concurrent calls can't both
+// trigger the dynamic import.
+let cachedData: Promise<unknown> | null = null;
+function loadEmojiData(): Promise<unknown> {
+  cachedData ??= import("@emoji-mart/data").then((m: { default: unknown }) => m.default);
   return cachedData;
 }
 
@@ -80,7 +80,7 @@ export function EmojiPickerPopover({ value, onChange, children }: EmojiPickerPop
         align="start"
         sideOffset={8}
         className="w-auto border-0 bg-transparent p-0 shadow-none"
-        onOpenAutoFocus={(e) => e.preventDefault()}
+        onOpenAutoFocus={(e) => { e.preventDefault(); }}
       >
         {/* emoji-mart provides its own background + shadow — wrapping
             it in a transparent PopoverContent avoids a double-card

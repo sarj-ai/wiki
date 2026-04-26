@@ -44,7 +44,7 @@ function createPersistedSet(storageKey: string) {
   }
 
   function notify() {
-    subscribers.forEach((fn) => fn());
+    subscribers.forEach((fn) => { fn(); });
   }
 
   function setMembership(id: string, member: boolean) {
@@ -60,7 +60,7 @@ function createPersistedSet(storageKey: string) {
     const [, forceRerender] = useState(0);
 
     useEffect(() => {
-      const callback = () => forceRerender((n) => n + 1);
+      const callback = () => { forceRerender((n) => n + 1); };
       subscribers.add(callback);
       return () => {
         subscribers.delete(callback);

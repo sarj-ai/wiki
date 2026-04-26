@@ -1,9 +1,11 @@
 "use client";
 
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { navigatorApi, type CreateFileInput, type PreferencesInput } from "@/lib/navigator-api";
-import { navigatorKeys } from "@/hooks/use-navigator-tree";
+
 import type { DriveNode, DriveTree, FileResponse, SortOrder } from "@/types/navigator";
+
+import { navigatorKeys } from "@/hooks/use-navigator-tree";
+import { navigatorApi, type CreateFileInput, type PreferencesInput } from "@/lib/navigator-api";
 import { MIME_FOLDER } from "@/types/navigator";
 
 // Turns a fresh FileResponse into a DriveNode so it can be spliced
@@ -62,11 +64,11 @@ function useInvalidateTrees() {
   const qc = useQueryClient();
   return (driveIds: (string | null | undefined)[]) => {
     for (const id of driveIds) {
-      if (id) qc.invalidateQueries({ queryKey: navigatorKeys.driveTree(id) });
+      if (id) void qc.invalidateQueries({ queryKey: navigatorKeys.driveTree(id) });
     }
     // Folder-file listings inside moved folders may now be stale — drop
     // them all so the next expand refetches. Cheap vs scoped invalidation.
-    qc.invalidateQueries({ queryKey: ["navigator", "folder-files"] });
+    void qc.invalidateQueries({ queryKey: ["navigator", "folder-files"] });
   };
 }
 
@@ -96,7 +98,7 @@ export function useRenameFile() {
       navigatorApi.renameFile(fileId, name),
     onSuccess: (file) => {
       invalidate([file.driveId]);
-      qc.invalidateQueries({ queryKey: ["navigator", "file", file.id] });
+      void qc.invalidateQueries({ queryKey: ["navigator", "file", file.id] });
     },
   });
 }
@@ -121,7 +123,7 @@ export function useMoveFile() {
     },
     onSuccess: ({ result, sourceDriveId }) => {
       invalidate([sourceDriveId, result.driveId]);
-      qc.invalidateQueries({ queryKey: ["navigator", "file", result.id] });
+      void qc.invalidateQueries({ queryKey: ["navigator", "file", result.id] });
     },
   });
 }
@@ -222,7 +224,7 @@ export function useBulkSetSortOrders() {
       }
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: navigatorKeys.sortOrders });
+      void qc.invalidateQueries({ queryKey: navigatorKeys.sortOrders });
     },
   });
 }
@@ -247,7 +249,7 @@ export function useSetDocIcon() {
     onSuccess: () => {
       // Doc icons are global — one refetch updates the map for the
       // whole sidebar. Simpler than patching the cached array by hand.
-      qc.invalidateQueries({ queryKey: navigatorKeys.docIcons });
+      void qc.invalidateQueries({ queryKey: navigatorKeys.docIcons });
     },
   });
 }
@@ -258,7 +260,7 @@ export function useSetFolderIcon() {
     mutationFn: ({ folderDriveId, icon }: { folderDriveId: string; icon: string | null }) =>
       navigatorApi.setFolderIcon(folderDriveId, icon),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: navigatorKeys.folderIcons });
+      void qc.invalidateQueries({ queryKey: navigatorKeys.folderIcons });
     },
   });
 }

@@ -1,10 +1,11 @@
 "use client";
 
+import { AlertCircle, ShieldX, ServerCrash } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { getLoginUrl } from "@/lib/auth";
-import { AlertCircle, ShieldX, ServerCrash } from "lucide-react";
+
 import { SarjLogo } from "@/components/sarj-logo";
+import { getLoginUrl } from "@/lib/auth";
 
 const ERROR_CONFIG: Record<
   string,

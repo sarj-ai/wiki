@@ -1,7 +1,8 @@
 "use client";
 
-import { toast } from "sonner";
 import { Settings } from "lucide-react";
+import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -13,8 +14,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useDrives, usePreferences } from "@/hooks/use-navigator-tree";
 import { useSetPreferences } from "@/hooks/use-navigator-mutations";
+import { useDrives, usePreferences } from "@/hooks/use-navigator-tree";
 
 interface PreferencesDialogProps {
   open: boolean;
@@ -42,7 +43,7 @@ function CheckboxRow({
       <Checkbox
         id={id}
         checked={checked}
-        onCheckedChange={(next) => onChange(next === true)}
+        onCheckedChange={(next) => { onChange(next === true); }}
         className="mt-0.5"
       />
       <div className="min-w-0 flex-1">
@@ -94,7 +95,7 @@ export function PreferencesDialog({ open, onOpenChange }: PreferencesDialogProps
               label="Show non-Doc files"
               description="Include Sheets, Slides, Forms, Drawings, PDFs and images in the sidebar."
               checked={showNonDocFiles}
-              onChange={(next) => updatePrefs({ showNonDocFiles: next })}
+              onChange={(next) => { void updatePrefs({ showNonDocFiles: next }); }}
             />
           </section>
 

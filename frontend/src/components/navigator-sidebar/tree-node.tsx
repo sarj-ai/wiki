@@ -1,19 +1,22 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { ChevronRight } from "lucide-react";
 import { toast } from "sonner";
-import { SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem } from "@/components/ui/sidebar";
-import { renderMimeIcon } from "@/lib/file-icons";
-import { cn } from "@/lib/utils";
+
 import type { DriveNode } from "@/types/navigator";
-import { MIME_FOLDER } from "@/types/navigator";
-import { useFolderFiles } from "@/hooks/use-navigator-tree";
+
+import { SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem } from "@/components/ui/sidebar";
 import { useExpandedFolder } from "@/hooks/use-expanded-folders";
 import { useSetFolderIcon } from "@/hooks/use-navigator-mutations";
-import { FileRow } from "./file-row";
+import { useFolderFiles } from "@/hooks/use-navigator-tree";
+import { renderMimeIcon } from "@/lib/file-icons";
+import { cn } from "@/lib/utils";
+import { MIME_FOLDER } from "@/types/navigator";
+
 import { CreateFileMenu } from "./create-file-menu";
 import { EmojiPickerPopover } from "./emoji-picker-popover";
+import { FileRow } from "./file-row";
 import { ItemMenu } from "./item-menu";
 import { SortableItem } from "./sortable-item";
 
@@ -189,7 +192,7 @@ export function TreeNode({
       */}
       <div className="relative">
         <SidebarMenuButton
-          onClick={() => setExpanded(!expanded)}
+          onClick={() => { setExpanded(!expanded); }}
           className="pr-14"
           style={{ paddingLeft: chevronPadding }}
           aria-expanded={expanded}

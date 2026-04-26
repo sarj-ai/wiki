@@ -1,7 +1,5 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { ChevronRight, HardDrive } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -13,8 +11,12 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useQueryClient } from "@tanstack/react-query";
-import { navigatorKeys } from "@/hooks/use-navigator-tree";
+import { ChevronRight, HardDrive } from "lucide-react";
+import { useState, useMemo } from "react";
 import { toast } from "sonner";
+
+import type { DriveNode, DriveSummary, FolderIcon, SortOrder } from "@/types/navigator";
+
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -22,16 +24,17 @@ import {
   SidebarMenu,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { cn } from "@/lib/utils";
-import { useDocIcons, useDriveTree, useFolderFiles } from "@/hooks/use-navigator-tree";
 import { useExpandedDrive } from "@/hooks/use-expanded-folders";
 import { useBulkSetSortOrders } from "@/hooks/use-navigator-mutations";
-import type { DriveNode, DriveSummary, FolderIcon, SortOrder } from "@/types/navigator";
+import { navigatorKeys } from "@/hooks/use-navigator-tree";
+import { useDocIcons, useDriveTree, useFolderFiles } from "@/hooks/use-navigator-tree";
+import { cn } from "@/lib/utils";
 import { MIME_DOC, MIME_FOLDER } from "@/types/navigator";
-import { TreeNode } from "./tree-node";
-import { FileRow } from "./file-row";
+
 import { CreateFileMenu } from "./create-file-menu";
+import { FileRow } from "./file-row";
 import { SortableItem } from "./sortable-item";
+import { TreeNode } from "./tree-node";
 
 interface DriveSectionProps {
   drive: DriveSummary;
@@ -181,11 +184,17 @@ export function DriveSection({
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const activeContainerId = active.data.current?.sortable?.containerId as string | undefined;
-    const overContainerId = over.data.current?.sortable?.containerId as string | undefined;
+    const activeSortable = active.data.current?.sortable as
+      | { containerId?: string; items?: string[] }
+      | undefined;
+    const overSortable = over.data.current?.sortable as
+      | { containerId?: string }
+      | undefined;
+    const activeContainerId = activeSortable?.containerId;
+    const overContainerId = overSortable?.containerId;
     if (!activeContainerId || !overContainerId || activeContainerId !== overContainerId) return;
 
-    const items = (active.data.current?.sortable?.items ?? []) as string[];
+    const items = activeSortable.items ?? [];
     const oldIndex = items.indexOf(String(active.id));
     const newIndex = items.indexOf(String(over.id));
     if (oldIndex < 0 || newIndex < 0) return;
@@ -224,7 +233,7 @@ export function DriveSection({
         <SidebarGroupLabel asChild>
           <button
             type="button"
-            onClick={() => setExpanded(!expanded)}
+            onClick={() => { setExpanded(!expanded); }}
             className="flex w-full items-center gap-1 pr-7"
             aria-expanded={expanded}
           >
@@ -241,8 +250,8 @@ export function DriveSection({
         <DndContext
           sensors={sensors}
           onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDragCancel={() => setActiveNode(null)}
+          onDragEnd={(event) => { void handleDragEnd(event); }}
+          onDragCancel={() => { setActiveNode(null); }}
         >
           <SidebarGroupContent>
             <SidebarMenu>

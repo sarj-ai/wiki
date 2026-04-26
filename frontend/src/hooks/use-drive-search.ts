@@ -1,9 +1,11 @@
 "use client";
 
-import { useDebounce } from "use-debounce";
 import { useQuery } from "@tanstack/react-query";
-import { navigatorApi } from "@/lib/navigator-api";
+import { useDebounce } from "use-debounce";
+
 import type { DriveSearchResult, SnippetResult } from "@/types/navigator";
+
+import { navigatorApi } from "@/lib/navigator-api";
 
 export function useDriveSearch(query: string) {
   // ~250ms debounce keeps the Drive Search API call count sane while

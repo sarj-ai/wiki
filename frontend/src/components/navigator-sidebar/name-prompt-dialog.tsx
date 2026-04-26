@@ -2,6 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -97,7 +98,7 @@ export function NamePromptDialog({
               ref={inputRef}
               id="name-prompt-input"
               value={value}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(e) => { setValue(e.target.value); }}
               disabled={submitting}
             />
           </div>
@@ -105,7 +106,7 @@ export function NamePromptDialog({
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={() => { onOpenChange(false); }}
               disabled={submitting}
             >
               Cancel

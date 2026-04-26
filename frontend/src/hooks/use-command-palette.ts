@@ -13,7 +13,7 @@ let isOpen = false;
 const subscribers = new Set<() => void>();
 
 function notify() {
-  subscribers.forEach((fn) => fn());
+  subscribers.forEach((fn) => { fn(); });
 }
 
 function subscribe(listener: () => void) {
@@ -41,7 +41,7 @@ export function useCommandPaletteState(): {
   toggle: () => void;
 } {
   const open = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  const toggle = useCallback(() => setOpen(!isOpen), []);
+  const toggle = useCallback(() => { setOpen(!isOpen); }, []);
   return { open, setOpen, toggle };
 }
 
@@ -51,5 +51,5 @@ export function useCommandPaletteState(): {
  * component itself when it's rendered into the app layout.
  */
 export function useCommandPaletteHotkey(): void {
-  useHotkeys("mod+k", () => setOpen(!isOpen), { preventDefault: true });
+  useHotkeys("mod+k", () => { setOpen(!isOpen); }, { preventDefault: true });
 }

@@ -1,19 +1,21 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { ExternalLink, Loader2, Search, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import type { DriveSearchResult } from "@/types/navigator";
+
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { useCommandPaletteHotkey, useCommandPaletteState } from "@/hooks/use-command-palette";
+import { useDriveSearch, useDriveSearchSnippet } from "@/hooks/use-drive-search";
 import { isGoogleWorkspaceType, renderMimeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
-import { useDriveSearch, useDriveSearchSnippet } from "@/hooks/use-drive-search";
-import { useCommandPaletteHotkey, useCommandPaletteState } from "@/hooks/use-command-palette";
-import type { DriveSearchResult } from "@/types/navigator";
+import { cn } from "@/lib/utils";
 import { MIME_FORM } from "@/types/navigator";
 
 /**
@@ -150,7 +152,7 @@ function PreviewPanel({
       </div>
 
       <div className="mt-4 flex justify-end">
-        <Button size="sm" onClick={() => onOpen(result)}>
+        <Button size="sm" onClick={() => { onOpen(result); }}>
           {isForm ? (
             <>
               <ExternalLink className="size-4" />
@@ -271,7 +273,7 @@ export function CommandPalette() {
           <Input
             ref={inputRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); }}
             onKeyDown={handleKeyDown}
             placeholder="Search Drive…"
             className="h-8 border-0 bg-transparent p-0 text-base shadow-none focus-visible:ring-0"
@@ -280,7 +282,7 @@ export function CommandPalette() {
           {query.length > 0 && (
             <button
               type="button"
-              onClick={() => setQuery("")}
+              onClick={() => { setQuery(""); }}
               className="text-muted-foreground hover:text-foreground shrink-0"
               aria-label="Clear search"
             >
@@ -311,7 +313,7 @@ export function CommandPalette() {
                   result={result}
                   driveName={result.driveName}
                   selected={index === selectedIndex}
-                  onSelect={() => setSelectedResultId(result.id)}
+                  onSelect={() => { setSelectedResultId(result.id); }}
                   rowRef={(el) => {
                     if (el) rowRefs.current.set(result.id, el);
                     else rowRefs.current.delete(result.id);

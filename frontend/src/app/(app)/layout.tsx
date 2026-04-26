@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import { NavigatorSidebar } from "@/components/navigator-sidebar/navigator-sidebar";
-import { CommandPalette } from "@/components/navigator-search/command-palette";
+
 import { ErrorBoundary } from "@/components/error-boundary";
+import { CommandPalette } from "@/components/navigator-search/command-palette";
+import { NavigatorSidebar } from "@/components/navigator-sidebar/navigator-sidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();

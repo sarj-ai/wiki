@@ -3,7 +3,8 @@
 import { ChevronsUpDown, LogOut, Moon, Settings, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useState } from "react";
-import { SidebarFooter } from "@/components/ui/sidebar";
+
+import { useAuth } from "@/components/auth-provider";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,8 +12,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useAuth } from "@/components/auth-provider";
+import { SidebarFooter } from "@/components/ui/sidebar";
 import { useIsClient } from "@/hooks/use-is-client";
+
 import { PreferencesDialog } from "./preferences-dialog";
 
 export function NavigatorFooter() {
@@ -25,7 +27,7 @@ export function NavigatorFooter() {
   const [prefsOpen, setPrefsOpen] = useState(false);
 
   const isDark = mounted && resolvedTheme === "dark";
-  const toggleTheme = () => setTheme(isDark ? "light" : "dark");
+  const toggleTheme = () => { setTheme(isDark ? "light" : "dark"); };
 
   const initials = (user?.displayName ?? user?.email ?? "?")
     .split(/[\s@.]+/)

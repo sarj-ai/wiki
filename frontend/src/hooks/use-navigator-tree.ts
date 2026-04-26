@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { navigatorApi } from "@/lib/navigator-api";
+
 import type {
   DocIcon,
   DriveNode,
@@ -12,6 +12,8 @@ import type {
   Preferences,
   SortOrder,
 } from "@/types/navigator";
+
+import { navigatorApi } from "@/lib/navigator-api";
 
 // Stable query keys so mutations elsewhere (D4, D5) can invalidate by prefix.
 export const navigatorKeys = {
