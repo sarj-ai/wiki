@@ -19,7 +19,7 @@ const eslintConfig = defineConfig([
           caughtErrorsIgnorePattern: "^_",
         },
       ],
-      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-explicit-any": "error",
       // Allow @ts-nocheck WHEN it carries a description — used to mark files
       // scheduled for deletion in Sub-PR D of the Navigator pivot.
       "@typescript-eslint/ban-ts-comment": [

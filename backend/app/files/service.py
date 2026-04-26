@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import asyncio
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from fastapi import HTTPException, status
 from googleapiclient.errors import HttpError
@@ -67,6 +67,7 @@ class GoogleFilesService(FilesService):
         self._user = user
         self._drive = drive
 
+    @override
     async def create(self, parent_folder_id: str, name: str, mime_type: str) -> FileResponse:
         if mime_type not in NAVIGATOR_SUPPORTED_MIME_TYPES:
             raise HTTPException(
@@ -77,17 +78,20 @@ class GoogleFilesService(FilesService):
         await self._ensure_in_member_drive(result.drive_id)
         return result
 
+    @override
     async def get(self, file_id: str) -> FileResponse:
         result = await asyncio.to_thread(self._get_sync, file_id)
         await self._ensure_in_member_drive(result.drive_id)
         return result
 
+    @override
     async def rename(self, file_id: str, new_name: str) -> FileResponse:
         # Source scope check before mutating — stops callers from renaming
         # something they only got a one-off share on.
         await self.get(file_id)
         return await asyncio.to_thread(self._rename_sync, file_id, new_name)
 
+    @override
     async def move(self, file_id: str, new_parent_folder_id: str) -> FileResponse:
         await self.get(file_id)
         result = await asyncio.to_thread(self._move_sync, file_id, new_parent_folder_id)
@@ -96,6 +100,7 @@ class GoogleFilesService(FilesService):
         await self._ensure_in_member_drive(result.drive_id)
         return result
 
+    @override
     async def copy(self, file_id: str, new_name: str) -> FileResponse:
         source = await self.get(file_id)
         if source.mime_type == MIME_FOLDER:
@@ -107,6 +112,7 @@ class GoogleFilesService(FilesService):
         await self._ensure_in_member_drive(result.drive_id)
         return result
 
+    @override
     async def trash(self, file_id: str) -> None:
         await self.get(file_id)
         await asyncio.to_thread(self._trash_sync, file_id)

@@ -19,9 +19,9 @@ from __future__ import annotations
 import asyncio
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
+from typing import override
 
 from loguru import logger
-from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,12 +59,6 @@ class SidebarCacheService(ABC):
     @abstractmethod
     async def invalidate_drive(self, db: AsyncSession, drive_id: str) -> None: ...
 
-    @abstractmethod
-    async def invalidate_folder(self, drive_id: str, folder_id: str) -> None: ...
-
-    @abstractmethod
-    async def list_cached_drives(self, db: AsyncSession) -> list[str]: ...
-
 
 class PostgresSidebarCacheService(SidebarCacheService):
     """``drive_tree_cache``-backed implementation.
@@ -88,6 +82,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
         self._sf = singleflight
         self._bg_tasks = bg_tasks
 
+    @override
     async def get_drive_tree(self, db: AsyncSession, drive_id: str) -> DriveTree:
         # Warm path: row exists → return it (stale is OK; refresh async).
         # Cold path: no row → run the walk through singleflight so concurrent
@@ -103,28 +98,20 @@ class PostgresSidebarCacheService(SidebarCacheService):
             lambda: self._walk_and_save(drive_id),
         )
 
+    @override
     async def get_folder_children(self, folder_id: str) -> list[DriveNode]:
         return await self._sf.do(
             f"folder:{folder_id}",
             lambda: self._drive.list_folder_children(folder_id),
         )
 
+    @override
     async def invalidate_drive(self, db: AsyncSession, drive_id: str) -> None:
         row = await self._load_row(db, drive_id)
         if row is None:
             return
         await db.delete(row)
         await db.commit()
-
-    async def invalidate_folder(self, drive_id: str, folder_id: str) -> None:
-        # Folder listings aren't persisted today; a named entry point lets
-        # write paths call it now and have real eviction wired later
-        # without touching every caller.
-        _ = drive_id, folder_id
-
-    async def list_cached_drives(self, db: AsyncSession) -> list[str]:
-        rows = (await db.execute(select(DriveTreeCache.drive_id))).scalars().all()
-        return list(rows)
 
     # ------------------------------------------------------------------
     # Internals
@@ -141,7 +128,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
                 f"drive:{drive_id}",
                 lambda: self._walk_and_save(drive_id),
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 — bg fire-and-forget; log and discard so the task pool stays healthy.
             logger.exception("background drive refresh failed drive={}", drive_id)
 
     async def _walk_and_save(self, drive_id: str) -> DriveTree:

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 from googleapiclient.errors import HttpError
 from loguru import logger
@@ -82,15 +82,19 @@ class GoogleDriveService(DriveService):
     def __init__(self, user: User) -> None:
         self._user = user
 
+    @override
     async def list_drives(self) -> list[DriveSummary]:
         return await asyncio.to_thread(self._list_drives_sync)
 
+    @override
     async def walk_drive_folders(self, drive_id: str) -> DriveTree:
         return await asyncio.to_thread(self._walk_folders_sync, drive_id)
 
+    @override
     async def list_folder_children(self, folder_id: str) -> list[DriveNode]:
         return await asyncio.to_thread(self._list_children_sync, folder_id)
 
+    @override
     async def search_drive(
         self, drive_id: str, query: str, *, limit: int = 50
     ) -> list[SearchResult]:
@@ -98,6 +102,7 @@ class GoogleDriveService(DriveService):
             return []
         return await asyncio.to_thread(self._search_drive_sync, drive_id, query.strip(), limit)
 
+    @override
     async def search_across_drives(
         self, drive_ids: list[str], query: str, *, limit_per_drive: int = 20
     ) -> list[SearchResult]:
@@ -112,6 +117,7 @@ class GoogleDriveService(DriveService):
             merged.extend(per_drive)
         return merged
 
+    @override
     async def fetch_snippet(self, file_id: str, query: str) -> SnippetResult:
         return await asyncio.to_thread(self._fetch_snippet_sync, file_id, query)
 

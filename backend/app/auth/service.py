@@ -23,6 +23,7 @@ import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import override
 
 import httpx
 from loguru import logger
@@ -89,6 +90,7 @@ class GoogleAuthService(AuthService):
         self._db = db
         self._http = http_client
 
+    @override
     async def exchange_code_for_session(self, code: str) -> AuthSession:
         google_tokens = await self._exchange_google_code(code)
         userinfo = await self._fetch_userinfo(google_tokens.access_token)
@@ -100,6 +102,7 @@ class GoogleAuthService(AuthService):
             raise AuthError from e
         return self._issue_session(user)
 
+    @override
     async def refresh_session(self, refresh_token: str) -> AuthSession:
         payload = decode_token(refresh_token)
         if payload.get("type") != "refresh":
@@ -115,6 +118,7 @@ class GoogleAuthService(AuthService):
             raise TokenRevokedError("Token has been revoked")
         return self._issue_session(user)
 
+    @override
     async def revoke_session(self, access_token: str | None) -> None:
         if access_token is None:
             return
@@ -130,7 +134,7 @@ class GoogleAuthService(AuthService):
                 return
             user.token_version += 1
             await self._db.commit()
-        except Exception:
+        except Exception:  # noqa: BLE001 — logout proceeds even if DB bump fails; cookies still clear.
             logger.opt(exception=True).warning(
                 "logout: failed to bump token_version; proceeding to clear cookies"
             )

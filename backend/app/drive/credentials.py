@@ -29,6 +29,8 @@ def build_credentials(user: User) -> Credentials:
     refresh_token = (
         decrypt_token(user.encrypted_refresh_token) if user.encrypted_refresh_token else None
     )
+    # google.oauth2 ships partial typing — mypy strict flags Credentials(...)
+    # as an untyped call; pyright sees full types. Narrow ignore for mypy only.
     return Credentials(  # type: ignore[no-untyped-call]
         token=access_token,
         refresh_token=refresh_token,

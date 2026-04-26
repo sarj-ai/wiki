@@ -60,7 +60,7 @@ async def rate_limit_middleware(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
     path = request.url.path
-    if path in ("/health",) or path in ("/auth/login", "/auth/callback", "/auth/logout"):
+    if path == "/health" or path in ("/auth/login", "/auth/callback", "/auth/logout"):
         return await call_next(request)
     client_ip = request.client.host if request.client else "unknown"
     if _is_rate_limited(client_ip):
@@ -110,7 +110,7 @@ async def health_check() -> dict[str, str]:
         async with async_session() as db:
             await db.execute(text("SELECT 1"))
         result["database"] = "ok"
-    except Exception:
+    except Exception:  # noqa: BLE001 — /health must never 500; report degraded instead.
         result["status"] = "degraded"
         result["database"] = "unavailable"
     return result

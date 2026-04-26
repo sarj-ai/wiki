@@ -3,11 +3,13 @@ from __future__ import annotations
 import logging
 import sys
 from types import FrameType
+from typing import override
 
 from loguru import logger
 
 
 class _InterceptHandler(logging.Handler):
+    @override
     def emit(self, record: logging.LogRecord) -> None:
         try:
             level: str | int = logger.level(record.levelname).name

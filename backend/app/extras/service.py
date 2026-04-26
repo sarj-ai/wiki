@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
+from typing import override
 
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -75,16 +76,19 @@ class PostgresExtrasService(ExtrasService):
         self._db = db
         self._user = user
 
+    @override
     async def list_doc_icons(self) -> list[DocIconRead]:
         rows = (await self._db.execute(select(DocIcon))).scalars().all()
         return [DocIconRead(drive_id=r.drive_id, icon=r.icon, cover_url=r.cover_url) for r in rows]
 
+    @override
     async def get_doc_icon(self, drive_id: str) -> DocIconRead | None:
         row = await self._db.get(DocIcon, drive_id)
         if row is None:
             return None
         return DocIconRead(drive_id=row.drive_id, icon=row.icon, cover_url=row.cover_url)
 
+    @override
     async def upsert_doc_icon(self, drive_id: str, payload: DocIconWrite) -> DocIconRead:
         stmt = (
             pg_insert(DocIcon)
@@ -109,6 +113,7 @@ class PostgresExtrasService(ExtrasService):
         await self._db.commit()
         return DocIconRead(drive_id=drive_id, icon=payload.icon, cover_url=payload.cover_url)
 
+    @override
     async def list_folder_icons(self) -> list[FolderIconRead]:
         rows = (
             (
@@ -121,6 +126,7 @@ class PostgresExtrasService(ExtrasService):
         )
         return [FolderIconRead(folder_drive_id=r.folder_drive_id, icon=r.icon) for r in rows]
 
+    @override
     async def upsert_folder_icon(
         self, folder_drive_id: str, payload: FolderIconWrite
     ) -> FolderIconRead:
@@ -144,6 +150,7 @@ class PostgresExtrasService(ExtrasService):
         await self._db.commit()
         return FolderIconRead(folder_drive_id=folder_drive_id, icon=payload.icon)
 
+    @override
     async def list_sort_orders(self) -> list[SortOrderRead]:
         rows = (
             (
@@ -156,6 +163,7 @@ class PostgresExtrasService(ExtrasService):
         )
         return [SortOrderRead(drive_id=r.drive_id, sort_order=r.sort_order) for r in rows]
 
+    @override
     async def upsert_sort_orders(self, items: list[SortOrderWrite]) -> None:
         if not items:
             return
@@ -175,6 +183,7 @@ class PostgresExtrasService(ExtrasService):
             await self._db.execute(stmt)
         await self._db.commit()
 
+    @override
     async def clear_sort_order(self, drive_id: str) -> None:
         await self._db.execute(
             delete(UserSortOrder).where(
@@ -184,6 +193,7 @@ class PostgresExtrasService(ExtrasService):
         )
         await self._db.commit()
 
+    @override
     async def get_preferences(self) -> PreferencesRead:
         row = await self._db.get(UserPreferences, self._user.id)
         if row is None:
@@ -193,6 +203,7 @@ class PostgresExtrasService(ExtrasService):
             hidden_workspace_ids=list(row.hidden_workspace_ids),
         )
 
+    @override
     async def upsert_preferences(self, payload: PreferencesWrite) -> PreferencesRead:
         # Partial update: unset fields keep their current value (or the
         # default if the row doesn't exist yet).

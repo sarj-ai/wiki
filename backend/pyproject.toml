@@ -49,34 +49,52 @@ extend-exclude = [
 
 [tool.ruff.lint]
 select = [
-    "E",    # pycodestyle errors
-    "W",    # pycodestyle warnings
-    "F",    # pyflakes
-    "I",    # isort
-    "B",    # bugbear
-    "C4",   # comprehensions
-    "SIM",  # simplify
-    "UP",   # pyupgrade
-    "N",    # pep8-naming
-    "RUF",  # ruff-specific
-    "S",    # bandit (security)
-    "ARG",  # unused arguments
-    "PTH",  # pathlib
-    "RET",  # return
-    "PIE",  # misc
-    "TID",  # tidy imports
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # bugbear
+    "C4",    # comprehensions
+    "SIM",   # simplify
+    "UP",    # pyupgrade
+    "N",     # pep8-naming
+    "RUF",   # ruff-specific
+    "S",     # bandit (security)
+    "ARG",   # unused arguments
+    "PTH",   # pathlib
+    "RET",   # return
+    "PIE",   # misc
+    "TID",   # tidy imports
     "ASYNC",
-    "FA",   # future annotations
+    "FA",    # future annotations
+    # New (Wave 1)
+    "DTZ",   # datetime — naive datetime detection (DB / JWT timezone bugs)
+    "LOG",   # flake8-logging — deprecated logger.warn etc.
+    "G",     # logging-format — enforces logger.info("msg with {arg}", arg=value)
+    "T20",   # print — we use loguru, never print()
+    "BLE",   # blind-except — bare except: swallows AuthError / Drive failures
+    "PGH",   # pygrep — # type: ignore without code
+    "A",     # builtins — flag id/type/list shadowing
+    "TC",    # type-checking — move type-only imports into TYPE_CHECKING
+    "PT",    # pytest-style
+    "RSE",   # raise — raise Foo() with no args
+    "FURB",  # refurb — Python 3.14 modernizations
+    "T10",   # debugger statements
 ]
 ignore = [
     "E501",    # line too long — formatter handles wrapping
     "RET504",  # clarity often wins over terseness for assign-then-return
     "S104",    # bind-all-interfaces is intentional for containerized app
     "B008",    # FastAPI uses Depends() in defaults
+    "A003",    # SQLAlchemy model attrs (id, type) shadow builtins by design
+    "TC001",   # FastAPI/Pydantic resolve annotations at runtime
+    "TC002",
+    "TC003",
+    "PT011",   # broad pytest.raises is sometimes warranted
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "ARG", "PLR2004"]
+"tests/**" = ["S101", "ARG", "PLR2004", "SLF001"]
 "alembic/env.py" = ["ALL"]
 
 [tool.ruff.lint.isort]
@@ -85,12 +103,21 @@ known-first-party = ["app"]
 [tool.mypy]
 python_version = "3.14"
 strict = true
+# Not implied by strict — bumps worth keeping explicit:
 warn_unreachable = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-disallow_any_generics = true
-check_untyped_defs = true
-no_implicit_reexport = true
+local_partial_types = true        # mypy 2.0 default; opt in early
+disallow_any_unimported = true    # see Google override below
+# disallow_any_explicit deliberately off — Pydantic BaseModel and Google API
+# params dicts both surface as Any without their respective mypy plugins, and
+# the false-positive rate exceeds the bug-find rate on this codebase.
+enable_error_code = [
+    "deprecated",                 # PEP 702 — track FastAPI/SQLAlchemy deprecations
+    "explicit-override",          # require @override on subclass methods (fits ABC pattern)
+    "mutable-override",
+    "redundant-self",
+    "narrowed-type-not-subtype",
+    "unimported-reveal",
+]
 exclude = [
     "^alembic/versions/",
 ]
@@ -103,6 +130,11 @@ module = [
     "google_auth_oauthlib.*",
 ]
 ignore_missing_imports = true
+# Silence cascades from unstubbed Google API symbols. mypy strict otherwise
+# flags Credentials(...) etc. as untyped calls and treats every return value
+# as Any; pyright sees these as fully typed, so we defer to pyright here.
+disallow_any_unimported = false
+disallow_untyped_calls = false
 
 [tool.pyright]
 include = ["app", "tests"]
@@ -122,6 +154,14 @@ reportTypedDictNotRequiredAccess = "none"
 # modules — pyright warns that the source can't be resolved. That's expected;
 # the stubs are the authoritative type definitions.
 reportMissingModuleSource = "none"
+# Bumps from "none"/"warning" to "error" (Wave 1):
+# reportUnnecessaryTypeIgnoreComment deliberately off — pyright recursively
+# flags mypy `# type: ignore` comments as unnecessary even when mypy needs
+# them (e.g. google.oauth2.Credentials). mypy strict's warn_unused_ignores
+# already covers the same intent for mypy-style ignores.
+reportImplicitOverride = "error"              # fits service-layer ABC pattern
+reportImplicitStringConcatenation = "error"   # catches missing commas in lists
+reportPropertyTypeMismatch = "error"
 
 [tool.ty.src]
 include = ["app", "tests"]
@@ -129,6 +169,7 @@ exclude = ["alembic/versions"]
 
 [tool.ty.rules]
 # ty (astral) is still pre-1.0; start at its default strict posture.
+unused-ignore-comment = "warn"
 
 [tool.vulture]
 paths = ["app"]
