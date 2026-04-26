@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { formatDistanceToNowStrict } from "date-fns";
 import { ExternalLink, Loader2, Search, X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,6 @@ import { isGoogleWorkspaceType, renderMimeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import { useDriveSearch, useDriveSearchSnippet } from "@/hooks/use-drive-search";
 import { useCommandPaletteHotkey, useCommandPaletteState } from "@/hooks/use-command-palette";
-import { useDrives } from "@/hooks/use-navigator-tree";
 import type { DriveSearchResult } from "@/types/navigator";
 import { MIME_FORM } from "@/types/navigator";
 
@@ -46,19 +46,9 @@ function Highlighted({ text, term }: { text: string; term: string | null }) {
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "";
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "";
-  const diffMs = Date.now() - then;
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `${months}mo ago`;
-  return `${Math.floor(months / 12)}y ago`;
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return "";
+  return formatDistanceToNowStrict(then, { addSuffix: true });
 }
 
 function ResultRow({
@@ -179,7 +169,6 @@ export function CommandPalette() {
   useCommandPaletteHotkey();
   const { open, setOpen } = useCommandPaletteState();
   const router = useRouter();
-  const drivesQuery = useDrives();
 
   const [query, setQuery] = useState("");
   // Store the highlighted result by its stable id, not by index —
@@ -215,14 +204,6 @@ export function CommandPalette() {
       setOpen(next);
     },
     [setOpen],
-  );
-
-  const driveNameFor = useCallback(
-    (result: DriveSearchResult): string | null => {
-      if (!result.driveId) return null;
-      return drivesQuery.data?.find((d) => d.id === result.driveId)?.name ?? null;
-    },
-    [drivesQuery.data],
   );
 
   const openResult = useCallback(
@@ -328,7 +309,7 @@ export function CommandPalette() {
                 <ResultRow
                   key={result.id}
                   result={result}
-                  driveName={driveNameFor(result)}
+                  driveName={result.driveName}
                   selected={index === selectedIndex}
                   onSelect={() => setSelectedResultId(result.id)}
                   rowRef={(el) => {
@@ -344,7 +325,7 @@ export function CommandPalette() {
             <PreviewPanel
               result={selectedResult}
               query={query.trim()}
-              driveName={selectedResult ? driveNameFor(selectedResult) : null}
+              driveName={selectedResult?.driveName ?? null}
               onOpen={openResult}
             />
           </div>

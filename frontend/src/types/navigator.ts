@@ -62,6 +62,7 @@ export interface DriveSearchResult {
   name: string;
   mimeType: string;
   driveId: string | null;
+  driveName: string | null;
   parentId: string | null;
   modifiedTime: string | null;
 }

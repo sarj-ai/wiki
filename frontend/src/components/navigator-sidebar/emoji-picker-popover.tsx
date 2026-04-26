@@ -2,9 +2,9 @@
 
 import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
-import { useSyncExternalStore } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
+import { useIsClient } from "@/hooks/use-is-client";
 
 /**
  * Skeleton placeholder that matches the live emoji-mart picker's
@@ -65,18 +65,6 @@ interface EmojiPickerPopoverProps {
   onChange: (next: string | null) => void | Promise<void>;
   /** Trigger element to wrap (the file/folder icon in the sidebar row). */
   children: React.ReactElement;
-}
-
-// Bridge between next-themes and emoji-mart's `theme` prop. Uses
-// useSyncExternalStore-style mounting guard so SSR doesn't render a
-// mismatched theme before hydration.
-const subscribe = () => () => {};
-function useIsClient(): boolean {
-  return useSyncExternalStore(
-    subscribe,
-    () => true,
-    () => false,
-  );
 }
 
 export function EmojiPickerPopover({ value, onChange, children }: EmojiPickerPopoverProps) {

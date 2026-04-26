@@ -114,13 +114,14 @@ class GoogleDriveService(DriveService):
         drives = await self.list_drives()
         if not drives:
             return []
-        tasks = [
-            self.search_drive(d.id, query, limit=limit_per_drive) for d in drives
-        ]
+        tasks = [self.search_drive(d.id, query, limit=limit_per_drive) for d in drives]
         results = await asyncio.gather(*tasks)
+        # Stamp each hit with its parent drive's name as we merge — saves
+        # the client a separate ``drives.find()`` lookup per row.
         merged: list[SearchResult] = []
-        for per_drive in results:
-            merged.extend(per_drive)
+        for drive, per_drive in zip(drives, results, strict=True):
+            for hit in per_drive:
+                merged.append(hit.model_copy(update={"drive_name": drive.name}))
         return merged
 
     @override

@@ -68,12 +68,20 @@ class DriveTree(BaseModel):
 
 
 class SearchResult(BaseModel):
-    """One hit from a Drive Search API query."""
+    """One hit from a Drive Search API query.
+
+    ``drive_name`` is populated when the result is returned from the
+    multi-drive ``search()`` call (which already iterates the user's
+    drives) so the client doesn't need a second round-trip to render
+    the drive label next to each hit. Per-drive ``search_drive`` calls
+    leave it ``None``.
+    """
 
     id: str
     name: str
     mime_type: str
     drive_id: str | None = None
+    drive_name: str | None = None
     parent_id: str | None = None
     modified_time: str | None = None
 

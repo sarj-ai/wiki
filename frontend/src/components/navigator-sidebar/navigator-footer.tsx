@@ -2,7 +2,7 @@
 
 import { ChevronsUpDown, LogOut, Moon, Settings, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { SidebarFooter } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
@@ -12,19 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/components/auth-provider";
+import { useIsClient } from "@/hooks/use-is-client";
 import { PreferencesDialog } from "./preferences-dialog";
-
-// Detects client-side render without triggering set-state-in-effect.
-// Returns false during SSR so the theme icon doesn't flicker between
-// server HTML and post-hydration state.
-const subscribe = () => () => {};
-function useIsClient(): boolean {
-  return useSyncExternalStore(
-    subscribe,
-    () => true,
-    () => false,
-  );
-}
 
 export function NavigatorFooter() {
   const { user, logout } = useAuth();

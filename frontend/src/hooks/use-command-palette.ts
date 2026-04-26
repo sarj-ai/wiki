@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 
 /**
  * Module-level singleton for the command palette's open/closed state.
@@ -48,19 +49,7 @@ export function useCommandPaletteState(): {
  * Binds Cmd+K (macOS) / Ctrl+K (other) to toggle the palette. Meant
  * to be mounted once near the root — typically from the palette
  * component itself when it's rendered into the app layout.
- *
- * Also swallows the browser's default for the key combo so we don't
- * trigger Chrome's address-bar focus on the same shortcut.
  */
 export function useCommandPaletteHotkey(): void {
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      const isShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
-      if (!isShortcut) return;
-      event.preventDefault();
-      setOpen(!isOpen);
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
+  useHotkeys("mod+k", () => setOpen(!isOpen), { preventDefault: true });
 }
