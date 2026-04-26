@@ -26,6 +26,7 @@ from fastapi import HTTPException, status
 from googleapiclient.errors import HttpError
 
 from app.drive.credentials import build_drive_client
+from app.drive.retry import execute_with_retry
 from app.drive.schemas import MIME_FOLDER, NAVIGATOR_SUPPORTED_MIME_TYPES
 from app.drive.service import DriveService
 from app.files.schemas import FileResponse
@@ -139,7 +140,9 @@ class GoogleFilesService(FilesService):
         client = self._client()
         body: File = {"name": name, "mimeType": mime_type, "parents": [parent_folder_id]}
         try:
-            raw = client.files().create(body=body, fields=_FIELDS, supportsAllDrives=True).execute()
+            raw = execute_with_retry(
+                client.files().create(body=body, fields=_FIELDS, supportsAllDrives=True)
+            )
         except HttpError as e:
             _raise_from_http_error(e)
             raise  # unreachable — _raise_from_http_error always raises
@@ -148,8 +151,8 @@ class GoogleFilesService(FilesService):
     def _get_sync(self, file_id: str) -> FileResponse:
         client = self._client()
         try:
-            raw = (
-                client.files().get(fileId=file_id, fields=_FIELDS, supportsAllDrives=True).execute()
+            raw = execute_with_retry(
+                client.files().get(fileId=file_id, fields=_FIELDS, supportsAllDrives=True)
             )
         except HttpError as e:
             _raise_from_http_error(e)
@@ -160,15 +163,10 @@ class GoogleFilesService(FilesService):
         client = self._client()
         body: File = {"name": new_name}
         try:
-            raw = (
-                client.files()
-                .update(
-                    fileId=file_id,
-                    body=body,
-                    fields=_FIELDS,
-                    supportsAllDrives=True,
+            raw = execute_with_retry(
+                client.files().update(
+                    fileId=file_id, body=body, fields=_FIELDS, supportsAllDrives=True
                 )
-                .execute()
             )
         except HttpError as e:
             _raise_from_http_error(e)
@@ -178,22 +176,18 @@ class GoogleFilesService(FilesService):
     def _move_sync(self, file_id: str, new_parent_folder_id: str) -> FileResponse:
         client = self._client()
         try:
-            meta = (
-                client.files()
-                .get(fileId=file_id, fields="parents", supportsAllDrives=True)
-                .execute()
+            meta = execute_with_retry(
+                client.files().get(fileId=file_id, fields="parents", supportsAllDrives=True)
             )
             prev_parents = ",".join(meta.get("parents", []))
-            raw = (
-                client.files()
-                .update(
+            raw = execute_with_retry(
+                client.files().update(
                     fileId=file_id,
                     addParents=new_parent_folder_id,
                     removeParents=prev_parents,
                     fields=_FIELDS,
                     supportsAllDrives=True,
                 )
-                .execute()
             )
         except HttpError as e:
             _raise_from_http_error(e)
@@ -204,15 +198,10 @@ class GoogleFilesService(FilesService):
         client = self._client()
         body: File = {"name": new_name}
         try:
-            raw = (
-                client.files()
-                .copy(
-                    fileId=file_id,
-                    body=body,
-                    fields=_FIELDS,
-                    supportsAllDrives=True,
+            raw = execute_with_retry(
+                client.files().copy(
+                    fileId=file_id, body=body, fields=_FIELDS, supportsAllDrives=True
                 )
-                .execute()
             )
         except HttpError as e:
             _raise_from_http_error(e)
@@ -223,11 +212,9 @@ class GoogleFilesService(FilesService):
         client = self._client()
         body: File = {"trashed": True}
         try:
-            client.files().update(
-                fileId=file_id,
-                body=body,
-                supportsAllDrives=True,
-            ).execute()
+            execute_with_retry(
+                client.files().update(fileId=file_id, body=body, supportsAllDrives=True)
+            )
         except HttpError as e:
             _raise_from_http_error(e)
             raise

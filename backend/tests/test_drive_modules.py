@@ -238,7 +238,7 @@ async def test_list_folder_children_queries_by_parent(patch_drive_client: Any) -
 
 
 # ---------------------------------------------------------------------------
-# search_drive + search_across_drives
+# search_drive + search
 # ---------------------------------------------------------------------------
 
 
@@ -278,8 +278,11 @@ async def test_search_drive_empty_query_returns_empty(patch_drive_client: Any) -
     assert client.files_captured == []
 
 
-async def test_search_across_drives_fans_out(patch_drive_client: Any) -> None:
+async def test_search_fans_out_across_member_drives(patch_drive_client: Any) -> None:
     client = _FakeClient(
+        drives_pages=[
+            {"drives": [{"id": "d1", "name": "D1"}, {"id": "d2", "name": "D2"}]},
+        ],
         files_pages=[
             {
                 "files": [
@@ -291,11 +294,19 @@ async def test_search_across_drives_fans_out(patch_drive_client: Any) -> None:
                     {"id": "b", "name": "B", "mimeType": "x", "parents": ["d2"], "driveId": "d2"}
                 ]
             },
-        ]
+        ],
     )
     patch_drive_client(client)
-    results = await _svc().search_across_drives(["d1", "d2"], "q")
+    results = await _svc().search("q")
     assert {r.id for r in results} == {"a", "b"}
+
+
+async def test_search_short_circuits_on_empty_query(patch_drive_client: Any) -> None:
+    client = _FakeClient()
+    patch_drive_client(client)
+    assert await _svc().search("   ") == []
+    # Never even fetched drives.
+    assert client.drives_captured == []
 
 
 # ---------------------------------------------------------------------------

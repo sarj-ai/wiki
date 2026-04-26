@@ -1,12 +1,15 @@
-import time
-from collections import defaultdict
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response, status
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
+from sqlalchemy import text
 
 from app.auth.router import router as auth_router
 from app.config import settings
@@ -17,33 +20,10 @@ from app.files.router import router as files_router
 from app.logging_config import configure_logging
 from app.sidebar.router import router as sidebar_router
 
-# ---------------------------------------------------------------------------
-# Simple in-memory rate limiter (per-IP, sliding window)
-# ---------------------------------------------------------------------------
-_rate_limit_store: dict[str, list[float]] = defaultdict(list)
-_rate_limit_last_seen: dict[str, float] = {}  # IP -> last request time
-RATE_LIMIT_REQUESTS = 200  # max requests per window
-RATE_LIMIT_WINDOW = 60  # seconds
-_RATE_LIMIT_MAX_IPS = 10000
-_RATE_LIMIT_EVICT_AGE = 120  # evict IPs not seen in 2 minutes
-
-
-def _is_rate_limited(client_ip: str) -> bool:
-    now = time.monotonic()
-    timestamps = _rate_limit_store[client_ip]
-    cutoff = now - RATE_LIMIT_WINDOW
-    _rate_limit_store[client_ip] = [t for t in timestamps if t > cutoff]
-    if len(_rate_limit_store[client_ip]) >= RATE_LIMIT_REQUESTS:
-        return True
-    _rate_limit_store[client_ip].append(now)
-    _rate_limit_last_seen[client_ip] = now
-    if len(_rate_limit_store) > _RATE_LIMIT_MAX_IPS:
-        stale_cutoff = now - _RATE_LIMIT_EVICT_AGE
-        stale_ips = [ip for ip, ts in _rate_limit_last_seen.items() if ts < stale_cutoff]
-        for ip in stale_ips:
-            _rate_limit_store.pop(ip, None)
-            _rate_limit_last_seen.pop(ip, None)
-    return False
+# Per-IP global limit. OAuth endpoints are exempt because Google redirects there
+# and a slow user typing their password can hit a stricter cap. /health is also
+# exempt — uptime probes shouldn't compete with user requests for budget.
+limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 
 @asynccontextmanager
@@ -53,24 +33,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Sarj Navigator API", lifespan=lifespan)
-
-
-@app.middleware("http")
-async def rate_limit_middleware(
-    request: Request, call_next: Callable[[Request], Awaitable[Response]]
-) -> Response:
-    path = request.url.path
-    if path == "/health" or path in ("/auth/login", "/auth/callback", "/auth/logout"):
-        return await call_next(request)
-    client_ip = request.client.host if request.client else "unknown"
-    if _is_rate_limited(client_ip):
-        return JSONResponse(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            content={"detail": "Too many requests. Please slow down."},
-        )
-    return await call_next(request)
-
-
+app.state.limiter = limiter
+# slowapi's typed handler signature expects RateLimitExceeded specifically; cast
+# at the boundary so we keep mypy strict elsewhere.
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.FRONTEND_URL],
@@ -102,9 +69,8 @@ app.include_router(drive_search_router)
 
 
 @app.get("/health")
-async def health_check() -> dict[str, str]:
-    from sqlalchemy import text
-
+@limiter.exempt  # type: ignore[untyped-decorator]
+async def health_check(_request: Request) -> dict[str, str]:
     result: dict[str, str] = {"status": "ok"}
     try:
         async with async_session() as db:

@@ -167,20 +167,23 @@ class PostgresExtrasService(ExtrasService):
     async def upsert_sort_orders(self, items: list[SortOrderWrite]) -> None:
         if not items:
             return
-        for item in items:
-            stmt = (
-                pg_insert(UserSortOrder)
-                .values(
-                    user_id=self._user.id,
-                    drive_id=item.drive_id,
-                    sort_order=item.sort_order,
-                )
-                .on_conflict_do_update(
-                    index_elements=["user_id", "drive_id"],
-                    set_={"sort_order": pg_insert(UserSortOrder).excluded.sort_order},
-                )
-            )
-            await self._db.execute(stmt)
+        # Single round-trip bulk upsert. Drag-drop reorders batch through
+        # /extras/sort-order in one request; this keeps that to one INSERT.
+        stmt = pg_insert(UserSortOrder).values(
+            [
+                {
+                    "user_id": self._user.id,
+                    "drive_id": item.drive_id,
+                    "sort_order": item.sort_order,
+                }
+                for item in items
+            ]
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["user_id", "drive_id"],
+            set_={"sort_order": stmt.excluded.sort_order},
+        )
+        await self._db.execute(stmt)
         await self._db.commit()
 
     @override
@@ -205,38 +208,35 @@ class PostgresExtrasService(ExtrasService):
 
     @override
     async def upsert_preferences(self, payload: PreferencesWrite) -> PreferencesRead:
-        # Partial update: unset fields keep their current value (or the
-        # default if the row doesn't exist yet).
-        current = await self.get_preferences()
-        show = (
-            current.show_non_doc_files
-            if payload.show_non_doc_files is None
-            else payload.show_non_doc_files
+        # Partial update with no read-modify-write race: only the fields the
+        # caller actually provided land in ``set_``; INSERT path supplies
+        # safe defaults for the rest. RETURNING reflects the persisted row.
+        now = datetime.now(UTC)
+        stmt = pg_insert(UserPreferences).values(
+            user_id=self._user.id,
+            show_non_doc_files=(
+                _DEFAULT_PREFS.show_non_doc_files
+                if payload.show_non_doc_files is None
+                else payload.show_non_doc_files
+            ),
+            hidden_workspace_ids=(
+                list(_DEFAULT_PREFS.hidden_workspace_ids)
+                if payload.hidden_workspace_ids is None
+                else payload.hidden_workspace_ids
+            ),
+            updated_at=now,
         )
-        hidden = (
-            list(current.hidden_workspace_ids)
-            if payload.hidden_workspace_ids is None
-            else payload.hidden_workspace_ids
+        set_: dict[str, object] = {"updated_at": stmt.excluded.updated_at}
+        if payload.show_non_doc_files is not None:
+            set_["show_non_doc_files"] = stmt.excluded.show_non_doc_files
+        if payload.hidden_workspace_ids is not None:
+            set_["hidden_workspace_ids"] = stmt.excluded.hidden_workspace_ids
+        upsert = stmt.on_conflict_do_update(index_elements=["user_id"], set_=set_).returning(
+            UserPreferences
         )
-        stmt = (
-            pg_insert(UserPreferences)
-            .values(
-                user_id=self._user.id,
-                show_non_doc_files=show,
-                hidden_workspace_ids=hidden,
-                updated_at=datetime.now(UTC),
-            )
-            .on_conflict_do_update(
-                index_elements=["user_id"],
-                set_={
-                    "show_non_doc_files": pg_insert(UserPreferences).excluded.show_non_doc_files,
-                    "hidden_workspace_ids": pg_insert(
-                        UserPreferences
-                    ).excluded.hidden_workspace_ids,
-                    "updated_at": pg_insert(UserPreferences).excluded.updated_at,
-                },
-            )
-        )
-        await self._db.execute(stmt)
+        row = (await self._db.execute(upsert)).scalar_one()
         await self._db.commit()
-        return PreferencesRead(show_non_doc_files=show, hidden_workspace_ids=hidden)
+        return PreferencesRead(
+            show_non_doc_files=row.show_non_doc_files,
+            hidden_workspace_ids=list(row.hidden_workspace_ids),
+        )

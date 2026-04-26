@@ -41,9 +41,7 @@ class _FakeDriveService(DriveService):
     ) -> list[SearchResult]:
         raise NotImplementedError
 
-    async def search_across_drives(
-        self, drive_ids: list[str], query: str, *, limit_per_drive: int = 20
-    ) -> list[SearchResult]:
+    async def search(self, query: str, *, limit_per_drive: int = 20) -> list[SearchResult]:
         raise NotImplementedError
 
     async def fetch_snippet(self, file_id: str, query: str) -> SnippetResult:

@@ -27,7 +27,7 @@ from typing import override
 
 import httpx
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.encryption import encrypt_token
@@ -222,12 +222,16 @@ class GoogleAuthService(AuthService):
         return user
 
     async def _find_existing_user(self, google_id: str, email: str) -> User | None:
-        result = await self._db.execute(select(User).where(User.google_id == google_id))
-        user = result.scalar_one_or_none()
-        if user is not None:
-            return user
-        result = await self._db.execute(select(User).where(User.email == email))
-        return result.scalar_one_or_none()
+        # One round-trip OR-match. ORDER BY prefers a google_id hit over an
+        # email-only hit so existing users keep stable account linkage when
+        # they later log in with a Workspace alias.
+        stmt = (
+            select(User)
+            .where(or_(User.google_id == google_id, User.email == email))
+            .order_by(case((User.google_id == google_id, 0), else_=1))
+            .limit(1)
+        )
+        return (await self._db.execute(stmt)).scalar_one_or_none()
 
     async def _load_user(self, user_id: uuid.UUID) -> User | None:
         result = await self._db.execute(select(User).where(User.id == user_id))

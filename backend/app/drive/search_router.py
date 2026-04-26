@@ -22,14 +22,7 @@ async def search(
     limit_per_drive: int = Query(20, ge=1, le=100),
     svc: DriveService = Depends(drive_service_dep),
 ) -> list[SearchResult]:
-    drives = await svc.list_drives()
-    if not drives:
-        return []
-    return await svc.search_across_drives(
-        [d.id for d in drives],
-        q,
-        limit_per_drive=limit_per_drive,
-    )
+    return await svc.search(q, limit_per_drive=limit_per_drive)
 
 
 @router.get("/snippet")

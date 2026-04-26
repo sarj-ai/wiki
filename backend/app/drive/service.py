@@ -21,6 +21,7 @@ from googleapiclient.errors import HttpError
 from loguru import logger
 
 from app.drive.credentials import build_drive_client
+from app.drive.retry import execute_with_retry
 from app.drive.schemas import (
     MIME_FOLDER,
     NAVIGATOR_SUPPORTED_MIME_TYPES,
@@ -68,9 +69,13 @@ class DriveService(ABC):
     ) -> list[SearchResult]: ...
 
     @abstractmethod
-    async def search_across_drives(
-        self, drive_ids: list[str], query: str, *, limit_per_drive: int = 20
-    ) -> list[SearchResult]: ...
+    async def search(self, query: str, *, limit_per_drive: int = 20) -> list[SearchResult]:
+        """Search every drive the user is a member of.
+
+        Folds ``list_drives`` + per-drive fan-out so callers don't have to
+        compose them. Empty/whitespace queries and zero-drive accounts both
+        short-circuit to ``[]``.
+        """
 
     @abstractmethod
     async def fetch_snippet(self, file_id: str, query: str) -> SnippetResult: ...
@@ -103,13 +108,14 @@ class GoogleDriveService(DriveService):
         return await asyncio.to_thread(self._search_drive_sync, drive_id, query.strip(), limit)
 
     @override
-    async def search_across_drives(
-        self, drive_ids: list[str], query: str, *, limit_per_drive: int = 20
-    ) -> list[SearchResult]:
-        if not drive_ids or not query.strip():
+    async def search(self, query: str, *, limit_per_drive: int = 20) -> list[SearchResult]:
+        if not query.strip():
+            return []
+        drives = await self.list_drives()
+        if not drives:
             return []
         tasks = [
-            self.search_drive(drive_id, query, limit=limit_per_drive) for drive_id in drive_ids
+            self.search_drive(d.id, query, limit=limit_per_drive) for d in drives
         ]
         results = await asyncio.gather(*tasks)
         merged: list[SearchResult] = []
@@ -139,7 +145,7 @@ class GoogleDriveService(DriveService):
             if page_token:
                 params["pageToken"] = page_token
             try:
-                resp = client.drives().list(**params).execute()
+                resp = execute_with_retry(client.drives().list(**params))
             except HttpError:
                 logger.exception("drives.list failed for user={}", self._user.id)
                 return out
@@ -170,7 +176,7 @@ class GoogleDriveService(DriveService):
             if page_token:
                 params["pageToken"] = page_token
             try:
-                resp = client.files().list(**params).execute()
+                resp = execute_with_retry(client.files().list(**params))
             except HttpError:
                 logger.exception(
                     "walk_drive_folders failed user={} drive={}",
@@ -201,7 +207,7 @@ class GoogleDriveService(DriveService):
             if page_token:
                 params["pageToken"] = page_token
             try:
-                resp = client.files().list(**params).execute()
+                resp = execute_with_retry(client.files().list(**params))
             except HttpError:
                 logger.exception(
                     "list_folder_children failed user={} folder={}",
@@ -237,7 +243,7 @@ class GoogleDriveService(DriveService):
             "fields": "files(id,name,mimeType,parents,modifiedTime,driveId)",
         }
         try:
-            resp = client.files().list(**params).execute()
+            resp = execute_with_retry(client.files().list(**params))
         except HttpError:
             logger.exception(
                 "search_drive failed user={} drive={} q={!r}",
@@ -267,10 +273,10 @@ class GoogleDriveService(DriveService):
     def _fetch_snippet_sync(self, file_id: str, query: str) -> SnippetResult:
         client = self._client()
         try:
-            meta = (
-                client.files()
-                .get(fileId=file_id, fields="id,mimeType,size", supportsAllDrives=True)
-                .execute()
+            meta = execute_with_retry(
+                client.files().get(
+                    fileId=file_id, fields="id,mimeType,size", supportsAllDrives=True
+                )
             )
         except HttpError:
             logger.exception("snippet metadata fetch failed file={}", file_id)
@@ -284,7 +290,9 @@ class GoogleDriveService(DriveService):
         # a byte size, so we can't pre-filter. The export itself is the
         # backstop — we truncate before decoding if the response is huge.
         try:
-            raw = client.files().export(fileId=file_id, mimeType="text/plain").execute()
+            raw = execute_with_retry(
+                client.files().export(fileId=file_id, mimeType="text/plain")
+            )
         except HttpError:
             logger.exception("snippet export failed file={}", file_id)
             return SnippetResult(file_id=file_id, mime_type=mime_type, snippet=None)
