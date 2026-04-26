@@ -1,3 +1,5 @@
+import { apiClient } from "@/lib/api-client";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export interface User {
@@ -13,17 +15,7 @@ export function getLoginUrl(): string {
 
 export async function fetchCurrentUser(): Promise<User | null> {
   try {
-    const res = await fetch(`${API_URL}/auth/me`, {
-      credentials: "include",
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return {
-      id: data.id,
-      email: data.email,
-      displayName: data.display_name,
-      avatarUrl: data.avatar_url,
-    };
+    return await apiClient.get("auth/me").json<User>();
   } catch {
     return null;
   }
@@ -31,19 +23,18 @@ export async function fetchCurrentUser(): Promise<User | null> {
 
 export async function refreshAccessToken(): Promise<boolean> {
   try {
-    const res = await fetch(`${API_URL}/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-    });
-    return res.ok;
+    await apiClient.post("auth/refresh");
+    return true;
   } catch {
     return false;
   }
 }
 
 export async function logout(): Promise<void> {
-  await fetch(`${API_URL}/auth/logout`, {
-    method: "POST",
-    credentials: "include",
-  });
+  try {
+    await apiClient.post("auth/logout");
+  } catch {
+    // Logout is best-effort — the cookies clear server-side and the
+    // caller drops local user state regardless.
+  }
 }
