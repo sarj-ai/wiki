@@ -9,6 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.extras.dependencies import extras_service_dep
+from app.extras.errors import DocIconNotFoundError
 from app.extras.schemas import (
     DocIconRead,
     DocIconWrite,
@@ -36,10 +37,10 @@ async def read_doc_icon(
     drive_id: str,
     svc: ExtrasService = Depends(extras_service_dep),
 ) -> DocIconRead:
-    icon = await svc.get_doc_icon(drive_id)
-    if icon is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No icon")
-    return icon
+    try:
+        return await svc.get_doc_icon(drive_id)
+    except DocIconNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No icon") from e
 
 
 @router.put("/doc-icons/{drive_id}")

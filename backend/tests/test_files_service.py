@@ -2,7 +2,9 @@
 
 Exercises ``GoogleFilesService`` directly with a fake ``DriveResource``
 stubbed in via ``build_drive_client`` and an injected fake ``DriveService``
-that returns a canned member-drive list.
+that returns a canned member-drive list. The service raises typed
+:class:`FilesError` subclasses; HTTP-status mapping happens at the app
+boundary and is exercised in router-level tests.
 """
 
 from __future__ import annotations
@@ -11,12 +13,17 @@ import uuid
 from typing import Any
 
 import pytest
-from fastapi import HTTPException
 from googleapiclient.errors import HttpError
 
 from app.drive.schemas import DriveNode, DriveSummary, DriveTree, SearchResult, SnippetResult
 from app.drive.service import DriveService
 from app.files import service as files_service
+from app.files.errors import (
+    DriveUpstreamError,
+    FileNotInScopeError,
+    FolderCopyNotSupportedError,
+    UnsupportedMimeError,
+)
 from app.files.service import GoogleFilesService
 from app.models.user import User
 
@@ -77,16 +84,15 @@ def _patch_client(monkeypatch: pytest.MonkeyPatch, client: Any) -> None:
 
 
 async def test_create_rejects_unsupported_mime_type() -> None:
-    with pytest.raises(HTTPException) as excinfo:
+    with pytest.raises(UnsupportedMimeError):
         await _svc("d1").create(
             parent_folder_id="p",
             name="x",
             mime_type="application/x-evil",
         )
-    assert excinfo.value.status_code == 400
 
 
-async def test_http_404_maps_to_404(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_http_404_surfaces_as_drive_upstream(monkeypatch: pytest.MonkeyPatch) -> None:
     class _FakeFiles:
         def get(self, **_: Any) -> _FakeFiles:
             return self
@@ -99,9 +105,9 @@ async def test_http_404_maps_to_404(monkeypatch: pytest.MonkeyPatch) -> None:
             return _FakeFiles()
 
     _patch_client(monkeypatch, _FakeClient())
-    with pytest.raises(HTTPException) as excinfo:
+    with pytest.raises(DriveUpstreamError) as excinfo:
         await _svc("d1").get("missing")
-    assert excinfo.value.status_code == 404
+    assert excinfo.value.http_status == 404
 
 
 async def test_http_500_maps_to_502(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -117,9 +123,9 @@ async def test_http_500_maps_to_502(monkeypatch: pytest.MonkeyPatch) -> None:
             return _FakeFiles()
 
     _patch_client(monkeypatch, _FakeClient())
-    with pytest.raises(HTTPException) as excinfo:
+    with pytest.raises(DriveUpstreamError) as excinfo:
         await _svc("d1").get("x")
-    assert excinfo.value.status_code == 502
+    assert excinfo.value.http_status == 502
 
 
 async def test_create_success_returns_file_response(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -173,9 +179,8 @@ async def test_get_rejects_my_drive(monkeypatch: pytest.MonkeyPatch) -> None:
             return _FakeFiles()
 
     _patch_client(monkeypatch, _FakeClient())
-    with pytest.raises(HTTPException) as excinfo:
+    with pytest.raises(FileNotInScopeError):
         await _svc("irrelevant").get("my-drive-file")
-    assert excinfo.value.status_code == 404
 
 
 async def test_copy_rejects_folder(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -197,9 +202,8 @@ async def test_copy_rejects_folder(monkeypatch: pytest.MonkeyPatch) -> None:
             return _FakeFiles()
 
     _patch_client(monkeypatch, _FakeClient())
-    with pytest.raises(HTTPException) as excinfo:
+    with pytest.raises(FolderCopyNotSupportedError):
         await _svc("d1").copy("folder-id", "Copy of Some Folder")
-    assert excinfo.value.status_code == 400
 
 
 async def test_copy_success(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -269,6 +273,5 @@ async def test_get_rejects_non_member_shared_drive(
 
     _patch_client(monkeypatch, _FakeClient())
     # User is only a member of "other-drive", not the file's drive.
-    with pytest.raises(HTTPException) as excinfo:
+    with pytest.raises(FileNotInScopeError):
         await _svc("other-drive").get("foreign-file")
-    assert excinfo.value.status_code == 404

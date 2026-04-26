@@ -23,9 +23,8 @@ from typing import override
 
 from loguru import logger
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.database import async_session
 from app.drive.schemas import DriveNode, DriveTree
 from app.drive.service import DriveService
 from app.models.navigator import DriveTreeCache
@@ -76,11 +75,13 @@ class PostgresSidebarCacheService(SidebarCacheService):
         user: User,
         singleflight: Singleflight,
         bg_tasks: set[asyncio.Task[None]],
+        sessionmaker: async_sessionmaker[AsyncSession],
     ) -> None:
         self._drive = drive
         self._user = user
         self._sf = singleflight
         self._bg_tasks = bg_tasks
+        self._sessionmaker = sessionmaker
 
     @override
     async def get_drive_tree(self, db: AsyncSession, drive_id: str) -> DriveTree:
@@ -133,7 +134,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
 
     async def _walk_and_save(self, drive_id: str) -> DriveTree:
         tree = await self._drive.walk_drive_folders(drive_id)
-        async with async_session() as db:
+        async with self._sessionmaker() as db:
             await self._save_tree(db, tree)
         return tree
 

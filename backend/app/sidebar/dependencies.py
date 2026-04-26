@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import Depends
 
 from app.auth.dependencies import get_current_user
+from app.database import async_session
 from app.drive.dependencies import drive_service_dep
 from app.drive.service import DriveService
 from app.models.user import User
@@ -25,4 +26,5 @@ def sidebar_cache_service_dep(
         user=user,
         singleflight=SINGLEFLIGHT,
         bg_tasks=BG_TASKS,
+        sessionmaker=async_session,
     )

@@ -16,6 +16,7 @@ from app.config import settings
 from app.database import async_session
 from app.drive.search_router import router as drive_search_router
 from app.extras.router import router as extras_router
+from app.files.errors import FilesError
 from app.files.router import router as files_router
 from app.logging_config import configure_logging
 from app.sidebar.router import router as sidebar_router
@@ -58,6 +59,17 @@ async def global_exception_handler(
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"},
+    )
+
+
+@app.exception_handler(FilesError)
+async def files_error_handler(
+    _request: Request,
+    exc: FilesError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.http_status,
+        content={"code": exc.code, "detail": str(exc)},
     )
 
 

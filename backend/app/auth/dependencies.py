@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import AsyncIterator
 
 import httpx
 from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.jwt import decode_token
+from app.auth.errors import AuthError
 from app.auth.service import AuthService, GoogleAuthService
 from app.database import get_db
 from app.models.user import User
@@ -30,35 +28,16 @@ def auth_service_dep(
 
 async def get_current_user(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    auth: AuthService = Depends(auth_service_dep),
 ) -> User:
     token = _extract_token(request)
-    payload = decode_token(token)
-
-    if payload.get("type") != "access":
+    try:
+        return await auth.resolve_current_user(token)
+    except AuthError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token type",
-        )
-
-    user_id = payload["sub"]
-    result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
-    user = result.scalar_one_or_none()
-
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-        )
-
-    token_tv = payload.get("tv", 0)
-    if token_tv != user.token_version:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has been revoked",
-        )
-
-    return user
+            detail=str(e) or "Not authenticated",
+        ) from e
 
 
 def _extract_token(request: Request) -> str:

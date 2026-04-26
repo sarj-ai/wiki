@@ -14,6 +14,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.extras.errors import DocIconNotFoundError
 from app.extras.schemas import (
     DocIconRead,
     DocIconWrite,
@@ -42,7 +43,7 @@ class ExtrasService(ABC):
     @abstractmethod
     async def list_doc_icons(self) -> list[DocIconRead]: ...
     @abstractmethod
-    async def get_doc_icon(self, drive_id: str) -> DocIconRead | None: ...
+    async def get_doc_icon(self, drive_id: str) -> DocIconRead: ...
     @abstractmethod
     async def upsert_doc_icon(self, drive_id: str, payload: DocIconWrite) -> DocIconRead: ...
 
@@ -82,10 +83,10 @@ class PostgresExtrasService(ExtrasService):
         return [DocIconRead(drive_id=r.drive_id, icon=r.icon, cover_url=r.cover_url) for r in rows]
 
     @override
-    async def get_doc_icon(self, drive_id: str) -> DocIconRead | None:
+    async def get_doc_icon(self, drive_id: str) -> DocIconRead:
         row = await self._db.get(DocIcon, drive_id)
         if row is None:
-            return None
+            raise DocIconNotFoundError(drive_id)
         return DocIconRead(drive_id=row.drive_id, icon=row.icon, cover_url=row.cover_url)
 
     @override

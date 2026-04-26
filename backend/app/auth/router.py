@@ -1,7 +1,8 @@
 """HTTP surface for auth: OAuth redirect, callback, refresh, logout, /me.
 
 The router is thin — it handles cookies and redirects; all OAuth and
-session logic lives in ``AuthService``.
+session logic (including OAuth-state CSRF validation) lives in
+``AuthService``.
 """
 
 from __future__ import annotations
@@ -15,9 +16,9 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from app.auth.dependencies import auth_service_dep, get_current_user
+from app.auth.errors import AuthError
 from app.auth.service import (
     OAUTH_SCOPES,
-    AuthError,
     AuthService,
     AuthSession,
 )
@@ -79,10 +80,8 @@ async def callback(
     auth: AuthService = Depends(auth_service_dep),
 ) -> RedirectResponse:
     expected_state = request.cookies.get("oauth_state")
-    if not expected_state or not secrets.compare_digest(state, expected_state):
-        return _error_redirect("auth_failed")
     try:
-        session = await auth.exchange_code_for_session(code)
+        session = await auth.exchange_code_for_session(code, state, expected_state)
     except AuthError as e:
         return _error_redirect(e.redirect_key)
     redirect = RedirectResponse(url=settings.FRONTEND_URL, status_code=status.HTTP_302_FOUND)

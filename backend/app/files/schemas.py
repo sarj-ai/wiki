@@ -34,3 +34,18 @@ class FileResponse(BaseModel):
     parent_folder_id: str | None = None
     drive_id: str | None = None
     modified_time: str | None = None
+
+
+class MoveResult(BaseModel):
+    """Composite move result so callers can invalidate both ends.
+
+    ``source`` is the file as it was before the move (carries the
+    original ``drive_id``); ``moved`` is the post-move state.
+    """
+
+    source: FileResponse
+    moved: FileResponse
+
+
+class DeleteResult(BaseModel):
+    source: FileResponse

@@ -3,22 +3,22 @@
 Lives behind an ABC so tests can swap in a fake service without reaching
 for monkeypatching. The HTTP-response shaping (cookies, redirect URLs)
 stays in the router — this module only handles the business logic:
-talking to Google, upserting users, issuing JWTs, incrementing
-``token_version`` on logout.
+talking to Google, upserting users, issuing JWTs, validating session
+JWTs, incrementing ``token_version`` on logout.
 
 Error semantics
 ---------------
 
-Every failure path raises a subclass of ``AuthError`` with a
+Every failure path raises a subclass of :class:`AuthError` with a
 ``redirect_key`` attribute that the callback router uses to pick the
-``?error=...`` value for the frontend redirect. This gives callers an
-illegal-state-unrepresentable union: either we return an
-``AuthSession`` with both tokens, or we raise one of four distinct
-error types.
+``?error=...`` value for the frontend redirect. Other entry points
+(refresh, current-user resolution) translate :class:`AuthError` to
+HTTP 401 at the app boundary.
 """
 
 from __future__ import annotations
 
+import secrets
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -31,6 +31,13 @@ from sqlalchemy import case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.encryption import encrypt_token
+from app.auth.errors import (
+    AuthError,
+    AuthFailedError,
+    DomainRestrictedError,
+    InvalidTokenError,
+    TokenRevokedError,
+)
 from app.auth.jwt import create_access_token, create_refresh_token, decode_token
 from app.config import settings
 from app.models.user import User
@@ -54,33 +61,22 @@ class AuthSession:
     jwt_refresh: str
 
 
-class AuthError(Exception):
-    redirect_key: str = "server_error"
-
-
-class AuthFailedError(AuthError):
-    redirect_key = "auth_failed"
-
-
-class DomainRestrictedError(AuthError):
-    redirect_key = "domain_restricted"
-
-
-class TokenRevokedError(AuthError):
-    redirect_key = "auth_failed"
-
-
 class AuthService(ABC):
     """Contract for OAuth callback handling and JWT lifecycle."""
 
     @abstractmethod
-    async def exchange_code_for_session(self, code: str) -> AuthSession: ...
+    async def exchange_code_for_session(
+        self, code: str, state: str, expected_state: str | None
+    ) -> AuthSession: ...
 
     @abstractmethod
     async def refresh_session(self, refresh_token: str) -> AuthSession: ...
 
     @abstractmethod
     async def revoke_session(self, access_token: str | None) -> None: ...
+
+    @abstractmethod
+    async def resolve_current_user(self, jwt_token: str) -> User: ...
 
 
 class GoogleAuthService(AuthService):
@@ -91,7 +87,13 @@ class GoogleAuthService(AuthService):
         self._http = http_client
 
     @override
-    async def exchange_code_for_session(self, code: str) -> AuthSession:
+    async def exchange_code_for_session(
+        self, code: str, state: str, expected_state: str | None
+    ) -> AuthSession:
+        # CSRF guard: the cookie ``oauth_state`` was minted by /auth/login
+        # and must round-trip via Google in the ``state`` query param.
+        if not expected_state or not secrets.compare_digest(state, expected_state):
+            raise AuthFailedError("OAuth state mismatch")
         google_tokens = await self._exchange_google_code(code)
         userinfo = await self._fetch_userinfo(google_tokens.access_token)
         self._enforce_domain(userinfo.email)
@@ -138,6 +140,20 @@ class GoogleAuthService(AuthService):
             logger.opt(exception=True).warning(
                 "logout: failed to bump token_version; proceeding to clear cookies"
             )
+
+    @override
+    async def resolve_current_user(self, jwt_token: str) -> User:
+        payload = decode_token(jwt_token)
+        if payload.get("type") != "access":
+            raise InvalidTokenError("Invalid token type")
+        user_id = payload["sub"]
+        user = await self._load_user(uuid.UUID(user_id))
+        if user is None:
+            raise TokenRevokedError("User not found")
+        token_tv = payload.get("tv", 0)
+        if token_tv != user.token_version:
+            raise TokenRevokedError("Token has been revoked")
+        return user
 
     # ------------------------------------------------------------------
     # Internals
