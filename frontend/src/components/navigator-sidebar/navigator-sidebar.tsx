@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar, SidebarContent, SidebarHeader, SidebarSeparator } from "@/components/ui/sidebar";
+import { SarjLogo } from "@/components/sarj-logo";
 import {
   useDrives,
   useFolderIcons,
@@ -46,7 +47,7 @@ export function NavigatorSidebar() {
     <Sidebar>
       <SidebarHeader>
         <div className="flex items-center gap-2 px-2 py-1.5">
-          <span className="text-sm font-semibold">Navigator</span>
+          <SarjLogo size={28} priority />
         </div>
         <div className="px-2 pb-1">
           <DriveSearchBox />

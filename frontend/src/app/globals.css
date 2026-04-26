@@ -37,7 +37,7 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-nunito);
   --font-mono: var(--font-geist-mono);
 
   --radius-sm: calc(var(--radius) - 4px);
@@ -56,16 +56,28 @@
 }
 
 :root {
-  --background: #f4f2ef;
-  --foreground: #1a1a1a;
+  /* Sarj.ai brand purple ramp (purple-100 = brand primary #2B165E). */
+  --purple-100: #2b165e;
+  --purple-90: #3f2873;
+  --purple-80: #54388a;
+  --purple-70: #6b4da1;
+  --purple-60: #8665b7;
+  --purple-50: #a081cc;
+  --purple-40: #b8a0dc;
+  --purple-30: #cec0e8;
+  --purple-20: #e2dcef;
+  --purple-10: #f0edf8;
+
+  --background: #f6efe7;
+  --foreground: #231f20;
   --card: #ffffff;
-  --card-foreground: #1a1a1a;
+  --card-foreground: #231f20;
   --popover: #ffffff;
-  --popover-foreground: #1a1a1a;
-  --primary: #000000;
+  --popover-foreground: #231f20;
+  --primary: var(--purple-100);
   --primary-foreground: #ffffff;
-  --secondary: #d0c3df;
-  --secondary-foreground: #251040;
+  --secondary: var(--purple-20);
+  --secondary-foreground: var(--purple-100);
   --muted: #f5f5f5;
   --muted-foreground: #737373;
   --accent: #f5f5f5;
@@ -73,7 +85,7 @@
   --destructive: #dc2626;
   --border: #d5d5d5;
   --input: #d5d5d5;
-  --ring: #a1a1a1;
+  --ring: var(--purple-100);
   --chart-1: #e06000;
   --chart-2: #009689;
   --chart-3: #104e64;
@@ -81,19 +93,17 @@
   --chart-5: #fe9a00;
   /* Sidebar base surface mirrors the main background so the sidebar
      and Navigator toolbar read as one unified chrome. --sidebar-accent
-     stays on the deep Sarj purple and represents the ACTIVE/selected
-     row. The hover state uses a translucent version of the same
-     token (``bg-sidebar-accent/40``) in the shadcn sidebar button so
-     hover reads as a softer purple tint distinct from the solid
-     highlight. */
-  --sidebar: #f4f2ef;
-  --sidebar-foreground: #1a1a1a;
-  --sidebar-primary: #251040;
+     is the brand purple and represents the ACTIVE/selected row. Hover
+     uses a translucent version (``bg-sidebar-accent/40``) so it reads
+     as a softer purple tint distinct from the solid highlight. */
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--purple-100);
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #251040;
+  --sidebar-accent: var(--purple-100);
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #d5d5d5;
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: var(--purple-100);
 
   --radius: 0.625rem;
 
@@ -116,7 +126,7 @@
   --popover-foreground: #fafafa;
   --primary: #fafafa;
   --primary-foreground: #0a0a0a;
-  --secondary: #4b3483;
+  --secondary: var(--purple-80);
   --secondary-foreground: #fafafa;
   --muted: #262626;
   --muted-foreground: #a1a1a1;
@@ -125,24 +135,23 @@
   --destructive: #f87171;
   --border: #ffffff1a;
   --input: #ffffff26;
-  --ring: #737373;
+  --ring: var(--purple-60);
   --chart-1: #e06000;
   --chart-2: #00bc7d;
   --chart-3: #fe9a00;
   --chart-4: #ad46ff;
   --chart-5: #ff2056;
   /* Match --background so the sidebar and Navigator toolbar share the
-     exact same surface color in dark mode. Deep Sarj purple remains
-     the highlight color; hover picks up a softer translucent tint
-     via ``bg-sidebar-accent/40`` on the shadcn button. */
-  --sidebar: #161618;
-  --sidebar-foreground: #fafafa;
+     exact same surface color in dark mode. Brand purple shifts to a
+     lighter ramp value for legibility on the dark surface. */
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
   --sidebar-primary: #fafafa;
   --sidebar-primary-foreground: #fafafa;
-  --sidebar-accent: #4b3483;
+  --sidebar-accent: var(--purple-80);
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #ffffff1a;
-  --sidebar-ring: #737373;
+  --sidebar-ring: var(--purple-60);
 }
 
 @layer base {

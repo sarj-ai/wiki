@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { getLoginUrl } from "@/lib/auth";
 import { AlertCircle, ShieldX, ServerCrash } from "lucide-react";
+import { SarjLogo } from "@/components/sarj-logo";
 
 const ERROR_CONFIG: Record<
   string,
@@ -41,8 +42,8 @@ function LoginContent() {
     <div className="bg-background text-foreground flex min-h-screen flex-col items-center justify-center px-4">
       <div className="flex w-full max-w-sm flex-col items-center gap-8">
         {/* Logo / Title */}
-        <div className="flex flex-col items-center gap-2">
-          <h1 className="text-4xl font-bold tracking-tight">Sarj Docs</h1>
+        <div className="flex flex-col items-center gap-3">
+          <SarjLogo size={120} priority />
           <p className="text-muted-foreground text-sm">Internal knowledge base for Sarj</p>
         </div>
 
@@ -102,7 +103,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <div className="bg-background text-foreground flex min-h-screen flex-col items-center justify-center">
-          <h1 className="text-4xl font-bold tracking-tight">Sarj Docs</h1>
+          <SarjLogo size={120} priority />
         </div>
       }
     >
