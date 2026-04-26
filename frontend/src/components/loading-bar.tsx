@@ -1,48 +1,18 @@
 "use client";
 
-import { createContext, useCallback, useContext, useRef, useState } from "react";
+import { useIsFetching, useIsMutating } from "@tanstack/react-query";
 
-interface LoadingContextType {
-  start: () => void;
-  done: () => void;
-  isLoading: boolean;
-}
-
-const LoadingContext = createContext<LoadingContextType>({
-  start: () => {},
-  done: () => {},
-  isLoading: false,
-});
-
-export function useLoading() {
-  return useContext(LoadingContext);
-}
-
-export function LoadingProvider({ children }: { children: React.ReactNode }) {
-  const [isLoading, setIsLoading] = useState(false);
-  const countRef = useRef(0);
-
-  const start = useCallback(() => {
-    countRef.current += 1;
-    setIsLoading(true);
-  }, []);
-
-  const done = useCallback(() => {
-    countRef.current = Math.max(0, countRef.current - 1);
-    if (countRef.current === 0) {
-      setIsLoading(false);
-    }
-  }, []);
-
-  return (
-    <LoadingContext.Provider value={{ start, done, isLoading }}>
-      {children}
-      {isLoading && <LoadingBar />}
-    </LoadingContext.Provider>
-  );
-}
-
-function LoadingBar() {
+/**
+ * Top-of-viewport progress bar driven by TanStack Query state.
+ *
+ * Displays whenever any query is fetching or any mutation is in flight,
+ * so callers don't need to hand-roll start/done bookkeeping. Mount once
+ * inside the ``QueryClientProvider``.
+ */
+export function GlobalLoadingBar() {
+  const fetching = useIsFetching();
+  const mutating = useIsMutating();
+  if (fetching === 0 && mutating === 0) return null;
   return (
     <div className="fixed top-0 right-0 left-0 z-[9999] h-0.5">
       <div className="bg-primary animate-loading-bar h-full" />
