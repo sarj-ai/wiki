@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 /**
  * Module-level persistent Set backed by localStorage. Shared across
@@ -56,18 +56,22 @@ function createPersistedSet(storageKey: string) {
     notify();
   }
 
+  function subscribe(cb: () => void): () => void {
+    subscribers.add(cb);
+    return () => {
+      subscribers.delete(cb);
+    };
+  }
+
   function useEntry(id: string): [boolean, (next: boolean) => void] {
-    const [, forceRerender] = useState(0);
-
-    useEffect(() => {
-      const callback = () => { forceRerender((n) => n + 1); };
-      subscribers.add(callback);
-      return () => {
-        subscribers.delete(callback);
-      };
-    }, []);
-
-    const member = ensureInit().has(id);
+    // useSyncExternalStore is the React-blessed way to subscribe to
+    // mutable module state. React Compiler treats it as a black box,
+    // so it never caches the returned snapshot across an external
+    // mutation — which a hand-rolled forceRerender pattern does NOT
+    // guarantee under the compiler.
+    const getSnapshot = useCallback(() => ensureInit().has(id), [id]);
+    const getServerSnapshot = useCallback(() => false, []);
+    const member = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
     const setter = useCallback(
       (next: boolean) => {
