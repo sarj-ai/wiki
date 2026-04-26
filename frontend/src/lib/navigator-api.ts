@@ -6,6 +6,7 @@ import type {
   DriveSearchResult,
   DriveSummary,
   DriveTree,
+  FileDetail,
   FileResponse,
   FolderIcon,
   Preferences,
@@ -129,7 +130,7 @@ export const navigatorApi = {
     fetchApi<DriveNode[]>(`/sidebar/folders/${encodeURIComponent(folderId)}/files`),
 
   // ---- Files -----------------------------------------------------------
-  getFile: (fileId: string) => fetchApi<FileResponse>(`/files/${encodeURIComponent(fileId)}`),
+  getFile: (fileId: string) => fetchApi<FileDetail>(`/files/${encodeURIComponent(fileId)}`),
 
   createFile: (data: CreateFileInput) =>
     fetchApi<FileResponse>("/files", {

@@ -36,6 +36,16 @@ export interface FileResponse {
   modifiedTime: string | null;
 }
 
+export interface BreadcrumbItem {
+  id: string;
+  name: string;
+}
+
+export interface FileDetail extends FileResponse {
+  driveName: string | null;
+  breadcrumb: BreadcrumbItem[];
+}
+
 export interface DocIcon {
   driveId: string;
   icon: string | null;

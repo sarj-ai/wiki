@@ -7,6 +7,7 @@ import type {
   DriveNode,
   DriveSummary,
   DriveTree,
+  FileDetail,
   FolderIcon,
   Preferences,
   SortOrder,
@@ -17,6 +18,7 @@ export const navigatorKeys = {
   drives: ["navigator", "drives"] as const,
   driveTree: (driveId: string) => ["navigator", "drive-tree", driveId] as const,
   folderFiles: (folderId: string) => ["navigator", "folder-files", folderId] as const,
+  file: (fileId: string) => ["navigator", "file", fileId] as const,
   preferences: ["navigator", "preferences"] as const,
   folderIcons: ["navigator", "folder-icons"] as const,
   docIcons: ["navigator", "doc-icons"] as const,
@@ -35,6 +37,14 @@ export function useDriveTree(driveId: string | null) {
     queryKey: driveId ? navigatorKeys.driveTree(driveId) : ["navigator", "drive-tree", "disabled"],
     queryFn: () => navigatorApi.getDriveFolders(driveId ?? ""),
     enabled: !!driveId,
+  });
+}
+
+export function useFile(fileId: string | null) {
+  return useQuery<FileDetail>({
+    queryKey: fileId ? navigatorKeys.file(fileId) : ["navigator", "file", "disabled"],
+    queryFn: () => navigatorApi.getFile(fileId ?? ""),
+    enabled: !!fileId,
   });
 }
 

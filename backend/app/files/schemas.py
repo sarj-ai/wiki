@@ -49,3 +49,22 @@ class MoveResult(BaseModel):
 
 class DeleteResult(BaseModel):
     source: FileResponse
+
+
+class BreadcrumbItem(BaseModel):
+    """One hop in a file's breadcrumb chain (drive → folders → file)."""
+
+    id: str
+    name: str
+
+
+class FileDetail(FileResponse):
+    """``FileResponse`` augmented with breadcrumb + drive name.
+
+    Returned only by ``GET /files/{id}`` so the page can render the
+    toolbar trail without a separate ``/sidebar/drives`` round-trip
+    or a client-side parent walk over the cached tree.
+    """
+
+    drive_name: str | None = None
+    breadcrumb: list[BreadcrumbItem] = []

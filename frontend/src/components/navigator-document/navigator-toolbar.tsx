@@ -5,12 +5,13 @@ import { ChevronRight, ExternalLink } from "lucide-react";
 import { Fragment } from "react";
 import { iframeShowsOwnTitle, openInGoogleLabel, renderMimeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
+import type { BreadcrumbItem } from "@/types/navigator";
 
 interface NavigatorToolbarProps {
   fileId: string;
   mimeType: string;
   title: string;
-  breadcrumb: string[];
+  breadcrumb: BreadcrumbItem[];
 }
 
 export function NavigatorToolbar({ fileId, mimeType, title, breadcrumb }: NavigatorToolbarProps) {
@@ -20,7 +21,9 @@ export function NavigatorToolbar({ fileId, mimeType, title, breadcrumb }: Naviga
   // the iframe, so duplicating it in our breadcrumb is pure visual
   // noise. For every other type (images, PDFs, until confirmed) we
   // append the filename so the user can still identify the file.
-  const trail = iframeShowsOwnTitle(mimeType) ? breadcrumb : [...breadcrumb, title];
+  const trail: BreadcrumbItem[] = iframeShowsOwnTitle(mimeType)
+    ? breadcrumb
+    : [...breadcrumb, { id: fileId, name: title }];
 
   return (
     <header className="border-border bg-background text-foreground flex items-center gap-2 border-b px-4 py-2">
@@ -29,19 +32,19 @@ export function NavigatorToolbar({ fileId, mimeType, title, breadcrumb }: Naviga
         <nav
           aria-label="Breadcrumb"
           className="flex min-w-0 items-center gap-1 text-sm"
-          title={[...trail, title].join(" / ")}
+          title={trail.map((c) => c.name).join(" / ")}
         >
           {trail.map((crumb, index) => {
             const isLast = index === trail.length - 1;
             return (
-              <Fragment key={`${crumb}-${index}`}>
+              <Fragment key={crumb.id}>
                 {index > 0 && <ChevronRight className="text-muted-foreground size-3.5 shrink-0" />}
                 <span
                   className={
                     isLast ? "truncate font-medium" : "text-muted-foreground shrink-0 truncate"
                   }
                 >
-                  {crumb}
+                  {crumb.name}
                 </span>
               </Fragment>
             );

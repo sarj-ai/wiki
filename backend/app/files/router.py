@@ -13,10 +13,14 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.drive.dependencies import drive_service_dep
+from app.drive.service import DriveService
+from app.files.breadcrumb import build_breadcrumb
 from app.files.dependencies import files_service_dep
 from app.files.schemas import (
     FileCopy,
     FileCreate,
+    FileDetail,
     FileMove,
     FileRename,
     FileResponse,
@@ -43,9 +47,25 @@ async def create_file(
 @router.get("/{file_id}")
 async def read_file(
     file_id: str,
+    db: AsyncSession = Depends(get_db),
     files: FilesService = Depends(files_service_dep),
-) -> FileResponse:
-    return await files.get(file_id)
+    drive: DriveService = Depends(drive_service_dep),
+    cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
+) -> FileDetail:
+    # The toolbar needs both the drive name and the parent-folder chain;
+    # both are readily available on the server (drives.list runs as part
+    # of files.get's strict-scope check, and the parent walk is a pure
+    # in-memory pass over the already-cached drive tree).
+    file = await files.get(file_id)
+    drives = await drive.list_drives()
+    drive_name = next((d.name for d in drives if d.id == file.drive_id), None)
+    tree = await cache.get_drive_tree(db, file.drive_id) if file.drive_id else None
+    breadcrumb = build_breadcrumb(tree, file.drive_id, drive_name, file.parent_folder_id)
+    return FileDetail(
+        **file.model_dump(),
+        drive_name=drive_name,
+        breadcrumb=breadcrumb,
+    )
 
 
 @router.patch("/{file_id}/rename")
