@@ -1,7 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
-
 import { embedUrlFor } from "@/lib/file-urls";
 
 interface FileViewerProps {
@@ -15,7 +13,7 @@ interface FileViewerProps {
 // history all work natively; PDFs and images fall back to Drive's
 // preview endpoint inside the same frame.
 export function FileViewer({ fileId, mimeType, title }: FileViewerProps) {
-  const src = useMemo(() => embedUrlFor(mimeType, fileId), [fileId, mimeType]);
+  const src = embedUrlFor(mimeType, fileId);
   return (
     <iframe
       title={title}

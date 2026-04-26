@@ -3,7 +3,7 @@
 import { formatDistanceToNowStrict } from "date-fns";
 import { ExternalLink, Loader2, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { DriveSearchResult } from "@/types/navigator";
 
@@ -186,40 +186,34 @@ export function CommandPalette() {
   const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   const searchQuery = useDriveSearch(query);
-  const results = useMemo(() => searchQuery.data ?? [], [searchQuery.data]);
+  const results = searchQuery.data ?? [];
 
-  const selectedIndex = useMemo(() => {
+  const selectedIndex = (() => {
     if (!selectedResultId) return 0;
     const idx = results.findIndex((r) => r.id === selectedResultId);
     return idx >= 0 ? idx : 0;
-  }, [results, selectedResultId]);
+  })();
 
-  const handleOpenChange = useCallback(
-    (next: boolean) => {
-      // Reset the palette state on close so the next open starts
-      // fresh. Doing it here (event-driven) instead of in an effect
-      // keeps us off the set-state-in-effect rule.
-      if (!next) {
-        setQuery("");
-        setSelectedResultId(null);
-      }
-      setOpen(next);
-    },
-    [setOpen],
-  );
+  const handleOpenChange = (next: boolean) => {
+    // Reset the palette state on close so the next open starts fresh.
+    // Doing it here (event-driven) instead of in an effect keeps us
+    // off the set-state-in-effect rule.
+    if (!next) {
+      setQuery("");
+      setSelectedResultId(null);
+    }
+    setOpen(next);
+  };
 
-  const openResult = useCallback(
-    (result: DriveSearchResult) => {
-      const isForm = result.mimeType === MIME_FORM;
-      if (isForm) {
-        window.open(openUrlFor(result.mimeType, result.id), "_blank", "noopener,noreferrer");
-      } else {
-        router.push(`/d/${encodeURIComponent(result.id)}`);
-      }
-      setOpen(false);
-    },
-    [router, setOpen],
-  );
+  const openResult = (result: DriveSearchResult) => {
+    const isForm = result.mimeType === MIME_FORM;
+    if (isForm) {
+      window.open(openUrlFor(result.mimeType, result.id), "_blank", "noopener,noreferrer");
+    } else {
+      router.push(`/d/${encodeURIComponent(result.id)}`);
+    }
+    setOpen(false);
+  };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "ArrowDown") {

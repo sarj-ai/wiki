@@ -25,14 +25,14 @@ export function NavigatorSidebar() {
   const folderIconsQuery = useFolderIcons();
   const sortOrdersQuery = useSortOrders();
 
-  const activeDriveId: string | null = useMemo(() => {
+  const activeDriveId: string | null = (() => {
     if (!pathname.startsWith("/d/")) return null;
     try {
       return decodeURIComponent(pathname.split("/")[2] ?? "") || null;
     } catch {
       return pathname.split("/")[2] ?? null;
     }
-  }, [pathname]);
+  })();
 
   const showNonDocFiles = prefsQuery.data?.showNonDocFiles ?? true;
   const hiddenWorkspaceIds = useMemo(
