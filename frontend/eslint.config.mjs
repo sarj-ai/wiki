@@ -70,7 +70,6 @@ const eslintConfig = defineConfig([
     "src/hooks/use-starred-pages.ts",
     "src/hooks/use-workspaces.ts",
     "src/hooks/use-workspace-management.ts",
-    "e2e/**",
   ]),
 ]);
 
