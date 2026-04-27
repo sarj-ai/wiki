@@ -216,7 +216,9 @@ export function MoveFileDialog({
           <DialogTitle>Move &ldquo;{fileName}&rdquo;</DialogTitle>
           <DialogDescription>
             Pick a destination folder or drive. Only drives and folders already expanded in your
-            sidebar appear here.
+            sidebar appear here. Moves to other shared drives may fail if the destination has
+            admin movement restrictions or your role is below Contributor — copy the file
+            instead in that case.
           </DialogDescription>
         </DialogHeader>
         <ScrollArea className="h-72 rounded border">

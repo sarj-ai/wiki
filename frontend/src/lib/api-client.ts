@@ -96,11 +96,36 @@ async function refreshOn401({
   return fetch(request);
 }
 
-function throwOnError({ response }: { response: Response }): Response {
-  if (!response.ok) {
-    throw new ApiError(response.status, `API error: ${response.status}`);
+async function throwOnError({ response }: { response: Response }): Promise<Response> {
+  if (response.ok) return response;
+  // Backend handlers (FilesError, FastAPI validation, default HTTPException)
+  // all return a body shape with a `detail` field. Surface it as the error
+  // message so toasts read like real explanations instead of generic
+  // status codes. Fall back to the status if the body can't be parsed
+  // (network blip, HTML error page from a proxy, etc.).
+  const message = await readErrorMessage(response);
+  throw new ApiError(response.status, message ?? `API error: ${response.status}`);
+}
+
+async function readErrorMessage(response: Response): Promise<string | null> {
+  try {
+    const text = await response.clone().text();
+    if (!text) return null;
+    const parsed: unknown = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object") return null;
+    const detail = (parsed as { detail?: unknown }).detail;
+    if (typeof detail === "string" && detail.trim().length > 0) return detail;
+    // FastAPI validation errors return detail as an array of issues; pick
+    // the first one's `msg` so the toast says something useful instead
+    // of "[object Object]".
+    if (Array.isArray(detail) && detail.length > 0) {
+      const first = detail[0] as { msg?: unknown };
+      if (typeof first.msg === "string") return first.msg;
+    }
+    return null;
+  } catch {
+    return null;
   }
-  return response;
 }
 
 let refreshPromise: Promise<boolean> | null = null;
