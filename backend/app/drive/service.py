@@ -90,17 +90,15 @@ class GoogleDriveService(DriveService):
 
     @override
     async def list_drives(self) -> list[DriveSummary]:
-        # Membership barely changes mid-session, but ``_ensure_in_member_drive``
-        # runs on every file write, so the raw Drive call dominates write
-        # latency. Serve from the per-user TTL cache when possible; on a
-        # miss, fetch fresh and store. Invalidated on logout so the next
-        # session starts cold (see ``AuthService.revoke_session``).
-        cached = drives_cache.lookup(str(self._user.id))
-        if cached is not None:
-            return cached
-        drives = await asyncio.to_thread(self._list_drives_sync)
-        drives_cache.store(str(self._user.id), drives)
-        return drives
+        # Stale-while-revalidate: fresh entries serve instantly, stale
+        # entries also serve instantly while a background refetch
+        # repopulates the cache for the next request. Cold path is the
+        # only synchronous fetch — typically once per session.
+        # Invalidated on logout (see ``AuthService.revoke_session``).
+        return await drives_cache.get_drives(
+            str(self._user.id),
+            lambda: asyncio.to_thread(self._list_drives_sync),
+        )
 
     @override
     async def walk_drive_folders(self, drive_id: str) -> DriveTree:
