@@ -215,22 +215,28 @@ export function MoveFileDialog({
         <DialogHeader>
           <DialogTitle>Move &ldquo;{fileName}&rdquo;</DialogTitle>
           <DialogDescription>
-            Pick a destination folder or drive. Only drives and folders already expanded in your
-            sidebar appear here.
+            Pick a destination folder within this drive. Google Drive doesn&apos;t support moving
+            files across shared drives — copy the file into the other drive instead.
           </DialogDescription>
         </DialogHeader>
         <ScrollArea className="h-72 rounded border">
           <div className="space-y-0.5 p-1">
-            {(drivesQuery.data ?? []).map((drive) => (
-              <DriveRow
-                key={drive.id}
-                driveId={drive.id}
-                driveName={drive.name}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                disabledId={disabledId}
-              />
-            ))}
+            {(drivesQuery.data ?? [])
+              // Cross-shared-drive moves return 403 from Drive's API regardless
+              // of permissions — `files.update` with addParents/removeParents
+              // is documented as drive-scoped only. Hide other drives so users
+              // can't initiate the unsupported operation.
+              .filter((drive) => drive.id === currentDriveId)
+              .map((drive) => (
+                <DriveRow
+                  key={drive.id}
+                  driveId={drive.id}
+                  driveName={drive.name}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                  disabledId={disabledId}
+                />
+              ))}
           </div>
         </ScrollArea>
         <DialogFooter>

@@ -1,4 +1,5 @@
 "use client";
+"use no memo";
 
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";

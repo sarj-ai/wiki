@@ -29,6 +29,16 @@ class FolderCopyNotSupportedError(FilesError):
     code = "folder_copy_not_supported"
 
 
+class CrossDriveMoveNotSupportedError(FilesError):
+    """Drive's `files.update` rejects parent changes that cross shared
+    drives. Surface the limitation as a typed 400 instead of letting
+    Google's opaque 403 leak to the client.
+    """
+
+    http_status = 400
+    code = "cross_drive_move_not_supported"
+
+
 class DriveUpstreamError(FilesError):
     code = "drive_upstream"
 

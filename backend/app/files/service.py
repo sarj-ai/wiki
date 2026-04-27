@@ -30,6 +30,7 @@ from app.drive.retry import execute_with_retry
 from app.drive.schemas import MIME_FOLDER, NAVIGATOR_SUPPORTED_MIME_TYPES
 from app.drive.service import DriveService
 from app.files.errors import (
+    CrossDriveMoveNotSupportedError,
     DriveUpstreamError,
     FileNotInScopeError,
     FolderCopyNotSupportedError,
@@ -98,6 +99,17 @@ class GoogleFilesService(FilesService):
     @override
     async def move(self, file_id: str, new_parent_folder_id: str) -> MoveResult:
         source = await self.get(file_id)
+        # Pre-check: Drive's `files.update` returns an opaque 403 when the
+        # destination crosses shared drives. Resolve the destination's
+        # drive_id and surface a typed 400 before the round-trip so the
+        # client gets a clear message instead of a misleading auth error.
+        destination = await self.get(new_parent_folder_id)
+        if destination.drive_id != source.drive_id:
+            msg = (
+                "Google Drive doesn't support moving files between shared "
+                "drives — copy the file into the destination drive instead."
+            )
+            raise CrossDriveMoveNotSupportedError(msg)
         moved = await asyncio.to_thread(self._move_sync, file_id, new_parent_folder_id)
         # Destination scope check — reject moves *out* of the Navigator's
         # visible surface (e.g. into My Drive).

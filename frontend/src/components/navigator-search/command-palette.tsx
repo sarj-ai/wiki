@@ -70,12 +70,12 @@ function ResultRow({
     <button
       ref={rowRef ?? undefined}
       type="button"
-      onMouseEnter={onSelect}
-      onFocus={onSelect}
-      // Click selects — preview appears on the right. The explicit
-      // "Open" button in the preview panel (or pressing Enter) is the
-      // only way to actually navigate. This matches how Spotlight
-      // lets you browse results without losing your current tab.
+      // Click (or arrow-key navigation) selects — preview appears on
+      // the right. Hover does NOT preselect because the snippet fetch
+      // would fire on every row a cursor passes through, racing the
+      // intended selection. The explicit "Open" button in the preview
+      // panel (or pressing Enter) is the only way to actually
+      // navigate, matching how Spotlight lets you browse results.
       onClick={onSelect}
       className={cn(
         "hover:bg-accent/50 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm outline-none",
