@@ -9,7 +9,6 @@ import type { DriveSearchResult } from "@/types/navigator";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCommandPaletteHotkey, useCommandPaletteState } from "@/hooks/use-command-palette";
 import { useDriveSearch, useDriveSearchSnippet } from "@/hooks/use-drive-search";
@@ -79,17 +78,24 @@ function ResultRow({
       // navigate, matching how Spotlight lets you browse results.
       onClick={onSelect}
       className={cn(
-        "hover:bg-accent/50 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm outline-none",
+        "hover:bg-accent/50 flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left text-sm outline-none",
         selected && "bg-accent",
       )}
     >
-      <span className="shrink-0">{renderMimeIcon(result.mimeType, "size-4")}</span>
+      <span className="mt-0.5 shrink-0">{renderMimeIcon(result.mimeType, "size-4")}</span>
       <div className="min-w-0 flex-1">
-        <div className="truncate font-medium">{result.name}</div>
-        {driveName && <div className="text-muted-foreground truncate text-xs">{driveName}</div>}
+        {/*
+          Names can be very long (Drive doesn't enforce a length
+          cap and slug-style filenames are common). break-words
+          plus the parent's flex layout lets them wrap to multiple
+          lines instead of truncating, so users can read the whole
+          filename without hovering for a tooltip.
+        */}
+        <div className="font-medium break-words">{result.name}</div>
+        {driveName && <div className="text-muted-foreground text-xs break-words">{driveName}</div>}
       </div>
       {result.modifiedTime && (
-        <span className="text-muted-foreground shrink-0 text-xs">
+        <span className="text-muted-foreground mt-0.5 shrink-0 text-xs">
           {relativeTime(result.modifiedTime)}
         </span>
       )}
@@ -122,11 +128,11 @@ function PreviewPanel({
   const snippet = snippetQuery.data;
 
   return (
-    <div className="flex h-full min-h-0 flex-col p-4">
+    <div className="flex h-full min-h-0 flex-col p-5">
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 shrink-0">{renderMimeIcon(result.mimeType, "size-6")}</span>
+        <span className="mt-1 shrink-0">{renderMimeIcon(result.mimeType, "size-6")}</span>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-base font-semibold">{result.name}</div>
+          <div className="text-base font-semibold break-words">{result.name}</div>
           {driveName && <div className="text-muted-foreground text-xs">{driveName}</div>}
         </div>
       </div>
@@ -254,7 +260,7 @@ export function CommandPalette() {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="flex h-[min(560px,80dvh)] max-w-3xl flex-col gap-0 overflow-hidden p-0"
+        className="flex h-[min(640px,85dvh)] !max-w-5xl flex-col gap-0 overflow-hidden p-0 sm:!max-w-5xl"
         // Hide shadcn's default floating close X — it lands right on
         // top of the search input at the top-right corner of our
         // palette. The footer strip documents Esc as the close key.
@@ -267,22 +273,28 @@ export function CommandPalette() {
           requestAnimationFrame(() => inputRef.current?.focus());
         }}
       >
-        <div className="border-border flex items-center gap-2 border-b px-4 py-3">
-          <Search className="text-muted-foreground size-4 shrink-0" />
-          <Input
+        <div className="border-border flex items-center gap-2.5 border-b px-5 py-4">
+          <Search className="text-muted-foreground size-5 shrink-0" />
+          {/*
+            Plain <input> — shadcn's Input wrapper carries built-in
+            padding and border styling that conflict with the palette's
+            flush-edge layout. Using a bare element keeps the cursor
+            tight against the search icon at gap-2.5.
+          */}
+          <input
             ref={inputRef}
             value={query}
             onChange={(e) => { setQuery(e.target.value); }}
             onKeyDown={handleKeyDown}
             placeholder="Search Drive…"
-            className="h-8 border-0 bg-transparent p-0 text-base shadow-none focus-visible:ring-0"
+            className="placeholder:text-muted-foreground/70 flex-1 bg-transparent text-base leading-none outline-none"
             aria-label="Search Drive"
           />
           {query.length > 0 && (
             <button
               type="button"
               onClick={() => { setQuery(""); }}
-              className="text-muted-foreground hover:text-foreground shrink-0"
+              className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-7 shrink-0 items-center justify-center rounded-md"
               aria-label="Clear search"
             >
               <X className="size-4" />
@@ -292,19 +304,19 @@ export function CommandPalette() {
 
         <div className="flex min-h-0 flex-1">
           <ScrollArea className="w-2/5 min-w-0 border-r">
-            <div className="space-y-0.5 p-2">
+            <div className="space-y-0.5 p-3">
               {!hasQuery && (
-                <div className="text-muted-foreground px-2 py-4 text-xs">
+                <div className="text-muted-foreground px-3 py-4 text-xs">
                   Type at least 2 characters to search. Press ↑↓ to navigate, ⏎ to open.
                 </div>
               )}
               {hasQuery && searchQuery.isFetching && results.length === 0 && (
-                <div className="text-muted-foreground flex items-center gap-2 px-2 py-4 text-xs">
+                <div className="text-muted-foreground flex items-center gap-2 px-3 py-4 text-xs">
                   <Loader2 className="size-3 animate-spin" /> Searching…
                 </div>
               )}
               {hasQuery && !searchQuery.isFetching && results.length === 0 && (
-                <div className="text-muted-foreground px-2 py-4 text-xs">No results</div>
+                <div className="text-muted-foreground px-3 py-4 text-xs">No results</div>
               )}
               {results.map((result, index) => (
                 <ResultRow
@@ -332,7 +344,7 @@ export function CommandPalette() {
           </div>
         </div>
 
-        <div className="border-border text-muted-foreground flex items-center justify-between gap-2 border-t px-4 py-2 text-[11px]">
+        <div className="border-border text-muted-foreground flex items-center justify-between gap-2 border-t px-5 py-2.5 text-[11px]">
           <span>
             <kbd className="bg-muted rounded border px-1 py-0.5 font-mono text-[10px]">↑</kbd>{" "}
             <kbd className="bg-muted rounded border px-1 py-0.5 font-mono text-[10px]">↓</kbd>{" "}

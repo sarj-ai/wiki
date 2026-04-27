@@ -14,8 +14,19 @@ import { toast } from "sonner";
 
 import type { DriveNode } from "@/types/navigator";
 
-import { useBulkSetSortOrders } from "@/hooks/use-navigator-mutations";
+import { useBulkSetSortOrders, useMoveFile } from "@/hooks/use-navigator-mutations";
 import { navigatorKeys } from "@/hooks/use-navigator-tree";
+
+// SortableContext ids in the sidebar follow ``parent:<drive-or-folder-id>``.
+// Helper isolates that convention so the rest of this module can talk
+// in plain ids and we have one place to flip the encoding if it ever
+// changes.
+const CONTAINER_PREFIX = "parent:";
+function parentIdOf(containerId: string): string | null {
+  return containerId.startsWith(CONTAINER_PREFIX)
+    ? containerId.slice(CONTAINER_PREFIX.length)
+    : null;
+}
 
 export interface NavigatorReorder {
   // Map keyed by ``parent:<id>`` carrying the post-drop id order. Read
@@ -46,6 +57,7 @@ export interface NavigatorReorder {
 export function useNavigatorReorder(driveId: string): NavigatorReorder {
   const qc = useQueryClient();
   const bulkSetSortOrders = useBulkSetSortOrders();
+  const moveFile = useMoveFile();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
@@ -94,7 +106,17 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
       | undefined;
     const activeContainerId = activeSortable?.containerId;
     const overContainerId = overSortable?.containerId;
-    if (!activeContainerId || !overContainerId || activeContainerId !== overContainerId) return;
+    if (!activeContainerId || !overContainerId) return;
+
+    // Cross-container drop: dragging out of one folder/drive root and
+    // into another means the user wants to *move* the row, not reorder
+    // it. Resolve the destination's parent id from the over container
+    // id and dispatch the move mutation. The bulk-sortOrders path
+    // below only fires for same-container drops (reorder).
+    if (activeContainerId !== overContainerId) {
+      handleCrossContainerDrop(String(active.id), overContainerId);
+      return;
+    }
 
     const items = activeSortable.items ?? [];
     const oldIndex = items.indexOf(String(active.id));
@@ -127,6 +149,27 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
           next.delete(activeContainerId);
           return next;
         });
+      });
+  };
+
+  const handleCrossContainerDrop = (fileId: string, overContainerId: string): void => {
+    const newParentFolderId = parentIdOf(overContainerId);
+    if (!newParentFolderId) return;
+    // Drive's API rejects moving a folder into itself or its own
+    // descendants — fail fast on the same-id case so the toast is
+    // immediate. The deeper "into descendant" check still falls to
+    // Drive (it returns 400) since detecting it client-side requires
+    // walking the tree on every drop.
+    if (newParentFolderId === fileId) return;
+    void moveFile
+      .mutateAsync({
+        fileId,
+        newParentFolderId,
+        sourceDriveId: driveId,
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : "Move failed";
+        toast.error(message);
       });
   };
 

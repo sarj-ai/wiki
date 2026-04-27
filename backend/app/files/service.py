@@ -115,12 +115,7 @@ class GoogleFilesService(FilesService):
                 except FileNotInScopeError:
                     raise exc from None
                 if destination.drive_id != source.drive_id:
-                    msg = (
-                        "Drive blocked moving this file across shared drives. "
-                        "This is usually due to admin movement restrictions or "
-                        "insufficient permissions on the destination — try "
-                        "copying the file into the other drive instead."
-                    )
+                    msg = "Drive blocked this cross-drive move — copy the file instead."
                     raise CrossDriveMoveNotSupportedError(msg) from exc
             raise
         # Destination scope check — reject moves *out* of the Navigator's
