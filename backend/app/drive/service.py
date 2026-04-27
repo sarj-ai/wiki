@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, override
 from googleapiclient.errors import HttpError
 from loguru import logger
 
+from app.drive import drives_cache
 from app.drive.credentials import build_drive_client
 from app.drive.retry import execute_with_retry
 from app.drive.schemas import (
@@ -89,7 +90,17 @@ class GoogleDriveService(DriveService):
 
     @override
     async def list_drives(self) -> list[DriveSummary]:
-        return await asyncio.to_thread(self._list_drives_sync)
+        # Membership barely changes mid-session, but ``_ensure_in_member_drive``
+        # runs on every file write, so the raw Drive call dominates write
+        # latency. Serve from the per-user TTL cache when possible; on a
+        # miss, fetch fresh and store. Invalidated on logout so the next
+        # session starts cold (see ``AuthService.revoke_session``).
+        cached = drives_cache.lookup(str(self._user.id))
+        if cached is not None:
+            return cached
+        drives = await asyncio.to_thread(self._list_drives_sync)
+        drives_cache.store(str(self._user.id), drives)
+        return drives
 
     @override
     async def walk_drive_folders(self, drive_id: str) -> DriveTree:

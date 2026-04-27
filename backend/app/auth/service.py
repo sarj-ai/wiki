@@ -40,6 +40,7 @@ from app.auth.errors import (
 )
 from app.auth.jwt import create_access_token, create_refresh_token, decode_token
 from app.config import settings
+from app.drive import drives_cache
 from app.models.user import User
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105 — public OAuth endpoint
@@ -136,6 +137,9 @@ class GoogleAuthService(AuthService):
                 return
             user.token_version += 1
             await self._db.commit()
+            # Drop the user's cached drives.list so the next session
+            # starts cold instead of replaying a possibly-stale list.
+            drives_cache.invalidate(str(user.id))
         except Exception:  # noqa: BLE001 — logout proceeds even if DB bump fails; cookies still clear.
             logger.opt(exception=True).warning(
                 "logout: failed to bump token_version; proceeding to clear cookies"
