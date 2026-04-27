@@ -15,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.drive.dependencies import drive_service_dep
 from app.drive.service import DriveService
+from app.extras.dependencies import extras_service_dep
+from app.extras.service import ExtrasService
 from app.files.breadcrumb import build_breadcrumb
 from app.files.dependencies import files_service_dep
 from app.files.schemas import (
@@ -87,15 +89,23 @@ async def move_file(
     payload: FileMove,
     db: AsyncSession = Depends(get_db),
     files: FilesService = Depends(files_service_dep),
+    extras: ExtrasService = Depends(extras_service_dep),
     cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
 ) -> FileResponse:
     # Service returns both the pre-move source and the post-move file so
-    # we can invalidate both drives without a second Drive call. The
-    # public response is still the moved file (W6 will switch the
-    # frontend to consume the composite shape).
+    # we can invalidate both drives without a second Drive call.
     result = await files.move(file_id, payload.new_parent_folder_id)
     await _invalidate_drive_of(db, cache, result.source)
     await _invalidate_drive_of(db, cache, result.moved)
+    # When the file lands in a new parent, any sort_order the user set
+    # while it was in its old parent no longer reflects intent in the
+    # new one. Without this, ``compareNodeOrder`` keeps surfacing the
+    # moved file at the top of the destination because it has an
+    # explicit sort_order while its new siblings don't. Clear the
+    # entry; the file then sorts by the default folders-first / alpha
+    # rule alongside the rest of the destination's children.
+    if result.source.parent_folder_id != result.moved.parent_folder_id:
+        await extras.clear_sort_order(file_id)
     return result.moved
 
 

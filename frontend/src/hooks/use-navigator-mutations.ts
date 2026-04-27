@@ -77,6 +77,11 @@ export function useMoveFile() {
     onSuccess: ({ result, sourceDriveId }) => {
       invalidate([sourceDriveId, result.driveId]);
       void qc.invalidateQueries({ queryKey: ["navigator", "file", result.id] });
+      // The backend clears the moved file's sort_order entry when its
+      // parent changes — without this invalidation, the local cache
+      // still carries the stale entry and ``compareNodeOrder`` keeps
+      // sorting the moved row to the top of the destination.
+      void qc.invalidateQueries({ queryKey: navigatorKeys.sortOrders });
     },
   });
 }
