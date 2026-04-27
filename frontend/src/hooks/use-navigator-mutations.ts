@@ -1,59 +1,12 @@
 "use client";
 
-import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import type { DriveNode, DriveTree, FileResponse, SortOrder } from "@/types/navigator";
+import type { SortOrder } from "@/types/navigator";
 
 import { navigatorKeys } from "@/hooks/use-navigator-tree";
 import { navigatorApi, type CreateFileInput, type PreferencesInput } from "@/lib/navigator-api";
-import { MIME_FOLDER } from "@/types/navigator";
-
-// Turns a fresh FileResponse into a DriveNode so it can be spliced
-// straight into the sidebar caches without waiting for a refetch.
-function fileToNode(file: FileResponse): DriveNode {
-  return {
-    id: file.id,
-    name: file.name,
-    mimeType: file.mimeType,
-    parentId: file.parentFolderId ?? null,
-    modifiedTime: file.modifiedTime ?? null,
-  };
-}
-
-// Inject a brand-new file/folder into every cache the sidebar reads so
-// the new row paints instantly on the optimistic path. The subsequent
-// refetch (kicked off by invalidateQueries) will reconcile any drift —
-// this is purely UX smoothing, not source-of-truth.
-function injectNewFileIntoCaches(qc: QueryClient, file: FileResponse): void {
-  const node = fileToNode(file);
-  // Root-level files live in ``folderFiles(driveId)`` — the drive-root
-  // listing is keyed by the drive id, not by null. Fall back to the
-  // drive id when the file has no parent folder so the optimistic
-  // insert lands in the same cache the sidebar actually reads.
-  const parentKey = file.parentFolderId ?? file.driveId;
-
-  // 1. Folder-files cache: append to the parent folder's listing so an
-  // already-expanded folder paints the new row on the next render.
-  if (parentKey) {
-    qc.setQueryData<DriveNode[] | undefined>(navigatorKeys.folderFiles(parentKey), (prev) => {
-      if (!prev) return prev;
-      if (prev.some((n) => n.id === node.id)) return prev;
-      return [...prev, node];
-    });
-  }
-
-  // 2. Drive-tree cache: only matters for new folders — the tree walker
-  // only holds folders, so a new file changes nothing there. A new
-  // folder goes into `folders` with its parent link so it shows up as
-  // a child without waiting for the background walk.
-  if (file.driveId && file.mimeType === MIME_FOLDER) {
-    qc.setQueryData<DriveTree | undefined>(navigatorKeys.driveTree(file.driveId), (prev) => {
-      if (!prev) return prev;
-      if (prev.folders.some((f) => f.id === node.id)) return prev;
-      return { ...prev, folders: [...prev.folders, node] };
-    });
-  }
-}
+import { injectNewFileIntoCaches, removeFileFromCaches } from "@/lib/navigator-cache";
 
 // Writes invalidate the drive-tree cache for whichever drive the
 // affected file belongs to (or both source and destination on a
@@ -141,41 +94,6 @@ export function useCopyFile() {
       injectNewFileIntoCaches(qc, file);
     },
   });
-}
-
-// Strip a deleted node from every cache the sidebar reads so the row
-// disappears the instant the mutation settles. Same rationale as
-// ``injectNewFileIntoCaches`` — Drive's listing index lags the trash
-// call, so an eager refetch would return a listing that still
-// contains the file and make it flash back into the sidebar.
-function removeFileFromCaches(
-  qc: QueryClient,
-  fileId: string,
-  parentFolderId: string | null,
-  driveId: string | null,
-): void {
-  // Root-level files live under ``folderFiles(driveId)`` — the drive
-  // section treats ``parentFolderId === null`` as "this drive's root"
-  // and fetches via ``useFolderFiles(drive.id)``. Fall back to the
-  // drive id so the removal lands in the same cache the sidebar reads.
-  const parentKey = parentFolderId ?? driveId;
-  if (parentKey) {
-    qc.setQueryData<DriveNode[] | undefined>(navigatorKeys.folderFiles(parentKey), (prev) => {
-      if (!prev) return prev;
-      return prev.filter((n) => n.id !== fileId);
-    });
-  }
-  if (driveId) {
-    // Folders live in the drive tree; files don't. The filter is a
-    // no-op for files so it's safe to run unconditionally.
-    qc.setQueryData<DriveTree | undefined>(navigatorKeys.driveTree(driveId), (prev) => {
-      if (!prev) return prev;
-      return { ...prev, folders: prev.folders.filter((f) => f.id !== fileId) };
-    });
-  }
-  // Drop any stale per-file metadata so a re-navigation doesn't
-  // show cached info for a file that's now in trash.
-  qc.removeQueries({ queryKey: ["navigator", "file", fileId] });
 }
 
 export function useDeleteFile() {

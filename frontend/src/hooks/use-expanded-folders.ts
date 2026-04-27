@@ -1,105 +1,89 @@
 "use client";
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback } from "react";
+import { create } from "zustand";
+import { persist, type StorageValue } from "zustand/middleware";
 
 /**
- * Module-level persistent Set backed by localStorage. Shared across
- * every component using the same store, so toggling an entry in one
- * subtree re-renders all subscribers without an explicit props path.
- * Used twice in this file: once for expanded folder ids (default
- * collapsed) and once for collapsed drive ids (default expanded).
+ * Per-row expansion state for the navigator sidebar, persisted to
+ * localStorage so a reload doesn't collapse everything the user just
+ * opened. Two stores: one for folder ids the user has *expanded*
+ * (default collapsed), one for drive ids the user has *collapsed*
+ * (default expanded). Storing the negation for drives keeps "fresh
+ * visit shows every drive" working without inventing a per-drive
+ * default at write time.
+ *
+ * State shape is ``Record<string, true>`` rather than a Set so
+ * persist's JSON serialiser works without a custom replacer/reviver,
+ * and so React Compiler / consumers see plain primitives. zustand's
+ * subscribe path uses ``useSyncExternalStore`` internally, which the
+ * compiler treats as a black-box signal — same fix the previous
+ * hand-rolled version landed in 6b8ebc9.
  */
-function createPersistedSet(storageKey: string) {
-  const subscribers = new Set<() => void>();
-  let current: Set<string> | null = null;
 
-  function ensureInit(): Set<string> {
-    if (current !== null) return current;
-    if (typeof window === "undefined") {
-      current = new Set();
-      return current;
-    }
-    try {
-      const raw = window.localStorage.getItem(storageKey);
-      if (!raw) {
-        current = new Set();
-        return current;
-      }
-      const parsed = JSON.parse(raw) as unknown;
-      if (!Array.isArray(parsed)) {
-        current = new Set();
-        return current;
-      }
-      current = new Set(parsed.filter((id): id is string => typeof id === "string"));
-      return current;
-    } catch {
-      current = new Set();
-      return current;
-    }
-  }
-
-  function persist(set: Set<string>) {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(storageKey, JSON.stringify([...set]));
-  }
-
-  function notify() {
-    subscribers.forEach((fn) => { fn(); });
-  }
-
-  function setMembership(id: string, member: boolean) {
-    const next = new Set(ensureInit());
-    if (member) next.add(id);
-    else next.delete(id);
-    current = next;
-    persist(next);
-    notify();
-  }
-
-  function subscribe(cb: () => void): () => void {
-    subscribers.add(cb);
-    return () => {
-      subscribers.delete(cb);
-    };
-  }
-
-  function useEntry(id: string): [boolean, (next: boolean) => void] {
-    // useSyncExternalStore is the React-blessed way to subscribe to
-    // mutable module state. React Compiler treats it as a black box,
-    // so it never caches the returned snapshot across an external
-    // mutation — which a hand-rolled forceRerender pattern does NOT
-    // guarantee under the compiler.
-    const getSnapshot = useCallback(() => ensureInit().has(id), [id]);
-    const getServerSnapshot = useCallback(() => false, []);
-    const member = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-
-    const setter = useCallback(
-      (next: boolean) => {
-        setMembership(id, next);
-      },
-      [id],
-    );
-
-    return [member, setter];
-  }
-
-  return { useEntry, setMembership };
+interface FolderExpansionState {
+  expanded: Record<string, true>;
+  setExpanded: (id: string, next: boolean) => void;
 }
 
-// Folders default to COLLAPSED — the set stores folder ids the user
-// has explicitly expanded.
-const folderStore = createPersistedSet("navigator-expanded-folders");
+const useFolderStore = create<FolderExpansionState>()(
+  persist(
+    (set) => ({
+      expanded: {},
+      setExpanded: (id, next) =>
+        set((state) => {
+          if (next) {
+            if (state.expanded[id]) return state;
+            return { expanded: { ...state.expanded, [id]: true } };
+          }
+          if (!state.expanded[id]) return state;
+          const { [id]: _removed, ...rest } = state.expanded;
+          return { expanded: rest };
+        }),
+    }),
+    {
+      name: "navigator-expanded-folders",
+      storage: legacyAwareStorage("expanded"),
+    },
+  ),
+);
 
-// Drives default to EXPANDED — the set stores drive ids the user has
-// explicitly collapsed, so a fresh visit still shows every drive.
-const driveCollapseStore = createPersistedSet("navigator-collapsed-drives");
+interface DriveCollapseState {
+  collapsed: Record<string, true>;
+  setCollapsed: (id: string, next: boolean) => void;
+}
+
+const useDriveCollapseStore = create<DriveCollapseState>()(
+  persist(
+    (set) => ({
+      collapsed: {},
+      setCollapsed: (id, next) =>
+        set((state) => {
+          if (next) {
+            if (state.collapsed[id]) return state;
+            return { collapsed: { ...state.collapsed, [id]: true } };
+          }
+          if (!state.collapsed[id]) return state;
+          const { [id]: _removed, ...rest } = state.collapsed;
+          return { collapsed: rest };
+        }),
+    }),
+    {
+      name: "navigator-collapsed-drives",
+      storage: legacyAwareStorage("collapsed"),
+    },
+  ),
+);
 
 /**
  * Expanded state for a single folder id. Default: collapsed.
  * Persisted across reloads via localStorage.
  */
 export function useExpandedFolder(id: string): [boolean, (next: boolean) => void] {
-  return folderStore.useEntry(id);
+  const expanded = useFolderStore((s) => s.expanded[id] === true);
+  const setExpanded = useFolderStore((s) => s.setExpanded);
+  const setter = useCallback((next: boolean) => { setExpanded(id, next); }, [id, setExpanded]);
+  return [expanded, setter];
 }
 
 /**
@@ -107,36 +91,31 @@ export function useExpandedFolder(id: string): [boolean, (next: boolean) => void
  * Persisted across reloads via localStorage.
  */
 export function useExpandedDrive(id: string): [boolean, (next: boolean) => void] {
-  const [collapsed, setCollapsed] = driveCollapseStore.useEntry(id);
-  const expanded = !collapsed;
-  const setExpanded = useCallback(
-    (next: boolean) => {
-      setCollapsed(!next);
-    },
-    [setCollapsed],
-  );
-  return [expanded, setExpanded];
+  const collapsed = useDriveCollapseStore((s) => s.collapsed[id] === true);
+  const setCollapsed = useDriveCollapseStore((s) => s.setCollapsed);
+  const setter = useCallback((next: boolean) => { setCollapsed(id, !next); }, [id, setCollapsed]);
+  return [!collapsed, setter];
 }
 
 /**
  * Imperative reveal — expand the drive plus every folder along the
  * supplied chain. Used by the auto-reveal effect so opening a file
  * via the command palette walks the sidebar tree open to where the
- * file lives. Safe to call from a React effect; backed by the same
- * persisted Sets as the hook entries above.
+ * file lives.
  */
 export function expandPath(driveId: string, folderIds: readonly string[]): void {
-  driveCollapseStore.setMembership(driveId, false);
+  useDriveCollapseStore.getState().setCollapsed(driveId, false);
+  const setExpanded = useFolderStore.getState().setExpanded;
   for (const folderId of folderIds) {
-    folderStore.setMembership(folderId, true);
+    setExpanded(folderId, true);
   }
 }
 
 // One-shot reveal-request handle. The command palette's "open" path
 // asks the sidebar to walk its tree open to a specific file id; the
-// sidebar consumes the request once the breadcrumb data arrives, then
-// clears it. Manual sidebar nav and browser back/forward never set it,
-// so the user's collapse state survives those.
+// sidebar consumes the request once the breadcrumb data arrives,
+// then clears it. Manual sidebar nav and browser back/forward never
+// set it, so the user's collapse state survives those.
 let pendingReveal: string | null = null;
 
 export function requestReveal(fileId: string): void {
@@ -147,4 +126,47 @@ export function consumeRevealFor(fileId: string): boolean {
   if (pendingReveal !== fileId) return false;
   pendingReveal = null;
   return true;
+}
+
+/**
+ * Storage adapter that transparently migrates pre-zustand entries.
+ * The previous hand-rolled store wrote a bare JSON array of ids; the
+ * new state shape wraps them in ``{ <key>: { id1: true, … } }``.
+ * Detects the legacy shape on read and rewraps it into zustand's
+ * ``StorageValue`` envelope so existing users don't lose their
+ * expansion state on the swap.
+ */
+function legacyAwareStorage<S>(stateKey: "expanded" | "collapsed"): {
+  getItem: (name: string) => StorageValue<S> | null;
+  setItem: (name: string, value: StorageValue<S>) => void;
+  removeItem: (name: string) => void;
+} {
+  return {
+    getItem: (name) => {
+      if (typeof window === "undefined") return null;
+      const raw = window.localStorage.getItem(name);
+      if (!raw) return null;
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const map: Record<string, true> = {};
+          for (const id of parsed) {
+            if (typeof id === "string") map[id] = true;
+          }
+          return { state: { [stateKey]: map } as S, version: 0 };
+        }
+        return parsed as StorageValue<S>;
+      } catch {
+        return null;
+      }
+    },
+    setItem: (name, value) => {
+      if (typeof window === "undefined") return;
+      window.localStorage.setItem(name, JSON.stringify(value));
+    },
+    removeItem: (name) => {
+      if (typeof window === "undefined") return;
+      window.localStorage.removeItem(name);
+    },
+  };
 }

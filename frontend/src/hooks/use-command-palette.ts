@@ -1,55 +1,48 @@
 "use client";
 
-import { useCallback, useSyncExternalStore } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
+import { create } from "zustand";
 
 /**
- * Module-level singleton for the command palette's open/closed state.
- * Any component can read the current state or toggle it — the trigger
- * button in the sidebar header, the global Cmd+K keydown listener, and
- * the palette dialog itself all share one store without prop drilling.
+ * Open/closed state for the command palette. Backed by zustand so any
+ * component can read or toggle it without prop-drilling — the sidebar
+ * search button, the global Cmd+K listener, and the dialog itself all
+ * subscribe to one store. Not persisted: a reload should never reopen
+ * the palette.
  */
-let isOpen = false;
-const subscribers = new Set<() => void>();
-
-function notify() {
-  subscribers.forEach((fn) => { fn(); });
+interface CommandPaletteState {
+  open: boolean;
+  setOpen: (next: boolean) => void;
+  toggle: () => void;
 }
 
-function subscribe(listener: () => void) {
-  subscribers.add(listener);
-  return () => subscribers.delete(listener);
-}
-
-function getSnapshot() {
-  return isOpen;
-}
-
-function getServerSnapshot() {
-  return false;
-}
-
-function setOpen(next: boolean) {
-  if (isOpen === next) return;
-  isOpen = next;
-  notify();
-}
+const useCommandPaletteStore = create<CommandPaletteState>((set, get) => ({
+  open: false,
+  setOpen: (next) => {
+    if (get().open === next) return;
+    set({ open: next });
+  },
+  toggle: () => { set({ open: !get().open }); },
+}));
 
 export function useCommandPaletteState(): {
   open: boolean;
   setOpen: (next: boolean) => void;
   toggle: () => void;
 } {
-  const open = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  const toggle = useCallback(() => { setOpen(!isOpen); }, []);
+  const open = useCommandPaletteStore((s) => s.open);
+  const setOpen = useCommandPaletteStore((s) => s.setOpen);
+  const toggle = useCommandPaletteStore((s) => s.toggle);
   return { open, setOpen, toggle };
 }
 
 /**
- * Binds Cmd+K (macOS) / Ctrl+K (other) to toggle the palette. Meant
- * to be mounted once near the root — typically from the palette
- * component itself when it's rendered into the app layout.
+ * Binds Cmd+K (macOS) / Ctrl+K (other) to toggle the palette. Mount
+ * once near the root — typically from the palette component itself
+ * once it's rendered into the app layout.
  */
 export function useCommandPaletteHotkey(): void {
-  useHotkeys("mod+k", () => { setOpen(!isOpen); }, { preventDefault: true });
+  useHotkeys("mod+k", () => { useCommandPaletteStore.getState().toggle(); }, {
+    preventDefault: true,
+  });
 }
