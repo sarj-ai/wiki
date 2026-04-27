@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { toast } from "sonner";
@@ -11,10 +11,12 @@ import { SidebarMenuButton } from "@/components/ui/sidebar";
 import { useSetDocIcon } from "@/hooks/use-navigator-mutations";
 import { renderMimeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
+import { cn } from "@/lib/utils";
 import { MIME_DOC, MIME_FORM } from "@/types/navigator";
 
 import { EmojiPickerPopover } from "./emoji-picker-popover";
 import { ItemMenu } from "./item-menu";
+import { useIsMovingFile } from "./use-in-flight-moves";
 
 interface FileRowProps {
   node: DriveNode;
@@ -47,6 +49,7 @@ export function FileRow({
   const isDoc = node.mimeType === MIME_DOC;
   const href = isForm ? openUrlFor(node.mimeType, node.id) : `/d/${encodeURIComponent(node.id)}`;
   const isActive = !isForm && (activeDriveId === node.id || pathname === href);
+  const isMoving = useIsMovingFile(node.id);
 
   const setDocIcon = useSetDocIcon();
   const handleIconChange = async (next: string | null) => {
@@ -96,7 +99,7 @@ export function FileRow({
       <SidebarMenuButton
         asChild
         isActive={isActive}
-        className="pr-8"
+        className={cn("pr-8 transition-opacity", isMoving && "opacity-60")}
         style={{ paddingLeft: linkPadding }}
         data-file-id={node.id}
       >
@@ -134,6 +137,11 @@ export function FileRow({
           isFolder={false}
         />
       </div>
+      {isMoving && (
+        <div className="text-muted-foreground pointer-events-none absolute top-1/2 right-2 -translate-y-1/2">
+          <Loader2 className="size-3 animate-spin" />
+        </div>
+      )}
     </>
   );
 }

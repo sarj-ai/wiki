@@ -10,22 +10,39 @@ import { create } from "zustand";
  * a shared useState) would re-render every TreeNode for every pixel
  * the cursor travels. zustand selectors only re-render the
  * subscribers whose selector return value actually changed — so the
- * row whose highlight just turned on (and the one whose just turned
- * off) re-render, and the rest of the tree stays still.
- *
- * State is intentionally minimal — just the id + container id pair
- * for active and over. Consumers compose the selectors they need
- * (e.g. "am I the cross-container drop target?", "am I being
- * hovered while collapsed?").
+ * row whose drop indicator just turned on (and the one whose just
+ * turned off) re-render, and the rest of the tree stays still.
  */
+
+/**
+ * Where the dragged row will land relative to the over row.
+ *
+ * - ``"into"`` — drop becomes a child of the over row. Only valid
+ *   when the over row is a folder. Renders as a tint + ring on the
+ *   folder header.
+ * - ``"above"`` / ``"below"`` — drop reorders the dragged row above
+ *   or below the over row at the over row's parent level. Renders as
+ *   a 2px horizontal line.
+ *
+ * Computed in ``useNavigatorReorder.onDragOver`` from the cursor's Y
+ * position on the over row's bounding box; thirds-zoning gives folder
+ * rows an "into" middle band and edge bands for reorder, while
+ * non-folder rows split the row in half (no into option).
+ */
+export type DropIntent = "into" | "above" | "below";
 
 interface DragOverState {
   activeId: string | null;
   activeContainerId: string | null;
   overId: string | null;
   overContainerId: string | null;
+  intent: DropIntent | null;
   setActive: (active: { id: string | null; containerId: string | null }) => void;
-  setOver: (over: { id: string | null; containerId: string | null }) => void;
+  setOver: (over: {
+    id: string | null;
+    containerId: string | null;
+    intent: DropIntent | null;
+  }) => void;
   reset: () => void;
 }
 
@@ -34,15 +51,23 @@ export const useDragOverStore = create<DragOverState>((set) => ({
   activeContainerId: null,
   overId: null,
   overContainerId: null,
+  intent: null,
   setActive: ({ id, containerId }) => {
     set({ activeId: id, activeContainerId: containerId });
   },
-  setOver: ({ id, containerId }) => {
+  setOver: ({ id, containerId, intent }) => {
     set((state) => {
       // Avoid re-renders for no-op updates while the cursor is still
-      // inside the same row — onDragOver fires every pointer move.
-      if (state.overId === id && state.overContainerId === containerId) return state;
-      return { overId: id, overContainerId: containerId };
+      // inside the same row at the same intent. onDragOver fires on
+      // every pointer move, including pixel-scale jitter.
+      if (
+        state.overId === id &&
+        state.overContainerId === containerId &&
+        state.intent === intent
+      ) {
+        return state;
+      }
+      return { overId: id, overContainerId: containerId, intent };
     });
   },
   reset: () => {
@@ -51,6 +76,7 @@ export const useDragOverStore = create<DragOverState>((set) => ({
       activeContainerId: null,
       overId: null,
       overContainerId: null,
+      intent: null,
     });
   },
 }));
@@ -58,8 +84,8 @@ export const useDragOverStore = create<DragOverState>((set) => ({
 /**
  * True when the consumer's container is the drop target of an
  * in-flight cross-container drag — i.e. dragging from somewhere
- * else, currently hovering a row inside this container. Drives
- * the destination-folder highlight.
+ * else, currently hovering a row inside this container. Drives the
+ * destination-drive header highlight.
  */
 export function useIsCrossContainerDropTarget(containerId: string): boolean {
   return useDragOverStore(
@@ -71,10 +97,30 @@ export function useIsCrossContainerDropTarget(containerId: string): boolean {
 }
 
 /**
- * True when the consumer (a collapsed folder row) is itself being
- * hovered during an in-flight drag. Used to schedule auto-expand
- * after a brief dwell so the user can drop into its contents.
+ * True when the dragged row will land *inside* the given folder —
+ * either because the cursor is on its header in the "into" middle
+ * band, or because the cursor is on one of its children (cross-
+ * container hover). Drives the folder-header tint.
  */
-export function useIsHoveredDuringDrag(rowId: string): boolean {
-  return useDragOverStore((s) => s.activeId !== null && s.overId === rowId);
+export function useIsDropIntoFolder(folderId: string): boolean {
+  return useDragOverStore(
+    (s) =>
+      s.activeId !== null &&
+      ((s.overId === folderId && s.intent === "into") ||
+        s.overContainerId === `parent:${folderId}`),
+  );
+}
+
+/**
+ * True when the dragged row will land at this row id, with the given
+ * intent ("above" or "below"). Used by SortableItem to render the
+ * drop-indicator line precisely on the targeted edge.
+ */
+export function useDropEdgeForRow(rowId: string): "above" | "below" | null {
+  return useDragOverStore((s) => {
+    if (s.activeId === null || s.overId !== rowId) return null;
+    if (s.intent === "above") return "above";
+    if (s.intent === "below") return "below";
+    return null;
+  });
 }

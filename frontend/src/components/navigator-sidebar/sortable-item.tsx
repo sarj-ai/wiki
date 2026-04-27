@@ -7,12 +7,18 @@ import { useRef } from "react";
 import { SidebarMenuItem, SidebarMenuSubItem } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
+import { useDropEdgeForRow } from "./use-drag-over-store";
+
 interface SortableItemProps {
   id: string;
   // Whether to render as a top-level SidebarMenuItem (inside a
   // SidebarMenu) or as a nested SidebarMenuSubItem (inside a
   // SidebarMenuSub). The dnd bits are identical.
   variant: "item" | "subitem";
+  // Custom data merged into the sortable's data payload — read in
+  // ``onDragOver`` to decide whether the over row is folder-eligible
+  // for an "into" drop intent.
+  data?: Record<string, unknown>;
   children: React.ReactNode;
 }
 
@@ -33,11 +39,19 @@ const DRAG_CLICK_SUPPRESS_PX = 5;
 // still runs because that path keys off ``isSorting``, not this flag.
 const NO_LAYOUT_ANIMATION = () => false;
 
-export function SortableItem({ id, variant, children }: SortableItemProps) {
+export function SortableItem({ id, variant, data, children }: SortableItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
+    data,
     animateLayoutChanges: NO_LAYOUT_ANIMATION,
   });
+
+  // Drop-edge indicator: a thin horizontal line above or below the
+  // row showing exactly where the dragged item will land for an
+  // "above" / "below" intent. The signal is computed by the reorder
+  // hook from cursor Y on the over rect; we just render the line
+  // here so it lives next to the row's bounding box.
+  const dropEdge = useDropEdgeForRow(id);
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -86,8 +100,31 @@ export function SortableItem({ id, variant, children }: SortableItemProps) {
     ...listeners,
   };
 
+  const dropLine = dropEdge ? (
+    // Absolute-positioned 2px line in the brand color sitting just
+    // outside the row on the targeted edge. Pointer-events-none so
+    // the line itself can't ever steal a drop from the row beneath.
+    <div
+      aria-hidden
+      className={cn(
+        "bg-primary pointer-events-none absolute right-1 left-1 z-30 h-[2px] rounded-full",
+        dropEdge === "above" ? "-top-px" : "-bottom-px",
+      )}
+    />
+  ) : null;
+
   if (variant === "subitem") {
-    return <SidebarMenuSubItem {...props}>{children}</SidebarMenuSubItem>;
+    return (
+      <SidebarMenuSubItem {...props}>
+        {dropLine}
+        {children}
+      </SidebarMenuSubItem>
+    );
   }
-  return <SidebarMenuItem {...props}>{children}</SidebarMenuItem>;
+  return (
+    <SidebarMenuItem {...props}>
+      {dropLine}
+      {children}
+    </SidebarMenuItem>
+  );
 }

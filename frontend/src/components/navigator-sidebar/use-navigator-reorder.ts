@@ -17,8 +17,10 @@ import type { DriveNode } from "@/types/navigator";
 
 import { useBulkSetSortOrders, useMoveFile } from "@/hooks/use-navigator-mutations";
 import { navigatorKeys } from "@/hooks/use-navigator-tree";
+import { optimisticMoveFile } from "@/lib/navigator-cache";
 
-import { useDragOverStore } from "./use-drag-over-store";
+import { useDragOverStore, type DropIntent } from "./use-drag-over-store";
+import { useInFlightMovesStore } from "./use-in-flight-moves";
 
 // SortableContext ids in the sidebar follow ``parent:<drive-or-folder-id>``.
 // Helper isolates that convention so the rest of this module can talk
@@ -30,6 +32,12 @@ function parentIdOf(containerId: string): string | null {
     ? containerId.slice(CONTAINER_PREFIX.length)
     : null;
 }
+
+// Folder rows are split into thirds so the user can drop above, into,
+// or below; non-folder rows split in half (no into option). The
+// thresholds are expressed as fractions of the row's height.
+const FOLDER_ABOVE_BAND = 0.3;
+const FOLDER_BELOW_BAND = 0.7;
 
 export interface NavigatorReorder {
   // Map keyed by ``parent:<id>`` carrying the post-drop id order. Read
@@ -55,11 +63,20 @@ function sortableContainerId(
   return sortable?.containerId ?? null;
 }
 
+function isFolderTarget(data: Record<string, unknown> | null | undefined): boolean {
+  return data?.isFolder === true;
+}
+
 /**
  * Drag-and-drop reorder state machine for a single drive's
  * ``DndContext``. Owns the optimistic order map, the active-node
- * lookup, and the bulk-sortOrders mutation lifecycle so DriveSection
- * stays a thin composition over rendering primitives.
+ * lookup, the bulk-sortOrders + move mutation lifecycles, and the
+ * drop-intent computation.
+ *
+ * Drop intent: cursor Y position on the over row's bounding box
+ * decides whether the dragged row lands above, below, or *into* the
+ * over row. Folder rows get a middle "into" band so the user can
+ * drop a file inside them; non-folder rows split in half.
  *
  * The sortableContext id convention is ``parent:<drive-or-folder-id>``
  * — both drive root and every subfolder share the same shape so a
@@ -100,9 +117,6 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
 
   const onDragStart = (event: DragStartEvent) => {
     setActiveNode(findNodeById(String(event.active.id)));
-    // Publish the drag's identity so cross-container drop targets can
-    // self-highlight and collapsed folders can detect that they're
-    // being hovered for auto-expand. Reset on cancel/end.
     useDragOverStore.getState().setActive({
       id: String(event.active.id),
       containerId: sortableContainerId(event.active.data.current),
@@ -110,14 +124,16 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
   };
 
   const onDragOver = (event: DragOverEvent) => {
-    const { over } = event;
+    const { over, active } = event;
     if (!over) {
-      useDragOverStore.getState().setOver({ id: null, containerId: null });
+      useDragOverStore.getState().setOver({ id: null, containerId: null, intent: null });
       return;
     }
+    const intent = computeDropIntent(active, over, isFolderTarget(over.data.current));
     useDragOverStore.getState().setOver({
       id: String(over.id),
       containerId: sortableContainerId(over.data.current),
+      intent,
     });
   };
 
@@ -127,8 +143,11 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
   };
 
   const onDragEnd = (event: DragEndEvent) => {
+    const node = activeNode;
+    const intent = useDragOverStore.getState().intent;
     setActiveNode(null);
     useDragOverStore.getState().reset();
+
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -142,27 +161,33 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
     const overContainerId = overSortable?.containerId;
     if (!activeContainerId || !overContainerId) return;
 
-    // Cross-container drop: dragging out of one folder/drive root and
-    // into another means the user wants to *move* the row, not reorder
-    // it. Resolve the destination's parent id from the over container
-    // id and dispatch the move mutation. The bulk-sortOrders path
-    // below only fires for same-container drops (reorder).
-    if (activeContainerId !== overContainerId) {
-      handleCrossContainerDrop(String(active.id), overContainerId);
+    const overIsFolder = isFolderTarget(over.data.current);
+
+    // Drop INTO a folder: only valid when the over row is a folder
+    // and the cursor sat in the middle band. Move regardless of
+    // container; the new parent is the over row itself.
+    if (intent === "into" && overIsFolder) {
+      handleMoveInto(node, String(over.id));
       return;
     }
 
+    // Cross-container above/below or fallback: the dragged row lands
+    // at the over row's parent level. Move into that parent. (We can't
+    // express "between two specific siblings" through Drive's API, so
+    // both above/below collapse to "into the parent".)
+    if (activeContainerId !== overContainerId) {
+      const newParentFolderId = parentIdOf(overContainerId);
+      if (newParentFolderId) handleMoveInto(node, newParentFolderId);
+      return;
+    }
+
+    // Same container: reorder above/below the over row.
     const items = activeSortable.items ?? [];
     const oldIndex = items.indexOf(String(active.id));
     const newIndex = items.indexOf(String(over.id));
     if (oldIndex < 0 || newIndex < 0) return;
-
     const reordered = arrayMove(items, oldIndex, newIndex);
 
-    // Optimistic per-container reorder. Works for BOTH drive root and
-    // every subfolder — readers (TreeNode) consult this map before
-    // falling back to sortOrderMap-based sorting, so rows land in the
-    // new order on the same frame the drop fires.
     setOptimisticByContainer((prev) => {
       const next = new Map(prev);
       next.set(activeContainerId, reordered);
@@ -186,24 +211,41 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
       });
   };
 
-  const handleCrossContainerDrop = (fileId: string, overContainerId: string): void => {
-    const newParentFolderId = parentIdOf(overContainerId);
-    if (!newParentFolderId) return;
-    // Drive's API rejects moving a folder into itself or its own
-    // descendants — fail fast on the same-id case so the toast is
-    // immediate. The deeper "into descendant" check still falls to
-    // Drive (it returns 400) since detecting it client-side requires
-    // walking the tree on every drop.
-    if (newParentFolderId === fileId) return;
+  const handleMoveInto = (node: DriveNode | null, newParentFolderId: string): void => {
+    if (!node) return;
+    // Drive's API rejects moving a folder into itself. Deeper
+    // "into descendant" cycles fall through to Drive's 400 — we'd
+    // need to walk the tree to detect them client-side and the
+    // server's response is fast enough to surface as a toast.
+    if (newParentFolderId === node.id) return;
+    if (newParentFolderId === (node.parentId ?? driveId)) return; // no-op move
+
+    const movesStore = useInFlightMovesStore.getState();
+    movesStore.start(node.id);
+
+    // Optimistic insert: pull the node out of its source cache and
+    // splice it into the destination so the row appears at the drop
+    // site on the same frame. Rollback if the mutation fails.
+    const rollback = optimisticMoveFile(
+      qc,
+      node,
+      { parentFolderId: newParentFolderId, driveId },
+      { parentFolderId: node.parentId, driveId },
+    );
+
     void moveFile
       .mutateAsync({
-        fileId,
+        fileId: node.id,
         newParentFolderId,
         sourceDriveId: driveId,
       })
       .catch((err: unknown) => {
+        rollback();
         const message = err instanceof Error ? err.message : "Move failed";
         toast.error(message);
+      })
+      .finally(() => {
+        movesStore.end(node.id);
       });
   };
 
@@ -216,4 +258,28 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
     onDragEnd,
     onDragCancel,
   };
+}
+
+/**
+ * Project the cursor's Y position on the over row's bounding box
+ * into a drop intent. Folder rows get a middle "into" band; non-
+ * folder rows have no into option and split in half. ``active``'s
+ * translated rect is the closest signal to "where the cursor is"
+ * dnd-kit exposes through the over event.
+ */
+function computeDropIntent(
+  active: { rect: { current: { translated: { top: number; height: number } | null } } },
+  over: { rect: { top: number; height: number } },
+  overIsFolder: boolean,
+): DropIntent {
+  const activeRect = active.rect.current.translated;
+  if (!activeRect) return overIsFolder ? "into" : "below";
+  const activeCenterY = activeRect.top + activeRect.height / 2;
+  const relativeY = (activeCenterY - over.rect.top) / over.rect.height;
+  if (overIsFolder) {
+    if (relativeY < FOLDER_ABOVE_BAND) return "above";
+    if (relativeY > FOLDER_BELOW_BAND) return "below";
+    return "into";
+  }
+  return relativeY < 0.5 ? "above" : "below";
 }

@@ -83,12 +83,12 @@ export function DriveSection({
           <SidebarGroupLabel
             asChild
             className={cn(
-              "rounded-md transition-colors",
+              "rounded-md transition-[background-color,box-shadow] duration-150",
               // Highlight the drive header when it's the active
               // cross-container drop target — gives the user a clear
               // signal that releasing here will move the dragged row
               // into this drive's root.
-              isDropTarget && "ring-primary/50 bg-primary/10 ring-1",
+              isDropTarget && "ring-primary/60 bg-primary/10 ring-1",
             )}
           >
             <button
@@ -133,7 +133,12 @@ export function DriveSection({
                     strategy={verticalListSortingStrategy}
                   >
                     {displayItems.map(({ type, node }) => (
-                      <SortableItem key={node.id} id={node.id} variant="item">
+                      <SortableItem
+                        key={node.id}
+                        id={node.id}
+                        variant="item"
+                        data={{ isFolder: type === "folder" }}
+                      >
                         {type === "folder" ? (
                           <TreeNode node={node} parentFolderId={null} depth={0} />
                         ) : (

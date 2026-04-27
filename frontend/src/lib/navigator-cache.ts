@@ -66,6 +66,47 @@ export function injectNewFileIntoCaches(qc: QueryClient, file: FileResponse): vo
 }
 
 /**
+ * Optimistically reflect a move in the sidebar caches so the row
+ * lands at its destination on the same frame the user drops, without
+ * waiting for the Drive round-trip. The dragged ``DriveNode`` is
+ * removed from its source caches and re-injected at the new parent;
+ * a returned ``rollback`` reverses both edits if the mutation fails.
+ *
+ * We never get a fresh ``FileResponse`` until the server replies —
+ * the optimistic insert synthesises one from the existing
+ * ``DriveNode`` plus the destination coordinates, which is enough
+ * for the sidebar render path. The eventual ``invalidateQueries`` in
+ * ``useMoveFile.onSuccess`` reconciles any drift.
+ */
+export function optimisticMoveFile(
+  qc: QueryClient,
+  node: DriveNode,
+  destination: { parentFolderId: string; driveId: string },
+  source: { parentFolderId: string | null; driveId: string | null },
+): () => void {
+  removeFileFromCaches(qc, node.id, source.parentFolderId, source.driveId);
+  injectNewFileIntoCaches(qc, {
+    id: node.id,
+    name: node.name,
+    mimeType: node.mimeType,
+    parentFolderId: destination.parentFolderId,
+    driveId: destination.driveId,
+    modifiedTime: node.modifiedTime,
+  });
+  return () => {
+    removeFileFromCaches(qc, node.id, destination.parentFolderId, destination.driveId);
+    injectNewFileIntoCaches(qc, {
+      id: node.id,
+      name: node.name,
+      mimeType: node.mimeType,
+      parentFolderId: source.parentFolderId,
+      driveId: source.driveId,
+      modifiedTime: node.modifiedTime,
+    });
+  };
+}
+
+/**
  * Strip a deleted node from every sidebar cache so the row vanishes
  * the moment the mutation settles. Same rationale as the inject path
  * — Drive's listing index lags trash, so an eager refetch would

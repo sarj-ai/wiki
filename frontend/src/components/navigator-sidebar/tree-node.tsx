@@ -1,8 +1,7 @@
 "use client";
 
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { ChevronRight } from "lucide-react";
-import { useEffect } from "react";
+import { ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { DriveNode } from "@/types/navigator";
@@ -26,17 +25,8 @@ import { EmojiPickerPopover } from "./emoji-picker-popover";
 import { FileRow } from "./file-row";
 import { ItemMenu } from "./item-menu";
 import { SortableItem } from "./sortable-item";
-import {
-  useIsCrossContainerDropTarget,
-  useIsHoveredDuringDrag,
-} from "./use-drag-over-store";
-
-// Hovering a collapsed folder for this long during a drag triggers
-// auto-expand so the user can drop into its contents. Matches the
-// dwell most desktop file managers use (Finder ~700ms, VS Code
-// explorer ~500ms) — short enough that users feel responsiveness,
-// long enough that incidental brushes don't pop folders open.
-const AUTO_EXPAND_DELAY_MS = 500;
+import { useIsDropIntoFolder } from "./use-drag-over-store";
+import { useIsMovingFile } from "./use-in-flight-moves";
 
 interface TreeNodeProps {
   node: DriveNode;
@@ -74,17 +64,13 @@ export function TreeNode({ node, parentFolderId, depth }: TreeNodeProps) {
   // order is stable across folder vs non-folder branches below.
   const setFolderIcon = useSetFolderIcon();
 
-  // Cross-container drop signals: highlight when a row from elsewhere
-  // is hovering inside MY children, auto-expand when a row is hovering
-  // the folder header itself while collapsed.
-  const isDropTarget = useIsCrossContainerDropTarget(`parent:${node.id}`);
-  const isHoveredDuringDrag = useIsHoveredDuringDrag(node.id);
-  const shouldScheduleExpand = isFolder && !expanded && isHoveredDuringDrag;
-  useEffect(() => {
-    if (!shouldScheduleExpand) return;
-    const timer = window.setTimeout(() => { setExpanded(true); }, AUTO_EXPAND_DELAY_MS);
-    return () => { window.clearTimeout(timer); };
-  }, [shouldScheduleExpand, setExpanded]);
+  // True when the dragged row will land *inside* this folder —
+  // either via the "into" intent on its header, or via cross-container
+  // hover on one of its children. Both cases mean "drop here = becomes
+  // a child", so the visual cue is identical: tint the folder header.
+  const isDropIntoFolder = useIsDropIntoFolder(node.id);
+  // Spinner overlay while this folder's move is settling with Drive.
+  const isMoving = useIsMovingFile(node.id);
 
   if (!isFolder) {
     return (
@@ -166,14 +152,13 @@ export function TreeNode({ node, parentFolderId, depth }: TreeNodeProps) {
         <SidebarMenuButton
           onClick={() => { setExpanded(!expanded); }}
           className={cn(
-            "pr-14 transition-colors",
-            // Cross-container drop-target highlight + auto-expand
-            // hover signal share the same visual token so the user
-            // sees a continuous "this is the destination" affordance:
-            // the row lights up the moment it's the target, then the
-            // tree grows under it after the dwell.
-            (isDropTarget || shouldScheduleExpand) &&
-              "ring-primary/50 bg-primary/10 ring-1",
+            "pr-14 transition-[background-color,box-shadow] duration-150",
+            // Tint + ring while a drop on this row would land INSIDE
+            // the folder. Distinct from the above/below drop line
+            // rendered by SortableItem so the user can read the two
+            // outcomes at a glance.
+            isDropIntoFolder && "ring-primary/60 bg-primary/10 ring-1",
+            isMoving && "opacity-60",
           )}
           style={{ paddingLeft: chevronPadding }}
           aria-expanded={expanded}
@@ -210,6 +195,11 @@ export function TreeNode({ node, parentFolderId, depth }: TreeNodeProps) {
             isFolder
           />
         </RowActions>
+        {isMoving && (
+          <div className="text-muted-foreground pointer-events-none absolute top-1/2 right-2 -translate-y-1/2">
+            <Loader2 className="size-3 animate-spin" />
+          </div>
+        )}
       </div>
       {expanded && (
         // Flatten the nested sub so recursion doesn't compound margins
@@ -222,7 +212,12 @@ export function TreeNode({ node, parentFolderId, depth }: TreeNodeProps) {
             strategy={verticalListSortingStrategy}
           >
             {childItems.map(({ type, node: child }) => (
-              <SortableItem key={child.id} id={child.id} variant="subitem">
+              <SortableItem
+                key={child.id}
+                id={child.id}
+                variant="subitem"
+                data={{ isFolder: type === "folder" }}
+              >
                 {type === "folder" ? (
                   <TreeNode node={child} parentFolderId={node.id} depth={depth + 1} />
                 ) : (
