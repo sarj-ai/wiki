@@ -6,7 +6,7 @@ import { useEffect, useMemo } from "react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { SarjLogo } from "@/components/sarj-logo";
 import { Sidebar, SidebarContent, SidebarHeader, SidebarSeparator } from "@/components/ui/sidebar";
-import { expandPath } from "@/hooks/use-expanded-folders";
+import { consumeRevealFor, expandPath } from "@/hooks/use-expanded-folders";
 import {
   useDrives,
   useFile,
@@ -47,24 +47,39 @@ export function NavigatorSidebar() {
     [drivesQuery.data, hiddenWorkspaceIds],
   );
 
-  // Reveal the active file in the sidebar tree. When the user opens
-  // a file via the command palette (or any deep link), its parent
-  // folders are usually still collapsed — so the row that should
-  // light up never even gets rendered. The breadcrumb endpoint is
-  // already fetched for the toolbar; reuse it here to expand every
-  // ancestor on the chain. The breadcrumb is [drive, ...folders],
-  // which is exactly what `expandPath` consumes.
+  // Reveal the active file in the sidebar tree — but only when the
+  // navigation was kicked off by the command palette's "Open" action,
+  // which calls `requestReveal(fileId)` before pushing the route.
+  // Manual sidebar nav, browser back/forward, and direct URL loads
+  // never set the request, so the user's collapse state survives.
+  // The breadcrumb endpoint is already fetched for the toolbar; reuse
+  // it here once it arrives. The breadcrumb is [drive, ...folders].
   const activeFileQuery = useFile(activeDriveId);
   const breadcrumb = activeFileQuery.data?.breadcrumb;
   useEffect(() => {
-    if (!breadcrumb || breadcrumb.length === 0) return;
+    if (!activeDriveId || !breadcrumb || breadcrumb.length === 0) return;
+    if (!consumeRevealFor(activeDriveId)) return;
     const [driveCrumb, ...folderCrumbs] = breadcrumb;
     if (!driveCrumb) return;
     expandPath(
       driveCrumb.id,
       folderCrumbs.map((c) => c.id),
     );
-  }, [breadcrumb]);
+    // Expansion fires synchronous setState in subscribers; React
+    // commits the new tree before the rAF callback runs, so the
+    // FileRow tagged with this id is already in the DOM by then.
+    const targetId = activeDriveId;
+    const handle = requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(
+        `[data-file-id="${CSS.escape(targetId)}"]`,
+      );
+      if (!el) return;
+      el.scrollIntoView({ block: "nearest" });
+      el.classList.add("animate-reveal-pulse");
+      window.setTimeout(() => { el.classList.remove("animate-reveal-pulse"); }, 1200);
+    });
+    return () => { cancelAnimationFrame(handle); };
+  }, [activeDriveId, breadcrumb]);
 
   return (
     <Sidebar>

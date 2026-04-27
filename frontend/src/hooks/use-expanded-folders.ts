@@ -131,3 +131,20 @@ export function expandPath(driveId: string, folderIds: readonly string[]): void 
     folderStore.setMembership(folderId, true);
   }
 }
+
+// One-shot reveal-request handle. The command palette's "open" path
+// asks the sidebar to walk its tree open to a specific file id; the
+// sidebar consumes the request once the breadcrumb data arrives, then
+// clears it. Manual sidebar nav and browser back/forward never set it,
+// so the user's collapse state survives those.
+let pendingReveal: string | null = null;
+
+export function requestReveal(fileId: string): void {
+  pendingReveal = fileId;
+}
+
+export function consumeRevealFor(fileId: string): boolean {
+  if (pendingReveal !== fileId) return false;
+  pendingReveal = null;
+  return true;
+}

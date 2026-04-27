@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCommandPaletteHotkey, useCommandPaletteState } from "@/hooks/use-command-palette";
 import { useDriveSearch, useDriveSearchSnippet } from "@/hooks/use-drive-search";
+import { requestReveal } from "@/hooks/use-expanded-folders";
 import { isGoogleWorkspaceType, renderMimeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import { cn } from "@/lib/utils";
@@ -210,6 +211,10 @@ export function CommandPalette() {
     if (isForm) {
       window.open(openUrlFor(result.mimeType, result.id), "_blank", "noopener,noreferrer");
     } else {
+      // Tell the sidebar to walk its tree open to this file once the
+      // breadcrumb arrives. Manual sidebar nav and back/forward never
+      // set this, so they leave the user's collapse state alone.
+      requestReveal(result.id);
       router.push(`/d/${encodeURIComponent(result.id)}`);
     }
     setOpen(false);

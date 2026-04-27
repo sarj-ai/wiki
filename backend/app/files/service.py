@@ -99,18 +99,30 @@ class GoogleFilesService(FilesService):
     @override
     async def move(self, file_id: str, new_parent_folder_id: str) -> MoveResult:
         source = await self.get(file_id)
-        # Pre-check: Drive's `files.update` returns an opaque 403 when the
-        # destination crosses shared drives. Resolve the destination's
-        # drive_id and surface a typed 400 before the round-trip so the
-        # client gets a clear message instead of a misleading auth error.
-        destination = await self.get(new_parent_folder_id)
-        if destination.drive_id != source.drive_id:
-            msg = (
-                "Google Drive doesn't support moving files between shared "
-                "drives — copy the file into the destination drive instead."
-            )
-            raise CrossDriveMoveNotSupportedError(msg)
-        moved = await asyncio.to_thread(self._move_sync, file_id, new_parent_folder_id)
+        try:
+            moved = await asyncio.to_thread(self._move_sync, file_id, new_parent_folder_id)
+        except DriveUpstreamError as exc:
+            # Drive returns 403 for both ordinary permission failures and
+            # cross-shared-drive moves blocked by admin movement
+            # restrictions. The latter is common enough — and confusing
+            # enough — that we disambiguate here by fetching the
+            # destination's drive_id. Only on a real cross-drive case do
+            # we surface the typed CrossDriveMoveNotSupportedError; a
+            # within-drive 403 keeps Drive's original message.
+            if exc.http_status == 403:
+                try:
+                    destination = await self.get(new_parent_folder_id)
+                except FileNotInScopeError:
+                    raise exc from None
+                if destination.drive_id != source.drive_id:
+                    msg = (
+                        "Drive blocked moving this file across shared drives. "
+                        "This is usually due to admin movement restrictions or "
+                        "insufficient permissions on the destination — try "
+                        "copying the file into the other drive instead."
+                    )
+                    raise CrossDriveMoveNotSupportedError(msg) from exc
+            raise
         # Destination scope check — reject moves *out* of the Navigator's
         # visible surface (e.g. into My Drive).
         await self._ensure_in_member_drive(moved.drive_id)
