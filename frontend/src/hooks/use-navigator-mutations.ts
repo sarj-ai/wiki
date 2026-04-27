@@ -75,7 +75,6 @@ export function useRenameFile() {
 }
 
 export function useMoveFile() {
-  const invalidate = useInvalidateTrees();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -85,8 +84,10 @@ export function useMoveFile() {
     }: {
       fileId: string;
       newParentFolderId: string;
-      // Caller passes the source drive so we can invalidate it even if
-      // the post-move response only carries the destination drive id.
+      // Caller passes the source drive so onSuccess could invalidate
+      // both source and destination tree caches if needed. Currently
+      // unused — see the comment in onSuccess for why we skip the
+      // tree invalidation entirely.
       sourceDriveId: string | null;
     }) => {
       const result = await navigatorApi.moveFile(fileId, newParentFolderId);
@@ -110,13 +111,23 @@ export function useMoveFile() {
         qc.setQueryData(navigatorKeys.sortOrders, context.previousSortOrders);
       }
     },
-    onSuccess: ({ result, sourceDriveId }) => {
-      invalidate([sourceDriveId, result.driveId]);
+    onSuccess: ({ result }) => {
+      // DO NOT invalidate drive-tree or folder-files here. Drive's
+      // listing index lags ``files.update`` (move) by a few seconds,
+      // so an immediate refetch returns listings that still show the
+      // file in its old parent — overwriting the optimistic insert
+      // and making the just-moved row disappear from the UI for ~5s
+      // until the user refreshes. Same rationale as ``useCreateFile``
+      // and ``useCopyFile``. The optimistic update via
+      // ``optimisticMoveFile`` is the source of truth until React
+      // Query's stale-while-revalidate cycle quietly resyncs in the
+      // background once the index has caught up.
+      //
+      // File metadata (the breadcrumb endpoint) and sortOrders
+      // aren't subject to the same lag — they go through our own
+      // services, not Drive's listing — so invalidating those is
+      // safe and keeps the moved file's detail page in sync.
       void qc.invalidateQueries({ queryKey: ["navigator", "file", result.id] });
-      // Backend already cleared this entry server-side; the
-      // invalidate ensures the next refetch returns the cleaned
-      // canonical list rather than serving from any tab that's still
-      // holding the pre-clear shape in memory.
       void qc.invalidateQueries({ queryKey: navigatorKeys.sortOrders });
     },
   });

@@ -100,15 +100,18 @@ export function SortableItem({ id, variant, data, children }: SortableItemProps)
     ...listeners,
   };
 
-  const dropLine = dropEdge ? (
-    // Absolute-positioned 2px line in the brand color sitting just
-    // outside the row on the targeted edge. Pointer-events-none so
-    // the line itself can't ever steal a drop from the row beneath.
+  const dropIndicator = dropEdge ? (
+    // Rounded box sitting in the gap above or below the row to mark
+    // the drop slot. Tailored to read as "the dragged row will land
+    // here" — primary tint + ring, sized to fit the SidebarMenu's
+    // gap between rows so it reads as a slot, not a row decoration.
+    // Pointer-events-none so the indicator never steals a drop from
+    // the row beneath.
     <div
       aria-hidden
       className={cn(
-        "bg-primary pointer-events-none absolute right-1 left-1 z-30 h-[2px] rounded-full",
-        dropEdge === "above" ? "-top-px" : "-bottom-px",
+        "bg-primary/30 ring-primary pointer-events-none absolute right-1 left-1 z-30 h-1.5 rounded-full ring-2",
+        dropEdge === "above" ? "-top-1" : "-bottom-1",
       )}
     />
   ) : null;
@@ -116,14 +119,14 @@ export function SortableItem({ id, variant, data, children }: SortableItemProps)
   if (variant === "subitem") {
     return (
       <SidebarMenuSubItem {...props}>
-        {dropLine}
+        {dropIndicator}
         {children}
       </SidebarMenuSubItem>
     );
   }
   return (
     <SidebarMenuItem {...props}>
-      {dropLine}
+      {dropIndicator}
       {children}
     </SidebarMenuItem>
   );

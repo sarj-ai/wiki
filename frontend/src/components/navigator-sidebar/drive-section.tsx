@@ -1,6 +1,13 @@
 "use client";
 
-import { closestCenter, DndContext, DragOverlay } from "@dnd-kit/core";
+import {
+  closestCorners,
+  DndContext,
+  DragOverlay,
+  pointerWithin,
+  rectIntersection,
+  type CollisionDetection,
+} from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ChevronRight, HardDrive } from "lucide-react";
 
@@ -25,6 +32,7 @@ import { MIME_DOC, MIME_FOLDER } from "@/types/navigator";
 
 import { CreateFileMenu } from "./create-file-menu";
 import { DriveSectionProvider, type DriveSectionValue } from "./drive-context";
+import { EmptyDropZone } from "./empty-droppable";
 import { FileRow } from "./file-row";
 import { SortableItem } from "./sortable-item";
 import { TreeNode } from "./tree-node";
@@ -109,15 +117,16 @@ export function DriveSection({
         {expanded && (
           <DndContext
             sensors={reorder.sensors}
-            // closestCenter ensures the cursor always picks the
-            // nearest sortable, even when the cursor sits in empty
-            // space below the last row. dnd-kit's default
-            // rectIntersection requires the cursor to overlap a
-            // droppable's rect — so dragging below the last item in
-            // a SortableContext returns no over and the drop
-            // silently does nothing. With closestCenter, the bottom
-            // of the list is always reachable.
-            collisionDetection={closestCenter}
+            // Cursor-following collision: prefer whatever droppable
+            // the cursor is *inside*; fall back to closestCorners
+            // when the cursor is in empty space (e.g. above the
+            // first row or below the last row in an otherwise
+            // sparse drive). closestCenter alone doesn't follow the
+            // cursor — it ranks by the dragged element's CENTER, so
+            // dragging an overlay far up while the cursor still
+            // hovers a sibling kept reporting the sibling as `over`
+            // and drops collapsed to same-container reorders.
+            collisionDetection={cursorFirstCollision}
             onDragStart={reorder.onDragStart}
             onDragOver={reorder.onDragOver}
             onDragEnd={reorder.onDragEnd}
@@ -170,9 +179,7 @@ export function DriveSection({
                   </SidebarMenuItem>
                 )}
                 {!treeQuery.isLoading && rootItems.length === 0 && !rootFilesQuery.isLoading && (
-                  <SidebarMenuItem>
-                    <span className="text-muted-foreground px-2 py-1 text-xs">Empty drive</span>
-                  </SidebarMenuItem>
+                  <EmptyDropZone parentId={drive.id} variant="item" label="Empty drive" />
                 )}
               </SidebarMenu>
             </SidebarGroupContent>
@@ -207,6 +214,36 @@ export function DriveSection({
     </DriveSectionProvider>
   );
 }
+
+/**
+ * Collision detection that prefers droppables under the user's
+ * cursor over droppables closest to the dragged element's center.
+ *
+ * The default sortable strategy ranks by ``active.rect``'s center vs.
+ * each droppable's center — fine when the cursor is roughly aligned
+ * with the dragged element, but with grab-at-edge or any non-center
+ * grab the dragged overlay can sit far from the cursor, and the
+ * "over" stays glued to the row visually under the OVERLAY rather
+ * than the row visually under the CURSOR. Users feel that as
+ * "drops keep going to the wrong place".
+ *
+ * Layered:
+ *   1. ``pointerWithin`` — exact "cursor is inside this rect"
+ *      collisions. Highest fidelity when present.
+ *   2. ``rectIntersection`` — second pass that catches drops where
+ *      the cursor is at a row's edge but the rect math misses it.
+ *   3. ``closestCorners`` — fallback for cursors in empty space (the
+ *      first/last row edges, or an empty SortableContext). Picks
+ *      the droppable whose corners are closest to the active rect.
+ *      Better than closestCenter for stacked rows of varying height.
+ */
+const cursorFirstCollision: CollisionDetection = (args) => {
+  const pointer = pointerWithin(args);
+  if (pointer.length > 0) return pointer;
+  const intersect = rectIntersection(args);
+  if (intersect.length > 0) return intersect;
+  return closestCorners(args);
+};
 
 interface BuildRootItemsArgs {
   childrenByParent: Map<string, DriveNode[]>;

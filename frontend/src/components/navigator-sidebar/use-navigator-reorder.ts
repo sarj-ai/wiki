@@ -10,15 +10,16 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
-import type { DriveNode } from "@/types/navigator";
+import type { DriveNode, DriveTree, SortOrder } from "@/types/navigator";
 
 import { expandPath } from "@/hooks/use-expanded-folders";
 import { useBulkSetSortOrders, useMoveFile } from "@/hooks/use-navigator-mutations";
 import { navigatorKeys } from "@/hooks/use-navigator-tree";
 import { optimisticMoveFile } from "@/lib/navigator-cache";
+import { MIME_FOLDER } from "@/types/navigator";
 
 import { useDragOverStore, type DropIntent } from "./use-drag-over-store";
 import { useInFlightMovesStore } from "./use-in-flight-moves";
@@ -95,14 +96,6 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
     () => new Map(),
   );
   const [activeNode, setActiveNode] = useState<DriveNode | null>(null);
-  // Pointer Y at drag start, captured from the activator event. Used
-  // by ``computeDropIntent`` together with ``event.delta.y`` to
-  // recover the live cursor Y in onDragOver — the dragged element's
-  // translated rect's center is *only* equal to the cursor when the
-  // user grabbed at the exact middle of the row, which is rare. The
-  // delta-from-start path is accurate to within a pixel regardless of
-  // grab point.
-  const initialPointerY = useRef<number | null>(null);
 
   // Looks up a dragged row's DriveNode across every cache the sidebar
   // populates: the drive tree (for folders) and every folder-files
@@ -126,7 +119,6 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
 
   const onDragStart = (event: DragStartEvent) => {
     setActiveNode(findNodeById(String(event.active.id)));
-    initialPointerY.current = pointerYFromEvent(event.activatorEvent);
     useDragOverStore.getState().setActive({
       id: String(event.active.id),
       containerId: sortableContainerId(event.active.data.current),
@@ -134,14 +126,53 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
   };
 
   const onDragOver = (event: DragOverEvent) => {
-    const { over } = event;
+    const { active, over, delta } = event;
     if (!over) {
       useDragOverStore.getState().setOver({ id: null, containerId: null, intent: null });
       return;
     }
-    const startY = initialPointerY.current;
-    const cursorY = startY === null ? null : startY + event.delta.y;
-    const intent = computeDropIntent(cursorY, over, isFolderTarget(over.data.current));
+    const overIdStr = String(over.id);
+    // Empty-container drops register their droppable id as the
+    // ``parent:<id>`` container itself — there's no row, no
+    // above/below, and no intent.
+    if (overIdStr.startsWith(CONTAINER_PREFIX)) {
+      useDragOverStore.getState().setOver({
+        id: overIdStr,
+        containerId: overIdStr,
+        intent: null,
+      });
+      return;
+    }
+    const overIsFolder = isFolderTarget(over.data.current);
+    const overIsOwnParent = activeNode?.parentId === String(over.id);
+    const activeContainer = sortableContainerId(active.data.current);
+    const overContainer = sortableContainerId(over.data.current);
+    const sameContainer = activeContainer !== null && activeContainer === overContainer;
+
+    // Same-container intent is direction-based with no threshold —
+    // entering a different row's rect is enough to flag "swap with
+    // that row". The indicator side mirrors the drag direction so
+    // the user sees the landing position the moment they enter the
+    // row.
+    //
+    // Cross-container intent uses the dragged element's center
+    // relative to the over row — there's no swap semantic to fall
+    // back on, so we need a position-on-row signal. ``into`` is
+    // suppressed when the over folder is the active's own parent
+    // (already inside) so the user can drag a child up onto its
+    // parent and have the drop fall through to "move out of this
+    // folder" rather than a silent no-op.
+    let intent: DropIntent | null;
+    if (sameContainer) {
+      const sortableItems =
+        ((active.data.current?.sortable as { items?: string[] } | undefined)?.items) ?? [];
+      const oldIdx = sortableItems.indexOf(String(active.id));
+      const overIdx = sortableItems.indexOf(String(over.id));
+      intent = oldIdx === overIdx ? null : oldIdx < overIdx ? "below" : "above";
+    } else {
+      const overEligibleForInto = overIsFolder && !overIsOwnParent;
+      intent = computeDropIntent(active, over, delta, overEligibleForInto);
+    }
     useDragOverStore.getState().setOver({
       id: String(over.id),
       containerId: sortableContainerId(over.data.current),
@@ -151,7 +182,6 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
 
   const onDragCancel = () => {
     setActiveNode(null);
-    initialPointerY.current = null;
     useDragOverStore.getState().reset();
   };
 
@@ -159,11 +189,22 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
     const node = activeNode;
     const intent = useDragOverStore.getState().intent;
     setActiveNode(null);
-    initialPointerY.current = null;
     useDragOverStore.getState().reset();
 
     const { active, over } = event;
     if (!over || active.id === over.id) return;
+
+    // Empty-container drop: ``EmptyDropZone`` registers its droppable
+    // id as ``parent:<destinationId>`` directly so the container's
+    // parent id falls right out of ``over.id``. This is how the user
+    // gets a destination to land on when the target container has no
+    // rows yet (e.g. dragging out into an empty drive root).
+    const overIdStr = String(over.id);
+    if (overIdStr.startsWith(CONTAINER_PREFIX)) {
+      const newParentFolderId = parentIdOf(overIdStr);
+      if (newParentFolderId) handleMoveInto(node, newParentFolderId);
+      return;
+    }
 
     const activeSortable = active.data.current?.sortable as
       | { containerId?: string; items?: string[] }
@@ -185,28 +226,41 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
       return;
     }
 
-    // Cross-container above/below or fallback: the dragged row lands
-    // at the over row's parent level. Move into that parent. (We can't
-    // express "between two specific siblings" through Drive's API, so
-    // both above/below collapse to "into the parent".)
+    // Cross-container above/below: the dragged row lands at the over
+    // row's parent level, then we pin a sort_order so the file
+    // actually lands at the targeted slot. Without the pin, the
+    // destination's default sort (folders first, then alpha) would
+    // always file the moved row below the over row, which is the
+    // "section always on top" bug we hit in the recordings.
     if (activeContainerId !== overContainerId) {
       const newParentFolderId = parentIdOf(overContainerId);
-      if (newParentFolderId) handleMoveInto(node, newParentFolderId);
+      const positionHint =
+        (intent === "above" || intent === "below") && newParentFolderId
+          ? { rowId: String(over.id), intent }
+          : null;
+      if (newParentFolderId) handleMoveInto(node, newParentFolderId, positionHint);
       return;
     }
 
-    // Same container: reorder above/below the over row. arrayMove's
-    // signature is "place dragged AT this index in the result", so we
-    // adjust by +1 for "below" intent and account for the dragged
-    // item being removed from earlier in the array (which shifts the
-    // over row's index down by 1).
+    // Same-container reorder: direction-based swap. ``arrayMove``
+    // with the over row's CURRENT index does the right thing in
+    // both directions — splice removes the dragged from oldIndex,
+    // splice inserts at overIndex. When oldIndex < overIndex (drag
+    // down), the over row's index in the post-removal array is
+    // overIndex - 1 and we land AT it ("below" the over). When
+    // oldIndex > overIndex (drag up), over's index is unchanged and
+    // we land AT it ("above" the over). Either way the user sees
+    // their dragged item swap into the over's slot.
+    //
+    // Skipping the threshold-based above/below intent here was the
+    // fix for "items at adjacent indices feel impossible to swap" —
+    // the math now triggers a swap as soon as the cursor enters the
+    // other row, no need to drag past a 50% mark.
     const items = activeSortable.items ?? [];
     const oldIndex = items.indexOf(String(active.id));
     const overIndex = items.indexOf(String(over.id));
-    if (oldIndex < 0 || overIndex < 0) return;
-    const newIndex = resolveReorderIndex(oldIndex, overIndex, intent);
-    if (newIndex === oldIndex) return;
-    const reordered = arrayMove(items, oldIndex, newIndex);
+    if (oldIndex < 0 || overIndex < 0 || oldIndex === overIndex) return;
+    const reordered = arrayMove(items, oldIndex, overIndex);
 
     setOptimisticByContainer((prev) => {
       const next = new Map(prev);
@@ -231,7 +285,11 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
       });
   };
 
-  const handleMoveInto = (node: DriveNode | null, newParentFolderId: string): void => {
+  const handleMoveInto = (
+    node: DriveNode | null,
+    newParentFolderId: string,
+    positionHint: { rowId: string; intent: "above" | "below" } | null = null,
+  ): void => {
     if (!node) return;
     // Drive's API rejects moving a folder into itself. Deeper
     // "into descendant" cycles fall through to Drive's 400 — we'd
@@ -272,6 +330,21 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
       })
       .then(() => {
         toast.success(`Moved “${node.name}” to “${destinationName}”`);
+        // Pin the file at the targeted slot inside the destination
+        // by writing sort_orders for the destination's children.
+        // Without this, the default folders-first / alpha sort puts
+        // the moved file below any folder in the destination, so
+        // "drop above the section" silently lands it below.
+        if (positionHint) {
+          const order = buildDestinationOrder(
+            qc,
+            driveId,
+            newParentFolderId,
+            node,
+            positionHint,
+          );
+          if (order) bulkSetSortOrders.mutate(order);
+        }
       })
       .catch((err: unknown) => {
         rollback();
@@ -295,23 +368,36 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
 }
 
 /**
- * Project the cursor's Y position on the over row's bounding box
- * into a drop intent. Folder rows get a middle "into" band; non-
- * folder rows have no into option and split in half.
+ * Project the dragged row's CURRENT visual position into a drop
+ * intent relative to the over row.
  *
- * ``cursorY`` is computed in the caller from the activator pointer
- * Y plus the cumulative drag delta — that's accurate to a pixel
- * regardless of where on the row the user grabbed. Falling back to
- * "into"/"below" only when the activator wasn't a pointer event
- * (keyboard sensor, etc.).
+ * Signal: ``initial.top + delta.y`` — the dragged row's bounding box
+ * at drag start, shifted by the cumulative drag offset. That's the
+ * pixel-exact location the overlay sits at, grab-point independent.
+ *
+ * ``active.rect.current.translated`` looks like it should give the
+ * same number, but in practice it's frequently null when DragOverlay
+ * is in use — dnd-kit doesn't apply the transform to the source row
+ * because the overlay handles rendering, so the "translated" field
+ * isn't always populated. Falling through to a hard-coded "into"
+ * meant every folder hover reported "into" regardless of where the
+ * cursor actually was — which is exactly what the user observed.
+ *
+ * The ``initial`` rect is always set once a drag starts (it's the
+ * source row's bounding-client-rect captured on dragStart), and
+ * ``event.delta`` is always provided in onDragOver. So this signal
+ * is reliable.
  */
 function computeDropIntent(
-  cursorY: number | null,
+  active: { rect: { current: { initial: { top: number; height: number } | null } } },
   over: { rect: { top: number; height: number } },
+  delta: { x: number; y: number },
   overIsFolder: boolean,
 ): DropIntent {
-  if (cursorY === null) return overIsFolder ? "into" : "below";
-  const relativeY = (cursorY - over.rect.top) / over.rect.height;
+  const initial = active.rect.current.initial;
+  if (!initial) return overIsFolder ? "into" : "below";
+  const draggedCenter = initial.top + initial.height / 2 + delta.y;
+  const relativeY = (draggedCenter - over.rect.top) / over.rect.height;
   if (overIsFolder) {
     if (relativeY < FOLDER_ABOVE_BAND) return "above";
     if (relativeY > FOLDER_BELOW_BAND) return "below";
@@ -321,41 +407,52 @@ function computeDropIntent(
 }
 
 /**
- * Pull a clientY out of dnd-kit's activator event. Pointer/Mouse/Touch
- * events all expose clientY; the keyboard sensor's activator is a
- * KeyboardEvent which doesn't, in which case we return null and
- * computeDropIntent falls back to a sensible default.
+ * Build a fresh sort_order list for the destination's children with
+ * the moved row pinned above or below the targeted row.
+ *
+ * Cross-container moves only change the file's parent on the server;
+ * order in the new home falls to the default sort (folders first,
+ * then alpha). That means a "drop above the folder" intent silently
+ * lands the file *below* the folder. Writing sort_orders for the
+ * full destination forces the moved file into the user's chosen slot
+ * without trying to be clever about fractional indexing.
  */
-function pointerYFromEvent(event: Event): number | null {
-  if (event instanceof PointerEvent || event instanceof MouseEvent) {
-    return event.clientY;
-  }
-  if (event instanceof TouchEvent) {
-    const touch = event.touches[0] ?? event.changedTouches[0];
-    return touch?.clientY ?? null;
-  }
-  return null;
-}
+function buildDestinationOrder(
+  qc: ReturnType<typeof useQueryClient>,
+  driveId: string,
+  newParentFolderId: string,
+  movedNode: DriveNode,
+  positionHint: { rowId: string; intent: "above" | "below" },
+): SortOrder[] | null {
+  const tree = qc.getQueryData<DriveTree>(navigatorKeys.driveTree(driveId));
+  const isAtDriveRoot = newParentFolderId === driveId;
+  const folders = (tree?.folders ?? []).filter((f) =>
+    isAtDriveRoot ? f.parentId === null : f.parentId === newParentFolderId,
+  );
+  const filesCache = qc.getQueryData<DriveNode[]>(
+    navigatorKeys.folderFiles(newParentFolderId),
+  );
+  const files = (filesCache ?? []).filter((f) => f.mimeType !== MIME_FOLDER);
 
-/**
- * Compute the destination index for a same-container reorder. The
- * over row's "current" index shifts by 1 once the dragged item is
- * removed from earlier in the array, and "below" intent adds another
- * 1 to land after the over row. Returns ``oldIndex`` when the result
- * would be a no-op so the caller can short-circuit the mutation.
- */
-function resolveReorderIndex(
-  oldIndex: number,
-  overIndex: number,
-  intent: DropIntent | null,
-): number {
-  // The dragged row's removal shifts every later index down by 1;
-  // adjust the over row's index so we treat it as a position in the
-  // post-removal array.
-  const overInRemoved = oldIndex < overIndex ? overIndex - 1 : overIndex;
-  if (intent === "below") return overInRemoved + 1;
-  // Default and "above": land before the over row.
-  return overInRemoved;
+  // Combine folders + files, drop the moved node if the optimistic
+  // insert already added it, then default-sort. This mirrors what
+  // the render path computes when no sort_orders apply, so the
+  // baseline order matches what's currently on screen.
+  const baseline = [...folders, ...files]
+    .filter((c) => c.id !== movedNode.id)
+    .sort((a, b) => {
+      const aIsFolder = a.mimeType === MIME_FOLDER;
+      const bIsFolder = b.mimeType === MIME_FOLDER;
+      if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+  const overIndex = baseline.findIndex((c) => c.id === positionHint.rowId);
+  if (overIndex < 0) return null;
+  const insertIdx = positionHint.intent === "below" ? overIndex + 1 : overIndex;
+  const finalOrder = [...baseline];
+  finalOrder.splice(insertIdx, 0, movedNode);
+  return finalOrder.map((node, i) => ({ driveId: node.id, sortOrder: i + 1 }));
 }
 
 /**

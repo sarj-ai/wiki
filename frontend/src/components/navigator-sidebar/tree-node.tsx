@@ -22,6 +22,7 @@ import { MIME_DOC, MIME_FOLDER } from "@/types/navigator";
 import { CreateFileMenu } from "./create-file-menu";
 import { useDriveSectionContext } from "./drive-context";
 import { EmojiPickerPopover } from "./emoji-picker-popover";
+import { EmptyDropZone } from "./empty-droppable";
 import { FileRow } from "./file-row";
 import { ItemMenu } from "./item-menu";
 import { SortableItem } from "./sortable-item";
@@ -239,9 +240,7 @@ export function TreeNode({ node, parentFolderId, depth }: TreeNodeProps) {
             </SidebarMenuSubItem>
           )}
           {!filesLoading && childItems.length === 0 && (
-            <SidebarMenuSubItem>
-              <span className="text-muted-foreground px-2 py-1 text-xs">Empty</span>
-            </SidebarMenuSubItem>
+            <EmptyDropZone parentId={node.id} variant="subitem" label="Empty" />
           )}
         </SidebarMenuSub>
       )}

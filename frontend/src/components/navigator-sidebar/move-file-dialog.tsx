@@ -124,9 +124,15 @@ function DriveRow({ driveId, driveName, selectedId, onSelect, disabledId }: Driv
     <>
       <div
         className={cn(
-          "hover:bg-accent flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-sm font-medium",
-          selectedId === driveId && "bg-accent",
-          isDriveDisabled && "pointer-events-none opacity-40",
+          "flex items-center gap-1 rounded px-2 py-1 text-sm font-medium",
+          // Disabled drives stay expandable so users can navigate to
+          // subfolders inside them — even when the drive ROOT itself
+          // can't be the destination (because it's the file's current
+          // parent). pointer-events-none would block the expand
+          // button too; we just gate the row's selection onClick.
+          !isDriveDisabled && "hover:bg-accent cursor-pointer",
+          selectedId === driveId && !isDriveDisabled && "bg-accent",
+          isDriveDisabled && "cursor-default opacity-60",
         )}
         onClick={() => { if (!isDriveDisabled) onSelect(driveId); }}
       >
