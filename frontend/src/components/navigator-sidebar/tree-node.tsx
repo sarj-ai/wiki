@@ -2,6 +2,7 @@
 
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ChevronRight } from "lucide-react";
+import { useEffect } from "react";
 import { toast } from "sonner";
 
 import type { DriveNode } from "@/types/navigator";
@@ -25,6 +26,17 @@ import { EmojiPickerPopover } from "./emoji-picker-popover";
 import { FileRow } from "./file-row";
 import { ItemMenu } from "./item-menu";
 import { SortableItem } from "./sortable-item";
+import {
+  useIsCrossContainerDropTarget,
+  useIsHoveredDuringDrag,
+} from "./use-drag-over-store";
+
+// Hovering a collapsed folder for this long during a drag triggers
+// auto-expand so the user can drop into its contents. Matches the
+// dwell most desktop file managers use (Finder ~700ms, VS Code
+// explorer ~500ms) — short enough that users feel responsiveness,
+// long enough that incidental brushes don't pop folders open.
+const AUTO_EXPAND_DELAY_MS = 500;
 
 interface TreeNodeProps {
   node: DriveNode;
@@ -61,6 +73,18 @@ export function TreeNode({ node, parentFolderId, depth }: TreeNodeProps) {
   // Icon mutation lives at the top of the component so the hook
   // order is stable across folder vs non-folder branches below.
   const setFolderIcon = useSetFolderIcon();
+
+  // Cross-container drop signals: highlight when a row from elsewhere
+  // is hovering inside MY children, auto-expand when a row is hovering
+  // the folder header itself while collapsed.
+  const isDropTarget = useIsCrossContainerDropTarget(`parent:${node.id}`);
+  const isHoveredDuringDrag = useIsHoveredDuringDrag(node.id);
+  const shouldScheduleExpand = isFolder && !expanded && isHoveredDuringDrag;
+  useEffect(() => {
+    if (!shouldScheduleExpand) return;
+    const timer = window.setTimeout(() => { setExpanded(true); }, AUTO_EXPAND_DELAY_MS);
+    return () => { window.clearTimeout(timer); };
+  }, [shouldScheduleExpand, setExpanded]);
 
   if (!isFolder) {
     return (
@@ -141,7 +165,16 @@ export function TreeNode({ node, parentFolderId, depth }: TreeNodeProps) {
       <div className="relative">
         <SidebarMenuButton
           onClick={() => { setExpanded(!expanded); }}
-          className="pr-14"
+          className={cn(
+            "pr-14 transition-colors",
+            // Cross-container drop-target highlight + auto-expand
+            // hover signal share the same visual token so the user
+            // sees a continuous "this is the destination" affordance:
+            // the row lights up the moment it's the target, then the
+            // tree grows under it after the dwell.
+            (isDropTarget || shouldScheduleExpand) &&
+              "ring-primary/50 bg-primary/10 ring-1",
+          )}
           style={{ paddingLeft: chevronPadding }}
           aria-expanded={expanded}
           title={node.name}

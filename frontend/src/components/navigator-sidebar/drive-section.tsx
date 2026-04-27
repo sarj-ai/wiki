@@ -28,6 +28,7 @@ import { DriveSectionProvider, type DriveSectionValue } from "./drive-context";
 import { FileRow } from "./file-row";
 import { SortableItem } from "./sortable-item";
 import { TreeNode } from "./tree-node";
+import { useIsCrossContainerDropTarget } from "./use-drag-over-store";
 import { useDriveTreeIndex } from "./use-drive-tree-index";
 import { useNavigatorReorder } from "./use-navigator-reorder";
 
@@ -53,6 +54,7 @@ export function DriveSection({
   const reorder = useNavigatorReorder(drive.id);
 
   const rootContainerId = `parent:${drive.id}`;
+  const isDropTarget = useIsCrossContainerDropTarget(rootContainerId);
   const rootItems = buildRootItems({
     childrenByParent,
     rootFiles: rootFilesQuery.data ?? [],
@@ -78,7 +80,17 @@ export function DriveSection({
     <DriveSectionProvider value={contextValue}>
       <SidebarGroup>
         <div className="group/driveheader relative">
-          <SidebarGroupLabel asChild>
+          <SidebarGroupLabel
+            asChild
+            className={cn(
+              "rounded-md transition-colors",
+              // Highlight the drive header when it's the active
+              // cross-container drop target — gives the user a clear
+              // signal that releasing here will move the dragged row
+              // into this drive's root.
+              isDropTarget && "ring-primary/50 bg-primary/10 ring-1",
+            )}
+          >
             <button
               type="button"
               onClick={() => { setExpanded(!expanded); }}
@@ -98,6 +110,7 @@ export function DriveSection({
           <DndContext
             sensors={reorder.sensors}
             onDragStart={reorder.onDragStart}
+            onDragOver={reorder.onDragOver}
             onDragEnd={reorder.onDragEnd}
             onDragCancel={reorder.onDragCancel}
           >

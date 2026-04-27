@@ -5,6 +5,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
@@ -16,6 +17,8 @@ import type { DriveNode } from "@/types/navigator";
 
 import { useBulkSetSortOrders, useMoveFile } from "@/hooks/use-navigator-mutations";
 import { navigatorKeys } from "@/hooks/use-navigator-tree";
+
+import { useDragOverStore } from "./use-drag-over-store";
 
 // SortableContext ids in the sidebar follow ``parent:<drive-or-folder-id>``.
 // Helper isolates that convention so the rest of this module can talk
@@ -40,8 +43,16 @@ export interface NavigatorReorder {
   activeNode: DriveNode | null;
   sensors: ReturnType<typeof useSensors>;
   onDragStart: (event: DragStartEvent) => void;
+  onDragOver: (event: DragOverEvent) => void;
   onDragEnd: (event: DragEndEvent) => void;
   onDragCancel: () => void;
+}
+
+function sortableContainerId(
+  data: Record<string, unknown> | null | undefined,
+): string | null {
+  const sortable = data?.sortable as { containerId?: string } | undefined;
+  return sortable?.containerId ?? null;
 }
 
 /**
@@ -89,12 +100,35 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
 
   const onDragStart = (event: DragStartEvent) => {
     setActiveNode(findNodeById(String(event.active.id)));
+    // Publish the drag's identity so cross-container drop targets can
+    // self-highlight and collapsed folders can detect that they're
+    // being hovered for auto-expand. Reset on cancel/end.
+    useDragOverStore.getState().setActive({
+      id: String(event.active.id),
+      containerId: sortableContainerId(event.active.data.current),
+    });
   };
 
-  const onDragCancel = () => { setActiveNode(null); };
+  const onDragOver = (event: DragOverEvent) => {
+    const { over } = event;
+    if (!over) {
+      useDragOverStore.getState().setOver({ id: null, containerId: null });
+      return;
+    }
+    useDragOverStore.getState().setOver({
+      id: String(over.id),
+      containerId: sortableContainerId(over.data.current),
+    });
+  };
+
+  const onDragCancel = () => {
+    setActiveNode(null);
+    useDragOverStore.getState().reset();
+  };
 
   const onDragEnd = (event: DragEndEvent) => {
     setActiveNode(null);
+    useDragOverStore.getState().reset();
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -173,5 +207,13 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
       });
   };
 
-  return { optimisticByContainer, activeNode, sensors, onDragStart, onDragEnd, onDragCancel };
+  return {
+    optimisticByContainer,
+    activeNode,
+    sensors,
+    onDragStart,
+    onDragOver,
+    onDragEnd,
+    onDragCancel,
+  };
 }
