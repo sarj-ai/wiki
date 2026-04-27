@@ -1,11 +1,10 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Folder, HardDrive, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import type { DriveNode, DriveTree } from "@/types/navigator";
+import type { DriveNode } from "@/types/navigator";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +17,8 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useMoveFile } from "@/hooks/use-navigator-mutations";
-import { navigatorKeys, useDrives } from "@/hooks/use-navigator-tree";
+import { useDrives, useDriveTree } from "@/hooks/use-navigator-tree";
+import { buildChildrenIndex } from "@/lib/navigator-tree";
 import { cn } from "@/lib/utils";
 
 interface MoveFileDialogProps {
@@ -28,17 +28,6 @@ interface MoveFileDialogProps {
   fileName: string;
   currentDriveId: string | null;
   currentParentFolderId: string | null;
-}
-
-function buildChildrenIndex(folders: DriveNode[]): Map<string, DriveNode[]> {
-  const map = new Map<string, DriveNode[]>();
-  for (const folder of folders) {
-    const key = folder.parentId ?? "__root__";
-    const bucket = map.get(key);
-    if (bucket) bucket.push(folder);
-    else map.set(key, [folder]);
-  }
-  return map;
 }
 
 interface FolderRowProps {
@@ -113,18 +102,20 @@ interface DriveRowProps {
   disabledId: string;
 }
 
-// Reads the drive-tree cache entry from React Query (not a new fetch —
-// the sidebar already populated it). If the user opens the move dialog
-// before ever expanding that drive in the sidebar, the tree may not be
-// cached yet and the list stays empty; that's acceptable UX since they
-// can still pick any drive they HAVE expanded.
+// Subscribes to the drive-tree query for THIS drive. If the sidebar
+// already expanded the drive earlier in the session (or persisted it
+// to localStorage), the data is served instantly from cache. If not,
+// the dialog kicks off a fresh fetch — the user gets a brief loading
+// state instead of an empty list, which the previous qc.getQueryData
+// approach silently produced.
 function DriveRow({ driveId, driveName, selectedId, onSelect, disabledId }: DriveRowProps) {
-  const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
-  const cachedTree = qc.getQueryData<DriveTree>(navigatorKeys.driveTree(driveId));
+  // Only fetch once the user expands this drive — otherwise opening
+  // the dialog kicks N drive-tree walks for every shared drive.
+  const treeQuery = useDriveTree(expanded ? driveId : null);
   const childrenByParent = useMemo(
-    () => buildChildrenIndex(cachedTree?.folders ?? []),
-    [cachedTree],
+    () => buildChildrenIndex(treeQuery.data?.folders ?? []),
+    [treeQuery.data],
   );
   const rootFolders = childrenByParent.get("__root__") ?? [];
   const isDriveDisabled = driveId === disabledId;
@@ -153,7 +144,14 @@ function DriveRow({ driveId, driveName, selectedId, onSelect, disabledId }: Driv
         <HardDrive className="size-4 shrink-0" />
         <span className="truncate">{driveName}</span>
       </div>
+      {expanded && treeQuery.isLoading && (
+        <div className="text-muted-foreground flex items-center gap-2 px-4 py-1 text-xs">
+          <Loader2 className="size-3 animate-spin" />
+          Loading folders…
+        </div>
+      )}
       {expanded &&
+        !treeQuery.isLoading &&
         rootFolders.map((folder) => (
           <FolderRow
             key={folder.id}
