@@ -4,6 +4,7 @@
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import type { DriveNode } from "@/types/navigator";
@@ -48,6 +49,26 @@ export function FileRow({
   const isDoc = node.mimeType === MIME_DOC;
   const href = isForm ? openUrlFor(node.mimeType, node.id) : `/d/${encodeURIComponent(node.id)}`;
   const isActive = !isForm && (activeDriveId === node.id || pathname === href);
+
+  // When the row first transitions to active (e.g. the user clicked
+  // a result in the command palette and the auto-reveal effect just
+  // expanded its ancestors), scroll it into view and add a brief
+  // pulse so the eye lands on it without scanning the whole tree.
+  // The pulse is toggled directly on the DOM node (not via state) so
+  // it doesn't trigger an extra render cycle and stays out of React's
+  // set-state-in-effect rule.
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!isActive) return;
+    const node = buttonRef.current;
+    if (!node) return;
+    node.scrollIntoView({ block: "nearest" });
+    node.classList.add("animate-reveal-pulse");
+    const timer = window.setTimeout(() => {
+      node.classList.remove("animate-reveal-pulse");
+    }, 1200);
+    return () => { window.clearTimeout(timer); };
+  }, [isActive]);
 
   const setDocIcon = useSetDocIcon();
   const handleIconChange = async (next: string | null) => {
@@ -95,6 +116,7 @@ export function FileRow({
   return (
     <>
       <SidebarMenuButton
+        ref={buttonRef}
         asChild
         isActive={isActive}
         className="pr-8"

@@ -83,7 +83,7 @@ function createPersistedSet(storageKey: string) {
     return [member, setter];
   }
 
-  return { useEntry };
+  return { useEntry, setMembership };
 }
 
 // Folders default to COLLAPSED — the set stores folder ids the user
@@ -116,4 +116,18 @@ export function useExpandedDrive(id: string): [boolean, (next: boolean) => void]
     [setCollapsed],
   );
   return [expanded, setExpanded];
+}
+
+/**
+ * Imperative reveal — expand the drive plus every folder along the
+ * supplied chain. Used by the auto-reveal effect so opening a file
+ * via the command palette walks the sidebar tree open to where the
+ * file lives. Safe to call from a React effect; backed by the same
+ * persisted Sets as the hook entries above.
+ */
+export function expandPath(driveId: string, folderIds: readonly string[]): void {
+  driveCollapseStore.setMembership(driveId, false);
+  for (const folderId of folderIds) {
+    folderStore.setMembership(folderId, true);
+  }
 }

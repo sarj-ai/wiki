@@ -1,13 +1,15 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import { ErrorBoundary } from "@/components/error-boundary";
 import { SarjLogo } from "@/components/sarj-logo";
 import { Sidebar, SidebarContent, SidebarHeader, SidebarSeparator } from "@/components/ui/sidebar";
+import { expandPath } from "@/hooks/use-expanded-folders";
 import {
   useDrives,
+  useFile,
   useFolderIcons,
   usePreferences,
   useSortOrders,
@@ -44,6 +46,25 @@ export function NavigatorSidebar() {
     () => (drivesQuery.data ?? []).filter((d) => !hiddenWorkspaceIds.has(d.id)),
     [drivesQuery.data, hiddenWorkspaceIds],
   );
+
+  // Reveal the active file in the sidebar tree. When the user opens
+  // a file via the command palette (or any deep link), its parent
+  // folders are usually still collapsed — so the row that should
+  // light up never even gets rendered. The breadcrumb endpoint is
+  // already fetched for the toolbar; reuse it here to expand every
+  // ancestor on the chain. The breadcrumb is [drive, ...folders],
+  // which is exactly what `expandPath` consumes.
+  const activeFileQuery = useFile(activeDriveId);
+  const breadcrumb = activeFileQuery.data?.breadcrumb;
+  useEffect(() => {
+    if (!breadcrumb || breadcrumb.length === 0) return;
+    const [driveCrumb, ...folderCrumbs] = breadcrumb;
+    if (!driveCrumb) return;
+    expandPath(
+      driveCrumb.id,
+      folderCrumbs.map((c) => c.id),
+    );
+  }, [breadcrumb]);
 
   return (
     <Sidebar>

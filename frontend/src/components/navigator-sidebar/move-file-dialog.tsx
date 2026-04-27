@@ -111,6 +111,10 @@ interface DriveRowProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   disabledId: string;
+  // True when this drive is not the file's source drive. Drive's API
+  // rejects cross-shared-drive parent changes, so the row is rendered
+  // for context but locked from selection/expansion.
+  crossDrive: boolean;
 }
 
 // Reads the drive-tree cache entry from React Query (not a new fetch —
@@ -118,7 +122,14 @@ interface DriveRowProps {
 // before ever expanding that drive in the sidebar, the tree may not be
 // cached yet and the list stays empty; that's acceptable UX since they
 // can still pick any drive they HAVE expanded.
-function DriveRow({ driveId, driveName, selectedId, onSelect, disabledId }: DriveRowProps) {
+function DriveRow({
+  driveId,
+  driveName,
+  selectedId,
+  onSelect,
+  disabledId,
+  crossDrive,
+}: DriveRowProps) {
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const cachedTree = qc.getQueryData<DriveTree>(navigatorKeys.driveTree(driveId));
@@ -127,33 +138,39 @@ function DriveRow({ driveId, driveName, selectedId, onSelect, disabledId }: Driv
     [cachedTree],
   );
   const rootFolders = childrenByParent.get("__root__") ?? [];
-  const isDriveDisabled = driveId === disabledId;
+  const isDriveDisabled = driveId === disabledId || crossDrive;
 
   return (
     <>
       <div
         className={cn(
-          "hover:bg-accent flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-sm font-medium",
-          selectedId === driveId && "bg-accent",
-          isDriveDisabled && "pointer-events-none opacity-40",
+          "flex items-center gap-1 rounded px-2 py-1 text-sm font-medium",
+          !isDriveDisabled && "hover:bg-accent cursor-pointer",
+          selectedId === driveId && !isDriveDisabled && "bg-accent",
+          isDriveDisabled && "cursor-not-allowed opacity-40",
         )}
+        title={crossDrive ? "Drive doesn't allow moves between shared drives — copy instead" : undefined}
         onClick={() => { if (!isDriveDisabled) onSelect(driveId); }}
       >
         <button
           type="button"
+          disabled={crossDrive}
           onClick={(e) => {
             e.stopPropagation();
             setExpanded((v) => !v);
           }}
-          className="hover:bg-muted flex size-4 shrink-0 items-center justify-center rounded"
+          className="hover:bg-muted flex size-4 shrink-0 items-center justify-center rounded disabled:cursor-not-allowed disabled:hover:bg-transparent"
           aria-label={expanded ? "Collapse" : "Expand"}
         >
           <ChevronRight className={cn("size-3 transition-transform", expanded && "rotate-90")} />
         </button>
         <HardDrive className="size-4 shrink-0" />
         <span className="truncate">{driveName}</span>
+        {crossDrive && (
+          <span className="text-muted-foreground ml-auto shrink-0 text-xs">cross-drive</span>
+        )}
       </div>
-      {expanded &&
+      {expanded && !crossDrive &&
         rootFolders.map((folder) => (
           <FolderRow
             key={folder.id}
@@ -221,22 +238,19 @@ export function MoveFileDialog({
         </DialogHeader>
         <ScrollArea className="h-72 rounded border">
           <div className="space-y-0.5 p-1">
-            {(drivesQuery.data ?? [])
-              // Cross-shared-drive moves return 403 from Drive's API regardless
-              // of permissions — `files.update` with addParents/removeParents
-              // is documented as drive-scoped only. Hide other drives so users
-              // can't initiate the unsupported operation.
-              .filter((drive) => drive.id === currentDriveId)
-              .map((drive) => (
-                <DriveRow
-                  key={drive.id}
-                  driveId={drive.id}
-                  driveName={drive.name}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                  disabledId={disabledId}
-                />
-              ))}
+            {(drivesQuery.data ?? []).map((drive) => (
+              <DriveRow
+                key={drive.id}
+                driveId={drive.id}
+                driveName={drive.name}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                disabledId={disabledId}
+                // Drive's API rejects parent changes that cross shared
+                // drives — render the row for context but lock it.
+                crossDrive={drive.id !== currentDriveId}
+              />
+            ))}
           </div>
         </ScrollArea>
         <DialogFooter>

@@ -195,6 +195,26 @@
   animation: loading-bar 1.2s ease-in-out infinite;
 }
 
+/* One-shot pulse drawing the eye to a sidebar row that just became
+   active — used by the auto-reveal effect when navigating from the
+   command palette. Uses the sidebar accent ring so it harmonises
+   with the existing data-active highlight rather than fighting it. */
+@keyframes reveal-pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--sidebar-ring);
+  }
+  60% {
+    box-shadow: 0 0 0 4px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.animate-reveal-pulse {
+  animation: reveal-pulse 1.2s ease-out;
+}
+
 /* ------------------------------------------------------------------
    Sortable-row drop animation kill switch.
 
