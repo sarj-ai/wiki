@@ -291,14 +291,15 @@ export function CommandPalette() {
             aria-label="Search Drive"
           />
           {query.length > 0 && (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={() => { setQuery(""); }}
-              className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-7 shrink-0 items-center justify-center rounded-md"
+              className="text-muted-foreground hover:text-foreground size-7 shrink-0"
               aria-label="Clear search"
             >
               <X className="size-4" />
-            </button>
+            </Button>
           )}
         </div>
 

@@ -54,29 +54,36 @@ function FolderRow({
   return (
     <>
       <div
-        className={cn(
-          "hover:bg-accent flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-sm",
-          selectedId === folder.id && "bg-accent",
-          isDisabled && "pointer-events-none opacity-40",
-        )}
+        className="flex items-center gap-1"
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
-        onClick={() => { if (!isDisabled) onSelect(folder.id); }}
       >
-        <button
+        <Button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setExpanded((v) => !v);
-          }}
-          className="hover:bg-muted flex size-4 shrink-0 items-center justify-center rounded"
+          variant="ghost"
+          size="icon-xs"
+          onClick={() => { setExpanded((v) => !v); }}
+          className="hover:bg-muted size-4 shrink-0 rounded"
           aria-label={expanded ? "Collapse" : "Expand"}
         >
           {subFolders.length > 0 && (
             <ChevronRight className={cn("size-3 transition-transform", expanded && "rotate-90")} />
           )}
-        </button>
-        <Folder className="size-4 shrink-0" />
-        <span className="truncate">{folder.name}</span>
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={isDisabled}
+          onClick={() => { onSelect(folder.id); }}
+          className={cn(
+            "h-7 flex-1 justify-start gap-1 px-2 font-normal",
+            selectedId === folder.id && "bg-accent",
+            isDisabled && "opacity-40",
+          )}
+        >
+          <Folder className="size-4 shrink-0" />
+          <span className="truncate">{folder.name}</span>
+        </Button>
       </div>
       {expanded &&
         subFolders.map((child) => (
@@ -122,33 +129,39 @@ function DriveRow({ driveId, driveName, selectedId, onSelect, disabledId }: Driv
 
   return (
     <>
-      <div
-        className={cn(
-          "flex items-center gap-1 rounded px-2 py-1 text-sm font-medium",
-          // Disabled drives stay expandable so users can navigate to
-          // subfolders inside them — even when the drive ROOT itself
-          // can't be the destination (because it's the file's current
-          // parent). pointer-events-none would block the expand
-          // button too; we just gate the row's selection onClick.
-          !isDriveDisabled && "hover:bg-accent cursor-pointer",
-          selectedId === driveId && !isDriveDisabled && "bg-accent",
-          isDriveDisabled && "cursor-default opacity-60",
-        )}
-        onClick={() => { if (!isDriveDisabled) onSelect(driveId); }}
-      >
-        <button
+      {/*
+        Disabled drives stay expandable so users can navigate to
+        subfolders inside them — even when the drive ROOT itself
+        can't be the destination (because it's the file's current
+        parent). The chevron Button stays enabled while the
+        selection Button takes the disabled state.
+      */}
+      <div className="flex items-center gap-1">
+        <Button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setExpanded((v) => !v);
-          }}
-          className="hover:bg-muted flex size-4 shrink-0 items-center justify-center rounded"
+          variant="ghost"
+          size="icon-xs"
+          onClick={() => { setExpanded((v) => !v); }}
+          className="hover:bg-muted size-4 shrink-0 rounded"
           aria-label={expanded ? "Collapse" : "Expand"}
         >
           <ChevronRight className={cn("size-3 transition-transform", expanded && "rotate-90")} />
-        </button>
-        <HardDrive className="size-4 shrink-0" />
-        <span className="truncate">{driveName}</span>
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={isDriveDisabled}
+          onClick={() => { onSelect(driveId); }}
+          className={cn(
+            "h-7 flex-1 justify-start gap-1 px-2",
+            selectedId === driveId && !isDriveDisabled && "bg-accent",
+            isDriveDisabled && "opacity-60",
+          )}
+        >
+          <HardDrive className="size-4 shrink-0" />
+          <span className="truncate">{driveName}</span>
+        </Button>
       </div>
       {expanded && treeQuery.isLoading && (
         <div className="text-muted-foreground flex items-center gap-2 px-4 py-1 text-xs">

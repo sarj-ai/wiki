@@ -2,6 +2,7 @@
 
 import { Search } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { useCommandPaletteState } from "@/hooks/use-command-palette";
 
 /**
@@ -16,10 +17,11 @@ import { useCommandPaletteState } from "@/hooks/use-command-palette";
 export function DriveSearchBox() {
   const { setOpen } = useCommandPaletteState();
   return (
-    <button
-      type="button"
+    <Button
+      variant="outline"
+      size="sm"
       onClick={() => { setOpen(true); }}
-      className="border-input bg-background hover:bg-accent/40 text-muted-foreground flex h-8 w-full items-center gap-2 rounded-md border px-2 text-xs outline-none"
+      className="text-muted-foreground hover:bg-accent/40 w-full justify-start text-xs font-normal"
       aria-label="Open search"
     >
       <Search className="size-3.5 shrink-0" />
@@ -27,6 +29,6 @@ export function DriveSearchBox() {
       <kbd className="bg-muted text-muted-foreground rounded border px-1 py-0.5 font-mono text-[10px]">
         ⌘K
       </kbd>
-    </button>
+    </Button>
   );
 }

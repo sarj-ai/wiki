@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import type { DriveNode } from "@/types/navigator";
 
+import { Button } from "@/components/ui/button";
 import { SidebarMenuButton } from "@/components/ui/sidebar";
 import { useSetDocIcon } from "@/hooks/use-navigator-mutations";
 import { renderMimeIcon } from "@/lib/file-icons";
@@ -77,18 +78,19 @@ export function FileRow({
 
   const iconElement = isDoc ? (
     <EmojiPickerPopover value={iconOverride} onChange={handleIconChange}>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon-xs"
         aria-label="Change icon"
         // Icon hover uses the full sidebar highlight color
         // (``--sidebar-accent`` / ``--sidebar-accent-foreground``),
         // the same pair that marks a selected row. Both theme
         // variants are wired through those tokens so light and dark
         // flip automatically.
-        className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors"
+        className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground size-6 shrink-0 cursor-pointer transition-colors"
       >
         {iconContent}
-      </button>
+      </Button>
     </EmojiPickerPopover>
   ) : (
     <span className="flex size-6 shrink-0 items-center justify-center">{iconContent}</span>

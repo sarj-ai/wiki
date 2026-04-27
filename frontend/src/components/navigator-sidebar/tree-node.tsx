@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import type { DriveNode } from "@/types/navigator";
 
+import { Button } from "@/components/ui/button";
 import { SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem } from "@/components/ui/sidebar";
 import { useExpandedFolder } from "@/hooks/use-expanded-folders";
 import { useSetFolderIcon } from "@/hooks/use-navigator-mutations";
@@ -173,17 +174,18 @@ export function TreeNode({ node, parentFolderId, depth }: TreeNodeProps) {
         </SidebarMenuButton>
         <div className="absolute top-1/2 z-10 -translate-y-1/2" style={{ left: iconLeft }}>
           <EmojiPickerPopover value={iconEmoji} onChange={handleFolderIconChange}>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-xs"
               aria-label="Change folder icon"
               // Matches the file-row icon: hover uses the full sidebar
               // highlight tokens so folder and file icons share the
               // same pickable affordance and automatically flip with
               // the theme.
-              className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors"
+              className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground size-6 shrink-0 cursor-pointer transition-colors"
             >
               {folderIconContent}
-            </button>
+            </Button>
           </EmojiPickerPopover>
         </div>
         <RowActions>

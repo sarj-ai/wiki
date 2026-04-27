@@ -6,6 +6,7 @@ import { Fragment } from "react";
 
 import type { BreadcrumbItem } from "@/types/navigator";
 
+import { Button } from "@/components/ui/button";
 import { iframeShowsOwnTitle, openInGoogleLabel, renderMimeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 
@@ -53,15 +54,12 @@ export function NavigatorToolbar({ fileId, mimeType, title, breadcrumb }: Naviga
           })}
         </nav>
       </div>
-      <Link
-        href={openUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="border-border hover:bg-accent hover:text-accent-foreground inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium"
-      >
-        <ExternalLink className="size-3.5" />
-        {openLabel}
-      </Link>
+      <Button asChild variant="outline" size="xs">
+        <Link href={openUrl} target="_blank" rel="noopener noreferrer">
+          <ExternalLink className="size-3.5" />
+          {openLabel}
+        </Link>
+      </Button>
     </header>
   );
 }

@@ -5,6 +5,8 @@ import { useTheme } from "next-themes";
 import { useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,34 +38,31 @@ export function NavigatorFooter() {
     .slice(0, 2)
     .join("");
 
-  const hasAvatar = Boolean(user?.avatarUrl);
-
   return (
     <SidebarFooter className="border-sidebar-border border-t p-1">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none"
+          <Button
+            variant="ghost"
+            className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-auto w-full justify-start px-2 py-1.5 font-normal"
             aria-label="Account menu"
           >
-            <div className="bg-sidebar-accent text-sidebar-accent-foreground flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-semibold">
-              {hasAvatar && user?.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
+            <Avatar className="bg-sidebar-accent text-sidebar-accent-foreground">
+              {user?.avatarUrl && (
+                // lh3.googleusercontent.com 403s on requests that send
+                // a cross-origin Referer header — referrerPolicy
+                // strips it so the avatar actually loads.
+                <AvatarImage
                   src={user.avatarUrl}
                   alt={user.displayName ?? user.email}
-                  // lh3.googleusercontent.com 403s on requests that send
-                  // a cross-origin Referer header. next/image can't
-                  // strip referrers, so we use a plain <img> tag with
-                  // referrerPolicy="no-referrer".
                   referrerPolicy="no-referrer"
-                  className="size-full object-cover"
+                  className="object-cover"
                 />
-              ) : (
-                initials || "?"
               )}
-            </div>
+              <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground text-xs font-semibold">
+                {initials || "?"}
+              </AvatarFallback>
+            </Avatar>
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium" title={user?.displayName ?? ""}>
                 {user?.displayName ?? "Signed in"}
@@ -73,7 +72,7 @@ export function NavigatorFooter() {
               </div>
             </div>
             <ChevronsUpDown className="text-muted-foreground size-4 shrink-0" />
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" side="top" className="w-56">
           <DropdownMenuItem

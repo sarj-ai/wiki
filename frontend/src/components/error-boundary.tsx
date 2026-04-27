@@ -2,6 +2,8 @@
 
 import React from "react";
 
+import { Button } from "@/components/ui/button";
+
 interface Props {
   children: React.ReactNode;
   /** When this key changes (e.g. pathname), the error state resets automatically. */
@@ -42,13 +44,13 @@ export class ErrorBoundary extends React.Component<Props, State> {
             <p className="text-muted-foreground text-sm">
               Something went wrong rendering this section.
             </p>
-            <button
-              type="button"
+            <Button
+              variant="link"
+              size="sm"
               onClick={() => { this.setState({ hasError: false }); }}
-              className="text-primary text-sm underline hover:no-underline"
             >
               Try again
-            </button>
+            </Button>
           </div>
         )
       );
