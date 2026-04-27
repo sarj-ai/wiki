@@ -192,8 +192,11 @@ class GoogleAuthService(AuthService):
         if resp.status_code != 200:
             raise AuthFailedError
         data = resp.json()
+        # Normalize at the boundary: ``users.email`` is Postgres
+        # ``citext``, but lowercasing here keeps logs, JWT claims, and
+        # any downstream string-equality comparisons in one casing.
         return _Userinfo(
-            email=data["email"],
+            email=data["email"].lower(),
             google_id=data["id"],
             display_name=data.get("name"),
             avatar_url=data.get("picture"),

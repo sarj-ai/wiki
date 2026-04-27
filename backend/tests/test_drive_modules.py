@@ -1,9 +1,9 @@
 """DriveService + snippet helper tests.
 
 ``GoogleDriveService`` is exercised with a fake ``DriveResource`` stubbed
-in via ``build_drive_client``. The fake records every kwarg the service
-passes so we can assert the q-string, corpora scoping, and pagination
-semantics that matter for correctness.
+in via ``GoogleDriveService.build_drive_client``. The fake records every
+kwarg the service passes so we can assert the q-string, corpora scoping,
+and pagination semantics that matter for correctness.
 
 The pure snippet helpers have no Drive dependency; they're tested with
 plain string inputs.
@@ -16,7 +16,6 @@ from typing import Any
 
 import pytest
 
-from app.drive import service as drive_service_mod
 from app.drive.schemas import MIME_FOLDER
 from app.drive.service import GoogleDriveService
 from app.drive.snippets import extract_snippet
@@ -89,10 +88,14 @@ class _FakeClient:
 
 @pytest.fixture
 def patch_drive_client(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
-    """Return a helper that patches ``build_drive_client`` inside the service module."""
+    """Return a helper that patches ``GoogleDriveService.build_drive_client``."""
 
     def _install(client: _FakeClient) -> None:
-        monkeypatch.setattr(drive_service_mod, "build_drive_client", lambda _u: client)
+        monkeypatch.setattr(
+            GoogleDriveService,
+            "build_drive_client",
+            staticmethod(lambda _u: client),
+        )
 
     return _install
 

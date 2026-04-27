@@ -6,18 +6,6 @@ const STORAGE_KEY = "navigator-sidebar-width";
 const MIN_WIDTH_PX = 224; // 14rem — below this the labels clip too hard
 const MAX_WIDTH_PX = 576; // 36rem — beyond this the viewer gets cramped
 
-// Reads the persisted width on mount and applies it to the shadcn
-// SidebarProvider wrapper (which sets --sidebar-width via inline style).
-// Runs once per session — subsequent drags update the CSS var directly.
-function useRestoreSidebarWidth() {
-  useEffect(() => {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    if (!saved) return;
-    const wrapper = document.querySelector<HTMLElement>('[data-slot="sidebar-wrapper"]');
-    wrapper?.style.setProperty("--sidebar-width", saved);
-  }, []);
-}
-
 // Drag-to-resize with live width updates. A fullscreen invisible
 // overlay is rendered while the drag is active so iframes inside the
 // main content area can't steal pointermove events — without it the
@@ -115,4 +103,16 @@ export function SidebarResizeHandle() {
       )}
     </>
   );
+}
+
+// Reads the persisted width on mount and applies it to the shadcn
+// SidebarProvider wrapper (which sets --sidebar-width via inline style).
+// Runs once per session — subsequent drags update the CSS var directly.
+function useRestoreSidebarWidth() {
+  useEffect(() => {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (!saved) return;
+    const wrapper = document.querySelector<HTMLElement>('[data-slot="sidebar-wrapper"]');
+    wrapper?.style.setProperty("--sidebar-width", saved);
+  }, []);
 }

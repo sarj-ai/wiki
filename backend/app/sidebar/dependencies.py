@@ -1,4 +1,16 @@
-"""FastAPI dependency wiring for ``SidebarCacheService``."""
+"""FastAPI dependency wiring for ``SidebarCacheService``.
+
+Test-isolation note
+-------------------
+The module-level ``SINGLEFLIGHT`` and ``BG_TASKS`` registries imported
+from :mod:`app.sidebar.cache` are process-wide singletons — replacing
+this dependency in a test only swaps the *service*, not the in-flight
+coalescer or the background-task pool. Tests that need a clean slate
+must override **both**: provide a fresh ``SingleflightRegistry`` and a
+fresh ``BackgroundTaskPool`` when constructing the service, otherwise
+state from a prior test (an in-flight refresh, a queued revalidation)
+leaks across cases.
+"""
 
 from __future__ import annotations
 

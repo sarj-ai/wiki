@@ -22,38 +22,6 @@ interface PreferencesDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-function CheckboxRow({
-  id,
-  label,
-  description,
-  checked,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  description?: string;
-  checked: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <label
-      htmlFor={id}
-      className="hover:bg-accent/50 flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-sm"
-    >
-      <Checkbox
-        id={id}
-        checked={checked}
-        onCheckedChange={(next) => { onChange(next === true); }}
-        className="mt-0.5"
-      />
-      <div className="min-w-0 flex-1">
-        <div className="font-medium">{label}</div>
-        {description && <div className="text-muted-foreground text-xs">{description}</div>}
-      </div>
-    </label>
-  );
-}
-
 export function PreferencesDialog({ open, onOpenChange }: PreferencesDialogProps) {
   const drivesQuery = useDrives();
   const prefsQuery = usePreferences();
@@ -135,5 +103,37 @@ export function PreferencesDialog({ open, onOpenChange }: PreferencesDialogProps
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function CheckboxRow({
+  id,
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label
+      htmlFor={id}
+      className="hover:bg-accent/50 flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-sm"
+    >
+      <Checkbox
+        id={id}
+        checked={checked}
+        onCheckedChange={(next) => { onChange(next === true); }}
+        className="mt-0.5"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="font-medium">{label}</div>
+        {description && <div className="text-muted-foreground text-xs">{description}</div>}
+      </div>
+    </label>
   );
 }

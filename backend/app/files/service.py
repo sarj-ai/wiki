@@ -25,10 +25,9 @@ from typing import TYPE_CHECKING, override
 
 from googleapiclient.errors import HttpError
 
-from app.drive.credentials import build_drive_client
 from app.drive.retry import execute_with_retry
 from app.drive.schemas import MIME_FOLDER, NAVIGATOR_SUPPORTED_MIME_TYPES
-from app.drive.service import DriveService
+from app.drive.service import DriveService, GoogleDriveService
 from app.files.errors import (
     CrossDriveMoveNotSupportedError,
     DriveUpstreamError,
@@ -230,7 +229,7 @@ class GoogleFilesService(FilesService):
             raise _drive_upstream(e) from e
 
     def _client(self) -> DriveResource:
-        return build_drive_client(self._user)
+        return GoogleDriveService.build_drive_client(self._user)
 
 
 def _to_response(raw: File) -> FileResponse:

@@ -1,10 +1,10 @@
 """FilesService — error mapping and strict-scope checks.
 
 Exercises ``GoogleFilesService`` directly with a fake ``DriveResource``
-stubbed in via ``build_drive_client`` and an injected fake ``DriveService``
-that returns a canned member-drive list. The service raises typed
-:class:`FilesError` subclasses; HTTP-status mapping happens at the app
-boundary and is exercised in router-level tests.
+stubbed in via ``GoogleDriveService.build_drive_client`` and an injected
+fake ``DriveService`` that returns a canned member-drive list. The
+service raises typed :class:`FilesError` subclasses; HTTP-status mapping
+happens at the app boundary and is exercised in router-level tests.
 """
 
 from __future__ import annotations
@@ -16,8 +16,7 @@ import pytest
 from googleapiclient.errors import HttpError
 
 from app.drive.schemas import DriveNode, DriveSummary, DriveTree, SearchResult, SnippetResult
-from app.drive.service import DriveService
-from app.files import service as files_service
+from app.drive.service import DriveService, GoogleDriveService
 from app.files.errors import (
     DriveUpstreamError,
     FileNotInScopeError,
@@ -80,7 +79,11 @@ def _make_http_error(status_code: int) -> HttpError:
 
 
 def _patch_client(monkeypatch: pytest.MonkeyPatch, client: Any) -> None:
-    monkeypatch.setattr(files_service, "build_drive_client", lambda _u: client)
+    monkeypatch.setattr(
+        GoogleDriveService,
+        "build_drive_client",
+        staticmethod(lambda _u: client),
+    )
 
 
 async def test_create_rejects_unsupported_mime_type() -> None:

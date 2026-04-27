@@ -35,6 +35,20 @@ const ERROR_CONFIG: Record<
   },
 };
 
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="bg-background text-foreground flex min-h-screen flex-col items-center justify-center">
+          <SarjLogo size={120} priority />
+        </div>
+      }
+    >
+      <LoginContent />
+    </Suspense>
+  );
+}
+
 function LoginContent() {
   const searchParams = useSearchParams();
   const errorType = searchParams.get("error");
@@ -96,19 +110,5 @@ function LoginContent() {
         </Button>
       </div>
     </div>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="bg-background text-foreground flex min-h-screen flex-col items-center justify-center">
-          <SarjLogo size={120} priority />
-        </div>
-      }
-    >
-      <LoginContent />
-    </Suspense>
   );
 }

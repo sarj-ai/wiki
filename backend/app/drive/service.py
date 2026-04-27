@@ -8,7 +8,8 @@ boundary because Drive only returns drives the caller is a member of.
 ``DriveService`` is the ABC the rest of the app codes against.
 ``GoogleDriveService`` is the production implementation that calls the
 real Google Drive v3 API; swap it for a fake in tests by subclassing
-``DriveService`` directly, or by patching ``build_drive_client``.
+``DriveService`` directly, or by patching
+``GoogleDriveService.build_drive_client``.
 """
 
 from __future__ import annotations
@@ -17,11 +18,14 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, override
 
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from loguru import logger
 
+from app.auth.encryption import decrypt_token
+from app.config import settings
 from app.drive import drives_cache
-from app.drive.credentials import build_drive_client
 from app.drive.retry import execute_with_retry
 from app.drive.schemas import (
     MIME_FOLDER,
@@ -325,7 +329,43 @@ class GoogleDriveService(DriveService):
         )
 
     def _client(self) -> DriveResource:
-        return build_drive_client(self._user)
+        return self.build_drive_client(self._user)
+
+    @staticmethod
+    def build_drive_client(user: User) -> DriveResource:
+        """Construct an authenticated Drive v3 client for ``user``.
+
+        Public so :class:`~app.files.service.GoogleFilesService` can
+        spin up its own client off the same per-user credentials. The
+        actual credential decryption stays in ``_build_credentials``
+        because no caller outside this class should touch the OAuth
+        secret material directly.
+        """
+        return build(
+            "drive",
+            "v3",
+            credentials=GoogleDriveService._build_credentials(user),
+            static_discovery=True,
+        )
+
+    @staticmethod
+    def _build_credentials(user: User) -> Credentials:
+        if user.encrypted_access_token is None:
+            raise ValueError(f"User {user.id} has no encrypted_access_token")
+        access_token = decrypt_token(user.encrypted_access_token)
+        refresh_token = (
+            decrypt_token(user.encrypted_refresh_token) if user.encrypted_refresh_token else None
+        )
+        # google.oauth2 ships partial typing — mypy strict flags
+        # ``Credentials(...)`` as an untyped call; pyright sees full
+        # types. Narrow ignore for mypy only.
+        return Credentials(  # type: ignore[no-untyped-call]
+            token=access_token,
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",  # noqa: S106 — public OAuth endpoint
+            client_id=settings.GOOGLE_CLIENT_ID,
+            client_secret=settings.GOOGLE_CLIENT_SECRET,
+        )
 
 
 def _build_mime_clause() -> str:
