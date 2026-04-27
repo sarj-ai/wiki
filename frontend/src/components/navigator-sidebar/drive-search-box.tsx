@@ -20,7 +20,9 @@ export function DriveSearchBox() {
     <Button
       variant="outline"
       size="sm"
-      onClick={() => { setOpen(true); }}
+      onClick={() => {
+        setOpen(true);
+      }}
       className="text-muted-foreground hover:bg-accent/40 w-full justify-start text-xs font-normal"
       aria-label="Open search"
     >

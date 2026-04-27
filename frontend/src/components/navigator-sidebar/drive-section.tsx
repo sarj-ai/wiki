@@ -22,11 +22,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useExpandedDrive } from "@/hooks/use-expanded-folders";
 import { useFolderFiles } from "@/hooks/use-navigator-tree";
-import {
-  applyOptimisticOrder,
-  compareNodeOrder,
-  type KindedNode,
-} from "@/lib/navigator-tree";
+import { applyOptimisticOrder, compareNodeOrder, type KindedNode } from "@/lib/navigator-tree";
 import { cn } from "@/lib/utils";
 import { MIME_DOC, MIME_FOLDER } from "@/types/navigator";
 
@@ -101,11 +97,15 @@ export function DriveSection({
           >
             <button
               type="button"
-              onClick={() => { setExpanded(!expanded); }}
+              onClick={() => {
+                setExpanded(!expanded);
+              }}
               className="flex w-full items-center gap-1 pr-7"
               aria-expanded={expanded}
             >
-              <ChevronRight className={cn("size-3 transition-transform", expanded && "rotate-90")} />
+              <ChevronRight
+                className={cn("size-3 transition-transform", expanded && "rotate-90")}
+              />
               <HardDrive className="size-3.5" />
               <span className="truncate">{drive.name}</span>
             </button>
@@ -136,7 +136,9 @@ export function DriveSection({
               <SidebarMenu>
                 {treeQuery.isLoading && (
                   <SidebarMenuItem>
-                    <span className="text-muted-foreground px-2 py-1 text-xs">Loading folders…</span>
+                    <span className="text-muted-foreground px-2 py-1 text-xs">
+                      Loading folders…
+                    </span>
                   </SidebarMenuItem>
                 )}
                 {treeQuery.isError && (
@@ -267,9 +269,7 @@ function buildRootItems({
     node,
   }));
   const rawFiles = rootFiles.filter((n) => n.mimeType !== MIME_FOLDER);
-  const visibleFiles = showNonDocFiles
-    ? rawFiles
-    : rawFiles.filter((n) => n.mimeType === MIME_DOC);
+  const visibleFiles = showNonDocFiles ? rawFiles : rawFiles.filter((n) => n.mimeType === MIME_DOC);
   const files: KindedNode[] = visibleFiles.map((node) => ({ type: "file", node }));
   return [...folders, ...files].sort((a, b) => compareNodeOrder(a, b, sortOrderMap));
 }

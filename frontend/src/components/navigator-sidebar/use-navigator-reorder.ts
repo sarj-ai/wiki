@@ -58,9 +58,7 @@ export interface NavigatorReorder {
   onDragCancel: () => void;
 }
 
-function sortableContainerId(
-  data: Record<string, unknown> | null | undefined,
-): string | null {
+function sortableContainerId(data: Record<string, unknown> | null | undefined): string | null {
   const sortable = data?.sortable as { containerId?: string } | undefined;
   return sortable?.containerId ?? null;
 }
@@ -88,9 +86,7 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
   const qc = useQueryClient();
   const bulkSetSortOrders = useBulkSetSortOrders();
   const moveFile = useMoveFile();
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const [optimisticByContainer, setOptimisticByContainer] = useState<Map<string, string[]>>(
     () => new Map(),
@@ -165,7 +161,7 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
     let intent: DropIntent | null;
     if (sameContainer) {
       const sortableItems =
-        ((active.data.current?.sortable as { items?: string[] } | undefined)?.items) ?? [];
+        (active.data.current?.sortable as { items?: string[] } | undefined)?.items ?? [];
       const oldIdx = sortableItems.indexOf(String(active.id));
       const overIdx = sortableItems.indexOf(String(over.id));
       intent = oldIdx === overIdx ? null : oldIdx < overIdx ? "below" : "above";
@@ -209,9 +205,7 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
     const activeSortable = active.data.current?.sortable as
       | { containerId?: string; items?: string[] }
       | undefined;
-    const overSortable = over.data.current?.sortable as
-      | { containerId?: string }
-      | undefined;
+    const overSortable = over.data.current?.sortable as { containerId?: string } | undefined;
     const activeContainerId = activeSortable?.containerId;
     const overContainerId = overSortable?.containerId;
     if (!activeContainerId || !overContainerId) return;
@@ -337,13 +331,7 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
         // the moved file below any folder in the destination, so
         // "drop above the section" silently lands it below.
         if (positionHint) {
-          const order = buildDestinationOrder(
-            qc,
-            driveId,
-            newParentFolderId,
-            node,
-            positionHint,
-          );
+          const order = buildDestinationOrder(qc, driveId, newParentFolderId, node, positionHint);
           if (order) bulkSetSortOrders.mutate(order);
         }
       })
@@ -430,9 +418,7 @@ function buildDestinationOrder(
   const folders = (tree?.folders ?? []).filter((f) =>
     isAtDriveRoot ? f.parentId === null : f.parentId === newParentFolderId,
   );
-  const filesCache = qc.getQueryData<DriveNode[]>(
-    navigatorKeys.folderFiles(newParentFolderId),
-  );
+  const filesCache = qc.getQueryData<DriveNode[]>(navigatorKeys.folderFiles(newParentFolderId));
   const files = (filesCache ?? []).filter((f) => f.mimeType !== MIME_FOLDER);
 
   // Combine folders + files, drop the moved node if the optimistic

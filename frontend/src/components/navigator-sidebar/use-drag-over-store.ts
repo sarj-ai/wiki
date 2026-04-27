@@ -60,11 +60,7 @@ export const useDragOverStore = create<DragOverState>((set) => ({
       // Avoid re-renders for no-op updates while the cursor is still
       // inside the same row at the same intent. onDragOver fires on
       // every pointer move, including pixel-scale jitter.
-      if (
-        state.overId === id &&
-        state.overContainerId === containerId &&
-        state.intent === intent
-      ) {
+      if (state.overId === id && state.overContainerId === containerId && state.intent === intent) {
         return state;
       }
       return { overId: id, overContainerId: containerId, intent };

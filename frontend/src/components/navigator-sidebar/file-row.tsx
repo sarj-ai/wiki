@@ -135,10 +135,7 @@ export function FileRow({
         and nothing happens.
       */}
       <div
-        className={cn(
-          "absolute top-1/2 z-10 -translate-y-1/2",
-          !isDoc && "pointer-events-none",
-        )}
+        className={cn("absolute top-1/2 z-10 -translate-y-1/2", !isDoc && "pointer-events-none")}
         style={{ left: iconLeft }}
       >
         {iconElement}

@@ -22,7 +22,9 @@ const useCommandPaletteStore = create<CommandPaletteState>((set, get) => ({
     if (get().open === next) return;
     set({ open: next });
   },
-  toggle: () => { set({ open: !get().open }); },
+  toggle: () => {
+    set({ open: !get().open });
+  },
 }));
 
 export function useCommandPaletteState(): {
@@ -42,7 +44,13 @@ export function useCommandPaletteState(): {
  * once it's rendered into the app layout.
  */
 export function useCommandPaletteHotkey(): void {
-  useHotkeys("mod+k", () => { useCommandPaletteStore.getState().toggle(); }, {
-    preventDefault: true,
-  });
+  useHotkeys(
+    "mod+k",
+    () => {
+      useCommandPaletteStore.getState().toggle();
+    },
+    {
+      preventDefault: true,
+    },
+  );
 }

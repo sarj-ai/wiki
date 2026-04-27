@@ -112,7 +112,9 @@ export function ItemMenu({
           <Button
             variant="ghost"
             size="icon-xs"
-            onClick={(e) => { e.stopPropagation(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
             className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground size-5 shrink-0 rounded"
             aria-label={`Actions for ${currentName}`}
           >
@@ -121,14 +123,18 @@ export function ItemMenu({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-40">
           <DropdownMenuItem
-            onClick={() => { setRenaming(true); }}
+            onClick={() => {
+              setRenaming(true);
+            }}
             className="flex items-center gap-2 text-sm"
           >
             <Pencil className="size-4" />
             Rename
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => { setMovingFile(true); }}
+            onClick={() => {
+              setMovingFile(true);
+            }}
             className="flex items-center gap-2 text-sm"
           >
             <FolderInput className="size-4" />
@@ -136,7 +142,9 @@ export function ItemMenu({
           </DropdownMenuItem>
           {!isFolder && (
             <DropdownMenuItem
-              onClick={() => { setDuplicating(true); }}
+              onClick={() => {
+                setDuplicating(true);
+              }}
               className="flex items-center gap-2 text-sm"
             >
               <Copy className="size-4" />
@@ -144,7 +152,9 @@ export function ItemMenu({
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
-            onClick={() => { setConfirmingDelete(true); }}
+            onClick={() => {
+              setConfirmingDelete(true);
+            }}
             className="text-destructive focus:text-destructive flex items-center gap-2 text-sm"
           >
             <Trash2 className="size-4" />

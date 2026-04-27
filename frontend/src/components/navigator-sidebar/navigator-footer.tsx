@@ -29,7 +29,9 @@ export function NavigatorFooter() {
   const [prefsOpen, setPrefsOpen] = useState(false);
 
   const isDark = mounted && resolvedTheme === "dark";
-  const toggleTheme = () => { setTheme(isDark ? "light" : "dark"); };
+  const toggleTheme = () => {
+    setTheme(isDark ? "light" : "dark");
+  };
 
   const initials = (user?.displayName ?? user?.email ?? "?")
     .split(/[\s@.]+/)

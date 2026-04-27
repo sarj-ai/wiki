@@ -304,9 +304,7 @@ class GoogleDriveService(DriveService):
         # a byte size, so we can't pre-filter. The export itself is the
         # backstop — we truncate before decoding if the response is huge.
         try:
-            raw = execute_with_retry(
-                client.files().export(fileId=file_id, mimeType="text/plain")
-            )
+            raw = execute_with_retry(client.files().export(fileId=file_id, mimeType="text/plain"))
         except HttpError:
             logger.exception("snippet export failed file={}", file_id)
             return SnippetResult(file_id=file_id, mime_type=mime_type, snippet=None)

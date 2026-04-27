@@ -88,7 +88,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     window.addEventListener("focus", onFocus);
-    return () => { window.removeEventListener("focus", onFocus); };
+    return () => {
+      window.removeEventListener("focus", onFocus);
+    };
   }, [checkAuth]);
 
   const logout = useCallback(async () => {

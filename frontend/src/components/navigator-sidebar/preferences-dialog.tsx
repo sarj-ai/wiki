@@ -63,7 +63,9 @@ export function PreferencesDialog({ open, onOpenChange }: PreferencesDialogProps
               label="Show non-Doc files"
               description="Include Sheets, Slides, Forms, Drawings, PDFs and images in the sidebar."
               checked={showNonDocFiles}
-              onChange={(next) => { void updatePrefs({ showNonDocFiles: next }); }}
+              onChange={(next) => {
+                void updatePrefs({ showNonDocFiles: next });
+              }}
             />
           </section>
 
@@ -127,7 +129,9 @@ function CheckboxRow({
       <Checkbox
         id={id}
         checked={checked}
-        onCheckedChange={(next) => { onChange(next === true); }}
+        onCheckedChange={(next) => {
+          onChange(next === true);
+        }}
         className="mt-0.5"
       />
       <div className="min-w-0 flex-1">

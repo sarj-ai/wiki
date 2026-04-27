@@ -47,7 +47,9 @@ export class ErrorBoundary extends React.Component<Props, State> {
             <Button
               variant="link"
               size="sm"
-              onClick={() => { this.setState({ hasError: false }); }}
+              onClick={() => {
+                this.setState({ hasError: false });
+              }}
             >
               Try again
             </Button>

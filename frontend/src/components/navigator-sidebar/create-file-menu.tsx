@@ -93,7 +93,9 @@ export function CreateFileMenu({ parentFolderId, compact = true }: CreateFileMen
           <Button
             variant="ghost"
             size="icon-xs"
-            onClick={(e) => { e.stopPropagation(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
             className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground size-5 shrink-0 rounded"
             aria-label="Create item"
           >
@@ -104,7 +106,9 @@ export function CreateFileMenu({ parentFolderId, compact = true }: CreateFileMen
           {CREATE_TYPES.map((type) => (
             <DropdownMenuItem
               key={type.mimeType}
-              onClick={() => { pickType(type); }}
+              onClick={() => {
+                pickType(type);
+              }}
               className="flex items-center gap-2 text-sm"
             >
               {renderMimeIcon(type.mimeType, "size-4")}

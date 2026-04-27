@@ -98,7 +98,9 @@ export function NamePromptDialog({
               ref={inputRef}
               id="name-prompt-input"
               value={value}
-              onChange={(e) => { setValue(e.target.value); }}
+              onChange={(e) => {
+                setValue(e.target.value);
+              }}
               disabled={submitting}
             />
           </div>
@@ -106,7 +108,9 @@ export function NamePromptDialog({
             <Button
               type="button"
               variant="outline"
-              onClick={() => { onOpenChange(false); }}
+              onClick={() => {
+                onOpenChange(false);
+              }}
               disabled={submitting}
             >
               Cancel

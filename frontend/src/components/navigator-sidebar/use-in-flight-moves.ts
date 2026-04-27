@@ -23,20 +23,22 @@ interface InFlightMovesState {
 
 export const useInFlightMovesStore = create<InFlightMovesState>((set) => ({
   ids: new Set(),
-  start: (fileId) =>
-    { set((state) => {
+  start: (fileId) => {
+    set((state) => {
       if (state.ids.has(fileId)) return state;
       const ids = new Set(state.ids);
       ids.add(fileId);
       return { ids };
-    }); },
-  end: (fileId) =>
-    { set((state) => {
+    });
+  },
+  end: (fileId) => {
+    set((state) => {
       if (!state.ids.has(fileId)) return state;
       const ids = new Set(state.ids);
       ids.delete(fileId);
       return { ids };
-    }); },
+    });
+  },
 }));
 
 /**

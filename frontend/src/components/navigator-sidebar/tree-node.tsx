@@ -12,11 +12,7 @@ import { useExpandedFolder } from "@/hooks/use-expanded-folders";
 import { useSetFolderIcon } from "@/hooks/use-navigator-mutations";
 import { useFolderFiles } from "@/hooks/use-navigator-tree";
 import { renderMimeIcon } from "@/lib/file-icons";
-import {
-  applyOptimisticOrder,
-  compareNodeOrder,
-  type KindedNode,
-} from "@/lib/navigator-tree";
+import { applyOptimisticOrder, compareNodeOrder, type KindedNode } from "@/lib/navigator-tree";
 import { cn } from "@/lib/utils";
 import { MIME_DOC, MIME_FOLDER } from "@/types/navigator";
 
@@ -95,7 +91,9 @@ export function TreeNode({ node, parentFolderId, depth }: TreeNodeProps) {
     : lazyOnlyFiles.filter((n) => n.mimeType === MIME_DOC);
 
   const childItemsRaw: KindedNode[] = [
-    ...(ctx.childrenByParent.get(node.id) ?? []).map((n): KindedNode => ({ type: "folder", node: n })),
+    ...(ctx.childrenByParent.get(node.id) ?? []).map(
+      (n): KindedNode => ({ type: "folder", node: n }),
+    ),
     ...filteredFiles.map((n): KindedNode => ({ type: "file", node: n })),
   ];
 
@@ -152,7 +150,9 @@ export function TreeNode({ node, parentFolderId, depth }: TreeNodeProps) {
       */}
       <div className="relative">
         <SidebarMenuButton
-          onClick={() => { setExpanded(!expanded); }}
+          onClick={() => {
+            setExpanded(!expanded);
+          }}
           className={cn(
             "pr-14 transition-[background-color,box-shadow] duration-150",
             // Tint + ring while a drop on this row would land INSIDE

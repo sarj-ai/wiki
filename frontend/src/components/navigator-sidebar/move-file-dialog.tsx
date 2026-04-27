@@ -53,15 +53,14 @@ function FolderRow({
 
   return (
     <>
-      <div
-        className="flex items-center gap-1"
-        style={{ paddingLeft: `${depth * 12 + 8}px` }}
-      >
+      <div className="flex items-center gap-1" style={{ paddingLeft: `${depth * 12 + 8}px` }}>
         <Button
           type="button"
           variant="ghost"
           size="icon-xs"
-          onClick={() => { setExpanded((v) => !v); }}
+          onClick={() => {
+            setExpanded((v) => !v);
+          }}
           className="hover:bg-muted size-4 shrink-0 rounded"
           aria-label={expanded ? "Collapse" : "Expand"}
         >
@@ -74,7 +73,9 @@ function FolderRow({
           variant="ghost"
           size="sm"
           disabled={isDisabled}
-          onClick={() => { onSelect(folder.id); }}
+          onClick={() => {
+            onSelect(folder.id);
+          }}
           className={cn(
             "h-7 flex-1 justify-start gap-1 px-2 font-normal",
             selectedId === folder.id && "bg-accent",
@@ -141,7 +142,9 @@ function DriveRow({ driveId, driveName, selectedId, onSelect, disabledId }: Driv
           type="button"
           variant="ghost"
           size="icon-xs"
-          onClick={() => { setExpanded((v) => !v); }}
+          onClick={() => {
+            setExpanded((v) => !v);
+          }}
           className="hover:bg-muted size-4 shrink-0 rounded"
           aria-label={expanded ? "Collapse" : "Expand"}
         >
@@ -152,7 +155,9 @@ function DriveRow({ driveId, driveName, selectedId, onSelect, disabledId }: Driv
           variant="ghost"
           size="sm"
           disabled={isDriveDisabled}
-          onClick={() => { onSelect(driveId); }}
+          onClick={() => {
+            onSelect(driveId);
+          }}
           className={cn(
             "h-7 flex-1 justify-start gap-1 px-2",
             selectedId === driveId && !isDriveDisabled && "bg-accent",
@@ -254,12 +259,19 @@ export function MoveFileDialog({
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => { onOpenChange(false); }}
+            onClick={() => {
+              onOpenChange(false);
+            }}
             disabled={moveFile.isPending}
           >
             Cancel
           </Button>
-          <Button onClick={() => { void handleConfirm(); }} disabled={!selectedId || moveFile.isPending}>
+          <Button
+            onClick={() => {
+              void handleConfirm();
+            }}
+            disabled={!selectedId || moveFile.isPending}
+          >
             {moveFile.isPending ? (
               <>
                 <Loader2 className="size-4 animate-spin" />

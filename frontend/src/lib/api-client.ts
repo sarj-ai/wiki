@@ -59,11 +59,7 @@ function parseJsonCamelized(text: string): unknown {
   return parsed;
 }
 
-async function snakecaseJsonBody({
-  request,
-}: {
-  request: Request;
-}): Promise<Request | undefined> {
+async function snakecaseJsonBody({ request }: { request: Request }): Promise<Request | undefined> {
   if (!request.body) return undefined;
   const contentType = request.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) return undefined;

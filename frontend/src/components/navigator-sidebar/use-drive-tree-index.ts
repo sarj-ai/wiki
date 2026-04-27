@@ -37,15 +37,30 @@ export function useDriveTreeIndex(
     [treeQuery.data],
   );
   const iconOverrides = useMemo(
-    () => mapByKey(folderIcons, (i) => i.folderDriveId, (i) => i.icon),
+    () =>
+      mapByKey(
+        folderIcons,
+        (i) => i.folderDriveId,
+        (i) => i.icon,
+      ),
     [folderIcons],
   );
   const docIconOverrides = useMemo(
-    () => mapByKey<DocIcon, string | null>(docIconsQuery.data ?? [], (d) => d.driveId, (d) => d.icon),
+    () =>
+      mapByKey<DocIcon, string | null>(
+        docIconsQuery.data ?? [],
+        (d) => d.driveId,
+        (d) => d.icon,
+      ),
     [docIconsQuery.data],
   );
   const sortOrderMap = useMemo(
-    () => mapByKey(sortOrders, (s) => s.driveId, (s) => s.sortOrder),
+    () =>
+      mapByKey(
+        sortOrders,
+        (s) => s.driveId,
+        (s) => s.sortOrder,
+      ),
     [sortOrders],
   );
 

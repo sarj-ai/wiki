@@ -80,7 +80,9 @@ export function EmojiPickerPopover({ value, onChange, children }: EmojiPickerPop
         align="start"
         sideOffset={8}
         className="w-auto border-0 bg-transparent p-0 shadow-none"
-        onOpenAutoFocus={(e) => { e.preventDefault(); }}
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+        }}
       >
         {/* emoji-mart provides its own background + shadow — wrapping
             it in a transparent PopoverContent avoids a double-card

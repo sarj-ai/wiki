@@ -37,10 +37,7 @@ const eslintConfig = defineConfig([
         },
       ],
       "@typescript-eslint/no-explicit-any": "error",
-      "@typescript-eslint/consistent-type-imports": [
-        "error",
-        { fixStyle: "inline-type-imports" },
-      ],
+      "@typescript-eslint/consistent-type-imports": ["error", { fixStyle: "inline-type-imports" }],
       "@typescript-eslint/switch-exhaustiveness-check": "error",
       // strict-type-checked sets allowNumber:false, which fires on every
       // dimension/percent we interpolate into a className or inline style.
@@ -104,10 +101,7 @@ const eslintConfig = defineConfig([
   {
     plugins: { perfectionist },
     rules: {
-      "perfectionist/sort-imports": [
-        "error",
-        { type: "natural", order: "asc" },
-      ],
+      "perfectionist/sort-imports": ["error", { type: "natural", order: "asc" }],
     },
   },
   // Test-file-only configs.

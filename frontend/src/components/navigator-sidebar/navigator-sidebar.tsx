@@ -70,15 +70,17 @@ export function NavigatorSidebar() {
     // FileRow tagged with this id is already in the DOM by then.
     const targetId = activeDriveId;
     const handle = requestAnimationFrame(() => {
-      const el = document.querySelector<HTMLElement>(
-        `[data-file-id="${CSS.escape(targetId)}"]`,
-      );
+      const el = document.querySelector<HTMLElement>(`[data-file-id="${CSS.escape(targetId)}"]`);
       if (!el) return;
       el.scrollIntoView({ block: "nearest" });
       el.classList.add("animate-reveal-pulse");
-      window.setTimeout(() => { el.classList.remove("animate-reveal-pulse"); }, 1200);
+      window.setTimeout(() => {
+        el.classList.remove("animate-reveal-pulse");
+      }, 1200);
     });
-    return () => { cancelAnimationFrame(handle); };
+    return () => {
+      cancelAnimationFrame(handle);
+    };
   }, [activeDriveId, breadcrumb]);
 
   return (

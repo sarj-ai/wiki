@@ -159,7 +159,12 @@ function PreviewPanel({
       </div>
 
       <div className="mt-4 flex justify-end">
-        <Button size="sm" onClick={() => { onOpen(result); }}>
+        <Button
+          size="sm"
+          onClick={() => {
+            onOpen(result);
+          }}
+        >
           {isForm ? (
             <>
               <ExternalLink className="size-4" />
@@ -290,7 +295,9 @@ export function CommandPalette() {
           <input
             ref={inputRef}
             value={query}
-            onChange={(e) => { setQuery(e.target.value); }}
+            onChange={(e) => {
+              setQuery(e.target.value);
+            }}
             onKeyDown={handleKeyDown}
             placeholder="Search Drive…"
             className="placeholder:text-muted-foreground/70 flex-1 bg-transparent text-base leading-none outline-none"
@@ -300,7 +307,9 @@ export function CommandPalette() {
             <Button
               variant="ghost"
               size="icon-sm"
-              onClick={() => { setQuery(""); }}
+              onClick={() => {
+                setQuery("");
+              }}
               className="text-muted-foreground hover:text-foreground size-7 shrink-0"
               aria-label="Clear search"
             >
@@ -331,7 +340,9 @@ export function CommandPalette() {
                   result={result}
                   driveName={result.driveName}
                   selected={index === selectedIndex}
-                  onSelect={() => { setSelectedResultId(result.id); }}
+                  onSelect={() => {
+                    setSelectedResultId(result.id);
+                  }}
                   rowRef={(el) => {
                     if (el) rowRefs.current.set(result.id, el);
                     else rowRefs.current.delete(result.id);
