@@ -10,7 +10,7 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { DriveNode } from "@/types/navigator";
@@ -94,6 +94,14 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
     () => new Map(),
   );
   const [activeNode, setActiveNode] = useState<DriveNode | null>(null);
+  // Pointer Y at drag start, captured from the activator event. Used
+  // by ``computeDropIntent`` together with ``event.delta.y`` to
+  // recover the live cursor Y in onDragOver — the dragged element's
+  // translated rect's center is *only* equal to the cursor when the
+  // user grabbed at the exact middle of the row, which is rare. The
+  // delta-from-start path is accurate to within a pixel regardless of
+  // grab point.
+  const initialPointerY = useRef<number | null>(null);
 
   // Looks up a dragged row's DriveNode across every cache the sidebar
   // populates: the drive tree (for folders) and every folder-files
@@ -117,6 +125,7 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
 
   const onDragStart = (event: DragStartEvent) => {
     setActiveNode(findNodeById(String(event.active.id)));
+    initialPointerY.current = pointerYFromEvent(event.activatorEvent);
     useDragOverStore.getState().setActive({
       id: String(event.active.id),
       containerId: sortableContainerId(event.active.data.current),
@@ -124,12 +133,14 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
   };
 
   const onDragOver = (event: DragOverEvent) => {
-    const { over, active } = event;
+    const { over } = event;
     if (!over) {
       useDragOverStore.getState().setOver({ id: null, containerId: null, intent: null });
       return;
     }
-    const intent = computeDropIntent(active, over, isFolderTarget(over.data.current));
+    const startY = initialPointerY.current;
+    const cursorY = startY === null ? null : startY + event.delta.y;
+    const intent = computeDropIntent(cursorY, over, isFolderTarget(over.data.current));
     useDragOverStore.getState().setOver({
       id: String(over.id),
       containerId: sortableContainerId(over.data.current),
@@ -139,6 +150,7 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
 
   const onDragCancel = () => {
     setActiveNode(null);
+    initialPointerY.current = null;
     useDragOverStore.getState().reset();
   };
 
@@ -146,6 +158,7 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
     const node = activeNode;
     const intent = useDragOverStore.getState().intent;
     setActiveNode(null);
+    initialPointerY.current = null;
     useDragOverStore.getState().reset();
 
     const { active, over } = event;
@@ -181,11 +194,17 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
       return;
     }
 
-    // Same container: reorder above/below the over row.
+    // Same container: reorder above/below the over row. arrayMove's
+    // signature is "place dragged AT this index in the result", so we
+    // adjust by +1 for "below" intent and account for the dragged
+    // item being removed from earlier in the array (which shifts the
+    // over row's index down by 1).
     const items = activeSortable.items ?? [];
     const oldIndex = items.indexOf(String(active.id));
-    const newIndex = items.indexOf(String(over.id));
-    if (oldIndex < 0 || newIndex < 0) return;
+    const overIndex = items.indexOf(String(over.id));
+    if (oldIndex < 0 || overIndex < 0) return;
+    const newIndex = resolveReorderIndex(oldIndex, overIndex, intent);
+    if (newIndex === oldIndex) return;
     const reordered = arrayMove(items, oldIndex, newIndex);
 
     setOptimisticByContainer((prev) => {
@@ -263,23 +282,63 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
 /**
  * Project the cursor's Y position on the over row's bounding box
  * into a drop intent. Folder rows get a middle "into" band; non-
- * folder rows have no into option and split in half. ``active``'s
- * translated rect is the closest signal to "where the cursor is"
- * dnd-kit exposes through the over event.
+ * folder rows have no into option and split in half.
+ *
+ * ``cursorY`` is computed in the caller from the activator pointer
+ * Y plus the cumulative drag delta — that's accurate to a pixel
+ * regardless of where on the row the user grabbed. Falling back to
+ * "into"/"below" only when the activator wasn't a pointer event
+ * (keyboard sensor, etc.).
  */
 function computeDropIntent(
-  active: { rect: { current: { translated: { top: number; height: number } | null } } },
+  cursorY: number | null,
   over: { rect: { top: number; height: number } },
   overIsFolder: boolean,
 ): DropIntent {
-  const activeRect = active.rect.current.translated;
-  if (!activeRect) return overIsFolder ? "into" : "below";
-  const activeCenterY = activeRect.top + activeRect.height / 2;
-  const relativeY = (activeCenterY - over.rect.top) / over.rect.height;
+  if (cursorY === null) return overIsFolder ? "into" : "below";
+  const relativeY = (cursorY - over.rect.top) / over.rect.height;
   if (overIsFolder) {
     if (relativeY < FOLDER_ABOVE_BAND) return "above";
     if (relativeY > FOLDER_BELOW_BAND) return "below";
     return "into";
   }
   return relativeY < 0.5 ? "above" : "below";
+}
+
+/**
+ * Pull a clientY out of dnd-kit's activator event. Pointer/Mouse/Touch
+ * events all expose clientY; the keyboard sensor's activator is a
+ * KeyboardEvent which doesn't, in which case we return null and
+ * computeDropIntent falls back to a sensible default.
+ */
+function pointerYFromEvent(event: Event): number | null {
+  if (event instanceof PointerEvent || event instanceof MouseEvent) {
+    return event.clientY;
+  }
+  if (event instanceof TouchEvent) {
+    const touch = event.touches[0] ?? event.changedTouches[0];
+    return touch?.clientY ?? null;
+  }
+  return null;
+}
+
+/**
+ * Compute the destination index for a same-container reorder. The
+ * over row's "current" index shifts by 1 once the dragged item is
+ * removed from earlier in the array, and "below" intent adds another
+ * 1 to land after the over row. Returns ``oldIndex`` when the result
+ * would be a no-op so the caller can short-circuit the mutation.
+ */
+function resolveReorderIndex(
+  oldIndex: number,
+  overIndex: number,
+  intent: DropIntent | null,
+): number {
+  // The dragged row's removal shifts every later index down by 1;
+  // adjust the over row's index so we treat it as a position in the
+  // post-removal array.
+  const overInRemoved = oldIndex < overIndex ? overIndex - 1 : overIndex;
+  if (intent === "below") return overInRemoved + 1;
+  // Default and "above": land before the over row.
+  return overInRemoved;
 }
