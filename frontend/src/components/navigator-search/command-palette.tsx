@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import type { DriveSearchResult } from "@/types/navigator";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCommandPaletteHotkey, useCommandPaletteState } from "@/hooks/use-command-palette";
 import { useDriveSearch, useDriveSearchSnippet } from "@/hooks/use-drive-search";
@@ -273,6 +273,12 @@ export function CommandPalette() {
           requestAnimationFrame(() => inputRef.current?.focus());
         }}
       >
+        {/*
+          Radix requires a DialogTitle for screen-reader users. The
+          palette's visual entry point is the search input, so the
+          title is hidden visually while still being announced.
+        */}
+        <DialogTitle className="sr-only">Search Drive</DialogTitle>
         <div className="border-border flex items-center gap-2.5 border-b px-5 py-4">
           <Search className="text-muted-foreground size-5 shrink-0" />
           {/*

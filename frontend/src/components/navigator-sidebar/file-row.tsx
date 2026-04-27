@@ -127,7 +127,20 @@ export function FileRow({
           )}
         </Link>
       </SidebarMenuButton>
-      <div className="absolute top-1/2 z-10 -translate-y-1/2" style={{ left: iconLeft }}>
+      {/*
+        Doc icons open the EmojiPickerPopover; non-Doc icons are
+        decorative — ``pointer-events-none`` lets clicks fall through
+        to the Link underneath so tapping the icon also opens the
+        file. Without this, the absolute overlay swallows the click
+        and nothing happens.
+      */}
+      <div
+        className={cn(
+          "absolute top-1/2 z-10 -translate-y-1/2",
+          !isDoc && "pointer-events-none",
+        )}
+        style={{ left: iconLeft }}
+      >
         {iconElement}
       </div>
       <div className="absolute top-1/2 right-1 flex -translate-y-1/2 items-center opacity-0 group-hover/navitem:opacity-100 focus-within:opacity-100">

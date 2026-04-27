@@ -81,17 +81,19 @@ export function useMoveFile() {
       fileId,
       newParentFolderId,
       sourceDriveId,
+      sourceParentFolderId,
     }: {
       fileId: string;
       newParentFolderId: string;
-      // Caller passes the source drive so onSuccess could invalidate
-      // both source and destination tree caches if needed. Currently
-      // unused — see the comment in onSuccess for why we skip the
-      // tree invalidation entirely.
+      // Source coordinates so onSuccess can splice the row out of the
+      // old parent's cached file list. Both can be null for a root-of-
+      // a-drive item moved into a folder of the same drive, hence the
+      // explicit ``| null``.
       sourceDriveId: string | null;
+      sourceParentFolderId: string | null;
     }) => {
       const result = await navigatorApi.moveFile(fileId, newParentFolderId);
-      return { result, sourceDriveId };
+      return { result, sourceDriveId, sourceParentFolderId };
     },
     onMutate: ({ fileId }) => {
       // Optimistically drop the sort_order entry. Without this, the
@@ -111,20 +113,25 @@ export function useMoveFile() {
         qc.setQueryData(navigatorKeys.sortOrders, context.previousSortOrders);
       }
     },
-    onSuccess: ({ result }) => {
-      // DO NOT invalidate drive-tree or folder-files here. Drive's
-      // listing index lags ``files.update`` (move) by a few seconds,
-      // so an immediate refetch returns listings that still show the
-      // file in its old parent — overwriting the optimistic insert
-      // and making the just-moved row disappear from the UI for ~5s
-      // until the user refreshes. Same rationale as ``useCreateFile``
-      // and ``useCopyFile``. The optimistic update via
-      // ``optimisticMoveFile`` is the source of truth until React
-      // Query's stale-while-revalidate cycle quietly resyncs in the
-      // background once the index has caught up.
+    onSuccess: ({ result, sourceDriveId, sourceParentFolderId }) => {
+      // Splice the row out of the source caches and into the
+      // destination cache directly via ``setQueryData``. We
+      // deliberately don't ``invalidateQueries`` for the folder/tree
+      // listings: Drive's listing index lags ``files.update`` by a
+      // few seconds, so a refetch would return the file still in its
+      // old parent and overwrite the splice — making the just-moved
+      // row vanish from the UI for ~5s until the user refreshes.
+      // Same rationale as ``useCreateFile`` / ``useCopyFile``.
       //
-      // File metadata (the breadcrumb endpoint) and sortOrders
-      // aren't subject to the same lag — they go through our own
+      // For drag-drop, ``optimisticMoveFile`` already ran in the
+      // reorder hook before mutate; these helpers' duplicate guards
+      // make the second pass a no-op. For the move-dialog path
+      // there's no pre-mutate optimism, so this is the only thing
+      // that keeps the sidebar in step with Drive.
+      removeFileFromCaches(qc, result.id, sourceParentFolderId, sourceDriveId);
+      injectNewFileIntoCaches(qc, result);
+      // File metadata (breadcrumb endpoint) and sortOrders aren't
+      // subject to Drive's listing lag — they go through our own
       // services, not Drive's listing — so invalidating those is
       // safe and keeps the moved file's detail page in sync.
       void qc.invalidateQueries({ queryKey: ["navigator", "file", result.id] });

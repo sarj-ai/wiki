@@ -327,6 +327,7 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
         fileId: node.id,
         newParentFolderId,
         sourceDriveId: driveId,
+        sourceParentFolderId: node.parentId,
       })
       .then(() => {
         toast.success(`Moved “${node.name}” to “${destinationName}”`);

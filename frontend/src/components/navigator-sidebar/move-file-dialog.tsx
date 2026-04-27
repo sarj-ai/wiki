@@ -205,6 +205,7 @@ export function MoveFileDialog({
         fileId,
         newParentFolderId: selectedId,
         sourceDriveId: currentDriveId,
+        sourceParentFolderId: currentParentFolderId,
       });
       toast.success(`Moved "${fileName}"`);
       onOpenChange(false);
