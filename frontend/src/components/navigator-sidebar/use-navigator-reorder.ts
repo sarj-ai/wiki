@@ -15,6 +15,7 @@ import { toast } from "sonner";
 
 import type { DriveNode } from "@/types/navigator";
 
+import { expandPath } from "@/hooks/use-expanded-folders";
 import { useBulkSetSortOrders, useMoveFile } from "@/hooks/use-navigator-mutations";
 import { navigatorKeys } from "@/hooks/use-navigator-tree";
 import { optimisticMoveFile } from "@/lib/navigator-cache";
@@ -252,11 +253,25 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
       { parentFolderId: node.parentId, driveId },
     );
 
+    // Auto-expand the destination folder so the user actually SEES
+    // the dropped row land there — without this, dropping into a
+    // collapsed folder makes the file disappear from the source with
+    // no visible landing. Drive root is always visible so we skip it.
+    // The drive id is also pinned open in case it was collapsed.
+    if (newParentFolderId !== driveId) {
+      expandPath(driveId, [newParentFolderId]);
+    }
+
+    const destinationName = lookupFolderName(qc, driveId, newParentFolderId);
+
     void moveFile
       .mutateAsync({
         fileId: node.id,
         newParentFolderId,
         sourceDriveId: driveId,
+      })
+      .then(() => {
+        toast.success(`Moved “${node.name}” to “${destinationName}”`);
       })
       .catch((err: unknown) => {
         rollback();
@@ -341,4 +356,22 @@ function resolveReorderIndex(
   if (intent === "below") return overInRemoved + 1;
   // Default and "above": land before the over row.
   return overInRemoved;
+}
+
+/**
+ * Look up a folder's display name from the cached drive tree so the
+ * post-move toast can name the destination instead of falling back to
+ * "folder". The drive tree is always cached for any expanded drive
+ * (which the destination must be, since the user just dropped on a
+ * row inside it), so this lookup is essentially free.
+ */
+function lookupFolderName(
+  qc: ReturnType<typeof useQueryClient>,
+  driveId: string,
+  folderId: string,
+): string {
+  const tree = qc.getQueryData<{ folders: { id: string; name: string }[] }>(
+    navigatorKeys.driveTree(driveId),
+  );
+  return tree?.folders.find((f) => f.id === folderId)?.name ?? "folder";
 }
