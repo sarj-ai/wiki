@@ -8,6 +8,24 @@ import { navigatorKeys } from "@/hooks/use-navigator-tree";
 import { navigatorApi, type CreateFileInput, type PreferencesInput } from "@/lib/navigator-api";
 import { injectNewFileIntoCaches, removeFileFromCaches } from "@/lib/navigator-cache";
 
+// Drop the moved file's sort_order entry from the local cache. The
+// backend does the same when ``move_file`` sees parent_folder_id
+// change; doing it locally on onMutate avoids a transitional render
+// where the moved row appears at its OLD sort position in the new
+// destination before the server-side clear lands.
+function dropSortOrderLocally(
+  qc: ReturnType<typeof useQueryClient>,
+  fileId: string,
+): SortOrder[] | undefined {
+  const previous = qc.getQueryData<SortOrder[]>(navigatorKeys.sortOrders);
+  if (!previous) return undefined;
+  qc.setQueryData<SortOrder[]>(
+    navigatorKeys.sortOrders,
+    previous.filter((s) => s.driveId !== fileId),
+  );
+  return previous;
+}
+
 // Writes invalidate the drive-tree cache for whichever drive the
 // affected file belongs to (or both source and destination on a
 // cross-drive move). The navigator-api backend already drops its own
@@ -74,13 +92,31 @@ export function useMoveFile() {
       const result = await navigatorApi.moveFile(fileId, newParentFolderId);
       return { result, sourceDriveId };
     },
+    onMutate: ({ fileId }) => {
+      // Optimistically drop the sort_order entry. Without this, the
+      // moved row keeps its OLD-parent sort_order locally until the
+      // post-success sortOrders invalidate refetches — which produces
+      // a visible transition where the row first appears at its
+      // stale sort position in the new destination, then snaps to
+      // its real alpha position. Backend does the same clear on
+      // commit; this just keeps the local cache in step.
+      const previousSortOrders = dropSortOrderLocally(qc, fileId);
+      return { previousSortOrders };
+    },
+    onError: (_err, _vars, context) => {
+      // Restore on rollback so a failed move doesn't leave the user
+      // missing a sort_order entry they had set before.
+      if (context?.previousSortOrders) {
+        qc.setQueryData(navigatorKeys.sortOrders, context.previousSortOrders);
+      }
+    },
     onSuccess: ({ result, sourceDriveId }) => {
       invalidate([sourceDriveId, result.driveId]);
       void qc.invalidateQueries({ queryKey: ["navigator", "file", result.id] });
-      // The backend clears the moved file's sort_order entry when its
-      // parent changes — without this invalidation, the local cache
-      // still carries the stale entry and ``compareNodeOrder`` keeps
-      // sorting the moved row to the top of the destination.
+      // Backend already cleared this entry server-side; the
+      // invalidate ensures the next refetch returns the cleaned
+      // canonical list rather than serving from any tab that's still
+      // holding the pre-clear shape in memory.
       void qc.invalidateQueries({ queryKey: navigatorKeys.sortOrders });
     },
   });

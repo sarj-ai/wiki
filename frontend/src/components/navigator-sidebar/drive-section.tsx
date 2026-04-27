@@ -1,6 +1,6 @@
 "use client";
 
-import { DndContext, DragOverlay } from "@dnd-kit/core";
+import { closestCenter, DndContext, DragOverlay } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ChevronRight, HardDrive } from "lucide-react";
 
@@ -109,6 +109,15 @@ export function DriveSection({
         {expanded && (
           <DndContext
             sensors={reorder.sensors}
+            // closestCenter ensures the cursor always picks the
+            // nearest sortable, even when the cursor sits in empty
+            // space below the last row. dnd-kit's default
+            // rectIntersection requires the cursor to overlap a
+            // droppable's rect — so dragging below the last item in
+            // a SortableContext returns no over and the drop
+            // silently does nothing. With closestCenter, the bottom
+            // of the list is always reachable.
+            collisionDetection={closestCenter}
             onDragStart={reorder.onDragStart}
             onDragOver={reorder.onDragOver}
             onDragEnd={reorder.onDragEnd}
