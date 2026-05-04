@@ -6,6 +6,7 @@ import {
   FileText,
   Folder,
   Image as LucideImage,
+  Link2,
   Palette,
   Presentation,
   Table,
@@ -18,6 +19,7 @@ import {
   MIME_FORM,
   MIME_PDF,
   MIME_SHEET,
+  MIME_SHORTCUT,
   MIME_SLIDE,
 } from "@/types/navigator";
 
@@ -55,6 +57,33 @@ export function renderMimeIcon(mimeType: string, className?: string): ReactEleme
     return <LucideImage className={className} style={{ color: "#00ACC1" }} />;
   }
   return <FileText className={className} style={{ color: "#78909C" }} />;
+}
+
+// Shortcut nodes carry their target's mime in ``shortcutTargetMimeType``
+// — the rendered icon should match the *target*, since that's the file
+// the user will actually open. The Link2 overlay then signals "this is
+// a pointer, not the original".
+interface NodeIconShape {
+  mimeType: string;
+  shortcutTargetMimeType?: string | null;
+}
+
+export function renderNodeIcon(node: NodeIconShape, className?: string): ReactElement {
+  if (node.mimeType !== MIME_SHORTCUT) {
+    return renderMimeIcon(node.mimeType, className);
+  }
+  // Fall back to the folder icon if the target mime is missing — should
+  // never happen post-resolver, but keeps the render defensive.
+  const targetMime = node.shortcutTargetMimeType ?? MIME_FOLDER;
+  return (
+    <span className="relative inline-flex shrink-0">
+      {renderMimeIcon(targetMime, className)}
+      <Link2
+        className="bg-background text-muted-foreground absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full p-[1px]"
+        aria-hidden
+      />
+    </span>
+  );
 }
 
 /** Human-readable label for the Open-in-Google button per type. */

@@ -18,8 +18,10 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useMoveFile } from "@/hooks/use-navigator-mutations";
 import { useDrives, useDriveTree } from "@/hooks/use-navigator-tree";
+import { ApiError } from "@/lib/api-client";
 import { buildChildrenIndex } from "@/lib/navigator-tree";
 import { cn } from "@/lib/utils";
+import { MIME_SHORTCUT } from "@/types/navigator";
 
 interface MoveFileDialogProps {
   open: boolean;
@@ -121,8 +123,15 @@ function DriveRow({ driveId, driveName, selectedId, onSelect, disabledId }: Driv
   // Only fetch once the user expands this drive — otherwise opening
   // the dialog kicks N drive-tree walks for every shared drive.
   const treeQuery = useDriveTree(expanded ? driveId : null);
+  // Folder shortcuts can't be move destinations — Drive rejects "move
+  // file into a shortcut" because the shortcut isn't a real container.
+  // Strip them from the destination tree so users can't pick something
+  // that would silently fail at submit time.
   const childrenByParent = useMemo(
-    () => buildChildrenIndex(treeQuery.data?.folders ?? []),
+    () =>
+      buildChildrenIndex(
+        (treeQuery.data?.folders ?? []).filter((n) => n.mimeType !== MIME_SHORTCUT),
+      ),
     [treeQuery.data],
   );
   const rootFolders = childrenByParent.get("__root__") ?? [];
@@ -216,7 +225,16 @@ export function MoveFileDialog({
       onOpenChange(false);
       setSelectedId(null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Move failed";
+      // 403s here are rare (we already strip shortcut destinations
+      // from the picker) but keep the same friendly translation as
+      // the drag-drop path so a misconfigured drive ACL doesn't show
+      // the raw Drive error to the user.
+      const message =
+        err instanceof ApiError && err.status === 403
+          ? "Drive denied this move — you may not have edit permission on the destination."
+          : err instanceof Error
+            ? err.message
+            : "Move failed";
       toast.error(message);
     }
   };

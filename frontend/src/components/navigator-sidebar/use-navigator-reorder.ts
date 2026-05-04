@@ -18,8 +18,9 @@ import type { DriveNode, DriveTree, SortOrder } from "@/types/navigator";
 import { expandPath } from "@/hooks/use-expanded-folders";
 import { useBulkSetSortOrders, useMoveFile } from "@/hooks/use-navigator-mutations";
 import { navigatorKeys } from "@/hooks/use-navigator-tree";
+import { ApiError } from "@/lib/api-client";
 import { optimisticMoveFile } from "@/lib/navigator-cache";
-import { MIME_FOLDER } from "@/types/navigator";
+import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/navigator";
 
 import { useDragOverStore, type DropIntent } from "./use-drag-over-store";
 import { useInFlightMovesStore } from "./use-in-flight-moves";
@@ -291,6 +292,15 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
     // server's response is fast enough to surface as a toast.
     if (newParentFolderId === node.id) return;
     if (newParentFolderId === (node.parentId ?? driveId)) return; // no-op move
+    // Shortcut destinations: Drive rejects "move file into a shortcut"
+    // because the shortcut isn't a real container. Catch it client-side
+    // so the user gets a clean message instead of the raw 403 dump.
+    if (lookupNodeMimeType(qc, driveId, newParentFolderId) === MIME_SHORTCUT) {
+      toast.error(
+        "Can't drop into a shortcut. Open it and drop into the target's folder instead.",
+      );
+      return;
+    }
 
     const movesStore = useInFlightMovesStore.getState();
     movesStore.start(node.id);
@@ -337,8 +347,7 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
       })
       .catch((err: unknown) => {
         rollback();
-        const message = err instanceof Error ? err.message : "Move failed";
-        toast.error(message);
+        toast.error(translateMoveError(err));
       })
       .finally(() => {
         movesStore.end(node.id);
@@ -458,4 +467,36 @@ function lookupFolderName(
     navigatorKeys.driveTree(driveId),
   );
   return tree?.folders.find((f) => f.id === folderId)?.name ?? "folder";
+}
+
+/**
+ * Resolve a folder id to its mime type via the cached drive tree, or
+ * ``null`` if the folder isn't in any cache the sidebar populated.
+ * Used by the drag-drop handler to short-circuit moves that would 403
+ * (e.g. dropping into a shortcut row).
+ */
+function lookupNodeMimeType(
+  qc: ReturnType<typeof useQueryClient>,
+  driveId: string,
+  folderId: string,
+): string | null {
+  const tree = qc.getQueryData<{ folders: { id: string; mimeType: string }[] }>(
+    navigatorKeys.driveTree(driveId),
+  );
+  return tree?.folders.find((f) => f.id === folderId)?.mimeType ?? null;
+}
+
+/**
+ * Map move-mutation errors to user-readable toast text. Drive's raw
+ * 403 dump includes a JSON blob and HTTP status that reads as
+ * impenetrable to anyone who isn't debugging — translate the common
+ * cases here. ``ApiError`` carries the backend's status verbatim, so
+ * we can branch on ``status === 403`` without parsing the message.
+ */
+function translateMoveError(err: unknown): string {
+  if (err instanceof ApiError && err.status === 403) {
+    return "Drive denied this move — you may not have edit permission on the destination, or it's a shortcut.";
+  }
+  if (err instanceof Error) return err.message;
+  return "Move failed";
 }

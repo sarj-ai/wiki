@@ -16,6 +16,10 @@ MIME_SHEET = "application/vnd.google-apps.spreadsheet"
 MIME_SLIDE = "application/vnd.google-apps.presentation"
 MIME_DRAWING = "application/vnd.google-apps.drawing"
 MIME_FORM = "application/vnd.google-apps.form"
+# Drive shortcuts: pointers with their own ACL whose target carries the
+# real permission. We surface them as native nodes (folder or file
+# rendering follows ``shortcut_target_mime_type``) with an overlay glyph.
+MIME_SHORTCUT = "application/vnd.google-apps.shortcut"
 
 NAVIGATOR_SUPPORTED_MIME_TYPES: tuple[str, ...] = (
     MIME_FOLDER,
@@ -45,6 +49,11 @@ class DriveNode(BaseModel):
     ``parent_id`` is None for drive-root children (where the Drive API
     returns the drive id itself as the parent). Callers should treat
     root-level children as top-level items inside the drive.
+
+    Shortcut fields are populated only when ``mime_type == MIME_SHORTCUT``.
+    The frontend renders the shortcut using the *target's* mime icon plus
+    an overlay glyph; ``shortcut_inaccessible`` flips the row to a greyed
+    state when the user lacks permission on the target.
     """
 
     id: str
@@ -52,6 +61,11 @@ class DriveNode(BaseModel):
     mime_type: str
     parent_id: str | None = None
     modified_time: str | None = None
+    shortcut_target_id: str | None = None
+    shortcut_target_mime_type: str | None = None
+    shortcut_target_drive_id: str | None = None
+    shortcut_target_drive_name: str | None = None
+    shortcut_inaccessible: bool = False
 
 
 class DriveTree(BaseModel):
@@ -75,6 +89,10 @@ class SearchResult(BaseModel):
     drives) so the client doesn't need a second round-trip to render
     the drive label next to each hit. Per-drive ``search_drive`` calls
     leave it ``None``.
+
+    Shortcut entries (``mime_type == MIME_SHORTCUT``) carry the same
+    ``shortcut_target_*`` fields as :class:`DriveNode` so the search UI
+    can render the target's icon plus the overlay glyph.
     """
 
     id: str
@@ -84,6 +102,10 @@ class SearchResult(BaseModel):
     drive_name: str | None = None
     parent_id: str | None = None
     modified_time: str | None = None
+    shortcut_target_id: str | None = None
+    shortcut_target_mime_type: str | None = None
+    shortcut_target_drive_name: str | None = None
+    shortcut_inaccessible: bool = False
 
 
 class SnippetResult(BaseModel):

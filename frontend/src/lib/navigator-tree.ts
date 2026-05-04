@@ -1,5 +1,25 @@
 import type { DriveNode } from "@/types/navigator";
 
+import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/navigator";
+
+/**
+ * True when ``node`` should render as a folder in the sidebar — either
+ * a native Drive folder or a shortcut whose target is a folder. Used
+ * in both the drive root (drive-section) and inside expanded folders
+ * (tree-node) to keep folder vs file partitioning consistent. The
+ * sidebar tree walk surfaces folder-target shortcuts in its folder
+ * list; the lazy children endpoint also returns them. Both call sites
+ * must use this predicate to strip duplicates from the lazy result,
+ * otherwise the shortcut renders twice (once as folder, once as file)
+ * with the same React key.
+ */
+export function isFolderLikeNode(node: DriveNode): boolean {
+  return (
+    node.mimeType === MIME_FOLDER ||
+    (node.mimeType === MIME_SHORTCUT && node.shortcutTargetMimeType === MIME_FOLDER)
+  );
+}
+
 /**
  * Pure tree helpers shared by the sidebar's DriveSection / TreeNode
  * components and the move-file dialog. Lives in ``lib/`` so the

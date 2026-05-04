@@ -14,21 +14,40 @@ Notion-like sidebar layered on top of Google Drive for `@sarj.ai`. The user's re
 | Auth     | Google OAuth 2.0 (restricted to `@sarj.ai`)        |
 | Content  | Google Drive / Docs (iframe embedded)              |
 
-## Backend layout
-
-Every module that holds business logic follows the same shape: `service.py` defines an ABC + concrete implementation, `dependencies.py` wires it through FastAPI `Depends`, `router.py` is a thin HTTP adapter.
+## Repo layout
 
 ```
-app/
+backend/    FastAPI app (see "Backend layout" below)
+frontend/   Next.js 16 App Router
+terraform/  infra
+scripts/    one-off ops scripts
+docs/       ad-hoc design notes
+ROLLOUT.md  pre-launch wave tracker (read before starting work)
+```
+
+## Backend layout
+
+Most modules that hold business logic follow the same shape: `service.py` defines an ABC + concrete implementation, `dependencies.py` wires it through FastAPI `Depends`, `router.py` is a thin HTTP adapter. Module-local helpers (`errors.py`, `schemas.py`, retry/encryption/jwt utilities) sit alongside as needed. Two modules deviate: `sidebar/` names its service file `cache.py` (the cache *is* the service), and `drive/` has no `router.py` of its own — its listing endpoints are mounted from `sidebar/router.py`, and only its full-text search endpoint lives in `drive/search_router.py`.
+
+```
+backend/app/
   auth/       AuthService (OAuth exchange, JWT lifecycle, token_version revocation)
-  drive/      DriveService (drives.list, tree walk, search, snippets); snippets.py pure helpers
+              + encryption.py (Fernet), jwt.py, errors.py (AuthError hierarchy)
+  drive/      DriveService (drives.list, folder walk, listing, search, snippets)
+              + search_router.py (only HTTP surface this module exposes itself)
+              + drives_cache.py, retry.py (tenacity), schemas.py, snippets.py (pure helpers)
+              listing endpoints live in sidebar/router.py — drive/ has no router.py
   extras/     ExtrasService (icons, sort order, prefs — Postgres-only)
+              + router.py, errors.py, schemas.py
   files/      FilesService (Drive file CRUD + strict-scope check via DriveService)
-  sidebar/    SidebarCacheService (drive-tree cache, stale-while-revalidate, singleflight)
-  models/     SQLAlchemy models (user + five Navigator overlay tables)
+              + router.py, breadcrumb.py, errors.py (FilesError hierarchy), schemas.py
+  sidebar/    SidebarCacheService in cache.py (drive-tree cache, stale-while-revalidate)
+              + router.py (sidebar + drive listing endpoints), singleflight.py
+  models/     SQLAlchemy models — user.py + navigator.py (five Navigator overlay tables)
   config.py   pydantic-settings, loaded once at startup
+  database.py async engine + session factory
   logging_config.py   loguru sink + stdlib intercept handler
-  main.py     FastAPI app, lifespan, rate limiter, routers
+  main.py     FastAPI app, lifespan, slowapi rate limiter, routers
 ```
 
 Routers never call Google APIs or the DB directly — they resolve a service via `Depends` and pass through. `__init__.py` files are empty; every call site imports from the module that actually owns the symbol.
@@ -70,6 +89,13 @@ Audit commands at `/sarj-audit:*` (from the `sarj-agentic` plugin, enabled via `
 ## Access control
 
 **Drive membership is the only source of truth.** We store no `page_permissions`, no `workspace_memberships`. A user sees a drive/folder/file iff Google Drive says they can. `DriveService.list_drives` is the boundary — results from there decide what appears in the sidebar.
+
+**Shortcuts (`application/vnd.google-apps.shortcut`) are surfaced as native nodes** with a `Link2` overlay glyph. `_walk_folders_sync` and `_list_children_sync` include shortcuts in their queries, pull `shortcutDetails(targetId, targetMimeType)`, and feed the result through `_resolve_shortcut_nodes` — an async resolver that probes each shortcut's target via `files.get` in parallel. Probe outcomes:
+- `200 OK` → shortcut renders normally; `shortcut_target_drive_id`/`shortcut_target_drive_name` populated for the tooltip.
+- `403` → `shortcut_inaccessible=True`; the row renders greyed-out with a "contact admin" tooltip and click is suppressed (sidebar) / Open is disabled (search).
+- `404` or `trashed=true` → the shortcut is dropped from results entirely (auto-prune).
+
+Drive's ACL on the target is the only source of truth. The shortcut entry's own ACL (which controls *visibility* of the row) is independent — shortcuts can be visible to users who lack target access, hence the inaccessible-state UX. Folder shortcuts expand by listing the *target's* children via the existing `/sidebar/folders/{id}/files` endpoint; their subtree is lazy-fetched, never denormalized into the host drive's `drive_tree_cache`. Search results run through the same resolver so the palette greys out hits the user can't open.
 
 ## Database schema
 
@@ -125,7 +151,7 @@ No service account, no Admin SDK, no domain-wide delegation.
 ## Theme & dark mode
 
 - Design tokens live in `frontend/src/app/globals.css` (`:root` + `.dark`), exposed via Tailwind's `@theme inline` block. Use the CSS variables — never hard-code colors.
-- Font: Geist / Geist Mono.
+- Font: Nunito (sans, self-hosted from `frontend/public/fonts`) + Geist Mono.
 - Dark mode via `next-themes` (`attribute="class"`); defaults to `prefers-color-scheme`; manual toggle persists in `localStorage`.
 
 ## Logging

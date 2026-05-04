@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, override
 
 from google.oauth2.credentials import Credentials
@@ -29,6 +30,7 @@ from app.drive import drives_cache
 from app.drive.retry import execute_with_retry
 from app.drive.schemas import (
     MIME_FOLDER,
+    MIME_SHORTCUT,
     NAVIGATOR_SUPPORTED_MIME_TYPES,
     DriveNode,
     DriveSummary,
@@ -54,6 +56,20 @@ _TEXT_EXPORTABLE_MIME_TYPES = frozenset(
 )
 
 _MAX_EXPORT_BYTES = 2 * 1024 * 1024  # cap huge docs so search doesn't stall
+
+
+@dataclass(frozen=True)
+class _ShortcutProbe:
+    """Outcome of a single ``files.get`` against a shortcut's target.
+
+    ``None`` from the probe path means "drop the shortcut" (target deleted
+    or trashed). A returned probe is either ``ok`` (with the target's home
+    drive id, possibly ``None`` for My Drive items we don't surface) or
+    ``forbidden`` (user lacks permission — render greyed-out).
+    """
+
+    accessible: bool
+    target_drive_id: str | None = None
 
 
 class DriveService(ABC):
@@ -106,11 +122,14 @@ class GoogleDriveService(DriveService):
 
     @override
     async def walk_drive_folders(self, drive_id: str) -> DriveTree:
-        return await asyncio.to_thread(self._walk_folders_sync, drive_id)
+        tree = await asyncio.to_thread(self._walk_folders_sync, drive_id)
+        tree.folders = await self._resolve_shortcut_nodes(tree.folders)
+        return tree
 
     @override
     async def list_folder_children(self, folder_id: str) -> list[DriveNode]:
-        return await asyncio.to_thread(self._list_children_sync, folder_id)
+        nodes = await asyncio.to_thread(self._list_children_sync, folder_id)
+        return await self._resolve_shortcut_nodes(nodes)
 
     @override
     async def search_drive(
@@ -135,11 +154,139 @@ class GoogleDriveService(DriveService):
         for drive, per_drive in zip(drives, results, strict=True):
             for hit in per_drive:
                 merged.append(hit.model_copy(update={"drive_name": drive.name}))
-        return merged
+        # Resolve shortcut hits the same way the sidebar walk does —
+        # grey out the rare case where a shortcut name matches but the
+        # target's ACL blocks the user, drop hits whose target was
+        # trashed.
+        return await self._resolve_shortcut_search_results(merged)
 
     @override
     async def fetch_snippet(self, file_id: str, query: str) -> SnippetResult:
         return await asyncio.to_thread(self._fetch_snippet_sync, file_id, query)
+
+    # ------------------------------------------------------------------
+    # Shortcut resolver. Runs after walk/list to enrich shortcut nodes
+    # with target accessibility + the target's home-drive name, and to
+    # auto-prune shortcuts whose target was deleted or trashed. Probes
+    # run in parallel via ``asyncio.gather`` so resolving N shortcuts
+    # costs ~one round-trip latency, not N.
+    # ------------------------------------------------------------------
+
+    async def _resolve_shortcut_nodes(self, nodes: list[DriveNode]) -> list[DriveNode]:
+        shortcuts = [n for n in nodes if n.mime_type == MIME_SHORTCUT]
+        if not shortcuts:
+            return nodes
+        drive_names = await self._drive_names()
+        probes = await self._probe_targets_parallel(
+            [n.shortcut_target_id for n in shortcuts]
+        )
+        resolved = dict(zip((n.id for n in shortcuts), probes, strict=True))
+        out: list[DriveNode] = []
+        for node in nodes:
+            if node.mime_type != MIME_SHORTCUT:
+                out.append(node)
+                continue
+            probe = resolved[node.id]
+            if probe is None:
+                # Target deleted or trashed → auto-prune.
+                continue
+            if not probe.accessible:
+                out.append(node.model_copy(update={"shortcut_inaccessible": True}))
+                continue
+            target_drive_id = probe.target_drive_id
+            out.append(
+                node.model_copy(
+                    update={
+                        "shortcut_target_drive_id": target_drive_id,
+                        "shortcut_target_drive_name": (
+                            drive_names.get(target_drive_id) if target_drive_id else None
+                        ),
+                    }
+                )
+            )
+        return out
+
+    async def _resolve_shortcut_search_results(
+        self, results: list[SearchResult]
+    ) -> list[SearchResult]:
+        """Same probe + grey-out logic as :meth:`_resolve_shortcut_nodes`,
+        applied to search hits so the palette can render inaccessible
+        shortcut hits with the same UX as the sidebar (greyed-out tooltip,
+        click suppressed). Auto-prune behaves identically — shortcut hits
+        whose target is deleted/trashed are dropped from the result list.
+        """
+        shortcuts = [r for r in results if r.mime_type == MIME_SHORTCUT]
+        if not shortcuts:
+            return results
+        drive_names = await self._drive_names()
+        probes = await self._probe_targets_parallel(
+            [r.shortcut_target_id for r in shortcuts]
+        )
+        resolved = dict(zip((r.id for r in shortcuts), probes, strict=True))
+        out: list[SearchResult] = []
+        for result in results:
+            if result.mime_type != MIME_SHORTCUT:
+                out.append(result)
+                continue
+            probe = resolved[result.id]
+            if probe is None:
+                continue
+            if not probe.accessible:
+                out.append(result.model_copy(update={"shortcut_inaccessible": True}))
+                continue
+            target_drive_id = probe.target_drive_id
+            out.append(
+                result.model_copy(
+                    update={
+                        "shortcut_target_drive_name": (
+                            drive_names.get(target_drive_id) if target_drive_id else None
+                        ),
+                    }
+                )
+            )
+        return out
+
+    async def _drive_names(self) -> dict[str, str]:
+        return {d.id: d.name for d in await self.list_drives()}
+
+    async def _probe_targets_parallel(
+        self, target_ids: list[str | None]
+    ) -> list[_ShortcutProbe | None]:
+        return list(
+            await asyncio.gather(
+                *(asyncio.to_thread(self._probe_target_sync, tid) for tid in target_ids)
+            )
+        )
+
+    def _probe_target_sync(self, target_id: str | None) -> _ShortcutProbe | None:
+        if not target_id:
+            return None
+        client = self._client()
+        try:
+            meta = execute_with_retry(
+                client.files().get(
+                    fileId=target_id,
+                    fields="id,driveId,trashed",
+                    supportsAllDrives=True,
+                )
+            )
+        except HttpError as exc:
+            status = getattr(exc.resp, "status", None)
+            if status == 404:
+                return None
+            if status == 403:
+                return _ShortcutProbe(accessible=False)
+            logger.exception(
+                "shortcut target probe failed user={} target={}",
+                self._user.id,
+                target_id,
+            )
+            # Be conservative — if we can't classify the failure, drop
+            # the shortcut rather than rendering a misleading row.
+            return None
+        if meta.get("trashed"):
+            return None
+        return _ShortcutProbe(accessible=True, target_drive_id=meta.get("driveId"))
 
     # ------------------------------------------------------------------
     # Sync implementations. Wrapped in asyncio.to_thread by the public
@@ -176,7 +323,13 @@ class GoogleDriveService(DriveService):
         client = self._client()
         out = DriveTree(drive_id=drive_id)
         page_token: str | None = None
-        query = f"mimeType='{MIME_FOLDER}' and trashed=false"
+        # Folder walk also picks up shortcuts whose target is a folder
+        # so cross-drive folder pointers render natively in the tree.
+        # The mime filter on ``targetMimeType`` happens client-side
+        # because Drive's q grammar doesn't support shortcutDetails fields.
+        query = (
+            f"(mimeType='{MIME_FOLDER}' or mimeType='{MIME_SHORTCUT}') and trashed=false"
+        )
         while True:
             params: dict[str, Any] = {
                 "q": query,
@@ -185,7 +338,10 @@ class GoogleDriveService(DriveService):
                 "includeItemsFromAllDrives": True,
                 "supportsAllDrives": True,
                 "pageSize": 1000,
-                "fields": "nextPageToken,files(id,name,mimeType,parents,modifiedTime)",
+                "fields": (
+                    "nextPageToken,files(id,name,mimeType,parents,modifiedTime,"
+                    "shortcutDetails(targetId,targetMimeType))"
+                ),
             }
             if page_token:
                 params["pageToken"] = page_token
@@ -199,7 +355,14 @@ class GoogleDriveService(DriveService):
                 )
                 return out
             for raw in resp.get("files", []):
-                out.folders.append(_node_from_api(raw, drive_id))
+                node = _node_from_api(raw, drive_id)
+                if node.mime_type == MIME_SHORTCUT and (
+                    node.shortcut_target_mime_type != MIME_FOLDER
+                ):
+                    # File-target shortcuts surface only in the children
+                    # listing — keep the folder walk strictly hierarchical.
+                    continue
+                out.folders.append(node)
             page_token = resp.get("nextPageToken")
             if not page_token:
                 return out
@@ -216,7 +379,10 @@ class GoogleDriveService(DriveService):
                 "includeItemsFromAllDrives": True,
                 "supportsAllDrives": True,
                 "pageSize": 1000,
-                "fields": "nextPageToken,files(id,name,mimeType,parents,modifiedTime)",
+                "fields": (
+                    "nextPageToken,files(id,name,mimeType,parents,modifiedTime,"
+                    "shortcutDetails(targetId,targetMimeType))"
+                ),
             }
             if page_token:
                 params["pageToken"] = page_token
@@ -230,6 +396,16 @@ class GoogleDriveService(DriveService):
                 )
                 return out
             for raw in resp.get("files", []):
+                details = raw.get("shortcutDetails") or {}
+                target_mime = details.get("targetMimeType")
+                if (
+                    raw["mimeType"] == MIME_SHORTCUT
+                    and target_mime not in NAVIGATOR_SUPPORTED_MIME_TYPES
+                ):
+                    # Drop shortcuts pointing at unsupported file types
+                    # (e.g. third-party Drive apps) so we never render a
+                    # row that has nothing to open.
+                    continue
                 out.append(
                     DriveNode(
                         id=raw["id"],
@@ -237,6 +413,8 @@ class GoogleDriveService(DriveService):
                         mime_type=raw["mimeType"],
                         parent_id=folder_id,
                         modified_time=raw.get("modifiedTime"),
+                        shortcut_target_id=details.get("targetId"),
+                        shortcut_target_mime_type=target_mime,
                     )
                 )
             page_token = resp.get("nextPageToken")
@@ -254,7 +432,10 @@ class GoogleDriveService(DriveService):
             "includeItemsFromAllDrives": True,
             "supportsAllDrives": True,
             "pageSize": limit,
-            "fields": "files(id,name,mimeType,parents,modifiedTime,driveId)",
+            "fields": (
+                "files(id,name,mimeType,parents,modifiedTime,driveId,"
+                "shortcutDetails(targetId,targetMimeType))"
+            ),
         }
         try:
             resp = execute_with_retry(client.files().list(**params))
@@ -272,6 +453,7 @@ class GoogleDriveService(DriveService):
             parent_id = parents[0] if parents else None
             if parent_id == drive_id:
                 parent_id = None
+            details = raw.get("shortcutDetails") or {}
             out.append(
                 SearchResult(
                     id=raw["id"],
@@ -280,6 +462,8 @@ class GoogleDriveService(DriveService):
                     drive_id=raw.get("driveId"),
                     parent_id=parent_id,
                     modified_time=raw.get("modifiedTime"),
+                    shortcut_target_id=details.get("targetId"),
+                    shortcut_target_mime_type=details.get("targetMimeType"),
                 )
             )
         return out
@@ -369,8 +553,13 @@ class GoogleDriveService(DriveService):
 def _build_mime_clause() -> str:
     # Folders always included so the tree is walkable; everything else
     # filtered to Workspace + PDFs + common images so we don't haul down
-    # random binary blobs a user happens to have in a drive.
-    quoted = " or ".join(f"mimeType='{m}'" for m in NAVIGATOR_SUPPORTED_MIME_TYPES)
+    # random binary blobs a user happens to have in a drive. Shortcuts
+    # are included unconditionally — we filter them client-side based on
+    # ``shortcutDetails.targetMimeType`` since Drive's q grammar can't
+    # filter on shortcut details.
+    quoted = " or ".join(
+        f"mimeType='{m}'" for m in (*NAVIGATOR_SUPPORTED_MIME_TYPES, MIME_SHORTCUT)
+    )
     return f"({quoted})"
 
 
@@ -382,10 +571,13 @@ def _node_from_api(raw: Any, drive_id: str) -> DriveNode:
     parent_id: str | None = parents[0] if parents else None
     if parent_id == drive_id:
         parent_id = None
+    details = raw.get("shortcutDetails") or {}
     return DriveNode(
         id=raw["id"],
         name=raw["name"],
         mime_type=raw["mimeType"],
         parent_id=parent_id,
         modified_time=raw.get("modifiedTime"),
+        shortcut_target_id=details.get("targetId"),
+        shortcut_target_mime_type=details.get("targetMimeType"),
     )

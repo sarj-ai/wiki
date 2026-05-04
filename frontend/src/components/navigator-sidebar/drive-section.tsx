@@ -22,7 +22,12 @@ import {
 } from "@/components/ui/sidebar";
 import { useExpandedDrive } from "@/hooks/use-expanded-folders";
 import { useFolderFiles } from "@/hooks/use-navigator-tree";
-import { applyOptimisticOrder, compareNodeOrder, type KindedNode } from "@/lib/navigator-tree";
+import {
+  applyOptimisticOrder,
+  compareNodeOrder,
+  isFolderLikeNode,
+  type KindedNode,
+} from "@/lib/navigator-tree";
 import { cn } from "@/lib/utils";
 import { MIME_DOC, MIME_FOLDER } from "@/types/navigator";
 
@@ -268,7 +273,13 @@ function buildRootItems({
     type: "folder",
     node,
   }));
-  const rawFiles = rootFiles.filter((n) => n.mimeType !== MIME_FOLDER);
+  // Strip folder-likes (native folders + folder-target shortcuts)
+  // from the lazy file list — the tree walk already surfaces them in
+  // ``childrenByParent``. Without this filter the same shortcut id
+  // appears twice and React renders the second copy as a FileRow,
+  // routing folder-shortcut clicks to ``/d/<targetFolderId>`` (which
+  // Google has no preview for).
+  const rawFiles = rootFiles.filter((n) => !isFolderLikeNode(n));
   const visibleFiles = showNonDocFiles ? rawFiles : rawFiles.filter((n) => n.mimeType === MIME_DOC);
   const files: KindedNode[] = visibleFiles.map((node) => ({ type: "file", node }));
   return [...folders, ...files].sort((a, b) => compareNodeOrder(a, b, sortOrderMap));

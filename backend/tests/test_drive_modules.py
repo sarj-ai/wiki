@@ -16,8 +16,8 @@ from typing import Any
 
 import pytest
 
-from app.drive.schemas import MIME_FOLDER
-from app.drive.service import GoogleDriveService
+from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT
+from app.drive.service import GoogleDriveService, _ShortcutProbe
 from app.drive.snippets import extract_snippet
 from app.models.user import User
 
@@ -238,6 +238,222 @@ async def test_list_folder_children_queries_by_parent(patch_drive_client: Any) -
     call = client.files_captured[0]
     assert "'folder-x' in parents" in call["q"]
     assert call["corpora"] == "allDrives"
+
+
+# ---------------------------------------------------------------------------
+# shortcut surfacing + resolver
+# ---------------------------------------------------------------------------
+
+
+def _stub_probes(svc: GoogleDriveService, mapping: dict[str, _ShortcutProbe | None]) -> None:
+    """Replace ``_probe_target_sync`` with a deterministic table.
+
+    Bypasses the real ``files.get`` path so resolver tests can pin
+    each shortcut's outcome (accessible / forbidden / pruned) without
+    juggling ``HttpError`` mocks.
+    """
+
+    def _fake(target_id: str | None) -> _ShortcutProbe | None:
+        return mapping.get(target_id or "")
+
+    svc._probe_target_sync = _fake  # type: ignore[method-assign]
+
+
+async def test_walk_surfaces_folder_shortcuts_and_drops_file_shortcuts(
+    patch_drive_client: Any,
+) -> None:
+    client = _FakeClient(
+        drives_pages=[
+            {"drives": [{"id": "engineering", "name": "Engineering"}]},
+        ],
+        files_pages=[
+            {
+                "files": [
+                    {
+                        "id": "f1",
+                        "name": "Sales root",
+                        "mimeType": MIME_FOLDER,
+                        "parents": ["sales"],
+                    },
+                    {
+                        "id": "sc-folder",
+                        "name": "API Reference",
+                        "mimeType": MIME_SHORTCUT,
+                        "parents": ["sales"],
+                        "shortcutDetails": {
+                            "targetId": "eng-api-folder",
+                            "targetMimeType": MIME_FOLDER,
+                        },
+                    },
+                    {
+                        "id": "sc-file",
+                        "name": "Spec.gdoc",
+                        "mimeType": MIME_SHORTCUT,
+                        "parents": ["sales"],
+                        "shortcutDetails": {
+                            "targetId": "eng-spec",
+                            "targetMimeType": "application/vnd.google-apps.document",
+                        },
+                    },
+                ]
+            },
+        ],
+    )
+    patch_drive_client(client)
+    svc = _svc()
+    _stub_probes(
+        svc,
+        {"eng-api-folder": _ShortcutProbe(accessible=True, target_drive_id="engineering")},
+    )
+
+    tree = await svc.walk_drive_folders("sales")
+    ids = [n.id for n in tree.folders]
+    # File-target shortcut excluded from the folder walk; folder-target kept.
+    assert ids == ["f1", "sc-folder"]
+
+    sc = next(n for n in tree.folders if n.id == "sc-folder")
+    assert sc.mime_type == MIME_SHORTCUT
+    assert sc.shortcut_target_id == "eng-api-folder"
+    assert sc.shortcut_target_mime_type == MIME_FOLDER
+    assert sc.shortcut_target_drive_id == "engineering"
+    assert sc.shortcut_target_drive_name == "Engineering"
+    assert sc.shortcut_inaccessible is False
+
+    # Walk query asks for both folders and shortcuts so the API returns
+    # the shortcut row alongside native folders.
+    q = client.files_captured[0]["q"]
+    assert f"mimeType='{MIME_FOLDER}'" in q
+    assert f"mimeType='{MIME_SHORTCUT}'" in q
+    assert "shortcutDetails(targetId,targetMimeType)" in client.files_captured[0]["fields"]
+
+
+async def test_list_children_surfaces_file_shortcuts_with_target_mime(
+    patch_drive_client: Any,
+) -> None:
+    client = _FakeClient(
+        drives_pages=[
+            {"drives": [{"id": "engineering", "name": "Engineering"}]},
+        ],
+        files_pages=[
+            {
+                "files": [
+                    {
+                        "id": "doc1",
+                        "name": "Native doc",
+                        "mimeType": "application/vnd.google-apps.document",
+                        "parents": ["folder-x"],
+                    },
+                    {
+                        "id": "sc-doc",
+                        "name": "Linked doc",
+                        "mimeType": MIME_SHORTCUT,
+                        "parents": ["folder-x"],
+                        "shortcutDetails": {
+                            "targetId": "eng-doc",
+                            "targetMimeType": "application/vnd.google-apps.document",
+                        },
+                    },
+                    {
+                        "id": "sc-unsupported",
+                        "name": "Linked third-party",
+                        "mimeType": MIME_SHORTCUT,
+                        "parents": ["folder-x"],
+                        "shortcutDetails": {
+                            "targetId": "eng-third-party",
+                            "targetMimeType": "application/vnd.google-apps.jam",
+                        },
+                    },
+                ]
+            }
+        ],
+    )
+    patch_drive_client(client)
+    svc = _svc()
+    _stub_probes(
+        svc,
+        {"eng-doc": _ShortcutProbe(accessible=True, target_drive_id="engineering")},
+    )
+
+    children = await svc.list_folder_children("folder-x")
+    ids = [c.id for c in children]
+    # Unsupported-target shortcut is dropped before the resolver even runs.
+    assert ids == ["doc1", "sc-doc"]
+    sc = next(c for c in children if c.id == "sc-doc")
+    assert sc.shortcut_target_id == "eng-doc"
+    assert sc.shortcut_target_drive_id == "engineering"
+
+
+async def test_resolver_marks_forbidden_target_inaccessible(
+    patch_drive_client: Any,
+) -> None:
+    client = _FakeClient(
+        drives_pages=[{"drives": [{"id": "engineering", "name": "Engineering"}]}],
+        files_pages=[
+            {
+                "files": [
+                    {
+                        "id": "sc",
+                        "name": "Locked Folder",
+                        "mimeType": MIME_SHORTCUT,
+                        "parents": ["sales"],
+                        "shortcutDetails": {
+                            "targetId": "eng-locked",
+                            "targetMimeType": MIME_FOLDER,
+                        },
+                    },
+                ]
+            }
+        ],
+    )
+    patch_drive_client(client)
+    svc = _svc()
+    _stub_probes(svc, {"eng-locked": _ShortcutProbe(accessible=False)})
+
+    tree = await svc.walk_drive_folders("sales")
+    assert len(tree.folders) == 1
+    assert tree.folders[0].shortcut_inaccessible is True
+    # Drive name not filled when target is forbidden — we don't know which
+    # drive it lives in.
+    assert tree.folders[0].shortcut_target_drive_id is None
+    assert tree.folders[0].shortcut_target_drive_name is None
+
+
+async def test_resolver_prunes_deleted_or_trashed_targets(
+    patch_drive_client: Any,
+) -> None:
+    client = _FakeClient(
+        drives_pages=[{"drives": [{"id": "engineering", "name": "Engineering"}]}],
+        files_pages=[
+            {
+                "files": [
+                    {
+                        "id": "sc-gone",
+                        "name": "Dead Shortcut",
+                        "mimeType": MIME_SHORTCUT,
+                        "parents": ["sales"],
+                        "shortcutDetails": {
+                            "targetId": "deleted-target",
+                            "targetMimeType": MIME_FOLDER,
+                        },
+                    },
+                    {
+                        "id": "f1",
+                        "name": "Real Folder",
+                        "mimeType": MIME_FOLDER,
+                        "parents": ["sales"],
+                    },
+                ]
+            }
+        ],
+    )
+    patch_drive_client(client)
+    svc = _svc()
+    # ``None`` from the probe means "drop this shortcut" — covers both
+    # 404 and trashed=true paths in the real probe.
+    _stub_probes(svc, {"deleted-target": None})
+
+    tree = await svc.walk_drive_folders("sales")
+    assert [n.id for n in tree.folders] == ["f1"]
 
 
 # ---------------------------------------------------------------------------
