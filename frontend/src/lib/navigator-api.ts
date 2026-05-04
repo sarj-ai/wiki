@@ -45,6 +45,9 @@ export const navigatorApi = {
   getDriveFolders: (driveId: string) =>
     apiClient.get(`sidebar/drives/${enc(driveId)}/folders`).json<DriveTree>(),
 
+  refreshDriveFolders: (driveId: string) =>
+    apiClient.post(`sidebar/drives/${enc(driveId)}/refresh`).json<DriveTree>(),
+
   getFolderFiles: (folderId: string) =>
     apiClient.get(`sidebar/folders/${enc(folderId)}/files`).json<DriveNode[]>(),
 

@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import type { SortOrder } from "@/types/navigator";
+import type { DriveTree, SortOrder } from "@/types/navigator";
 
 import { navigatorKeys } from "@/hooks/use-navigator-tree";
 import { navigatorApi, type CreateFileInput, type PreferencesInput } from "@/lib/navigator-api";
@@ -151,6 +151,25 @@ export function useCopyFile() {
       // the optimistic insert and the new row disappears before Drive
       // catches up.
       injectNewFileIntoCaches(qc, file);
+    },
+  });
+}
+
+/**
+ * Force-refresh a drive's tree cache. Bypasses the 10-minute
+ * stale-while-revalidate window so newly-created shortcuts / folders /
+ * files show up on demand. The backend returns the freshly-walked
+ * tree, which we seed straight into React Query's cache — no separate
+ * refetch needed. Folder-files listings inside the drive are also
+ * invalidated since their nodes may have moved or been deleted.
+ */
+export function useRefreshDrive() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (driveId: string) => navigatorApi.refreshDriveFolders(driveId),
+    onSuccess: (tree: DriveTree) => {
+      qc.setQueryData<DriveTree>(navigatorKeys.driveTree(tree.driveId), tree);
+      void qc.invalidateQueries({ queryKey: ["navigator", "folder-files"] });
     },
   });
 }

@@ -9,10 +9,12 @@ import {
   type CollisionDetection,
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { ChevronRight, HardDrive } from "lucide-react";
+import { ChevronRight, HardDrive, Loader2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 
 import type { DriveNode, DriveSummary, FolderIcon, SortOrder } from "@/types/navigator";
 
+import { Button } from "@/components/ui/button";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -21,6 +23,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { useExpandedDrive } from "@/hooks/use-expanded-folders";
+import { useRefreshDrive } from "@/hooks/use-navigator-mutations";
 import { useFolderFiles } from "@/hooks/use-navigator-tree";
 import {
   applyOptimisticOrder,
@@ -61,6 +64,20 @@ export function DriveSection({
     useDriveTreeIndex(drive.id, folderIcons, sortOrders);
   const rootFilesQuery = useFolderFiles(drive.id, expanded);
   const reorder = useNavigatorReorder(drive.id);
+  const refreshDrive = useRefreshDrive();
+
+  const handleRefresh = (e: React.MouseEvent) => {
+    // The header is itself a button that toggles expand on click. Stop
+    // propagation so the user's refresh click doesn't accidentally
+    // collapse the drive.
+    e.stopPropagation();
+    refreshDrive.mutate(drive.id, {
+      onError: (err) => {
+        const message = err instanceof Error ? err.message : "Refresh failed";
+        toast.error(message);
+      },
+    });
+  };
 
   const rootContainerId = `parent:${drive.id}`;
   const isDropTarget = useIsCrossContainerDropTarget(rootContainerId);
@@ -115,7 +132,23 @@ export function DriveSection({
               <span className="truncate">{drive.name}</span>
             </button>
           </SidebarGroupLabel>
-          <div className="absolute top-1 right-1 opacity-0 group-hover/driveheader:opacity-100 focus-within:opacity-100">
+          <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover/driveheader:opacity-100 focus-within:opacity-100">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Refresh drive"
+              title="Refresh drive — pulls the latest from Drive instead of waiting for the cache to expire"
+              onClick={handleRefresh}
+              disabled={refreshDrive.isPending}
+              className="size-6 shrink-0"
+            >
+              {refreshDrive.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="size-3.5" />
+              )}
+            </Button>
             <CreateFileMenu parentFolderId={drive.id} />
           </div>
         </div>

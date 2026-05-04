@@ -42,6 +42,19 @@ async def get_drive_folders(
     return await cache.get_drive_tree(db, drive_id)
 
 
+@router.post("/drives/{drive_id}/refresh")
+async def refresh_drive_folders(
+    drive_id: str,
+    db: AsyncSession = Depends(get_db),
+    cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
+) -> DriveTree:
+    """Force-refresh a drive's tree, bypassing the stale-while-revalidate
+    window. Returns the freshly-walked tree so the client gets it in one
+    round-trip instead of having to refetch separately.
+    """
+    return await cache.refresh_drive(db, drive_id)
+
+
 @router.get("/folders/{folder_id}/files")
 async def get_folder_files(
     folder_id: str,

@@ -58,6 +58,16 @@ class SidebarCacheService(ABC):
     @abstractmethod
     async def invalidate_drive(self, db: AsyncSession, drive_id: str) -> None: ...
 
+    @abstractmethod
+    async def refresh_drive(self, db: AsyncSession, drive_id: str) -> DriveTree:
+        """Force a fresh walk: drop the cache row, rewalk Drive, save back,
+        and return the new tree. Used by the user-triggered refresh
+        button so newly-created shortcuts / folders show up without
+        waiting for the TTL window. Goes through the same singleflight
+        as cold reads so concurrent refresh clicks coalesce to one Drive
+        call.
+        """
+
 
 class PostgresSidebarCacheService(SidebarCacheService):
     """``drive_tree_cache``-backed implementation.
@@ -113,6 +123,14 @@ class PostgresSidebarCacheService(SidebarCacheService):
             return
         await db.delete(row)
         await db.commit()
+
+    @override
+    async def refresh_drive(self, db: AsyncSession, drive_id: str) -> DriveTree:
+        await self.invalidate_drive(db, drive_id)
+        return await self._sf.do(
+            f"drive:{drive_id}",
+            lambda: self._walk_and_save(drive_id),
+        )
 
     # ------------------------------------------------------------------
     # Internals
