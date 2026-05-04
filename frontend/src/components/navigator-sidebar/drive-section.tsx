@@ -22,6 +22,7 @@ import {
   SidebarMenu,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useExpandedDrive } from "@/hooks/use-expanded-folders";
 import { useRefreshDrive } from "@/hooks/use-navigator-mutations";
 import { useFolderFiles } from "@/hooks/use-navigator-tree";
@@ -172,14 +173,17 @@ export function DriveSection({
           >
             <SidebarGroupContent>
               <SidebarMenu>
-                {treeQuery.isLoading && (
-                  <SidebarMenuItem>
-                    <span className="text-muted-foreground px-2 py-1 text-xs">
-                      Loading folders…
-                    </span>
-                  </SidebarMenuItem>
+                {/*
+                  Same gating as the file detail page: treat "errored
+                  but still trying" as loading. Without this, hard
+                  refresh during the access-token-expired window flashes
+                  "Failed to load drive" before ky's 401 → refresh →
+                  replay (and React Query's retry) lands the data.
+                */}
+                {(treeQuery.isPending || (!treeQuery.data && treeQuery.isFetching)) && (
+                  <DriveTreeSkeleton />
                 )}
-                {treeQuery.isError && (
+                {treeQuery.isError && !treeQuery.isFetching && !treeQuery.data && (
                   <SidebarMenuItem>
                     <span className="text-destructive px-2 py-1 text-xs">Failed to load drive</span>
                   </SidebarMenuItem>
@@ -316,4 +320,30 @@ function buildRootItems({
   const visibleFiles = showNonDocFiles ? rawFiles : rawFiles.filter((n) => n.mimeType === MIME_DOC);
   const files: KindedNode[] = visibleFiles.map((node) => ({ type: "file", node }));
   return [...folders, ...files].sort((a, b) => compareNodeOrder(a, b, sortOrderMap));
+}
+
+// A handful of skeleton rows shaped like folder/file entries so the
+// loading state matches the rhythm of real content. Varied widths and
+// indentation keep the pulse from looking like a single bar.
+function DriveTreeSkeleton() {
+  return (
+    <SidebarMenuItem className="flex flex-col gap-1.5 px-2 py-1">
+      <div className="flex items-center gap-2 pl-1">
+        <Skeleton className="size-3.5 rounded-sm" />
+        <Skeleton className="h-3.5 w-32 rounded" />
+      </div>
+      <div className="flex items-center gap-2 pl-5">
+        <Skeleton className="size-3.5 rounded-sm" />
+        <Skeleton className="h-3.5 w-40 rounded" />
+      </div>
+      <div className="flex items-center gap-2 pl-5">
+        <Skeleton className="size-3.5 rounded-sm" />
+        <Skeleton className="h-3.5 w-24 rounded" />
+      </div>
+      <div className="flex items-center gap-2 pl-1">
+        <Skeleton className="size-3.5 rounded-sm" />
+        <Skeleton className="h-3.5 w-36 rounded" />
+      </div>
+    </SidebarMenuItem>
+  );
 }
