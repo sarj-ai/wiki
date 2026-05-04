@@ -86,9 +86,7 @@ export function FileRow({
   // in a top-level tab is the only working path.
   const isForm = route.mimeType === MIME_FORM;
   const isDoc = !route.isShortcut && node.mimeType === MIME_DOC;
-  const href = isForm
-    ? openUrlFor(route.mimeType, route.id)
-    : `/d/${encodeURIComponent(route.id)}`;
+  const href = isForm ? openUrlFor(route.mimeType, route.id) : `/d/${encodeURIComponent(route.id)}`;
   const isActive = !isForm && (activeDriveId === route.id || pathname === href);
   const isMoving = useIsMovingFile(node.id);
 
@@ -211,10 +209,7 @@ function RowButton({
     return (
       <SidebarMenuButton
         disabled
-        className={cn(
-          "text-muted-foreground/60 cursor-not-allowed pr-8",
-          isMoving && "opacity-60",
-        )}
+        className={cn("text-muted-foreground/60 cursor-not-allowed pr-8", isMoving && "opacity-60")}
         style={{ paddingLeft: linkPadding }}
         title={titleAttr}
       >
@@ -264,9 +259,7 @@ interface RowIconProps {
 
 function RowIcon({ isDoc, iconContent, iconOverride, onIconChange }: RowIconProps) {
   if (!isDoc) {
-    return (
-      <span className="flex size-6 shrink-0 items-center justify-center">{iconContent}</span>
-    );
+    return <span className="flex size-6 shrink-0 items-center justify-center">{iconContent}</span>;
   }
   return (
     <EmojiPickerPopover value={iconOverride} onChange={onIconChange}>

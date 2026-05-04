@@ -296,9 +296,7 @@ export function useNavigatorReorder(driveId: string): NavigatorReorder {
     // because the shortcut isn't a real container. Catch it client-side
     // so the user gets a clean message instead of the raw 403 dump.
     if (lookupNodeMimeType(qc, driveId, newParentFolderId) === MIME_SHORTCUT) {
-      toast.error(
-        "Can't drop into a shortcut. Open it and drop into the target's folder instead.",
-      );
+      toast.error("Can't drop into a shortcut. Open it and drop into the target's folder instead.");
       return;
     }
 

@@ -177,9 +177,7 @@ class GoogleDriveService(DriveService):
         if not shortcuts:
             return nodes
         drive_names = await self._drive_names()
-        probes = await self._probe_targets_parallel(
-            [n.shortcut_target_id for n in shortcuts]
-        )
+        probes = await self._probe_targets_parallel([n.shortcut_target_id for n in shortcuts])
         resolved = dict(zip((n.id for n in shortcuts), probes, strict=True))
         out: list[DriveNode] = []
         for node in nodes:
@@ -219,9 +217,7 @@ class GoogleDriveService(DriveService):
         if not shortcuts:
             return results
         drive_names = await self._drive_names()
-        probes = await self._probe_targets_parallel(
-            [r.shortcut_target_id for r in shortcuts]
-        )
+        probes = await self._probe_targets_parallel([r.shortcut_target_id for r in shortcuts])
         resolved = dict(zip((r.id for r in shortcuts), probes, strict=True))
         out: list[SearchResult] = []
         for result in results:
@@ -327,9 +323,7 @@ class GoogleDriveService(DriveService):
         # so cross-drive folder pointers render natively in the tree.
         # The mime filter on ``targetMimeType`` happens client-side
         # because Drive's q grammar doesn't support shortcutDetails fields.
-        query = (
-            f"(mimeType='{MIME_FOLDER}' or mimeType='{MIME_SHORTCUT}') and trashed=false"
-        )
+        query = f"(mimeType='{MIME_FOLDER}' or mimeType='{MIME_SHORTCUT}') and trashed=false"
         while True:
             params: dict[str, Any] = {
                 "q": query,
