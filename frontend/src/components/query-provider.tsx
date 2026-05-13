@@ -4,9 +4,10 @@ import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persi
 import { MutationCache, QueryCache, QueryClient, type Query } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ApiError } from "@/lib/api-client";
+import { cleanupLegacyLocalStorage } from "@/lib/legacy-localstorage-cleanup";
 import { sanitizeRedirectPath } from "@/lib/url-utils";
 
 const REDIRECT_KEY = "sarj-redirect";
@@ -86,6 +87,14 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       },
     };
   });
+
+  // One-shot sweep of legacy ``navigator-*`` localStorage keys left
+  // behind by the W18 rename. Idempotent so subsequent loads no-op;
+  // we can drop the call entirely after a few weeks once the cleanup
+  // has propagated to typical users.
+  useEffect(() => {
+    cleanupLegacyLocalStorage();
+  }, []);
 
   return (
     <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
