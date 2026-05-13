@@ -1,9 +1,9 @@
-import { MIME_DOC, MIME_DRAWING, MIME_FORM, MIME_SHEET, MIME_SLIDE } from "@/types/navigator";
+import { MIME_DOC, MIME_DRAWING, MIME_FORM, MIME_SHEET, MIME_SLIDE } from "@/types/wiki";
 
 // Builds the iframe src for a file. Google Workspace types use their
 // standard `/edit` URL — NOT `?embedded=true`. The embedded flag hides
 // the Google chrome including the Share button, which is the single
-// share-path the Navigator relies on (see PIVOT_PLAN.md §4.7: no
+// share-path Sarj Wiki relies on (see PIVOT_PLAN.md §4.7: no
 // custom share dialog — users click the native Google share button
 // inside the iframe). Drive's preview endpoint handles PDFs, images,
 // and other file types.

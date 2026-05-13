@@ -1,14 +1,14 @@
-# Cloud Run backend service — post-pivot Navigator layout.
+# Cloud Run backend service — post-pivot Sarj Wiki layout.
 #
-# What the Navigator backend needs at runtime:
+# What the Sarj Wiki backend needs at runtime:
 #   * Non-sensitive plaintext env: ALLOWED_DOMAIN, FRONTEND_URL,
 #     GOOGLE_REDIRECT_URI
 #   * Sensitive secrets (via Secret Manager): DATABASE_URL,
 #     SECRET_KEY, FERNET_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 #
-# What the legacy Sarj Docs stack needed but the Navigator does NOT:
+# What the legacy Sarj Wiki stack needed but Sarj Wiki does NOT:
 #   * DRIVE_WEBHOOK_TOKEN — no more Drive push notifications
-#   * DRIVE_ROOT_FOLDER_ID — Navigator discovers drives via
+#   * DRIVE_ROOT_FOLDER_ID — Sarj Wiki discovers drives via
 #     drives.list() at runtime, no static root folder
 #   * ADMIN_IMPERSONATE_EMAIL — no more Admin SDK group sync
 #   * SERVICE_ACCOUNT_KEY_PATH — no service account in the read path

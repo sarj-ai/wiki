@@ -2,12 +2,12 @@
 
 import { notFound, useParams } from "next/navigation";
 
-import { FilePageSkeleton } from "@/components/navigator-document/file-page-skeleton";
-import { FileViewer } from "@/components/navigator-document/file-viewer";
-import { NavigatorToolbar } from "@/components/navigator-document/navigator-toolbar";
-import { NavigatorNotFound } from "@/components/navigator-not-found";
-import { useFile } from "@/hooks/use-navigator-tree";
-import { ApiError } from "@/lib/navigator-api";
+import { FilePageSkeleton } from "@/components/wiki-document/file-page-skeleton";
+import { FileViewer } from "@/components/wiki-document/file-viewer";
+import { WikiToolbar } from "@/components/wiki-document/wiki-toolbar";
+import { WikiNotFound } from "@/components/wiki-not-found";
+import { useFile } from "@/hooks/use-wiki-tree";
+import { ApiError } from "@/lib/wiki-api";
 
 export default function FilePage() {
   const params = useParams<{ driveId: string }>();
@@ -26,7 +26,7 @@ export default function FilePage() {
   }
 
   // 404 from the backend means either the file truly doesn't exist or
-  // it's outside the Navigator's strict shared-drive scope (My Drive
+  // it's outside Sarj Wiki's strict shared-drive scope (My Drive
   // files, non-member shared drives). Route through Next's notFound()
   // so the (app)/not-found.tsx boundary renders — that keeps the
   // sidebar mounted and the themed empty-state view consistent with
@@ -40,7 +40,7 @@ export default function FilePage() {
   // populates ``data``, so the type narrows to non-null below.
   if (fileQuery.isError) {
     return (
-      <NavigatorNotFound
+      <WikiNotFound
         title="Can't load this file"
         description="Something went wrong fetching this file from Google Drive. Try again in a moment, or pick another file from the sidebar."
       />
@@ -51,7 +51,7 @@ export default function FilePage() {
 
   return (
     <div className="flex h-[100dvh] flex-col">
-      <NavigatorToolbar
+      <WikiToolbar
         fileId={file.id}
         mimeType={file.mimeType}
         title={file.name}

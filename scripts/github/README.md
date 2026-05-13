@@ -23,7 +23,7 @@ The payload requires:
 - No branch deletion
 
 Run this command on **cutover night**, after the final merge of
-`feat/navigator-pivot` into `main`. Running it earlier would block
+`feat/wiki-pivot` into `main`. Running it earlier would block
 the pivot merge itself, since the feature branch isn't technically
 passing the approving-review requirement at that moment (it is by
 definition the one massive PR being merged).

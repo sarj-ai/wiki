@@ -1,9 +1,9 @@
 # Secret Manager — all sensitive configuration consumed by the
-# Navigator backend at runtime. Non-sensitive config (allowed domain,
+# Sarj Wiki backend at runtime. Non-sensitive config (allowed domain,
 # frontend URL, OAuth redirect URI) stays as plaintext env vars in
-# cloudrun.tf. Secrets the legacy Sarj Docs backend needed — the
+# cloudrun.tf. Secrets the legacy Sarj Wiki backend needed — the
 # drive webhook token and the domain-wide-delegation service account
-# key — were removed during the pivot to the Navigator and no longer
+# key — were removed during the pivot to Sarj Wiki and no longer
 # exist here.
 
 resource "random_password" "secret_key" {

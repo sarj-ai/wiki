@@ -27,8 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.drive.schemas import DriveNode, DriveTree
 from app.drive.service import DriveService
-from app.models.navigator import DriveTreeCache
 from app.models.user import User
+from app.models.wiki import DriveTreeCache
 from app.sidebar.singleflight import Singleflight
 
 # Stale-while-revalidate window — reads older than this still serve the

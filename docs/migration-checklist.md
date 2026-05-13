@@ -2,15 +2,15 @@
 
 **Status:** Operational runbook. Executed manually by a human, out-of-band from the code pipeline.
 **Related plan section:** [`PIVOT_PLAN.md`](../PIVOT_PLAN.md) §12 Sub-PR B-prime.
-**Hard gate:** **This migration must be complete and verified before Sub-PR F (cutover) merges to `main`.** Earlier sub-PRs can land on `feat/navigator-pivot` without waiting for this work — they don't reach prod until cutover.
+**Hard gate:** **This migration must be complete and verified before Sub-PR F (cutover) merges to `main`.** Earlier sub-PRs can land on `feat/wiki-pivot` without waiting for this work — they don't reach prod until cutover.
 
 ---
 
 ## 1. Why this exists
 
-The current Sarj Docs backend stores its app-managed content in a hidden Google shared drive (`0AI_dKpHiz__7Uk9PVA`) that only the service account is a direct member of. Users access individual files there via group-shared permissions but never see the drive itself in their Drive UI.
+The current Sarj Wiki backend stores its app-managed content in a hidden Google shared drive (`0AI_dKpHiz__7Uk9PVA`) that only the service account is a direct member of. Users access individual files there via group-shared permissions but never see the drive itself in their Drive UI.
 
-The Navigator architecture can't work with that pattern. `drives.list()` called with a user's own OAuth token returns only the drives the user is a direct member of — which at Sarj means **Engineering, Marketing, Sales, Sarj Teamwide**. The hidden drive is invisible to every user, so the Navigator cannot cache its tree, walk its folders, or serve its files.
+The Sarj Wiki architecture can't work with that pattern. `drives.list()` called with a user's own OAuth token returns only the drives the user is a direct member of — which at Sarj means **Engineering, Marketing, Sales, Sarj Teamwide**. The hidden drive is invisible to every user, so Sarj Wiki cannot cache its tree, walk its folders, or serve its files.
 
 **Before cutover, every file currently in `0AI_dKpHiz__7Uk9PVA` must be moved into one of the four real shared drives** (or archived/deleted). After the move, the hidden drive can be left empty and eventually deleted by a Workspace admin.
 
@@ -160,7 +160,7 @@ Pick **10 files at random** from the migrated set — mixing Docs, Sheets, Slide
 
 Record the spot-check results in a ticket linked from this checklist.
 
-### 6.3 Navigator smoke test (staging)
+### 6.3 Sarj Wiki smoke test (staging)
 
 Once Sub-PRs A–D are on the feature branch and deployed to staging, log into staging as a real `@sarj.ai` user and confirm:
 
@@ -178,7 +178,7 @@ After verification:
 - **Option A (recommended):** leave the hidden drive empty but un-deleted for 30 days. If something surfaces as missing, files can still be recovered from Drive's trash within the grace period.
 - **Option B:** ask a Workspace admin to delete the hidden drive immediately after the 30-day grace period elapses.
 
-Either way, remove the service account's membership from it as soon as Navigator is live in prod — the SA should have no business touching Drive after cutover.
+Either way, remove the service account's membership from it as soon as Sarj Wiki is live in prod — the SA should have no business touching Drive after cutover.
 
 ---
 
@@ -190,7 +190,7 @@ The migration is **non-destructive per-file** — every move just changes parent
 2. **Right-click → "Move to"** → navigate back to the hidden drive and re-parent it.
 3. Drive version history preserves everything; nothing is lost.
 
-For bulk errors (whole-folder misclassification), move the folder back the same way you moved it in. Do this **before** cutover; after cutover, the Navigator is authoritative and rollback pathways get more complicated.
+For bulk errors (whole-folder misclassification), move the folder back the same way you moved it in. Do this **before** cutover; after cutover, Sarj Wiki is authoritative and rollback pathways get more complicated.
 
 There is no automated rollback script because there are no automated moves in the first place.
 

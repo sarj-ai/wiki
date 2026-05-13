@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-// Every Google-owned origin the Navigator needs to iframe or talk to.
+// Every Google-owned origin Sarj Wiki needs to iframe or talk to.
 // Google Docs' Share dialog loads nested people-picker frames from
 // several of these hosts (contacts.google.com, apis.google.com,
 // accounts.google.com), so the embedded /edit URL silently fails when
@@ -24,7 +24,7 @@ const GOOGLE_CONNECT_SRC = [
   "https://*.gstatic.com",
 ].join(" ");
 
-// The Navigator frontend always runs at a different origin from the
+// The Sarj Wiki frontend always runs at a different origin from the
 // FastAPI backend (localhost:3000 ↔ localhost:8000 in dev, and behind
 // different subdomains in prod). CSP connect-src must list the backend
 // explicitly or every fetch() from the client is silently blocked.
@@ -39,7 +39,7 @@ const BACKEND_API_ORIGIN = (() => {
   }
 })();
 
-// Content-Security-Policy directives for the Navigator.
+// Content-Security-Policy directives for Sarj Wiki.
 // 'unsafe-inline' on style-src is required for Tailwind's injected styles.
 // 'unsafe-eval' is ONLY added in development — Next.js Turbopack + React
 // dev mode use eval() for HMR and callstack reconstruction. Production

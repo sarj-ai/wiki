@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import settings
 from app.database import Base
-from app.models import navigator, user  # noqa: F401 — side-effect: register models on Base
+from app.models import wiki, user  # noqa: F401 — side-effect: register models on Base
 
 config = context.config
 if config.config_file_name is not None:

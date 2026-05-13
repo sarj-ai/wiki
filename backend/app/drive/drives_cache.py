@@ -2,7 +2,7 @@
 
 Drive membership barely changes during a normal session, but every
 file mutation today calls ``drives.list`` (via ``_ensure_in_member_drive``)
-to confirm the file's drive is still in the user's Navigator scope.
+to confirm the file's drive is still in the user's Sarj Wiki scope.
 That round-trip dominates the latency of create / rename / move /
 delete because it's serialised before the actual mutation.
 
@@ -24,7 +24,7 @@ Caching strategy
   bounds the worst-case staleness window.
 
 Drive remains the auth source of truth — the cache only memoises
-the *scope* answer ("is this drive in the user's Navigator
+the *scope* answer ("is this drive in the user's Sarj Wiki
 surface"), not the *authorization* answer ("can the user mutate
 this file"). A user who's lost write access to a drive still gets
 Drive's real 403 on the next mutation; only the visible sidebar

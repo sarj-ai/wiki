@@ -1,6 +1,6 @@
 # Service accounts and IAM bindings
 #
-# The Navigator only needs one runtime service account — the Cloud
+# Sarj Wiki only needs one runtime service account — the Cloud
 # Run backend — because the pivot removed:
 #   * Cloud Scheduler jobs (no more webhook renewal or group sync)
 #   * Admin SDK domain-wide-delegation
@@ -11,7 +11,7 @@
 # Cloud Run backend service account
 resource "google_service_account" "backend" {
   account_id   = "sarj-docs-backend"
-  display_name = "Sarj Docs Backend (Cloud Run)"
+  display_name = "Sarj Wiki Backend (Cloud Run)"
 
   depends_on = [google_project_service.apis["iam.googleapis.com"]]
 }

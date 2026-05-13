@@ -1,4 +1,4 @@
-"""HTTP surface for Navigator UI overlays.
+"""HTTP surface for Sarj Wiki UI overlays.
 
 Every route is a thin pass-through into ``ExtrasService``. No Drive
 calls here — this surface is DB-only.

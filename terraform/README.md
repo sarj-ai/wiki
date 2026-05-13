@@ -1,6 +1,6 @@
-# Navigator Terraform
+# Sarj Wiki Terraform
 
-Infrastructure-as-code for the Sarj Navigator production environment
+Infrastructure-as-code for the Sarj Wiki production environment
 on GCP + Cloudflare. Updated for Sub-PR B (rev 8 of
 `PIVOT_PLAN.md`).
 
@@ -24,7 +24,7 @@ on GCP + Cloudflare. Updated for Sub-PR B (rev 8 of
 | `monitoring.tf` | Cloud Monitoring alert policies |
 | `outputs.tf` | Useful outputs (LB IP, backend URL, etc.) |
 
-## What was removed from the legacy Sarj Docs stack
+## What was removed from the legacy Sarj Wiki stack
 
 - `scheduler.tf` — Cloud Scheduler jobs for webhook renewal and
   group sync are deleted along with the `/internal` endpoints.

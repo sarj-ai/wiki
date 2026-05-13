@@ -1,7 +1,7 @@
 project_id     = "sarj-docs"
 region         = "me-central1"
-frontend_url   = "https://navigator.sarj.ai"
-backend_domain = "api-navigator.sarj.ai"
+frontend_url   = "https://wiki.sarj.ai"
+backend_domain = "api.sarj.ai"
 db_tier        = "db-f1-micro"
 db_password    = "<strong-password>"
 

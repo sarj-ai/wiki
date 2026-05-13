@@ -21,7 +21,7 @@ resource "cloudflare_record" "backend" {
   value   = google_compute_global_address.backend_lb.address
   proxied = true
   ttl     = 1 # auto when proxied
-  comment = "Navigator backend — proxied to GCLB via Cloudflare"
+  comment = "Sarj Wiki backend — proxied to GCLB via Cloudflare"
 }
 
 # Zone-level security settings.
@@ -46,7 +46,7 @@ resource "cloudflare_zone_settings_override" "sarj_ai" {
 # Managed rules — enable Cloudflare's OWASP Core Ruleset.
 resource "cloudflare_ruleset" "managed_owasp" {
   zone_id     = var.cloudflare_zone_id
-  name        = "Navigator managed OWASP rules"
+  name        = "Sarj Wiki managed OWASP rules"
   description = "Cloudflare's managed OWASP Core Ruleset, action set to block at default paranoia level"
   kind        = "zone"
   phase       = "http_request_firewall_managed"
@@ -77,8 +77,8 @@ resource "cloudflare_ruleset" "managed_owasp" {
 # from Cloud Armor's to avoid thundering-herd misfires.
 resource "cloudflare_ruleset" "rate_limit" {
   zone_id     = var.cloudflare_zone_id
-  name        = "Navigator rate limit"
-  description = "Per-IP rate limit on the Navigator backend"
+  name        = "Sarj Wiki rate limit"
+  description = "Per-IP rate limit on the Sarj Wiki backend"
   kind        = "zone"
   phase       = "http_ratelimit"
 
@@ -91,7 +91,7 @@ resource "cloudflare_ruleset" "rate_limit" {
       mitigation_timeout  = 600
     }
     expression  = "http.host eq \"${var.backend_domain}\""
-    description = "200 req/min/IP on the Navigator backend domain"
+    description = "200 req/min/IP on the Sarj Wiki backend domain"
     enabled     = true
   }
 }
@@ -102,7 +102,7 @@ resource "cloudflare_ruleset" "rate_limit" {
 # Referer header. Strip bot scanners by requiring it.
 resource "cloudflare_ruleset" "custom_firewall" {
   zone_id     = var.cloudflare_zone_id
-  name        = "Navigator custom firewall rules"
+  name        = "Sarj Wiki custom firewall rules"
   description = "Per-path custom mitigations layered on top of the managed rules"
   kind        = "zone"
   phase       = "http_request_firewall_custom"
@@ -114,7 +114,7 @@ resource "cloudflare_ruleset" "custom_firewall" {
       and (cf.client.bot)
       and not (http.request.uri.path eq "/health")
     EOT
-    description = "Block known bots from the Navigator backend except /health"
+    description = "Block known bots from the Sarj Wiki backend except /health"
     enabled     = true
   }
 

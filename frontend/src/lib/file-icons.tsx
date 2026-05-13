@@ -21,7 +21,7 @@ import {
   MIME_SHEET,
   MIME_SHORTCUT,
   MIME_SLIDE,
-} from "@/types/navigator";
+} from "@/types/wiki";
 
 // Lucide outlines tinted with the Google brand color for each
 // Workspace type. Solid outlines read cleanly at 16px — detailed
@@ -109,7 +109,7 @@ export function isGoogleWorkspaceType(mimeType: string): boolean {
 
 /**
  * True when the file's iframe always renders its own filename header,
- * so the Navigator toolbar shouldn't duplicate it in the breadcrumb.
+ * so Sarj Wiki toolbar shouldn't duplicate it in the breadcrumb.
  * Confirmed against the live Google embed for each listed type —
  * add Forms/PDF/other as they're checked.
  */

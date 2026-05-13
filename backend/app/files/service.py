@@ -7,7 +7,7 @@ errors bubble as 502 — both via :class:`DriveUpstreamError`.
 Strict-mode scoping
 -------------------
 
-Every file the Navigator reads or writes must live in a shared drive
+Every file Sarj Wiki reads or writes must live in a shared drive
 the caller is a direct member of. A file the caller's token can see via
 ``files.get`` could also be in their personal My Drive or in a shared
 drive they have one-off share access to but aren't a member of — both
@@ -117,7 +117,7 @@ class GoogleFilesService(FilesService):
                     msg = "Drive blocked this cross-drive move — copy the file instead."
                     raise CrossDriveMoveNotSupportedError(msg) from exc
             raise
-        # Destination scope check — reject moves *out* of the Navigator's
+        # Destination scope check — reject moves *out* of Sarj Wiki's
         # visible surface (e.g. into My Drive).
         await self._ensure_in_member_drive(moved.drive_id)
         return MoveResult(source=source, moved=moved)

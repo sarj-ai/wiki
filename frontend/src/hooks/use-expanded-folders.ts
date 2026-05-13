@@ -42,7 +42,7 @@ const useFolderStore = create<FolderExpansionState>()(
         }),
     }),
     {
-      name: "navigator-expanded-folders",
+      name: "wiki-expanded-folders",
       storage: legacyAwareStorage("expanded"),
     },
   ),
@@ -69,7 +69,7 @@ const useDriveCollapseStore = create<DriveCollapseState>()(
         }),
     }),
     {
-      name: "navigator-collapsed-drives",
+      name: "wiki-collapsed-drives",
       storage: legacyAwareStorage("collapsed"),
     },
   ),

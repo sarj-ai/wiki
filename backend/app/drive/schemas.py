@@ -1,4 +1,4 @@
-"""Drive DTOs used across the Navigator backend.
+"""Drive DTOs used across Sarj Wiki backend.
 
 Plain Pydantic models with no SQLAlchemy coupling so they can be serialized
 straight into ``drive_tree_cache.tree`` JSONB and returned from API
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-# Google Workspace mime types the Navigator displays.
+# Google Workspace mime types Sarj Wiki displays.
 MIME_FOLDER = "application/vnd.google-apps.folder"
 MIME_DOC = "application/vnd.google-apps.document"
 MIME_SHEET = "application/vnd.google-apps.spreadsheet"

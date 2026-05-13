@@ -2,7 +2,7 @@
 
 # Notification channel
 resource "google_monitoring_notification_channel" "email" {
-  display_name = "Sarj Docs Alerts"
+  display_name = "Sarj Wiki Alerts"
   type         = "email"
 
   labels = {
@@ -14,7 +14,7 @@ resource "google_monitoring_notification_channel" "email" {
 
 # Uptime check — hits /health every 5 minutes
 resource "google_monitoring_uptime_check_config" "backend_health" {
-  display_name = "Sarj Docs Backend Health"
+  display_name = "Sarj Wiki Backend Health"
   timeout      = "10s"
   period       = "300s"
 

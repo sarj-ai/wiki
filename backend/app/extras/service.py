@@ -25,19 +25,19 @@ from app.extras.schemas import (
     SortOrderRead,
     SortOrderWrite,
 )
-from app.models.navigator import (
+from app.models.user import User
+from app.models.wiki import (
     DocIcon,
     UserFolderIcon,
     UserPreferences,
     UserSortOrder,
 )
-from app.models.user import User
 
 _DEFAULT_PREFS = PreferencesRead(show_non_doc_files=True, hidden_workspace_ids=[])
 
 
 class ExtrasService(ABC):
-    """Contract for Navigator UI overlay persistence."""
+    """Contract for Sarj Wiki UI overlay persistence."""
 
     # Doc icons (global, any user with Drive write access can edit).
     @abstractmethod

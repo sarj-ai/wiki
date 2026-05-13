@@ -3,19 +3,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { useDebounce } from "use-debounce";
 
-import type { DriveSearchResult, SnippetResult } from "@/types/navigator";
+import type { DriveSearchResult, SnippetResult } from "@/types/wiki";
 
-import { navigatorApi } from "@/lib/navigator-api";
+import { wikiApi } from "@/lib/wiki-api";
 
 export function useDriveSearch(query: string) {
   // ~250ms debounce keeps the Drive Search API call count sane while
   // typing, without the dance of a hand-rolled timeout effect.
   const [debouncedQuery] = useDebounce(query.trim(), 250);
   return useQuery<DriveSearchResult[]>({
-    queryKey: ["navigator", "drive-search", debouncedQuery],
+    queryKey: ["wiki", "drive-search", debouncedQuery],
     // Drive Search API fan-out happens server-side across every drive
     // the user has access to (see backend/app/drive/search_router.py).
-    queryFn: () => navigatorApi.driveSearch(debouncedQuery, 10),
+    queryFn: () => wikiApi.driveSearch(debouncedQuery, 10),
     enabled: debouncedQuery.length >= 2,
     // Results are cheap to refetch and stale quickly for queries like
     // "latest doc", so keep them fresh for ~30s only.
@@ -33,9 +33,9 @@ export function useDriveSearch(query: string) {
 export function useDriveSearchSnippet(fileId: string | null, query: string, enabled: boolean) {
   return useQuery<SnippetResult>({
     queryKey: fileId
-      ? ["navigator", "drive-search", "snippet", fileId, query]
-      : ["navigator", "drive-search", "snippet", "disabled"],
-    queryFn: () => navigatorApi.driveSearchSnippet(fileId ?? "", query),
+      ? ["wiki", "drive-search", "snippet", fileId, query]
+      : ["wiki", "drive-search", "snippet", "disabled"],
+    queryFn: () => wikiApi.driveSearchSnippet(fileId ?? "", query),
     enabled: enabled && !!fileId && query.length >= 2,
     // Snippets are deterministic for a given (file, query) pair until
     // the file's content changes. Cache for 5 minutes so arrowing up

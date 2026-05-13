@@ -66,7 +66,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     return {
       persister: createAsyncStoragePersister({
         storage,
-        key: "sarj-navigator-query-cache",
+        key: "sarj-wiki-query-cache",
       }),
       maxAge: ONE_DAY_MS,
       buster: CACHE_BUSTER,
@@ -79,7 +79,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         shouldDehydrateQuery: (query: Query) => {
           if (query.state.status !== "success") return false;
           const [root, scope] = query.queryKey;
-          if (root !== "navigator") return false;
+          if (root !== "wiki") return false;
           if (scope === "drive-search") return false;
           return true;
         },

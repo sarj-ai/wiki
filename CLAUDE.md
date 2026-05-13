@@ -1,4 +1,4 @@
-# Sarj Navigator — Project Reference for Claude
+# Sarj Wiki — Project Reference for Claude
 
 ## Overview
 
@@ -43,7 +43,7 @@ backend/app/
               + router.py, breadcrumb.py, errors.py (FilesError hierarchy), schemas.py
   sidebar/    SidebarCacheService in cache.py (drive-tree cache, stale-while-revalidate)
               + router.py (sidebar + drive listing endpoints), singleflight.py
-  models/     SQLAlchemy models — user.py + navigator.py (five Navigator overlay tables)
+  models/     SQLAlchemy models — user.py + wiki.py (five Sarj Wiki overlay tables)
   config.py   pydantic-settings, loaded once at startup
   database.py async engine + session factory
   logging_config.py   loguru sink + stdlib intercept handler

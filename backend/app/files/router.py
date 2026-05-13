@@ -1,4 +1,4 @@
-"""HTTP surface for Navigator file CRUD.
+"""HTTP surface for Sarj Wiki file CRUD.
 
 Every endpoint invalidates the affected drive's sidebar cache inline
 so the next sidebar load reflects the write. Move and delete are
