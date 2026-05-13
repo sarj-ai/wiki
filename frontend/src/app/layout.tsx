@@ -23,7 +23,7 @@ import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Sarj Docs",
+  title: "Sarj Wiki",
   description: "Internal knowledge base for Sarj",
 };
 

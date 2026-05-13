@@ -36,7 +36,7 @@ export function NavigatorNotFound({
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
           <Button asChild>
-            <Link href="/">Back to Navigator</Link>
+            <Link href="/">Back to Sarj Wiki</Link>
           </Button>
           {retryHref && (
             <Button asChild variant="outline">

@@ -10,7 +10,7 @@ export default function AppNotFound() {
   return (
     <NavigatorNotFound
       title="Page not found"
-      description="We couldn't find what you were looking for in the Navigator. Pick a file from the sidebar to continue."
+      description="We couldn't find what you were looking for in Sarj Wiki. Pick a file from the sidebar to continue."
     />
   );
 }

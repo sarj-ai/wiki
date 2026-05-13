@@ -30,10 +30,14 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 
 _is_secure = settings.FRONTEND_URL.startswith("https")
-# SameSite=none is required for cross-origin cookie auth (frontend ≠ backend
-# domain). In local dev (HTTP), use lax — browsers reject SameSite=none on
-# non-secure cookies.
-_SAMESITE: Literal["lax", "strict", "none"] = "none" if _is_secure else "lax"
+# ``lax`` everywhere: frontend (``wiki.sarj.ai``) and backend (``api.sarj.ai``)
+# share the registrable parent ``sarj.ai``, so the browser treats them as
+# same-site. ``SameSite=lax`` permits the cookie on the top-level redirect
+# back from Google OAuth while still blocking cross-site sub-requests —
+# strictly safer than ``none`` and removes the ``Secure``-only requirement.
+# ``Secure`` is still set when ``FRONTEND_URL`` is HTTPS (prod); local dev
+# over HTTP falls through to insecure cookies.
+_SAMESITE: Literal["lax", "strict", "none"] = "lax"
 
 _ACCESS_MAX_AGE = 30 * 60  # 30 minutes (matches JWT expiry)
 _REFRESH_MAX_AGE = 7 * 86400  # 7 days (matches JWT expiry)

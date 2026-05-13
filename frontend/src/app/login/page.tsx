@@ -16,7 +16,7 @@ const ERROR_CONFIG: Record<
     icon: ShieldX,
     title: "Access restricted",
     message:
-      "Only @sarj.ai accounts can access Sarj Docs. Please sign in with your Sarj work account.",
+      "Only @sarj.ai accounts can access Sarj Wiki. Please sign in with your Sarj work account.",
     color: "text-amber-500",
   },
   auth_failed: {

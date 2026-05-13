@@ -33,7 +33,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="Sarj Navigator API", lifespan=lifespan)
+app = FastAPI(title="Sarj Wiki API", lifespan=lifespan)
 app.state.limiter = limiter
 # slowapi's typed handler signature expects RateLimitExceeded specifically; cast
 # at the boundary so we keep mypy strict elsewhere.

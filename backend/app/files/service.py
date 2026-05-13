@@ -146,10 +146,10 @@ class GoogleFilesService(FilesService):
 
     async def _ensure_in_member_drive(self, drive_id: str | None) -> None:
         if drive_id is None:
-            raise FileNotInScopeError("File not available in the Navigator")
+            raise FileNotInScopeError("File not available in Sarj Wiki")
         drives = await self._drive.list_drives()
         if not any(d.id == drive_id for d in drives):
-            raise FileNotInScopeError("File not available in the Navigator")
+            raise FileNotInScopeError("File not available in Sarj Wiki")
 
     def _create_sync(self, parent_folder_id: str, name: str, mime_type: str) -> FileResponse:
         client = self._client()

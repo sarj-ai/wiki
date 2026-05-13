@@ -19,12 +19,12 @@ export default function RootNotFound() {
         <div className="space-y-1.5">
           <h2 className="text-lg font-semibold tracking-tight">Page not found</h2>
           <p className="text-muted-foreground text-sm leading-relaxed">
-            That URL doesn&rsquo;t match anything in the Navigator. Head back to the home page and
-            pick a file from the sidebar.
+            That URL doesn&rsquo;t match anything in Sarj Wiki. Head back to the home page and pick
+            a file from the sidebar.
           </p>
         </div>
         <Button asChild>
-          <Link href="/">Back to Navigator</Link>
+          <Link href="/">Back to Sarj Wiki</Link>
         </Button>
       </div>
     </div>
