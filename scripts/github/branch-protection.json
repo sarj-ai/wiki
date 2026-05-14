@@ -2,9 +2,11 @@
   "required_status_checks": {
     "strict": true,
     "contexts": [
-      "ci-backend",
-      "ci-frontend",
-      "codeql"
+      "CI Backend / Lint + typecheck",
+      "CI Backend / Unit tests",
+      "CI Frontend / Lint + typecheck + format",
+      "CI Frontend / Unit tests",
+      "CI Frontend / Next.js build smoke test"
     ]
   },
   "enforce_admins": false,

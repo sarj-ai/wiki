@@ -8,7 +8,7 @@ Terraform because branch protection is GitHub-API-only.
 
 ```sh
 gh api \
-  repos/a-alhashemi/sarj-docs/branches/main/protection \
+  repos/sarj-ai/wiki/branches/main/protection \
   --method PUT \
   --input scripts/github/branch-protection.json
 ```
@@ -16,7 +16,7 @@ gh api \
 The payload requires:
 
 - A pull request with at least one approving review before merging
-- Passing status checks on `ci-backend`, `ci-frontend`, and `codeql`
+- Passing status checks on the CI Backend + CI Frontend jobs (see `branch-protection.json` for the precise context strings)
 - Conversation resolution on every thread before merging
 - Signed commits
 - No force pushes
@@ -31,7 +31,7 @@ definition the one massive PR being merged).
 ## Verify
 
 ```sh
-gh api repos/a-alhashemi/sarj-docs/branches/main/protection
+gh api repos/sarj-ai/wiki/branches/main/protection
 ```
 
 Should echo the same JSON back with GitHub's own computed fields
@@ -40,7 +40,7 @@ added (URLs, etc.).
 ## Rollback
 
 ```sh
-gh api repos/a-alhashemi/sarj-docs/branches/main/protection \
+gh api repos/sarj-ai/wiki/branches/main/protection \
   --method DELETE
 ```
 

@@ -32,7 +32,7 @@
 #
 # Required settings at a glance:
 #   * Pull request with >= 1 approving review
-#   * Required status checks: ci-backend, ci-frontend, codeql
+#   * Required status checks: CI Backend + CI Frontend jobs (see ``scripts/github/branch-protection.json``)
 #   * Conversation resolution required
 #   * Signed commits
 #   * No force push, no deletion
