@@ -30,8 +30,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 
 _is_secure = settings.FRONTEND_URL.startswith("https")
-# ``lax`` everywhere: frontend (``wiki.sarj.ai``) and backend (``api.sarj.ai``)
-# share the registrable parent ``sarj.ai``, so the browser treats them as
+# ``lax`` everywhere: frontend (``wiki.sarj.ai``) and backend
+# (``api-wiki.sarj.ai``) share the registrable parent ``sarj.ai``, so
+# the browser treats them as
 # same-site. ``SameSite=lax`` permits the cookie on the top-level redirect
 # back from Google OAuth while still blocking cross-site sub-requests —
 # strictly safer than ``none`` and removes the ``Secure``-only requirement.
