@@ -62,22 +62,7 @@ variable "github_repo" {
 }
 
 # ---------------------------------------------------------------------------
-# Sub-PR B — perimeter security (load balancer + Cloudflare WAF)
+# Sub-PR B — perimeter security (load balancer + Cloud Armor WAF)
 # ---------------------------------------------------------------------------
-
-variable "cloudflare_api_token" {
-  description = "Cloudflare API token with Zone:Edit + Firewall:Edit scopes"
-  type        = string
-  sensitive   = true
-}
-
-variable "cloudflare_zone_id" {
-  description = "Cloudflare zone ID for sarj.ai"
-  type        = string
-}
-
-variable "cloudflare_zone_name" {
-  description = "Cloudflare zone name — typically sarj.ai"
-  type        = string
-  default     = "sarj.ai"
-}
+# Cloudflare WAF rules and DNS are managed manually in the Cloudflare
+# dashboard — no Terraform resources or API token required.

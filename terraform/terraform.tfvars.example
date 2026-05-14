@@ -15,10 +15,3 @@ google_client_secret = "<oauth-client-secret>"
 fernet_key = "<fernet-key>"
 
 alert_email = "alerts@sarj.ai"
-
-# Cloudflare — required for Sub-PR B perimeter (see cloudflare.tf).
-# API token must have Zone:Edit + Firewall Services:Edit scopes,
-# scoped to the sarj.ai zone only.
-cloudflare_api_token = "<cloudflare-api-token>"
-cloudflare_zone_id   = "<cloudflare-zone-id>"
-cloudflare_zone_name = "sarj.ai"

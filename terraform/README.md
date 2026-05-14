@@ -17,7 +17,7 @@ on GCP + Cloudflare. Updated for Sub-PR B (rev 8 of
 | `iam.tf` | Service accounts and IAM bindings |
 | `cloudrun.tf` | Cloud Run backend service definition |
 | `loadbalancer.tf` | Global HTTPS LB + Cloud Armor WAF + managed TLS cert *(Sub-PR B, new)* |
-| `cloudflare.tf` | Cloudflare DNS + OWASP managed rules + rate limit + bot mitigation *(Sub-PR B, new)* |
+| `cloudflare.tf` | ~~removed~~ — Cloudflare WAF rules and DNS managed manually in the dashboard |
 | `security.tf` | Security Command Center enablement + branch protection docs *(Sub-PR B, new)* |
 | `registry.tf` | Artifact Registry for backend Docker images |
 | `cicd.tf` | Workload Identity Federation for GitHub Actions deploys |
@@ -47,9 +47,7 @@ One-time prerequisites:
    `roles/owner` on it.
 2. GCS bucket `sarj-docs-terraform-state` exists in the same project
    (for Terraform's remote state).
-3. Cloudflare API token with `Zone:Edit` + `Firewall Services:Edit`
-   scoped to the `sarj.ai` zone.
-4. A `terraform.tfvars` file (based on `terraform.tfvars.example`)
+3. A `terraform.tfvars` file (based on `terraform.tfvars.example`)
    with all required variables filled in.
 
 ```sh
@@ -88,19 +86,14 @@ Google Cloud's external HTTPS load balancer with:
 - **HTTP → HTTPS 301 redirect** so port-80 traffic gets upgraded
   before it reaches Cloud Run.
 
-### Cloudflare (`cloudflare.tf`)
+### Cloudflare
 
-Edge perimeter with defense-in-depth over Cloud Armor:
-
-- **DNS**: A-record for `backend_domain` pointing at the LB IP,
-  proxied (orange cloud) so all traffic flows through Cloudflare.
-- **Zone settings**: strict SSL, always-HTTPS, min TLS 1.2, TLS 1.3
-  enabled, high security level, browser-integrity check on.
-- **Managed OWASP ruleset** enabled at zone level.
-- **Custom rate limit**: 200 req/min/IP on the backend domain
-  (independent of Cloud Armor's 100 req/min).
-- **Bot mitigation**: block known bots except on `/health`, and
-  managed-challenge requests originating from unexpected regions.
+Cloudflare sits in front of the GCLB as the edge proxy (orange cloud).
+All Cloudflare configuration — DNS A-record, zone settings, WAF rules,
+rate limits, and bot mitigation — is managed manually in the Cloudflare
+dashboard. The zone is shared across multiple sarj.ai services, so
+Terraform does not touch it. Cloud Armor (`loadbalancer.tf`) provides
+an independent WAF layer at the GCP tier.
 
 ### Security Command Center (`security.tf`)
 

@@ -3,10 +3,6 @@ provider "google" {
   region  = var.region
 }
 
-provider "cloudflare" {
-  api_token = var.cloudflare_api_token
-}
-
 # Enable required GCP APIs
 resource "google_project_service" "apis" {
   for_each = toset([
