@@ -24,7 +24,7 @@ on GCP + Cloudflare. Updated for Sub-PR B (rev 8 of
 | `monitoring.tf` | Cloud Monitoring alert policies |
 | `outputs.tf` | Useful outputs (LB IP, backend URL, etc.) |
 
-## What was removed from the legacy Sarj Wiki stack
+## What was removed from the legacy (pre-pivot Sarj Docs) stack
 
 - `scheduler.tf` — Cloud Scheduler jobs for webhook renewal and
   group sync are deleted along with the `/internal` endpoints.
@@ -61,8 +61,9 @@ terraform init
 # secret, service-account-key volume, legacy env vars).
 terraform plan
 
-# Apply — requires Cloudflare API token in TF_VAR_cloudflare_api_token
-# or cloudflare_api_token in terraform.tfvars.
+# Apply — Cloudflare DNS / WAF / Worker bindings are managed
+# manually in the dashboard (see commit 3da9fa4); no Cloudflare
+# token is needed for this step.
 terraform apply
 ```
 
