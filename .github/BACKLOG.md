@@ -30,3 +30,12 @@
 
 - [ ] **Prop drilling in sidebar** — `WorkspaceSection` accepts 22+ props. Consider React context to reduce drilling.
 - [ ] **Synthetic keyboard event for search** — search button fakes `Cmd+K` event. Should use a shared callback/context instead.
+
+## Post-Cutover Infrastructure
+
+> Sequence after the wiki cutover lands and stabilises. None of these block launch. Suggested order: secrets → docs → Cloud Build → IAM DB.
+
+- [ ] **Secrets out of `terraform.tfvars` into Secret Manager** — Refactor `terraform/secrets.tf` to read secret values via `data "google_secret_manager_secret_version"` instead of `var.*`. Tfvars then carries only non-sensitive config (project, region, hostnames, tier) and becomes committable — eliminates the chronic gitignore footgun. Needs a one-time bootstrap script to seed Secret Manager before first apply. ~half-day.
+- [ ] **From-scratch setup docs** — Extend `terraform/README.md` with a "From scratch" section: GCP project creation, foundation APIs to enable before terraform, GCS state bucket, WIF (or Cloud Build trigger if that migration lands first), OAuth client + initial redirect URIs, Cloudflare zone prerequisites, Secret Manager bootstrap, first-apply ordering. Capture what was actually done during cutover while it's fresh. ~1–2 hrs.
+- [ ] **Cloud Build for deploys** — Move `deploy-backend.yml` + `deploy-frontend.yml` off GitHub Actions onto Cloud Build triggered on push to `main`. Drops Workload Identity Federation, native AR push (same-network), audit trail in Cloud Logging. Keep GitHub Actions for CI (lint/typecheck/test/PR build smoke). ~half-day; touches `cicd.tf`, adds `cloudbuild.yaml`, retires WIF resources.
+- [ ] **Passwordless DB (Cloud SQL IAM authentication)** — Switch Cloud SQL from password to IAM auth. Backend SA presents OAuth tokens via the Cloud SQL Python Connector or an Auth Proxy sidecar with `--auto-iam-authn`. Removes the `db_password` secret entirely and ties DB access to GCP IAM (revoke SA = revoke DB). Touches terraform (IAM SA user + `cloudsql_iam_authentication=on` flag), backend driver, alembic flow, local dev (Cloud SQL Proxy + `gcloud auth login`). ~1–2 days — non-trivial token-refresh + dev-loop work; tackle alone, not bundled with anything else.
