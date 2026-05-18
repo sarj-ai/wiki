@@ -36,7 +36,11 @@ resource "google_compute_region_network_endpoint_group" "backend_neg" {
 resource "google_compute_backend_service" "backend" {
   name                  = "sarj-docs-backend-service"
   protocol              = "HTTPS"
-  port_name             = "https"
+  # ``port_name`` deliberately omitted — Serverless NEGs (Cloud Run)
+  # don't accept it; GCP rejects ``port_name`` for serverless backends
+  # with "Port name is not supported for a backend service with
+  # Serverless network endpoint groups." Only instance-group NEGs need
+  # this field.
   timeout_sec           = 30
   load_balancing_scheme = "EXTERNAL_MANAGED"
   enable_cdn            = false
@@ -221,13 +225,38 @@ resource "google_compute_url_map" "backend" {
   default_service = google_compute_backend_service.backend.id
 }
 
-# Managed TLS cert via Certificate Manager
+# Managed TLS cert via Certificate Manager.
+#
+# Validation method: DNS-01 (via ``google_certificate_manager_dns_authorization``).
+#
+# We deliberately do *not* use the default HTTP-01 validation here because
+# the backend domain (``api-wiki.sarj.ai``) is proxied through Cloudflare —
+# DNS resolves to Cloudflare's anycast IPs, not the GCLB IP, so Google's
+# HTTP-01 challenger can't reach the LB to fetch the validation token. This
+# would be a chicken-and-egg even without Cloudflare: the LB has no cert
+# until the cert validates, and HTTP-01 would need to hit the LB to validate.
+#
+# With DNS-01, Google publishes a CNAME challenge record (surfaced via the
+# ``cert_dns_authorization_record`` output) that we add once to Cloudflare
+# DNS. Google validates by DNS lookup, which works through the Cloudflare
+# proxy because it's checking DNS, not HTTP. The CNAME is permanent — it
+# stays in place for renewals so we never repeat this dance.
+resource "google_certificate_manager_dns_authorization" "backend" {
+  name        = "sarj-docs-backend-dns-auth"
+  location    = "global"
+  domain      = var.backend_domain
+  description = "DNS-01 authorization for ${var.backend_domain} (Cloudflare-proxied)"
+
+  depends_on = [google_project_service.apis["certificatemanager.googleapis.com"]]
+}
+
 resource "google_certificate_manager_certificate" "backend" {
   name     = "sarj-docs-backend-cert"
   location = "global"
 
   managed {
-    domains = [var.backend_domain]
+    domains            = [var.backend_domain]
+    dns_authorizations = [google_certificate_manager_dns_authorization.backend.id]
   }
 
   depends_on = [google_project_service.apis["certificatemanager.googleapis.com"]]
