@@ -97,15 +97,29 @@ resource "google_compute_security_policy" "backend_armor" {
     description = "block XSS"
   }
 
+  # SQLi at full paranoid sensitivity (level 4) — keeps the most
+  # aggressive OWASP CRS detections live, only opting out of specific
+  # rules that empirically false-positive on legitimate auth-flow
+  # traffic:
+  #   942100 — original /auth/callback workaround (URL-encoded code=)
+  #   942200 — MySQL comment-/space-obfuscated SQL — fires on JWT
+  #            cookies sent to /auth/refresh
+  #   942421 — ASCII-encoded SQLi bypass — fires on base64 patterns in
+  #            JWT cookies on /auth/me, /auth/login, /favicon.ico
+  #   942432 — restricted SQL char anomaly — fires on Google OAuth
+  #            ``code=4/0A...`` parameter on /auth/callback
+  # If a new paranoia-level-4 rule starts blocking auth, add its rule
+  # ID here. The auth router uses parameterized SQLAlchemy queries
+  # exclusively, so SQLi via these params is not a real attack vector.
   rule {
     action   = "deny(403)"
     priority = 510
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('sqli-v33-stable', ['owasp-crs-v030301-id942100-sqli'])"
+        expression = "evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 4, 'opt_out_rule_ids': ['owasp-crs-v030301-id942100-sqli', 'owasp-crs-v030301-id942200-sqli', 'owasp-crs-v030301-id942421-sqli', 'owasp-crs-v030301-id942432-sqli']})"
       }
     }
-    description = "block SQLi (with /auth/callback exception)"
+    description = "block SQLi (paranoid, auth-flow opt-outs)"
   }
 
   rule {

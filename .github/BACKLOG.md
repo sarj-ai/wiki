@@ -20,6 +20,7 @@
 
 - [ ] **Mobile login (cross-domain cookies)** — mobile browsers block `SameSite=none` cookies from different domains. Fix: put backend on same domain as frontend (e.g., `api-wiki.sarj.ai`) and set cookie `domain=.sarj.ai`.
 - [ ] **Login page flash on expired token** — mostly fixed (silent refresh before redirect), but edge cases may remain if refresh token is also expired.
+- [ ] **Styled 403 page for Cloud Armor denials** — when Cloud Armor blocks a request (WAF false positive, non-Cloudflare source) the browser shows a blank Google 403 page. Add a styled error page, either via a Cloudflare Workers rule that intercepts origin 403s for `wiki.sarj.ai` / `api-wiki.sarj.ai` and renders a branded page, or via GCLB `default_url_redirect` / custom error responses on the URL map.
 
 ## Sync
 
