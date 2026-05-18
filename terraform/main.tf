@@ -10,12 +10,13 @@ resource "google_project_service" "apis" {
     "sqladmin.googleapis.com",
     "secretmanager.googleapis.com",
     "artifactregistry.googleapis.com",
-    "cloudscheduler.googleapis.com",
     "monitoring.googleapis.com",
     "vpcaccess.googleapis.com",
     "compute.googleapis.com",
     "iam.googleapis.com",
     "servicenetworking.googleapis.com",
+    "certificatemanager.googleapis.com",
+    "securitycenter.googleapis.com",
   ])
 
   service            = each.value

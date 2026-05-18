@@ -1,9 +1,9 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import type { User } from "@/types";
-import { fetchCurrentUser, refreshAccessToken, logout as apiLogout } from "@/lib/auth";
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
+
+import { fetchCurrentUser, refreshAccessToken, logout as apiLogout, type User } from "@/lib/auth";
 import { sanitizeRedirectPath } from "@/lib/url-utils";
 
 const REDIRECT_KEY = "sarj-redirect";
@@ -17,7 +17,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isLoading: true,
-  logout: async () => {},
+  logout: () => Promise.resolve(),
 });
 
 export function useAuth(): AuthContextType {
@@ -30,7 +30,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
-  pathnameRef.current = pathname;
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -69,11 +71,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [router]);
 
-  useEffect(() => {
-    checkAuth();
-  // Run once on mount only
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Intentional mount-only auth probe; checkAuth triggers setState via
+  // setUser/setIsLoading, which is the whole point of running it here.
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  useEffect(() => void checkAuth(), []);
 
   // Re-check auth when user returns to the tab (catches expired tokens)
   // Cooldown prevents flooding the API on rapid alt-tabbing
@@ -83,11 +84,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const now = Date.now();
       if (now - lastAuthCheckRef.current > 30_000) {
         lastAuthCheckRef.current = now;
-        checkAuth();
+        void checkAuth();
       }
     }
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+    };
   }, [checkAuth]);
 
   const logout = useCallback(async () => {
@@ -101,8 +104,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, logout }}>
-      {children}
-    </AuthContext.Provider>
+    <AuthContext.Provider value={{ user, isLoading, logout }}>{children}</AuthContext.Provider>
   );
 }

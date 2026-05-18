@@ -1,9 +1,9 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
-from fastapi import HTTPException, status
 
+from app.auth.errors import InvalidTokenError
 from app.config import settings
 
 ALGORITHM = "HS256"
@@ -12,7 +12,7 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 
 def create_access_token(user_id: str, email: str, token_version: int = 0) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": user_id,
         "email": email,
@@ -25,7 +25,7 @@ def create_access_token(user_id: str, email: str, token_version: int = 0) -> str
 
 
 def create_refresh_token(user_id: str, token_version: int = 0) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": user_id,
         "iat": now,
@@ -37,18 +37,12 @@ def create_refresh_token(user_id: str, token_version: int = 0) -> str:
 
 
 def decode_token(token: str) -> dict[str, Any]:
-    """Raises HTTPException(401) on invalid/expired tokens."""
+    """Raises :class:`InvalidTokenError` on invalid/expired tokens."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
-    except jwt.PyJWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        ) from None
+    except jwt.PyJWTError as e:
+        raise InvalidTokenError("Invalid or expired token") from e
 
     if payload.get("sub") is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token: missing subject",
-        )
+        raise InvalidTokenError("Invalid token: missing subject")
     return payload

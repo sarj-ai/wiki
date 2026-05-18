@@ -36,17 +36,17 @@ resource "google_sql_database_instance" "main" {
 
     database_flags {
       name  = "shared_buffers"
-      value = "32768"  # 32 MB (in 8KB pages) — default ~128 MB is too much for f1-micro
+      value = "32768" # 32 MB (in 8KB pages) — default ~128 MB is too much for f1-micro
     }
 
     database_flags {
       name  = "work_mem"
-      value = "2048"  # 2 MB — limit per-query sort/hash memory
+      value = "2048" # 2 MB — limit per-query sort/hash memory
     }
 
     database_flags {
       name  = "maintenance_work_mem"
-      value = "32768"  # 32 MB — for VACUUM, index builds
+      value = "32768" # 32 MB — for VACUUM, index builds
     }
   }
 
@@ -67,4 +67,20 @@ resource "google_sql_user" "app" {
   name     = "sarj_docs_app"
   instance = google_sql_database_instance.main.name
   password = var.db_password
+}
+
+# Sarj Wiki — post-pivot DB + user. Lives in the same instance as
+# ``sarj_docs`` so we share Cloud SQL overhead, but isolated to its
+# own database and credential. ``sarj_docs`` / ``sarj_docs_app``
+# stay in place untouched so a same-day rollback is just flipping the
+# ``sarj-docs-db-url`` secret back to the old DSN — no data motion.
+resource "google_sql_database" "sarj_wiki" {
+  name     = "sarj_wiki"
+  instance = google_sql_database_instance.main.name
+}
+
+resource "google_sql_user" "wiki_app" {
+  name     = "sarj_wiki_app"
+  instance = google_sql_database_instance.main.name
+  password = var.wiki_db_password
 }

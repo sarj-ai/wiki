@@ -1,0 +1,42 @@
+"""FastAPI dependency wiring for ``SidebarCacheService``.
+
+Test-isolation note
+-------------------
+The module-level ``SINGLEFLIGHT`` and ``BG_TASKS`` registries imported
+from :mod:`app.sidebar.cache` are process-wide singletons — replacing
+this dependency in a test only swaps the *service*, not the in-flight
+coalescer or the background-task pool. Tests that need a clean slate
+must override **both**: provide a fresh ``SingleflightRegistry`` and a
+fresh ``BackgroundTaskPool`` when constructing the service, otherwise
+state from a prior test (an in-flight refresh, a queued revalidation)
+leaks across cases.
+"""
+
+from __future__ import annotations
+
+from fastapi import Depends
+
+from app.auth.dependencies import get_current_user
+from app.database import async_session
+from app.drive.dependencies import drive_service_dep
+from app.drive.service import DriveService
+from app.models.user import User
+from app.sidebar.cache import (
+    BG_TASKS,
+    SINGLEFLIGHT,
+    PostgresSidebarCacheService,
+    SidebarCacheService,
+)
+
+
+def sidebar_cache_service_dep(
+    user: User = Depends(get_current_user),
+    drive: DriveService = Depends(drive_service_dep),
+) -> SidebarCacheService:
+    return PostgresSidebarCacheService(
+        drive=drive,
+        user=user,
+        singleflight=SINGLEFLIGHT,
+        bg_tasks=BG_TASKS,
+        sessionmaker=async_session,
+    )

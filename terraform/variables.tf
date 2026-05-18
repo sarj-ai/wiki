@@ -20,17 +20,6 @@ variable "backend_domain" {
   type        = string
 }
 
-variable "drive_root_folder_id" {
-  description = "Google Drive root folder ID for Sarj Docs"
-  type        = string
-}
-
-variable "admin_impersonate_email" {
-  description = "Workspace admin email for Admin SDK impersonation"
-  type        = string
-  default     = "nasr@sarj.ai"
-}
-
 variable "db_tier" {
   description = "Cloud SQL machine tier"
   type        = string
@@ -38,7 +27,13 @@ variable "db_tier" {
 }
 
 variable "db_password" {
-  description = "Cloud SQL database password"
+  description = "Cloud SQL password for the legacy sarj_docs_app user (kept for rollback)"
+  type        = string
+  sensitive   = true
+}
+
+variable "wiki_db_password" {
+  description = "Cloud SQL password for the sarj_wiki_app user (post-pivot, primary)"
   type        = string
   sensitive   = true
 }
@@ -61,11 +56,6 @@ variable "fernet_key" {
   sensitive   = true
 }
 
-variable "service_account_key_path" {
-  description = "Local path to the GCP service account JSON key file"
-  type        = string
-}
-
 variable "alert_email" {
   description = "Email address for monitoring alerts"
   type        = string
@@ -76,3 +66,9 @@ variable "github_repo" {
   type        = string
   default     = "a-alhashemi/sarj-docs"
 }
+
+# ---------------------------------------------------------------------------
+# Sub-PR B — perimeter security (load balancer + Cloud Armor WAF)
+# ---------------------------------------------------------------------------
+# Cloudflare WAF rules and DNS are managed manually in the Cloudflare
+# dashboard — no Terraform resources or API token required.

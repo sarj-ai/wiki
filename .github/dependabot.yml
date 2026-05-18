@@ -1,0 +1,47 @@
+version: 2
+
+updates:
+  # Backend Python dependencies managed via uv.
+  - package-ecosystem: uv
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Riyadh
+    open-pull-requests-limit: 5
+    labels: [dependencies, backend]
+    groups:
+      python-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # Frontend npm dependencies.
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Riyadh
+    open-pull-requests-limit: 5
+    labels: [dependencies, frontend]
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+      radix:
+        patterns: ["@radix-ui/*", "radix-ui"]
+      testing:
+        patterns: ["@testing-library/*", "vitest", "@vitest/*", "happy-dom"]
+
+  # GitHub Actions workflow versions.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Riyadh
+    open-pull-requests-limit: 5
+    labels: [dependencies, github-actions]

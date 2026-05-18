@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/sidebar/app-sidebar";
+
 import { ErrorBoundary } from "@/components/error-boundary";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { CommandPalette } from "@/components/wiki-search/command-palette";
+import { WikiSidebar } from "@/components/wiki-sidebar/wiki-sidebar";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
@@ -11,13 +13,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <SidebarProvider defaultOpen={defaultOpen}>
       <ErrorBoundary>
-        <AppSidebar />
+        <WikiSidebar />
       </ErrorBoundary>
       <main className="flex-1 overflow-auto">
-        <ErrorBoundary>
-          {children}
-        </ErrorBoundary>
+        <ErrorBoundary>{children}</ErrorBoundary>
       </main>
+      {/* Mounted once per authenticated session. Registers the global
+          Cmd+K hotkey and renders the Spotlight-style palette on demand. */}
+      <CommandPalette />
     </SidebarProvider>
   );
 }

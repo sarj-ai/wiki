@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/app/**/{page,layout,loading,not-found,error,template,default}.{ts,tsx}",
+    "src/app/**/route.ts",
+    "src/middleware.ts",
+    "next.config.ts",
+    "open-next.config.ts",
+    "vitest.config.ts",
+    "vitest.setup.ts",
+    "playwright.config.ts",
+    "e2e/**/*.{ts,tsx}"
+  ],
+  "ignore": ["src/components/ui/**"],
+  "ignoreDependencies": ["postcss"]
+}

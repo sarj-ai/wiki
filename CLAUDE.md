@@ -1,468 +1,175 @@
-# Sarj Docs — Project Reference for Claude
+# Sarj Wiki — Project Reference for Claude
 
-## Project Overview
+## Overview
 
-An internal knowledge base for `@sarj.ai`, built on top of Google Docs. The goal is a Notion-like UX with infinite sidebar nesting, workspace grouping via Google Admin, and embedded Google Docs editing — without leaving the Google Workspace ecosystem.
+Notion-like sidebar layered on top of Google Drive for `@sarj.ai`. The user's real Drive hierarchy **is** the sidebar — we don't maintain a parallel tree. Postgres is an overlay for icons, per-user ordering, and UI prefs; nothing in our DB is authoritative and all of it can be dropped and rebuilt from Drive.
 
----
+## Stack
 
-## Tech Stack
+| Layer    | Tech                                               |
+|----------|----------------------------------------------------|
+| Frontend | Next.js 16 App Router, React 19, shadcn, Tailwind  |
+| Backend  | FastAPI, Python 3.14                               |
+| DB       | Postgres, SQLAlchemy async, Alembic                |
+| Auth     | Google OAuth 2.0 (restricted to `@sarj.ai`)        |
+| Content  | Google Drive / Docs (iframe embedded)              |
 
-| Layer        | Technology                                           |
-|--------------|------------------------------------------------------|
-| Frontend     | Next.js (App Router), React                          |
-| UI           | Shadcn UI, Tailwind CSS                              |
-| Backend      | FastAPI (Python)                                     |
-| Database     | PostgreSQL + SQLAlchemy (async) + Alembic migrations |
-| Auth         | Google OAuth 2.0 (restricted to @sarj.ai)            |
-| Content      | Google Drive / Google Docs (iframe embedded)         |
-| Admin Sync   | Google Admin SDK Directory API (service account)     |
-| Drive Events | Google Drive Push Notifications (webhooks)           |
-
----
-
-## Backend Module Structure
+## Repo layout
 
 ```
-app/
-  auth/             — OAuth flow, JWT, encryption, dependencies
-  docs_transformer/ — Google Docs API → content blocks (13 modules)
-  drive/            — Drive API helpers: credentials, files, folders, content, changes
-  pages/            — CRUD, content, background tasks, sync, tree, helpers
-  permissions/      — Page sharing and access control
-  search/           — Full-text search with PostgreSQL tsvector
-  webhooks/         — Drive push notification handling
-  workspaces/       — Google Groups sync, workspace management
-  internal/         — Cloud Scheduler endpoints (reindex, webhook renewal)
+backend/    FastAPI app (see "Backend layout" below)
+frontend/   Next.js 16 App Router
+terraform/  infra
+scripts/    one-off ops scripts
+docs/       ad-hoc design notes
+ROLLOUT.md  pre-launch wave tracker (read before starting work)
 ```
 
----
+## Backend layout
 
-## Tooling Rules
+Most modules that hold business logic follow the same shape: `service.py` defines an ABC + concrete implementation, `dependencies.py` wires it through FastAPI `Depends`, `router.py` is a thin HTTP adapter. Module-local helpers (`errors.py`, `schemas.py`, retry/encryption/jwt utilities) sit alongside as needed. Two modules deviate: `sidebar/` names its service file `cache.py` (the cache *is* the service), and `drive/` has no `router.py` of its own — its listing endpoints are mounted from `sidebar/router.py`, and only its full-text search endpoint lives in `drive/search_router.py`.
 
-- **Always use `uv`** for Python dependency management, virtual environments, and running scripts. Never use `pip`, `pip3`, `venv`, or `python -m venv`.
-- **Use relative paths** in shell commands. The working directory is already the project root — don't prefix commands with the full absolute path.
-
----
-
-## Architecture Rules (STRICTLY ENFORCED)
-
-1. **Separation of concerns**: The Next.js client NEVER calls Google APIs directly, performs database operations, or executes complex business logic. It only calls FastAPI endpoints.
-2. **FastAPI owns everything**: All Google API calls, token management, database reads/writes, access control enforcement, and business logic live in FastAPI.
-3. **No assumptions**: If a technical choice or API behavior is uncertain, ask — do not invent requirements.
-4. **Iterative delivery**: Do not write the entire application in one response. Build incrementally per the phases below.
-
----
-
-## Authentication & Security
-
-- **Login**: Google Social Login ONLY. No username/password.
-- **Domain restriction**: Only `@sarj.ai` emails may authenticate. Enforced in FastAPI — never trust the client.
-- **Token storage**: Google OAuth access + refresh tokens stored server-side, encrypted at rest (Fernet/AES). Never sent to the client.
-- **Session**: FastAPI issues its own signed JWT after validating the Google OAuth callback. The client uses this JWT for all API calls.
-- **JWT token versioning**: Each user has a `token_version` field. Logout increments `token_version`, invalidating all previously issued JWTs. The version is embedded in the JWT payload and checked on every request.
-- **Refresh token rotation**: Refresh tokens are rotated on use — each refresh issues a new access + refresh token pair.
-- **Cookie security**: JWT cookies use `max_age` matching JWT expiry, `SameSite=lax` in development, `SameSite=none` in production (cross-origin).
-- **Webhook verification**: Drive webhooks are verified via `DRIVE_WEBHOOK_TOKEN` matched against the `X-Goog-Channel-Token` header.
-- **Internal endpoints**: Cloud Scheduler endpoints verify OIDC tokens against `INTERNAL_AUDIENCE` (Cloud Run service URL). In local dev, a shared secret (`INTERNAL_SCHEDULER_SECRET`, min 32 chars) is used instead.
-- **Admin SDK**: A GCP service account with domain-wide delegation is used to call the Admin Directory API as a service (not as the user). The service account JSON key is stored as a backend environment variable only.
-
----
-
-## Drive & Hierarchy Architecture
-
-### The Key Principle: Drive Mirrors Our Tree
-
-Our app tree and the Google Drive folder structure are **kept in sync**. When a user creates `Engineering → Culture → How We Work`, the backend:
-1. Ensures `Sarj Docs/Engineering/Culture/` folder chain exists in the shared Workspace Drive.
-2. Creates the Google Doc inside `Culture/`.
-3. Records the page in our DB with the `google_drive_id` (file) and `drive_folder_id` (parent folder).
-
-**Draft documents** go into a per-user folder: `Sarj Docs/My Drafts/{user_email}/`.
-
-**Moving a page** in our tree → FastAPI moves the Drive file to the new Drive folder (via `files.update` with `addParents`/`removeParents`).
-
-**Publishing a draft** to a workspace → FastAPI moves the Drive file from the "My Drafts" folder to the workspace folder and grants the Google Group read/edit access via Drive sharing.
-
-### Drive Folder Root Structure
 ```
-Sarj Docs/                        ← app root folder (shared drive or team folder)
-├── Engineering/                  ← workspace/section folders
-│   └── Culture/
-│       └── How We Work (Doc)
-├── Marketing/
-│   └── Brand Guidelines (Doc)
-└── My Drafts/
-    └── ali@sarj.ai/              ← per-user draft folder
-        └── My Draft (Doc)
+backend/app/
+  auth/       AuthService (OAuth exchange, JWT lifecycle, token_version revocation)
+              + encryption.py (Fernet), jwt.py, errors.py (AuthError hierarchy)
+  drive/      DriveService (drives.list, folder walk, listing, search, snippets)
+              + search_router.py (only HTTP surface this module exposes itself)
+              + drives_cache.py, retry.py (tenacity), schemas.py, snippets.py (pure helpers)
+              listing endpoints live in sidebar/router.py — drive/ has no router.py
+  extras/     ExtrasService (icons, sort order, prefs — Postgres-only)
+              + router.py, errors.py, schemas.py
+  files/      FilesService (Drive file CRUD + strict-scope check via DriveService)
+              + router.py, breadcrumb.py, errors.py (FilesError hierarchy), schemas.py
+  sidebar/    SidebarCacheService in cache.py (drive-tree cache, stale-while-revalidate)
+              + router.py (sidebar + drive listing endpoints), singleflight.py
+  models/     SQLAlchemy models — user.py + wiki.py (five Sarj Wiki overlay tables)
+  config.py   pydantic-settings, loaded once at startup
+  database.py async engine + session factory
+  logging_config.py   loguru sink + stdlib intercept handler
+  main.py     FastAPI app, lifespan, slowapi rate limiter, routers
 ```
 
-### Existing Docs Import
-- On first setup, FastAPI scans the existing Drive folder structure under `Sarj Docs/`.
-- Each discovered file is matched to a workspace based on its folder path, then inserted into the `pages` table.
-- Group tags are applied based on which workspace folder the file lives in.
+Routers never call Google APIs or the DB directly — they resolve a service via `Depends` and pass through. `__init__.py` files are empty; every call site imports from the module that actually owns the symbol.
 
-### Listening for New Changes (Drive Webhooks)
-- FastAPI registers a **Google Drive Push Notification** (`files.watch`) on the root `Sarj Docs/` folder.
-- When Drive detects a new file or folder change, it POSTs to our `/webhooks/drive` endpoint.
-- FastAPI fetches the changed file's metadata, determines its folder path, infers the workspace, and upserts the `pages` record.
-- Webhook channel registrations expire every 7 days — a background task re-registers them automatically.
+## Tooling
 
-### Sync Architecture
+- **Python deps/scripts**: `uv` only. Never `pip`, `pip3`, `venv`, `python -m venv`.
+- **Shell**: use relative paths; cwd is already repo root.
+- **Checkers run on every change**: `ruff`, `mypy` (strict), `pyright` (strict), `ty`, `vulture`. All must pass. Tests run with `uv run pytest`.
 
-- **Two-pass scan**: Pass 1 concurrently collects all folders and docs from Drive (no DB access). Pass 2 applies the collected data to the database in bulk. This avoids DB connection timeouts during long Drive API traversals.
-- **Smart section creation**: Only folders that have at least one doc in their subtree become section pages. This prevents phantom empty sections from appearing in the sidebar.
-- **Section Drive IDs**: Section pages use synthetic `section-{folder_id}` as their `google_drive_id` to distinguish them from actual Google Docs.
-- **Incremental sync**: After the initial full scan, subsequent syncs use the Drive Changes API (`changes.list` with a saved `startPageToken`) to process only new or modified files.
-- **Force sync**: Passing `?force=true` to the sync endpoint triggers a full rescan, ignoring the saved change token.
-- **Synced page ownership**: Pages created by sync have `created_by=NULL`, meaning all workspace members can modify them (no single owner).
+## Architecture rules
 
----
+1. Next.js never calls Google APIs, touches the DB, or runs business logic — only FastAPI endpoints.
+2. FastAPI owns all Google API calls, tokens, DB reads/writes, and auth enforcement.
+3. Service logic lives in `XxxService` classes behind ABCs, wired via `Depends`. Routers are thin.
+4. If a technical choice or API behavior is uncertain, ask — don't invent.
+5. Deliver iteratively; don't rewrite the app in one response.
 
-## Database Schema
+## Code standards
+
+Audit commands at `/sarj-audit:*` (from the `sarj-agentic` plugin, enabled via `.claude/settings.json`) check these. Apply them when writing or reviewing code:
+
+- **Stepdown rule** — Each file reads top-to-bottom. Exported/public functions sit at the top (below imports / types / constants); each function only calls helpers defined below it. Reader sees intent before implementation.
+- **Library-first** — Don't hand-roll what a well-maintained package already covers (date math, slugs, retries, debounce, CSV, UUIDs, etc.). Reach for the package; reserve hand-rolling for cases where the library would be heavier than what it replaces.
+- **Move logic down the stack** — Push work to the lowest layer that can handle it: client → server (server components / loaders, not `useEffect` fetches); app code → SQL (filter / group / sort / join in the query, not in JS); raw HTML → shadcn primitives (`Button`, `Select`, `Dialog`, etc., not hand-rolled `<button>` / `<div>` patterns).
+- **Service layer + DI** — already enforced (Architecture rules #3): business logic in `XxxService` behind ABCs, wired via FastAPI `Depends`; routers stay thin.
+- **Strict linting** — `ruff`, `mypy --strict`, `pyright --strict`, `ty`, `vulture` on every change (see Tooling). Don't downgrade rules to `warn` to silence them — fix the violation.
+
+## Auth & security
+
+- Google OAuth 2.0 only; domain-restricted to `@sarj.ai` in `AuthService._enforce_domain`.
+- Google access + refresh tokens stored server-side, Fernet-encrypted. Never sent to the client.
+- FastAPI issues its own JWT after OAuth callback. JWT is the client credential (cookie or `Authorization: Bearer`).
+- `users.token_version` embedded in JWT; logout bumps it, invalidating every prior token.
+- Refresh tokens rotate on use.
+- JWT cookie: `max_age` = JWT expiry, `SameSite=lax` dev, `SameSite=none` prod.
+- `AuthError` is a typed exception hierarchy (`AuthFailedError`, `DomainRestrictedError`, `TokenRevokedError`) — each carries a `redirect_key` the callback router maps to the frontend's `?error=...` param.
+
+## Access control
+
+**Drive membership is the only source of truth.** We store no `page_permissions`, no `workspace_memberships`. A user sees a drive/folder/file iff Google Drive says they can. `DriveService.list_drives` is the boundary — results from there decide what appears in the sidebar.
+
+**Shortcuts (`application/vnd.google-apps.shortcut`) are surfaced as native nodes** with a `Link2` overlay glyph. `_walk_folders_sync` and `_list_children_sync` include shortcuts in their queries, pull `shortcutDetails(targetId, targetMimeType)`, and feed the result through `_resolve_shortcut_nodes` — an async resolver that probes each shortcut's target via `files.get` in parallel. Probe outcomes:
+- `200 OK` → shortcut renders normally; `shortcut_target_drive_id`/`shortcut_target_drive_name` populated for the tooltip.
+- `403` → `shortcut_inaccessible=True`; the row renders greyed-out with a "contact admin" tooltip and click is suppressed (sidebar) / Open is disabled (search).
+- `404` or `trashed=true` → the shortcut is dropped from results entirely (auto-prune).
+
+Drive's ACL on the target is the only source of truth. The shortcut entry's own ACL (which controls *visibility* of the row) is independent — shortcuts can be visible to users who lack target access, hence the inaccessible-state UX. Folder shortcuts expand by listing the *target's* children via the existing `/sidebar/folders/{id}/files` endpoint; their subtree is lazy-fetched, never denormalized into the host drive's `drive_tree_cache`. Search results run through the same resolver so the palette greys out hits the user can't open.
+
+## Database schema
 
 ```sql
--- Self-referential tree for Notion-like sidebar hierarchy
-pages:
-  id               UUID PRIMARY KEY DEFAULT gen_random_uuid()
-  parent_id        UUID REFERENCES pages(id) ON DELETE CASCADE NULL  -- NULL = root
-  google_drive_id  TEXT NOT NULL UNIQUE   -- Google Doc file ID
-  drive_folder_id  TEXT NOT NULL          -- Google Drive folder ID that contains this doc
-  title            TEXT NOT NULL          -- cached; refreshed from Drive lazily
-  type             TEXT NOT NULL CHECK(type IN ('page', 'section'))
-  sort_order       FLOAT NOT NULL DEFAULT 0  -- fractional indexing for drag-drop reorder
-  is_private       BOOLEAN NOT NULL DEFAULT TRUE
-  created_by       UUID REFERENCES users(id)
-  workspace_id     UUID REFERENCES workspaces(id) NULL
-  icon             TEXT NULL              -- emoji or image URL
-  cover_url        TEXT NULL
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
-
-workspaces:
-  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid()
-  name                TEXT NOT NULL
-  google_group_email  TEXT NOT NULL UNIQUE  -- from Google Admin SDK (e.g. engineering@sarj.ai)
-  drive_folder_id     TEXT NOT NULL          -- root Drive folder ID for this workspace
-  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-
 users:
-  id                       UUID PRIMARY KEY DEFAULT gen_random_uuid()
-  email                    TEXT NOT NULL UNIQUE
-  google_id                TEXT NOT NULL UNIQUE
-  display_name             TEXT
-  avatar_url               TEXT
-  encrypted_access_token   TEXT   -- Fernet-encrypted
-  encrypted_refresh_token  TEXT   -- Fernet-encrypted
-  token_expiry             TIMESTAMPTZ
-  token_version            INTEGER NOT NULL DEFAULT 0  -- incremented on logout to invalidate all JWTs
-  created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id, email, google_id, display_name, avatar_url,
+  encrypted_access_token, encrypted_refresh_token, token_expiry,
+  token_version  -- bumped on logout; embedded in JWTs for revocation
 
-workspace_memberships:
-  user_id       UUID REFERENCES users(id) ON DELETE CASCADE
-  workspace_id  UUID REFERENCES workspaces(id) ON DELETE CASCADE
-  PRIMARY KEY (user_id, workspace_id)
+drive_tree_cache:
+  drive_id PK, tree (JSONB), refreshed_at, refreshed_by
+  -- one row per shared drive; amortized across members
 
-page_permissions:
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid()
-  page_id       UUID REFERENCES pages(id) ON DELETE CASCADE
-  user_id       UUID REFERENCES users(id) ON DELETE CASCADE NULL
-  workspace_id  UUID REFERENCES workspaces(id) ON DELETE CASCADE NULL
-  permission    TEXT NOT NULL CHECK(permission IN ('view', 'edit'))
-  CHECK (user_id IS NOT NULL OR workspace_id IS NOT NULL)  -- DB-level constraint
+doc_icons:
+  drive_id PK, icon, cover_url, updated_at, updated_by
+  -- global, editable by anyone with Drive write access
 
-drive_webhook_channels:
-  channel_id      TEXT PRIMARY KEY       -- Google-assigned channel ID
-  resource_id     TEXT NOT NULL          -- Drive resource being watched
-  folder_id       TEXT NOT NULL          -- Drive folder ID being watched
-  expiry          TIMESTAMPTZ NOT NULL   -- re-register before this time
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+user_folder_icons:
+  (user_id, folder_drive_id) PK, icon, updated_at
+
+user_sort_order:
+  (user_id, drive_id) PK, sort_order (float)  -- fractional indexing
+
+user_preferences:
+  user_id PK, show_non_doc_files, hidden_workspace_ids[], updated_at
 ```
 
-**Tree traversal**: Adjacency list (`parent_id`). PostgreSQL recursive CTEs (`WITH RECURSIVE`) handle full-tree fetches efficiently.
+## Sidebar loader contract
 
----
+Three endpoints, each independent so one slow drive doesn't gate the whole sidebar:
 
-## Access Control Logic
+1. `GET /sidebar/drives` — `DriveService.list_drives()`. Access-control boundary.
+2. `GET /sidebar/drives/{drive_id}/folders` — `SidebarCacheService.get_drive_tree()`. Served from `drive_tree_cache`; on miss, `DriveService.walk_drive_folders` runs a BFS through singleflight and writes back.
+3. `GET /sidebar/folders/{folder_id}/files` — lazy file list on folder expand, also singleflight-coalesced.
 
-```
-Can user U see page P?
-  1. P.created_by == U                                          → YES (owner always sees own)
-  2. P.is_private == FALSE AND U is in P.workspace_id          → YES
-  3. page_permissions has a record for (P, U) or (P, U's workspace) → YES
-  4. Otherwise                                                  → NO (403, never leak existence)
-```
+No Drive webhooks, no `files.watch`, no push subscriptions. Cache staleness handled by TTL (`CACHE_TTL`) + stale-while-revalidate refreshes.
 
----
-
-## Google Docs Iframe Embedding
+## Google Docs iframe
 
 ```
 https://docs.google.com/document/d/{DRIVE_ID}/edit?embedded=true
 ```
 
-- FastAPI validates user authorization, then returns the `google_drive_id`.
-- The Next.js client constructs the iframe URL client-side only after receiving the Drive ID.
-- Browser's existing Google session (user already logged in via OAuth) handles iframe auth automatically.
-- This is viable because all users are `@sarj.ai` Workspace members.
+FastAPI returns `google_drive_id`; the client builds the iframe URL. The browser's existing Google session handles iframe auth (all users are `@sarj.ai` Workspace members).
 
----
+## Google OAuth scopes
 
-## Google API Scopes
-
-### User OAuth scopes (requested during login)
 - `openid`, `email`, `profile`
-- `https://www.googleapis.com/auth/drive` — read/write Drive files
+- `https://www.googleapis.com/auth/drive` — read/write Drive
 
-### Service account (domain-wide delegation) scopes
-- `https://www.googleapis.com/auth/admin.directory.group.readonly` — read Google Admin groups
-- `https://www.googleapis.com/auth/admin.directory.group.member.readonly` — read group members
+No service account, no Admin SDK, no domain-wide delegation.
 
----
+## Theme & dark mode
 
-## Build Phases (in order)
+- Design tokens live in `frontend/src/app/globals.css` (`:root` + `.dark`), exposed via Tailwind's `@theme inline` block. Use the CSS variables — never hard-code colors.
+- Font: Nunito (sans, self-hosted from `frontend/public/fonts`) + Geist Mono.
+- Dark mode via `next-themes` (`attribute="class"`); defaults to `prefers-color-scheme`; manual toggle persists in `localStorage`.
 
-### Phase 1 — GCP Setup (manual, user-side)
-- Create OAuth 2.0 credentials (Web Application). Callback: `http://localhost:8000/auth/callback` (dev) and production URL.
-- Create a Service Account. Enable domain-wide delegation. Download JSON key.
-- Enable APIs: Google Drive API, Google Admin SDK Directory API.
-- Create the `Sarj Docs` root folder in Google Drive. Note the folder ID.
+## Logging
 
-### Phase 2 — Backend Foundation
-- FastAPI project scaffold with `uv` or `pip` + `pyproject.toml`
-- PostgreSQL connection via `asyncpg` + SQLAlchemy async
-- Alembic migration setup
-- All schema tables created via migrations
+`loguru` is the single logging path. `app/logging_config.py` installs a JSON sink (prod, driven by `LOG_JSON`) or pretty sink (dev) and routes stdlib `logging` (uvicorn, fastapi, sqlalchemy) through an InterceptHandler so every line flows through one format. Inside app code: `from loguru import logger` and `logger.info("msg with {arg}", arg=value)`.
 
-### Phase 3 — Authentication
-- Google OAuth 2.0 flow (`/auth/login`, `/auth/callback`, `/auth/logout`)
-- Domain enforcement (`@sarj.ai` only, in backend)
-- JWT issuance + refresh
-- Token encryption/storage
+## Environment variables
 
-### Phase 4 — Workspace Sync
-- Service account client setup
-- Admin SDK: fetch all `@sarj.ai` groups → upsert `workspaces` table
-- On user login: fetch user's group memberships → upsert `workspace_memberships`
+Loaded via `pydantic-settings` in `app/config.py`; `extra="ignore"` tolerates stale legacy keys.
 
-### Phase 5 — Sidebar Tree API
-- `GET /pages/tree` — returns user's visible page tree (recursive CTE, respects access control)
-- `POST /pages` — create page (creates Drive doc + Drive folder chain + DB record)
-- `PATCH /pages/{id}` — rename, reorder, re-parent (with Drive file move)
-- `DELETE /pages/{id}` — soft-delete (trash in Drive, mark deleted in DB)
-- `POST /pages/{id}/publish` — move from private to workspace (Drive share + DB update)
-
-### Phase 6 — Drive Import & Webhooks
-- `POST /admin/import` — scan existing Drive structure under root folder, ingest into DB
-- `POST /webhooks/drive` — receive Drive push notifications, upsert pages
-- Background task: re-register expiring webhook channels
-
-### Phase 7 — Frontend Foundation
-- Next.js App Router scaffold
-- Shadcn UI + Tailwind with Sarj theme wired in
-- `next-themes` for dark/light mode
-- Auth flow: redirect to `/auth/login`, handle JWT cookie from backend
-
-### Phase 8 — Sidebar UI
-- Collapsible, infinitely nested sidebar tree component
-- Drag-and-drop reordering (via `dnd-kit`)
-- Workspace switcher
-- New page creation inline
-
-### Phase 9 — Document View
-- Page route: `/docs/[pageId]`
-- Fetch page metadata from FastAPI, render Google Docs iframe
-- Page header: title, icon, workspace badge, share button
-
-### Phase 10 — Permissions UI
-- Share modal: share with workspace or specific user
-- Toggle private/public
-- View current collaborators
-
----
-
-## Sarj Theme
-
-### Light Mode (`:root`)
-```css
-:root {
-  --background: #f6efe7;
-  --foreground: #251040;
-  --card: #ffffff;
-  --card-foreground: #251040;
-  --popover: #ffffff;
-  --popover-foreground: #251040;
-  --primary: #000000;
-  --primary-foreground: #ffffff;
-  --secondary: #D0C3DF;
-  --secondary-foreground: #ffffff;
-  --muted: #f5f5f5;
-  --muted-foreground: #737373;
-  --accent: #f5f5f5;
-  --accent-foreground: #171717;
-  --destructive: #dc2626;
-  --border: #d5d5d5;
-  --input: #e5e5e5;
-  --ring: #a1a1a1;
-  --chart-1: #e06000;
-  --chart-2: #009689;
-  --chart-3: #104e64;
-  --chart-4: #ffb900;
-  --chart-5: #fe9a00;
-  --sidebar: #fafafa;
-  --sidebar-foreground: #251040;
-  --sidebar-primary: #251040;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #D0C3DF;
-  --sidebar-accent-foreground: #251040;
-  --sidebar-border: #e5e5e5;
-  --sidebar-ring: oklch(0.708 0 0);
-
-  --font-sans: 'Geist', 'Geist Fallback', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
-  --font-serif: 'Geist', 'Geist Fallback', ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
-  --font-mono: 'Geist Mono', 'Geist Mono Fallback', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-
-  --radius: 0.625rem;
-
-  --shadow-2xs: 0 1px 3px 0px rgb(0 0 0 / 0.05);
-  --shadow-xs:  0 1px 3px 0px rgb(0 0 0 / 0.05);
-  --shadow-sm:  0 1px 3px 0px rgb(0 0 0 / 0.10), 0 1px 2px -1px rgb(0 0 0 / 0.10);
-  --shadow:     0 1px 3px 0px rgb(0 0 0 / 0.10), 0 1px 2px -1px rgb(0 0 0 / 0.10);
-  --shadow-md:  0 1px 3px 0px rgb(0 0 0 / 0.10), 0 2px 4px -1px rgb(0 0 0 / 0.10);
-  --shadow-lg:  0 1px 3px 0px rgb(0 0 0 / 0.10), 0 4px 6px -1px rgb(0 0 0 / 0.10);
-  --shadow-xl:  0 1px 3px 0px rgb(0 0 0 / 0.10), 0 8px 10px -1px rgb(0 0 0 / 0.10);
-  --shadow-2xl: 0 1px 3px 0px rgb(0 0 0 / 0.25);
-}
-```
-
-### Dark Mode (`.dark`)
-```css
-.dark {
-  --background: #161618;
-  --foreground: #f6efe7;
-  --card: #171717;
-  --card-foreground: #f6efe7;
-  --popover: #171717;
-  --popover-foreground: #f6efe7;
-  --primary: #6762ab;
-  --primary-foreground: #000000;
-  --secondary: #4B3483;
-  --secondary-foreground: #f6efe7;
-  --muted: #262626;
-  --muted-foreground: #a1a1a1;
-  --accent: #262626;
-  --accent-foreground: #fafafa;
-  --destructive: #f87171;
-  --border: #ffffff1a;
-  --input: #ffffff26;
-  --ring: #737373;
-  --chart-1: #e06000;
-  --chart-2: #00bc7d;
-  --chart-3: #fe9a00;
-  --chart-4: #ad46ff;
-  --chart-5: #ff2056;
-  --sidebar: #171717;
-  --sidebar-foreground: #fafafa;
-  --sidebar-primary: #1447e6;
-  --sidebar-primary-foreground: #fafafa;
-  --sidebar-accent: #262626;
-  --sidebar-accent-foreground: #fafafa;
-  --sidebar-border: #ffffff1a;
-  --sidebar-ring: #737373;
-}
-```
-
-### Tailwind `@theme inline` block
-```css
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
-  --font-serif: var(--font-serif);
-
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-
-  --shadow-2xs: var(--shadow-2xs);
-  --shadow-xs:  var(--shadow-xs);
-  --shadow-sm:  var(--shadow-sm);
-  --shadow:     var(--shadow);
-  --shadow-md:  var(--shadow-md);
-  --shadow-lg:  var(--shadow-lg);
-  --shadow-xl:  var(--shadow-xl);
-  --shadow-2xl: var(--shadow-2xl);
-}
-```
-
----
-
-## Dark/Light Mode
-
-- Default: detect from `prefers-color-scheme` via `next-themes`.
-- Manual toggle: overrides system preference, stored in `localStorage`.
-- Implementation: `next-themes` with `attribute="class"` (adds `.dark` class to `<html>`).
-
----
-
-## Configuration Settings
-
-| Variable | Description | Required |
-|---|---|---|
-| `SHARED_DRIVE_ID` | Shared Drive ID for Changes API. Leave empty if using folder-level service account access. | Optional |
-| `DRIVE_WEBHOOK_TOKEN` | Token for verifying Drive webhook `X-Goog-Channel-Token` header. Auto-generated via Terraform. | Yes |
-| `INTERNAL_AUDIENCE` | Cloud Run service URL used for OIDC audience verification on internal endpoints. | Yes (prod) |
-| `INTERNAL_SCHEDULER_SECRET` | Shared secret for local dev internal endpoint access. Minimum 32 characters. | Yes (dev) |
-
----
-
-## Decisions Log
-
-| Decision | Choice | Rationale |
-|---|---|---|
-| Database | PostgreSQL | Performance, recursive CTEs, production-grade |
-| Tree structure | Adjacency list + recursive CTE | Simple, sufficient for team scale |
-| Admin SDK access | Service account + domain-wide delegation | No Super Admin required day-to-day |
-| Drive structure | Mirrors app tree | Moving pages in app = moving files in Drive |
-| Private docs location | `Sarj Docs/My Drafts/{email}/` folder | Clear separation, easy to audit |
-| Doc import | Scan Drive root folder on demand | Ingest existing docs with group tags |
-| New doc detection | Drive Push Notifications (webhooks) | Real-time, event-driven, no polling |
-| Webhook renewal | Background APScheduler task | Channels expire every 7 days |
-| Iframe auth | Browser session passthrough | Works because all users are @sarj.ai Workspace members |
-| JWT library | PyJWT | Replaced python-jose; actively maintained |
-| Sync approach | Two-pass (collect from Drive, then apply to DB) | Avoids DB connection timeouts during long Drive traversals |
-| Section creation | Only for folders with docs in subtree | Prevents phantom empty sections in sidebar |
-| Token revocation | `token_version` on User model, embedded in JWT | Logout invalidates all tokens without a blocklist |
-| Content cache | 60-second TTL | Balances content freshness vs Google API call volume |
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Postgres DSN |
+| `SECRET_KEY` | JWT signing key (≥32 chars) |
+| `FERNET_KEY` | Token encryption key (valid Fernet key) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth credentials |
+| `GOOGLE_REDIRECT_URI` | OAuth callback URL |
+| `ALLOWED_DOMAIN` | Default `sarj.ai` |
+| `FRONTEND_URL` | CORS origin + cookie secure-mode inference |
+| `LOG_JSON` | Emit JSON log lines (default `false`) |
+| `LOG_LEVEL` | Default `INFO` |

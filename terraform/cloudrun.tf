@@ -1,8 +1,31 @@
-# Cloud Run backend service
+# Cloud Run backend service — post-pivot Sarj Wiki layout.
+#
+# What the Sarj Wiki backend needs at runtime:
+#   * Non-sensitive plaintext env: ALLOWED_DOMAIN, FRONTEND_URL,
+#     GOOGLE_REDIRECT_URI
+#   * Sensitive secrets (via Secret Manager): DATABASE_URL,
+#     SECRET_KEY, FERNET_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+#
+# What the legacy Sarj Wiki stack needed but Sarj Wiki does NOT:
+#   * DRIVE_WEBHOOK_TOKEN — no more Drive push notifications
+#   * DRIVE_ROOT_FOLDER_ID — Sarj Wiki discovers drives via
+#     drives.list() at runtime, no static root folder
+#   * ADMIN_IMPERSONATE_EMAIL — no more Admin SDK group sync
+#   * SERVICE_ACCOUNT_KEY_PATH — no service account in the read path
+#   * CLOUD_SCHEDULER_SA_EMAIL — no /internal endpoints
+#   * WEBHOOK_BASE_URL — no webhook registrations
+#   * /secrets/service-account-key volume mount — removed
 
 resource "google_cloud_run_v2_service" "backend" {
   name     = "sarj-docs-backend"
   location = var.region
+
+  # Restrict ingress to the internal load balancer. Without this, the
+  # auto-generated ``*.run.app`` hostname is publicly reachable and
+  # bypasses the entire Cloudflare + GCLB + Cloud Armor perimeter.
+  # Traffic must now arrive via ``google_compute_global_forwarding_rule.backend_https``
+  # in loadbalancer.tf — direct hits to the run.app URL are rejected.
+  ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
 
   # CI/CD manages the container image — don't let Terraform overwrite it
   lifecycle {
@@ -69,26 +92,6 @@ resource "google_cloud_run_v2_service" "backend" {
         name  = "GOOGLE_REDIRECT_URI"
         value = "https://${var.backend_domain}/auth/callback"
       }
-      env {
-        name  = "WEBHOOK_BASE_URL"
-        value = "https://${var.backend_domain}"
-      }
-      env {
-        name  = "DRIVE_ROOT_FOLDER_ID"
-        value = var.drive_root_folder_id
-      }
-      env {
-        name  = "ADMIN_IMPERSONATE_EMAIL"
-        value = var.admin_impersonate_email
-      }
-      env {
-        name  = "SERVICE_ACCOUNT_KEY_PATH"
-        value = "/secrets/service-account-key/latest"
-      }
-      env {
-        name  = "CLOUD_SCHEDULER_SA_EMAIL"
-        value = google_service_account.scheduler.email
-      }
 
       # Sensitive env vars from Secret Manager
       env {
@@ -134,33 +137,6 @@ resource "google_cloud_run_v2_service" "backend" {
             secret  = google_secret_manager_secret.secrets["google-client-secret"].secret_id
             version = "latest"
           }
-        }
-      }
-
-      env {
-        name = "DRIVE_WEBHOOK_TOKEN"
-        value_source {
-          secret_key_ref {
-            secret  = google_secret_manager_secret.secrets["webhook-token"].secret_id
-            version = "latest"
-          }
-        }
-      }
-
-      # Mount service account key as a file
-      volume_mounts {
-        name       = "sa-key"
-        mount_path = "/secrets/service-account-key"
-      }
-    }
-
-    volumes {
-      name = "sa-key"
-      secret {
-        secret = google_secret_manager_secret.secrets["service-account-key"].secret_id
-        items {
-          version = "latest"
-          path    = "latest"
         }
       }
     }

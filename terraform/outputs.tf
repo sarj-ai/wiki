@@ -1,5 +1,5 @@
 output "backend_url" {
-  description = "Cloud Run backend service URL"
+  description = "Cloud Run backend service URL (not the public URL — that's lb_ip / backend_domain)"
   value       = google_cloud_run_v2_service.backend.uri
 }
 
@@ -13,9 +13,9 @@ output "cloud_sql_private_ip" {
   value       = google_sql_database_instance.main.private_ip_address
 }
 
-output "scheduler_sa_email" {
-  description = "Cloud Scheduler service account email"
-  value       = google_service_account.scheduler.email
+output "lb_ip" {
+  description = "Global HTTPS LB anycast IP — point Cloudflare's proxied A record at this"
+  value       = google_compute_global_address.backend_lb.address
 }
 
 output "wif_provider" {
@@ -26,4 +26,12 @@ output "wif_provider" {
 output "wif_service_account" {
   description = "WIF service account email (set as WIF_SERVICE_ACCOUNT secret in GitHub)"
   value       = google_service_account.github_actions.email
+}
+
+# CNAME challenge record for DNS-01 cert validation. Add this once to
+# Cloudflare DNS (DNS-only, grey cloud) — Google checks it on every renewal,
+# so it must stay in place permanently.
+output "cert_dns_authorization_record" {
+  description = "CNAME record to add to Cloudflare for DNS-01 cert validation"
+  value       = google_certificate_manager_dns_authorization.backend.dns_resource_record
 }

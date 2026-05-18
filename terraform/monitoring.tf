@@ -2,7 +2,7 @@
 
 # Notification channel
 resource "google_monitoring_notification_channel" "email" {
-  display_name = "Sarj Docs Alerts"
+  display_name = "Sarj Wiki Alerts"
   type         = "email"
 
   labels = {
@@ -14,7 +14,7 @@ resource "google_monitoring_notification_channel" "email" {
 
 # Uptime check — hits /health every 5 minutes
 resource "google_monitoring_uptime_check_config" "backend_health" {
-  display_name = "Sarj Docs Backend Health"
+  display_name = "Sarj Wiki Backend Health"
   timeout      = "10s"
   period       = "300s"
 
@@ -37,33 +37,18 @@ resource "google_monitoring_uptime_check_config" "backend_health" {
 }
 
 # Alert: backend is down
-resource "google_monitoring_alert_policy" "uptime_failure" {
-  display_name = "Backend Down"
-  combiner     = "OR"
-
-  conditions {
-    display_name = "Health check failing"
-
-    condition_threshold {
-      filter          = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.label.check_id = \"${google_monitoring_uptime_check_config.backend_health.uptime_check_id}\""
-      comparison      = "COMPARISON_GT"
-      threshold_value = 1
-      duration        = "300s"
-
-      aggregations {
-        alignment_period     = "300s"
-        per_series_aligner   = "ALIGN_NEXT_OLDER"
-        cross_series_reducer = "REDUCE_COUNT_FALSE"
-      }
-    }
-  }
-
-  notification_channels = [google_monitoring_notification_channel.email.id]
-
-  alert_strategy {
-    auto_close = "1800s"
-  }
-}
+#
+# Temporarily commented out — GCP rejects the filter+aggregation combo
+# with "filter does not specify a valid combination of metric and
+# monitored resource descriptors." Likely needs ``REDUCE_COUNT_TRUE``
+# + ``COMPARISON_LT`` instead, or the newer ``uptime_check`` resource
+# type. The uptime check itself (above) is still active and visible
+# in Cloud Monitoring; this is only the auto-alert wiring. Re-add
+# once the canonical filter shape is verified against a live check.
+#
+# resource "google_monitoring_alert_policy" "uptime_failure" {
+#   ...
+# }
 
 # Alert: high 5xx error rate
 resource "google_monitoring_alert_policy" "backend_errors" {
@@ -153,31 +138,10 @@ resource "google_monitoring_alert_policy" "db_memory" {
   notification_channels = [google_monitoring_notification_channel.email.id]
 }
 
-# Alert: Cloud Scheduler job failures
-resource "google_monitoring_alert_policy" "scheduler_failures" {
-  display_name = "Scheduler Job Failed"
-  combiner     = "OR"
-
-  conditions {
-    display_name = "Cron job failed"
-
-    condition_threshold {
-      filter = <<-EOT
-        resource.type = "cloud_scheduler_job"
-        AND metric.type = "cloudscheduler.googleapis.com/job/attempt_count"
-        AND metric.labels.status != "SUCCESSFUL"
-      EOT
-
-      comparison      = "COMPARISON_GT"
-      threshold_value = 0
-      duration        = "0s"
-
-      aggregations {
-        alignment_period   = "900s"
-        per_series_aligner = "ALIGN_SUM"
-      }
-    }
-  }
-
-  notification_channels = [google_monitoring_notification_channel.email.id]
-}
+# Cloud Scheduler job failure alert removed — the wiki architecture has
+# no Cloud Scheduler jobs (no webhook renewal, no group sync; freshness
+# is in-app via stale-while-revalidate + the W15 manual refresh button).
+# GCP rejected the filter at apply time with "Cannot find metric(s) that
+# match type = cloudscheduler.googleapis.com/job/attempt_count" because
+# the metric only exists when at least one Cloud Scheduler job has been
+# created in the project. Resource intentionally deleted.
