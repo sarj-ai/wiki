@@ -86,15 +86,20 @@ resource "google_compute_security_policy" "backend_armor" {
   name = "sarj-docs-backend-armor"
 
   # OWASP ModSecurity Core Rule Set — preconfigured WAF rules.
+  # XSS rule with opt-out for 941340. Rule 941340 ("IE XSS Filters")
+  # detects base64-encoded content and fires on every request that
+  # carries our JWT cookies. Same whack-a-mole outcome as SQLi at
+  # higher paranoia — opting out the specific rule preserves all other
+  # XSS coverage while letting authenticated traffic through.
   rule {
     action   = "deny(403)"
     priority = 500
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('xss-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('xss-v33-stable', {'opt_out_rule_ids': ['owasp-crs-v030301-id941340-xss']})"
       }
     }
-    description = "block XSS"
+    description = "block XSS (opt-out 941340: fires on JWT base64url cookies)"
   }
 
   # SQLi at sensitivity level 1 (paranoia 1 only). The cutover-night
@@ -147,15 +152,19 @@ resource "google_compute_security_policy" "backend_armor" {
     description = "block RFI"
   }
 
+  # RCE rule with opt-out for 932200. Rule 932200 ("RCE Bypass
+  # Techniques") matches base64url patterns that are structurally
+  # identical to JWT signatures. Opting it out keeps all other RCE
+  # coverage intact.
   rule {
     action   = "deny(403)"
     priority = 540
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('rce-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('rce-v33-stable', {'opt_out_rule_ids': ['owasp-crs-v030301-id932200-rce']})"
       }
     }
-    description = "block RCE"
+    description = "block RCE (opt-out 932200: fires on JWT base64url cookies)"
   }
 
   # Cloudflare IPv4 set 1 (first 10 of 15 published ranges).
