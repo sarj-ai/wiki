@@ -85,30 +85,35 @@ resource "google_compute_backend_service" "backend" {
 resource "google_compute_security_policy" "backend_armor" {
   name = "sarj-docs-backend-armor"
 
-  # OWASP ModSecurity Core Rule Set — preconfigured WAF rules.
+  # OWASP ModSecurity Core Rule Set — all WAF rules at sensitivity 1
+  # (paranoia 1 only).
+  #
+  # Cutover post-mortem (2026-05-18): paranoia levels 2-4 rules across
+  # the SQLi, XSS, LFI, RFI, RCE rulesets all match on base64-url-
+  # encoded strings — which is exactly the shape of the JWT cookie
+  # this app sends on every authenticated request. Different users'
+  # JWT payloads happen to trip different paranoid rules at random
+  # (SQLi 942200/942260/942421/942432 on one user, XSS 941340 on the
+  # next, LFI 930120 on OAuth scope URLs, etc.). With ~50 paranoid
+  # rules across the rulesets, exhaustive opt-out is not feasible.
+  #
+  # Sensitivity 1 still catches obvious attacks (``<script>``,
+  # ``UNION SELECT``, ``../etc/passwd``, etc.) without false-positive-
+  # ing on JWT cookies. Defense in depth still relies on:
+  #   * Cloudflare's edge WAF (runs upstream of GCLB on orange-cloud)
+  #   * Parameterised SQLAlchemy queries (no string-concat SQL)
+  #   * FastAPI's request validation + CSP / Referrer-Policy headers
   rule {
     action   = "deny(403)"
     priority = 500
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('xss-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 1})"
       }
     }
-    description = "block XSS"
+    description = "block XSS (paranoia 1, JWT-cookie compatible)"
   }
 
-  # SQLi at sensitivity level 1 (paranoia 1 only). The cutover-night
-  # post-mortem: paranoia levels 2-4 rules (942200, 942260, 942421,
-  # 942432, ...) all match on base64-url-encoded strings, which is
-  # exactly the shape of the JWT cookie this app sends on every
-  # authenticated request. We exhausted four explicit opt-outs and a
-  # fifth rule started firing on the next click. Rather than continue
-  # whack-a-mole, the SQLi rule is now scoped to paranoia level 1 —
-  # still catches the obvious patterns (UNION SELECT, OR 1=1,
-  # sleep(), etc.) without matching JWTs. Real SQLi defense lives in
-  # the application: every query goes through parameterised
-  # SQLAlchemy, and Cloudflare's edge WAF still runs upstream of
-  # GCLB on the orange-cloud path.
   rule {
     action   = "deny(403)"
     priority = 510
@@ -120,20 +125,15 @@ resource "google_compute_security_policy" "backend_armor" {
     description = "block SQLi (paranoia 1, JWT-cookie compatible)"
   }
 
-  # LFI at paranoid sensitivity with opt-outs for rules that misfire
-  # on legitimate auth traffic:
-  #   930120 — OS file access — fires on URL-encoded ``%2F`` in the
-  #            OAuth ``scope=https%3A%2F%2Faccounts.google.com%2F...``
-  #            parameter on /auth/callback (looks like ../ traversal).
   rule {
     action   = "deny(403)"
     priority = 520
     match {
       expr {
-        expression = "evaluatePreconfiguredWaf('lfi-v33-stable', {'sensitivity': 4, 'opt_out_rule_ids': ['owasp-crs-v030301-id930120-lfi']})"
+        expression = "evaluatePreconfiguredWaf('lfi-v33-stable', {'sensitivity': 1})"
       }
     }
-    description = "block LFI (paranoid, auth-flow opt-outs)"
+    description = "block LFI (paranoia 1, JWT-cookie compatible)"
   }
 
   rule {
@@ -141,10 +141,10 @@ resource "google_compute_security_policy" "backend_armor" {
     priority = 530
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('rfi-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('rfi-v33-stable', {'sensitivity': 1})"
       }
     }
-    description = "block RFI"
+    description = "block RFI (paranoia 1, JWT-cookie compatible)"
   }
 
   rule {
@@ -152,10 +152,10 @@ resource "google_compute_security_policy" "backend_armor" {
     priority = 540
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('rce-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('rce-v33-stable', {'sensitivity': 1})"
       }
     }
-    description = "block RCE"
+    description = "block RCE (paranoia 1, JWT-cookie compatible)"
   }
 
   # Cloudflare IPv4 set 1 (first 10 of 15 published ranges).
