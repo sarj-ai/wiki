@@ -97,40 +97,43 @@ resource "google_compute_security_policy" "backend_armor" {
     description = "block XSS"
   }
 
-  # SQLi at full paranoid sensitivity (level 4) — keeps the most
-  # aggressive OWASP CRS detections live, only opting out of specific
-  # rules that empirically false-positive on legitimate auth-flow
-  # traffic:
-  #   942100 — original /auth/callback workaround (URL-encoded code=)
-  #   942200 — MySQL comment-/space-obfuscated SQL — fires on JWT
-  #            cookies sent to /auth/refresh
-  #   942421 — ASCII-encoded SQLi bypass — fires on base64 patterns in
-  #            JWT cookies on /auth/me, /auth/login, /favicon.ico
-  #   942432 — restricted SQL char anomaly — fires on Google OAuth
-  #            ``code=4/0A...`` parameter on /auth/callback
-  # If a new paranoia-level-4 rule starts blocking auth, add its rule
-  # ID here. The auth router uses parameterized SQLAlchemy queries
-  # exclusively, so SQLi via these params is not a real attack vector.
+  # SQLi at sensitivity level 1 (paranoia 1 only). The cutover-night
+  # post-mortem: paranoia levels 2-4 rules (942200, 942260, 942421,
+  # 942432, ...) all match on base64-url-encoded strings, which is
+  # exactly the shape of the JWT cookie this app sends on every
+  # authenticated request. We exhausted four explicit opt-outs and a
+  # fifth rule started firing on the next click. Rather than continue
+  # whack-a-mole, the SQLi rule is now scoped to paranoia level 1 —
+  # still catches the obvious patterns (UNION SELECT, OR 1=1,
+  # sleep(), etc.) without matching JWTs. Real SQLi defense lives in
+  # the application: every query goes through parameterised
+  # SQLAlchemy, and Cloudflare's edge WAF still runs upstream of
+  # GCLB on the orange-cloud path.
   rule {
     action   = "deny(403)"
     priority = 510
     match {
       expr {
-        expression = "evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 4, 'opt_out_rule_ids': ['owasp-crs-v030301-id942100-sqli', 'owasp-crs-v030301-id942200-sqli', 'owasp-crs-v030301-id942421-sqli', 'owasp-crs-v030301-id942432-sqli']})"
+        expression = "evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 1})"
       }
     }
-    description = "block SQLi (paranoid, auth-flow opt-outs)"
+    description = "block SQLi (paranoia 1, JWT-cookie compatible)"
   }
 
+  # LFI at paranoid sensitivity with opt-outs for rules that misfire
+  # on legitimate auth traffic:
+  #   930120 — OS file access — fires on URL-encoded ``%2F`` in the
+  #            OAuth ``scope=https%3A%2F%2Faccounts.google.com%2F...``
+  #            parameter on /auth/callback (looks like ../ traversal).
   rule {
     action   = "deny(403)"
     priority = 520
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('lfi-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('lfi-v33-stable', {'sensitivity': 4, 'opt_out_rule_ids': ['owasp-crs-v030301-id930120-lfi']})"
       }
     }
-    description = "block LFI"
+    description = "block LFI (paranoid, auth-flow opt-outs)"
   }
 
   rule {
