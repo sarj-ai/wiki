@@ -68,3 +68,19 @@ resource "google_sql_user" "app" {
   instance = google_sql_database_instance.main.name
   password = var.db_password
 }
+
+# Sarj Wiki — post-pivot DB + user. Lives in the same instance as
+# ``sarj_docs`` so we share Cloud SQL overhead, but isolated to its
+# own database and credential. ``sarj_docs`` / ``sarj_docs_app``
+# stay in place untouched so a same-day rollback is just flipping the
+# ``sarj-docs-db-url`` secret back to the old DSN — no data motion.
+resource "google_sql_database" "sarj_wiki" {
+  name     = "sarj_wiki"
+  instance = google_sql_database_instance.main.name
+}
+
+resource "google_sql_user" "wiki_app" {
+  name     = "sarj_wiki_app"
+  instance = google_sql_database_instance.main.name
+  password = var.wiki_db_password
+}

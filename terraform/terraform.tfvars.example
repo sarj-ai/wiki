@@ -3,7 +3,8 @@ region         = "me-central1"
 frontend_url   = "https://wiki.sarj.ai"
 backend_domain = "api-wiki.sarj.ai"
 db_tier        = "db-f1-micro"
-db_password    = "<strong-password>"
+db_password      = "<strong-password>" # legacy sarj_docs_app — kept for rollback only
+wiki_db_password = "<strong-password>" # primary sarj_wiki_app — what the live backend uses
 
 # Google OAuth credentials — create at console.cloud.google.com
 # under APIs & Services → Credentials → OAuth 2.0 Client IDs.

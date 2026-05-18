@@ -12,8 +12,12 @@ resource "random_password" "secret_key" {
 }
 
 locals {
-  # DATABASE_URL constructed from Cloud SQL private IP
-  database_url = "postgresql+asyncpg://${google_sql_user.app.name}:${var.db_password}@${google_sql_database_instance.main.private_ip_address}:5432/${google_sql_database.sarj_docs.name}"
+  # DATABASE_URL constructed from Cloud SQL private IP. Points at the
+  # new ``sarj_wiki`` database via the ``sarj_wiki_app`` credential.
+  # The legacy ``sarj_docs`` DB / ``sarj_docs_app`` user are retained
+  # in the same instance for rollback only — they are not referenced
+  # here.
+  database_url = "postgresql+asyncpg://${google_sql_user.wiki_app.name}:${var.wiki_db_password}@${google_sql_database_instance.main.private_ip_address}:5432/${google_sql_database.sarj_wiki.name}"
 
   secrets = {
     "db-url"               = local.database_url
