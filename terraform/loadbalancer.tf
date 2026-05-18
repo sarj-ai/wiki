@@ -125,20 +125,19 @@ resource "google_compute_security_policy" "backend_armor" {
     description = "block SQLi (paranoia 1, JWT-cookie compatible)"
   }
 
-  # LFI at paranoid sensitivity with opt-outs for rules that misfire
-  # on legitimate auth traffic:
-  #   930120 — OS file access — fires on URL-encoded ``%2F`` in the
-  #            OAuth ``scope=https%3A%2F%2Faccounts.google.com%2F...``
-  #            parameter on /auth/callback (looks like ../ traversal).
+  # LFI at sensitivity 1 with opt-out for 930120. Rule 930120 ("OS
+  # File Access") fires on URL-encoded slashes in the OAuth callback's
+  # scope parameter — ``https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive``
+  # decodes to a path-like string that triggers even at paranoia level 1.
   rule {
     action   = "deny(403)"
     priority = 520
     match {
       expr {
-        expression = "evaluatePreconfiguredWaf('lfi-v33-stable', {'sensitivity': 4, 'opt_out_rule_ids': ['owasp-crs-v030301-id930120-lfi']})"
+        expression = "evaluatePreconfiguredWaf('lfi-v33-stable', {'sensitivity': 1, 'opt_out_rule_ids': ['owasp-crs-v030301-id930120-lfi']})"
       }
     }
-    description = "block LFI (paranoid, auth-flow opt-outs)"
+    description = "block LFI (sensitivity 1, opt-out 930120: fires on OAuth scope param)"
   }
 
   rule {
