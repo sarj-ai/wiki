@@ -1,6 +1,6 @@
 #:schema node_modules/wrangler/config-schema.json
 
-name = "sarj-docs"
+name = "sarj-wiki"
 main = ".open-next/worker.js"
 compatibility_date = "2025-04-01"
 compatibility_flags = ["nodejs_compat"]
@@ -9,3 +9,13 @@ compatibility_flags = ["nodejs_compat"]
 [assets]
 directory = ".open-next/assets"
 binding = "ASSETS"
+
+# Bind ``wiki.sarj.ai`` as a Workers Custom Domain. With
+# ``custom_domain = true`` Cloudflare provisions the DNS record and
+# manages the edge TLS cert automatically — no manual A/CNAME row to
+# maintain. Traffic flow: browser → Cloudflare edge (Workers runtime
+# executes the OpenNext bundle) → ``api-wiki.sarj.ai`` for backend
+# calls via ``NEXT_PUBLIC_API_URL``.
+[[routes]]
+pattern = "wiki.sarj.ai"
+custom_domain = true
