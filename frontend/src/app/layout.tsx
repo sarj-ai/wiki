@@ -34,6 +34,25 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning className={`${nunito.variable} ${GeistMono.variable}`}>
+      <head>
+        {/*
+          Polyfill the esbuild ``__name`` helper for inline scripts.
+          Turbopack (Next.js 16) emits ``__name(fn, "fn")`` calls inside
+          inline ``<script>`` blocks — e.g. the ``next-themes`` no-flash
+          script — but the helper itself is only declared inside ES
+          modules, not in the global scope inline scripts run in.
+          Result: ``ReferenceError: __name is not defined`` on first
+          paint and the whole document fails to hydrate. Declaring the
+          helper here, ahead of any subsequent inline scripts, makes
+          those calls a cheap no-op.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              'window.__name=function(t,n){try{Object.defineProperty(t,"name",{value:n,configurable:true})}catch(e){}return t;}',
+          }}
+        />
+      </head>
       <body className="antialiased">
         <ThemeProvider
           attribute="class"
