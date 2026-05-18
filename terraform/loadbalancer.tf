@@ -86,15 +86,20 @@ resource "google_compute_security_policy" "backend_armor" {
   name = "sarj-docs-backend-armor"
 
   # OWASP ModSecurity Core Rule Set — preconfigured WAF rules.
+  # XSS rule with opt-out for 941340. Rule 941340 ("IE XSS Filters")
+  # detects base64-encoded content and fires on every request that
+  # carries our JWT cookies. Same whack-a-mole outcome as SQLi at
+  # higher paranoia — opting out the specific rule preserves all other
+  # XSS coverage while letting authenticated traffic through.
   rule {
     action   = "deny(403)"
     priority = 500
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('xss-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('xss-v33-stable', {'opt_out_rule_ids': ['owasp-crs-v030301-id941340-xss']})"
       }
     }
-    description = "block XSS"
+    description = "block XSS (opt-out 941340: fires on JWT base64url cookies)"
   }
 
   # SQLi at sensitivity level 1 (paranoia 1 only). The cutover-night
@@ -120,20 +125,19 @@ resource "google_compute_security_policy" "backend_armor" {
     description = "block SQLi (paranoia 1, JWT-cookie compatible)"
   }
 
-  # LFI at paranoid sensitivity with opt-outs for rules that misfire
-  # on legitimate auth traffic:
-  #   930120 — OS file access — fires on URL-encoded ``%2F`` in the
-  #            OAuth ``scope=https%3A%2F%2Faccounts.google.com%2F...``
-  #            parameter on /auth/callback (looks like ../ traversal).
+  # LFI at sensitivity 1 with opt-out for 930120. Rule 930120 ("OS
+  # File Access") fires on URL-encoded slashes in the OAuth callback's
+  # scope parameter — ``https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive``
+  # decodes to a path-like string that triggers even at paranoia level 1.
   rule {
     action   = "deny(403)"
     priority = 520
     match {
       expr {
-        expression = "evaluatePreconfiguredWaf('lfi-v33-stable', {'sensitivity': 4, 'opt_out_rule_ids': ['owasp-crs-v030301-id930120-lfi']})"
+        expression = "evaluatePreconfiguredWaf('lfi-v33-stable', {'sensitivity': 1, 'opt_out_rule_ids': ['owasp-crs-v030301-id930120-lfi']})"
       }
     }
-    description = "block LFI (paranoid, auth-flow opt-outs)"
+    description = "block LFI (sensitivity 1, opt-out 930120: fires on OAuth scope param)"
   }
 
   rule {
@@ -147,15 +151,19 @@ resource "google_compute_security_policy" "backend_armor" {
     description = "block RFI"
   }
 
+  # RCE rule with opt-out for 932200. Rule 932200 ("RCE Bypass
+  # Techniques") matches base64url patterns that are structurally
+  # identical to JWT signatures. Opting it out keeps all other RCE
+  # coverage intact.
   rule {
     action   = "deny(403)"
     priority = 540
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('rce-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('rce-v33-stable', {'opt_out_rule_ids': ['owasp-crs-v030301-id932200-rce']})"
       }
     }
-    description = "block RCE"
+    description = "block RCE (opt-out 932200: fires on JWT base64url cookies)"
   }
 
   # Cloudflare IPv4 set 1 (first 10 of 15 published ranges).
