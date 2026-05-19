@@ -56,12 +56,26 @@ async def login(_request: Request) -> RedirectResponse:
     # Generate a CSRF state token and stash it in a short-lived cookie so
     # we can verify the callback came from our own redirect.
     state = secrets.token_urlsafe(32)
+    # ``prompt=consent`` forces Google to re-show the consent screen on
+    # every login and — critically — re-issue a ``refresh_token``.
+    # Google's default behaviour returns a refresh token only on the
+    # FIRST consent for a given (client_id, user, scope) tuple; users
+    # who previously consented (e.g. against the old Navigator app
+    # sharing this same OAuth client) get an access token but no
+    # refresh token, and the backend's Drive calls 500 with
+    # ``RefreshError: credentials do not contain the necessary
+    # fields`` once the access token expires (~1 hour). Forcing
+    # consent costs one extra click per login but guarantees we have
+    # a refresh token to renew with. ``_upsert_user`` only writes the
+    # refresh token when one is present, so this can't clobber an
+    # existing token on subsequent logins.
     oauth_params: dict[str, str] = {
         "client_id": settings.GOOGLE_CLIENT_ID,
         "redirect_uri": settings.GOOGLE_REDIRECT_URI,
         "response_type": "code",
         "scope": " ".join(OAUTH_SCOPES),
         "access_type": "offline",
+        "prompt": "consent",
         "state": state,
     }
     response = RedirectResponse(url=f"{GOOGLE_AUTH_URL}?{urlencode(oauth_params)}")
