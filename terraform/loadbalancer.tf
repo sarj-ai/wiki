@@ -140,15 +140,21 @@ resource "google_compute_security_policy" "backend_armor" {
     description = "block LFI (sensitivity 1, opt-out 930120: fires on OAuth scope param)"
   }
 
+  # RFI at sensitivity 1. Paranoid RFI rule 931130 ("HTTP/HTTPS URL in
+  # parameter") matches the URL-encoded ``scope=https://www.googleapis.com/...``
+  # values Google sends back in the OAuth callback after consent — the
+  # ``prompt=consent`` flow makes the callback URL noticeably more
+  # verbose than the default and trips the paranoid rule. Same pattern
+  # as the SQLi / LFI false positives.
   rule {
     action   = "deny(403)"
     priority = 530
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('rfi-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('rfi-v33-stable', {'sensitivity': 1})"
       }
     }
-    description = "block RFI"
+    description = "block RFI (sensitivity 1, OAuth-callback compatible)"
   }
 
   # RCE rule with opt-out for 932200. Rule 932200 ("RCE Bypass
