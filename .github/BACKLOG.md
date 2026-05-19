@@ -19,6 +19,7 @@
 ## Auth & Security
 
 - [ ] **Mobile login (cross-domain cookies)** — mobile browsers block `SameSite=none` cookies from different domains. Fix: put backend on same domain as frontend (e.g., `api-wiki.sarj.ai`) and set cookie `domain=.sarj.ai`.
+- [ ] **Mobile iframe shows "you need access" for Slides / Docs / Sheets** — Google's embedded `/edit` view relies on the user's `docs.google.com` session cookies inside the iframe, but iOS Safari / Chrome iOS (both WebKit) block third-party cookies in iframes hard. OAuth-only sign-in on our side doesn't create a Google web session for the iframe to read. Options: (a) detect mobile and fall back to `/preview` (read-only but iframe-friendly), (b) detect mobile and show a "Open in Google" CTA instead of the iframe, (c) instruct users to open `docs.google.com` once in their mobile browser to seed a first-party Google session — current de-facto workaround.
 - [ ] **Login page flash on expired token** — mostly fixed (silent refresh before redirect), but edge cases may remain if refresh token is also expired.
 - [ ] **Styled 403 page for Cloud Armor denials** — when Cloud Armor blocks a request (WAF false positive, non-Cloudflare source) the browser shows a blank Google 403 page. Add a styled error page, either via a Cloudflare Workers rule that intercepts origin 403s for `wiki.sarj.ai` / `api-wiki.sarj.ai` and renders a branded page, or via GCLB `default_url_redirect` / custom error responses on the URL map.
 
