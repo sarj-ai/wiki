@@ -28,6 +28,22 @@ NAVIGATOR_SUPPORTED_MIME_TYPES: tuple[str, ...] = (
     MIME_SLIDE,
     MIME_DRAWING,
     MIME_FORM,
+    # Microsoft Office — both modern (Open XML) and legacy formats.
+    # All preview cleanly via Drive's ``/file/d/{id}/preview`` endpoint
+    # and can be opened in the native Workspace editor via the
+    # toolbar's "Open in Google" button.
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/msword",
+    "application/vnd.ms-excel",
+    "application/vnd.ms-powerpoint",
+    # Common text formats — readable inline via Drive's preview, useful
+    # to surface inside the wiki rather than forcing a Drive round-trip.
+    "text/plain",
+    "text/markdown",
+    "text/csv",
+    "application/json",
     "application/pdf",
     "image/png",
     "image/jpeg",
