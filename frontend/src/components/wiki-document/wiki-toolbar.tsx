@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, Copy, ExternalLink } from "lucide-react";
+import { Check, ChevronRight, Copy, ExternalLink, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
@@ -16,6 +16,10 @@ interface WikiToolbarProps {
   mimeType: string;
   title: string;
   breadcrumb: BreadcrumbItem[];
+  // Recovery affordance for Google's embedded editor going black/blank
+  // after long browser-tab backgrounding. The page bumps the iframe's
+  // ``reloadKey`` in response, which forces a fresh editor session.
+  onReload: () => void;
 }
 
 // How long the "Copied" check-mark + label stay before the button
@@ -25,7 +29,7 @@ interface WikiToolbarProps {
 // feel sticky.
 const COPY_FEEDBACK_MS = 2000;
 
-export function WikiToolbar({ fileId, mimeType, title, breadcrumb }: WikiToolbarProps) {
+export function WikiToolbar({ fileId, mimeType, title, breadcrumb, onReload }: WikiToolbarProps) {
   const openUrl = openUrlFor(mimeType, fileId);
   const openLabel = openInGoogleLabel(mimeType);
   const [copied, setCopied] = useState(false);
@@ -84,6 +88,16 @@ export function WikiToolbar({ fileId, mimeType, title, breadcrumb }: WikiToolbar
           })}
         </nav>
       </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="xs"
+        onClick={onReload}
+        aria-label="Reload"
+        title="Reload the embedded view if it appears blank"
+      >
+        <RefreshCw className="size-3.5" />
+      </Button>
       <Button
         type="button"
         variant="outline"

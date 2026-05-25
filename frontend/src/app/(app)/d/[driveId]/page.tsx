@@ -1,6 +1,7 @@
 "use client";
 
 import { notFound, useParams } from "next/navigation";
+import { useState } from "react";
 
 import { FilePageSkeleton } from "@/components/wiki-document/file-page-skeleton";
 import { FileViewer } from "@/components/wiki-document/file-viewer";
@@ -12,6 +13,10 @@ import { ApiError } from "@/lib/wiki-api";
 export default function FilePage() {
   const params = useParams<{ driveId: string }>();
   const fileQuery = useFile(params.driveId);
+  // Counter the toolbar's Reload button bumps to force the embedded
+  // iframe to remount with a clean Google editor session — recovery
+  // path for blank/black frames after long browser-tab backgrounding.
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Treat "still trying" as loading even after the first attempt
   // errored. React Query's ``retry: 1`` policy and ky's 401 → refresh
@@ -56,9 +61,17 @@ export default function FilePage() {
         mimeType={file.mimeType}
         title={file.name}
         breadcrumb={file.breadcrumb}
+        onReload={() => {
+          setReloadKey((n) => n + 1);
+        }}
       />
       <div className="flex-1 overflow-hidden">
-        <FileViewer fileId={file.id} mimeType={file.mimeType} title={file.name} />
+        <FileViewer
+          fileId={file.id}
+          mimeType={file.mimeType}
+          title={file.name}
+          reloadKey={reloadKey}
+        />
       </div>
     </div>
   );
