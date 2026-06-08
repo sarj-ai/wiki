@@ -50,7 +50,9 @@ describe("snakecaseJsonString", () => {
 // — proves it didn't bail at the old ``if (!request.body)`` guard.
 describe("snakecaseJsonBody", () => {
   it("transforms a JSON body (does not bail on the request.body getter)", async () => {
-    const out = await snakecaseJsonBody({ request: jsonRequest("http://api/files", { parentFolderId: "1kl4" }) });
+    const out = await snakecaseJsonBody({
+      request: jsonRequest("http://api/files", { parentFolderId: "1kl4" }),
+    });
     expect(out).toBeInstanceOf(Request);
   });
 
