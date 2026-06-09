@@ -59,12 +59,40 @@ function parseJsonCamelized(text: string): unknown {
   return parsed;
 }
 
-async function snakecaseJsonBody({ request }: { request: Request }): Promise<Request | undefined> {
-  if (!request.body) return undefined;
+// Snake_cased request bodies, keyed by the transformed Request, so a
+// 401 replay can rebuild the body after the first attempt consumed the
+// original stream (see ``rebuildForReplay``).
+const replayBodyCache = new WeakMap<Request, string>();
+
+// Exported for unit testing — wired into the client via the
+// ``beforeRequest`` hook above.
+export async function snakecaseJsonBody({
+  request,
+}: {
+  request: Request;
+}): Promise<Request | undefined> {
   const contentType = request.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) return undefined;
+  // Read the body via ``clone().text()`` rather than gating on
+  // ``request.body``. Firefox/Gecko returns ``null`` from the
+  // ``Request.body`` getter even when a body is present, so the old
+  // ``if (!request.body)`` guard short-circuited there — the transform
+  // never ran and camelCase (``parentFolderId``/``mimeType``) shipped to
+  // FastAPI, which 422s on its snake_case fields. ``.text()`` works in
+  // every browser.
   const text = await request.clone().text();
-  if (!text) return undefined;
+  const body = text ? snakecaseJsonString(text) : undefined;
+  if (body === undefined) return undefined;
+  const snakecased = new Request(request, { body });
+  replayBodyCache.set(snakecased, body);
+  return snakecased;
+}
+
+// Pure transform: camelCase JSON text → snake_case JSON text. Returns
+// undefined for unparseable input or a non-object payload so the caller
+// leaves the request untouched. Split out from the Request plumbing so
+// the conversion is unit-testable without a fetch runtime.
+export function snakecaseJsonString(text: string): string | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -72,8 +100,7 @@ async function snakecaseJsonBody({ request }: { request: Request }): Promise<Req
     return undefined;
   }
   if (!parsed || typeof parsed !== "object") return undefined;
-  const transformed = snakecaseKeys(parsed as never, { deep: true });
-  return new Request(request, { body: JSON.stringify(transformed) });
+  return JSON.stringify(snakecaseKeys(parsed as never, { deep: true }));
 }
 
 async function refreshOn401({
@@ -87,9 +114,24 @@ async function refreshOn401({
   if (request.url.endsWith("/auth/refresh")) return undefined;
   const refreshed = await deduplicatedRefresh();
   if (!refreshed) return undefined;
-  // Use raw fetch for the replay so we don't recurse through this
-  // same hook on the retried response.
-  return fetch(request);
+  // Use raw fetch for the replay so we don't recurse through this same
+  // hook on the retried response. The first attempt already consumed the
+  // request's body stream, so a bodied request must be rebuilt from the
+  // stashed body — ``fetch(request)`` on a used Request throws
+  // "already been used" and the retry silently fails.
+  return fetch(rebuildForReplay(request));
+}
+
+export function rebuildForReplay(request: Request): Request {
+  const body = replayBodyCache.get(request);
+  // No stashed body → a bodyless request (GET/HEAD); replay as-is.
+  if (body === undefined) return request;
+  return new Request(request.url, {
+    method: request.method,
+    headers: request.headers,
+    body,
+    credentials: "include",
+  });
 }
 
 async function throwOnError({ response }: { response: Response }): Promise<Response> {
