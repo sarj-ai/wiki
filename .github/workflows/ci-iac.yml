@@ -22,9 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Report-only first pass: surfaces misconfigurations in the Terraform that
-      # provisions Secret Manager / IAM / Cloud Armor without gating. Promote to
-      # blocking (exit-code: 1) after the baseline is triaged with a .trivyignore.
       - name: Trivy config scan
         uses: aquasecurity/trivy-action@0.35.0
         with:

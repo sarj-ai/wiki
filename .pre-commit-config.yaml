@@ -1,8 +1,4 @@
-# Pre-commit hooks. Opt-in locally: run `pre-commit install`.
-# CI runs these report-only (see .github/workflows/ci-backend.yml).
-# Suppress sarj AST findings inline with `# sarj-noqa: SARJ00X — reason`.
 repos:
-  # Generic hygiene + safety.
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
@@ -17,19 +13,16 @@ repos:
         args: [--maxkb=512]
       - id: detect-private-key
 
-  # Secret scanning (defense-in-depth alongside GitHub push protection).
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.21.2
     hooks:
       - id: gitleaks
 
-  # GitHub Actions workflow linting.
   - repo: https://github.com/rhysd/actionlint
     rev: v1.7.7
     hooks:
       - id: actionlint
 
-  # Org-wide custom Python AST rules (no .sql files here, so SQL hooks omitted).
   - repo: https://github.com/sarj-ai/standards
     rev: python-v0.2.0
     hooks:

@@ -1,8 +1,5 @@
 name: CI Quality
 
-# Cross-cutting hooks that should run on every change regardless of which
-# subtree it touches: secret scanning, workflow linting, file hygiene, and the
-# org-wide custom Python AST rules. All currently pass, so this gate is blocking.
 on:
   push:
     branches: [main, "feat/**"]
@@ -19,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # gitleaks scans history
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:

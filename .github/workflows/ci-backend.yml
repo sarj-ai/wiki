@@ -47,20 +47,13 @@ jobs:
       - name: Mypy strict
         run: uv run mypy app
 
-      # Enforce the layered architecture documented in CLAUDE.md (contracts in
-      # [tool.importlinter]). Blocking — the code already complies.
       - name: Import contracts
         run: uv run lint-imports
 
-      # Report-only: dependency CVE scan. Advisories surface over time
-      # independent of any given PR, so this informs without gating.
       - name: pip-audit (report-only)
         continue-on-error: true
         run: uv run pip-audit
 
-      # Report-only: surfaces the org-wide maximally-strict ruleset from
-      # sarj-ai/standards as GitHub annotations without gating the build.
-      # Promote to blocking once the findings are triaged (see follow-ups).
       - name: org-strict ruff (report-only)
         continue-on-error: true
         run: uv run ruff check --config .ruff-strict.toml --output-format=github .
@@ -83,7 +76,5 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev --frozen
 
-      # --cov-fail-under is a no-regression ratchet set just below the current
-      # measured total (~40%). Raise it as coverage improves; never lower it.
       - name: Run pytest
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=38

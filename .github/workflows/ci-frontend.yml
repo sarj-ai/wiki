@@ -44,12 +44,9 @@ jobs:
       - name: TypeScript check
         run: npm run typecheck
 
-      # Unused files / exports / dependencies. Currently clean → blocking.
       - name: Knip
         run: npm run knip
 
-      # Tracks `any`/untyped-boundary leakage beyond no-explicit-any.
-      # Ratchet floor (99%); raise as coverage improves.
       - name: Type coverage
         run: npm run type-coverage
 

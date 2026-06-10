@@ -106,21 +106,14 @@ const eslintConfig = defineConfig([
       "perfectionist/sort-imports": ["error", { type: "natural", order: "asc" }],
     },
   },
-  // Circular-import detection. TS won't catch cycles; they cause intermittent
-  // undefined-at-module-init bugs across the hooks/lib/store layering.
   {
     plugins: { "import-x": importX },
-    // TS resolver so no-cycle follows the `@/*` path alias, not just relative imports.
     settings: { "import-x/resolver": { typescript: true } },
     rules: {
       "import-x/no-cycle": "error",
       "import-x/no-self-import": "error",
     },
   },
-  // Accessibility: eslint-config-next already registers jsx-a11y but leaves the
-  // interaction rules off. The sidebar is built on click-driven non-button
-  // elements, so turn these on (warn first — promote to error after cleanup).
-  // No `plugins` key — next owns the registration; redefining it errors.
   {
     rules: {
       "jsx-a11y/click-events-have-key-events": "warn",
@@ -129,10 +122,6 @@ const eslintConfig = defineConfig([
       "jsx-a11y/label-has-associated-control": "warn",
     },
   },
-  // Org-wide custom rules from @sarj/eslint-plugin (sarj-ai/standards).
-  // Pinned to "warn" so they surface in lint output without failing the gate
-  // (`npm run lint` is bare `eslint`, no --max-warnings). Promote individual
-  // rules to "error" in a follow-up once the warnings are cleaned up.
   {
     plugins: { "@sarj": sarj },
     rules: {

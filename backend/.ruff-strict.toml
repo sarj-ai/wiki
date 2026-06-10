@@ -1,8 +1,5 @@
 line-length = 120
 target-version = "py314"
-# Local: the published sarj-lint-configs 0.1.0 wheel ships py313; this repo is
-# py314 (pyproject/mypy/pyright all agree). Also exclude generated Alembic
-# revisions so report-only output isn't dominated by migration noise.
 extend-exclude = ["sdk", "alembic/versions"]
 
 [format]
@@ -114,10 +111,8 @@ ignore = [
 
   "RUF001",
   "SLF001",
-
-  # Local de-noise so report-only annotations are actionable:
-  "B008",    # FastAPI uses Depends() in argument defaults by design
-  "CPY001",  # this repo has no copyright-header convention
+  "B008",
+  "CPY001",
 ]
 
 [lint.isort]
