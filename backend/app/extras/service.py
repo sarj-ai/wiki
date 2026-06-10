@@ -33,6 +33,7 @@ from app.models.wiki import (
     UserSortOrder,
 )
 
+
 _DEFAULT_PREFS = PreferencesRead(show_non_doc_files=True, hidden_workspace_ids=[])
 
 

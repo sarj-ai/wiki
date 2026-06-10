@@ -31,6 +31,7 @@ from app.files.service import FilesService
 from app.sidebar.cache import SidebarCacheService
 from app.sidebar.dependencies import sidebar_cache_service_dep
 
+
 router = APIRouter(prefix="/files", tags=["files"])
 
 

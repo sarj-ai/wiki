@@ -11,6 +11,7 @@ from __future__ import annotations
 from app.drive.schemas import DriveTree
 from app.files.schemas import BreadcrumbItem
 
+
 # Folder nesting beyond this depth is almost certainly a cycle in the
 # tree we shouldn't walk. Matches the safety cap the old client-side
 # walker carried.

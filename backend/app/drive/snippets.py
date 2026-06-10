@@ -8,6 +8,7 @@ the snippet we show in the UI matches what Drive actually hit on.
 
 from __future__ import annotations
 
+
 _SNIPPET_CONTEXT_CHARS = 120
 _PREFIX_MIN_CHARS = 4
 

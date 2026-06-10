@@ -44,7 +44,7 @@ export function buildChildrenIndex(folders: DriveNode[]): Map<string, DriveNode[
   return map;
 }
 
-export type NodeKind = "folder" | "file";
+type NodeKind = "folder" | "file";
 export interface KindedNode {
   type: NodeKind;
   node: DriveNode;

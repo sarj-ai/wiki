@@ -6,6 +6,7 @@ import os
 
 from cryptography.fernet import Fernet
 
+
 # Set a test Fernet key before importing app code so Settings validates cleanly.
 os.environ.setdefault("FERNET_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("SECRET_KEY", "x" * 40)

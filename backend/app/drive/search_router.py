@@ -13,6 +13,7 @@ from app.drive.dependencies import drive_service_dep
 from app.drive.schemas import SearchResult, SnippetResult
 from app.drive.service import DriveService
 
+
 router = APIRouter(prefix="/drive-search", tags=["drive-search"])
 
 

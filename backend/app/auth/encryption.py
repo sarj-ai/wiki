@@ -2,6 +2,7 @@ from cryptography.fernet import Fernet
 
 from app.config import settings
 
+
 # FERNET_KEY is validated in config.py at startup
 _fernet = Fernet(settings.FERNET_KEY.encode())
 

@@ -42,7 +42,7 @@ function parentIdOf(containerId: string): string | null {
 const FOLDER_ABOVE_BAND = 0.3;
 const FOLDER_BELOW_BAND = 0.7;
 
-export interface WikiReorder {
+interface WikiReorder {
   // Map keyed by ``parent:<id>`` carrying the post-drop id order. Read
   // by every TreeNode at every depth so its children render in the
   // dropped order on the same frame the drag ends, bypassing the

@@ -15,7 +15,7 @@ dependencies = [
     "google-auth>=2.38.0",
     "google-auth-oauthlib>=1.2.0",
     "pydantic-settings>=2.7.0",
-    "pyjwt>=2.12.1",
+    "pyjwt>=2.13.0",
     "loguru>=0.7.3",
     "slowapi>=0.1.9",
     "tenacity>=9.1.4",
@@ -34,6 +34,8 @@ dev = [
     "ty>=0.0.31",
     "google-api-python-client-stubs>=1.34.0",
     "sarj-lint-configs>=0.1.0",
+    "import-linter>=2.11",
+    "pip-audit>=2.10.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -83,6 +85,15 @@ select = [
     "RSE",   # raise — raise Foo() with no args
     "FURB",  # refurb — Python 3.14 modernizations
     "T10",   # debugger statements
+    # Promoted to blocking from the org-strict set — each verified 0 findings
+    # on this tree (see sarj-ai/standards). FAST/PERF401 deliberately left
+    # report-only (46 + 1 findings, would require a router-wide refactor).
+    "TRY400", # use logger.exception(), not logger.error(), in except
+    "TRY401", # drop the redundant exception object in logger.exception()
+    "PERF402", # use list/extend over a manual append-copy loop
+    "FBT001", # boolean-typed positional argument (call-site ambiguity)
+    "FBT002", # boolean default positional argument
+    "FBT003", # boolean positional value in a call
 ]
 ignore = [
     "E501",    # line too long — formatter handles wrapping
@@ -97,11 +108,81 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "ARG", "PLR2004", "SLF001"]
+# tests set os.environ.setdefault() before importing app so Settings can load —
+# this must run pre-import, so the banned-api TID251 escape applies here.
+"tests/**" = ["S101", "ARG", "PLR2004", "SLF001", "TID251"]
 "alembic/env.py" = ["ALL"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
+# Adopt the org import style (sarj-ai/standards) — groups sorted in place,
+# blank line between import groups.
+force-sort-within-sections = true
+lines-after-imports = 2
+
+# Banned-api hardening from the org-strict config. app/ has zero hits today for
+# all of these, so this locks in protection against future misuse rather than
+# fixing debt.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"os.environ".msg = "Use the Pydantic Settings class (app.config). For genuine raw access add `# noqa: TID251 — <reason>`."
+"os.getenv".msg = "Use the Pydantic Settings class (app.config) instead of os.getenv."
+# typing.cast intentionally NOT banned — the one legitimate cast (generic
+# singleflight plumbing) makes a blanket ban more friction than value here.
+"pickle.load".msg = "pickle is unsafe on untrusted input. Use JSON via Pydantic / orjson."
+"pickle.loads".msg = "pickle is unsafe on untrusted input. Use JSON via Pydantic / orjson."
+"datetime.datetime.utcnow".msg = "Deprecated in 3.12. Use datetime.now(UTC)."
+"unittest.mock.Mock".msg = "Prefer real fixtures / hand-rolled fakes implementing the relevant ABC."
+"unittest.mock.AsyncMock".msg = "Prefer real fixtures / hand-rolled fakes."
+"unittest.mock.MagicMock".msg = "Prefer real fixtures / hand-rolled fakes."
+"unittest.mock.patch".msg = "Prefer dependency injection via fixtures over monkey-patching."
+
+# Enforce the layered architecture documented in CLAUDE.md (routers are thin
+# HTTP adapters; only services call Google APIs; services never depend upward on
+# routers). The code already complies, so these contracts are a regression gate.
+# NB: routers legitimately import get_db / AsyncSession and pass the session into
+# services via Depends — that's the intended pattern, so the contracts target
+# direct Google-API imports and upward router deps, NOT the DB session wiring.
+[tool.importlinter]
+root_package = "app"
+# Required because the first contract forbids external packages (googleapiclient).
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Routers never call Google APIs directly"
+type = "forbidden"
+# Only DIRECT imports are forbidden — routers reach Google transitively through
+# the services they depend on, which is the intended layering.
+allow_indirect_imports = true
+source_modules = [
+    "app.auth.router",
+    "app.extras.router",
+    "app.files.router",
+    "app.sidebar.router",
+    "app.drive.search_router",
+]
+forbidden_modules = [
+    "googleapiclient",
+    "google",  # covers google.auth / google.oauth2 (subpackages can't be listed for external pkgs)
+    "google_auth_oauthlib",
+]
+
+[[tool.importlinter.contracts]]
+name = "Services never import routers (no upward dependencies)"
+type = "forbidden"
+source_modules = [
+    "app.auth.service",
+    "app.drive.service",
+    "app.extras.service",
+    "app.files.service",
+    "app.sidebar.cache",
+]
+forbidden_modules = [
+    "app.auth.router",
+    "app.extras.router",
+    "app.files.router",
+    "app.sidebar.router",
+    "app.drive.search_router",
+]
 
 [tool.mypy]
 python_version = "3.14"

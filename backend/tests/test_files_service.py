@@ -9,11 +9,11 @@ happens at the app boundary and is exercised in router-level tests.
 
 from __future__ import annotations
 
-import uuid
 from typing import Any
+import uuid
 
-import pytest
 from googleapiclient.errors import HttpError
+import pytest
 
 from app.drive.schemas import DriveNode, DriveSummary, DriveTree, SearchResult, SnippetResult
 from app.drive.service import DriveService, GoogleDriveService

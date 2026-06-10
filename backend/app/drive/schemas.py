@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+
 # Google Workspace mime types Sarj Wiki displays.
 MIME_FOLDER = "application/vnd.google-apps.folder"
 MIME_DOC = "application/vnd.google-apps.document"
@@ -74,7 +75,7 @@ class DriveNode(BaseModel):
 
     id: str
     name: str
-    mime_type: str
+    mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
     parent_id: str | None = None
     modified_time: str | None = None
     shortcut_target_id: str | None = None
@@ -113,7 +114,7 @@ class SearchResult(BaseModel):
 
     id: str
     name: str
-    mime_type: str
+    mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
     drive_id: str | None = None
     drive_name: str | None = None
     parent_id: str | None = None
@@ -128,6 +129,6 @@ class SnippetResult(BaseModel):
     """Snippet fetched from a file's plain-text export."""
 
     file_id: str
-    mime_type: str
+    mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
     snippet: str | None = None
     match_term: str | None = None

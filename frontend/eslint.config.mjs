@@ -3,6 +3,7 @@ import vitest from "@vitest/eslint-plugin";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import prettier from "eslint-config-prettier/flat";
+import importX from "eslint-plugin-import-x";
 import perfectionist from "eslint-plugin-perfectionist";
 import sonarjs from "eslint-plugin-sonarjs";
 import testingLibrary from "eslint-plugin-testing-library";
@@ -103,6 +104,29 @@ const eslintConfig = defineConfig([
     plugins: { perfectionist },
     rules: {
       "perfectionist/sort-imports": ["error", { type: "natural", order: "asc" }],
+    },
+  },
+  // Circular-import detection. TS won't catch cycles; they cause intermittent
+  // undefined-at-module-init bugs across the hooks/lib/store layering.
+  {
+    plugins: { "import-x": importX },
+    // TS resolver so no-cycle follows the `@/*` path alias, not just relative imports.
+    settings: { "import-x/resolver": { typescript: true } },
+    rules: {
+      "import-x/no-cycle": "error",
+      "import-x/no-self-import": "error",
+    },
+  },
+  // Accessibility: eslint-config-next already registers jsx-a11y but leaves the
+  // interaction rules off. The sidebar is built on click-driven non-button
+  // elements, so turn these on (warn first — promote to error after cleanup).
+  // No `plugins` key — next owns the registration; redefining it errors.
+  {
+    rules: {
+      "jsx-a11y/click-events-have-key-events": "warn",
+      "jsx-a11y/no-static-element-interactions": "warn",
+      "jsx-a11y/no-noninteractive-element-interactions": "warn",
+      "jsx-a11y/label-has-associated-control": "warn",
     },
   },
   // Org-wide custom rules from @sarj/eslint-plugin (sarj-ai/standards).

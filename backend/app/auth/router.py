@@ -25,6 +25,7 @@ from app.auth.service import (
 from app.config import settings
 from app.models.user import User
 
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"

@@ -21,6 +21,7 @@ from app.files.router import router as files_router
 from app.logging_config import configure_logging
 from app.sidebar.router import router as sidebar_router
 
+
 # Per-IP global limit. OAuth endpoints are exempt because Google redirects there
 # and a slow user typing their password can hit a stricter cap. /health is also
 # exempt — uptime probes shouldn't compete with user requests for budget.

@@ -23,7 +23,7 @@ export interface CreateFileInput {
   mimeType: string;
 }
 
-export interface DocIconInput {
+interface DocIconInput {
   icon?: string | null;
   coverUrl?: string | null;
 }
