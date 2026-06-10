@@ -126,9 +126,7 @@ const eslintConfig = defineConfig([
   // automatically; all at "warn" to stay non-breaking.
   {
     plugins: { "@sarj": sarj },
-    rules: Object.fromEntries(
-      Object.keys(sarj.rules).map((name) => [`@sarj/${name}`, "warn"]),
-    ),
+    rules: Object.fromEntries(Object.keys(sarj.rules).map((name) => [`@sarj/${name}`, "warn"])),
   },
   // Test-file-only configs.
   {
