@@ -122,21 +122,13 @@ const eslintConfig = defineConfig([
       "jsx-a11y/label-has-associated-control": "warn",
     },
   },
+  // Rule set sourced from the plugin so new @sarj rules are picked up
+  // automatically; all at "warn" to stay non-breaking.
   {
     plugins: { "@sarj": sarj },
-    rules: {
-      "@sarj/enforce-file-structure": "warn",
-      "@sarj/no-client-side-data-fetching": "warn",
-      "@sarj/no-enum": "warn",
-      "@sarj/no-raw-env": "warn",
-      "@sarj/no-unnecessary-use-client": "warn",
-      "@sarj/prefer-schema-for-api-payload": "warn",
-      "@sarj/prefer-server-actions": "warn",
-      "@sarj/prefer-shadcn": "warn",
-      "@sarj/require-assert-never": "warn",
-      "@sarj/require-zod-form-validation": "warn",
-      "@sarj/zod-naming-convention": "warn",
-    },
+    rules: Object.fromEntries(
+      Object.keys(sarj.rules).map((name) => [`@sarj/${name}`, "warn"]),
+    ),
   },
   // Test-file-only configs.
   {

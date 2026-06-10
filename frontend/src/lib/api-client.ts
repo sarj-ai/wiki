@@ -2,7 +2,7 @@ import camelcaseKeys from "camelcase-keys";
 import ky from "ky";
 import snakecaseKeys from "snakecase-keys";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_URL = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:8000";
 
 /**
  * Single error type surfaced to query / mutation callers.
@@ -13,11 +13,11 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
  * retry exactly once before giving up.
  */
 export class ApiError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-  ) {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
     super(message);
+    this.status = status;
     this.name = "ApiError";
   }
 }
