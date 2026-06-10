@@ -50,6 +50,7 @@
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.17.1",
     "@sarj/eslint-plugin": "^2.0.2",
+    "@sarj/tsconfig": "^0.1.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@types/node": "^20",
