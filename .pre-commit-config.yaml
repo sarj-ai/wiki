@@ -1,0 +1,12 @@
+# Org-wide custom lint rules from sarj-ai/standards.
+# Opt-in for local development: run `pre-commit install` to enable on commit.
+# These are AST-based Python rules (no .sql files in this repo, so the SQL hooks
+# are intentionally omitted). Suppress inline with `# sarj-noqa: SARJ00X — reason`.
+repos:
+  - repo: https://github.com/sarj-ai/standards
+    rev: python-v0.2.0
+    hooks:
+      - id: sarj-no-sequential-await
+      - id: sarj-inefficient-string-concat-in-loop
+      - id: sarj-prefer-discriminated-union
+      - id: sarj-prefer-str-enum

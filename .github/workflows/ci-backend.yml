@@ -47,6 +47,19 @@ jobs:
       - name: Mypy strict
         run: uv run mypy app
 
+      # Report-only: surfaces the org-wide maximally-strict ruleset from
+      # sarj-ai/standards as GitHub annotations without gating the build.
+      # Promote to blocking once the findings are triaged (see follow-ups).
+      - name: org-strict ruff (report-only)
+        continue-on-error: true
+        run: uv run ruff check --config .ruff-strict.toml --output-format=github .
+
+      # Report-only: custom AST rules from sarj-ai/standards via pre-commit.
+      - name: sarj custom lint rules (report-only)
+        continue-on-error: true
+        working-directory: ${{ github.workspace }}
+        run: uvx pre-commit run --all-files --show-diff-on-failure
+
   test:
     name: Unit tests
     runs-on: ubuntu-latest

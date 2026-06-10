@@ -1,3 +1,4 @@
+import sarj from "@sarj/eslint-plugin";
 import vitest from "@vitest/eslint-plugin";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
@@ -102,6 +103,26 @@ const eslintConfig = defineConfig([
     plugins: { perfectionist },
     rules: {
       "perfectionist/sort-imports": ["error", { type: "natural", order: "asc" }],
+    },
+  },
+  // Org-wide custom rules from @sarj/eslint-plugin (sarj-ai/standards).
+  // Pinned to "warn" so they surface in lint output without failing the gate
+  // (`npm run lint` is bare `eslint`, no --max-warnings). Promote individual
+  // rules to "error" in a follow-up once the warnings are cleaned up.
+  {
+    plugins: { "@sarj": sarj },
+    rules: {
+      "@sarj/enforce-file-structure": "warn",
+      "@sarj/no-client-side-data-fetching": "warn",
+      "@sarj/no-enum": "warn",
+      "@sarj/no-raw-env": "warn",
+      "@sarj/no-unnecessary-use-client": "warn",
+      "@sarj/prefer-schema-for-api-payload": "warn",
+      "@sarj/prefer-server-actions": "warn",
+      "@sarj/prefer-shadcn": "warn",
+      "@sarj/require-assert-never": "warn",
+      "@sarj/require-zod-form-validation": "warn",
+      "@sarj/zod-naming-convention": "warn",
     },
   },
   // Test-file-only configs.

@@ -1014,6 +1014,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "sarj-lint-configs" },
     { name = "ty" },
     { name = "types-requests" },
     { name = "vulture" },
@@ -1047,9 +1048,19 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.24.0" },
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "ruff", specifier = ">=0.8.0" },
+    { name = "sarj-lint-configs", specifier = ">=0.1.0" },
     { name = "ty", specifier = ">=0.0.31" },
     { name = "types-requests", specifier = ">=2.32.0" },
     { name = "vulture", specifier = ">=2.16" },
+]
+
+[[package]]
+name = "sarj-lint-configs"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/34/4ca2d75d0f356fadcf826a968e138eeaadefdad76f88b826ce6f84eac04c/sarj_lint_configs-0.1.0.tar.gz", hash = "sha256:f24315a14cbf784b5775ea4eb2cc825f681e502ad3bacd239dc0c4ec6058c9b7", size = 6824, upload-time = "2026-05-27T18:38:23.556Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/a2/9f50d0c470de6a93c6e5b45f9755a46a2f605d502a721ea7f967ec83fdb7/sarj_lint_configs-0.1.0-py3-none-any.whl", hash = "sha256:c9a5d6db818c07022edef0c524dbe325be675a358fc692abe3c34b5393486292", size = 8604, upload-time = "2026-05-27T18:38:22.662Z" },
 ]
 
 [[package]]
