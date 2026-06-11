@@ -2,6 +2,7 @@
 
 import { useTheme } from "next-themes";
 import dynamic from "next/dynamic";
+import { useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -71,6 +72,14 @@ export function EmojiPickerPopover({ value, onChange, children }: EmojiPickerPop
   const { resolvedTheme } = useTheme();
   const mounted = useIsClient();
   const theme = mounted && resolvedTheme === "dark" ? "dark" : "light";
+  const [pending, startChange] = useTransition();
+
+  const handleChange = (next: string | null) => {
+    if (pending) return;
+    startChange(async () => {
+      await onChange(next);
+    });
+  };
 
   return (
     <Popover>
@@ -90,7 +99,7 @@ export function EmojiPickerPopover({ value, onChange, children }: EmojiPickerPop
         <EmojiPickerBody
           theme={theme}
           onSelect={(emoji) => {
-            void onChange(emoji);
+            handleChange(emoji);
           }}
         />
         {value && (
@@ -99,8 +108,9 @@ export function EmojiPickerPopover({ value, onChange, children }: EmojiPickerPop
               type="button"
               variant="outline"
               size="sm"
+              disabled={pending}
               onClick={() => {
-                void onChange(null);
+                handleChange(null);
               }}
             >
               Remove icon

@@ -3,7 +3,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+import httpx
 from loguru import logger
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -19,6 +21,7 @@ from app.extras.router import router as extras_router
 from app.files.errors import FilesError
 from app.files.router import router as files_router
 from app.logging_config import configure_logging
+from app.request_id import RequestIDMiddleware
 from app.sidebar.router import router as sidebar_router
 
 
@@ -29,9 +32,11 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging(json=settings.LOG_JSON, level=settings.LOG_LEVEL)
-    yield
+    async with httpx.AsyncClient(timeout=10.0) as http_client:
+        app.state.http_client = http_client
+        yield
 
 
 app = FastAPI(title="Sarj Wiki API", lifespan=lifespan)
@@ -40,6 +45,7 @@ app.state.limiter = limiter
 # at the boundary so we keep mypy strict elsewhere.
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.FRONTEND_URL],
@@ -47,6 +53,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+app.add_middleware(RequestIDMiddleware)
 
 
 @app.exception_handler(Exception)

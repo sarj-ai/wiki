@@ -120,8 +120,14 @@ export const wikiApi = {
       })
       .json<DriveSearchResult[]>(),
 
-  driveSearchSnippet: (fileId: string, query: string) =>
+  driveSearchSnippet: (fileId: string, query: string, mimeType?: string) =>
     apiClient
-      .get("drive-search/snippet", { searchParams: { file_id: fileId, q: query } })
+      .get("drive-search/snippet", {
+        searchParams: {
+          file_id: fileId,
+          q: query,
+          ...(mimeType ? { mime_type: mimeType } : {}),
+        },
+      })
       .json<SnippetResult>(),
 };

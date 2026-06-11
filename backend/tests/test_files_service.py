@@ -50,7 +50,9 @@ class _FakeDriveService(DriveService):
     async def search(self, query: str, *, limit_per_drive: int = 20) -> list[SearchResult]:
         raise NotImplementedError
 
-    async def fetch_snippet(self, file_id: str, query: str) -> SnippetResult:
+    async def fetch_snippet(
+        self, file_id: str, query: str, *, mime_type: str | None = None
+    ) -> SnippetResult:
         raise NotImplementedError
 
 
@@ -159,6 +161,79 @@ async def test_create_success_returns_file_response(monkeypatch: pytest.MonkeyPa
     assert result.id == "new-id"
     assert result.parent_folder_id == "p"
     assert result.drive_id == "d1"
+
+
+async def test_create_does_not_retry_ambiguous_5xx(monkeypatch: pytest.MonkeyPatch) -> None:
+    attempts = {"create": 0}
+
+    class _FakeFiles:
+        def create(self, **_: Any) -> _FakeFiles:
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            attempts["create"] += 1
+            raise _make_http_error(500)
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    _patch_client(monkeypatch, _FakeClient())
+    with pytest.raises(DriveUpstreamError):
+        await _svc("d1").create(
+            parent_folder_id="p",
+            name="Doc",
+            mime_type="application/vnd.google-apps.document",
+        )
+    assert attempts["create"] == 1
+
+
+async def test_move_reuses_prefetched_parent(monkeypatch: pytest.MonkeyPatch) -> None:
+    ops: list[dict[str, Any]] = []
+
+    class _FakeFiles:
+        def __init__(self) -> None:
+            self._result: dict[str, Any] = {}
+
+        def get(self, **kwargs: Any) -> _FakeFiles:
+            ops.append({"_op": "get", **kwargs})
+            self._result = {
+                "id": "f",
+                "name": "Doc",
+                "mimeType": "application/vnd.google-apps.document",
+                "parents": ["old-parent"],
+                "driveId": "d1",
+            }
+            return self
+
+        def update(self, **kwargs: Any) -> _FakeFiles:
+            ops.append({"_op": "update", **kwargs})
+            self._result = {
+                "id": "f",
+                "name": "Doc",
+                "mimeType": "application/vnd.google-apps.document",
+                "parents": ["new-parent"],
+                "driveId": "d1",
+            }
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            return self._result
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    _patch_client(monkeypatch, _FakeClient())
+    result = await _svc("d1").move("f", "new-parent")
+    assert result.moved.parent_folder_id == "new-parent"
+
+    gets = [o for o in ops if o["_op"] == "get"]
+    updates = [o for o in ops if o["_op"] == "update"]
+    assert len(gets) == 1
+    assert len(updates) == 1
+    assert updates[0]["removeParents"] == "old-parent"
+    assert updates[0]["addParents"] == "new-parent"
 
 
 async def test_get_rejects_my_drive(monkeypatch: pytest.MonkeyPatch) -> None:

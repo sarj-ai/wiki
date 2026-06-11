@@ -35,6 +35,8 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={`${nunito.variable} ${GeistMono.variable}`}>
       <head>
+        <link rel="preconnect" href="https://docs.google.com" />
+        <link rel="dns-prefetch" href="https://docs.google.com" />
         {/*
           Polyfill the esbuild ``__name`` helper for inline scripts.
           Turbopack (Next.js 16) emits ``__name(fn, "fn")`` calls inside

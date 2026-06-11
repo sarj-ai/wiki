@@ -62,7 +62,8 @@ async def read_file(
     file = await files.get(file_id)
     drives = await drive.list_drives()
     drive_name = next((d.name for d in drives if d.id == file.drive_id), None)
-    tree = await cache.get_drive_tree(db, file.drive_id) if file.drive_id else None
+    cached = await cache.get_drive_tree(db, file.drive_id) if file.drive_id else None
+    tree = cached.tree if cached else None
     breadcrumb = build_breadcrumb(tree, file.drive_id, drive_name, file.parent_folder_id)
     return FileDetail(
         **file.model_dump(),

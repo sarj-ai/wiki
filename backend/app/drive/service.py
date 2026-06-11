@@ -17,17 +17,23 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, override
+from functools import cache
+from itertools import batched
+import json
+from typing import TYPE_CHECKING, Any, cast, override
 
 from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
+import google_auth_httplib2
+from googleapiclient import discovery
+from googleapiclient.discovery_cache import get_static_doc
 from googleapiclient.errors import HttpError
+import httplib2
 from loguru import logger
 
 from app.auth.encryption import decrypt_token
 from app.config import settings
 from app.drive import drives_cache
-from app.drive.retry import execute_with_retry
+from app.drive.retry import drive_retry, execute_with_retry
 from app.drive.schemas import (
     MIME_FOLDER,
     MIME_SHORTCUT,
@@ -44,6 +50,13 @@ from app.models.user import User
 
 if TYPE_CHECKING:
     from googleapiclient._apis.drive.v3.resources import DriveResource
+    from googleapiclient.http import BatchHttpRequest
+
+_DRIVE_HTTP_TIMEOUT_SECONDS = 30
+
+_PROBE_BATCH_SIZE = 100
+
+_SEARCH_PAGE_SIZE = 50
 
 # Google Workspace types that expose a clean text/plain export. Other
 # types (PDF, images, Forms) can't export useful text — we return a
@@ -100,7 +113,15 @@ class DriveService(ABC):
         """
 
     @abstractmethod
-    async def fetch_snippet(self, file_id: str, query: str) -> SnippetResult: ...
+    async def fetch_snippet(
+        self, file_id: str, query: str, *, mime_type: str | None = None
+    ) -> SnippetResult:
+        """Extract a match snippet from a file's text export.
+
+        A caller-supplied ``mime_type`` skips the metadata lookup; it's an
+        optimization, not an authority — the export still runs under the
+        user's own token, so a wrong value just yields no snippet.
+        """
 
 
 class GoogleDriveService(DriveService):
@@ -142,35 +163,48 @@ class GoogleDriveService(DriveService):
 
     @override
     async def search(self, query: str, *, limit_per_drive: int = 20) -> list[SearchResult]:
-        if not query.strip():
+        stripped = query.strip()
+        if not stripped:
             return []
         drives = await self.list_drives()
         if not drives:
             return []
+        hits = await asyncio.to_thread(
+            self._search_all_drives_sync, stripped, max(limit_per_drive, _SEARCH_PAGE_SIZE)
+        )
+        if hits is None:
+            merged = await self._search_per_drive(drives, stripped, limit_per_drive)
+        else:
+            names = {d.id: d.name for d in drives}
+            merged = [
+                hit.model_copy(update={"drive_name": names[hit.drive_id]})
+                for hit in hits
+                if hit.drive_id in names
+            ]
+        return await self._resolve_shortcut_search_results(merged)
+
+    async def _search_per_drive(
+        self, drives: list[DriveSummary], query: str, limit_per_drive: int
+    ) -> list[SearchResult]:
         tasks = [self.search_drive(d.id, query, limit=limit_per_drive) for d in drives]
         results = await asyncio.gather(*tasks)
-        # Stamp each hit with its parent drive's name as we merge — saves
-        # the client a separate ``drives.find()`` lookup per row.
         merged: list[SearchResult] = []
         for drive, per_drive in zip(drives, results, strict=True):
             for hit in per_drive:
                 merged.append(hit.model_copy(update={"drive_name": drive.name}))
-        # Resolve shortcut hits the same way the sidebar walk does —
-        # grey out the rare case where a shortcut name matches but the
-        # target's ACL blocks the user, drop hits whose target was
-        # trashed.
-        return await self._resolve_shortcut_search_results(merged)
+        return merged
 
     @override
-    async def fetch_snippet(self, file_id: str, query: str) -> SnippetResult:
-        return await asyncio.to_thread(self._fetch_snippet_sync, file_id, query)
+    async def fetch_snippet(
+        self, file_id: str, query: str, *, mime_type: str | None = None
+    ) -> SnippetResult:
+        return await asyncio.to_thread(self._fetch_snippet_sync, file_id, query, mime_type)
 
     # ------------------------------------------------------------------
     # Shortcut resolver. Runs after walk/list to enrich shortcut nodes
     # with target accessibility + the target's home-drive name, and to
     # auto-prune shortcuts whose target was deleted or trashed. Probes
-    # run in parallel via ``asyncio.gather`` so resolving N shortcuts
-    # costs ~one round-trip latency, not N.
+    # are deduplicated and sent as Drive batch HTTP requests.
     # ------------------------------------------------------------------
 
     async def _resolve_shortcut_nodes(self, nodes: list[DriveNode]) -> list[DriveNode]:
@@ -178,7 +212,7 @@ class GoogleDriveService(DriveService):
         if not shortcuts:
             return nodes
         drive_names = await self._drive_names()
-        probes = await self._probe_targets_parallel([n.shortcut_target_id for n in shortcuts])
+        probes = await self._probe_targets([n.shortcut_target_id for n in shortcuts])
         resolved = dict(zip((n.id for n in shortcuts), probes, strict=True))
         out: list[DriveNode] = []
         for node in nodes:
@@ -218,7 +252,7 @@ class GoogleDriveService(DriveService):
         if not shortcuts:
             return results
         drive_names = await self._drive_names()
-        probes = await self._probe_targets_parallel([r.shortcut_target_id for r in shortcuts])
+        probes = await self._probe_targets([r.shortcut_target_id for r in shortcuts])
         resolved = dict(zip((r.id for r in shortcuts), probes, strict=True))
         out: list[SearchResult] = []
         for result in results:
@@ -246,44 +280,58 @@ class GoogleDriveService(DriveService):
     async def _drive_names(self) -> dict[str, str]:
         return {d.id: d.name for d in await self.list_drives()}
 
-    async def _probe_targets_parallel(
-        self, target_ids: list[str | None]
-    ) -> list[_ShortcutProbe | None]:
-        return list(
-            await asyncio.gather(
-                *(asyncio.to_thread(self._probe_target_sync, tid) for tid in target_ids)
-            )
-        )
+    async def _probe_targets(self, target_ids: list[str | None]) -> list[_ShortcutProbe | None]:
+        """Probe targets once each (deduplicated), preserving input order."""
+        unique_ids = sorted({tid for tid in target_ids if tid})
+        if not unique_ids:
+            return [None] * len(target_ids)
+        probes = await asyncio.to_thread(self._probe_targets_sync, unique_ids)
+        return [probes.get(tid) if tid else None for tid in target_ids]
 
-    def _probe_target_sync(self, target_id: str | None) -> _ShortcutProbe | None:
-        if not target_id:
-            return None
+    def _probe_targets_sync(self, target_ids: list[str]) -> dict[str, _ShortcutProbe | None]:
         client = self._client()
-        try:
-            meta = execute_with_retry(
-                client.files().get(
-                    fileId=target_id,
-                    fields="id,driveId,trashed",
-                    supportsAllDrives=True,
+        probes: dict[str, _ShortcutProbe | None] = {}
+
+        def _collect(request_id: str, response: Any, exception: BaseException | None) -> None:
+            probes[request_id] = self._classify_probe(request_id, response, exception)
+
+        for chunk in batched(target_ids, _PROBE_BATCH_SIZE, strict=False):
+            batch = client.new_batch_http_request(callback=_collect)
+            for tid in chunk:
+                batch.add(
+                    client.files().get(
+                        fileId=tid,
+                        fields="id,driveId,trashed",
+                        supportsAllDrives=True,
+                    ),
+                    request_id=tid,
                 )
-            )
-        except HttpError as exc:
-            status = getattr(exc.resp, "status", None)
+            try:
+                _execute_batch_with_retry(batch)
+            except HttpError:
+                logger.exception("shortcut probe batch failed user={}", self._user.id)
+                for tid in chunk:
+                    probes.setdefault(tid, None)
+        return probes
+
+    def _classify_probe(
+        self, target_id: str, response: Any, exception: BaseException | None
+    ) -> _ShortcutProbe | None:
+        if exception is not None:
+            status = getattr(getattr(exception, "resp", None), "status", None)
             if status == 404:
                 return None
             if status == 403:
                 return _ShortcutProbe(accessible=False)
-            logger.exception(
+            logger.opt(exception=exception).warning(
                 "shortcut target probe failed user={} target={}",
                 self._user.id,
                 target_id,
             )
-            # Be conservative — if we can't classify the failure, drop
-            # the shortcut rather than rendering a misleading row.
             return None
-        if meta.get("trashed"):
+        if response.get("trashed"):
             return None
-        return _ShortcutProbe(accessible=True, target_drive_id=meta.get("driveId"))
+        return _ShortcutProbe(accessible=True, target_drive_id=response.get("driveId"))
 
     # ------------------------------------------------------------------
     # Sync implementations. Wrapped in asyncio.to_thread by the public
@@ -442,40 +490,50 @@ class GoogleDriveService(DriveService):
                 query,
             )
             return []
-        out: list[SearchResult] = []
-        for raw in resp.get("files", []):
-            parents = raw.get("parents") or []
-            parent_id = parents[0] if parents else None
-            if parent_id == drive_id:
-                parent_id = None
-            details = raw.get("shortcutDetails") or {}
-            out.append(
-                SearchResult(
-                    id=raw["id"],
-                    name=raw["name"],
-                    mime_type=raw["mimeType"],
-                    drive_id=raw.get("driveId"),
-                    parent_id=parent_id,
-                    modified_time=raw.get("modifiedTime"),
-                    shortcut_target_id=details.get("targetId"),
-                    shortcut_target_mime_type=details.get("targetMimeType"),
-                )
-            )
-        return out
+        return [_search_result_from_api(raw, drive_id) for raw in resp.get("files", [])]
 
-    def _fetch_snippet_sync(self, file_id: str, query: str) -> SnippetResult:
+    def _search_all_drives_sync(self, query: str, page_size: int) -> list[SearchResult] | None:
+        """Single cross-drive search; ``None`` means fall back to the
+        per-drive fan-out (incomplete results or the call failed).
+        """
+        escaped = escape_query_value(query)
+        q = f"(name contains '{escaped}' or fullText contains '{escaped}') and trashed=false"
         client = self._client()
+        params: dict[str, Any] = {
+            "q": q,
+            "corpora": "allDrives",
+            "includeItemsFromAllDrives": True,
+            "supportsAllDrives": True,
+            "pageSize": page_size,
+            "fields": (
+                "incompleteResults,files(id,name,mimeType,parents,modifiedTime,driveId,"
+                "shortcutDetails(targetId,targetMimeType))"
+            ),
+        }
         try:
-            meta = execute_with_retry(
-                client.files().get(
-                    fileId=file_id, fields="id,mimeType,size", supportsAllDrives=True
-                )
-            )
+            resp = execute_with_retry(client.files().list(**params))
         except HttpError:
-            logger.exception("snippet metadata fetch failed file={}", file_id)
-            return SnippetResult(file_id=file_id, mime_type="", snippet=None)
+            logger.exception("all-drives search failed user={} q={!r}", self._user.id, query)
+            return None
+        if resp.get("incompleteResults"):
+            return None
+        return [_search_result_from_api(raw) for raw in resp.get("files", [])]
 
-        mime_type = meta.get("mimeType", "")
+    def _fetch_snippet_sync(self, file_id: str, query: str, mime_type: str | None) -> SnippetResult:
+        client = self._client()
+        if mime_type is None:
+            try:
+                meta = execute_with_retry(
+                    client.files().get(
+                        fileId=file_id, fields="id,mimeType,size", supportsAllDrives=True
+                    )
+                )
+            except HttpError:
+                logger.exception("snippet metadata fetch failed file={}", file_id)
+                return SnippetResult(file_id=file_id, mime_type="", snippet=None)
+            fetched_mime: str = meta.get("mimeType", "")
+            mime_type = fetched_mime
+
         if mime_type not in _TEXT_EXPORTABLE_MIME_TYPES:
             return SnippetResult(file_id=file_id, mime_type=mime_type, snippet=None)
 
@@ -517,13 +575,20 @@ class GoogleDriveService(DriveService):
         actual credential decryption stays in ``_build_credentials``
         because no caller outside this class should touch the OAuth
         secret material directly.
+
+        Clients are deliberately NOT shared across operations: httplib2
+        connections aren't thread-safe, and operations run on
+        ``asyncio.to_thread`` workers.
         """
-        return build(
-            "drive",
-            "v3",
-            credentials=GoogleDriveService._build_credentials(user),
-            static_discovery=True,
+        authed_http = google_auth_httplib2.AuthorizedHttp(
+            GoogleDriveService._build_credentials(user),
+            http=httplib2.Http(timeout=_DRIVE_HTTP_TIMEOUT_SECONDS),
         )
+        # build_from_document is public API the stubs package omits.
+        built = discovery.build_from_document(  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+            _drive_discovery_document(), http=authed_http
+        )
+        return cast("DriveResource", built)
 
     @staticmethod
     def _build_credentials(user: User) -> Credentials:
@@ -545,6 +610,23 @@ class GoogleDriveService(DriveService):
         )
 
 
+@cache
+def _drive_discovery_document() -> dict[str, Any]:
+    """Parse the bundled Drive v3 discovery document once per process."""
+    content = get_static_doc("drive", "v3")  # type: ignore[no-untyped-call]
+    if content is None:
+        raise RuntimeError("Bundled Drive v3 discovery document not found")
+    return cast("dict[str, Any]", json.loads(content))
+
+
+@drive_retry
+def _execute_batch_with_retry(batch: BatchHttpRequest) -> None:
+    """Run a Drive batch request; per-item outcomes land in the callback,
+    only whole-batch transport failures raise (and retry).
+    """
+    batch.execute()
+
+
 def _build_mime_clause() -> str:
     # Folders always included so the tree is walkable; everything else
     # filtered to Workspace + PDFs + common images so we don't haul down
@@ -556,6 +638,25 @@ def _build_mime_clause() -> str:
         f"mimeType='{m}'" for m in (*NAVIGATOR_SUPPORTED_MIME_TYPES, MIME_SHORTCUT)
     )
     return f"({quoted})"
+
+
+def _search_result_from_api(raw: Any, drive_id: str | None = None) -> SearchResult:
+    home_drive_id = raw.get("driveId") or drive_id
+    parents = raw.get("parents") or []
+    parent_id: str | None = parents[0] if parents else None
+    if parent_id == home_drive_id:
+        parent_id = None
+    details = raw.get("shortcutDetails") or {}
+    return SearchResult(
+        id=raw["id"],
+        name=raw["name"],
+        mime_type=raw["mimeType"],
+        drive_id=raw.get("driveId"),
+        parent_id=parent_id,
+        modified_time=raw.get("modifiedTime"),
+        shortcut_target_id=details.get("targetId"),
+        shortcut_target_mime_type=details.get("targetMimeType"),
+    )
 
 
 def _node_from_api(raw: Any, drive_id: str) -> DriveNode:

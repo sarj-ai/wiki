@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import type { DriveTree, SortOrder } from "@/types/wiki";
+import type { DocIcon, DriveTree, FolderIcon, SortOrder } from "@/types/wiki";
 
 import { wikiKeys } from "@/hooks/use-wiki-tree";
 import { wikiApi, type CreateFileInput, type PreferencesInput } from "@/lib/wiki-api";
@@ -242,9 +242,22 @@ export function useSetDocIcon() {
   return useMutation({
     mutationFn: ({ driveId, icon }: { driveId: string; icon: string | null }) =>
       wikiApi.setDocIcon(driveId, { icon }),
-    onSuccess: () => {
-      // Doc icons are global — one refetch updates the map for the
-      // whole sidebar. Simpler than patching the cached array by hand.
+    onMutate: ({ driveId, icon }) => {
+      const previous = qc.getQueryData<DocIcon[]>(wikiKeys.docIcons);
+      if (previous) {
+        const rest = previous.filter((d) => d.driveId !== driveId);
+        const existing = previous.find((d) => d.driveId === driveId);
+        qc.setQueryData<DocIcon[]>(wikiKeys.docIcons, [
+          ...rest,
+          { driveId, icon, coverUrl: existing?.coverUrl ?? null },
+        ]);
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) qc.setQueryData(wikiKeys.docIcons, context.previous);
+    },
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: wikiKeys.docIcons });
     },
   });
@@ -255,7 +268,20 @@ export function useSetFolderIcon() {
   return useMutation({
     mutationFn: ({ folderDriveId, icon }: { folderDriveId: string; icon: string | null }) =>
       wikiApi.setFolderIcon(folderDriveId, icon),
-    onSuccess: () => {
+    onMutate: ({ folderDriveId, icon }) => {
+      const previous = qc.getQueryData<FolderIcon[]>(wikiKeys.folderIcons);
+      if (previous) {
+        qc.setQueryData<FolderIcon[]>(wikiKeys.folderIcons, [
+          ...previous.filter((f) => f.folderDriveId !== folderDriveId),
+          { folderDriveId, icon },
+        ]);
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) qc.setQueryData(wikiKeys.folderIcons, context.previous);
+    },
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: wikiKeys.folderIcons });
     },
   });

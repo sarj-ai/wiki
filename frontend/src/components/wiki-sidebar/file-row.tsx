@@ -3,6 +3,7 @@
 import { ExternalLink, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { memo } from "react";
 import { toast } from "sonner";
 
 import type { DriveNode } from "@/types/wiki";
@@ -70,7 +71,9 @@ function resolveOpenRoute(node: DriveNode): OpenRoute {
   };
 }
 
-export function FileRow({
+export const FileRow = memo(FileRowImpl);
+
+function FileRowImpl({
   node,
   driveId,
   parentFolderId,

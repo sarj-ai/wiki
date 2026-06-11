@@ -110,6 +110,9 @@ function ResultRow({
     <button
       ref={rowRef ?? undefined}
       type="button"
+      id={`palette-result-${result.id}`}
+      role="option"
+      aria-selected={selected}
       // Click (or arrow-key navigation) selects — preview appears on
       // the right. Hover does NOT preselect because the snippet fetch
       // would fire on every row a cursor passes through, racing the
@@ -169,6 +172,7 @@ function PreviewPanel({
     target && !inaccessible ? target.id : null,
     query,
     target !== null && !inaccessible,
+    target !== null && target.mimeType !== "" ? target.mimeType : undefined,
   );
 
   if (!result || !target) {
@@ -407,6 +411,13 @@ export function CommandPalette() {
             placeholder="Search Drive…"
             className="placeholder:text-muted-foreground/70 flex-1 bg-transparent text-base leading-none outline-none"
             aria-label="Search Drive"
+            role="combobox"
+            aria-expanded={hasQuery && results.length > 0}
+            aria-controls="palette-results"
+            aria-autocomplete="list"
+            aria-activedescendant={
+              selectedResult ? `palette-result-${selectedResult.id}` : undefined
+            }
           />
           {query.length > 0 && (
             <Button
@@ -425,7 +436,12 @@ export function CommandPalette() {
 
         <div className="flex min-h-0 flex-1">
           <ScrollArea className="w-2/5 min-w-0 border-r">
-            <div className="space-y-0.5 p-3">
+            <div
+              className="space-y-0.5 p-3"
+              id="palette-results"
+              role="listbox"
+              aria-label="Search results"
+            >
               {!hasQuery && (
                 <div className="text-muted-foreground px-3 py-4 text-xs">
                   Type at least 2 characters to search. Press ↑↓ to navigate, ⏎ to open.

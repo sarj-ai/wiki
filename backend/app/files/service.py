@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, override
 
 from googleapiclient.errors import HttpError
 
-from app.drive.retry import execute_with_retry
+from app.drive.retry import execute_mutation, execute_with_retry
 from app.drive.schemas import MIME_FOLDER, NAVIGATOR_SUPPORTED_MIME_TYPES
 from app.drive.service import DriveService, GoogleDriveService
 from app.files.errors import (
@@ -100,7 +100,9 @@ class GoogleFilesService(FilesService):
     async def move(self, file_id: str, new_parent_folder_id: str) -> MoveResult:
         source = await self.get(file_id)
         try:
-            moved = await asyncio.to_thread(self._move_sync, file_id, new_parent_folder_id)
+            moved = await asyncio.to_thread(
+                self._move_sync, file_id, new_parent_folder_id, source.parent_folder_id
+            )
         except DriveUpstreamError as exc:
             # Drive returns 403 for both ordinary permission failures and
             # cross-shared-drive moves blocked by admin movement
@@ -156,7 +158,7 @@ class GoogleFilesService(FilesService):
         client = self._client()
         body: File = {"name": name, "mimeType": mime_type, "parents": [parent_folder_id]}
         try:
-            raw = execute_with_retry(
+            raw = execute_mutation(
                 client.files().create(body=body, fields=_FIELDS, supportsAllDrives=True)
             )
         except HttpError as e:
@@ -186,18 +188,21 @@ class GoogleFilesService(FilesService):
             raise _drive_upstream(e) from e
         return _to_response(raw)
 
-    def _move_sync(self, file_id: str, new_parent_folder_id: str) -> FileResponse:
+    def _move_sync(
+        self, file_id: str, new_parent_folder_id: str, prev_parent_folder_id: str | None
+    ) -> FileResponse:
         client = self._client()
         try:
-            meta = execute_with_retry(
-                client.files().get(fileId=file_id, fields="parents", supportsAllDrives=True)
-            )
-            prev_parents = ",".join(meta.get("parents", []))
+            if prev_parent_folder_id is None:
+                meta = execute_with_retry(
+                    client.files().get(fileId=file_id, fields="parents", supportsAllDrives=True)
+                )
+                prev_parent_folder_id = ",".join(meta.get("parents", []))
             raw = execute_with_retry(
                 client.files().update(
                     fileId=file_id,
                     addParents=new_parent_folder_id,
-                    removeParents=prev_parents,
+                    removeParents=prev_parent_folder_id,
                     fields=_FIELDS,
                     supportsAllDrives=True,
                 )
@@ -210,7 +215,7 @@ class GoogleFilesService(FilesService):
         client = self._client()
         body: File = {"name": new_name}
         try:
-            raw = execute_with_retry(
+            raw = execute_mutation(
                 client.files().copy(
                     fileId=file_id, body=body, fields=_FIELDS, supportsAllDrives=True
                 )

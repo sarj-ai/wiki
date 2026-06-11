@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -37,7 +37,7 @@ export function NamePromptDialog({
   onConfirm,
 }: NamePromptDialogProps) {
   const [value, setValue] = useState(defaultValue);
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, startSubmit] = useTransition();
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Reset the field whenever the dialog opens so consecutive uses don't
@@ -49,16 +49,14 @@ export function NamePromptDialog({
     if (open) setValue(defaultValue);
   }, [open, defaultValue]);
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
+    if (submitting) return;
     const trimmed = value.trim();
     if (!trimmed) return;
-    setSubmitting(true);
-    try {
+    startSubmit(async () => {
       await onConfirm(trimmed);
       onOpenChange(false);
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -88,7 +86,7 @@ export function NamePromptDialog({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            void handleSubmit();
+            handleSubmit();
           }}
           className="space-y-3"
         >

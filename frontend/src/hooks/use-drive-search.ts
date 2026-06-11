@@ -30,12 +30,17 @@ export function useDriveSearch(query: string) {
  * so re-selecting is instant. Snippets are expensive (1 Drive export
  * per call) so keep the cache time long.
  */
-export function useDriveSearchSnippet(fileId: string | null, query: string, enabled: boolean) {
+export function useDriveSearchSnippet(
+  fileId: string | null,
+  query: string,
+  enabled: boolean,
+  mimeType?: string,
+) {
   return useQuery<SnippetResult>({
     queryKey: fileId
       ? ["wiki", "drive-search", "snippet", fileId, query]
       : ["wiki", "drive-search", "snippet", "disabled"],
-    queryFn: () => wikiApi.driveSearchSnippet(fileId ?? "", query),
+    queryFn: () => wikiApi.driveSearchSnippet(fileId ?? "", query, mimeType),
     enabled: enabled && !!fileId && query.length >= 2,
     // Snippets are deterministic for a given (file, query) pair until
     // the file's content changes. Cache for 5 minutes so arrowing up
