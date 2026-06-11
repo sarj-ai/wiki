@@ -1,5 +1,4 @@
-import { apiClient, validatedJson } from "@/lib/api-client";
-import { zUserProfile } from "@/lib/generated/zod.gen";
+import { apiClient } from "@/lib/api-client";
 
 const API_URL = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:8000";
 
@@ -12,23 +11,6 @@ export interface User {
 
 export function getLoginUrl(): string {
   return `${API_URL}/auth/login`;
-}
-
-export async function fetchCurrentUser(): Promise<User | null> {
-  try {
-    return await validatedJson(apiClient.get("auth/me"), zUserProfile);
-  } catch {
-    return null;
-  }
-}
-
-export async function refreshAccessToken(): Promise<boolean> {
-  try {
-    await apiClient.post("auth/refresh");
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export async function logout(): Promise<void> {

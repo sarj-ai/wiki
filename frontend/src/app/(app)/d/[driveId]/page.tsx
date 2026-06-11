@@ -1,78 +1,28 @@
-"use client";
+import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
+import { notFound } from "next/navigation";
 
-import { notFound, useParams } from "next/navigation";
-import { useState } from "react";
+import { FilePageClient } from "@/components/wiki-document/file-page-client";
+import { serverGet, ServerApiError } from "@/lib/server-api";
+import { wikiKeys } from "@/lib/wiki-keys";
 
-import { FilePageSkeleton } from "@/components/wiki-document/file-page-skeleton";
-import { FileViewer } from "@/components/wiki-document/file-viewer";
-import { WikiToolbar } from "@/components/wiki-document/wiki-toolbar";
-import { WikiNotFound } from "@/components/wiki-not-found";
-import { useFile } from "@/hooks/use-wiki-tree";
-import { ApiError } from "@/lib/wiki-api";
-
-export default function FilePage() {
-  const params = useParams<{ driveId: string }>();
-  const fileQuery = useFile(params.driveId);
-  // Counter the toolbar's Reload button bumps to force the embedded
-  // iframe to remount with a clean Google editor session — recovery
-  // path for blank/black frames after long browser-tab backgrounding.
-  const [reloadKey, setReloadKey] = useState(0);
-
-  // Treat "still trying" as loading even after the first attempt
-  // errored. React Query's ``retry: 1`` policy and ky's 401 → refresh
-  // → replay both produce a window where ``isError`` is true while a
-  // recovery attempt is in flight (``isFetching: true`` with no data
-  // yet). Without this guard the page flashes the "can't load" UI on
-  // hard refresh whenever the access token has expired, then snaps to
-  // the file once the retry succeeds.
-  const isLoading = fileQuery.isPending || (!fileQuery.data && fileQuery.isFetching);
-  if (isLoading) {
-    return <FilePageSkeleton />;
+export default async function FilePage({ params }: { params: Promise<{ driveId: string }> }) {
+  const { driveId } = await params;
+  const queryClient = new QueryClient();
+  try {
+    await queryClient.fetchQuery({
+      queryKey: wikiKeys.file(driveId),
+      queryFn: () => serverGet(`files/${encodeURIComponent(driveId)}`),
+    });
+  } catch (err) {
+    // 404 → (app)/not-found in the first response; anything else is
+    // swallowed and the client skeleton/error flow takes over.
+    if (err instanceof ServerApiError && err.status === 404) {
+      notFound();
+    }
   }
-
-  // 404 from the backend means either the file truly doesn't exist or
-  // it's outside Sarj Wiki's strict shared-drive scope (My Drive
-  // files, non-member shared drives). Route through Next's notFound()
-  // so the (app)/not-found.tsx boundary renders — that keeps the
-  // sidebar mounted and the themed empty-state view consistent with
-  // unmatched routes elsewhere in the app.
-  if (fileQuery.isError && fileQuery.error instanceof ApiError && fileQuery.error.status === 404) {
-    notFound();
-  }
-
-  // After the isLoading guard above, ``isError`` is the only way we
-  // can have no usable data — React Query's success branch always
-  // populates ``data``, so the type narrows to non-null below.
-  if (fileQuery.isError) {
-    return (
-      <WikiNotFound
-        title="Can't load this file"
-        description="Something went wrong fetching this file from Google Drive. Try again in a moment, or pick another file from the sidebar."
-      />
-    );
-  }
-
-  const file = fileQuery.data;
-
   return (
-    <div className="flex h-[100dvh] flex-col">
-      <WikiToolbar
-        fileId={file.id}
-        mimeType={file.mimeType}
-        title={file.name}
-        breadcrumb={file.breadcrumb}
-        onReload={() => {
-          setReloadKey((n) => n + 1);
-        }}
-      />
-      <div className="flex-1 overflow-hidden">
-        <FileViewer
-          fileId={file.id}
-          mimeType={file.mimeType}
-          title={file.name}
-          reloadKey={reloadKey}
-        />
-      </div>
-    </div>
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <FilePageClient driveId={driveId} />
+    </HydrationBoundary>
   );
 }

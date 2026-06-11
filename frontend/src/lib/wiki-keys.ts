@@ -16,3 +16,8 @@ export const wikiKeys = {
   driveSearchSnippet: (fileId: string, query: string) =>
     [...DRIVE_SEARCH_PREFIX, "snippet", fileId, query] as const,
 };
+
+// Outside ["wiki", ...] so the persister never writes the profile to localStorage.
+export const authKeys = {
+  me: ["auth", "me"] as const,
+};

@@ -35,3 +35,10 @@ describe("sanitizeRedirectPath", () => {
     expect(sanitizeRedirectPath("/page#section")).toBe("/page#section");
   });
 });
+
+describe("sanitizeRedirectPath backslash hardening", () => {
+  it("rejects backslash paths that URL parsers would normalize to //", () => {
+    expect(sanitizeRedirectPath("/\\evil.com")).toBe("/");
+    expect(sanitizeRedirectPath("/d\\..\\evil")).toBe("/");
+  });
+});

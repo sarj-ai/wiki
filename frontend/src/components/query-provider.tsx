@@ -8,9 +8,8 @@ import { useEffect, useState } from "react";
 
 import { ApiError } from "@/lib/api-client";
 import { cleanupLegacyLocalStorage } from "@/lib/legacy-localstorage-cleanup";
-import { sanitizeRedirectPath } from "@/lib/url-utils";
+import { QUERY_CACHE_KEY, REDIRECT_KEY, sanitizeRedirectPath } from "@/lib/url-utils";
 
-const REDIRECT_KEY = "sarj-redirect";
 // Bumped manually when persisted-cache shape would otherwise be
 // incompatible with the running app — drops every cached query.
 const CACHE_BUSTER = "v1";
@@ -59,6 +58,10 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
   // gets a no-op storage so SSR / static rendering still resolves the
   // QueryClientProvider context (PersistQueryClientProvider supplies
   // it) without touching window.
+  //
+  // The (app) layout's SSR HydrationBoundary hydrates synchronously
+  // before this async restore; hydrate() keeps the newer dataUpdatedAt,
+  // so SSR data survives the restore (pinned in query-provider.test.ts).
   const [persistOptions] = useState(() => {
     const storage =
       typeof window === "undefined"
@@ -71,7 +74,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     return {
       persister: createAsyncStoragePersister({
         storage,
-        key: "sarj-wiki-query-cache",
+        key: QUERY_CACHE_KEY,
       }),
       maxAge: ONE_DAY_MS,
       buster: CACHE_BUSTER,

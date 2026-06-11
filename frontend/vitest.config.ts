@@ -17,6 +17,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // server-only throws outside an RSC render.
+      "server-only": path.resolve(__dirname, "./src/test-stubs/empty.ts"),
     },
   },
 });
