@@ -155,6 +155,17 @@ async def me(current_user: User = Depends(get_current_user)) -> UserProfile:
 
 
 def _set_auth_cookies(response: Response, session: AuthSession) -> None:
+    # Read at call time — tests monkeypatch the settings singleton.
+    domain = settings.COOKIE_DOMAIN
+    if domain is not None:
+        # Expire the legacy host-only pair first — a Domain= cookie is a
+        # different cookie-store entry; refresh migrates active sessions too.
+        response.delete_cookie(
+            key="access_token", httponly=True, samesite=_SAMESITE, secure=_is_secure, path="/"
+        )
+        response.delete_cookie(
+            key="refresh_token", httponly=True, samesite=_SAMESITE, secure=_is_secure, path="/"
+        )
     response.set_cookie(
         key="access_token",
         value=session.jwt_access,
@@ -163,6 +174,7 @@ def _set_auth_cookies(response: Response, session: AuthSession) -> None:
         samesite=_SAMESITE,
         secure=_is_secure,
         path="/",
+        domain=domain,
     )
     response.set_cookie(
         key="refresh_token",
@@ -172,16 +184,25 @@ def _set_auth_cookies(response: Response, session: AuthSession) -> None:
         samesite=_SAMESITE,
         secure=_is_secure,
         path="/",
+        domain=domain,
     )
 
 
 def _clear_auth_cookies(response: Response) -> None:
-    response.delete_cookie(
-        key="access_token", httponly=True, samesite=_SAMESITE, secure=_is_secure, path="/"
-    )
-    response.delete_cookie(
-        key="refresh_token", httponly=True, samesite=_SAMESITE, secure=_is_secure, path="/"
-    )
+    # Delete both variants — legacy host-only cookies must still log out.
+    domains: list[str | None] = [None]
+    if settings.COOKIE_DOMAIN is not None:
+        domains.append(settings.COOKIE_DOMAIN)
+    for domain in domains:
+        for key in ("access_token", "refresh_token"):
+            response.delete_cookie(
+                key=key,
+                httponly=True,
+                samesite=_SAMESITE,
+                secure=_is_secure,
+                path="/",
+                domain=domain,
+            )
 
 
 def _error_redirect(error_key: str) -> RedirectResponse:
