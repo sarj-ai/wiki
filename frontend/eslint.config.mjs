@@ -93,7 +93,13 @@ const eslintConfig = defineConfig([
       "unicorn/prefer-top-level-await": "error",
       "unicorn/throw-new-error": "error",
       "unicorn/no-instanceof-builtins": "error",
-      "unicorn/filename-case": ["error", { cases: { kebabCase: true, pascalCase: true } }],
+      // eslint-plugin-unicorn 65 extended filename-case to lint directory
+      // segments; exempt Next.js dynamic route dirs (e.g. `[driveId]`), whose
+      // bracketed camelCase names are a framework convention, not a style choice.
+      "unicorn/filename-case": [
+        "error",
+        { cases: { kebabCase: true, pascalCase: true }, ignore: [String.raw`^\[.*\]$`] },
+      ],
     },
   },
   {

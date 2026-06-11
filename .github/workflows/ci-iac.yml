@@ -23,10 +23,10 @@ jobs:
     name: Trivy IaC scan (report-only)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Trivy config scan
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           scan-type: config
           scan-ref: terraform
