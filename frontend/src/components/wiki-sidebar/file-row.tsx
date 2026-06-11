@@ -3,6 +3,7 @@
 import { ExternalLink, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { memo } from "react";
 import { toast } from "sonner";
 
 import type { DriveNode } from "@/types/wiki";
@@ -70,7 +71,12 @@ function resolveOpenRoute(node: DriveNode): OpenRoute {
   };
 }
 
-export function FileRow({
+// memo pairs with the memoized DriveSectionContext value in
+// drive-section.tsx: rows bail out of parent-driven re-renders unless
+// their own props changed.
+export const FileRow = memo(FileRowImpl);
+
+function FileRowImpl({
   node,
   driveId,
   parentFolderId,

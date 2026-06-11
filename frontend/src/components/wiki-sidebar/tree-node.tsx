@@ -1,9 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
-
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ChevronRight, Loader2 } from "lucide-react";
+import { memo, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import type { DriveNode } from "@/types/wiki";
@@ -87,7 +86,14 @@ function RowActions({ children }: { children: ReactNode }) {
   );
 }
 
-export function TreeNode({ node, parentFolderId, depth }: TreeNodeProps) {
+// memo + the memoized DriveSectionContext value means a row only
+// re-renders when its own props change or the context data actually
+// updates — not on every parent DriveSection render. The recursive
+// references below resolve to the memoized export, so the bailout
+// applies at every tree depth.
+export const TreeNode = memo(TreeNodeImpl);
+
+function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
   const ctx = useDriveSectionContext();
   const meta = resolveShortcutMeta(node);
   const [expanded, setExpanded] = useExpandedFolder(node.id);

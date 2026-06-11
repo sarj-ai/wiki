@@ -38,7 +38,14 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
           // re-hydrated query would be GC'd before any consumer
           // mounts, defeating the persistence we just paid for.
           gcTime: ONE_DAY_MS,
-          retry: 1,
+          // Retry once, but only where a retry can help: network
+          // failures and 5xx. Client errors (403/404/422) are
+          // deterministic — retrying them just delays the error state.
+          retry: (failureCount, error) => {
+            if (failureCount >= 1) return false;
+            if (error instanceof ApiError) return error.status >= 500;
+            return true;
+          },
         },
       },
       queryCache: new QueryCache({ onError: handle401 }),

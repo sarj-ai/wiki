@@ -36,6 +36,13 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className={`${nunito.variable} ${GeistMono.variable}`}>
       <head>
         {/*
+          Every document view embeds a docs.google.com iframe — warming
+          DNS + TCP + TLS here shaves a few hundred ms off the first
+          document open.
+        */}
+        <link rel="preconnect" href="https://docs.google.com" />
+        <link rel="dns-prefetch" href="https://docs.google.com" />
+        {/*
           Polyfill the esbuild ``__name`` helper for inline scripts.
           Turbopack (Next.js 16) emits ``__name(fn, "fn")`` calls inside
           inline ``<script>`` blocks — e.g. the ``next-themes`` no-flash

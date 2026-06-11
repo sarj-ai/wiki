@@ -10,6 +10,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ChevronRight, HardDrive, Loader2, RefreshCw } from "lucide-react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 
 import type { DriveNode, DriveSummary, FolderIcon, SortOrder } from "@/types/wiki";
@@ -92,16 +93,33 @@ export function DriveSection({
   const displayItems = applyOptimisticOrder(rootItems, optimisticOrder);
   const displayItemIds = displayItems.map((item) => item.node.id);
 
-  const contextValue: DriveSectionValue = {
-    driveId: drive.id,
-    activeDriveId,
-    showNonDocFiles,
-    childrenByParent,
-    iconOverrides,
-    docIconOverrides,
-    sortOrderMap,
-    optimisticByContainer: reorder.optimisticByContainer,
-  };
+  // Memoized so a DriveSection re-render with unchanged data hands the
+  // SAME context object to every consumer — without this, each render
+  // minted a fresh object and re-rendered every TreeNode/FileRow in the
+  // drive. The maps inside are themselves memoized in useDriveTreeIndex,
+  // so identity only changes when the underlying data does.
+  const contextValue: DriveSectionValue = useMemo(
+    () => ({
+      driveId: drive.id,
+      activeDriveId,
+      showNonDocFiles,
+      childrenByParent,
+      iconOverrides,
+      docIconOverrides,
+      sortOrderMap,
+      optimisticByContainer: reorder.optimisticByContainer,
+    }),
+    [
+      drive.id,
+      activeDriveId,
+      showNonDocFiles,
+      childrenByParent,
+      iconOverrides,
+      docIconOverrides,
+      sortOrderMap,
+      reorder.optimisticByContainer,
+    ],
+  );
 
   return (
     <DriveSectionProvider value={contextValue}>

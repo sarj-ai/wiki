@@ -50,6 +50,10 @@ export function NamePromptDialog({
   }, [open, defaultValue]);
 
   const handleSubmit = async () => {
+    // Re-entry guard: Enter (form submit) and a click on Create can
+    // both fire before the disabled state propagates — without this,
+    // the double-fire creates the file twice.
+    if (submitting) return;
     const trimmed = value.trim();
     if (!trimmed) return;
     setSubmitting(true);
