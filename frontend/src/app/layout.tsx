@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 import { GeistMono } from "geist/font/mono";
 import localFont from "next/font/local";
@@ -25,6 +25,17 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Sarj Wiki",
   description: "Internal knowledge base for Sarj",
+  robots: { index: false, follow: false },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // Mirrors --background in globals.css; tracks the OS scheme, not next-themes.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f6efe7" },
+    { media: "(prefers-color-scheme: dark)", color: "#161618" },
+  ],
 };
 
 export default function RootLayout({

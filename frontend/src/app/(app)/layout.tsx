@@ -26,8 +26,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <ErrorBoundary>{children}</ErrorBoundary>
       </main>
       {/* Mounted once per authenticated session. Registers the global
-          Cmd+K hotkey and renders the Spotlight-style palette on demand. */}
-      <CommandPalette />
+          Cmd+K hotkey and renders the Spotlight-style palette on demand.
+          Has its own boundary so a palette render error degrades to a
+          broken palette, not a full-page global-error takeover. */}
+      <ErrorBoundary>
+        <CommandPalette />
+      </ErrorBoundary>
     </SidebarProvider>
   );
 }
