@@ -11,6 +11,9 @@ on:
       - "frontend/**"
       - ".github/workflows/ci-frontend.yml"
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-frontend-${{ github.ref }}
   cancel-in-progress: true
@@ -24,9 +27,9 @@ jobs:
     name: Lint + typecheck + format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -54,9 +57,9 @@ jobs:
     name: Unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -72,9 +75,9 @@ jobs:
     name: Next.js build smoke test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
