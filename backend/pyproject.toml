@@ -4,17 +4,17 @@ version = "0.1.0"
 description = "Internal knowledge base API for Sarj"
 requires-python = ">=3.14"
 dependencies = [
-    "fastapi>=0.115.0",
+    "fastapi>=0.136.3",
     "uvicorn[standard]>=0.34.0",
     "sqlalchemy[asyncio]>=2.0.0",
     "asyncpg>=0.30.0",
     "alembic>=1.14.0",
     "cryptography>=44.0.0",
     "httpx>=0.28.0",
-    "google-api-python-client>=2.160.0",
-    "google-auth>=2.38.0",
-    "google-auth-oauthlib>=1.2.0",
-    "pydantic-settings>=2.7.0",
+    "google-api-python-client>=2.197.0",
+    "google-auth>=2.53.0",
+    "google-auth-oauthlib>=1.4.0",
+    "pydantic-settings>=2.14.1",
     "pyjwt>=2.13.0",
     "loguru>=0.7.3",
     "slowapi>=0.1.9",
@@ -23,19 +23,19 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.8.0",
+    "ruff>=0.15.16",
     "mypy>=1.13.0",
     "pytest>=8.3.0",
-    "pytest-asyncio>=0.24.0",
+    "pytest-asyncio>=1.4.0",
     "pytest-cov>=6.0.0",
     "types-requests>=2.32.0",
     "vulture>=2.16",
-    "pyright>=1.1.408",
-    "ty>=0.0.31",
-    "google-api-python-client-stubs>=1.34.0",
+    "pyright>=1.1.410",
+    "ty>=0.0.48",
+    "google-api-python-client-stubs>=1.37.0",
     "sarj-lint-configs>=0.1.0",
     "import-linter>=2.11",
-    "pip-audit>=2.10.0",
+    "pip-audit>=2.10.1",
 ]
 
 [tool.hatch.build.targets.wheel]
