@@ -1,13 +1,5 @@
-"""Per-request correlation id.
-
-``RequestIDMiddleware`` stamps every HTTP request with a short id —
-honoring an inbound ``X-Request-ID`` from a proxy when present — and
-stores it in a ``ContextVar`` that survives ``asyncio.to_thread`` hops,
-so even Drive calls running on worker threads log under the same id.
-The id is echoed back as a response header for client-side correlation.
-
-``logging_config`` injects the id into every loguru record; grepping a
-single request id reconstructs the full timeline of one API call.
+"""Per-request correlation id, stored in a ``ContextVar`` so it survives
+``asyncio.to_thread`` hops and reaches every log line of a request.
 """
 
 from __future__ import annotations
@@ -20,16 +12,12 @@ from uuid import uuid4
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-# Default "-" keeps log formats stable for lines emitted outside any
-# request (startup, background cache revalidation).
 request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 
 _HEADER = b"x-request-id"
 
 
 class RequestIDMiddleware:
-    """Pure-ASGI middleware (no ``BaseHTTPMiddleware`` buffering)."""
-
     def __init__(self, app: ASGIApp) -> None:
         self._app = app
 
@@ -57,7 +45,6 @@ class RequestIDMiddleware:
 def _inbound_request_id(scope: Scope) -> str | None:
     for name, value in scope.get("headers", []):
         if name == _HEADER:
-            # Cap length so a hostile header can't bloat every log line.
             decoded = value.decode("latin-1").strip()[:64]
             return decoded or None
     return None

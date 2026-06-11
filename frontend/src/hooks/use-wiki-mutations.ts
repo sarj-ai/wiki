@@ -242,9 +242,6 @@ export function useSetDocIcon() {
   return useMutation({
     mutationFn: ({ driveId, icon }: { driveId: string; icon: string | null }) =>
       wikiApi.setDocIcon(driveId, { icon }),
-    // Optimistic: the icon swaps in the sidebar on the click itself
-    // instead of after the server round-trip. Synchronous (no await)
-    // for the same single-tick-commit reason as useBulkSetSortOrders.
     onMutate: ({ driveId, icon }) => {
       const previous = qc.getQueryData<DocIcon[]>(wikiKeys.docIcons);
       if (previous) {
@@ -261,8 +258,6 @@ export function useSetDocIcon() {
       if (context?.previous) qc.setQueryData(wikiKeys.docIcons, context.previous);
     },
     onSettled: () => {
-      // Doc icons are global — one refetch reconciles the whole map
-      // (including a concurrent edit by someone else).
       void qc.invalidateQueries({ queryKey: wikiKeys.docIcons });
     },
   });

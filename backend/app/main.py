@@ -34,9 +34,6 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging(json=settings.LOG_JSON, level=settings.LOG_LEVEL)
-    # One pooled client for the app's outbound HTTP (Google OAuth token
-    # exchange, userinfo). Per-request clients would pay TCP+TLS setup
-    # on every auth callback / refresh.
     async with httpx.AsyncClient(timeout=10.0) as http_client:
         app.state.http_client = http_client
         yield
@@ -48,7 +45,6 @@ app.state.limiter = limiter
 # at the boundary so we keep mypy strict elsewhere.
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 app.add_middleware(SlowAPIMiddleware)
-# Drive-tree responses are large nested JSON that compresses ~10x.
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
@@ -57,8 +53,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
-# Added last → outermost, so the correlation id is set before any other
-# middleware or handler logs a line.
 app.add_middleware(RequestIDMiddleware)
 
 

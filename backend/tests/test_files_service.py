@@ -185,8 +185,6 @@ async def test_create_does_not_retry_ambiguous_5xx(monkeypatch: pytest.MonkeyPat
             name="Doc",
             mime_type="application/vnd.google-apps.document",
         )
-    # A 500 after files.create is ambiguous — Drive may have created the
-    # file before failing. Exactly one attempt; retries would duplicate.
     assert attempts["create"] == 1
 
 
@@ -232,8 +230,6 @@ async def test_move_reuses_prefetched_parent(monkeypatch: pytest.MonkeyPatch) ->
 
     gets = [o for o in ops if o["_op"] == "get"]
     updates = [o for o in ops if o["_op"] == "update"]
-    # One metadata get only (the scope check) — the move itself reuses
-    # the prefetched parent instead of re-fetching it.
     assert len(gets) == 1
     assert len(updates) == 1
     assert updates[0]["removeParents"] == "old-parent"

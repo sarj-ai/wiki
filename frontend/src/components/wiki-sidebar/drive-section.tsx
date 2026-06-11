@@ -93,11 +93,6 @@ export function DriveSection({
   const displayItems = applyOptimisticOrder(rootItems, optimisticOrder);
   const displayItemIds = displayItems.map((item) => item.node.id);
 
-  // Memoized so a DriveSection re-render with unchanged data hands the
-  // SAME context object to every consumer — without this, each render
-  // minted a fresh object and re-rendered every TreeNode/FileRow in the
-  // drive. The maps inside are themselves memoized in useDriveTreeIndex,
-  // so identity only changes when the underlying data does.
   const contextValue: DriveSectionValue = useMemo(
     () => ({
       driveId: drive.id,

@@ -13,8 +13,6 @@ from app.models.user import User
 
 
 def http_client_dep(request: Request) -> httpx.AsyncClient:
-    # The pooled client created in ``main.lifespan`` — shared across
-    # requests so OAuth calls reuse warm connections.
     client: httpx.AsyncClient = request.app.state.http_client
     return client
 

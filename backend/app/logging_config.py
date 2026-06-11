@@ -14,9 +14,6 @@ if TYPE_CHECKING:
     import loguru
 
 
-# loguru's default format plus the correlation id, so one grep on the id
-# reconstructs a request's full timeline (incl. Drive calls on worker
-# threads — the ContextVar survives ``asyncio.to_thread``).
 _PRETTY_FORMAT = (
     "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
     "<level>{level: <8}</level> | "
@@ -28,9 +25,6 @@ _PRETTY_FORMAT = (
 
 def configure_logging(*, json: bool = False, level: str = "INFO") -> None:
     logger.remove()
-    # The patcher stamps every record with the current request id; the
-    # JSON sink serializes ``extra`` wholesale, the pretty sink renders
-    # it via ``_PRETTY_FORMAT``.
     logger.configure(patcher=_bind_request_id)
     if json:
         logger.add(sys.stdout, level=level, serialize=True, backtrace=False, diagnose=False)

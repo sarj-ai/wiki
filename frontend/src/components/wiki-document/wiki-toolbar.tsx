@@ -2,7 +2,7 @@
 
 import { Check, ChevronRight, Copy, ExternalLink, RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useState } from "react";
 import { toast } from "sonner";
 
 import type { BreadcrumbItem } from "@/types/wiki";
@@ -33,15 +33,6 @@ export function WikiToolbar({ fileId, mimeType, title, breadcrumb, onReload }: W
   const openUrl = openUrlFor(mimeType, fileId);
   const openLabel = openInGoogleLabel(mimeType);
   const [copied, setCopied] = useState(false);
-  // Cleared on unmount so a pending revert can't fire into a dead
-  // component after rapid navigation.
-  const copyTimerRef = useRef<number | null>(null);
-  useEffect(
-    () => () => {
-      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
-    },
-    [],
-  );
   // Docs/Sheets/Slides/Drawings always render their own title inside
   // the iframe, so duplicating it in our breadcrumb is pure visual
   // noise. For every other type (images, PDFs, until confirmed) we
@@ -61,8 +52,7 @@ export function WikiToolbar({ fileId, mimeType, title, breadcrumb, onReload }: W
       .writeText(window.location.href)
       .then(() => {
         setCopied(true);
-        if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
-        copyTimerRef.current = window.setTimeout(() => {
+        window.setTimeout(() => {
           setCopied(false);
         }, COPY_FEEDBACK_MS);
       })

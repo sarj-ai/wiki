@@ -35,11 +35,6 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={`${nunito.variable} ${GeistMono.variable}`}>
       <head>
-        {/*
-          Every document view embeds a docs.google.com iframe — warming
-          DNS + TCP + TLS here shaves a few hundred ms off the first
-          document open.
-        */}
         <link rel="preconnect" href="https://docs.google.com" />
         <link rel="dns-prefetch" href="https://docs.google.com" />
         {/*

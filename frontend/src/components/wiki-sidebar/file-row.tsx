@@ -71,9 +71,6 @@ function resolveOpenRoute(node: DriveNode): OpenRoute {
   };
 }
 
-// memo pairs with the memoized DriveSectionContext value in
-// drive-section.tsx: rows bail out of parent-driven re-renders unless
-// their own props changed.
 export const FileRow = memo(FileRowImpl);
 
 function FileRowImpl({

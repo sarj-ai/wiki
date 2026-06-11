@@ -1,9 +1,4 @@
-"""Retry policy tests: mutation no-retry semantics + Retry-After handling.
-
-``HttpError`` is constructed with a dict-subclass response that mirrors
-httplib2's real ``Response`` (a dict of headers with ``.status``), so the
-``Retry-After`` lookup path is exercised the same way production sees it.
-"""
+"""Retry policy tests: mutation no-retry semantics + Retry-After handling."""
 
 from __future__ import annotations
 
@@ -46,8 +41,6 @@ class _FlakyRequest:
 
 def test_retry_after_parses_and_caps() -> None:
     assert _retry_after_seconds(_http_error(429, {"retry-after": "7"})) == 7.0
-    # Server-suggested waits are capped so a worker thread is never
-    # parked for minutes.
     assert _retry_after_seconds(_http_error(429, {"retry-after": "9999"})) == 30.0
     assert _retry_after_seconds(_http_error(429)) is None
     assert _retry_after_seconds(_http_error(429, {"retry-after": "soon"})) is None
@@ -61,8 +54,6 @@ def test_execute_with_retry_retries_transient_5xx() -> None:
 
 
 def test_execute_mutation_retries_rate_limit() -> None:
-    # 429 means Drive rejected the request before executing it — safe to
-    # retry even for create/copy.
     req = _FlakyRequest(1, _http_error(429, {"retry-after": "0"}))
     assert execute_mutation(cast("HttpRequest", req)) == {"ok": True}
     assert req.attempts == 2

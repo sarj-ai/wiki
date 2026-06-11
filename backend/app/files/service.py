@@ -158,8 +158,6 @@ class GoogleFilesService(FilesService):
         client = self._client()
         body: File = {"name": name, "mimeType": mime_type, "parents": [parent_folder_id]}
         try:
-            # ``execute_mutation``: a blind 5xx retry could create the file
-            # twice; only rate-limit rejections are safe to retry.
             raw = execute_mutation(
                 client.files().create(body=body, fields=_FIELDS, supportsAllDrives=True)
             )
@@ -193,11 +191,6 @@ class GoogleFilesService(FilesService):
     def _move_sync(
         self, file_id: str, new_parent_folder_id: str, prev_parent_folder_id: str | None
     ) -> FileResponse:
-        # ``move()`` already fetched the source for its scope check, so the
-        # previous parent rides along instead of costing a second
-        # ``files.get`` here. Shared-drive files have exactly one parent;
-        # the ``None`` fallback (file visible without parent metadata)
-        # re-fetches to keep the move correct.
         client = self._client()
         try:
             if prev_parent_folder_id is None:

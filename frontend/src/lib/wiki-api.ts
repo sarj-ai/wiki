@@ -120,8 +120,6 @@ export const wikiApi = {
       })
       .json<DriveSearchResult[]>(),
 
-  // ``mimeType`` (when known from the search result) lets the backend
-  // skip a per-snippet metadata lookup against Drive.
   driveSearchSnippet: (fileId: string, query: string, mimeType?: string) =>
     apiClient
       .get("drive-search/snippet", {

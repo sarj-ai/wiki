@@ -246,12 +246,7 @@ async def test_list_folder_children_queries_by_parent(patch_drive_client: Any) -
 
 
 def _stub_probes(svc: GoogleDriveService, mapping: dict[str, _ShortcutProbe | None]) -> None:
-    """Replace ``_probe_targets_sync`` with a deterministic table.
-
-    Bypasses the real batched ``files.get`` path so resolver tests can
-    pin each shortcut's outcome (accessible / forbidden / pruned)
-    without juggling ``HttpError`` mocks.
-    """
+    """Replace ``_probe_targets_sync`` with a deterministic table."""
 
     def _fake(target_ids: list[str]) -> dict[str, _ShortcutProbe | None]:
         return {tid: mapping.get(tid) for tid in target_ids}
@@ -507,8 +502,6 @@ async def test_search_uses_single_all_drives_query(patch_drive_client: Any) -> N
                 "files": [
                     {"id": "a", "name": "A", "mimeType": "x", "parents": ["d1"], "driveId": "d1"},
                     {"id": "b", "name": "B", "mimeType": "x", "parents": ["d2"], "driveId": "d2"},
-                    # My Drive hit (no driveId) — outside the member-drive
-                    # surface, must be filtered out.
                     {"id": "personal", "name": "P", "mimeType": "x", "parents": ["root"]},
                 ]
             },
@@ -517,9 +510,7 @@ async def test_search_uses_single_all_drives_query(patch_drive_client: Any) -> N
     patch_drive_client(client)
     results = await _svc().search("q")
     assert {r.id for r in results} == {"a", "b"}
-    # Drive names stamped from the cached drives list, no extra lookups.
     assert {r.drive_name for r in results} == {"D1", "D2"}
-    # One files.list across all drives — not one per drive.
     assert len(client.files_captured) == 1
     call = client.files_captured[0]
     assert call["corpora"] == "allDrives"
@@ -535,7 +526,6 @@ async def test_search_falls_back_to_per_drive_on_incomplete_results(
             {"drives": [{"id": "d1", "name": "D1"}, {"id": "d2", "name": "D2"}]},
         ],
         files_pages=[
-            # Unified query reports itself incomplete → per-drive fan-out.
             {"incompleteResults": True, "files": []},
             {
                 "files": [
@@ -581,7 +571,6 @@ async def test_probe_targets_dedupes_and_preserves_order() -> None:
     svc._probe_targets_sync = _fake  # type: ignore[method-assign]
     out = await svc._probe_targets(["t1", None, "t2", "t1"])
 
-    # Duplicate t1 probed once; malformed (None) entries never probed.
     assert seen == [["t1", "t2"]]
     assert out[0] == _ShortcutProbe(accessible=True, target_drive_id="d")
     assert out[1] is None

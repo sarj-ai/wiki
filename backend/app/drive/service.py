@@ -52,15 +52,10 @@ if TYPE_CHECKING:
     from googleapiclient._apis.drive.v3.resources import DriveResource
     from googleapiclient.http import BatchHttpRequest
 
-# A hung Drive socket would otherwise pin an ``asyncio.to_thread`` worker
-# indefinitely — httplib2's default timeout is unbounded.
 _DRIVE_HTTP_TIMEOUT_SECONDS = 30
 
-# Drive's hard cap on requests per batch HTTP call.
 _PROBE_BATCH_SIZE = 100
 
-# Page size for the single cross-drive search query. Generous relative to
-# what the palette renders (~10 rows) so ranking quality doesn't suffer.
 _SEARCH_PAGE_SIZE = 50
 
 # Google Workspace types that expose a clean text/plain export. Other
@@ -123,11 +118,9 @@ class DriveService(ABC):
     ) -> SnippetResult:
         """Extract a match snippet from a file's text export.
 
-        ``mime_type`` is an optimization, not an authority: the palette
-        already knows the hit's type from the search result, and passing
-        it skips a per-snippet metadata ``files.get``. The export itself
-        still runs under the user's own token, so a wrong value can't
-        leak anything — it just yields no snippet.
+        A caller-supplied ``mime_type`` skips the metadata lookup; it's an
+        optimization, not an authority — the export still runs under the
+        user's own token, so a wrong value just yields no snippet.
         """
 
 
@@ -176,31 +169,18 @@ class GoogleDriveService(DriveService):
         drives = await self.list_drives()
         if not drives:
             return []
-        # One ``corpora=allDrives`` query replaces the old per-drive
-        # fan-out (N RPCs per keystroke). allDrives also surfaces My
-        # Drive and one-off-share hits, which sit outside Sarj Wiki's
-        # member-drive surface — the membership filter below restores
-        # the exact per-drive scope. Drive flags ``incompleteResults``
-        # when the unified query can't cover everything; only then do
-        # we pay for the per-drive fan-out.
         hits = await asyncio.to_thread(
             self._search_all_drives_sync, stripped, max(limit_per_drive, _SEARCH_PAGE_SIZE)
         )
         if hits is None:
             merged = await self._search_per_drive(drives, stripped, limit_per_drive)
         else:
-            # Stamp each hit with its parent drive's name as we merge —
-            # saves the client a separate lookup per row.
             names = {d.id: d.name for d in drives}
             merged = [
                 hit.model_copy(update={"drive_name": names[hit.drive_id]})
                 for hit in hits
                 if hit.drive_id in names
             ]
-        # Resolve shortcut hits the same way the sidebar walk does —
-        # grey out the rare case where a shortcut name matches but the
-        # target's ACL blocks the user, drop hits whose target was
-        # trashed.
         return await self._resolve_shortcut_search_results(merged)
 
     async def _search_per_drive(
@@ -224,9 +204,7 @@ class GoogleDriveService(DriveService):
     # Shortcut resolver. Runs after walk/list to enrich shortcut nodes
     # with target accessibility + the target's home-drive name, and to
     # auto-prune shortcuts whose target was deleted or trashed. Probes
-    # are deduplicated and sent as Drive batch HTTP requests — one
-    # round-trip per 100 targets instead of one ``files.get`` (and one
-    # client build, TLS stream, worker thread) per shortcut.
+    # are deduplicated and sent as Drive batch HTTP requests.
     # ------------------------------------------------------------------
 
     async def _resolve_shortcut_nodes(self, nodes: list[DriveNode]) -> list[DriveNode]:
@@ -303,10 +281,7 @@ class GoogleDriveService(DriveService):
         return {d.id: d.name for d in await self.list_drives()}
 
     async def _probe_targets(self, target_ids: list[str | None]) -> list[_ShortcutProbe | None]:
-        """Probe every target id, preserving input order. Duplicate ids
-        (several shortcuts to one target) are probed once and fanned back
-        out; ``None`` entries stay ``None`` (malformed shortcut → prune).
-        """
+        """Probe targets once each (deduplicated), preserving input order."""
         unique_ids = sorted({tid for tid in target_ids if tid})
         if not unique_ids:
             return [None] * len(target_ids)
@@ -335,8 +310,6 @@ class GoogleDriveService(DriveService):
                 _execute_batch_with_retry(batch)
             except HttpError:
                 logger.exception("shortcut probe batch failed user={}", self._user.id)
-                # Whole-batch transport failure: drop the affected
-                # shortcuts rather than rendering misleading rows.
                 for tid in chunk:
                     probes.setdefault(tid, None)
         return probes
@@ -355,8 +328,6 @@ class GoogleDriveService(DriveService):
                 self._user.id,
                 target_id,
             )
-            # Be conservative — if we can't classify the failure, drop
-            # the shortcut rather than rendering a misleading row.
             return None
         if response.get("trashed"):
             return None
@@ -522,9 +493,8 @@ class GoogleDriveService(DriveService):
         return [_search_result_from_api(raw, drive_id) for raw in resp.get("files", [])]
 
     def _search_all_drives_sync(self, query: str, page_size: int) -> list[SearchResult] | None:
-        """Single cross-drive search; ``None`` signals "fall back to the
-        per-drive fan-out" — either Drive reported the unified result set
-        as incomplete, or the call itself failed.
+        """Single cross-drive search; ``None`` means fall back to the
+        per-drive fan-out (incomplete results or the call failed).
         """
         escaped = escape_query_value(query)
         q = f"(name contains '{escaped}' or fullText contains '{escaped}') and trashed=false"
@@ -551,8 +521,6 @@ class GoogleDriveService(DriveService):
 
     def _fetch_snippet_sync(self, file_id: str, query: str, mime_type: str | None) -> SnippetResult:
         client = self._client()
-        # When the caller didn't supply the type (it usually does — the
-        # search result carries it), one metadata get resolves it.
         if mime_type is None:
             try:
                 meta = execute_with_retry(
@@ -608,19 +576,15 @@ class GoogleDriveService(DriveService):
         because no caller outside this class should touch the OAuth
         secret material directly.
 
-        Built from the process-wide cached discovery document (instead
-        of ``build()``, which re-parses it per call) and with an explicit
-        socket timeout — httplib2's default is unbounded. Clients are
-        deliberately NOT shared across operations: httplib2 connections
-        aren't thread-safe, and operations run on ``asyncio.to_thread``
-        workers.
+        Clients are deliberately NOT shared across operations: httplib2
+        connections aren't thread-safe, and operations run on
+        ``asyncio.to_thread`` workers.
         """
         authed_http = google_auth_httplib2.AuthorizedHttp(
             GoogleDriveService._build_credentials(user),
             http=httplib2.Http(timeout=_DRIVE_HTTP_TIMEOUT_SECONDS),
         )
-        # ``build_from_document`` is documented public API; the stubs
-        # package just omits it, hence the narrow ignores.
+        # build_from_document is public API the stubs package omits.
         built = discovery.build_from_document(  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
             _drive_discovery_document(), http=authed_http
         )
@@ -648,13 +612,7 @@ class GoogleDriveService(DriveService):
 
 @cache
 def _drive_discovery_document() -> dict[str, Any]:
-    """Parse the bundled Drive v3 discovery document once per process.
-
-    ``discovery.build(static_discovery=True)`` re-reads and re-parses the
-    ~190KB JSON on every call — measurable CPU on hot paths that build a
-    client per operation. ``build_from_document`` treats the document as
-    read-only, so sharing one parsed dict is safe.
-    """
+    """Parse the bundled Drive v3 discovery document once per process."""
     content = get_static_doc("drive", "v3")  # type: ignore[no-untyped-call]
     if content is None:
         raise RuntimeError("Bundled Drive v3 discovery document not found")
@@ -663,11 +621,8 @@ def _drive_discovery_document() -> dict[str, Any]:
 
 @drive_retry
 def _execute_batch_with_retry(batch: BatchHttpRequest) -> None:
-    """Run a Drive batch request with the standard transient-error retry.
-
-    Per-item outcomes land in the batch callback; only whole-batch
-    transport failures raise. Probes are idempotent reads, so re-running
-    the full batch on retry is safe (the callback just overwrites).
+    """Run a Drive batch request; per-item outcomes land in the callback,
+    only whole-batch transport failures raise (and retry).
     """
     batch.execute()
 
@@ -686,8 +641,6 @@ def _build_mime_clause() -> str:
 
 
 def _search_result_from_api(raw: Any, drive_id: str | None = None) -> SearchResult:
-    # Drive reports the drive id itself as the parent for root-level
-    # items; normalize that to None the same way the tree walk does.
     home_drive_id = raw.get("driveId") or drive_id
     parents = raw.get("parents") or []
     parent_id: str | None = parents[0] if parents else None

@@ -86,11 +86,6 @@ function RowActions({ children }: { children: ReactNode }) {
   );
 }
 
-// memo + the memoized DriveSectionContext value means a row only
-// re-renders when its own props change or the context data actually
-// updates — not on every parent DriveSection render. The recursive
-// references below resolve to the memoized export, so the bailout
-// applies at every tree depth.
 export const TreeNode = memo(TreeNodeImpl);
 
 function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {

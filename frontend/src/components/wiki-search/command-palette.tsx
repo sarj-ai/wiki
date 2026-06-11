@@ -172,9 +172,6 @@ function PreviewPanel({
     target && !inaccessible ? target.id : null,
     query,
     target !== null && !inaccessible,
-    // Passing the known mime saves the backend a per-snippet Drive
-    // metadata lookup. Empty string means "unknown" (shortcut without
-    // target mime) — omit it so the backend falls back to its lookup.
     target !== null && target.mimeType !== "" ? target.mimeType : undefined,
   );
 
@@ -414,9 +411,6 @@ export function CommandPalette() {
             placeholder="Search Drive…"
             className="placeholder:text-muted-foreground/70 flex-1 bg-transparent text-base leading-none outline-none"
             aria-label="Search Drive"
-            // Combobox wiring: arrow-key selection is announced to
-            // screen readers via aria-activedescendant pointing at the
-            // highlighted option in the listbox below.
             role="combobox"
             aria-expanded={hasQuery && results.length > 0}
             aria-controls="palette-results"

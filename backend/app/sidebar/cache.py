@@ -50,11 +50,8 @@ BG_TASKS: set[asyncio.Task[None]] = set()
 
 @dataclass(frozen=True)
 class CachedDriveTree:
-    """A drive tree plus the cache stamp the router can turn into an ETag.
-
-    ``refreshed_at`` is ``None`` when the tree was walked fresh during
-    this request (cold cache) — there's no stable validator to hand out
-    yet, so the response simply goes un-tagged.
+    """A drive tree plus the cache stamp the router turns into an ETag.
+    ``refreshed_at`` is ``None`` on a cold-cache walk (no validator yet).
     """
 
     tree: DriveTree

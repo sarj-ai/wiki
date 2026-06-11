@@ -44,11 +44,6 @@ async def get_drive_folders(
     db: AsyncSession = Depends(get_db),
     cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
 ) -> DriveTree | Response:
-    # The cache row's ``refreshed_at`` is a free change validator: same
-    # stamp ⇒ byte-identical tree. A matching ``If-None-Match`` turns a
-    # large JSON response into an empty 304. Weak tag because the gzip
-    # middleware may vary the bytes; ``no-cache`` means "store, but
-    # revalidate" — exactly the ETag round-trip we want from browsers.
     cached = await cache.get_drive_tree(db, drive_id)
     etag = _tree_etag(drive_id, cached.refreshed_at)
     if etag is None:
