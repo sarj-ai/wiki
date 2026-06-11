@@ -1,3 +1,6 @@
+# Synced from sarj-lint-configs with 3 local deltas: alembic/versions exclude,
+# B008 + CPY001 ignores. Do NOT run `sarj-lint-configs sync --force` — it
+# clobbers them (and the published 0.1.0 wheel would also regress py314 -> py313).
 line-length = 120
 target-version = "py314"
 extend-exclude = ["sdk", "alembic/versions"]

@@ -105,7 +105,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "ARG", "PLR2004", "SLF001", "TID251"]
+"tests/**" = ["S101", "ARG", "PLR2004", "SLF001"]
 "alembic/env.py" = ["ALL"]
 
 [tool.ruff.lint.isort]
@@ -119,6 +119,8 @@ lines-after-imports = 2
 "pickle.load".msg = "pickle is unsafe on untrusted input. Use JSON via Pydantic / orjson."
 "pickle.loads".msg = "pickle is unsafe on untrusted input. Use JSON via Pydantic / orjson."
 "datetime.datetime.utcnow".msg = "Deprecated in 3.12. Use datetime.now(UTC)."
+"fastapi.UploadFile".msg = "Use a pre-signed URL so the client uploads directly to object storage."
+"pydantic.alias_generators.to_camel".msg = "Keep API contracts snake_case; transform on the frontend."
 "unittest.mock.Mock".msg = "Prefer real fixtures / hand-rolled fakes implementing the relevant ABC."
 "unittest.mock.AsyncMock".msg = "Prefer real fixtures / hand-rolled fakes."
 "unittest.mock.MagicMock".msg = "Prefer real fixtures / hand-rolled fakes."
