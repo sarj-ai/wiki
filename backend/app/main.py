@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -32,7 +32,7 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     configure_logging(json=settings.LOG_JSON, level=settings.LOG_LEVEL)
     async with httpx.AsyncClient(timeout=10.0) as http_client:
         app.state.http_client = http_client
