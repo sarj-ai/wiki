@@ -366,7 +366,7 @@ class GoogleDriveService(DriveService):
 
     def _walk_folders_sync(self, drive_id: str) -> DriveTree:
         client = self._client()
-        out = DriveTree(drive_id=drive_id)
+        out = DriveTree(drive_id=drive_id, folders=[], files=[])
         page_token: str | None = None
         # Folder walk also picks up shortcuts whose target is a folder
         # so cross-drive folder pointers render natively in the tree.
@@ -530,12 +530,14 @@ class GoogleDriveService(DriveService):
                 )
             except HttpError:
                 logger.exception("snippet metadata fetch failed file={}", file_id)
-                return SnippetResult(file_id=file_id, mime_type="", snippet=None)
+                return SnippetResult(file_id=file_id, mime_type="", snippet=None, match_term=None)
             fetched_mime: str = meta.get("mimeType", "")
             mime_type = fetched_mime
 
         if mime_type not in _TEXT_EXPORTABLE_MIME_TYPES:
-            return SnippetResult(file_id=file_id, mime_type=mime_type, snippet=None)
+            return SnippetResult(
+                file_id=file_id, mime_type=mime_type, snippet=None, match_term=None
+            )
 
         # ``size`` is only set on binary files; Workspace docs don't report
         # a byte size, so we can't pre-filter. The export itself is the
@@ -544,7 +546,9 @@ class GoogleDriveService(DriveService):
             raw = execute_with_retry(client.files().export(fileId=file_id, mimeType="text/plain"))
         except HttpError:
             logger.exception("snippet export failed file={}", file_id)
-            return SnippetResult(file_id=file_id, mime_type=mime_type, snippet=None)
+            return SnippetResult(
+                file_id=file_id, mime_type=mime_type, snippet=None, match_term=None
+            )
 
         if isinstance(raw, bytes):
             raw = raw[:_MAX_EXPORT_BYTES]
@@ -554,7 +558,9 @@ class GoogleDriveService(DriveService):
 
         match = extract_snippet(text, query)
         if match is None:
-            return SnippetResult(file_id=file_id, mime_type=mime_type, snippet=None)
+            return SnippetResult(
+                file_id=file_id, mime_type=mime_type, snippet=None, match_term=None
+            )
         snippet, word = match
         return SnippetResult(
             file_id=file_id,
@@ -652,6 +658,7 @@ def _search_result_from_api(raw: Any, drive_id: str | None = None) -> SearchResu
         name=raw["name"],
         mime_type=raw["mimeType"],
         drive_id=raw.get("driveId"),
+        drive_name=None,
         parent_id=parent_id,
         modified_time=raw.get("modifiedTime"),
         shortcut_target_id=details.get("targetId"),

@@ -12,8 +12,12 @@ class DocIconWrite(BaseModel):
     cover_url: str | None = None
 
 
-class DocIconRead(DocIconWrite):
+class DocIconRead(BaseModel):
+    """Response shape — decoupled from the Write payload so fields are required."""
+
     drive_id: str
+    icon: str | None
+    cover_url: str | None
 
 
 class FolderIconWrite(BaseModel):
@@ -22,8 +26,9 @@ class FolderIconWrite(BaseModel):
     icon: str | None = None
 
 
-class FolderIconRead(FolderIconWrite):
+class FolderIconRead(BaseModel):
     folder_drive_id: str
+    icon: str | None
 
 
 class SortOrderWrite(BaseModel):
@@ -42,6 +47,12 @@ class SortOrderBulkWrite(BaseModel):
 class SortOrderRead(BaseModel):
     drive_id: str
     sort_order: float
+
+
+class SortOrderBulkResult(BaseModel):
+    """Typed response for the bulk reorder endpoint."""
+
+    updated: int
 
 
 class PreferencesWrite(BaseModel):

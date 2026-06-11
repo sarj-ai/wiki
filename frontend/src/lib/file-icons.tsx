@@ -65,7 +65,7 @@ export function renderMimeIcon(mimeType: string, className?: string): ReactEleme
 // a pointer, not the original".
 interface NodeIconShape {
   mimeType: string;
-  shortcutTargetMimeType?: string | null;
+  shortcutTargetMimeType?: string | null | undefined;
 }
 
 export function renderNodeIcon(node: NodeIconShape, className?: string): ReactElement {

@@ -25,11 +25,12 @@ export interface DriveNode {
   parentId: string | null;
   modifiedTime: string | null;
   // Shortcut metadata — populated only when ``mimeType === MIME_SHORTCUT``.
-  shortcutTargetId?: string | null;
-  shortcutTargetMimeType?: string | null;
-  shortcutTargetDriveId?: string | null;
-  shortcutTargetDriveName?: string | null;
-  shortcutInaccessible?: boolean;
+  // ``| undefined`` matches the zod-inferred shape under exactOptionalPropertyTypes.
+  shortcutTargetId?: string | null | undefined;
+  shortcutTargetMimeType?: string | null | undefined;
+  shortcutTargetDriveId?: string | null | undefined;
+  shortcutTargetDriveName?: string | null | undefined;
+  shortcutInaccessible?: boolean | undefined;
 }
 
 export interface DriveTree {
@@ -86,10 +87,10 @@ export interface DriveSearchResult {
   driveName: string | null;
   parentId: string | null;
   modifiedTime: string | null;
-  shortcutTargetId?: string | null;
-  shortcutTargetMimeType?: string | null;
-  shortcutTargetDriveName?: string | null;
-  shortcutInaccessible?: boolean;
+  shortcutTargetId?: string | null | undefined;
+  shortcutTargetMimeType?: string | null | undefined;
+  shortcutTargetDriveName?: string | null | undefined;
+  shortcutInaccessible?: boolean | undefined;
 }
 
 export interface SnippetResult {
