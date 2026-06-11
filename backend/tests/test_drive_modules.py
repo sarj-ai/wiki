@@ -90,7 +90,7 @@ class _FakeClient:
 def patch_drive_client(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     """Return a helper that patches ``GoogleDriveService.build_drive_client``."""
 
-    def _install(client: _FakeClient) -> None:
+    def _install(client: Any) -> None:
         monkeypatch.setattr(
             GoogleDriveService,
             "build_drive_client",
@@ -246,17 +246,17 @@ async def test_list_folder_children_queries_by_parent(patch_drive_client: Any) -
 
 
 def _stub_probes(svc: GoogleDriveService, mapping: dict[str, _ShortcutProbe | None]) -> None:
-    """Replace ``_probe_target_sync`` with a deterministic table.
+    """Replace ``_probe_targets_sync`` with a deterministic table.
 
-    Bypasses the real ``files.get`` path so resolver tests can pin
-    each shortcut's outcome (accessible / forbidden / pruned) without
-    juggling ``HttpError`` mocks.
+    Bypasses the real batched ``files.get`` path so resolver tests can
+    pin each shortcut's outcome (accessible / forbidden / pruned)
+    without juggling ``HttpError`` mocks.
     """
 
-    def _fake(target_id: str | None) -> _ShortcutProbe | None:
-        return mapping.get(target_id or "")
+    def _fake(target_ids: list[str]) -> dict[str, _ShortcutProbe | None]:
+        return {tid: mapping.get(tid) for tid in target_ids}
 
-    svc._probe_target_sync = _fake  # type: ignore[method-assign]
+    svc._probe_targets_sync = _fake  # type: ignore[method-assign]
 
 
 async def test_walk_surfaces_folder_shortcuts_and_drops_file_shortcuts(
@@ -497,12 +497,46 @@ async def test_search_drive_empty_query_returns_empty(patch_drive_client: Any) -
     assert client.files_captured == []
 
 
-async def test_search_fans_out_across_member_drives(patch_drive_client: Any) -> None:
+async def test_search_uses_single_all_drives_query(patch_drive_client: Any) -> None:
     client = _FakeClient(
         drives_pages=[
             {"drives": [{"id": "d1", "name": "D1"}, {"id": "d2", "name": "D2"}]},
         ],
         files_pages=[
+            {
+                "files": [
+                    {"id": "a", "name": "A", "mimeType": "x", "parents": ["d1"], "driveId": "d1"},
+                    {"id": "b", "name": "B", "mimeType": "x", "parents": ["d2"], "driveId": "d2"},
+                    # My Drive hit (no driveId) — outside the member-drive
+                    # surface, must be filtered out.
+                    {"id": "personal", "name": "P", "mimeType": "x", "parents": ["root"]},
+                ]
+            },
+        ],
+    )
+    patch_drive_client(client)
+    results = await _svc().search("q")
+    assert {r.id for r in results} == {"a", "b"}
+    # Drive names stamped from the cached drives list, no extra lookups.
+    assert {r.drive_name for r in results} == {"D1", "D2"}
+    # One files.list across all drives — not one per drive.
+    assert len(client.files_captured) == 1
+    call = client.files_captured[0]
+    assert call["corpora"] == "allDrives"
+    assert "driveId" not in call
+    assert "incompleteResults" in call["fields"]
+
+
+async def test_search_falls_back_to_per_drive_on_incomplete_results(
+    patch_drive_client: Any,
+) -> None:
+    client = _FakeClient(
+        drives_pages=[
+            {"drives": [{"id": "d1", "name": "D1"}, {"id": "d2", "name": "D2"}]},
+        ],
+        files_pages=[
+            # Unified query reports itself incomplete → per-drive fan-out.
+            {"incompleteResults": True, "files": []},
             {
                 "files": [
                     {"id": "a", "name": "A", "mimeType": "x", "parents": ["d1"], "driveId": "d1"}
@@ -518,6 +552,9 @@ async def test_search_fans_out_across_member_drives(patch_drive_client: Any) -> 
     patch_drive_client(client)
     results = await _svc().search("q")
     assert {r.id for r in results} == {"a", "b"}
+    assert len(client.files_captured) == 3
+    fan_out_corpora = {c["corpora"] for c in client.files_captured[1:]}
+    assert fan_out_corpora == {"drive"}
 
 
 async def test_search_short_circuits_on_empty_query(patch_drive_client: Any) -> None:
@@ -526,6 +563,101 @@ async def test_search_short_circuits_on_empty_query(patch_drive_client: Any) -> 
     assert await _svc().search("   ") == []
     # Never even fetched drives.
     assert client.drives_captured == []
+
+
+# ---------------------------------------------------------------------------
+# probe batching + snippet RPC elision
+# ---------------------------------------------------------------------------
+
+
+async def test_probe_targets_dedupes_and_preserves_order() -> None:
+    svc = _svc()
+    seen: list[list[str]] = []
+
+    def _fake(target_ids: list[str]) -> dict[str, _ShortcutProbe | None]:
+        seen.append(list(target_ids))
+        return {tid: _ShortcutProbe(accessible=True, target_drive_id="d") for tid in target_ids}
+
+    svc._probe_targets_sync = _fake  # type: ignore[method-assign]
+    out = await svc._probe_targets(["t1", None, "t2", "t1"])
+
+    # Duplicate t1 probed once; malformed (None) entries never probed.
+    assert seen == [["t1", "t2"]]
+    assert out[0] == _ShortcutProbe(accessible=True, target_drive_id="d")
+    assert out[1] is None
+    assert out[3] == out[0]
+
+
+def test_classify_probe_maps_statuses_like_the_old_per_call_path() -> None:
+    svc = _svc()
+
+    class _Resp:
+        def __init__(self, status: int) -> None:
+            self.status = status
+            self.reason = "test"
+
+    def _err(status: int) -> Exception:
+        from googleapiclient.errors import HttpError
+
+        return HttpError(_Resp(status), b"{}")  # type: ignore[arg-type]
+
+    assert svc._classify_probe("t", None, _err(404)) is None
+    assert svc._classify_probe("t", None, _err(403)) == _ShortcutProbe(accessible=False)
+    assert svc._classify_probe("t", None, _err(500)) is None
+    assert svc._classify_probe("t", {"trashed": True}, None) is None
+    assert svc._classify_probe("t", {"id": "t", "driveId": "eng"}, None) == _ShortcutProbe(
+        accessible=True, target_drive_id="eng"
+    )
+
+
+async def test_snippet_with_known_mime_skips_metadata_get(
+    patch_drive_client: Any,
+) -> None:
+    captured: list[dict[str, Any]] = []
+
+    class _FakeFiles:
+        def get(self, **_: Any) -> _FakeFiles:
+            raise AssertionError("metadata get must be skipped when mime_type is supplied")
+
+        def export(self, **kwargs: Any) -> _FakeFiles:
+            captured.append({"_op": "export", **kwargs})
+            return self
+
+        def execute(self) -> bytes:
+            return b"some text with a match inside it for the snippet"
+
+    class _FakeSnippetClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    patch_drive_client(_FakeSnippetClient())
+    result = await _svc().fetch_snippet(
+        "f1", "match", mime_type="application/vnd.google-apps.document"
+    )
+    assert result.snippet is not None
+    assert len(captured) == 1
+
+
+async def test_snippet_with_non_exportable_mime_makes_no_drive_calls(
+    patch_drive_client: Any,
+) -> None:
+    class _ExplodingClient:
+        def files(self) -> Any:
+            raise AssertionError("no Drive call expected for non-exportable types")
+
+    patch_drive_client(_ExplodingClient())
+    result = await _svc().fetch_snippet("f1", "match", mime_type="application/pdf")
+    assert result.snippet is None
+    assert result.mime_type == "application/pdf"
+
+
+def test_discovery_document_parsed_once() -> None:
+    from app.drive.service import _drive_discovery_document
+
+    _drive_discovery_document.cache_clear()
+    first = _drive_discovery_document()
+    second = _drive_discovery_document()
+    assert first is second
 
 
 # ---------------------------------------------------------------------------

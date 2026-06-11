@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import override
 
@@ -47,11 +48,24 @@ SINGLEFLIGHT = Singleflight()
 BG_TASKS: set[asyncio.Task[None]] = set()
 
 
+@dataclass(frozen=True)
+class CachedDriveTree:
+    """A drive tree plus the cache stamp the router can turn into an ETag.
+
+    ``refreshed_at`` is ``None`` when the tree was walked fresh during
+    this request (cold cache) — there's no stable validator to hand out
+    yet, so the response simply goes un-tagged.
+    """
+
+    tree: DriveTree
+    refreshed_at: datetime | None
+
+
 class SidebarCacheService(ABC):
     """Contract for drive-tree cache reads and invalidations."""
 
     @abstractmethod
-    async def get_drive_tree(self, db: AsyncSession, drive_id: str) -> DriveTree: ...
+    async def get_drive_tree(self, db: AsyncSession, drive_id: str) -> CachedDriveTree: ...
 
     @abstractmethod
     async def get_folder_children(self, folder_id: str) -> list[DriveNode]: ...
@@ -95,7 +109,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
         self._sessionmaker = sessionmaker
 
     @override
-    async def get_drive_tree(self, db: AsyncSession, drive_id: str) -> DriveTree:
+    async def get_drive_tree(self, db: AsyncSession, drive_id: str) -> CachedDriveTree:
         # Warm path: row exists → return it (stale is OK; refresh async).
         # Cold path: no row → run the walk through singleflight so concurrent
         # callers share one Drive call.
@@ -104,11 +118,12 @@ class PostgresSidebarCacheService(SidebarCacheService):
             tree = DriveTree.model_validate(row.tree)
             if datetime.now(UTC) - row.refreshed_at > CACHE_TTL:
                 self._schedule_refresh(drive_id)
-            return tree
-        return await self._sf.do(
+            return CachedDriveTree(tree=tree, refreshed_at=row.refreshed_at)
+        tree = await self._sf.do(
             f"drive:{drive_id}",
             lambda: self._walk_and_save(drive_id),
         )
+        return CachedDriveTree(tree=tree, refreshed_at=None)
 
     @override
     async def get_folder_children(self, folder_id: str) -> list[DriveNode]:

@@ -13,7 +13,9 @@ whole sidebar:
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -34,13 +36,28 @@ async def get_drives(
     return await drive.list_drives()
 
 
-@router.get("/drives/{drive_id}/folders")
+@router.get("/drives/{drive_id}/folders", response_model=DriveTree)
 async def get_drive_folders(
     drive_id: str,
+    request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
-) -> DriveTree:
-    return await cache.get_drive_tree(db, drive_id)
+) -> DriveTree | Response:
+    # The cache row's ``refreshed_at`` is a free change validator: same
+    # stamp ⇒ byte-identical tree. A matching ``If-None-Match`` turns a
+    # large JSON response into an empty 304. Weak tag because the gzip
+    # middleware may vary the bytes; ``no-cache`` means "store, but
+    # revalidate" — exactly the ETag round-trip we want from browsers.
+    cached = await cache.get_drive_tree(db, drive_id)
+    etag = _tree_etag(drive_id, cached.refreshed_at)
+    if etag is None:
+        return cached.tree
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": etag})
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = "private, no-cache"
+    return cached.tree
 
 
 @router.post("/drives/{drive_id}/refresh")
@@ -62,3 +79,9 @@ async def get_folder_files(
     cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
 ) -> list[DriveNode]:
     return await cache.get_folder_children(folder_id)
+
+
+def _tree_etag(drive_id: str, refreshed_at: datetime | None) -> str | None:
+    if refreshed_at is None:
+        return None
+    return f'W/"{drive_id}:{refreshed_at.isoformat()}"'

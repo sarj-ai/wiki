@@ -3,23 +3,49 @@ from __future__ import annotations
 import logging
 import sys
 from types import FrameType
-from typing import override
+from typing import TYPE_CHECKING, override
 
 from loguru import logger
+
+from app.request_id import request_id_var
+
+
+if TYPE_CHECKING:
+    import loguru
+
+
+# loguru's default format plus the correlation id, so one grep on the id
+# reconstructs a request's full timeline (incl. Drive calls on worker
+# threads — the ContextVar survives ``asyncio.to_thread``).
+_PRETTY_FORMAT = (
+    "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+    "<level>{level: <8}</level> | "
+    "<magenta>{extra[request_id]}</magenta> | "
+    "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+    "<level>{message}</level>"
+)
 
 
 def configure_logging(*, json: bool = False, level: str = "INFO") -> None:
     logger.remove()
+    # The patcher stamps every record with the current request id; the
+    # JSON sink serializes ``extra`` wholesale, the pretty sink renders
+    # it via ``_PRETTY_FORMAT``.
+    logger.configure(patcher=_bind_request_id)
     if json:
         logger.add(sys.stdout, level=level, serialize=True, backtrace=False, diagnose=False)
     else:
-        logger.add(sys.stdout, level=level, backtrace=True, diagnose=False)
+        logger.add(sys.stdout, level=level, format=_PRETTY_FORMAT, backtrace=True, diagnose=False)
 
     logging.basicConfig(handlers=[_InterceptHandler()], level=0, force=True)
     for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastapi", "sqlalchemy.engine"):
         std = logging.getLogger(name)
         std.handlers = [_InterceptHandler()]
         std.propagate = False
+
+
+def _bind_request_id(record: loguru.Record) -> None:
+    record["extra"].setdefault("request_id", request_id_var.get())
 
 
 class _InterceptHandler(logging.Handler):

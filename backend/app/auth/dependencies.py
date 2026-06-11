@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-
 from fastapi import Depends, HTTPException, Request, status
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,9 +12,11 @@ from app.database import get_db
 from app.models.user import User
 
 
-async def http_client_dep() -> AsyncIterator[httpx.AsyncClient]:
-    async with httpx.AsyncClient() as client:
-        yield client
+def http_client_dep(request: Request) -> httpx.AsyncClient:
+    # The pooled client created in ``main.lifespan`` — shared across
+    # requests so OAuth calls reuse warm connections.
+    client: httpx.AsyncClient = request.app.state.http_client
+    return client
 
 
 def auth_service_dep(

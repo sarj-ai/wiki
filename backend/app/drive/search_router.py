@@ -30,6 +30,9 @@ async def search(
 async def snippet(
     file_id: str = Query(..., min_length=1),
     q: str = Query(..., min_length=1),
+    mime_type: str | None = Query(None, max_length=256),
     svc: DriveService = Depends(drive_service_dep),
 ) -> SnippetResult:
-    return await svc.fetch_snippet(file_id, q)
+    # ``mime_type`` lets the palette skip a per-snippet metadata fetch —
+    # it already knows the type from the search result it's previewing.
+    return await svc.fetch_snippet(file_id, q, mime_type=mime_type)
