@@ -17,7 +17,7 @@ jobs:
     name: pre-commit (actionlint, hygiene, sarj rules)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
@@ -37,7 +37,7 @@ jobs:
     name: gitleaks (full history)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0 # gitleaks scans the full commit history
           persist-credentials: false
