@@ -31,9 +31,10 @@ class FileResponse(BaseModel):
     id: str
     name: str
     mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
-    parent_folder_id: str | None = None
-    drive_id: str | None = None
-    modified_time: str | None = None
+    # Required-but-nullable: always serialized, so the spec marks them required.
+    parent_folder_id: str | None
+    drive_id: str | None
+    modified_time: str | None
 
 
 class MoveResult(BaseModel):
@@ -66,5 +67,5 @@ class FileDetail(FileResponse):
     or a client-side parent walk over the cached tree.
     """
 
-    drive_name: str | None = None
-    breadcrumb: list[BreadcrumbItem] = []
+    drive_name: str | None
+    breadcrumb: list[BreadcrumbItem]

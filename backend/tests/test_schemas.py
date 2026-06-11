@@ -17,14 +17,20 @@ from app.drive.schemas import (
 from app.extras.schemas import PreferencesRead, PreferencesWrite
 
 
-def test_drive_node_defaults() -> None:
-    node = DriveNode(id="x", name="X", mime_type="application/vnd.google-apps.folder")
-    assert node.parent_id is None
-    assert node.modified_time is None
+def test_drive_node_shortcut_defaults() -> None:
+    node = DriveNode(
+        id="x",
+        name="X",
+        mime_type="application/vnd.google-apps.folder",
+        parent_id=None,
+        modified_time=None,
+    )
+    assert node.shortcut_target_id is None
+    assert node.shortcut_inaccessible is False
 
 
 def test_drive_tree_empty() -> None:
-    tree = DriveTree(drive_id="d1")
+    tree = DriveTree(drive_id="d1", folders=[], files=[])
     assert tree.folders == []
     assert tree.files == []
     # Round-trip through JSON stays stable — used by the JSONB cache.
@@ -45,7 +51,15 @@ def test_supported_mime_types_include_all_workspace_apps() -> None:
 
 
 def test_search_result_round_trip() -> None:
-    r = SearchResult(id="x", name="X", mime_type="t")
+    r = SearchResult(
+        id="x",
+        name="X",
+        mime_type="t",
+        drive_id=None,
+        drive_name=None,
+        parent_id=None,
+        modified_time=None,
+    )
     assert r.drive_id is None
     assert r.parent_id is None
 

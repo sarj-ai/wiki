@@ -76,8 +76,9 @@ class DriveNode(BaseModel):
     id: str
     name: str
     mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
-    parent_id: str | None = None
-    modified_time: str | None = None
+    # Required-but-nullable: always serialized, so the spec marks them required.
+    parent_id: str | None
+    modified_time: str | None
     shortcut_target_id: str | None = None
     shortcut_target_mime_type: str | None = None
     shortcut_target_drive_id: str | None = None
@@ -94,8 +95,8 @@ class DriveTree(BaseModel):
     """
 
     drive_id: str
-    folders: list[DriveNode] = []
-    files: list[DriveNode] = []
+    folders: list[DriveNode]
+    files: list[DriveNode]
 
 
 class SearchResult(BaseModel):
@@ -115,10 +116,10 @@ class SearchResult(BaseModel):
     id: str
     name: str
     mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
-    drive_id: str | None = None
-    drive_name: str | None = None
-    parent_id: str | None = None
-    modified_time: str | None = None
+    drive_id: str | None
+    drive_name: str | None
+    parent_id: str | None
+    modified_time: str | None
     shortcut_target_id: str | None = None
     shortcut_target_mime_type: str | None = None
     shortcut_target_drive_name: str | None = None
@@ -130,5 +131,5 @@ class SnippetResult(BaseModel):
 
     file_id: str
     mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
-    snippet: str | None = None
-    match_term: str | None = None
+    snippet: str | None
+    match_term: str | None
