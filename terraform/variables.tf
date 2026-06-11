@@ -64,7 +64,7 @@ variable "alert_email" {
 variable "github_repo" {
   description = "GitHub repository (owner/repo) for Workload Identity Federation"
   type        = string
-  default     = "a-alhashemi/sarj-docs"
+  default     = "sarj-ai/wiki"
 }
 
 # ---------------------------------------------------------------------------

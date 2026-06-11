@@ -34,8 +34,8 @@ resource "google_compute_region_network_endpoint_group" "backend_neg" {
 
 # Backend service — wires the NEG into the LB with Cloud Armor.
 resource "google_compute_backend_service" "backend" {
-  name                  = "sarj-docs-backend-service"
-  protocol              = "HTTPS"
+  name     = "sarj-docs-backend-service"
+  protocol = "HTTPS"
   # ``port_name`` deliberately omitted — Serverless NEGs (Cloud Run)
   # don't accept it; GCP rejects ``port_name`` for serverless backends
   # with "Port name is not supported for a backend service with
