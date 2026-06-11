@@ -39,7 +39,7 @@ function useInvalidateTrees() {
     }
     // Folder-file listings inside moved folders may now be stale — drop
     // them all so the next expand refetches. Cheap vs scoped invalidation.
-    void qc.invalidateQueries({ queryKey: ["wiki", "folder-files"] });
+    void qc.invalidateQueries({ queryKey: wikiKeys.folderFilesPrefix });
   };
 }
 
@@ -69,7 +69,7 @@ export function useRenameFile() {
       wikiApi.renameFile(fileId, name),
     onSuccess: (file) => {
       invalidate([file.driveId]);
-      void qc.invalidateQueries({ queryKey: ["wiki", "file", file.id] });
+      void qc.invalidateQueries({ queryKey: wikiKeys.file(file.id) });
     },
   });
 }
@@ -134,7 +134,7 @@ export function useMoveFile() {
       // subject to Drive's listing lag — they go through our own
       // services, not Drive's listing — so invalidating those is
       // safe and keeps the moved file's detail page in sync.
-      void qc.invalidateQueries({ queryKey: ["wiki", "file", result.id] });
+      void qc.invalidateQueries({ queryKey: wikiKeys.file(result.id) });
       void qc.invalidateQueries({ queryKey: wikiKeys.sortOrders });
     },
   });
@@ -169,7 +169,7 @@ export function useRefreshDrive() {
     mutationFn: (driveId: string) => wikiApi.refreshDriveFolders(driveId),
     onSuccess: (tree: DriveTree) => {
       qc.setQueryData<DriveTree>(wikiKeys.driveTree(tree.driveId), tree);
-      void qc.invalidateQueries({ queryKey: ["wiki", "folder-files"] });
+      void qc.invalidateQueries({ queryKey: wikiKeys.folderFilesPrefix });
     },
   });
 }

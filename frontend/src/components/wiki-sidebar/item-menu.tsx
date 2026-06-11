@@ -25,6 +25,7 @@ import {
 import { useCopyFile, useDeleteFile, useRenameFile } from "@/hooks/use-wiki-mutations";
 import { isGoogleWorkspaceType } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
+import { runWithErrorToast } from "@/lib/mutation-toast";
 import { MIME_FORM } from "@/types/wiki";
 
 import { MoveFileDialog } from "./move-file-dialog";
@@ -57,17 +58,14 @@ export function ItemMenu({
 
   const handleRenameSubmit = async (next: string) => {
     if (next === currentName) return;
-    try {
+    await runWithErrorToast(async () => {
       await renameFile.mutateAsync({ fileId, name: next });
       toast.success("Renamed");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Rename failed";
-      toast.error(message);
-    }
+    }, "Rename failed");
   };
 
   const handleDuplicate = async (name: string) => {
-    try {
+    await runWithErrorToast(async () => {
       const file = await copyFile.mutateAsync({ fileId, name });
       // Forms can't be iframed (see file-row.tsx) so the duplicate
       // opens in a new tab. Other Workspace types open inline.
@@ -77,10 +75,7 @@ export function ItemMenu({
         router.push(`/d/${encodeURIComponent(file.id)}`);
       }
       toast.success("Duplicated");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Duplicate failed";
-      toast.error(message);
-    }
+    }, "Duplicate failed");
   };
 
   const handleDelete = async () => {
@@ -88,7 +83,7 @@ export function ItemMenu({
     // confirm button can show a spinner and block double-clicks —
     // closing eagerly and relying on the toast leaves the user
     // without any feedback during the round-trip.
-    try {
+    await runWithErrorToast(async () => {
       await deleteFile.mutateAsync({ fileId, driveId, parentFolderId });
       setConfirmingDelete(false);
       toast.success(isFolder ? "Folder moved to trash" : "File moved to trash");
@@ -99,10 +94,7 @@ export function ItemMenu({
       if (pathname === `/d/${encodeURIComponent(fileId)}`) {
         router.push("/");
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Delete failed";
-      toast.error(message);
-    }
+    }, "Delete failed");
   };
 
   return (

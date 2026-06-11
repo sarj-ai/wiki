@@ -4,7 +4,6 @@ import { ExternalLink, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { memo } from "react";
-import { toast } from "sonner";
 
 import type { DriveNode } from "@/types/wiki";
 
@@ -13,6 +12,7 @@ import { SidebarMenuButton } from "@/components/ui/sidebar";
 import { useSetDocIcon } from "@/hooks/use-wiki-mutations";
 import { renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
+import { runWithErrorToast } from "@/lib/mutation-toast";
 import { cn } from "@/lib/utils";
 import { MIME_DOC, MIME_FORM, MIME_SHORTCUT } from "@/types/wiki";
 
@@ -95,12 +95,9 @@ function FileRowImpl({
 
   const setDocIcon = useSetDocIcon();
   const handleIconChange = async (next: string | null) => {
-    try {
+    await runWithErrorToast(async () => {
       await setDocIcon.mutateAsync({ driveId: node.id, icon: next });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to update icon";
-      toast.error(message);
-    }
+    }, "Failed to update icon");
   };
 
   // Shortcuts ignore icon overrides — the doc_icons row belongs to the
