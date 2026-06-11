@@ -21,8 +21,6 @@ backend/    FastAPI app (see "Backend layout" below)
 frontend/   Next.js 16 App Router
 terraform/  infra
 scripts/    one-off ops scripts
-docs/       ad-hoc design notes
-ROLLOUT.md  pre-launch wave tracker (read before starting work)
 ```
 
 ## Backend layout
@@ -56,7 +54,10 @@ Routers never call Google APIs or the DB directly — they resolve a service via
 
 - **Python deps/scripts**: `uv` only. Never `pip`, `pip3`, `venv`, `python -m venv`.
 - **Shell**: use relative paths; cwd is already repo root.
-- **Checkers run on every change**: `ruff`, `mypy` (strict), `pyright` (strict), `ty`, `vulture`. All must pass. Tests run with `uv run pytest`.
+- **Backend checkers (blocking, run on every change)**: `ruff`, `mypy` (strict), `pyright` (strict), `ty`, `vulture`, `lint-imports` (import-linter layering contracts in `pyproject.toml`). All must pass. Tests run with `uv run pytest`; CI enforces `--cov-fail-under=38` (a ratchet — raise, never lower).
+- **Frontend checkers (blocking)**: `prettier`, `eslint`, `tsc` (TS 6, extends `@sarj/tsconfig/strict.json`), `knip`, `type-coverage --at-least 99`.
+- **Repo-wide pre-commit (blocking in CI via ci-quality.yml)**: hygiene hooks, gitleaks, actionlint, and the `sarj-*` AST rules from `sarj-ai/standards`. Suppress a sarj finding inline with `# sarj-noqa: SARJ00X — reason`.
+- **Report-only layers (informational, never gate)**: org-strict ruff (`backend/.ruff-strict.toml`), org-strict pyright (`backend/.pyright-strict.toml`), `pip-audit`, Trivy IaC scan on `terraform/`. The two strict configs are synced from `sarj-lint-configs` **with deliberate local deltas** — never `sync --force` over them (see the header comment in `.ruff-strict.toml`).
 
 ## Architecture rules
 
@@ -74,7 +75,7 @@ Audit commands at `/sarj-audit:*` (from the `sarj-agentic` plugin, enabled via `
 - **Library-first** — Don't hand-roll what a well-maintained package already covers (date math, slugs, retries, debounce, CSV, UUIDs, etc.). Reach for the package; reserve hand-rolling for cases where the library would be heavier than what it replaces.
 - **Move logic down the stack** — Push work to the lowest layer that can handle it: client → server (server components / loaders, not `useEffect` fetches); app code → SQL (filter / group / sort / join in the query, not in JS); raw HTML → shadcn primitives (`Button`, `Select`, `Dialog`, etc., not hand-rolled `<button>` / `<div>` patterns).
 - **Service layer + DI** — already enforced (Architecture rules #3): business logic in `XxxService` behind ABCs, wired via FastAPI `Depends`; routers stay thin.
-- **Strict linting** — `ruff`, `mypy --strict`, `pyright --strict`, `ty`, `vulture` on every change (see Tooling). Don't downgrade rules to `warn` to silence them — fix the violation.
+- **Strict linting** — all blocking checkers in Tooling on every change. Don't downgrade rules to `warn` to silence them — fix the violation (or add a narrowly-scoped inline `# noqa: CODE — reason` / `# sarj-noqa: SARJ00X — reason` with justification).
 
 ## Auth & security
 

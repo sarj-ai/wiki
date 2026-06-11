@@ -48,19 +48,14 @@ const eslintConfig = defineConfig([
         "error",
         { allowNumber: true, allowBoolean: true },
       ],
-      // Allow @ts-nocheck WHEN it carries a description — used to mark files
-      // scheduled for deletion in Sub-PR D of the Navigator pivot.
-      "@typescript-eslint/ban-ts-comment": [
-        "error",
-        {
-          "ts-nocheck": "allow-with-description",
-          minimumDescriptionLength: 10,
-        },
-      ],
       "no-console": ["warn", { allow: ["warn", "error"] }],
       eqeqeq: ["error", "always", { null: "ignore" }],
       "prefer-const": "error",
       "no-var": "error",
+      "no-await-in-loop": "error",
+      "array-callback-return": "error",
+      "prefer-template": "error",
+      "object-shorthand": ["error", "always"],
       // Five core rules called out in the rollout plan.
       "no-constant-binary-expression": "error",
       "no-promise-executor-return": "error",
@@ -98,6 +93,7 @@ const eslintConfig = defineConfig([
       "unicorn/prefer-top-level-await": "error",
       "unicorn/throw-new-error": "error",
       "unicorn/no-instanceof-builtins": "error",
+      "unicorn/filename-case": ["error", { cases: { kebabCase: true, pascalCase: true } }],
     },
   },
   {
@@ -123,10 +119,22 @@ const eslintConfig = defineConfig([
     },
   },
   // Rule set sourced from the plugin so new @sarj rules are picked up
-  // automatically; all at "warn" to stay non-breaking.
+  // automatically; "warn" is the non-breaking floor, with the currently-clean
+  // rules promoted to error below.
   {
     plugins: { "@sarj": sarj },
     rules: Object.fromEntries(Object.keys(sarj.rules).map((name) => [`@sarj/${name}`, "warn"])),
+  },
+  {
+    rules: {
+      "@sarj/no-client-side-data-fetching": "error",
+      "@sarj/no-enum": "error",
+      "@sarj/prefer-schema-for-api-payload": "error",
+      "@sarj/prefer-server-actions": "error",
+      "@sarj/require-assert-never": "error",
+      "@sarj/require-zod-form-validation": "error",
+      "@sarj/zod-naming-convention": "error",
+    },
   },
   // Test-file-only configs.
   {
