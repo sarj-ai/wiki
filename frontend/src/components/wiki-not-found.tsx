@@ -8,8 +8,6 @@ interface WikiNotFoundProps {
   title?: string;
   /** Sub-text explaining the most likely reasons. */
   description?: string;
-  /** Optional href for a secondary "retry" action. Home button is always present. */
-  retryHref?: string;
 }
 
 /**
@@ -22,7 +20,6 @@ interface WikiNotFoundProps {
 export function WikiNotFound({
   title = "File not found",
   description = "This file isn't available. It may have been moved, deleted, or it lives outside your shared drives.",
-  retryHref,
 }: WikiNotFoundProps) {
   return (
     <div className="flex h-full min-h-[calc(100dvh-4rem)] items-center justify-center px-6">
@@ -38,11 +35,6 @@ export function WikiNotFound({
           <Button asChild>
             <Link href="/">Back to Sarj Wiki</Link>
           </Button>
-          {retryHref && (
-            <Button asChild variant="outline">
-              <Link href={retryHref}>Try again</Link>
-            </Button>
-          )}
         </div>
       </div>
     </div>

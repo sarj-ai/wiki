@@ -1,5 +1,7 @@
 "use client";
 
+import type { Route } from "next";
+
 import { useRouter, usePathname } from "next/navigation";
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 
@@ -53,7 +55,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const redirect = localStorage.getItem(REDIRECT_KEY);
         if (redirect) {
           localStorage.removeItem(REDIRECT_KEY);
-          router.push(sanitizeRedirectPath(redirect));
+          // The cast is safe: sanitizeRedirectPath runtime-validates a same-origin path.
+          router.push(sanitizeRedirectPath(redirect) as Route);
         }
       } else if (pathnameRef.current !== "/login") {
         const safePath = sanitizeRedirectPath(pathnameRef.current);

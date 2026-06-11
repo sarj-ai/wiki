@@ -217,6 +217,31 @@ function RowButton({
       </SidebarMenuButton>
     );
   }
+  if (isForm) {
+    return (
+      <SidebarMenuButton
+        asChild
+        isActive={isActive}
+        className={cn("pr-8 transition-opacity", isMoving && "opacity-60")}
+        style={{ paddingLeft: linkPadding }}
+        data-file-id={node.id}
+      >
+        <a
+          href={href}
+          draggable={false}
+          title={titleAttr}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <span className="truncate">{node.name}</span>
+          <ExternalLink
+            className="text-muted-foreground ml-auto size-3 shrink-0"
+            aria-label="Opens in a new tab"
+          />
+        </a>
+      </SidebarMenuButton>
+    );
+  }
   return (
     <SidebarMenuButton
       asChild
@@ -226,7 +251,7 @@ function RowButton({
       data-file-id={node.id}
     >
       <Link
-        href={href}
+        href={`/d/${encodeURIComponent(route.id)}`}
         // HTML5 native anchor drag is on by default. Chrome treats
         // drag-and-drop of an anchor back onto the same page as a
         // navigation to ``href`` — bypassing click handlers entirely.
@@ -235,16 +260,8 @@ function RowButton({
         // dnd-kit's PointerSensor own the drag lifecycle cleanly.
         draggable={false}
         title={titleAttr}
-        target={isForm ? "_blank" : undefined}
-        rel={isForm ? "noopener noreferrer" : undefined}
       >
         <span className="truncate">{node.name}</span>
-        {isForm && (
-          <ExternalLink
-            className="text-muted-foreground ml-auto size-3 shrink-0"
-            aria-label="Opens in a new tab"
-          />
-        )}
       </Link>
     </SidebarMenuButton>
   );
