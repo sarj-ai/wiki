@@ -28,6 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -50,6 +52,15 @@ jobs:
       - name: Mypy strict
         run: uv run mypy app
 
+      - name: Pyright strict (app)
+        run: uv run pyright app
+
+      - name: ty check (app)
+        run: uv run ty check app
+
+      - name: Vulture dead-code check
+        run: uv run vulture
+
       - name: Import contracts
         run: uv run lint-imports
 
@@ -70,6 +81,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7

@@ -27,9 +27,16 @@ resource "google_cloud_run_v2_service" "backend" {
   # in loadbalancer.tf — direct hits to the run.app URL are rejected.
   ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
 
+  deletion_protection = true
+
   # CI/CD manages the container image — don't let Terraform overwrite it
   lifecycle {
     ignore_changes = [template[0].containers[0].image]
+
+    postcondition {
+      condition     = self.ingress == "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+      error_message = "Backend must stay internal-LB only; the allUsers invoker grant is only safe behind the GCLB + Cloud Armor perimeter."
+    }
   }
 
   template {

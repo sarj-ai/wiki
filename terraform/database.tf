@@ -20,8 +20,14 @@ resource "google_sql_database_instance" "main" {
       enabled                        = true
       point_in_time_recovery_enabled = true
       start_time                     = "02:00"
-      transaction_log_retention_days = 7
+      transaction_log_retention_days = 14
+
+      backup_retention_settings {
+        retained_backups = 14
+      }
     }
+
+    deletion_protection_enabled = true
 
     maintenance_window {
       day          = 7 # Sunday
@@ -51,6 +57,10 @@ resource "google_sql_database_instance" "main" {
   }
 
   deletion_protection = true
+
+  lifecycle {
+    prevent_destroy = true
+  }
 
   depends_on = [
     google_service_networking_connection.private_vpc,

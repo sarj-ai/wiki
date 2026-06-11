@@ -43,7 +43,7 @@ app = FastAPI(title="Sarj Wiki API", lifespan=lifespan)
 app.state.limiter = limiter
 # slowapi's typed handler signature expects RateLimitExceeded specifically; cast
 # at the boundary so we keep mypy strict elsewhere.
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
