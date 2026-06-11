@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-import httpx
 from fastapi import Depends, HTTPException, Request, status
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.errors import AuthError

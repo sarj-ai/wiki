@@ -1,7 +1,9 @@
+import sarj from "@sarj/eslint-plugin";
 import vitest from "@vitest/eslint-plugin";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import prettier from "eslint-config-prettier/flat";
+import importX from "eslint-plugin-import-x";
 import perfectionist from "eslint-plugin-perfectionist";
 import sonarjs from "eslint-plugin-sonarjs";
 import testingLibrary from "eslint-plugin-testing-library";
@@ -103,6 +105,28 @@ const eslintConfig = defineConfig([
     rules: {
       "perfectionist/sort-imports": ["error", { type: "natural", order: "asc" }],
     },
+  },
+  {
+    plugins: { "import-x": importX },
+    settings: { "import-x/resolver": { typescript: true } },
+    rules: {
+      "import-x/no-cycle": "error",
+      "import-x/no-self-import": "error",
+    },
+  },
+  {
+    rules: {
+      "jsx-a11y/click-events-have-key-events": "warn",
+      "jsx-a11y/no-static-element-interactions": "warn",
+      "jsx-a11y/no-noninteractive-element-interactions": "warn",
+      "jsx-a11y/label-has-associated-control": "warn",
+    },
+  },
+  // Rule set sourced from the plugin so new @sarj rules are picked up
+  // automatically; all at "warn" to stay non-breaking.
+  {
+    plugins: { "@sarj": sarj },
+    rules: Object.fromEntries(Object.keys(sarj.rules).map((name) => [`@sarj/${name}`, "warn"])),
   },
   // Test-file-only configs.
   {

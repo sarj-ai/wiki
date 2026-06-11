@@ -42,7 +42,7 @@ function parentIdOf(containerId: string): string | null {
 const FOLDER_ABOVE_BAND = 0.3;
 const FOLDER_BELOW_BAND = 0.7;
 
-export interface WikiReorder {
+interface WikiReorder {
   // Map keyed by ``parent:<id>`` carrying the post-drop id order. Read
   // by every TreeNode at every depth so its children render in the
   // dropped order on the same frame the drag ends, bypassing the
@@ -60,12 +60,12 @@ export interface WikiReorder {
 }
 
 function sortableContainerId(data: Record<string, unknown> | null | undefined): string | null {
-  const sortable = data?.sortable as { containerId?: string } | undefined;
+  const sortable = data?.["sortable"] as { containerId?: string } | undefined;
   return sortable?.containerId ?? null;
 }
 
 function isFolderTarget(data: Record<string, unknown> | null | undefined): boolean {
-  return data?.isFolder === true;
+  return data?.["isFolder"] === true;
 }
 
 /**
@@ -162,7 +162,7 @@ export function useWikiReorder(driveId: string): WikiReorder {
     let intent: DropIntent | null;
     if (sameContainer) {
       const sortableItems =
-        (active.data.current?.sortable as { items?: string[] } | undefined)?.items ?? [];
+        (active.data.current?.["sortable"] as { items?: string[] } | undefined)?.items ?? [];
       const oldIdx = sortableItems.indexOf(String(active.id));
       const overIdx = sortableItems.indexOf(String(over.id));
       intent = oldIdx === overIdx ? null : oldIdx < overIdx ? "below" : "above";
@@ -203,10 +203,10 @@ export function useWikiReorder(driveId: string): WikiReorder {
       return;
     }
 
-    const activeSortable = active.data.current?.sortable as
+    const activeSortable = active.data.current?.["sortable"] as
       | { containerId?: string; items?: string[] }
       | undefined;
-    const overSortable = over.data.current?.sortable as { containerId?: string } | undefined;
+    const overSortable = over.data.current?.["sortable"] as { containerId?: string } | undefined;
     const activeContainerId = activeSortable?.containerId;
     const overContainerId = overSortable?.containerId;
     if (!activeContainerId || !overContainerId) return;

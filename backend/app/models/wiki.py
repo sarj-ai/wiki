@@ -7,9 +7,9 @@ and all of it can be dropped and rebuilt from Drive if needed.
 
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
 from typing import Any
+import uuid
 
 from sqlalchemy import Boolean, DateTime, Double, ForeignKey, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID

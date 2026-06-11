@@ -23,6 +23,7 @@ from app.drive.service import DriveService
 from app.sidebar.cache import SidebarCacheService
 from app.sidebar.dependencies import sidebar_cache_service_dep
 
+
 router = APIRouter(prefix="/sidebar", tags=["sidebar"])
 
 

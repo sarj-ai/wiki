@@ -18,12 +18,12 @@ HTTP 401 at the app boundary.
 
 from __future__ import annotations
 
-import secrets
-import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+import secrets
 from typing import override
+import uuid
 
 import httpx
 from loguru import logger
@@ -42,6 +42,7 @@ from app.auth.jwt import create_access_token, create_refresh_token, decode_token
 from app.config import settings
 from app.drive import drives_cache
 from app.models.user import User
+
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105 — public OAuth endpoint
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"

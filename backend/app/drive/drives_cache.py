@@ -38,13 +38,14 @@ subsequent session on the same backend instance.
 from __future__ import annotations
 
 import asyncio
-import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+import time
 
 from loguru import logger
 
 from app.drive.schemas import DriveSummary
+
 
 # Within this window the cached entry is treated as fresh and no
 # background refetch is scheduled. Tuned to be generous — drive

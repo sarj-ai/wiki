@@ -14,8 +14,8 @@ real Google Drive v3 API; swap it for a fake in tests by subclassing
 
 from __future__ import annotations
 
-import asyncio
 from abc import ABC, abstractmethod
+import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, override
 
@@ -40,6 +40,7 @@ from app.drive.schemas import (
 )
 from app.drive.snippets import escape_query_value, extract_snippet
 from app.models.user import User
+
 
 if TYPE_CHECKING:
     from googleapiclient._apis.drive.v3.resources import DriveResource

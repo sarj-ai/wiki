@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 from googleapiclient.errors import HttpError
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
+
 if TYPE_CHECKING:
     from googleapiclient.http import HttpRequest
 

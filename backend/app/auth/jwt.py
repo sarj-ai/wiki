@@ -6,6 +6,7 @@ import jwt
 from app.auth.errors import InvalidTokenError
 from app.config import settings
 
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7

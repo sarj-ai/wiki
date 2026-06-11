@@ -16,8 +16,8 @@ instance per request would defeat coalescing.
 
 from __future__ import annotations
 
-import asyncio
 from abc import ABC, abstractmethod
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import override
 
@@ -30,6 +30,7 @@ from app.drive.service import DriveService
 from app.models.user import User
 from app.models.wiki import DriveTreeCache
 from app.sidebar.singleflight import Singleflight
+
 
 # Stale-while-revalidate window — reads older than this still serve the
 # cached tree but trigger an async refresh in the background.

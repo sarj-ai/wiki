@@ -1,0 +1,32 @@
+name: CI IaC
+
+on:
+  push:
+    branches: [main, "feat/**"]
+    paths:
+      - "terraform/**"
+      - ".github/workflows/ci-iac.yml"
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/workflows/ci-iac.yml"
+
+concurrency:
+  group: ci-iac-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trivy-config:
+    name: Trivy IaC scan (report-only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy config scan
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: config
+          scan-ref: terraform
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table

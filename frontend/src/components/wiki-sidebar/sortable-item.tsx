@@ -39,7 +39,7 @@ const DRAG_CLICK_SUPPRESS_PX = 5;
 // still runs because that path keys off ``isSorting``, not this flag.
 const NO_LAYOUT_ANIMATION = () => false;
 
-export function SortableItem({ id, variant, data, children }: SortableItemProps) {
+export function SortableItem({ id, variant, data = {}, children }: SortableItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
     data,

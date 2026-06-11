@@ -10,7 +10,7 @@ class FileCreate(BaseModel):
 
     parent_folder_id: str
     name: str
-    mime_type: str
+    mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
 
 
 class FileRename(BaseModel):
@@ -30,7 +30,7 @@ class FileCopy(BaseModel):
 class FileResponse(BaseModel):
     id: str
     name: str
-    mime_type: str
+    mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
     parent_folder_id: str | None = None
     drive_id: str | None = None
     modified_time: str | None = None

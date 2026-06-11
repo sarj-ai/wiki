@@ -10,6 +10,7 @@ import os
 
 from cryptography.fernet import Fernet
 
+
 # Must be set BEFORE any `app.*` import so Settings validates.
 os.environ.setdefault("FERNET_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("SECRET_KEY", "x" * 40)

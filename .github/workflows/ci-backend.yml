@@ -47,6 +47,17 @@ jobs:
       - name: Mypy strict
         run: uv run mypy app
 
+      - name: Import contracts
+        run: uv run lint-imports
+
+      - name: pip-audit (report-only)
+        continue-on-error: true
+        run: uv run pip-audit
+
+      - name: org-strict ruff (report-only)
+        continue-on-error: true
+        run: uv run ruff check --config .ruff-strict.toml --output-format=github .
+
   test:
     name: Unit tests
     runs-on: ubuntu-latest
@@ -66,4 +77,4 @@ jobs:
         run: uv sync --group dev --frozen
 
       - name: Run pytest
-        run: uv run pytest --cov=app --cov-report=term-missing
+        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=38

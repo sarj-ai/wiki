@@ -7,7 +7,7 @@ import type { DocIcon, DriveNode, FolderIcon, SortOrder } from "@/types/wiki";
 import { useDocIcons, useDriveTree } from "@/hooks/use-wiki-tree";
 import { buildChildrenIndex } from "@/lib/wiki-tree";
 
-export interface DriveTreeIndex {
+interface DriveTreeIndex {
   childrenByParent: Map<string, DriveNode[]>;
   iconOverrides: Map<string, string | null>;
   docIconOverrides: Map<string, string | null>;

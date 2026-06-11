@@ -22,6 +22,7 @@ from app.extras.schemas import (
 )
 from app.extras.service import ExtrasService
 
+
 router = APIRouter(prefix="/extras", tags=["extras"])
 
 

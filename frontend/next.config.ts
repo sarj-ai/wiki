@@ -29,7 +29,7 @@ const GOOGLE_CONNECT_SRC = [
 // different subdomains in prod). CSP connect-src must list the backend
 // explicitly or every fetch() from the client is silently blocked.
 const BACKEND_API_ORIGIN = (() => {
-  const raw = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+  const raw = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:8000";
   try {
     return new URL(raw).origin;
   } catch {
