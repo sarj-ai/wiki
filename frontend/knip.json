@@ -4,6 +4,5 @@
     "src/app/**/{page,layout,loading,not-found,error,template,default}.{ts,tsx}",
     "open-next.config.ts"
   ],
-  "ignore": ["src/components/ui/**", "src/lib/generated/**", "src/test-stubs/**"],
-  "ignoreDependencies": ["cmdk"]
+  "ignore": ["src/components/ui/**", "src/lib/generated/**", "src/test-stubs/**"]
 }
