@@ -1,28 +1,13 @@
-import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
-import { notFound } from "next/navigation";
-
 import { FilePageClient } from "@/components/wiki-document/file-page-client";
-import { ServerApiError, serverWikiApi } from "@/lib/server-api";
-import { wikiKeys } from "@/lib/wiki-keys";
 
+// Deliberately no server-side ``files/{id}`` prefetch: it blocked the
+// RSC response on a Worker → backend → Google round-trip (~1.3s
+// measured in production) before the client could even start mounting
+// the Google Docs iframe. The client renders instantly from the
+// sidebar's cached node metadata (see FilePageClient) while the full
+// detail — breadcrumb included — loads in the background; true 404s
+// surface through the client query's notFound() branch.
 export default async function FilePage({ params }: { params: Promise<{ driveId: string }> }) {
   const { driveId } = await params;
-  const queryClient = new QueryClient();
-  try {
-    await queryClient.fetchQuery({
-      queryKey: wikiKeys.file(driveId),
-      queryFn: () => serverWikiApi.getFile(driveId),
-    });
-  } catch (err) {
-    // 404 → (app)/not-found in the first response; anything else is
-    // swallowed and the client skeleton/error flow takes over.
-    if (err instanceof ServerApiError && err.status === 404) {
-      notFound();
-    }
-  }
-  return (
-    <HydrationBoundary state={dehydrate(queryClient)}>
-      <FilePageClient driveId={driveId} />
-    </HydrationBoundary>
-  );
+  return <FilePageClient driveId={driveId} />;
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { FileLoadingIndicator } from "@/components/wiki-document/file-loading-indicator";
 import { embedUrlFor } from "@/lib/file-urls";
+import { cn } from "@/lib/utils";
 
 interface FileViewerProps {
   fileId: string;
@@ -21,7 +22,32 @@ interface FileViewerProps {
   reloadKey?: number;
 }
 
-function FileViewerInner({ fileId, mimeType, title }: FileViewerProps) {
+interface FileViewerInnerProps {
+  fileId: string;
+  mimeType: string;
+  title: string;
+}
+
+interface PoolEntry {
+  fileId: string;
+  mimeType: string;
+  title: string;
+  reloadKey: number;
+}
+
+// Active doc plus the two most recently viewed. Each hidden entry is a
+// live Google editor session (heavyweight), so the pool stays small —
+// enough to make the common "bounce between two or three docs" flow
+// instant without holding a tab's worth of editors in memory.
+const MAX_POOL = 3;
+
+// Owns one iframe + its loading overlay. The ``key`` set by the pool
+// below (fileId + reloadKey) remounts this component — and the fresh
+// Google editor session it implies — when the Reload button fires.
+// While the iframe loads, a branded overlay sits on top so the user
+// gets visible feedback rather than a few seconds of empty frame; the
+// ref-attached load listener clears it as soon as the document fires.
+function FileViewerInner({ fileId, mimeType, title }: FileViewerInnerProps) {
   const src = embedUrlFor(mimeType, fileId);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -62,21 +88,44 @@ function FileViewerInner({ fileId, mimeType, title }: FileViewerProps) {
 // history all work natively; PDFs and images fall back to Drive's
 // preview endpoint inside the same frame.
 //
-// The component is split in two so changes to ``fileId`` or
-// ``reloadKey`` remount the inner component (and the iframe + loading
-// state it owns) cleanly: a thin outer ``FileViewer`` sets a composite
-// ``key`` on ``FileViewerInner``, where the actual ``<iframe>`` and the
-// ``isLoading`` state live. This avoids the eslint-flagged "reset state
-// in effect" pattern, and also rescues two black-frame edge cases:
-// fast doc-to-doc navigation (rapid ``src`` mutation can leave Google's
-// inner editor torn down without re-initialising) and tab-backgrounding
-// (browsers evict iframe resources; Google's restore path is unreliable
-// — the Reload button bumps ``reloadKey`` for explicit recovery).
+// Doc→doc navigation re-renders this same component instance (the
+// ``/d/[driveId]`` page persists across param changes), so instead of
+// swapping the iframe's src — which throws away Google's 2-5s editor
+// boot — recently viewed docs stay mounted in a small LRU pool with
+// ``display: none``. Revisiting one of them flips visibility and the
+// editor is already there.
 //
-// While the new iframe loads, a branded overlay sits on top so the
-// reload click has visible feedback rather than a few seconds of stale
-// or empty frame. ``onLoad`` clears it as soon as the document fires.
-export function FileViewer(props: FileViewerProps) {
-  const key = `${props.fileId}:${props.reloadKey ?? 0}`;
-  return <FileViewerInner key={key} {...props} />;
+// The pool entries are derived state adjusted during render (the
+// React-endorsed alternative to a useEffect reset): when the active
+// fileId / reloadKey changes, the entry list is recomputed and React
+// immediately re-renders with the new pool.
+export function FileViewer({ fileId, mimeType, title, reloadKey = 0 }: FileViewerProps) {
+  const [pool, setPool] = useState<PoolEntry[]>([{ fileId, mimeType, title, reloadKey }]);
+  const active = pool[0];
+  if (active?.fileId !== fileId || active.reloadKey !== reloadKey || active.mimeType !== mimeType) {
+    setPool(
+      [
+        { fileId, mimeType, title, reloadKey },
+        ...pool.filter((entry) => entry.fileId !== fileId),
+      ].slice(0, MAX_POOL),
+    );
+  }
+
+  return (
+    <div className="relative h-full w-full">
+      {pool.map((entry) => (
+        <div
+          key={entry.fileId}
+          className={cn("absolute inset-0", entry.fileId !== fileId && "hidden")}
+        >
+          <FileViewerInner
+            key={`${entry.fileId}:${entry.reloadKey}`}
+            fileId={entry.fileId}
+            mimeType={entry.mimeType}
+            title={entry.title}
+          />
+        </div>
+      ))}
+    </div>
+  );
 }
