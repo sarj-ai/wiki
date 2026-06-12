@@ -15,7 +15,6 @@ const nunito = localFont({
   variable: "--font-nunito",
   display: "swap",
 });
-import { AuthProvider } from "@/components/auth-provider";
 import { GlobalLoadingBar } from "@/components/loading-bar";
 import { QueryProvider } from "@/components/query-provider";
 import { Toaster } from "@/components/ui/sonner";
@@ -74,7 +73,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <QueryProvider>
-            <AuthProvider>{children}</AuthProvider>
+            {children}
             <GlobalLoadingBar />
           </QueryProvider>
           <Toaster position="bottom-right" />

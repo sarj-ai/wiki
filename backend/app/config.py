@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     FERNET_KEY: str
     ALLOWED_DOMAIN: str = "sarj.ai"
     FRONTEND_URL: str = "http://localhost:3000"
+    # Cookie Domain for the auth JWT pair. None = host-only (dev); prod
+    # sets "sarj.ai" so the Next server receives the JWTs on document loads.
+    COOKIE_DOMAIN: str | None = None
     LOG_JSON: bool = False
     LOG_LEVEL: str = "INFO"
 

@@ -2,11 +2,12 @@
 
 import { AlertCircle, ShieldX, ServerCrash } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 
 import { SarjLogo } from "@/components/sarj-logo";
 import { Button } from "@/components/ui/button";
 import { getLoginUrl } from "@/lib/auth";
+import { REDIRECT_KEY, sanitizeRedirectPath } from "@/lib/url-utils";
 
 const ERROR_CONFIG: Record<
   string,
@@ -53,6 +54,17 @@ function LoginContent() {
   const searchParams = useSearchParams();
   const errorType = searchParams.get("error");
   const errorConfig = errorType ? ERROR_CONFIG[errorType] : null;
+
+  // The middleware gate redirects here with ?redirect=<original path>.
+  // The OAuth round-trip through Google won't carry the param, so stash
+  // it in localStorage; RedirectAfterLogin consumes it when the
+  // callback lands the user back on "/".
+  const redirect = searchParams.get("redirect");
+  useEffect(() => {
+    if (redirect) {
+      localStorage.setItem(REDIRECT_KEY, sanitizeRedirectPath(redirect));
+    }
+  }, [redirect]);
 
   return (
     <div className="bg-background text-foreground flex min-h-screen flex-col items-center justify-center px-4">

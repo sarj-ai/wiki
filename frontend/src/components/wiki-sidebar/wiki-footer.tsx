@@ -1,10 +1,10 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { ChevronsUpDown, LogOut, Moon, Settings, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useState } from "react";
 
-import { useAuth } from "@/components/auth-provider";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,12 +15,25 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarFooter } from "@/components/ui/sidebar";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import { useIsClient } from "@/hooks/use-is-client";
+import { logout as apiLogout } from "@/lib/auth";
+import { QUERY_CACHE_KEY } from "@/lib/url-utils";
 
 import { PreferencesDialog } from "./preferences-dialog";
 
 export function WikiFooter() {
-  const { user, logout } = useAuth();
+  const user = useCurrentUser().data ?? null;
+  const queryClient = useQueryClient();
+  const logout = async () => {
+    // Clear caches after the call settles, then hard-navigate — the
+    // navigation kills the persister's throttled write before it can
+    // re-write pre-clear state.
+    await apiLogout();
+    queryClient.clear();
+    localStorage.removeItem(QUERY_CACHE_KEY);
+    window.location.href = "/login";
+  };
   const { resolvedTheme, setTheme } = useTheme();
   const mounted = useIsClient();
   // Preferences dialog state is owned by the footer so the dropdown
