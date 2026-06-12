@@ -12,7 +12,7 @@ dependencies = [
     "cryptography>=48.0.1",
     "httpx>=0.28.1",
     "google-api-python-client>=2.197.0",
-    "google-auth>=2.53.0",
+    "google-auth>=2.54.0",
     "google-auth-httplib2>=0.2.0",
     "google-auth-oauthlib>=1.4.0",
     "httplib2>=0.22.0",
@@ -27,7 +27,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.16",
+    "ruff>=0.15.17",
     "mypy>=2.1.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.4.0",
@@ -36,7 +36,7 @@ dev = [
     "types-httplib2>=0.22.0",
     "vulture>=2.16",
     "pyright>=1.1.410",
-    "ty>=0.0.47",
+    "ty>=0.0.49",
     "google-api-python-client-stubs>=1.37.0",
     "sarj-lint-configs>=0.1.0",
     "import-linter>=2.11",
