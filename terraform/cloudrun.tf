@@ -92,6 +92,13 @@ resource "google_cloud_run_v2_service" "backend" {
         value = "sarj.ai"
       }
       env {
+        # Scopes the auth JWT cookies to the parent domain so the
+        # Next.js server at wiki.sarj.ai can gate routes and prefetch
+        # server-side (#44). Deliberately separate from ALLOWED_DOMAIN.
+        name  = "COOKIE_DOMAIN"
+        value = "sarj.ai"
+      }
+      env {
         name  = "FRONTEND_URL"
         value = var.frontend_url
       }
