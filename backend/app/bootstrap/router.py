@@ -1,5 +1,3 @@
-"""HTTP surface for the one-shot app-shell payload."""
-
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends

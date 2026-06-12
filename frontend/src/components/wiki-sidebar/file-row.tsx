@@ -101,10 +101,6 @@ function FileRowImpl({
   const isActive = !isForm && (activeDriveId === route.id || pathname === href);
   const isMoving = useIsMovingFile(node.id);
 
-  // Warm ``files/{id}`` on pointerdown — it fires ~100-200ms before the
-  // click completes and intent is certain by then, so the breadcrumb
-  // round-trip overlaps the navigation instead of starting after it.
-  // prefetchQuery no-ops when the cache is still fresh.
   const queryClient = useQueryClient();
   const prefetchFile = (): void => {
     void queryClient.prefetchQuery({
@@ -137,7 +133,11 @@ function FileRowImpl({
   // bumped by ICON_COLUMN_WIDTH so the title text stays readable.
   const iconLeft = `${rowIndent(depth)}px`;
   const linkPadding = `${rowIndent(depth) + ICON_COLUMN_WIDTH}px`;
-  const titleAttr = route.tooltip ?? (isForm ? `${node.name} — opens in a new tab` : node.name);
+  const edited = node.modifiedTime
+    ? ` — edited ${new Date(node.modifiedTime).toLocaleDateString()}`
+    : "";
+  const titleAttr =
+    route.tooltip ?? (isForm ? `${node.name} — opens in a new tab` : `${node.name}${edited}`);
 
   return (
     <>

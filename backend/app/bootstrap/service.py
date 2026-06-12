@@ -1,5 +1,3 @@
-"""Aggregates the app shell's first-paint reads into one response."""
-
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -15,15 +13,11 @@ from app.models.user import User
 
 
 class BootstrapService(ABC):
-    """Contract for the one-shot app-shell payload."""
-
     @abstractmethod
     async def load(self) -> BootstrapRead: ...
 
 
 class AggregatingBootstrapService(BootstrapService):
-    """Fans the six per-resource reads back out to the owning services."""
-
     def __init__(self, *, drive: DriveService, extras: ExtrasService, user: User) -> None:
         self._drive = drive
         self._extras = extras
@@ -31,11 +25,6 @@ class AggregatingBootstrapService(BootstrapService):
 
     @override
     async def load(self) -> BootstrapRead:
-        # The Drive round-trip (network, possibly cached) overlaps the
-        # Postgres reads. The extras reads themselves run sequentially:
-        # they share the request-bound AsyncSession, and SQLAlchemy
-        # forbids concurrent queries on one session — at sub-ms each
-        # that costs nothing next to the Drive call.
         drives, extras = await asyncio.gather(self._drive.list_drives(), self._extras_reads())
         preferences, folder_icons, doc_icons, sort_orders = extras
         return BootstrapRead(

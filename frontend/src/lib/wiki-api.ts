@@ -207,8 +207,6 @@ export function makeWikiApi(client?: Client) {
 
     getMe: (): Promise<UserProfile> => call(meAuthMeGet, {}, userProfile),
 
-    // One round-trip for everything the app shell needs on first paint
-    // — replaces six per-resource GETs in the server prefetch.
     getBootstrap: (): Promise<Bootstrap> => call(bootstrapBootstrapGet, {}, bootstrapRead),
 
     driveSearch: (query: string, limitPerDrive?: number): Promise<DriveSearchResult[]> =>

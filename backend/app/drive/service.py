@@ -59,6 +59,11 @@ _PROBE_BATCH_SIZE = 100
 
 _SEARCH_PAGE_SIZE = 50
 
+# Caps the drive-wide file listing baked into the tree cache. Drives
+# past the cap fall back to lazy per-folder listings client-side
+# (files_complete=False) instead of hauling an unbounded payload.
+_MAX_DRIVE_FILE_PAGES = 3
+
 # Google Workspace types that expose a clean text/plain export. Other
 # types (PDF, images, Forms) can't export useful text — we return a
 # null snippet and let the UI show a type-specific placeholder.
@@ -131,22 +136,14 @@ class GoogleDriveService(DriveService):
 
     @override
     async def walk_drive_folders(self, drive_id: str) -> DriveTree:
-        # The folder walk and the root-children listing are independent
-        # Google calls — run them in parallel threads. ``tree.files``
-        # carries the drive's root-level files so the sidebar paints a
-        # whole drive from one request instead of pairing every tree
-        # fetch with a separate ``/folders/{drive_id}/files`` call.
-        # Folder-likes are stripped from the listing: the walk already
-        # surfaces them (and file-target shortcuts are the listing's
-        # job, not the walk's).
-        tree, root_children = await asyncio.gather(
+        tree, (files, files_complete) = await asyncio.gather(
             asyncio.to_thread(self._walk_folders_sync, drive_id),
-            asyncio.to_thread(self._list_children_sync, drive_id),
+            asyncio.to_thread(self._list_drive_files_sync, drive_id),
         )
-        root_files = [n for n in root_children if not _is_folder_like(n)]
+        tree.files_complete = files_complete
         tree.folders, tree.files = await asyncio.gather(
             self._resolve_shortcut_nodes(tree.folders),
-            self._resolve_shortcut_nodes(root_files),
+            self._resolve_shortcut_nodes(files if files_complete else []),
         )
         return tree
 
@@ -168,10 +165,6 @@ class GoogleDriveService(DriveService):
         stripped = query.strip()
         if not stripped:
             return []
-        # The all-drives search doesn't need the membership list (it
-        # only scopes the *results*), so both round-trips overlap. A
-        # zero-drive account wastes one search call — rare enough to
-        # trade for the latency win on every real query.
         drives, hits = await asyncio.gather(
             self.list_drives(),
             asyncio.to_thread(
@@ -249,8 +242,6 @@ class GoogleDriveService(DriveService):
         shortcuts = [i for i in items if i.mime_type == MIME_SHORTCUT]
         if not shortcuts:
             return items
-        # Independent lookups — the drive-name map (drives.list, usually
-        # cached) and the target probes (files.get batch) overlap.
         drive_names, probes = await asyncio.gather(
             self._drive_names(),
             self._probe_targets([i.shortcut_target_id for i in shortcuts]),
@@ -277,13 +268,7 @@ class GoogleDriveService(DriveService):
         return {d.id: d.name for d in await self.list_drives()}
 
     async def _probe_targets(self, target_ids: list[str | None]) -> list[ShortcutProbe | None]:
-        """Probe targets once each (deduplicated), preserving input order.
-
-        Recently probed targets come from ``probe_cache`` so repeat tree
-        walks and folder listings skip the ``files.get`` batch entirely;
-        only cache misses hit Drive, and their outcomes are memoised for
-        the next walk.
-        """
+        """Probe targets once each (deduplicated), preserving input order."""
         unique_ids = sorted({tid for tid in target_ids if tid})
         if not unique_ids:
             return [None] * len(target_ids)
@@ -471,6 +456,58 @@ class GoogleDriveService(DriveService):
             page_token = resp.get("nextPageToken")
             if not page_token:
                 return out
+
+    def _list_drive_files_sync(self, drive_id: str) -> tuple[list[DriveNode], bool]:
+        client = self._client()
+        out: list[DriveNode] = []
+        page_token: str | None = None
+        pages = 0
+        query = f"trashed=false and {_build_mime_clause()}"
+        while True:
+            params: dict[str, Any] = {
+                "q": query,
+                "corpora": "drive",
+                "driveId": drive_id,
+                "includeItemsFromAllDrives": True,
+                "supportsAllDrives": True,
+                "pageSize": 1000,
+                "fields": (
+                    "nextPageToken,files(id,name,mimeType,parents,modifiedTime,"
+                    "shortcutDetails(targetId,targetMimeType))"
+                ),
+            }
+            if page_token:
+                params["pageToken"] = page_token
+            try:
+                resp = execute_with_retry(client.files().list(**params))
+            except HttpError:
+                logger.exception(
+                    "list_drive_files failed user={} drive={}",
+                    self._user.id,
+                    drive_id,
+                )
+                return out, False
+            for raw in resp.get("files", []):
+                if raw["mimeType"] == MIME_FOLDER:
+                    continue
+                details = raw.get("shortcutDetails") or {}
+                target_mime = details.get("targetMimeType")
+                if raw["mimeType"] == MIME_SHORTCUT and (
+                    target_mime == MIME_FOLDER or target_mime not in NAVIGATOR_SUPPORTED_MIME_TYPES
+                ):
+                    continue
+                out.append(_node_from_api(raw, drive_id))
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                return out, True
+            pages += 1
+            if pages >= _MAX_DRIVE_FILE_PAGES:
+                logger.warning(
+                    "drive file listing truncated at {} pages drive={}",
+                    pages,
+                    drive_id,
+                )
+                return out, False
 
     def _search_drive_sync(self, drive_id: str, query: str, limit: int) -> list[SearchResult]:
         escaped = escape_query_value(query)
@@ -672,14 +709,6 @@ def _search_result_from_api(raw: Any, drive_id: str | None = None) -> SearchResu
         shortcut_target_id=details.get("targetId"),
         shortcut_target_mime_type=details.get("targetMimeType"),
     )
-
-
-def _is_folder_like(node: DriveNode) -> bool:
-    """Native folders and folder-target shortcuts — the rows the walk
-    owns. Mirrors the frontend's ``isFolderLikeNode``."""
-    if node.mime_type == MIME_FOLDER:
-        return True
-    return node.mime_type == MIME_SHORTCUT and node.shortcut_target_mime_type == MIME_FOLDER
 
 
 def _node_from_api(raw: Any, drive_id: str) -> DriveNode:

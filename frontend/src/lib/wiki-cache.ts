@@ -18,21 +18,11 @@ import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
  * any drift; this module just smooths the paint.
  */
 
-/** Minimal node identity the file page needs to render before ``files/{id}`` lands. */
 export interface CachedNodeMeta {
   name: string;
   mimeType: string;
 }
 
-/**
- * Look a file up in whatever sidebar data is already cached — folder
- * file listings and drive trees — so the doc page can mount its
- * toolbar and Google iframe immediately instead of blanking on a
- * ~1.5s ``files/{id}`` round-trip. Shortcut rows route to their
- * *target* id, so a shortcut whose target matches resolves to the
- * target's mime type. Returns ``null`` when nothing cached matches;
- * the caller falls back to the loading skeleton.
- */
 export function findCachedNodeMeta(qc: QueryClient, fileId: string): CachedNodeMeta | null {
   for (const [, nodes] of qc.getQueriesData<DriveNode[]>({
     queryKey: wikiKeys.folderFilesPrefix,
@@ -87,10 +77,6 @@ export function injectNewFileIntoCaches(qc: QueryClient, file: FileResponse): vo
     });
   }
 
-  // The drive tree carries folders (anywhere in the drive) and files
-  // (root level only — the walk lists them alongside the folder BFS).
-  // Splice the new node into whichever list the sidebar will read it
-  // from so it paints without waiting for a refetch.
   if (file.driveId && file.mimeType === MIME_FOLDER) {
     qc.setQueryData<DriveTree | undefined>(wikiKeys.driveTree(file.driveId), (prev) => {
       if (!prev) return prev;
@@ -98,12 +84,13 @@ export function injectNewFileIntoCaches(qc: QueryClient, file: FileResponse): vo
       return { ...prev, folders: [...prev.folders, node] };
     });
   }
-  const isRootFile = file.driveId !== undefined && parentKey === file.driveId;
-  if (file.driveId && file.mimeType !== MIME_FOLDER && isRootFile) {
+  if (file.driveId && file.mimeType !== MIME_FOLDER) {
+    const treeNode: DriveNode =
+      node.parentId === file.driveId ? { ...node, parentId: undefined } : node;
     qc.setQueryData<DriveTree | undefined>(wikiKeys.driveTree(file.driveId), (prev) => {
       if (!prev) return prev;
-      if (prev.files.some((f) => f.id === node.id)) return prev;
-      return { ...prev, files: [...prev.files, node] };
+      const others = prev.files.filter((f) => f.id !== treeNode.id);
+      return { ...prev, files: [...others, treeNode] };
     });
   }
 }

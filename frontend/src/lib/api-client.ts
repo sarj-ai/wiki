@@ -61,9 +61,6 @@ async function readErrorMessage(response: Response): Promise<string | null> {
   }
 }
 
-// Exported for the proactive session-refresh loop (session-refresh.tsx)
-// so its scheduled rotations share the same single-flight as the
-// 401-replay hook — concurrent callers ride one /auth/refresh.
 export function deduplicatedRefresh(): Promise<boolean> {
   refreshPromise ??= rawRefresh().finally(() => {
     refreshPromise = null;

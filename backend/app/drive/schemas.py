@@ -57,17 +57,6 @@ NAVIGATOR_SUPPORTED_MIME_TYPES: tuple[str, ...] = (
 
 @dataclass(frozen=True)
 class ShortcutProbe:
-    """Outcome of a single ``files.get`` against a shortcut's target.
-
-    ``None`` from the probe path means "drop the shortcut" (target deleted
-    or trashed). A returned probe is either ``ok`` (with the target's home
-    drive id, possibly ``None`` for My Drive items we don't surface) or
-    ``forbidden`` (user lacks permission — render greyed-out).
-
-    Lives here rather than in ``service.py`` so ``probe_cache`` can store
-    probes without importing the service module.
-    """
-
     accessible: bool
     target_drive_id: str | None = None
 
@@ -116,6 +105,7 @@ class DriveTree(BaseModel):
     drive_id: str
     folders: list[DriveNode]
     files: list[DriveNode]
+    files_complete: bool = True
 
 
 class SearchResult(BaseModel):

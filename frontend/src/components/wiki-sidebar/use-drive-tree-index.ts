@@ -9,6 +9,8 @@ import { buildChildrenIndex } from "@/lib/wiki-tree";
 
 interface DriveTreeIndex {
   childrenByParent: Map<string, DriveNode[]>;
+  filesByParent: Map<string, DriveNode[]>;
+  filesComplete: boolean;
   iconOverrides: Map<string, string | undefined>;
   docIconOverrides: Map<string, string | undefined>;
   sortOrderMap: Map<string, number>;
@@ -46,6 +48,10 @@ export function useDriveTreeIndex(
     () => buildChildrenIndex(treeQuery.data?.folders ?? []),
     [treeQuery.data],
   );
+  const filesByParent = useMemo(
+    () => buildChildrenIndex(treeQuery.data?.files ?? []),
+    [treeQuery.data],
+  );
   const iconOverrides = useMemo(
     () =>
       mapByKey(
@@ -74,5 +80,15 @@ export function useDriveTreeIndex(
     [sortOrders],
   );
 
-  return { childrenByParent, iconOverrides, docIconOverrides, sortOrderMap, treeQuery };
+  const filesComplete = treeQuery.data?.filesComplete ?? true;
+
+  return {
+    childrenByParent,
+    filesByParent,
+    filesComplete,
+    iconOverrides,
+    docIconOverrides,
+    sortOrderMap,
+    treeQuery,
+  };
 }

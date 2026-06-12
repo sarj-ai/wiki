@@ -5,6 +5,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { RedirectAfterLogin } from "@/components/redirect-after-login";
 import { SessionRefresh } from "@/components/session-refresh";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { DocViewerHost } from "@/components/wiki-document/doc-viewer-host";
 import { CommandPalette } from "@/components/wiki-search/command-palette";
 import { WikiSidebar } from "@/components/wiki-sidebar/wiki-sidebar";
 import { serverWikiApi } from "@/lib/server-api";
@@ -16,32 +17,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const defaultOpen = sidebarState !== undefined ? sidebarState === "true" : true;
 
   // Fresh per-request client — module-level would leak between users.
-  // One aggregate ``/bootstrap`` round-trip replaces the six
-  // per-resource prefetches (each Worker→origin call costs ~600ms of
-  // RTT floor); the payload is fanned back out under the same query
-  // keys the client hooks read, so hydration is unchanged. Errors are
-  // swallowed like prefetchQuery's were — backend-down degrades to the
-  // client-side flow (the 401-refresh interceptor + retries). Drive
-  // trees deliberately not prefetched (heavy; dnd-kit's counter-based
-  // aria ids would SSR-mismatch).
   const queryClient = new QueryClient();
-  try {
-    const bootstrap = await serverWikiApi.getBootstrap();
+  const bootstrap = await serverWikiApi.getBootstrap().catch(() => null);
+  if (bootstrap) {
     queryClient.setQueryData(wikiKeys.drives, bootstrap.drives);
     queryClient.setQueryData(wikiKeys.preferences, bootstrap.preferences);
     queryClient.setQueryData(wikiKeys.folderIcons, bootstrap.folderIcons);
     queryClient.setQueryData(wikiKeys.docIcons, bootstrap.docIcons);
     queryClient.setQueryData(wikiKeys.sortOrders, bootstrap.sortOrders);
     queryClient.setQueryData(authKeys.me, bootstrap.me);
-  } catch {
-    // Render the shell anyway; every consumer hook refetches on mount.
   }
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
       <SidebarProvider defaultOpen={defaultOpen}>
         <RedirectAfterLogin />
-        {/* Keeps auth cookies rotated ahead of expiry — see component docs. */}
         <SessionRefresh />
         <ErrorBoundary>
           <WikiSidebar />
@@ -62,6 +52,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             broken palette, not a full-page global-error takeover. */}
         <ErrorBoundary>
           <CommandPalette />
+        </ErrorBoundary>
+        <ErrorBoundary>
+          <DocViewerHost />
         </ErrorBoundary>
       </SidebarProvider>
     </HydrationBoundary>

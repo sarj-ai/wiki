@@ -131,11 +131,10 @@ function buildDestinationOrder(
   const folders = (tree?.folders ?? []).filter((f) =>
     isAtDriveRoot ? f.parentId === undefined : f.parentId === newParentFolderId,
   );
-  // Root files ride on the drive tree; nested files come from the
-  // lazy folder-files cache for the destination folder.
-  const filesCache = isAtDriveRoot
-    ? tree?.files
-    : qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles(newParentFolderId));
+  const filesCache =
+    isAtDriveRoot && (tree?.filesComplete ?? true)
+      ? tree?.files
+      : qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles(newParentFolderId));
   const files = (filesCache ?? []).filter((f) => f.mimeType !== MIME_FOLDER);
 
   // Combine folders + files, drop the moved node if the optimistic

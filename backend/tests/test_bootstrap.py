@@ -1,5 +1,3 @@
-"""BootstrapService — aggregation of the six first-paint reads."""
-
 from __future__ import annotations
 
 import uuid
@@ -22,8 +20,6 @@ from app.models.user import User
 
 
 class _FakeDriveService(DriveService):
-    """Fake ``DriveService`` that only answers ``list_drives``."""
-
     def __init__(self, drives: list[DriveSummary]) -> None:
         self._drives = drives
 
@@ -51,8 +47,6 @@ class _FakeDriveService(DriveService):
 
 
 class _FakeExtrasService(ExtrasService):
-    """Read-only canned answers; writes are out of bootstrap's scope."""
-
     async def list_doc_icons(self) -> list[DocIconRead]:
         return [DocIconRead(drive_id="doc-1", icon="📚", cover_url=None)]
 

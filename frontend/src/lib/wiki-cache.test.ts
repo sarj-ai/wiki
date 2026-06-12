@@ -100,15 +100,15 @@ describe("injectNewFileIntoCaches", () => {
     expect(qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"))).toHaveLength(1);
   });
 
-  it("only updates the drive-tree cache for new folders, not for nested files", () => {
+  it("splices nested files into tree.files with their parent retained", () => {
     const qc = new QueryClient();
-    const tree: DriveTree = { driveId: "drive-1", folders: [], files: [] };
+    const tree: DriveTree = { driveId: "drive-1", folders: [], files: [], filesComplete: true };
     qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
 
     injectNewFileIntoCaches(qc, makeFile({ mimeType: MIME_DOC, parentFolderId: "folder-a" }));
     const after = qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"));
     expect(after?.folders).toHaveLength(0);
-    expect(after?.files).toHaveLength(0);
+    expect(after?.files.map((f) => f.parentId)).toEqual(["folder-a"]);
 
     injectNewFileIntoCaches(qc, makeFile({ id: "newfolder", mimeType: MIME_FOLDER }));
     expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.folders).toHaveLength(1);
@@ -116,10 +116,9 @@ describe("injectNewFileIntoCaches", () => {
 
   it("splices root-level files into the drive tree's files list", () => {
     const qc = new QueryClient();
-    const tree: DriveTree = { driveId: "drive-1", folders: [], files: [] };
+    const tree: DriveTree = { driveId: "drive-1", folders: [], files: [], filesComplete: true };
     qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
 
-    // Root-created files report the drive id as their parent.
     injectNewFileIntoCaches(
       qc,
       makeFile({ id: "rootdoc", mimeType: MIME_DOC, parentFolderId: "drive-1" }),
@@ -127,6 +126,7 @@ describe("injectNewFileIntoCaches", () => {
 
     const updated = qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"));
     expect(updated?.files.map((f) => f.id)).toEqual(["rootdoc"]);
+    expect(updated?.files[0]?.parentId).toBeUndefined();
 
     removeFileFromCaches(qc, "rootdoc", "drive-1", "drive-1");
     expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files).toHaveLength(0);
@@ -149,6 +149,7 @@ describe("findCachedNodeMeta", () => {
       driveId: "drive-1",
       folders: [makeNode({ id: "folder-x", name: "Specs", mimeType: MIME_FOLDER })],
       files: [],
+      filesComplete: true,
     };
     qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
 
@@ -171,8 +172,6 @@ describe("findCachedNodeMeta", () => {
       name: "Budget (link)",
       mimeType: MIME_SHEET,
     });
-    // The shortcut's own id is never a navigation target — rows route
-    // to the target — so it must not resolve.
     expect(findCachedNodeMeta(qc, "shortcut-1")).toBeNull();
   });
 
@@ -204,6 +203,7 @@ describe("removeFileFromCaches", () => {
       driveId: "drive-1",
       folders: [makeNode({ id: "f1" }), makeNode({ id: "f2" })],
       files: [],
+      filesComplete: true,
     };
     qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
 

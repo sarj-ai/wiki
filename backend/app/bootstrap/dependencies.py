@@ -1,5 +1,3 @@
-"""FastAPI dependency wiring for ``BootstrapService``."""
-
 from __future__ import annotations
 
 from fastapi import Depends

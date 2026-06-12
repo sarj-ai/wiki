@@ -2,12 +2,12 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { notFound } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { BreadcrumbItem } from "@/types/wiki";
 
+import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
 import { FilePageSkeleton } from "@/components/wiki-document/file-page-skeleton";
-import { FileViewer } from "@/components/wiki-document/file-viewer";
 import { WikiToolbar } from "@/components/wiki-document/wiki-toolbar";
 import { WikiNotFound } from "@/components/wiki-not-found";
 import { useFile } from "@/hooks/use-wiki-tree";
@@ -31,12 +31,6 @@ export function FilePageClient({ driveId }: { driveId: string }) {
   // the file once the retry succeeds.
   const isLoading = fileQuery.isPending || (!fileQuery.data && fileQuery.isFetching);
   if (isLoading) {
-    // The sidebar caches usually already know this file's name + mime
-    // type — enough to mount the toolbar and start the Google iframe
-    // (the dominant cost, 2-5s measured) immediately instead of
-    // holding everything behind the ~1.5s ``files/{id}`` round-trip.
-    // The breadcrumb pops in when the query settles; the iframe key is
-    // mime-stable so the settle never remounts it.
     const hint = findCachedNodeMeta(queryClient, driveId);
     if (!hint) {
       return <FilePageSkeleton />;
@@ -57,8 +51,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
 
   // 404 from the backend means either the file truly doesn't exist or
   // it's outside Sarj Wiki's strict shared-drive scope (My Drive
-  // files, non-member shared drives). Client and hard-load
-  // navigations both resolve it here.
+  // files, non-member shared drives).
   if (fileQuery.isError && fileQuery.error instanceof ApiError && fileQuery.error.status === 404) {
     notFound();
   }
@@ -100,9 +93,6 @@ interface FilePageBodyProps {
   onReload: () => void;
 }
 
-// Shared by the hint-based instant render and the settled render so
-// React reconciles them as the same tree — the iframe mounted from the
-// hint survives the query settling instead of remounting.
 function FilePageBody({
   fileId,
   mimeType,
@@ -111,6 +101,19 @@ function FilePageBody({
   reloadKey,
   onReload,
 }: FilePageBodyProps) {
+  const setActive = useDocViewerStore((s) => s.setActive);
+  const setSlot = useDocViewerStore((s) => s.setSlot);
+
+  useEffect(() => {
+    setActive({ fileId, mimeType, title, reloadKey });
+  }, [fileId, mimeType, title, reloadKey, setActive]);
+  useEffect(
+    () => () => {
+      setActive(null);
+    },
+    [setActive],
+  );
+
   return (
     <div className="flex h-[100dvh] flex-col">
       <WikiToolbar
@@ -120,9 +123,7 @@ function FilePageBody({
         breadcrumb={breadcrumb}
         onReload={onReload}
       />
-      <div className="flex-1 overflow-hidden">
-        <FileViewer fileId={fileId} mimeType={mimeType} title={title} reloadKey={reloadKey} />
-      </div>
+      <div ref={setSlot} className="flex-1 overflow-hidden" />
     </div>
   );
 }
