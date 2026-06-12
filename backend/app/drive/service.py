@@ -17,7 +17,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass
 from functools import cache
 from itertools import batched
 import json
@@ -33,7 +32,7 @@ from loguru import logger
 
 from app.auth.encryption import decrypt_text
 from app.config import settings
-from app.drive import drives_cache
+from app.drive import drives_cache, probe_cache
 from app.drive.retry import drive_retry, execute_with_retry
 from app.drive.schemas import (
     MIME_FOLDER,
@@ -43,6 +42,7 @@ from app.drive.schemas import (
     DriveSummary,
     DriveTree,
     SearchResult,
+    ShortcutProbe,
     SnippetResult,
 )
 from app.drive.snippets import escape_query_value, extract_snippet
@@ -71,20 +71,6 @@ _TEXT_EXPORTABLE_MIME_TYPES = frozenset(
 )
 
 _MAX_EXPORT_BYTES = 2 * 1024 * 1024  # cap huge docs so search doesn't stall
-
-
-@dataclass(frozen=True)
-class _ShortcutProbe:
-    """Outcome of a single ``files.get`` against a shortcut's target.
-
-    ``None`` from the probe path means "drop the shortcut" (target deleted
-    or trashed). A returned probe is either ``ok`` (with the target's home
-    drive id, possibly ``None`` for My Drive items we don't surface) or
-    ``forbidden`` (user lacks permission — render greyed-out).
-    """
-
-    accessible: bool
-    target_drive_id: str | None = None
 
 
 class DriveService(ABC):
@@ -145,8 +131,23 @@ class GoogleDriveService(DriveService):
 
     @override
     async def walk_drive_folders(self, drive_id: str) -> DriveTree:
-        tree = await asyncio.to_thread(self._walk_folders_sync, drive_id)
-        tree.folders = await self._resolve_shortcut_nodes(tree.folders)
+        # The folder walk and the root-children listing are independent
+        # Google calls — run them in parallel threads. ``tree.files``
+        # carries the drive's root-level files so the sidebar paints a
+        # whole drive from one request instead of pairing every tree
+        # fetch with a separate ``/folders/{drive_id}/files`` call.
+        # Folder-likes are stripped from the listing: the walk already
+        # surfaces them (and file-target shortcuts are the listing's
+        # job, not the walk's).
+        tree, root_children = await asyncio.gather(
+            asyncio.to_thread(self._walk_folders_sync, drive_id),
+            asyncio.to_thread(self._list_children_sync, drive_id),
+        )
+        root_files = [n for n in root_children if not _is_folder_like(n)]
+        tree.folders, tree.files = await asyncio.gather(
+            self._resolve_shortcut_nodes(tree.folders),
+            self._resolve_shortcut_nodes(root_files),
+        )
         return tree
 
     @override
@@ -167,12 +168,18 @@ class GoogleDriveService(DriveService):
         stripped = query.strip()
         if not stripped:
             return []
-        drives = await self.list_drives()
+        # The all-drives search doesn't need the membership list (it
+        # only scopes the *results*), so both round-trips overlap. A
+        # zero-drive account wastes one search call — rare enough to
+        # trade for the latency win on every real query.
+        drives, hits = await asyncio.gather(
+            self.list_drives(),
+            asyncio.to_thread(
+                self._search_all_drives_sync, stripped, max(limit_per_drive, _SEARCH_PAGE_SIZE)
+            ),
+        )
         if not drives:
             return []
-        hits = await asyncio.to_thread(
-            self._search_all_drives_sync, stripped, max(limit_per_drive, _SEARCH_PAGE_SIZE)
-        )
         if hits is None:
             merged = await self._search_per_drive(drives, stripped, limit_per_drive)
         else:
@@ -242,8 +249,12 @@ class GoogleDriveService(DriveService):
         shortcuts = [i for i in items if i.mime_type == MIME_SHORTCUT]
         if not shortcuts:
             return items
-        drive_names = await self._drive_names()
-        probes = await self._probe_targets([i.shortcut_target_id for i in shortcuts])
+        # Independent lookups — the drive-name map (drives.list, usually
+        # cached) and the target probes (files.get batch) overlap.
+        drive_names, probes = await asyncio.gather(
+            self._drive_names(),
+            self._probe_targets([i.shortcut_target_id for i in shortcuts]),
+        )
         resolved = dict(zip((i.id for i in shortcuts), probes, strict=True))
         out: list[T] = []
         for item in items:
@@ -265,17 +276,29 @@ class GoogleDriveService(DriveService):
     async def _drive_names(self) -> dict[str, str]:
         return {d.id: d.name for d in await self.list_drives()}
 
-    async def _probe_targets(self, target_ids: list[str | None]) -> list[_ShortcutProbe | None]:
-        """Probe targets once each (deduplicated), preserving input order."""
+    async def _probe_targets(self, target_ids: list[str | None]) -> list[ShortcutProbe | None]:
+        """Probe targets once each (deduplicated), preserving input order.
+
+        Recently probed targets come from ``probe_cache`` so repeat tree
+        walks and folder listings skip the ``files.get`` batch entirely;
+        only cache misses hit Drive, and their outcomes are memoised for
+        the next walk.
+        """
         unique_ids = sorted({tid for tid in target_ids if tid})
         if not unique_ids:
             return [None] * len(target_ids)
-        probes = await asyncio.to_thread(self._probe_targets_sync, unique_ids)
+        user_id = str(self._user.id)
+        probes = probe_cache.get_fresh(user_id, unique_ids)
+        missing = [tid for tid in unique_ids if tid not in probes]
+        if missing:
+            fetched = await asyncio.to_thread(self._probe_targets_sync, missing)
+            probe_cache.store(user_id, fetched)
+            probes.update(fetched)
         return [probes.get(tid) if tid else None for tid in target_ids]
 
-    def _probe_targets_sync(self, target_ids: list[str]) -> dict[str, _ShortcutProbe | None]:
+    def _probe_targets_sync(self, target_ids: list[str]) -> dict[str, ShortcutProbe | None]:
         client = self._client()
-        probes: dict[str, _ShortcutProbe | None] = {}
+        probes: dict[str, ShortcutProbe | None] = {}
 
         def _collect(request_id: str, response: Any, exception: BaseException | None) -> None:
             probes[request_id] = self._classify_probe(request_id, response, exception)
@@ -301,13 +324,13 @@ class GoogleDriveService(DriveService):
 
     def _classify_probe(
         self, target_id: str, response: Any, exception: BaseException | None
-    ) -> _ShortcutProbe | None:
+    ) -> ShortcutProbe | None:
         if exception is not None:
             status = getattr(getattr(exception, "resp", None), "status", None)
             if status == 404:
                 return None
             if status == 403:
-                return _ShortcutProbe(accessible=False)
+                return ShortcutProbe(accessible=False)
             logger.opt(exception=exception).warning(
                 "shortcut target probe failed user={} target={}",
                 self._user.id,
@@ -316,7 +339,7 @@ class GoogleDriveService(DriveService):
             return None
         if response.get("trashed"):
             return None
-        return _ShortcutProbe(accessible=True, target_drive_id=response.get("driveId"))
+        return ShortcutProbe(accessible=True, target_drive_id=response.get("driveId"))
 
     # ------------------------------------------------------------------
     # Sync implementations. Wrapped in asyncio.to_thread by the public
@@ -649,6 +672,14 @@ def _search_result_from_api(raw: Any, drive_id: str | None = None) -> SearchResu
         shortcut_target_id=details.get("targetId"),
         shortcut_target_mime_type=details.get("targetMimeType"),
     )
+
+
+def _is_folder_like(node: DriveNode) -> bool:
+    """Native folders and folder-target shortcuts — the rows the walk
+    owns. Mirrors the frontend's ``isFolderLikeNode``."""
+    if node.mime_type == MIME_FOLDER:
+        return True
+    return node.mime_type == MIME_SHORTCUT and node.shortcut_target_mime_type == MIME_FOLDER
 
 
 def _node_from_api(raw: Any, drive_id: str) -> DriveNode:

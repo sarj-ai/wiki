@@ -26,7 +26,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useExpandedDrive } from "@/hooks/use-expanded-folders";
 import { useRefreshDrive } from "@/hooks/use-wiki-mutations";
-import { useFolderFiles } from "@/hooks/use-wiki-tree";
 import { cn } from "@/lib/utils";
 import {
   applyOptimisticOrder,
@@ -153,7 +152,6 @@ export function DriveSection({
   const [expanded, setExpanded] = useExpandedDrive(drive.id);
   const { childrenByParent, iconOverrides, docIconOverrides, sortOrderMap, treeQuery } =
     useDriveTreeIndex(drive.id, folderIcons, sortOrders);
-  const rootFilesQuery = useFolderFiles(drive.id, expanded);
   const reorder = useWikiReorder(drive.id);
   const refreshDrive = useRefreshDrive();
 
@@ -172,9 +170,12 @@ export function DriveSection({
 
   const rootContainerId = `parent:${drive.id}`;
   const isDropTarget = useIsCrossContainerDropTarget(rootContainerId);
+  // Root files ride along on the drive tree (the walk lists them in
+  // parallel server-side) — one request paints the whole drive instead
+  // of a tree fetch + a separate root folder-files call per drive.
   const rootItems = buildRootItems({
     childrenByParent,
-    rootFiles: rootFilesQuery.data ?? [],
+    rootFiles: treeQuery.data?.files ?? [],
     sortOrderMap,
     showNonDocFiles,
   });
@@ -319,12 +320,7 @@ export function DriveSection({
                     ))}
                   </SortableContext>
                 )}
-                {rootFilesQuery.isLoading && (
-                  <SidebarMenuItem>
-                    <span className="text-muted-foreground px-2 py-1 text-xs">Loading files…</span>
-                  </SidebarMenuItem>
-                )}
-                {!treeQuery.isLoading && rootItems.length === 0 && !rootFilesQuery.isLoading && (
+                {!treeQuery.isLoading && rootItems.length === 0 && (
                   <EmptyDropZone parentId={drive.id} variant="item" label="Empty drive" />
                 )}
               </SidebarMenu>
