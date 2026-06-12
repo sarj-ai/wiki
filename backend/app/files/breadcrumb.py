@@ -13,8 +13,7 @@ from app.files.schemas import BreadcrumbItem
 
 
 # Folder nesting beyond this depth is almost certainly a cycle in the
-# tree we shouldn't walk. Matches the safety cap the old client-side
-# walker carried.
+# tree we shouldn't walk.
 _MAX_DEPTH = 64
 
 

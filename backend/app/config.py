@@ -6,10 +6,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        # Ignore legacy keys from the pre-pivot stack
-        # (SERVICE_ACCOUNT_KEY_PATH, DRIVE_ROOT_FOLDER_ID,
-        # ADMIN_IMPERSONATE_EMAIL, etc.) that may linger in a
-        # developer's .env until they clean it up post-cutover.
+        # Tolerate stale keys lingering in a developer's .env.
         extra="ignore",
     )
 

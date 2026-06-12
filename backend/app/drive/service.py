@@ -1,9 +1,9 @@
 """User-scoped Drive operations as a single service class.
 
-Consolidates the thin wrappers that used to live in ``drives.py``,
-``tree_walker.py``, and ``search.py``. Every operation runs against the
-user's OAuth token — ``drives.list()`` is also our access-control
-boundary because Drive only returns drives the caller is a member of.
+Covers drive listing, folder-tree walking, and search. Every operation
+runs against the user's OAuth token — ``drives.list()`` is also our
+access-control boundary because Drive only returns drives the caller
+is a member of.
 
 ``DriveService`` is the ABC the rest of the app codes against.
 ``GoogleDriveService`` is the production implementation that calls the
