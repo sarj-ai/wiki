@@ -1,10 +1,3 @@
-"""PostgresSidebarCacheService — encrypted tree storage.
-
-Covers the Fernet round-trip (save → load), the undecryptable-row
-fallback (key rotation behaves like a cache miss), and the retention
-purge piggybacked on saves. All DB/Drive access is faked in-memory.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -16,7 +9,7 @@ import uuid
 
 from sqlalchemy.dialects import postgresql
 
-from app.auth.encryption import decrypt_text, encrypt_text
+from app.auth.encryption import decrypt_cache, encrypt_cache
 from app.config import settings
 from app.drive.schemas import DriveNode, DriveTree, SearchResult, SnippetResult
 from app.drive.service import DriveService
@@ -118,7 +111,7 @@ def test_warm_row_round_trips_through_encryption() -> None:
     tree = _tree()
     row = DriveTreeCache(
         drive_id="drive-1",
-        tree=encrypt_text(tree.model_dump_json()),
+        tree=encrypt_cache(tree.model_dump_json()),
         refreshed_at=datetime.now(UTC),
     )
     db = FakeSession(row=row)
@@ -144,7 +137,6 @@ def test_undecryptable_row_is_treated_as_cache_miss() -> None:
 
     cached = asyncio.run(service.get_drive_tree(db, "drive-1"))  # type: ignore[arg-type]
 
-    # Unreadable row dropped, fresh walk served instead.
     assert db.deleted == [row]
     assert drive.walks == 1
     assert cached.tree == tree
@@ -160,8 +152,8 @@ def test_save_tree_stores_ciphertext_and_purges_stale_rows() -> None:
 
     upsert, purge = save_session.executed
     stored = upsert.compile(dialect=postgresql.dialect()).params["tree"]
-    assert stored != tree.model_dump_json()  # not plaintext
-    assert DriveTree.model_validate_json(decrypt_text(stored)) == tree
+    assert stored != tree.model_dump_json()
+    assert DriveTree.model_validate_json(decrypt_cache(stored)) == tree
 
     purge_sql = str(purge.compile(dialect=postgresql.dialect()))
     assert "DELETE FROM drive_tree_cache" in purge_sql
@@ -172,7 +164,7 @@ def test_unparseable_row_is_treated_as_cache_miss() -> None:
     tree = _tree()
     row = DriveTreeCache(
         drive_id="drive-1",
-        tree=encrypt_text('{"drive_id": "drive-1"}'),
+        tree=encrypt_cache('{"drive_id": "drive-1"}'),
         refreshed_at=datetime.now(UTC),
     )
     db = FakeSession(row=row)
@@ -196,7 +188,7 @@ def test_peek_returns_warm_row_without_walking() -> None:
     tree = _tree()
     row = DriveTreeCache(
         drive_id="drive-1",
-        tree=encrypt_text(tree.model_dump_json()),
+        tree=encrypt_cache(tree.model_dump_json()),
         refreshed_at=datetime.now(UTC),
     )
     drive = FakeDrive(tree)
@@ -210,9 +202,6 @@ def test_peek_returns_warm_row_without_walking() -> None:
 
 
 def test_peek_cold_cache_returns_none_and_never_walks() -> None:
-    # The whole point of peek: a missing row must NOT trigger the
-    # multi-second BFS the way ``get_drive_tree`` does — the breadcrumb
-    # caller sits on the doc-open critical path.
     drive = FakeDrive(_tree())
     service = _service(drive, FakeSession())
 

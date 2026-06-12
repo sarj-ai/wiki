@@ -43,8 +43,6 @@ jobs:
       - name: Prettier check
         run: npm run format:check
 
-      # Typecheck runs `next typegen` first — typed-route types must
-      # exist before ESLint, or `as Route` casts lint as unnecessary.
       - name: TypeScript check
         run: npm run typecheck
 

@@ -1,21 +1,3 @@
-"""Authentication service: OAuth exchange, session issuance, revocation.
-
-Lives behind an ABC so tests can swap in a fake service without reaching
-for monkeypatching. The HTTP-response shaping (cookies, redirect URLs)
-stays in the router — this module only handles the business logic:
-talking to Google, upserting users, issuing JWTs, validating session
-JWTs, incrementing ``token_version`` on logout.
-
-Error semantics
----------------
-
-Every failure path raises a subclass of :class:`AuthError` with a
-``redirect_key`` attribute that the callback router uses to pick the
-``?error=...`` value for the frontend redirect. Other entry points
-(refresh, current-user resolution) translate :class:`AuthError` to
-HTTP 401 at the app boundary.
-"""
-
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -29,7 +11,7 @@ from loguru import logger
 from sqlalchemy import case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.encryption import encrypt_text
+from app.auth.encryption import decrypt_text, encrypt_text
 from app.auth.errors import (
     AuthError,
     AuthFailedError,
@@ -45,6 +27,7 @@ from app.models.user import User
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105 — public OAuth endpoint
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 
 OAUTH_SCOPES = (
     "openid",
@@ -56,15 +39,11 @@ OAUTH_SCOPES = (
 
 @dataclass(frozen=True, slots=True)
 class AuthSession:
-    """Tokens issued after a successful OAuth exchange or refresh."""
-
     jwt_access: str
     jwt_refresh: str
 
 
 class AuthService(ABC):
-    """Contract for OAuth callback handling and JWT lifecycle."""
-
     @abstractmethod
     async def exchange_code_for_session(
         self, code: str, state: str, expected_state: str | None
@@ -81,8 +60,6 @@ class AuthService(ABC):
 
 
 class GoogleAuthService(AuthService):
-    """Production ``AuthService`` backed by Google OAuth + our users table."""
-
     def __init__(self, db: AsyncSession, http_client: httpx.AsyncClient) -> None:
         self._db = db
         self._http = http_client
@@ -91,9 +68,8 @@ class GoogleAuthService(AuthService):
     async def exchange_code_for_session(
         self, code: str, state: str, expected_state: str | None
     ) -> AuthSession:
-        # CSRF guard: the cookie ``oauth_state`` was minted by /auth/login
-        # and must round-trip via Google in the ``state`` query param.
         if not expected_state or not secrets.compare_digest(state, expected_state):
+            logger.warning("auth: OAuth state mismatch (possible CSRF)")
             raise AuthFailedError("OAuth state mismatch")
         google_tokens = await self._exchange_google_code(code)
         userinfo = await self._fetch_userinfo(google_tokens.access_token)
@@ -114,6 +90,7 @@ class GoogleAuthService(AuthService):
         if user is None:
             raise TokenRevokedError("User not found")
         if payload.tv != user.token_version:
+            logger.warning("auth: revoked refresh token presented user={}", user.id)
             raise TokenRevokedError("Token has been revoked")
         return self._issue_session(user)
 
@@ -130,8 +107,7 @@ class GoogleAuthService(AuthService):
                 return
             user.token_version += 1
             await self._db.commit()
-            # Drop the user's cached drives.list so the next session
-            # starts cold instead of replaying a possibly-stale list.
+            await self._revoke_google_token(user)
             drives_cache.invalidate(str(user.id))
         except Exception:  # noqa: BLE001 — logout proceeds even if DB bump fails; cookies still clear.
             logger.opt(exception=True).warning(
@@ -147,12 +123,20 @@ class GoogleAuthService(AuthService):
         if user is None:
             raise TokenRevokedError("User not found")
         if payload.tv != user.token_version:
+            logger.warning("auth: revoked access token presented user={}", user.id)
             raise TokenRevokedError("Token has been revoked")
         return user
 
-    # ------------------------------------------------------------------
-    # Internals
-    # ------------------------------------------------------------------
+    async def _revoke_google_token(self, user: User) -> None:
+        if user.encrypted_refresh_token is None:
+            return
+        try:
+            refresh_token = decrypt_text(user.encrypted_refresh_token)
+            await self._http.post(GOOGLE_REVOKE_URL, data={"token": refresh_token})
+        except Exception:  # noqa: BLE001 — best-effort; logout proceeds regardless.
+            logger.opt(exception=True).warning(
+                "logout: Google token revocation failed user={}", user.id
+            )
 
     async def _exchange_google_code(self, code: str) -> _GoogleTokens:
         resp = await self._http.post(
@@ -182,9 +166,6 @@ class GoogleAuthService(AuthService):
         if resp.status_code != 200:
             raise AuthFailedError
         data = resp.json()
-        # Normalize at the boundary: ``users.email`` is Postgres
-        # ``citext``, but lowercasing here keeps logs, JWT claims, and
-        # any downstream string-equality comparisons in one casing.
         return _Userinfo(
             email=data["email"].lower(),
             google_id=data["id"],
@@ -195,14 +176,16 @@ class GoogleAuthService(AuthService):
     def _enforce_domain(self, email: str) -> None:
         parts = email.rsplit("@", 1)
         if len(parts) != 2 or parts[1] != settings.ALLOWED_DOMAIN:
+            logger.warning(
+                "auth: domain-restricted login rejected domain={}",
+                parts[1] if len(parts) == 2 else "<malformed>",
+            )
             raise DomainRestrictedError
 
     async def _upsert_user(self, info: _Userinfo, tokens: _GoogleTokens) -> User:
         encrypted_access = encrypt_text(tokens.access_token)
         encrypted_refresh = encrypt_text(tokens.refresh_token) if tokens.refresh_token else None
 
-        # Look up by google_id first, then by email (stub users from share/search
-        # flows may exist with a different google_id from Admin Directory API).
         user = await self._find_existing_user(info.google_id, info.email)
         if user is None:
             user = User(
@@ -228,9 +211,6 @@ class GoogleAuthService(AuthService):
         return user
 
     async def _find_existing_user(self, google_id: str, email: str) -> User | None:
-        # One round-trip OR-match. ORDER BY prefers a google_id hit over an
-        # email-only hit so existing users keep stable account linkage when
-        # they later log in with a Workspace alias.
         stmt = (
             select(User)
             .where(or_(User.google_id == google_id, User.email == email))
