@@ -1,6 +1,7 @@
 import { type z } from "zod";
 
 import {
+  zBootstrapRead,
   zDocIconRead,
   zDriveNode,
   zDriveSummary,
@@ -114,4 +115,17 @@ export const userProfile = zUserProfile.transform((u) => ({
   email: u.email,
   displayName: u.display_name ?? undefined,
   avatarUrl: u.avatar_url ?? undefined,
+}));
+
+// The /bootstrap aggregate carries one of each first-paint resource;
+// each branch reuses the per-resource transform above so the camelized
+// shapes seeded into the query cache are byte-identical to what the
+// individual endpoints produce on revalidation.
+export const bootstrapRead = zBootstrapRead.transform((b) => ({
+  drives: b.drives.map((d) => driveSummary.parse(d)),
+  preferences: preferences.parse(b.preferences),
+  folderIcons: b.folder_icons.map((f) => folderIcon.parse(f)),
+  docIcons: b.doc_icons.map((d) => docIcon.parse(d)),
+  sortOrders: b.sort_orders.map((s) => sortOrder.parse(s)),
+  me: userProfile.parse(b.me),
 }));

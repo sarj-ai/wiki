@@ -1,6 +1,48 @@
 {
   "components": {
     "schemas": {
+      "BootstrapRead": {
+        "description": "Everything the sidebar shell needs before it can paint.\n\nMirrors the six per-resource GETs (``/sidebar/drives``,\n``/extras/preferences``, ``/extras/folder-icons``,\n``/extras/doc-icons``, ``/extras/sort-order``, ``/auth/me``) —\nthose endpoints stay authoritative for client-side revalidation;\nthis aggregate exists so the server-side prefetch pays one origin\nround-trip instead of six.",
+        "properties": {
+          "doc_icons": {
+            "items": {
+              "$ref": "#/components/schemas/DocIconRead"
+            },
+            "title": "Doc Icons",
+            "type": "array"
+          },
+          "drives": {
+            "items": {
+              "$ref": "#/components/schemas/DriveSummary"
+            },
+            "title": "Drives",
+            "type": "array"
+          },
+          "folder_icons": {
+            "items": {
+              "$ref": "#/components/schemas/FolderIconRead"
+            },
+            "title": "Folder Icons",
+            "type": "array"
+          },
+          "me": {
+            "$ref": "#/components/schemas/UserProfile"
+          },
+          "preferences": {
+            "$ref": "#/components/schemas/PreferencesRead"
+          },
+          "sort_orders": {
+            "items": {
+              "$ref": "#/components/schemas/SortOrderRead"
+            },
+            "title": "Sort Orders",
+            "type": "array"
+          }
+        },
+        "required": ["drives", "preferences", "folder_icons", "doc_icons", "sort_orders", "me"],
+        "title": "BootstrapRead",
+        "type": "object"
+      },
       "BreadcrumbItem": {
         "description": "One hop in a file's breadcrumb chain (drive → folders → file).",
         "properties": {
@@ -903,6 +945,25 @@
         },
         "summary": "Refresh",
         "tags": ["auth"]
+      }
+    },
+    "/bootstrap": {
+      "get": {
+        "operationId": "bootstrap_bootstrap_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BootstrapRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Bootstrap",
+        "tags": ["bootstrap"]
       }
     },
     "/drive-search": {

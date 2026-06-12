@@ -17,6 +17,7 @@ import type {
 import { ApiError, makeCall } from "@/lib/api-client";
 import { type Client } from "@/lib/generated/client";
 import {
+  bootstrapBootstrapGet,
   bulkSetSortOrdersExtrasSortOrderPut,
   copyFileFilesFileIdCopyPost,
   createFileFilesPost,
@@ -42,6 +43,7 @@ import {
   writePreferencesExtrasPreferencesPut,
 } from "@/lib/generated/sdk.gen";
 import {
+  bootstrapRead,
   docIcon,
   driveNode,
   driveSummary,
@@ -76,6 +78,7 @@ export interface PreferencesInput {
 }
 
 export type UserProfile = z.output<typeof userProfile>;
+export type Bootstrap = z.output<typeof bootstrapRead>;
 
 export function makeWikiApi(client?: Client) {
   const call = makeCall(client);
@@ -203,6 +206,10 @@ export function makeWikiApi(client?: Client) {
       ),
 
     getMe: (): Promise<UserProfile> => call(meAuthMeGet, {}, userProfile),
+
+    // One round-trip for everything the app shell needs on first paint
+    // — replaces six per-resource GETs in the server prefetch.
+    getBootstrap: (): Promise<Bootstrap> => call(bootstrapBootstrapGet, {}, bootstrapRead),
 
     driveSearch: (query: string, limitPerDrive?: number): Promise<DriveSearchResult[]> =>
       call(
