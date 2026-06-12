@@ -31,7 +31,7 @@ from googleapiclient.errors import HttpError
 import httplib2
 from loguru import logger
 
-from app.auth.encryption import decrypt_token
+from app.auth.encryption import decrypt_text
 from app.config import settings
 from app.drive import drives_cache
 from app.drive.retry import drive_retry, execute_with_retry
@@ -585,9 +585,9 @@ class GoogleDriveService(DriveService):
     def _build_credentials(user: User) -> Credentials:
         if user.encrypted_access_token is None:
             raise ValueError(f"User {user.id} has no encrypted_access_token")
-        access_token = decrypt_token(user.encrypted_access_token)
+        access_token = decrypt_text(user.encrypted_access_token)
         refresh_token = (
-            decrypt_token(user.encrypted_refresh_token) if user.encrypted_refresh_token else None
+            decrypt_text(user.encrypted_refresh_token) if user.encrypted_refresh_token else None
         )
         # google.oauth2 ships partial typing — mypy strict flags
         # ``Credentials(...)`` as an untyped call; pyright sees full

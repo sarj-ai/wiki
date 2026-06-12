@@ -22,10 +22,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import override
 
+from cryptography.fernet import InvalidToken
 from loguru import logger
+from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.auth.encryption import decrypt_text, encrypt_text
 from app.drive.schemas import DriveNode, DriveTree
 from app.drive.service import DriveService
 from app.models.user import User
@@ -36,6 +39,11 @@ from app.sidebar.singleflight import Singleflight
 # Stale-while-revalidate window — reads older than this still serve the
 # cached tree but trigger an async refresh in the background.
 CACHE_TTL = timedelta(minutes=10)
+
+# Retention bound for rows nobody reads anymore (refresh only happens on
+# read, so an abandoned drive's folder names would otherwise sit in
+# Postgres forever). Purged opportunistically on every save.
+CACHE_MAX_AGE = timedelta(days=30)
 
 # Module-level singletons. Per-request instances would lose coalescing.
 # Exported without a leading underscore so ``dependencies.py`` can inject
@@ -112,10 +120,11 @@ class PostgresSidebarCacheService(SidebarCacheService):
         # callers share one Drive call.
         row = await self._load_row(db, drive_id)
         if row is not None:
-            tree = DriveTree.model_validate(row.tree)
-            if datetime.now(UTC) - row.refreshed_at > CACHE_TTL:
-                self._schedule_refresh(drive_id)
-            return CachedDriveTree(tree=tree, refreshed_at=row.refreshed_at)
+            tree = await self._decode_row(db, row)
+            if tree is not None:
+                if datetime.now(UTC) - row.refreshed_at > CACHE_TTL:
+                    self._schedule_refresh(drive_id)
+                return CachedDriveTree(tree=tree, refreshed_at=row.refreshed_at)
         tree = await self._sf.do(
             f"drive:{drive_id}",
             lambda: self._walk_and_save(drive_id),
@@ -169,6 +178,20 @@ class PostgresSidebarCacheService(SidebarCacheService):
             await self._save_tree(db, tree)
         return tree
 
+    async def _decode_row(self, db: AsyncSession, row: DriveTreeCache) -> DriveTree | None:
+        """Decrypt a cache row, treating an unreadable blob as a miss.
+
+        A FERNET_KEY rotation makes every existing row undecryptable;
+        deleting the row and falling through to a cold walk turns the
+        rotation into a non-event.
+        """
+        try:
+            return DriveTree.model_validate_json(decrypt_text(row.tree))
+        except InvalidToken:
+            await db.delete(row)
+            await db.commit()
+            return None
+
     async def _save_tree(self, db: AsyncSession, tree: DriveTree) -> None:
         # Last-writer-wins on refreshed_at — a slower concurrent walker
         # can't clobber a fresher result if two walks race through
@@ -177,7 +200,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
             pg_insert(DriveTreeCache)
             .values(
                 drive_id=tree.drive_id,
-                tree=tree.model_dump(mode="json"),
+                tree=encrypt_text(tree.model_dump_json()),
                 refreshed_at=datetime.now(UTC),
                 refreshed_by=self._user.id,
             )
@@ -194,6 +217,13 @@ class PostgresSidebarCacheService(SidebarCacheService):
             )
         )
         await db.execute(stmt)
+        # Opportunistic retention purge, piggybacked on writes so no
+        # scheduler is needed.
+        await db.execute(
+            delete(DriveTreeCache).where(
+                DriveTreeCache.refreshed_at < datetime.now(UTC) - CACHE_MAX_AGE
+            )
+        )
         await db.commit()
 
     async def _load_row(self, db: AsyncSession, drive_id: str) -> DriveTreeCache | None:

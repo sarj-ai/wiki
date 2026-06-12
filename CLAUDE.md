@@ -108,8 +108,10 @@ users:
   token_version  -- bumped on logout; embedded in JWTs for revocation
 
 drive_tree_cache:
-  drive_id PK, tree (JSONB), refreshed_at, refreshed_by
-  -- one row per shared drive; amortized across members
+  drive_id PK, tree (text: Fernet-encrypted DriveTree JSON), refreshed_at, refreshed_by
+  -- one row per shared drive; amortized across members. Folder names are
+  -- user content, so the blob is opaque to anyone reading the DB; rows
+  -- older than CACHE_MAX_AGE (30d) are purged opportunistically on save
 
 doc_icons:
   drive_id PK, icon, cover_url, updated_at, updated_by

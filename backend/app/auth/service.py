@@ -29,7 +29,7 @@ from loguru import logger
 from sqlalchemy import case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.encryption import encrypt_token
+from app.auth.encryption import encrypt_text
 from app.auth.errors import (
     AuthError,
     AuthFailedError,
@@ -207,8 +207,8 @@ class GoogleAuthService(AuthService):
             raise DomainRestrictedError
 
     async def _upsert_user(self, info: _Userinfo, tokens: _GoogleTokens) -> User:
-        encrypted_access = encrypt_token(tokens.access_token)
-        encrypted_refresh = encrypt_token(tokens.refresh_token) if tokens.refresh_token else None
+        encrypted_access = encrypt_text(tokens.access_token)
+        encrypted_refresh = encrypt_text(tokens.refresh_token) if tokens.refresh_token else None
 
         # Look up by google_id first, then by email (stub users from share/search
         # flows may exist with a different google_id from Admin Directory API).
