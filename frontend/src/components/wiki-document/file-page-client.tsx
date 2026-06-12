@@ -31,12 +31,6 @@ export function FilePageClient({ driveId }: { driveId: string }) {
   // the file once the retry succeeds.
   const isLoading = fileQuery.isPending || (!fileQuery.data && fileQuery.isFetching);
   if (isLoading) {
-    // The sidebar caches usually already know this file's name + mime
-    // type — enough to mount the toolbar and start the Google iframe
-    // (the dominant cost, 2-5s measured) immediately instead of
-    // holding everything behind the ~1.5s ``files/{id}`` round-trip.
-    // The breadcrumb pops in when the query settles; the iframe key is
-    // mime-stable so the settle never remounts it.
     const hint = findCachedNodeMeta(queryClient, driveId);
     if (!hint) {
       return <FilePageSkeleton />;
@@ -57,8 +51,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
 
   // 404 from the backend means either the file truly doesn't exist or
   // it's outside Sarj Wiki's strict shared-drive scope (My Drive
-  // files, non-member shared drives). Client and hard-load
-  // navigations both resolve it here.
+  // files, non-member shared drives).
   if (fileQuery.isError && fileQuery.error instanceof ApiError && fileQuery.error.status === 404) {
     notFound();
   }
@@ -100,9 +93,6 @@ interface FilePageBodyProps {
   onReload: () => void;
 }
 
-// Shared by the hint-based instant render and the settled render so
-// React reconciles them as the same tree — the iframe mounted from the
-// hint survives the query settling instead of remounting.
 function FilePageBody({
   fileId,
   mimeType,

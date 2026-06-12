@@ -119,7 +119,6 @@ describe("injectNewFileIntoCaches", () => {
     const tree: DriveTree = { driveId: "drive-1", folders: [], files: [] };
     qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
 
-    // Root-created files report the drive id as their parent.
     injectNewFileIntoCaches(
       qc,
       makeFile({ id: "rootdoc", mimeType: MIME_DOC, parentFolderId: "drive-1" }),
@@ -171,8 +170,6 @@ describe("findCachedNodeMeta", () => {
       name: "Budget (link)",
       mimeType: MIME_SHEET,
     });
-    // The shortcut's own id is never a navigation target — rows route
-    // to the target — so it must not resolve.
     expect(findCachedNodeMeta(qc, "shortcut-1")).toBeNull();
   });
 

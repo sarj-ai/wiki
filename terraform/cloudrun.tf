@@ -45,12 +45,6 @@ resource "google_cloud_run_v2_service" "backend" {
 
     scaling {
       min_instance_count = 1
-      # The 2026-06 latency audit showed a single instance serializing
-      # everything: a cold sidebar fans out ~22 concurrent calls and
-      # multi-drive search adds a Google round-trip per drive, so
-      # requests queued behind one throttled CPU (folder listings
-      # measured at 2-3.5s that are ~300ms uncontended). min stays 1 so
-      # the in-process caches keep their hit rate on the common path.
       max_instance_count = 3
     }
 
@@ -68,9 +62,6 @@ resource "google_cloud_run_v2_service" "backend" {
 
       resources {
         limits = {
-          # 2 vCPU so the thread pool that wraps the blocking Google
-          # API client (asyncio.to_thread) actually runs in parallel
-          # with the event loop instead of timeslicing one core.
           cpu    = "2"
           memory = "1Gi"
         }

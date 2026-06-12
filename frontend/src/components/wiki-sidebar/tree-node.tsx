@@ -42,11 +42,6 @@ interface TreeNodeProps {
   depth: number;
 }
 
-// Hover-intent threshold before prefetching a collapsed folder's
-// children. Long enough that sweeping the cursor down the sidebar
-// doesn't fan a request out per row passed; short enough that the
-// fetch is well underway by the time a deliberate hover turns into a
-// click (~200-400ms later).
 const HOVER_PREFETCH_DELAY_MS = 80;
 
 interface ShortcutMeta {
@@ -125,11 +120,6 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
     meta.isFolder && !meta.inaccessible ? meta.expandFolderId : null,
     expanded,
   );
-  // Warm the lazy file listing while the cursor hovers a collapsed
-  // folder so the expand click finds the children already cached
-  // (folder expands measured ~1.4s cold in production). prefetchQuery
-  // dedupes against fresh cache entries and in-flight fetches, so
-  // repeated hovers cost nothing.
   const queryClient = useQueryClient();
   const prefetchChildren = useDebouncedCallback(() => {
     const folderId = meta.expandFolderId;

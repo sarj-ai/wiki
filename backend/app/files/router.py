@@ -60,13 +60,7 @@ async def read_file(
     # The toolbar needs both the drive name and the parent-folder chain;
     # both are readily available on the server (drives.list runs as part
     # of files.get's strict-scope check, and the parent walk is a pure
-    # in-memory pass over the already-cached drive tree). The gather
-    # overlaps ``files.get``'s Google round-trip with ``drives.list``
-    # (which also pre-warms the per-user cache the scope check inside
-    # ``files.get`` consults). ``peek`` — never the walking read — keeps
-    # a cold tree cache from putting a multi-second BFS on the doc-open
-    # critical path; the breadcrumb just degrades to the drive name
-    # until the sidebar's own tree fetch warms the row.
+    # in-memory pass over the already-cached drive tree).
     file, drives = await asyncio.gather(files.get(file_id), drive.list_drives())
     drive_name = next((d.name for d in drives if d.id == file.drive_id), None)
     cached = await cache.peek_drive_tree(db, file.drive_id) if file.drive_id else None

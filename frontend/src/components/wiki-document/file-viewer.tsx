@@ -35,18 +35,8 @@ interface PoolEntry {
   reloadKey: number;
 }
 
-// Active doc plus the two most recently viewed. Each hidden entry is a
-// live Google editor session (heavyweight), so the pool stays small —
-// enough to make the common "bounce between two or three docs" flow
-// instant without holding a tab's worth of editors in memory.
 const MAX_POOL = 3;
 
-// Owns one iframe + its loading overlay. The ``key`` set by the pool
-// below (fileId + reloadKey) remounts this component — and the fresh
-// Google editor session it implies — when the Reload button fires.
-// While the iframe loads, a branded overlay sits on top so the user
-// gets visible feedback rather than a few seconds of empty frame; the
-// ref-attached load listener clears it as soon as the document fires.
 function FileViewerInner({ fileId, mimeType, title }: FileViewerInnerProps) {
   const src = embedUrlFor(mimeType, fileId);
   const [isLoading, setIsLoading] = useState(true);
@@ -87,18 +77,6 @@ function FileViewerInner({ fileId, mimeType, title }: FileViewerInnerProps) {
 // their `edit?embedded=true` variants so comments/suggesting/version
 // history all work natively; PDFs and images fall back to Drive's
 // preview endpoint inside the same frame.
-//
-// Doc→doc navigation re-renders this same component instance (the
-// ``/d/[driveId]`` page persists across param changes), so instead of
-// swapping the iframe's src — which throws away Google's 2-5s editor
-// boot — recently viewed docs stay mounted in a small LRU pool with
-// ``display: none``. Revisiting one of them flips visibility and the
-// editor is already there.
-//
-// The pool entries are derived state adjusted during render (the
-// React-endorsed alternative to a useEffect reset): when the active
-// fileId / reloadKey changes, the entry list is recomputed and React
-// immediately re-renders with the new pool.
 export function FileViewer({ fileId, mimeType, title, reloadKey = 0 }: FileViewerProps) {
   const [pool, setPool] = useState<PoolEntry[]>([{ fileId, mimeType, title, reloadKey }]);
   const active = pool[0];

@@ -26,8 +26,6 @@ from app.models.user import User
 
 @pytest.fixture(autouse=True)
 def _reset_probe_cache() -> None:
-    """Probe outcomes are memoised module-wide; start each test clean
-    so a probe cached by one case can't satisfy another."""
     probe_cache.clear()
 
 
@@ -41,10 +39,6 @@ def _user() -> User:
 
 
 class _FakePendingCall:
-    """A single prepared request. The page is captured at call time so
-    the walk's now-concurrent folder + children listings can't clobber
-    each other's pending response on the shared listable."""
-
     def __init__(self, page: dict[str, Any]) -> None:
         self._page = page
 
@@ -71,12 +65,6 @@ class _FakeListable:
 
 
 class _FakeFilesListable(_FakeListable):
-    """Routes ``'…' in parents`` listings (folder children / root files)
-    to their own page queue so the walk's parallel folder + children
-    calls consume deterministic pages regardless of thread arrival
-    order. Every other call (walk, search, get/update/create) draws
-    from the main queue."""
-
     def __init__(
         self,
         pages: list[dict[str, Any]],
@@ -222,8 +210,6 @@ async def test_walk_drive_folders_uses_corpora_drive_and_folder_query(
     assert tree.folders[0].parent_id is None
     assert tree.folders[1].parent_id == "f1"
 
-    # The walk and the root-children listing run concurrently, so pick
-    # the walk's call out by its corpora instead of relying on order.
     call = next(c for c in client.files_captured if c.get("corpora") == "drive")
     assert call["driveId"] == "the-drive"
     assert call["includeItemsFromAllDrives"] is True
@@ -275,9 +261,6 @@ async def test_walk_populates_root_files_from_parallel_children_listing(
                         "mimeType": "application/vnd.google-apps.document",
                         "parents": ["d"],
                     },
-                    # Folder-likes in the root listing are stripped —
-                    # the walk already owns them; double-surfacing would
-                    # render the same row twice in the sidebar.
                     {"id": "f1", "name": "Folder", "mimeType": MIME_FOLDER, "parents": ["d"]},
                 ]
             }
@@ -664,8 +647,6 @@ async def test_probe_targets_serves_repeat_walks_from_the_cache() -> None:
 
     svc._probe_targets_sync = _fake  # type: ignore[method-assign]
     first = await svc._probe_targets(["t1", "t2"])
-    # Second walk within the TTL: no new batch, only the unseen target
-    # is probed when one shows up.
     second = await svc._probe_targets(["t1", "t2"])
     third = await svc._probe_targets(["t1", "t3"])
 

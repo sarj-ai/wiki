@@ -170,9 +170,6 @@ export function DriveSection({
 
   const rootContainerId = `parent:${drive.id}`;
   const isDropTarget = useIsCrossContainerDropTarget(rootContainerId);
-  // Root files ride along on the drive tree (the walk lists them in
-  // parallel server-side) — one request paints the whole drive instead
-  // of a tree fetch + a separate root folder-files call per drive.
   const rootItems = buildRootItems({
     childrenByParent,
     rootFiles: treeQuery.data?.files ?? [],

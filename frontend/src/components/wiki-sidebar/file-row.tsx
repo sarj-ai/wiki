@@ -101,10 +101,6 @@ function FileRowImpl({
   const isActive = !isForm && (activeDriveId === route.id || pathname === href);
   const isMoving = useIsMovingFile(node.id);
 
-  // Warm ``files/{id}`` on pointerdown — it fires ~100-200ms before the
-  // click completes and intent is certain by then, so the breadcrumb
-  // round-trip overlaps the navigation instead of starting after it.
-  // prefetchQuery no-ops when the cache is still fresh.
   const queryClient = useQueryClient();
   const prefetchFile = (): void => {
     void queryClient.prefetchQuery({

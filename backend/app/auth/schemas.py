@@ -1,10 +1,3 @@
-"""Auth DTOs shared beyond the auth router.
-
-``UserProfile`` started life inside ``auth/router.py``; it lives here
-so the bootstrap aggregate can return it without importing a router
-(the import-linter contracts forbid upward service→router imports).
-"""
-
 from __future__ import annotations
 
 from pydantic import BaseModel

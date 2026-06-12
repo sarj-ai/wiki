@@ -48,14 +48,6 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://docs.google.com" />
         <link rel="dns-prefetch" href="https://docs.google.com" />
-        {/*
-          The API lives on a different hostname, so the browser's first
-          fetch would otherwise pay DNS + TCP + TLS (~150-300ms) before
-          any data moves. ``use-credentials`` matters: all API calls are
-          credentialed CORS requests, and browsers keep separate
-          connection pools for credentialed vs anonymous — an anonymous
-          preconnect would warm a socket the API fetches can't reuse.
-        */}
         <link rel="preconnect" href={API_URL} crossOrigin="use-credentials" />
         <link rel="dns-prefetch" href={API_URL} />
         {/*

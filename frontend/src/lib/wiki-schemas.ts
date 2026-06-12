@@ -117,10 +117,6 @@ export const userProfile = zUserProfile.transform((u) => ({
   avatarUrl: u.avatar_url ?? undefined,
 }));
 
-// The /bootstrap aggregate carries one of each first-paint resource;
-// each branch reuses the per-resource transform above so the camelized
-// shapes seeded into the query cache are byte-identical to what the
-// individual endpoints produce on revalidation.
 export const bootstrapRead = zBootstrapRead.transform((b) => ({
   drives: b.drives.map((d) => driveSummary.parse(d)),
   preferences: preferences.parse(b.preferences),

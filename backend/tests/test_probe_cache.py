@@ -1,5 +1,3 @@
-"""Unit tests for the per-user shortcut-target probe cache."""
-
 from __future__ import annotations
 
 import pytest
@@ -10,8 +8,6 @@ from app.drive.schemas import ShortcutProbe
 
 @pytest.fixture(autouse=True)
 def _reset_cache() -> None:
-    """Each test starts with an empty cache so module-level state
-    doesn't leak across cases."""
     probe_cache.clear()
 
 
@@ -25,7 +21,7 @@ def test_store_then_get_roundtrips_positive_and_negative_outcomes() -> None:
         {
             "t-ok": ShortcutProbe(accessible=True, target_drive_id="eng"),
             "t-403": ShortcutProbe(accessible=False),
-            "t-gone": None,  # deleted/trashed targets are memoised too
+            "t-gone": None,
         },
     )
     fresh = probe_cache.get_fresh("alice", ["t-ok", "t-403", "t-gone", "t-unknown"])
@@ -62,7 +58,5 @@ def test_store_prunes_expired_entries_past_the_sweep_threshold(
 
     probe_cache.store("alice", {"t1": None, "t2": None})
     clock["now"] += probe_cache._TTL_SECONDS + 1
-    # Past the threshold with everything expired — the sweep drops the
-    # stale pair instead of letting the map grow without bound.
     probe_cache.store("alice", {"t3": None})
     assert probe_cache._entries.keys() == {("alice", "t3")}
