@@ -166,9 +166,14 @@ No service account, no Admin SDK, no domain-wide delegation.
 
 Loaded via `pydantic-settings` in `app/config.py`; `extra="ignore"` tolerates stale legacy keys.
 
+Exactly one database path must be configured: `DATABASE_URL` (local dev / CI), or the `DB_*` connector trio (production — Cloud SQL IAM database auth; the service account is the credential, no password exists).
+
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | Postgres DSN |
+| `DATABASE_URL` | Postgres DSN (dev/CI path) |
+| `DB_INSTANCE_CONNECTION_NAME` | Cloud SQL instance (`project:region:instance`, prod path) |
+| `DB_IAM_USER` | IAM database user (backend SA email sans `.gserviceaccount.com`) |
+| `DB_NAME` | Database name (default `sarj_wiki`) |
 | `SECRET_KEY` | JWT signing key (≥32 chars) |
 | `FERNET_KEY` | Token encryption key (valid Fernet key) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth credentials |
