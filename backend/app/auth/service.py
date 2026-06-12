@@ -108,16 +108,12 @@ class GoogleAuthService(AuthService):
     @override
     async def refresh_session(self, refresh_token: str) -> AuthSession:
         payload = decode_token(refresh_token)
-        if payload.get("type") != "refresh":
+        if payload.type != "refresh":
             raise TokenRevokedError("Invalid token type")
-        user_id = payload.get("sub")
-        if not user_id:
-            raise TokenRevokedError("Malformed refresh token")
-        user = await self._load_user(uuid.UUID(user_id))
+        user = await self._load_user(uuid.UUID(payload.sub))
         if user is None:
             raise TokenRevokedError("User not found")
-        token_tv = payload.get("tv", 0)
-        if token_tv != user.token_version:
+        if payload.tv != user.token_version:
             raise TokenRevokedError("Token has been revoked")
         return self._issue_session(user)
 
@@ -127,12 +123,9 @@ class GoogleAuthService(AuthService):
             return
         try:
             payload = decode_token(access_token)
-            if payload.get("type") != "access":
+            if payload.type != "access":
                 return
-            user_id = payload.get("sub")
-            if not user_id:
-                return
-            user = await self._load_user(uuid.UUID(user_id))
+            user = await self._load_user(uuid.UUID(payload.sub))
             if user is None:
                 return
             user.token_version += 1
@@ -148,14 +141,12 @@ class GoogleAuthService(AuthService):
     @override
     async def resolve_current_user(self, jwt_token: str) -> User:
         payload = decode_token(jwt_token)
-        if payload.get("type") != "access":
+        if payload.type != "access":
             raise InvalidTokenError("Invalid token type")
-        user_id = payload["sub"]
-        user = await self._load_user(uuid.UUID(user_id))
+        user = await self._load_user(uuid.UUID(payload.sub))
         if user is None:
             raise TokenRevokedError("User not found")
-        token_tv = payload.get("tv", 0)
-        if token_tv != user.token_version:
+        if payload.tv != user.token_version:
             raise TokenRevokedError("Token has been revoked")
         return user
 

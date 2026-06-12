@@ -15,6 +15,15 @@ from app.config import settings
 
 _STATEMENT_TIMEOUT_MS = "120000"  # 120s per statement
 
+_POOL_KWARGS = {
+    "echo": False,
+    "pool_pre_ping": True,  # detect dead connections before using them
+    "pool_recycle": 180,  # recycle every 3 min (Cloud SQL may drop idle sooner)
+    "pool_size": 5,  # max persistent connections
+    "max_overflow": 5,  # allow 5 more under load
+    "pool_timeout": 30,  # wait max 30s for a connection from the pool
+}
+
 
 def build_engine() -> AsyncEngine:
     """One engine factory for both the app and Alembic.
@@ -27,25 +36,15 @@ def build_engine() -> AsyncEngine:
     if settings.DATABASE_URL is not None:
         return create_async_engine(
             settings.DATABASE_URL,
-            echo=False,
-            pool_pre_ping=True,  # detect dead connections before using them
-            pool_recycle=180,  # recycle every 3 min (Cloud SQL may drop idle sooner)
-            pool_size=5,  # max persistent connections
-            max_overflow=5,  # allow 5 more under load
-            pool_timeout=30,  # wait max 30s for a connection from the pool
             connect_args={
                 "server_settings": {"statement_timeout": _STATEMENT_TIMEOUT_MS},
             },
+            **_POOL_KWARGS,
         )
     return create_async_engine(
         "postgresql+asyncpg://",
-        echo=False,
-        pool_pre_ping=True,
-        pool_recycle=180,
-        pool_size=5,
-        max_overflow=5,
-        pool_timeout=30,
         async_creator=_connect_via_connector,
+        **_POOL_KWARGS,
     )
 
 

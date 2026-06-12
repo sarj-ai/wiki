@@ -186,11 +186,12 @@ class PostgresSidebarCacheService(SidebarCacheService):
         rotation into a non-event.
         """
         try:
-            return DriveTree.model_validate_json(decrypt_text(row.tree))
+            decrypted = decrypt_text(row.tree)
         except InvalidToken:
             await db.delete(row)
             await db.commit()
             return None
+        return DriveTree.model_validate_json(decrypted)
 
     async def _save_tree(self, db: AsyncSession, tree: DriveTree) -> None:
         # Last-writer-wins on refreshed_at — a slower concurrent walker

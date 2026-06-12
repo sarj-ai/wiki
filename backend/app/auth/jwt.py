@@ -1,7 +1,8 @@
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Literal
 
 import jwt
+from pydantic import BaseModel, ValidationError
 
 from app.auth.errors import InvalidTokenError
 from app.config import settings
@@ -10,6 +11,19 @@ from app.config import settings
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+
+class TokenPayload(BaseModel):
+    """Claims our JWTs carry, validated on decode.
+
+    ``email``/``iat``/``exp`` also exist in the raw token but no caller
+    reads them (exp is enforced by ``jwt.decode`` itself), so they stay
+    out of the contract.
+    """
+
+    sub: str
+    type: Literal["access", "refresh"]
+    tv: int = 0
 
 
 def create_access_token(user_id: str, email: str, token_version: int = 0) -> str:
@@ -37,13 +51,13 @@ def create_refresh_token(user_id: str, token_version: int = 0) -> str:
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 
-def decode_token(token: str) -> dict[str, Any]:
-    """Raises :class:`InvalidTokenError` on invalid/expired tokens."""
+def decode_token(token: str) -> TokenPayload:
+    """Raises :class:`InvalidTokenError` on invalid/expired/malformed tokens."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
     except jwt.PyJWTError as e:
         raise InvalidTokenError("Invalid or expired token") from e
-
-    if payload.get("sub") is None:
-        raise InvalidTokenError("Invalid token: missing subject")
-    return payload
+    try:
+        return TokenPayload.model_validate(payload)
+    except ValidationError as e:
+        raise InvalidTokenError("Invalid token: malformed claims") from e
