@@ -3,7 +3,6 @@
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ChevronRight, Loader2 } from "lucide-react";
 import { memo, type ReactNode } from "react";
-import { toast } from "sonner";
 
 import type { DriveNode } from "@/types/wiki";
 
@@ -13,6 +12,7 @@ import { useExpandedFolder } from "@/hooks/use-expanded-folders";
 import { useSetFolderIcon } from "@/hooks/use-wiki-mutations";
 import { useFolderFiles } from "@/hooks/use-wiki-tree";
 import { renderNodeIcon } from "@/lib/file-icons";
+import { runWithErrorToast } from "@/lib/mutation-toast";
 import { cn } from "@/lib/utils";
 import {
   applyOptimisticOrder,
@@ -125,12 +125,9 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
   const iconEmoji = ctx.iconOverrides.get(node.id) ?? null;
 
   const handleFolderIconChange = async (next: string | null) => {
-    try {
+    await runWithErrorToast(async () => {
       await setFolderIcon.mutateAsync({ folderDriveId: node.id, icon: next });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to update icon";
-      toast.error(message);
-    }
+    }, "Failed to update icon");
   };
 
   return (

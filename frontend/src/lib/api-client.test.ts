@@ -1,6 +1,15 @@
+import { type ResponsePromise } from "ky";
 import { describe, expect, it } from "vitest";
+import * as z from "zod";
 
-import { rebuildForReplay, snakecaseJsonBody, snakecaseJsonString } from "@/lib/api-client";
+import {
+  ApiValidationError,
+  rebuildForReplay,
+  snakecaseJsonBody,
+  snakecaseJsonString,
+  validatedJson,
+} from "@/lib/api-client";
+import { zDriveSummary, zUserProfile } from "@/lib/generated/zod.gen";
 
 function jsonRequest(url: string, body: unknown): Request {
   return new Request(url, {
@@ -67,6 +76,36 @@ describe("snakecaseJsonBody", () => {
       headers: { "content-type": "application/json" },
     });
     expect(await snakecaseJsonBody({ request })).toBeUndefined();
+  });
+});
+
+function jsonResponse(body: unknown): ResponsePromise {
+  return Promise.resolve(
+    new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } }),
+  ) as ResponsePromise;
+}
+
+describe("validatedJson", () => {
+  it("camelizes a valid snake_case payload", async () => {
+    const out = await validatedJson(
+      jsonResponse({ id: "u1", email: "a@sarj.ai", display_name: "A", avatar_url: null }),
+      zUserProfile,
+    );
+    expect(out).toEqual({ id: "u1", email: "a@sarj.ai", displayName: "A", avatarUrl: null });
+  });
+
+  it("throws ApiValidationError on a mismatched payload outside production", async () => {
+    await expect(
+      validatedJson(jsonResponse([{ id: 123, name: "Eng" }]), z.array(zDriveSummary)),
+    ).rejects.toThrow(ApiValidationError);
+  });
+
+  it("passes unknown extra keys through (returns raw data, not Zod's stripped parse)", async () => {
+    const out = await validatedJson(
+      jsonResponse([{ id: "d1", name: "Eng", brand_new_field: "kept" }]),
+      z.array(zDriveSummary),
+    );
+    expect(out).toEqual([{ id: "d1", name: "Eng", brandNewField: "kept" }]);
   });
 });
 

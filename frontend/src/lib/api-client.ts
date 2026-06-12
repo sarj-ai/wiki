@@ -1,6 +1,9 @@
-import camelcaseKeys from "camelcase-keys";
-import ky from "ky";
+import { type CamelCaseKeys } from "camelcase-keys";
+import ky, { type ResponsePromise } from "ky";
 import snakecaseKeys from "snakecase-keys";
+import { type z } from "zod";
+
+import { camelizeParsed } from "@/lib/camelize";
 
 const API_URL = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:8000";
 
@@ -52,11 +55,42 @@ export const apiClient = ky.create({
 
 function parseJsonCamelized(text: string): unknown {
   if (!text) return undefined;
-  const parsed: unknown = JSON.parse(text);
-  if (parsed && typeof parsed === "object") {
-    return camelcaseKeys(parsed as never, { deep: true });
+  return camelizeParsed(JSON.parse(text));
+}
+
+/** Thrown (dev/test only) when a response fails Zod validation. */
+export class ApiValidationError extends Error {
+  constructor(endpoint: string, issues: string) {
+    super(`Response from ${endpoint} failed schema validation:\n${issues}`);
+    this.name = "ApiValidationError";
   }
-  return parsed;
+}
+
+/**
+ * Validate the RAW snake_case body against a generated schema, then
+ * camelize the raw payload — not Zod's parse output, so unknown keys
+ * survive and ``.default()`` backfill can't mask drift. ``.text()``
+ * bypasses the camelizing ``parseJson`` while the afterResponse hooks
+ * still run. Mismatches throw in dev/test, log-only in prod.
+ */
+export async function validatedJson<S extends z.ZodType<Record<string, unknown> | unknown[]>>(
+  promise: ResponsePromise,
+  schema: S,
+): Promise<CamelCaseKeys<z.infer<S>, true>> {
+  const response = await promise;
+  const text = await response.text();
+  const raw: unknown = text ? JSON.parse(text) : undefined;
+  const result = schema.safeParse(raw);
+  if (!result.success) {
+    const summary = result.error.issues
+      .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+      .join("\n");
+    if (process.env.NODE_ENV !== "production") {
+      throw new ApiValidationError(response.url, summary);
+    }
+    console.error(`API response drift at ${response.url}:\n${summary}`);
+  }
+  return camelizeParsed(raw) as CamelCaseKeys<z.infer<S>, true>;
 }
 
 // Snake_cased request bodies, keyed by the transformed Request, so a

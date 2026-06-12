@@ -105,7 +105,7 @@ export function useWikiReorder(driveId: string): WikiReorder {
     const folder = tree?.folders.find((n) => n.id === id);
     if (folder) return folder;
     const folderFilesCaches = qc.getQueriesData<DriveNode[]>({
-      queryKey: ["wiki", "folder-files"],
+      queryKey: wikiKeys.folderFilesPrefix,
     });
     for (const [, nodes] of folderFilesCaches) {
       const hit = nodes?.find((n) => n.id === id);

@@ -11,7 +11,8 @@
     "lint": "eslint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "tsc --noEmit",
+    "generate:api": "openapi-ts && prettier --write openapi.json src/lib/generated",
+    "typecheck": "next typegen && tsc --noEmit",
     "knip": "knip",
     "type-coverage": "type-coverage --strict --at-least 99 --ignore-files \"src/components/ui/**\"",
     "test": "vitest run",
@@ -45,9 +46,11 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
     "use-debounce": "^10.1.1",
+    "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@hey-api/openapi-ts": "0.98.2",
     "@opennextjs/cloudflare": "^1.19.11",
     "@sarj/eslint-plugin": "^2.0.2",
     "@sarj/tsconfig": "^0.1.1",

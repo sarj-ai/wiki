@@ -6,13 +6,14 @@ import { useDebounce } from "use-debounce";
 import type { DriveSearchResult, SnippetResult } from "@/types/wiki";
 
 import { wikiApi } from "@/lib/wiki-api";
+import { wikiKeys } from "@/lib/wiki-keys";
 
 export function useDriveSearch(query: string) {
   // ~250ms debounce keeps the Drive Search API call count sane while
   // typing, without the dance of a hand-rolled timeout effect.
   const [debouncedQuery] = useDebounce(query.trim(), 250);
   return useQuery<DriveSearchResult[]>({
-    queryKey: ["wiki", "drive-search", debouncedQuery],
+    queryKey: wikiKeys.driveSearch(debouncedQuery),
     // Drive Search API fan-out happens server-side across every drive
     // the user has access to (see backend/app/drive/search_router.py).
     queryFn: () => wikiApi.driveSearch(debouncedQuery, 10),
@@ -38,8 +39,8 @@ export function useDriveSearchSnippet(
 ) {
   return useQuery<SnippetResult>({
     queryKey: fileId
-      ? ["wiki", "drive-search", "snippet", fileId, query]
-      : ["wiki", "drive-search", "snippet", "disabled"],
+      ? wikiKeys.driveSearchSnippet(fileId, query)
+      : wikiKeys.driveSearchSnippet("disabled", ""),
     queryFn: () => wikiApi.driveSearchSnippet(fileId ?? "", query, mimeType),
     enabled: enabled && !!fileId && query.length >= 2,
     // Snippets are deterministic for a given (file, query) pair until

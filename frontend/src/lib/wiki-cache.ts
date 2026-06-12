@@ -2,7 +2,7 @@ import { type QueryClient } from "@tanstack/react-query";
 
 import type { DriveNode, DriveTree, FileResponse } from "@/types/wiki";
 
-import { wikiKeys } from "@/hooks/use-wiki-tree";
+import { wikiKeys } from "@/lib/wiki-keys";
 import { MIME_FOLDER } from "@/types/wiki";
 
 /**
@@ -133,5 +133,5 @@ export function removeFileFromCaches(
   }
   // Drop any stale per-file metadata so a re-navigation doesn't show
   // cached info for a file that's now in trash.
-  qc.removeQueries({ queryKey: ["wiki", "file", fileId] });
+  qc.removeQueries({ queryKey: wikiKeys.file(fileId) });
 }

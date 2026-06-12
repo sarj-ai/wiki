@@ -15,6 +15,7 @@ import {
 import { useCreateFile } from "@/hooks/use-wiki-mutations";
 import { isGoogleWorkspaceType, renderMimeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
+import { runWithErrorToast } from "@/lib/mutation-toast";
 import {
   MIME_DOC,
   MIME_DRAWING,
@@ -63,7 +64,7 @@ export function CreateFileMenu({ parentFolderId, compact = true }: CreateFileMen
 
   const confirmCreate = async (name: string) => {
     if (!pendingType) return;
-    try {
+    await runWithErrorToast(async () => {
       const file = await createFile.mutateAsync({
         parentFolderId,
         name,
@@ -80,10 +81,7 @@ export function CreateFileMenu({ parentFolderId, compact = true }: CreateFileMen
         router.push(`/d/${encodeURIComponent(file.id)}`);
       }
       toast.success(`${pendingType.label} created`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Create failed";
-      toast.error(message);
-    }
+    }, "Create failed");
   };
 
   return (

@@ -1,7 +1,6 @@
 "use client";
 
 import { Check, ChevronRight, Copy, ExternalLink, RefreshCw } from "lucide-react";
-import Link from "next/link";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
 
@@ -109,10 +108,10 @@ export function WikiToolbar({ fileId, mimeType, title, breadcrumb, onReload }: W
         {copied ? "Copied" : "Copy link"}
       </Button>
       <Button asChild variant="outline" size="xs">
-        <Link href={openUrl} target="_blank" rel="noopener noreferrer">
+        <a href={openUrl} target="_blank" rel="noopener noreferrer">
           <ExternalLink className="size-3.5" />
           {openLabel}
-        </Link>
+        </a>
       </Button>
     </header>
   );

@@ -19,6 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useMoveFile } from "@/hooks/use-wiki-mutations";
 import { useDrives, useDriveTree } from "@/hooks/use-wiki-tree";
 import { ApiError } from "@/lib/api-client";
+import { runWithErrorToast, toErrorMessage } from "@/lib/mutation-toast";
 import { cn } from "@/lib/utils";
 import { buildChildrenIndex } from "@/lib/wiki-tree";
 import { MIME_SHORTCUT } from "@/types/wiki";
@@ -214,29 +215,27 @@ export function MoveFileDialog({
 
   const handleConfirm = async () => {
     if (!selectedId) return;
-    try {
-      await moveFile.mutateAsync({
-        fileId,
-        newParentFolderId: selectedId,
-        sourceDriveId: currentDriveId,
-        sourceParentFolderId: currentParentFolderId,
-      });
-      toast.success(`Moved "${fileName}"`);
-      onOpenChange(false);
-      setSelectedId(null);
-    } catch (err) {
+    await runWithErrorToast(
+      async () => {
+        await moveFile.mutateAsync({
+          fileId,
+          newParentFolderId: selectedId,
+          sourceDriveId: currentDriveId,
+          sourceParentFolderId: currentParentFolderId,
+        });
+        toast.success(`Moved "${fileName}"`);
+        onOpenChange(false);
+        setSelectedId(null);
+      },
       // 403s here are rare (we already strip shortcut destinations
       // from the picker) but keep the same friendly translation as
       // the drag-drop path so a misconfigured drive ACL doesn't show
       // the raw Drive error to the user.
-      const message =
+      (err) =>
         err instanceof ApiError && err.status === 403
           ? "Drive denied this move — you may not have edit permission on the destination."
-          : err instanceof Error
-            ? err.message
-            : "Move failed";
-      toast.error(message);
-    }
+          : toErrorMessage(err, "Move failed"),
+    );
   };
 
   // Disable the file's current parent so users can't no-op-move.

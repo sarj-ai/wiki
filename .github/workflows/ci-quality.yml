@@ -33,6 +33,76 @@ jobs:
       - name: Run pre-commit
         run: uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure
 
+  api-contract:
+    name: OpenAPI spec / generated Zod schemas in sync
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # pushes regenerated artifacts back to PR branches
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # PRs: check out the head branch (not the merge ref) with
+          # credentials so regenerated artifacts can be pushed back.
+          ref: ${{ github.head_ref || github.ref }}
+          persist-credentials: ${{ github.event_name == 'pull_request' }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Export OpenAPI spec from the backend
+        working-directory: backend
+        run: uv run --frozen python scripts/export_openapi.py ../frontend/openapi.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Regenerate Zod schemas
+        working-directory: frontend
+        run: npm run generate:api
+
+      - name: Detect drift
+        id: drift
+        run: |
+          if git diff --quiet -- frontend/openapi.json frontend/src/lib/generated; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A push made with GITHUB_TOKEN does not re-trigger CI, so the
+      # schema-sensitive gates must pass HERE before the bot commits.
+      - name: Verify regenerated schemas typecheck and pass tests
+        if: steps.drift.outputs.changed == 'true'
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Commit regenerated artifacts to the PR branch
+        if: steps.drift.outputs.changed == 'true' && github.event_name == 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/openapi.json frontend/src/lib/generated
+          git commit -m "chore: regenerate OpenAPI spec + Zod schemas"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
+
+      # Direct pushes (main, feat/**) have no PR branch to fix up —
+      # drift that survived to here is a hard failure.
+      - name: Fail on drift
+        if: steps.drift.outputs.changed == 'true' && github.event_name != 'pull_request'
+        run: git diff --exit-code -- frontend/openapi.json frontend/src/lib/generated
+
   secret-scan:
     name: gitleaks (full history)
     runs-on: ubuntu-latest

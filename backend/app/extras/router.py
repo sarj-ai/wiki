@@ -17,6 +17,7 @@ from app.extras.schemas import (
     FolderIconWrite,
     PreferencesRead,
     PreferencesWrite,
+    SortOrderBulkResult,
     SortOrderBulkWrite,
     SortOrderRead,
 )
@@ -80,9 +81,9 @@ async def list_my_sort_orders(
 async def bulk_set_sort_orders(
     payload: SortOrderBulkWrite,
     svc: ExtrasService = Depends(extras_service_dep),
-) -> dict[str, int]:
+) -> SortOrderBulkResult:
     await svc.upsert_sort_orders(payload.items)
-    return {"updated": len(payload.items)}
+    return SortOrderBulkResult(updated=len(payload.items))
 
 
 @router.delete("/sort-order/{drive_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -179,6 +179,8 @@ const eslintConfig = defineConfig([
     "coverage/**",
     ".open-next/**",
     "next-env.d.ts",
+    // Codegen output (openapi-ts) — regenerated, never hand-edited.
+    "src/lib/generated/**",
   ]),
 ]);
 

@@ -1,7 +1,6 @@
 "use client";
 
 import { Settings } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { useSetPreferences } from "@/hooks/use-wiki-mutations";
 import { useDrives, usePreferences } from "@/hooks/use-wiki-tree";
+import { runWithErrorToast } from "@/lib/mutation-toast";
 
 interface PreferencesDialogProps {
   open: boolean;
@@ -32,12 +32,9 @@ export function PreferencesDialog({ open, onOpenChange }: PreferencesDialogProps
   const hiddenSet = new Set(hiddenWorkspaceIds);
 
   const updatePrefs = async (payload: Parameters<typeof setPreferences.mutateAsync>[0]) => {
-    try {
+    await runWithErrorToast(async () => {
       await setPreferences.mutateAsync(payload);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to update preferences";
-      toast.error(message);
-    }
+    }, "Failed to update preferences");
   };
 
   return (

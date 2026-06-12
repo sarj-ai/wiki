@@ -4,7 +4,6 @@ import { ExternalLink, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { memo } from "react";
-import { toast } from "sonner";
 
 import type { DriveNode } from "@/types/wiki";
 
@@ -13,6 +12,7 @@ import { SidebarMenuButton } from "@/components/ui/sidebar";
 import { useSetDocIcon } from "@/hooks/use-wiki-mutations";
 import { renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
+import { runWithErrorToast } from "@/lib/mutation-toast";
 import { cn } from "@/lib/utils";
 import { MIME_DOC, MIME_FORM, MIME_SHORTCUT } from "@/types/wiki";
 
@@ -95,12 +95,9 @@ function FileRowImpl({
 
   const setDocIcon = useSetDocIcon();
   const handleIconChange = async (next: string | null) => {
-    try {
+    await runWithErrorToast(async () => {
       await setDocIcon.mutateAsync({ driveId: node.id, icon: next });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to update icon";
-      toast.error(message);
-    }
+    }, "Failed to update icon");
   };
 
   // Shortcuts ignore icon overrides — the doc_icons row belongs to the
@@ -220,6 +217,31 @@ function RowButton({
       </SidebarMenuButton>
     );
   }
+  if (isForm) {
+    return (
+      <SidebarMenuButton
+        asChild
+        isActive={isActive}
+        className={cn("pr-8 transition-opacity", isMoving && "opacity-60")}
+        style={{ paddingLeft: linkPadding }}
+        data-file-id={node.id}
+      >
+        <a
+          href={href}
+          draggable={false}
+          title={titleAttr}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <span className="truncate">{node.name}</span>
+          <ExternalLink
+            className="text-muted-foreground ml-auto size-3 shrink-0"
+            aria-label="Opens in a new tab"
+          />
+        </a>
+      </SidebarMenuButton>
+    );
+  }
   return (
     <SidebarMenuButton
       asChild
@@ -229,7 +251,7 @@ function RowButton({
       data-file-id={node.id}
     >
       <Link
-        href={href}
+        href={`/d/${encodeURIComponent(route.id)}`}
         // HTML5 native anchor drag is on by default. Chrome treats
         // drag-and-drop of an anchor back onto the same page as a
         // navigation to ``href`` — bypassing click handlers entirely.
@@ -238,16 +260,8 @@ function RowButton({
         // dnd-kit's PointerSensor own the drag lifecycle cleanly.
         draggable={false}
         title={titleAttr}
-        target={isForm ? "_blank" : undefined}
-        rel={isForm ? "noopener noreferrer" : undefined}
       >
         <span className="truncate">{node.name}</span>
-        {isForm && (
-          <ExternalLink
-            className="text-muted-foreground ml-auto size-3 shrink-0"
-            aria-label="Opens in a new tab"
-          />
-        )}
       </Link>
     </SidebarMenuButton>
   );

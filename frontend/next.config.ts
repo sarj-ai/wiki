@@ -80,6 +80,7 @@ const SECURITY_HEADERS = [
 const nextConfig: NextConfig = {
   output: "standalone",
   reactCompiler: true,
+  typedRoutes: true,
   headers: async () => [
     {
       // HTML pages: always revalidate (browser checks for new version).
