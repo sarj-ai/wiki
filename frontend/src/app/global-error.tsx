@@ -2,7 +2,8 @@
 
 // Replaces the root layout on render errors above the in-app
 // boundaries — must render its own <html>/<body>; globals.css and
-// fonts aren't guaranteed here, hence inline styles.
+// fonts aren't guaranteed here, hence inline styles. Color literals
+// mirror the light-mode tokens in globals.css — keep them in sync.
 export default function GlobalError({ reset }: { reset: () => void }) {
   return (
     <html lang="en">
@@ -14,7 +15,7 @@ export default function GlobalError({ reset }: { reset: () => void }) {
           justifyContent: "center",
           fontFamily: "system-ui, sans-serif",
           background: "#f6efe7",
-          color: "#1c1917",
+          color: "#231f20",
           margin: 0,
         }}
       >
@@ -29,7 +30,7 @@ export default function GlobalError({ reset }: { reset: () => void }) {
             style={{
               padding: "0.5rem 1.25rem",
               borderRadius: "0.5rem",
-              border: "1px solid #d6cfc4",
+              border: "1px solid #d5d5d5",
               background: "#fff",
               cursor: "pointer",
               font: "inherit",

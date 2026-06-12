@@ -178,7 +178,7 @@ function PreviewPanel({
 
       <div className="mt-4 min-h-0 flex-1 overflow-auto">
         {inaccessible && (
-          <div className="text-muted-foreground text-sm">
+          <div className="text-muted-foreground text-sm text-pretty">
             This is a shortcut, but you don&apos;t have access to its target. Contact your admin if
             you need access.
           </div>

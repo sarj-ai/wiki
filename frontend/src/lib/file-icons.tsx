@@ -12,6 +12,7 @@ import {
   Table,
 } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import {
   MIME_DOC,
   MIME_DRAWING,
@@ -23,40 +24,32 @@ import {
   MIME_SLIDE,
 } from "@/types/wiki";
 
-// Lucide outlines tinted with the Google brand color for each
-// Workspace type. Solid outlines read cleanly at 16px — detailed
-// mini-scenes with gradients got muddy at that size.
+// Lucide outlines tinted per Workspace type via the --icon-* tokens in
+// globals.css (Google brand hues, dark-mode adjusted). Solid outlines
+// read cleanly at 16px — detailed mini-scenes with gradients got muddy
+// at that size.
+const MIME_ICONS: Record<string, { icon: typeof FileText; tint: string }> = {
+  [MIME_FOLDER]: { icon: Folder, tint: "text-icon-folder" },
+  [MIME_DOC]: { icon: FileText, tint: "text-icon-doc" },
+  [MIME_SHEET]: { icon: Table, tint: "text-icon-sheet" },
+  [MIME_SLIDE]: { icon: Presentation, tint: "text-icon-slide" },
+  [MIME_DRAWING]: { icon: Palette, tint: "text-icon-drawing" },
+  [MIME_FORM]: { icon: ClipboardList, tint: "text-icon-form" },
+  [MIME_PDF]: { icon: FileType2, tint: "text-icon-pdf" },
+};
 
-// Renders the icon for a mime type as a JSX element. Returning an
-// element (instead of a component reference) avoids the React Compiler
-// "components created during render" lint rule — callers never have a
-// PascalCase const that looks like a component definition.
+// Renders the icon for a mime type as a JSX element. The map holds
+// module-scope component references, so aliasing one at render time
+// doesn't trip the React Compiler "components created during render"
+// lint rule (same idiom as ERROR_CONFIG in login/page.tsx).
 export function renderMimeIcon(mimeType: string, className?: string): ReactElement {
-  if (mimeType === MIME_FOLDER) {
-    return <Folder className={className} style={{ color: "#5F6368" }} />;
-  }
-  if (mimeType === MIME_DOC) {
-    return <FileText className={className} style={{ color: "#4285F4" }} />;
-  }
-  if (mimeType === MIME_SHEET) {
-    return <Table className={className} style={{ color: "#0F9D58" }} />;
-  }
-  if (mimeType === MIME_SLIDE) {
-    return <Presentation className={className} style={{ color: "#F4B400" }} />;
-  }
-  if (mimeType === MIME_DRAWING) {
-    return <Palette className={className} style={{ color: "#EA4335" }} />;
-  }
-  if (mimeType === MIME_FORM) {
-    return <ClipboardList className={className} style={{ color: "#673AB7" }} />;
-  }
-  if (mimeType === MIME_PDF) {
-    return <FileType2 className={className} style={{ color: "#E53935" }} />;
-  }
-  if (mimeType.startsWith("image/")) {
-    return <LucideImage className={className} style={{ color: "#00ACC1" }} />;
-  }
-  return <FileText className={className} style={{ color: "#78909C" }} />;
+  const entry =
+    MIME_ICONS[mimeType] ??
+    (mimeType.startsWith("image/")
+      ? { icon: LucideImage, tint: "text-icon-image" }
+      : { icon: FileText, tint: "text-icon-generic" });
+  const Icon = entry.icon;
+  return <Icon className={cn(entry.tint, className)} />;
 }
 
 // Shortcut nodes carry their target's mime in ``shortcutTargetMimeType``
