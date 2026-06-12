@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
+from collections.abc import Generator
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, override
 
 from googleapiclient.errors import HttpError
@@ -157,42 +159,36 @@ class GoogleFilesService(FilesService):
     def _create_sync(self, parent_folder_id: str, name: str, mime_type: str) -> FileResponse:
         client = self._client()
         body: File = {"name": name, "mimeType": mime_type, "parents": [parent_folder_id]}
-        try:
+        with _translated_drive_errors():
             raw = execute_mutation(
                 client.files().create(body=body, fields=_FIELDS, supportsAllDrives=True)
             )
-        except HttpError as e:
-            raise _drive_upstream(e) from e
         return _to_response(raw)
 
     def _get_sync(self, file_id: str) -> FileResponse:
         client = self._client()
-        try:
+        with _translated_drive_errors():
             raw = execute_with_retry(
                 client.files().get(fileId=file_id, fields=_FIELDS, supportsAllDrives=True)
             )
-        except HttpError as e:
-            raise _drive_upstream(e) from e
         return _to_response(raw)
 
     def _rename_sync(self, file_id: str, new_name: str) -> FileResponse:
         client = self._client()
         body: File = {"name": new_name}
-        try:
+        with _translated_drive_errors():
             raw = execute_with_retry(
                 client.files().update(
                     fileId=file_id, body=body, fields=_FIELDS, supportsAllDrives=True
                 )
             )
-        except HttpError as e:
-            raise _drive_upstream(e) from e
         return _to_response(raw)
 
     def _move_sync(
         self, file_id: str, new_parent_folder_id: str, prev_parent_folder_id: str | None
     ) -> FileResponse:
         client = self._client()
-        try:
+        with _translated_drive_errors():
             if prev_parent_folder_id is None:
                 meta = execute_with_retry(
                     client.files().get(fileId=file_id, fields="parents", supportsAllDrives=True)
@@ -207,32 +203,26 @@ class GoogleFilesService(FilesService):
                     supportsAllDrives=True,
                 )
             )
-        except HttpError as e:
-            raise _drive_upstream(e) from e
         return _to_response(raw)
 
     def _copy_sync(self, file_id: str, new_name: str) -> FileResponse:
         client = self._client()
         body: File = {"name": new_name}
-        try:
+        with _translated_drive_errors():
             raw = execute_mutation(
                 client.files().copy(
                     fileId=file_id, body=body, fields=_FIELDS, supportsAllDrives=True
                 )
             )
-        except HttpError as e:
-            raise _drive_upstream(e) from e
         return _to_response(raw)
 
     def _trash_sync(self, file_id: str) -> None:
         client = self._client()
         body: File = {"trashed": True}
-        try:
+        with _translated_drive_errors():
             execute_with_retry(
                 client.files().update(fileId=file_id, body=body, supportsAllDrives=True)
             )
-        except HttpError as e:
-            raise _drive_upstream(e) from e
 
     def _client(self) -> DriveResource:
         return GoogleDriveService.build_drive_client(self._user)
@@ -248,6 +238,14 @@ def _to_response(raw: File) -> FileResponse:
         drive_id=raw.get("driveId"),
         modified_time=raw.get("modifiedTime"),
     )
+
+
+@contextmanager
+def _translated_drive_errors() -> Generator[None]:
+    try:
+        yield
+    except HttpError as e:
+        raise _drive_upstream(e) from e
 
 
 def _drive_upstream(exc: HttpError) -> DriveUpstreamError:
