@@ -54,6 +54,25 @@ resource "google_sql_database_instance" "main" {
       name  = "maintenance_work_mem"
       value = "32768" # 32 MB — for VACUUM, index builds
     }
+
+    # IAM database authentication: the backend logs in as its service
+    # account (mTLS + short-lived IAM tokens) instead of a password.
+    database_flags {
+      name  = "cloudsql.iam_authentication"
+      value = "on"
+    }
+
+    # Audit DDL + role changes only — low volume, fits the deliberate
+    # 7-day log retention cap. Read/write classes would swamp it.
+    database_flags {
+      name  = "cloudsql.enable_pgaudit"
+      value = "on"
+    }
+
+    database_flags {
+      name  = "pgaudit.log"
+      value = "ddl,role"
+    }
   }
 
   deletion_protection = true
@@ -93,4 +112,15 @@ resource "google_sql_user" "wiki_app" {
   name     = "sarj_wiki_app"
   instance = google_sql_database_instance.main.name
   password = var.wiki_db_password
+}
+
+# IAM database-authentication principal for the backend service
+# account. The Postgres role name is the SA email minus the
+# ".gserviceaccount.com" suffix. LOGIN only — object privileges come
+# from the in-database `GRANT sarj_wiki_app` membership applied by the
+# Alembic migration `e5f6a7b8c9d0_grant_iam_user`.
+resource "google_sql_user" "wiki_app_iam" {
+  name     = trimsuffix(google_service_account.backend.email, ".gserviceaccount.com")
+  instance = google_sql_database_instance.main.name
+  type     = "CLOUD_IAM_SERVICE_ACCOUNT"
 }

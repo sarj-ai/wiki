@@ -23,6 +23,14 @@ resource "google_project_iam_member" "backend_cloudsql" {
   member  = "serviceAccount:${google_service_account.backend.email}"
 }
 
+# Required on top of cloudsql.client for IAM database authentication —
+# lets the SA log in to Postgres as itself (no password anywhere).
+resource "google_project_iam_member" "backend_cloudsql_instance_user" {
+  project = var.project_id
+  role    = "roles/cloudsql.instanceUser"
+  member  = "serviceAccount:${google_service_account.backend.email}"
+}
+
 # Allow public access to the backend — JWT + @sarj.ai domain
 # enforcement at the app layer is the real auth boundary. The GCLB
 # + Cloudflare layer on top (see loadbalancer.tf / cloudflare.tf)
