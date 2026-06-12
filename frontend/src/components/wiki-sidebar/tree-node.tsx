@@ -55,6 +55,8 @@ interface ShortcutMeta {
 
 interface DriveSectionCtxShape {
   childrenByParent: Map<string, DriveNode[]>;
+  filesByParent: Map<string, DriveNode[]>;
+  treeFilesComplete: boolean;
   showNonDocFiles: boolean;
   sortOrderMap: Map<string, number>;
   optimisticByContainer: Map<string, readonly string[]>;
@@ -69,6 +71,8 @@ interface FolderHeaderProps {
   isDropIntoFolder: boolean;
   isMoving: boolean;
   iconEmoji: string | undefined;
+  itemCount: number | undefined;
+  isEmpty: boolean;
   onIconChange: (next: string | null) => Promise<void>;
   onHoverStart: () => void;
   onHoverEnd: () => void;
@@ -113,17 +117,15 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
   const ctx = useDriveSectionContext();
   const meta = resolveShortcutMeta(node);
   const [expanded, setExpanded] = useExpandedFolder(node.id);
-  // Only call the lazy file query once the user expands; the hook reads
-  // from the React Query cache on subsequent expands so flicker is ~0.
-  // Inaccessible shortcuts never fetch — their target ACL would 403.
+  const needsLazyFiles = meta.isFolderShortcut || !ctx.treeFilesComplete;
   const { data: lazyFiles, isLoading: filesLoading } = useFolderFiles(
-    meta.isFolder && !meta.inaccessible ? meta.expandFolderId : null,
+    meta.isFolder && needsLazyFiles && !meta.inaccessible ? meta.expandFolderId : null,
     expanded,
   );
   const queryClient = useQueryClient();
   const prefetchChildren = useDebouncedCallback(() => {
     const folderId = meta.expandFolderId;
-    if (expanded || meta.inaccessible || !folderId) return;
+    if (!needsLazyFiles || expanded || meta.inaccessible || !folderId) return;
     void queryClient.prefetchQuery({
       queryKey: wikiKeys.folderFiles(folderId),
       queryFn: () => wikiApi.getFolderFiles(folderId),
@@ -153,6 +155,8 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
   const childItems = buildChildItems(node, meta, ctx, lazyFiles ?? []);
   const sortableItems = childItems.map((c) => c.node.id);
   const iconEmoji = ctx.iconOverrides.get(node.id);
+  const itemCount = meta.isFolderShortcut || !ctx.treeFilesComplete ? undefined : childItems.length;
+  const isEmpty = itemCount === 0;
 
   const handleFolderIconChange = async (next: string | null) => {
     await runWithErrorToast(async () => {
@@ -168,12 +172,14 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
         depth={depth}
         expanded={expanded}
         onToggle={() => {
-          if (meta.inaccessible) return;
+          if (meta.inaccessible || isEmpty) return;
           setExpanded(!expanded);
         }}
         isDropIntoFolder={isDropIntoFolder}
         isMoving={isMoving}
         iconEmoji={iconEmoji}
+        itemCount={itemCount}
+        isEmpty={isEmpty}
         onIconChange={handleFolderIconChange}
         onHoverStart={prefetchChildren}
         onHoverEnd={() => {
@@ -250,10 +256,13 @@ function buildChildItems(
   ctx: DriveSectionCtxShape,
   lazyAll: DriveNode[],
 ): KindedNode[] {
-  const lazyOnlyFiles = lazyAll.filter((n) => !isFolderLikeNode(n));
+  const rawFiles =
+    meta.isFolderShortcut || !ctx.treeFilesComplete
+      ? lazyAll.filter((n) => !isFolderLikeNode(n))
+      : (ctx.filesByParent.get(node.id) ?? []);
   const filteredFiles = ctx.showNonDocFiles
-    ? lazyOnlyFiles
-    : lazyOnlyFiles.filter((n) => n.mimeType === MIME_DOC);
+    ? rawFiles
+    : rawFiles.filter((n) => n.mimeType === MIME_DOC);
   const folderChildren = meta.isFolderShortcut
     ? lazyAll.filter(isFolderLikeNode)
     : (ctx.childrenByParent.get(node.id) ?? []);
@@ -281,6 +290,8 @@ function FolderHeader({
   isDropIntoFolder,
   isMoving,
   iconEmoji,
+  itemCount,
+  isEmpty,
   onIconChange,
   onHoverStart,
   onHoverEnd,
@@ -307,7 +318,7 @@ function FolderHeader({
         onClick={onToggle}
         onPointerEnter={onHoverStart}
         onPointerLeave={onHoverEnd}
-        disabled={meta.inaccessible}
+        disabled={meta.inaccessible || isEmpty}
         className={cn(
           "pr-14 transition-[background-color,box-shadow] duration-150",
           // Tint + ring while a drop on this row would land INSIDE the
@@ -317,10 +328,11 @@ function FolderHeader({
           isDropIntoFolder && "ring-primary/60 bg-primary/10 ring-1",
           isMoving && "opacity-60",
           meta.inaccessible && "text-muted-foreground/60 cursor-not-allowed",
+          isEmpty && "text-muted-foreground/60 cursor-default",
         )}
         style={{ paddingLeft: chevronPadding }}
-        aria-expanded={meta.inaccessible ? undefined : expanded}
-        title={meta.tooltip ?? node.name}
+        aria-expanded={meta.inaccessible || isEmpty ? undefined : expanded}
+        title={meta.tooltip ?? (isEmpty ? `${node.name} — empty` : node.name)}
         // Same attribute the file-reveal scroll-into-view query uses so
         // folder hits in the command palette can land on this row too.
         data-file-id={node.id}
@@ -330,10 +342,16 @@ function FolderHeader({
             "size-3.5 shrink-0 transition-transform",
             expanded && "rotate-90",
             meta.inaccessible && "opacity-30",
+            isEmpty && "invisible",
           )}
         />
         <span className="shrink-0" style={{ width: ICON_COLUMN_WIDTH - 4 }} aria-hidden="true" />
         <span className="truncate">{node.name}</span>
+        {itemCount !== undefined && itemCount > 0 && (
+          <span className="text-muted-foreground/70 ml-auto shrink-0 pl-1 text-[10px] tabular-nums group-hover/navitem:opacity-0">
+            {itemCount}
+          </span>
+        )}
       </SidebarMenuButton>
       {/*
         Folder shortcuts skip the emoji picker — the icon belongs to

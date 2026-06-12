@@ -1,7 +1,6 @@
 "use client";
 
-import type { Route } from "next";
-
+import { type Route } from "next";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 

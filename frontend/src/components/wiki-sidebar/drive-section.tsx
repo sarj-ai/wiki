@@ -26,6 +26,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useExpandedDrive } from "@/hooks/use-expanded-folders";
 import { useRefreshDrive } from "@/hooks/use-wiki-mutations";
+import { useFolderFiles } from "@/hooks/use-wiki-tree";
 import { cn } from "@/lib/utils";
 import {
   applyOptimisticOrder,
@@ -150,8 +151,16 @@ export function DriveSection({
   sortOrders,
 }: DriveSectionProps) {
   const [expanded, setExpanded] = useExpandedDrive(drive.id);
-  const { childrenByParent, iconOverrides, docIconOverrides, sortOrderMap, treeQuery } =
-    useDriveTreeIndex(drive.id, folderIcons, sortOrders);
+  const {
+    childrenByParent,
+    filesByParent,
+    filesComplete,
+    iconOverrides,
+    docIconOverrides,
+    sortOrderMap,
+    treeQuery,
+  } = useDriveTreeIndex(drive.id, folderIcons, sortOrders);
+  const lazyRootFiles = useFolderFiles(drive.id, expanded && !filesComplete);
   const reorder = useWikiReorder(drive.id);
   const refreshDrive = useRefreshDrive();
 
@@ -172,7 +181,7 @@ export function DriveSection({
   const isDropTarget = useIsCrossContainerDropTarget(rootContainerId);
   const rootItems = buildRootItems({
     childrenByParent,
-    rootFiles: treeQuery.data?.files ?? [],
+    rootFiles: filesComplete ? (filesByParent.get("__root__") ?? []) : (lazyRootFiles.data ?? []),
     sortOrderMap,
     showNonDocFiles,
   });
@@ -186,6 +195,8 @@ export function DriveSection({
       activeDriveId,
       showNonDocFiles,
       childrenByParent,
+      filesByParent,
+      treeFilesComplete: filesComplete,
       iconOverrides,
       docIconOverrides,
       sortOrderMap,
@@ -196,6 +207,8 @@ export function DriveSection({
       activeDriveId,
       showNonDocFiles,
       childrenByParent,
+      filesByParent,
+      filesComplete,
       iconOverrides,
       docIconOverrides,
       sortOrderMap,

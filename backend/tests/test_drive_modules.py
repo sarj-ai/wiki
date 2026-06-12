@@ -75,7 +75,8 @@ class _FakeFilesListable(_FakeListable):
         self._children = _FakeListable(children_pages, captured)
 
     def list(self, **kwargs: Any) -> _FakePendingCall:
-        if "in parents" in str(kwargs.get("q", "")):
+        q = str(kwargs.get("q", ""))
+        if "in parents" in q or q.startswith("trashed=false"):
             return self._children.list(**kwargs)
         return super().list(**kwargs)
 
@@ -241,7 +242,7 @@ async def test_walk_drive_folders_paginates(patch_drive_client: Any) -> None:
     assert walk_calls[1].get("pageToken") == "NEXT"
 
 
-async def test_walk_populates_root_files_from_parallel_children_listing(
+async def test_walk_populates_files_from_parallel_drive_listing(
     patch_drive_client: Any,
 ) -> None:
     client = _FakeClient(
@@ -261,6 +262,12 @@ async def test_walk_populates_root_files_from_parallel_children_listing(
                         "mimeType": "application/vnd.google-apps.document",
                         "parents": ["d"],
                     },
+                    {
+                        "id": "doc2",
+                        "name": "Nested Doc",
+                        "mimeType": "application/vnd.google-apps.document",
+                        "parents": ["f1"],
+                    },
                     {"id": "f1", "name": "Folder", "mimeType": MIME_FOLDER, "parents": ["d"]},
                 ]
             }
@@ -271,9 +278,42 @@ async def test_walk_populates_root_files_from_parallel_children_listing(
     tree = await _svc().walk_drive_folders("d")
 
     assert [f.id for f in tree.folders] == ["f1"]
-    assert [f.id for f in tree.files] == ["doc1"]
-    children_call = next(c for c in client.files_captured if "in parents" in c.get("q", ""))
-    assert "'d' in parents" in children_call["q"]
+    assert [f.id for f in tree.files] == ["doc1", "doc2"]
+    assert tree.files[0].parent_id is None
+    assert tree.files[1].parent_id == "f1"
+    files_call = next(c for c in client.files_captured if c.get("q", "").startswith("trashed"))
+    assert files_call["corpora"] == "drive"
+    assert files_call["driveId"] == "d"
+
+
+async def test_walk_truncates_oversized_drive_file_listings(
+    patch_drive_client: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.drive import service as drive_service
+
+    monkeypatch.setattr(drive_service, "_MAX_DRIVE_FILE_PAGES", 1)
+    client = _FakeClient(
+        files_pages=[{"files": []}],
+        children_pages=[
+            {
+                "files": [
+                    {
+                        "id": "doc1",
+                        "name": "Doc",
+                        "mimeType": "application/vnd.google-apps.document",
+                        "parents": ["d"],
+                    }
+                ],
+                "nextPageToken": "MORE",
+            },
+        ],
+    )
+    patch_drive_client(client)
+
+    tree = await _svc().walk_drive_folders("d")
+
+    assert tree.files_complete is False
+    assert tree.files == []
 
 
 async def test_list_folder_children_queries_by_parent(patch_drive_client: Any) -> None:

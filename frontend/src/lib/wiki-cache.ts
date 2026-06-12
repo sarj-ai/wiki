@@ -84,12 +84,13 @@ export function injectNewFileIntoCaches(qc: QueryClient, file: FileResponse): vo
       return { ...prev, folders: [...prev.folders, node] };
     });
   }
-  const isRootFile = file.driveId !== undefined && parentKey === file.driveId;
-  if (file.driveId && file.mimeType !== MIME_FOLDER && isRootFile) {
+  if (file.driveId && file.mimeType !== MIME_FOLDER) {
+    const treeNode: DriveNode =
+      node.parentId === file.driveId ? { ...node, parentId: undefined } : node;
     qc.setQueryData<DriveTree | undefined>(wikiKeys.driveTree(file.driveId), (prev) => {
       if (!prev) return prev;
-      if (prev.files.some((f) => f.id === node.id)) return prev;
-      return { ...prev, files: [...prev.files, node] };
+      const others = prev.files.filter((f) => f.id !== treeNode.id);
+      return { ...prev, files: [...others, treeNode] };
     });
   }
 }

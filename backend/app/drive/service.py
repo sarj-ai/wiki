@@ -59,6 +59,11 @@ _PROBE_BATCH_SIZE = 100
 
 _SEARCH_PAGE_SIZE = 50
 
+# Caps the drive-wide file listing baked into the tree cache. Drives
+# past the cap fall back to lazy per-folder listings client-side
+# (files_complete=False) instead of hauling an unbounded payload.
+_MAX_DRIVE_FILE_PAGES = 3
+
 # Google Workspace types that expose a clean text/plain export. Other
 # types (PDF, images, Forms) can't export useful text — we return a
 # null snippet and let the UI show a type-specific placeholder.
@@ -131,14 +136,14 @@ class GoogleDriveService(DriveService):
 
     @override
     async def walk_drive_folders(self, drive_id: str) -> DriveTree:
-        tree, root_children = await asyncio.gather(
+        tree, (files, files_complete) = await asyncio.gather(
             asyncio.to_thread(self._walk_folders_sync, drive_id),
-            asyncio.to_thread(self._list_children_sync, drive_id),
+            asyncio.to_thread(self._list_drive_files_sync, drive_id),
         )
-        root_files = [n for n in root_children if not _is_folder_like(n)]
+        tree.files_complete = files_complete
         tree.folders, tree.files = await asyncio.gather(
             self._resolve_shortcut_nodes(tree.folders),
-            self._resolve_shortcut_nodes(root_files),
+            self._resolve_shortcut_nodes(files if files_complete else []),
         )
         return tree
 
@@ -452,6 +457,58 @@ class GoogleDriveService(DriveService):
             if not page_token:
                 return out
 
+    def _list_drive_files_sync(self, drive_id: str) -> tuple[list[DriveNode], bool]:
+        client = self._client()
+        out: list[DriveNode] = []
+        page_token: str | None = None
+        pages = 0
+        query = f"trashed=false and {_build_mime_clause()}"
+        while True:
+            params: dict[str, Any] = {
+                "q": query,
+                "corpora": "drive",
+                "driveId": drive_id,
+                "includeItemsFromAllDrives": True,
+                "supportsAllDrives": True,
+                "pageSize": 1000,
+                "fields": (
+                    "nextPageToken,files(id,name,mimeType,parents,modifiedTime,"
+                    "shortcutDetails(targetId,targetMimeType))"
+                ),
+            }
+            if page_token:
+                params["pageToken"] = page_token
+            try:
+                resp = execute_with_retry(client.files().list(**params))
+            except HttpError:
+                logger.exception(
+                    "list_drive_files failed user={} drive={}",
+                    self._user.id,
+                    drive_id,
+                )
+                return out, False
+            for raw in resp.get("files", []):
+                if raw["mimeType"] == MIME_FOLDER:
+                    continue
+                details = raw.get("shortcutDetails") or {}
+                target_mime = details.get("targetMimeType")
+                if raw["mimeType"] == MIME_SHORTCUT and (
+                    target_mime == MIME_FOLDER or target_mime not in NAVIGATOR_SUPPORTED_MIME_TYPES
+                ):
+                    continue
+                out.append(_node_from_api(raw, drive_id))
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                return out, True
+            pages += 1
+            if pages >= _MAX_DRIVE_FILE_PAGES:
+                logger.warning(
+                    "drive file listing truncated at {} pages drive={}",
+                    pages,
+                    drive_id,
+                )
+                return out, False
+
     def _search_drive_sync(self, drive_id: str, query: str, limit: int) -> list[SearchResult]:
         escaped = escape_query_value(query)
         q = f"(name contains '{escaped}' or fullText contains '{escaped}') and trashed=false"
@@ -652,12 +709,6 @@ def _search_result_from_api(raw: Any, drive_id: str | None = None) -> SearchResu
         shortcut_target_id=details.get("targetId"),
         shortcut_target_mime_type=details.get("targetMimeType"),
     )
-
-
-def _is_folder_like(node: DriveNode) -> bool:
-    if node.mime_type == MIME_FOLDER:
-        return True
-    return node.mime_type == MIME_SHORTCUT and node.shortcut_target_mime_type == MIME_FOLDER
 
 
 def _node_from_api(raw: Any, drive_id: str) -> DriveNode:

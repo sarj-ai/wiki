@@ -54,6 +54,7 @@ export const driveTree = zDriveTree.transform((t) => ({
   driveId: t.drive_id,
   folders: t.folders.map(toDriveNode),
   files: t.files.map(toDriveNode),
+  filesComplete: t.files_complete,
 }));
 
 export const searchResult = zSearchResult.transform((r) => ({

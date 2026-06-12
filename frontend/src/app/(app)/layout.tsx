@@ -5,6 +5,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { RedirectAfterLogin } from "@/components/redirect-after-login";
 import { SessionRefresh } from "@/components/session-refresh";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { DocViewerHost } from "@/components/wiki-document/doc-viewer-host";
 import { CommandPalette } from "@/components/wiki-search/command-palette";
 import { WikiSidebar } from "@/components/wiki-sidebar/wiki-sidebar";
 import { serverWikiApi } from "@/lib/server-api";
@@ -51,6 +52,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             broken palette, not a full-page global-error takeover. */}
         <ErrorBoundary>
           <CommandPalette />
+        </ErrorBoundary>
+        <ErrorBoundary>
+          <DocViewerHost />
         </ErrorBoundary>
       </SidebarProvider>
     </HydrationBoundary>

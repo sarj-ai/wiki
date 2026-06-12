@@ -133,7 +133,11 @@ function FileRowImpl({
   // bumped by ICON_COLUMN_WIDTH so the title text stays readable.
   const iconLeft = `${rowIndent(depth)}px`;
   const linkPadding = `${rowIndent(depth) + ICON_COLUMN_WIDTH}px`;
-  const titleAttr = route.tooltip ?? (isForm ? `${node.name} — opens in a new tab` : node.name);
+  const edited = node.modifiedTime
+    ? ` — edited ${new Date(node.modifiedTime).toLocaleDateString()}`
+    : "";
+  const titleAttr =
+    route.tooltip ?? (isForm ? `${node.name} — opens in a new tab` : `${node.name}${edited}`);
 
   return (
     <>

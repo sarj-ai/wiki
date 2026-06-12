@@ -105,6 +105,7 @@ class DriveTree(BaseModel):
     drive_id: str
     folders: list[DriveNode]
     files: list[DriveNode]
+    files_complete: bool = True
 
 
 class SearchResult(BaseModel):
