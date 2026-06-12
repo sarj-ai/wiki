@@ -9,12 +9,12 @@ import { DocViewerHost } from "@/components/wiki-document/doc-viewer-host";
 import { CommandPalette } from "@/components/wiki-search/command-palette";
 import { WikiSidebar } from "@/components/wiki-sidebar/wiki-sidebar";
 import { serverWikiApi } from "@/lib/server-api";
+import { ZSidebarStateCookie } from "@/lib/storage-schemas";
 import { authKeys, wikiKeys } from "@/lib/wiki-keys";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
-  const sidebarState = cookieStore.get("sidebar_state")?.value;
-  const defaultOpen = sidebarState !== undefined ? sidebarState === "true" : true;
+  const defaultOpen = ZSidebarStateCookie.parse(cookieStore.get("sidebar_state")?.value);
 
   // Fresh per-request client — module-level would leak between users.
   const queryClient = new QueryClient();

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 
 import { deduplicatedRefresh } from "@/lib/api-client";
+import { ZLastRefreshMs } from "@/lib/storage-schemas";
 
 const REFRESH_INTERVAL_MS = 20 * 60 * 1000;
 
@@ -14,7 +15,7 @@ export function SessionRefresh() {
   useEffect(() => {
     const maybeRefresh = () => {
       if (document.visibilityState !== "visible") return;
-      const last = Number(localStorage.getItem(LAST_REFRESH_KEY) ?? "0");
+      const last = ZLastRefreshMs.parse(localStorage.getItem(LAST_REFRESH_KEY));
       if (Date.now() - last < REFRESH_INTERVAL_MS) return;
       localStorage.setItem(LAST_REFRESH_KEY, String(Date.now()));
       void deduplicatedRefresh().then((ok) => {

@@ -4,6 +4,8 @@ import { useCallback } from "react";
 import { create } from "zustand";
 import { persist, type StorageValue } from "zustand/middleware";
 
+import { ZPersistedExpansion } from "@/lib/storage-schemas";
+
 /**
  * Per-row expansion state for the navigator sidebar, persisted to
  * localStorage so a reload doesn't collapse everything the user just
@@ -109,7 +111,9 @@ function legacyAwareStorage<S>(stateKey: "expanded" | "collapsed"): {
           }
           return { state: { [stateKey]: map } as S, version: 0 };
         }
-        return parsed as StorageValue<S>;
+        const validated = ZPersistedExpansion.safeParse(parsed);
+        if (!validated.success) return null;
+        return validated.data as unknown as StorageValue<S>;
       } catch {
         return null;
       }

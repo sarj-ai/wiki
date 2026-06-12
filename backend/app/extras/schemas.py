@@ -1,29 +1,27 @@
-"""Request/response DTOs for the extras router."""
-
 from __future__ import annotations
 
-from pydantic import BaseModel
+from typing import Annotated
+
+from pydantic import BaseModel, Field, HttpUrl, StringConstraints
+
+
+IconStr = Annotated[str, StringConstraints(min_length=1, max_length=8)]
+FiniteFloat = Annotated[float, Field(allow_inf_nan=False)]
 
 
 class DocIconWrite(BaseModel):
-    """Set a Google Doc's icon and/or cover (global)."""
-
-    icon: str | None = None
-    cover_url: str | None = None
+    icon: IconStr | None = None
+    cover_url: HttpUrl | None = None
 
 
 class DocIconRead(BaseModel):
-    """Response shape — decoupled from the Write payload so fields are required."""
-
     drive_id: str
     icon: str | None
     cover_url: str | None
 
 
 class FolderIconWrite(BaseModel):
-    """Per-user folder icon override."""
-
-    icon: str | None = None
+    icon: IconStr | None = None
 
 
 class FolderIconRead(BaseModel):
@@ -32,26 +30,20 @@ class FolderIconRead(BaseModel):
 
 
 class SortOrderWrite(BaseModel):
-    """Single fractional-index drag-drop update."""
-
     drive_id: str
-    sort_order: float
+    sort_order: FiniteFloat
 
 
 class SortOrderBulkWrite(BaseModel):
-    """Bulk reorder: one update per moved item."""
-
     items: list[SortOrderWrite] = []
 
 
 class SortOrderRead(BaseModel):
     drive_id: str
-    sort_order: float
+    sort_order: FiniteFloat
 
 
 class SortOrderBulkResult(BaseModel):
-    """Typed response for the bulk reorder endpoint."""
-
     updated: int
 
 

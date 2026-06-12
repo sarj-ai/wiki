@@ -29,10 +29,17 @@ from googleapiclient.discovery_cache import get_static_doc
 from googleapiclient.errors import HttpError
 import httplib2
 from loguru import logger
+from pydantic import ValidationError
 
 from app.auth.encryption import decrypt_text
 from app.config import settings
 from app.drive import drives_cache, probe_cache
+from app.drive.google_schemas import (
+    GoogleDrive,
+    GoogleFile,
+    GoogleFileMetadata,
+    GoogleFileProbe,
+)
 from app.drive.retry import drive_retry, execute_with_retry
 from app.drive.schemas import (
     MIME_FOLDER,
@@ -322,9 +329,10 @@ class GoogleDriveService(DriveService):
                 target_id,
             )
             return None
-        if response.get("trashed"):
+        probe = GoogleFileProbe.model_validate(response)
+        if probe.trashed:
             return None
-        return ShortcutProbe(accessible=True, target_drive_id=response.get("driveId"))
+        return ShortcutProbe(accessible=True, target_drive_id=probe.drive_id)
 
     # ------------------------------------------------------------------
     # Sync implementations. Wrapped in asyncio.to_thread by the public
@@ -349,10 +357,13 @@ class GoogleDriveService(DriveService):
                 logger.exception("drives.list failed for user={}", self._user.id)
                 return out
             for d in resp.get("drives", []):
-                drive_id = d.get("id")
-                name = d.get("name")
-                if drive_id and name:
-                    out.append(DriveSummary(id=drive_id, name=name))
+                try:
+                    drive = GoogleDrive.model_validate(d)
+                except ValidationError:
+                    continue
+                if not drive.id or not drive.name:
+                    continue
+                out.append(DriveSummary(id=drive.id, name=drive.name))
             page_token = resp.get("nextPageToken")
             if not page_token:
                 return out
@@ -391,12 +402,10 @@ class GoogleDriveService(DriveService):
                 )
                 return out
             for raw in resp.get("files", []):
-                node = _node_from_api(raw, drive_id)
+                node = _node_from_api(GoogleFile.model_validate(raw), drive_id)
                 if node.mime_type == MIME_SHORTCUT and (
                     node.shortcut_target_mime_type != MIME_FOLDER
                 ):
-                    # File-target shortcuts surface only in the children
-                    # listing — keep the folder walk strictly hierarchical.
                     continue
                 out.folders.append(node)
             page_token = resp.get("nextPageToken")
@@ -432,24 +441,22 @@ class GoogleDriveService(DriveService):
                 )
                 return out
             for raw in resp.get("files", []):
-                details = raw.get("shortcutDetails") or {}
-                target_mime = details.get("targetMimeType")
+                file = GoogleFile.model_validate(raw)
+                details = file.shortcut_details
+                target_mime = details.target_mime_type if details else None
                 if (
-                    raw["mimeType"] == MIME_SHORTCUT
+                    file.mime_type == MIME_SHORTCUT
                     and target_mime not in NAVIGATOR_SUPPORTED_MIME_TYPES
                 ):
-                    # Drop shortcuts pointing at unsupported file types
-                    # (e.g. third-party Drive apps) so we never render a
-                    # row that has nothing to open.
                     continue
                 out.append(
                     DriveNode(
-                        id=raw["id"],
-                        name=raw["name"],
-                        mime_type=raw["mimeType"],
+                        id=file.id,
+                        name=file.name,
+                        mime_type=file.mime_type,
                         parent_id=folder_id,
-                        modified_time=raw.get("modifiedTime"),
-                        shortcut_target_id=details.get("targetId"),
+                        modified_time=file.modified_time,
+                        shortcut_target_id=details.target_id if details else None,
                         shortcut_target_mime_type=target_mime,
                     )
                 )
@@ -488,15 +495,16 @@ class GoogleDriveService(DriveService):
                 )
                 return out, False
             for raw in resp.get("files", []):
-                if raw["mimeType"] == MIME_FOLDER:
+                file = GoogleFile.model_validate(raw)
+                if file.mime_type == MIME_FOLDER:
                     continue
-                details = raw.get("shortcutDetails") or {}
-                target_mime = details.get("targetMimeType")
-                if raw["mimeType"] == MIME_SHORTCUT and (
+                details = file.shortcut_details
+                target_mime = details.target_mime_type if details else None
+                if file.mime_type == MIME_SHORTCUT and (
                     target_mime == MIME_FOLDER or target_mime not in NAVIGATOR_SUPPORTED_MIME_TYPES
                 ):
                     continue
-                out.append(_node_from_api(raw, drive_id))
+                out.append(_node_from_api(file, drive_id))
             page_token = resp.get("nextPageToken")
             if not page_token:
                 return out, True
@@ -576,8 +584,7 @@ class GoogleDriveService(DriveService):
             except HttpError:
                 logger.exception("snippet metadata fetch failed file={}", file_id)
                 return SnippetResult(file_id=file_id, mime_type="", snippet=None, match_term=None)
-            fetched_mime: str = meta.get("mimeType", "")
-            mime_type = fetched_mime
+            mime_type = GoogleFileMetadata.model_validate(meta).mime_type
 
         if mime_type not in _TEXT_EXPORTABLE_MIME_TYPES:
             return SnippetResult(
@@ -692,40 +699,36 @@ def _build_mime_clause() -> str:
 
 
 def _search_result_from_api(raw: Any, drive_id: str | None = None) -> SearchResult:
-    home_drive_id = raw.get("driveId") or drive_id
-    parents = raw.get("parents") or []
-    parent_id: str | None = parents[0] if parents else None
+    file = GoogleFile.model_validate(raw)
+    home_drive_id = file.drive_id or drive_id
+    parent_id: str | None = file.parents[0] if file.parents else None
     if parent_id == home_drive_id:
         parent_id = None
-    details = raw.get("shortcutDetails") or {}
+    details = file.shortcut_details
     return SearchResult(
-        id=raw["id"],
-        name=raw["name"],
-        mime_type=raw["mimeType"],
-        drive_id=raw.get("driveId"),
+        id=file.id,
+        name=file.name,
+        mime_type=file.mime_type,
+        drive_id=file.drive_id,
         drive_name=None,
         parent_id=parent_id,
-        modified_time=raw.get("modifiedTime"),
-        shortcut_target_id=details.get("targetId"),
-        shortcut_target_mime_type=details.get("targetMimeType"),
+        modified_time=file.modified_time,
+        shortcut_target_id=details.target_id if details else None,
+        shortcut_target_mime_type=details.target_mime_type if details else None,
     )
 
 
-def _node_from_api(raw: Any, drive_id: str) -> DriveNode:
-    # Drive returns the drive id itself as the parent for root-level
-    # files/folders; we normalize that to None so tree reconstruction
-    # treats them as top-level.
-    parents = raw.get("parents") or []
-    parent_id: str | None = parents[0] if parents else None
+def _node_from_api(file: GoogleFile, drive_id: str) -> DriveNode:
+    parent_id: str | None = file.parents[0] if file.parents else None
     if parent_id == drive_id:
         parent_id = None
-    details = raw.get("shortcutDetails") or {}
+    details = file.shortcut_details
     return DriveNode(
-        id=raw["id"],
-        name=raw["name"],
-        mime_type=raw["mimeType"],
+        id=file.id,
+        name=file.name,
+        mime_type=file.mime_type,
         parent_id=parent_id,
-        modified_time=raw.get("modifiedTime"),
-        shortcut_target_id=details.get("targetId"),
-        shortcut_target_mime_type=details.get("targetMimeType"),
+        modified_time=file.modified_time,
+        shortcut_target_id=details.target_id if details else None,
+        shortcut_target_mime_type=details.target_mime_type if details else None,
     )

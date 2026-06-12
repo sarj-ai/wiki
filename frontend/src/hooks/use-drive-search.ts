@@ -17,7 +17,7 @@ export function useDriveSearch(query: string) {
     // Drive Search API fan-out happens server-side across every drive
     // the user has access to (see backend/app/drive/search_router.py).
     queryFn: () => wikiApi.driveSearch(debouncedQuery, 10),
-    enabled: debouncedQuery.length >= 2,
+    enabled: debouncedQuery.length >= 2 && debouncedQuery.length <= 2048,
     // Results are cheap to refetch and stale quickly for queries like
     // "latest doc", so keep them fresh for ~30s only.
     staleTime: 30_000,

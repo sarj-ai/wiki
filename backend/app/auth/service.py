@@ -20,6 +20,7 @@ from app.auth.errors import (
     TokenRevokedError,
 )
 from app.auth.jwt import create_access_token, create_refresh_token, decode_token
+from app.auth.schemas import GoogleTokenResponse, GoogleUserInfo
 from app.config import settings
 from app.drive import drives_cache
 from app.models.user import User
@@ -152,10 +153,10 @@ class GoogleAuthService(AuthService):
         if resp.status_code != 200:
             logger.warning("Google token exchange failed: {}", resp.status_code)
             raise AuthFailedError
-        data = resp.json()
+        data = GoogleTokenResponse.model_validate(resp.json())
         return _GoogleTokens(
-            access_token=data["access_token"],
-            refresh_token=data.get("refresh_token"),
+            access_token=data.access_token,
+            refresh_token=data.refresh_token,
         )
 
     async def _fetch_userinfo(self, google_access_token: str) -> _Userinfo:
@@ -165,12 +166,12 @@ class GoogleAuthService(AuthService):
         )
         if resp.status_code != 200:
             raise AuthFailedError
-        data = resp.json()
+        data = GoogleUserInfo.model_validate(resp.json())
         return _Userinfo(
-            email=data["email"].lower(),
-            google_id=data["id"],
-            display_name=data.get("name"),
-            avatar_url=data.get("picture"),
+            email=data.email.lower(),
+            google_id=data.id,
+            display_name=data.name,
+            avatar_url=data.picture,
         )
 
     def _enforce_domain(self, email: str) -> None:
