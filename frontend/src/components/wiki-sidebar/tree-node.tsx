@@ -6,7 +6,6 @@ import { memo, type ReactNode } from "react";
 
 import type { DriveNode } from "@/types/wiki";
 
-import { Button } from "@/components/ui/button";
 import { SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem } from "@/components/ui/sidebar";
 import { useExpandedFolder } from "@/hooks/use-expanded-folders";
 import { useSetFolderIcon } from "@/hooks/use-wiki-mutations";
@@ -24,10 +23,11 @@ import { MIME_DOC, MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
 
 import { CreateFileMenu } from "./create-file-menu";
 import { useDriveSectionContext } from "./drive-context";
-import { EmojiPickerPopover } from "./emoji-picker-popover";
 import { EmptyDropZone } from "./empty-droppable";
 import { FileRow } from "./file-row";
 import { ItemMenu } from "./item-menu";
+import { CHEVRON_OFFSET, ICON_COLUMN_WIDTH } from "./layout-constants";
+import { PickableIcon } from "./pickable-icon";
 import { SortableItem } from "./sortable-item";
 import { useIsDropIntoFolder } from "./use-drag-over-store";
 import { useIsMovingFile } from "./use-in-flight-moves";
@@ -37,11 +37,6 @@ interface TreeNodeProps {
   parentFolderId: string | null;
   depth: number;
 }
-
-// Width reserved for the absolute-positioned icon column. Kept in
-// sync with file-row.tsx so file and folder rows share the exact
-// same horizontal rhythm at every depth.
-const ICON_COLUMN_WIDTH = 24;
 
 interface ShortcutMeta {
   isShortcut: boolean;
@@ -277,7 +272,7 @@ function FolderHeader({
   // bubbling — the icon click lives in a different subtree entirely,
   // so radix Popover's toggle runs cleanly.
   const chevronPadding = `${depth * 12 + 8}px`;
-  const iconLeft = `${depth * 12 + 8 + 18}px`; // chevron width (~14) + gap
+  const iconLeft = `${depth * 12 + 8 + CHEVRON_OFFSET}px`;
   const iconContent =
     iconEmoji && !meta.isShortcut ? (
       <span className="text-base leading-none">{iconEmoji}</span>
@@ -317,13 +312,21 @@ function FolderHeader({
         <span className="shrink-0" style={{ width: ICON_COLUMN_WIDTH - 4 }} aria-hidden="true" />
         <span className="truncate">{node.name}</span>
       </SidebarMenuButton>
+      {/*
+        Folder shortcuts skip the emoji picker — the icon belongs to
+        the target's home, not to the pointer. Inaccessible rows
+        likewise: nothing to customise on a row the user can't open.
+      */}
       <div className="absolute top-1/2 z-10 -translate-y-1/2" style={{ left: iconLeft }}>
-        <FolderIcon
-          meta={meta}
-          iconContent={iconContent}
-          iconEmoji={iconEmoji}
-          onIconChange={onIconChange}
-        />
+        <PickableIcon
+          pickable={!meta.isShortcut && !meta.inaccessible}
+          dimmed={meta.inaccessible}
+          value={iconEmoji}
+          onChange={onIconChange}
+          ariaLabel="Change folder icon"
+        >
+          {iconContent}
+        </PickableIcon>
       </div>
       {/*
         Shortcut rows hide the create / rename / move actions — the
@@ -338,45 +341,5 @@ function FolderHeader({
         </div>
       )}
     </div>
-  );
-}
-
-interface FolderIconProps {
-  meta: ShortcutMeta;
-  iconContent: ReactNode;
-  iconEmoji: string | null;
-  onIconChange: (next: string | null) => Promise<void>;
-}
-
-// Folder shortcuts skip the emoji picker — the icon belongs to the
-// target's home, not to the pointer. Inaccessible rows likewise:
-// nothing to customise on a row the user can't open.
-function FolderIcon({ meta, iconContent, iconEmoji, onIconChange }: FolderIconProps) {
-  if (meta.isShortcut || meta.inaccessible) {
-    return (
-      <span
-        className={cn(
-          "flex size-6 shrink-0 items-center justify-center",
-          meta.inaccessible && "opacity-50",
-        )}
-      >
-        {iconContent}
-      </span>
-    );
-  }
-  return (
-    <EmojiPickerPopover value={iconEmoji} onChange={onIconChange}>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        aria-label="Change folder icon"
-        // Matches the file-row icon: hover uses the full sidebar
-        // highlight tokens so folder and file icons share the same
-        // pickable affordance and automatically flip with the theme.
-        className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground size-6 shrink-0 cursor-pointer transition-colors"
-      >
-        {iconContent}
-      </Button>
-    </EmojiPickerPopover>
   );
 }
