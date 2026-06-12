@@ -26,7 +26,7 @@ import { useDriveSectionContext } from "./drive-context";
 import { EmptyDropZone } from "./empty-droppable";
 import { FileRow } from "./file-row";
 import { ItemMenu } from "./item-menu";
-import { CHEVRON_OFFSET, ICON_COLUMN_WIDTH } from "./layout-constants";
+import { CHEVRON_OFFSET, ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants";
 import { PickableIcon } from "./pickable-icon";
 import { SortableItem } from "./sortable-item";
 import { useIsDropIntoFolder } from "./use-drag-over-store";
@@ -271,8 +271,8 @@ function FolderHeader({
   // never trigger the button's expand/collapse handler via event
   // bubbling — the icon click lives in a different subtree entirely,
   // so radix Popover's toggle runs cleanly.
-  const chevronPadding = `${depth * 12 + 8}px`;
-  const iconLeft = `${depth * 12 + 8 + CHEVRON_OFFSET}px`;
+  const chevronPadding = `${rowIndent(depth)}px`;
+  const iconLeft = `${rowIndent(depth) + CHEVRON_OFFSET}px`;
   const iconContent =
     iconEmoji && !meta.isShortcut ? (
       <span className="text-base leading-none">{iconEmoji}</span>

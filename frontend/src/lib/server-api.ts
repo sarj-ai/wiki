@@ -1,7 +1,9 @@
 import "server-only";
+import { type CamelCaseKeys } from "camelcase-keys";
 import { cookies } from "next/headers";
+import { type z } from "zod";
 
-import { camelizeParsed } from "@/lib/camelize";
+import { validateAndCamelize } from "@/lib/validated-payload";
 
 // Inlined at build time; the Worker has no private route to the API host.
 const API_URL = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:8000";
@@ -21,8 +23,14 @@ export class ServerApiError extends Error {
  * client — no cookie jar server-side, and the 401-refresh hook can't
  * set cookies from RSC. A missing token fails fast; prefetchQuery
  * swallows it and the client recovers via ky's silent refresh.
+ *
+ * Responses are validated against the generated schema with the same
+ * drift semantics as the client's ``validatedJson``.
  */
-export async function serverGet<T>(path: string): Promise<T> {
+export async function serverGet<S extends z.ZodType<Record<string, unknown> | unknown[]>>(
+  path: string,
+  schema: S,
+): Promise<CamelCaseKeys<z.infer<S>, true>> {
   const cookieStore = await cookies();
   const token = cookieStore.get("access_token")?.value;
   if (token === undefined) {
@@ -36,5 +44,5 @@ export async function serverGet<T>(path: string): Promise<T> {
     throw new ServerApiError(response.status);
   }
   const parsed: unknown = await response.json();
-  return camelizeParsed(parsed) as T;
+  return validateAndCamelize(parsed, schema, response.url);
 }

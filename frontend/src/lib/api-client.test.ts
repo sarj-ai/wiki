@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import * as z from "zod";
 
 import {
-  ApiValidationError,
   rebuildForReplay,
   snakecaseJsonBody,
   snakecaseJsonString,
   validatedJson,
 } from "@/lib/api-client";
 import { zDriveSummary, zUserProfile } from "@/lib/generated/zod.gen";
+import { ApiValidationError } from "@/lib/validated-payload";
 
 function jsonRequest(url: string, body: unknown): Request {
   return new Request(url, {

@@ -24,6 +24,8 @@ import { cn } from "@/lib/utils";
 import { buildChildrenIndex } from "@/lib/wiki-tree";
 import { MIME_SHORTCUT } from "@/types/wiki";
 
+import { rowIndent } from "./layout-constants";
+
 interface MoveFileDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -56,7 +58,7 @@ function FolderRow({
 
   return (
     <>
-      <div className="flex items-center gap-1" style={{ paddingLeft: `${depth * 12 + 8}px` }}>
+      <div className="flex items-center gap-1" style={{ paddingLeft: `${rowIndent(depth)}px` }}>
         <Button
           type="button"
           variant="ghost"

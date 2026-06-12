@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { MIME_DOC, MIME_FORM, MIME_SHORTCUT } from "@/types/wiki";
 
 import { ItemMenu } from "./item-menu";
-import { ICON_COLUMN_WIDTH } from "./layout-constants";
+import { ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants";
 import { PickableIcon } from "./pickable-icon";
 import { useIsMovingFile } from "./use-in-flight-moves";
 
@@ -110,8 +110,8 @@ function FileRowImpl({
   // an anchor element, so there's no risk of Next.js Link navigating
   // on a supposedly "icon-only" click. The Link's left padding is
   // bumped by ICON_COLUMN_WIDTH so the title text stays readable.
-  const iconLeft = `${depth * 12 + 8}px`;
-  const linkPadding = `${depth * 12 + 8 + ICON_COLUMN_WIDTH}px`;
+  const iconLeft = `${rowIndent(depth)}px`;
+  const linkPadding = `${rowIndent(depth) + ICON_COLUMN_WIDTH}px`;
   const titleAttr = route.tooltip ?? (isForm ? `${node.name} — opens in a new tab` : node.name);
 
   return (
