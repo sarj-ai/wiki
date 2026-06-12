@@ -1,4 +1,3 @@
-# Cloud SQL PostgreSQL instance
 
 resource "google_sql_database_instance" "main" {
   name             = "sarj-docs-db"
@@ -14,10 +13,7 @@ resource "google_sql_database_instance" "main" {
     ip_configuration {
       ipv4_enabled    = false
       private_network = google_compute_network.vpc.id
-      # Reject unencrypted connections outright. The Cloud SQL
-      # connector always uses mTLS; this closes the plaintext path for
-      # anything else inside the VPC.
-      ssl_mode = "ENCRYPTED_ONLY"
+      ssl_mode        = "ENCRYPTED_ONLY"
     }
 
     backup_configuration {
@@ -34,8 +30,8 @@ resource "google_sql_database_instance" "main" {
     deletion_protection_enabled = true
 
     maintenance_window {
-      day          = 7 # Sunday
-      hour         = 3 # 3 AM UTC
+      day          = 7
+      hour         = 3
       update_track = "stable"
     }
 
@@ -46,30 +42,36 @@ resource "google_sql_database_instance" "main" {
 
     database_flags {
       name  = "shared_buffers"
-      value = "32768" # 32 MB (in 8KB pages) — default ~128 MB is too much for f1-micro
+      value = "32768"
     }
 
     database_flags {
       name  = "work_mem"
-      value = "2048" # 2 MB — limit per-query sort/hash memory
+      value = "2048"
     }
 
     database_flags {
       name  = "maintenance_work_mem"
-      value = "32768" # 32 MB — for VACUUM, index builds
+      value = "32768"
     }
 
-    # IAM database authentication: the backend logs in as its service
-    # account (mTLS + short-lived IAM tokens) instead of a password.
     database_flags {
       name  = "cloudsql.iam_authentication"
       value = "on"
     }
 
-    # Audit DDL + role changes only — low volume, fits the deliberate
-    # 7-day log retention cap. Read/write classes would swamp it.
     database_flags {
       name  = "cloudsql.enable_pgaudit"
+      value = "on"
+    }
+
+    database_flags {
+      name  = "log_connections"
+      value = "on"
+    }
+
+    database_flags {
+      name  = "log_disconnections"
       value = "on"
     }
 
@@ -96,11 +98,6 @@ resource "google_sql_database" "sarj_wiki" {
   instance = google_sql_database_instance.main.name
 }
 
-# ``sarj_wiki_app`` owns every object in the sarj_wiki database, so the
-# in-database role must keep existing — but nothing logs in with its
-# password anymore (the app authenticates as the IAM user below, which
-# inherits the role). The password is Terraform-generated and lives
-# only in state; break-glass access = state access.
 resource "random_password" "wiki_db" {
   length  = 64
   special = false
@@ -112,11 +109,6 @@ resource "google_sql_user" "wiki_app" {
   password = random_password.wiki_db.result
 }
 
-# IAM database-authentication principal for the backend service
-# account. The Postgres role name is the SA email minus the
-# ".gserviceaccount.com" suffix. LOGIN only — object privileges come
-# from the in-database `GRANT sarj_wiki_app` membership applied by the
-# Alembic migration `e5f6a7b8c9d0_grant_iam_user`.
 resource "google_sql_user" "wiki_app_iam" {
   name     = trimsuffix(google_service_account.backend.email, ".gserviceaccount.com")
   instance = google_sql_database_instance.main.name

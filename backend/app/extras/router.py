@@ -1,13 +1,8 @@
-"""HTTP surface for Sarj Wiki UI overlays.
-
-Every route is a thin pass-through into ``ExtrasService``. No Drive
-calls here — this surface is DB-only.
-"""
-
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.drive.dependencies import require_member_drive
 from app.extras.dependencies import extras_service_dep
 from app.extras.errors import DocIconNotFoundError
 from app.extras.schemas import (
@@ -34,7 +29,7 @@ async def list_doc_icons(
     return await svc.list_doc_icons()
 
 
-@router.get("/doc-icons/{drive_id}")
+@router.get("/doc-icons/{drive_id}", dependencies=[Depends(require_member_drive)])
 async def read_doc_icon(
     drive_id: str,
     svc: ExtrasService = Depends(extras_service_dep),
@@ -45,7 +40,7 @@ async def read_doc_icon(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No icon") from e
 
 
-@router.put("/doc-icons/{drive_id}")
+@router.put("/doc-icons/{drive_id}", dependencies=[Depends(require_member_drive)])
 async def set_doc_icon(
     drive_id: str,
     payload: DocIconWrite,

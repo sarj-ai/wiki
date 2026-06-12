@@ -83,9 +83,9 @@ Audit commands at `/sarj-audit:*` (from the `sarj-agentic` plugin, enabled via `
 - Google OAuth 2.0 only; domain-restricted to `@sarj.ai` in `AuthService._enforce_domain`.
 - Google access + refresh tokens stored server-side, Fernet-encrypted. Never sent to the client.
 - FastAPI issues its own JWT after OAuth callback. JWT is the client credential (cookie or `Authorization: Bearer`).
-- `users.token_version` embedded in JWT; logout bumps it, invalidating every prior token.
-- Refresh tokens rotate on use.
-- JWT cookie: `max_age` = JWT expiry, `SameSite=lax` dev, `SameSite=none` prod.
+- `users.token_version` embedded in JWT; logout bumps it (invalidating every prior token) and revokes the Google refresh token at `oauth2.googleapis.com/revoke`.
+- Refresh re-issues a new token pair but does NOT yet rotate/expire the old refresh token (no reuse-detection); a stolen refresh token stays valid until logout or its 7-day expiry. Per-token-family rotation is a tracked follow-up (see `docs/SECURITY_RUNBOOK.md`).
+- JWT cookie: `max_age` = JWT expiry, `SameSite=lax` (both dev and prod).
 - `AuthError` is a typed exception hierarchy (`AuthFailedError`, `DomainRestrictedError`, `TokenRevokedError`) — each carries a `redirect_key` the callback router maps to the frontend's `?error=...` param.
 
 ## Access control

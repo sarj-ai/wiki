@@ -1,6 +1,7 @@
 from datetime import timedelta
 from typing import Annotated, Literal
 
+from cryptography.fernet import Fernet
 from pydantic import (
     Field,
     HttpUrl,
@@ -24,19 +25,25 @@ InstanceConnectionName = Annotated[
 LogLevel = Literal["TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"]
 
 
+def parse_fernet_keys(raw: str) -> list[str]:
+    keys = [k.strip() for k in raw.split(",") if k.strip()]
+    if not keys:
+        return []
+    try:
+        for k in keys:
+            Fernet(k.encode())
+    except ValueError, TypeError:
+        return []
+    return keys
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        # Tolerate stale keys lingering in a developer's .env.
         extra="ignore",
     )
 
-    # Database — exactly one connection path must be configured:
-    # * DATABASE_URL: direct asyncpg DSN (local dev / CI, password auth)
-    # * DB_INSTANCE_CONNECTION_NAME + DB_IAM_USER: Cloud SQL Python
-    #   Connector with IAM database authentication (production; no
-    #   password exists anywhere)
     DATABASE_URL: PostgresDsn | None = None
     DB_INSTANCE_CONNECTION_NAME: InstanceConnectionName | None = None
     DB_IAM_USER: NonEmptyStr | None = None
@@ -46,10 +53,9 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: Annotated[SecretStr, Field(min_length=1)]
     GOOGLE_REDIRECT_URI: HttpUrl = HttpUrl("http://localhost:8000/auth/callback")
     FERNET_KEY: SecretStr
+    CACHE_FERNET_KEY: SecretStr | None = None
     ALLOWED_DOMAIN: DomainStr = "sarj.ai"
     FRONTEND_URL: HttpUrl = HttpUrl("http://localhost:3000")
-    # Cookie Domain for the auth JWT pair. None = host-only (dev); prod
-    # sets "sarj.ai" so the Next server receives the JWTs on document loads.
     COOKIE_DOMAIN: DomainStr | None = None
     LOG_JSON: bool = False
     LOG_LEVEL: LogLevel = "INFO"
@@ -73,17 +79,13 @@ class Settings(BaseSettings):
             raise ValueError("DB_INSTANCE_CONNECTION_NAME and DB_IAM_USER must be set together")
         return self
 
-    @field_validator("FERNET_KEY")
+    @field_validator("FERNET_KEY", "CACHE_FERNET_KEY")
     @classmethod
-    def fernet_key_valid(cls, v: SecretStr) -> SecretStr:
-        from cryptography.fernet import Fernet
-
-        try:
-            Fernet(v.get_secret_value().encode())
-        except Exception as e:
-            raise ValueError(
-                "FERNET_KEY must be a valid Fernet key (32 url-safe base64-encoded bytes)"
-            ) from e
+    def fernet_keys_valid(cls, v: SecretStr | None) -> SecretStr | None:
+        if v is None:
+            return None
+        if not parse_fernet_keys(v.get_secret_value()):
+            raise ValueError("must be a comma-separated list of valid Fernet keys")
         return v
 
 

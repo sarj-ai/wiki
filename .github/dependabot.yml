@@ -1,7 +1,6 @@
 version: 2
 
 updates:
-  # Backend Python dependencies managed via uv.
   - package-ecosystem: uv
     directory: /backend
     schedule:
@@ -16,7 +15,6 @@ updates:
         patterns: ["*"]
         update-types: [minor, patch]
 
-  # Frontend npm dependencies.
   - package-ecosystem: npm
     directory: /frontend
     schedule:
@@ -35,7 +33,6 @@ updates:
       testing:
         patterns: ["@testing-library/*", "vitest", "@vitest/*", "happy-dom"]
 
-  # GitHub Actions workflow versions.
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -7,10 +7,9 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 import httpx
 from loguru import logger
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from slowapi.util import get_remote_address
 from sqlalchemy import text
 
 from app.auth.router import router as auth_router
@@ -22,14 +21,9 @@ from app.extras.router import router as extras_router
 from app.files.errors import FilesError
 from app.files.router import router as files_router
 from app.logging_config import configure_logging
+from app.ratelimit import limiter
 from app.request_id import RequestIDMiddleware
 from app.sidebar.router import router as sidebar_router
-
-
-# Per-IP global limit. OAuth endpoints are exempt because Google redirects there
-# and a slow user typing their password can hit a stricter cap. /health is also
-# exempt — uptime probes shouldn't compete with user requests for budget.
-limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 
 @asynccontextmanager
@@ -43,8 +37,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 app = FastAPI(title="Sarj Wiki API", lifespan=lifespan)
 app.state.limiter = limiter
-# slowapi's typed handler signature expects RateLimitExceeded specifically; cast
-# at the boundary so we keep mypy strict elsewhere.
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -63,8 +55,6 @@ async def global_exception_handler(
     request: Request,
     exc: Exception,  # noqa: ARG001 — FastAPI signature requirement
 ) -> JSONResponse:
-    # Without this, unhandled exceptions produce a plain-text response missing
-    # CORS headers, so the browser blocks the response and hides the real error.
     logger.exception("Unhandled exception on {} {}", request.method, request.url.path)
     return JSONResponse(
         status_code=500,

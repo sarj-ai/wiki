@@ -27,7 +27,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Trivy config scan
+      - name: Trivy config scan (report HIGH+CRITICAL)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
@@ -46,3 +46,12 @@ jobs:
             cat trivy-report.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Trivy config scan (gate CRITICAL)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: terraform
+          severity: CRITICAL
+          exit-code: "1"
+          format: table

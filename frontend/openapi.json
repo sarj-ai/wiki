@@ -1771,7 +1771,6 @@
     },
     "/sidebar/drives/{drive_id}/refresh": {
       "post": {
-        "description": "Force-refresh a drive's tree, bypassing the stale-while-revalidate\nwindow. Returns the freshly-walked tree so the client gets it in one\nround-trip instead of having to refetch separately.",
         "operationId": "refresh_drive_folders_sidebar_drives__drive_id__refresh_post",
         "parameters": [
           {
