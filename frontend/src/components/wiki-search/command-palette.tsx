@@ -1,16 +1,17 @@
 "use client";
 
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { Command as CommandPrimitive } from "cmdk";
 import { formatDistanceToNowStrict } from "date-fns";
 import { ExternalLink, Loader2, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import type { DriveSearchResult, DriveTree } from "@/types/wiki";
 
 import { Button } from "@/components/ui/button";
+import { Command, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCommandPaletteHotkey, useCommandPaletteState } from "@/hooks/use-command-palette";
 import { useDriveSearch, useDriveSearchSnippet } from "@/hooks/use-drive-search";
 import { expandPath, requestReveal } from "@/hooks/use-expanded-folders";
@@ -89,43 +90,22 @@ function relativeTime(iso: string | null): string {
   return formatDistanceToNowStrict(then, { addSuffix: true });
 }
 
-function ResultRow({
-  result,
-  driveName,
-  selected,
-  onSelect,
-  rowRef,
-}: {
-  result: DriveSearchResult;
-  driveName: string | null;
-  selected: boolean;
-  onSelect: () => void;
-  rowRef: ((el: HTMLButtonElement | null) => void) | null;
-}) {
+function ResultRow({ result, driveName }: { result: DriveSearchResult; driveName: string | null }) {
   const inaccessible = result.shortcutInaccessible === true;
   const tooltip = inaccessible
     ? "You don't have access to this shortcut's target. Contact your admin."
     : undefined;
   return (
-    <button
-      ref={rowRef ?? undefined}
-      type="button"
-      id={`palette-result-${result.id}`}
-      role="option"
-      aria-selected={selected}
-      // Click (or arrow-key navigation) selects — preview appears on
-      // the right. Hover does NOT preselect because the snippet fetch
-      // would fire on every row a cursor passes through, racing the
-      // intended selection. The explicit "Open" button in the preview
-      // panel (or pressing Enter) is the only way to actually
-      // navigate, matching how Spotlight lets you browse results.
-      // Inaccessible shortcut hits stay selectable so the preview
-      // panel can explain *why* — but the open path is gated below.
-      onClick={onSelect}
+    // Click/arrow only moves selection — preview on the right; hover
+    // never preselects (the snippet fetch would race). Enter or the
+    // preview's Open button navigates. Inaccessible hits stay enabled
+    // (cmdk-disabled rows are skipped by keyboard nav) so the preview
+    // can explain why; the open path is gated in openResult.
+    <CommandItem
+      value={result.id}
       title={tooltip}
       className={cn(
-        "hover:bg-accent/50 flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left text-sm outline-none",
-        selected && "bg-accent",
+        "flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left text-sm",
         inaccessible && "text-muted-foreground/60",
       )}
     >
@@ -140,7 +120,7 @@ function ResultRow({
           lines instead of truncating, so users can read the whole
           filename without hovering for a tooltip.
         */}
-        <div className="font-medium break-words">{result.name}</div>
+        <div className="text-foreground font-medium break-words">{result.name}</div>
         {driveName && <div className="text-muted-foreground text-xs break-words">{driveName}</div>}
       </div>
       {result.modifiedTime && (
@@ -148,7 +128,7 @@ function ResultRow({
           {relativeTime(result.modifiedTime)}
         </span>
       )}
-    </button>
+    </CommandItem>
   );
 }
 
@@ -252,26 +232,20 @@ export function CommandPalette() {
   const qc = useQueryClient();
 
   const [query, setQuery] = useState("");
-  // Store the highlighted result by its stable id, not by index —
-  // otherwise the index would point at a stale position every time
-  // the debounced search returns a new result set, forcing us to
-  // reset state from an effect (which the React Compiler rule, and
-  // React's own guidance, rightly flag as an anti-pattern).
+  // Selection is controlled by id, derived during render — id-stable
+  // across debounced result swaps, no reset-from-effect.
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  // Row refs keyed by result id so the selection-changed effect can
-  // scroll the currently-highlighted row into view when the user
-  // arrow-keys past the edge of the visible list.
-  const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   const searchQuery = useDriveSearch(query);
   const results = searchQuery.data ?? [];
 
-  const selectedIndex = (() => {
-    if (!selectedResultId) return 0;
-    const idx = results.findIndex((r) => r.id === selectedResultId);
-    return idx >= 0 ? idx : 0;
-  })();
+  const selectedId =
+    selectedResultId !== null && results.some((r) => r.id === selectedResultId)
+      ? selectedResultId
+      : (results[0]?.id ?? "");
+  const selectedResult = results.find((r) => r.id === selectedId) ?? null;
+  const hasQuery = query.trim().length >= 2;
 
   // Centralised close so programmatic dismissals (e.g. after openResult)
   // run the same reset as user-driven dismissals (Esc, click outside).
@@ -340,36 +314,13 @@ export function CommandPalette() {
     closePalette();
   };
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      if (results.length === 0) return;
-      const nextIdx = Math.min(selectedIndex + 1, results.length - 1);
-      setSelectedResultId(results[nextIdx]?.id ?? null);
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      if (results.length === 0) return;
-      const nextIdx = Math.max(0, selectedIndex - 1);
-      setSelectedResultId(results[nextIdx]?.id ?? null);
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      const result = results[selectedIndex];
-      if (result) openResult(result);
-    }
+  // Intercept Enter before cmdk's select-as-open (its handler bails on
+  // defaultPrevented); isComposing guards IME confirmation keystrokes.
+  const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    if (selectedResult) openResult(selectedResult);
   };
-
-  const selectedResult = results[selectedIndex] ?? null;
-  const hasQuery = query.trim().length >= 2;
-
-  // Sync the scroll position to the selected row — arrow-keying past
-  // the bottom of the visible results should scroll the list. This
-  // is a DOM-side-effect, not state manipulation, so it doesn't
-  // violate the set-state-in-effect rule.
-  useEffect(() => {
-    if (!selectedResult) return;
-    const row = rowRefs.current.get(selectedResult.id);
-    row?.scrollIntoView({ block: "nearest" });
-  }, [selectedResult]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -393,95 +344,74 @@ export function CommandPalette() {
           title is hidden visually while still being announced.
         */}
         <DialogTitle className="sr-only">Search Drive</DialogTitle>
-        <div className="border-border flex items-center gap-2.5 border-b px-5 py-4">
-          <Search className="text-muted-foreground size-5 shrink-0" />
-          {/*
-            Plain <input> — shadcn's Input wrapper carries built-in
-            padding and border styling that conflict with the palette's
-            flush-edge layout. Using a bare element keeps the cursor
-            tight against the search icon at gap-2.5.
-          */}
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-            }}
-            onKeyDown={handleKeyDown}
-            placeholder="Search Drive…"
-            className="placeholder:text-muted-foreground/70 flex-1 bg-transparent text-base leading-none outline-none"
-            aria-label="Search Drive"
-            role="combobox"
-            aria-expanded={hasQuery && results.length > 0}
-            aria-controls="palette-results"
-            aria-autocomplete="list"
-            aria-activedescendant={
-              selectedResult ? `palette-result-${selectedResult.id}` : undefined
-            }
-          />
-          {query.length > 0 && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => {
-                setQuery("");
-              }}
-              className="text-muted-foreground hover:text-foreground size-7 shrink-0"
-              aria-label="Clear search"
-            >
-              <X className="size-4" />
-            </Button>
-          )}
-        </div>
-
-        <div className="flex min-h-0 flex-1">
-          <ScrollArea className="w-2/5 min-w-0 border-r">
-            <div
-              className="space-y-0.5 p-3"
-              id="palette-results"
-              role="listbox"
-              aria-label="Search results"
-            >
-              {!hasQuery && (
-                <div className="text-muted-foreground px-3 py-4 text-xs">
-                  Type at least 2 characters to search. Press ↑↓ to navigate, ⏎ to open.
-                </div>
-              )}
-              {hasQuery && searchQuery.isFetching && results.length === 0 && (
-                <div className="text-muted-foreground flex items-center gap-2 px-3 py-4 text-xs">
-                  <Loader2 className="size-3 animate-spin" /> Searching…
-                </div>
-              )}
-              {hasQuery && !searchQuery.isFetching && results.length === 0 && (
-                <div className="text-muted-foreground px-3 py-4 text-xs">No results</div>
-              )}
-              {results.map((result, index) => (
-                <ResultRow
-                  key={result.id}
-                  result={result}
-                  driveName={result.driveName}
-                  selected={index === selectedIndex}
-                  onSelect={() => {
-                    setSelectedResultId(result.id);
-                  }}
-                  rowRef={(el) => {
-                    if (el) rowRefs.current.set(result.id, el);
-                    else rowRefs.current.delete(result.id);
-                  }}
-                />
-              ))}
-            </div>
-          </ScrollArea>
-
-          <div className="min-w-0 flex-1">
-            <PreviewPanel
-              result={selectedResult}
-              query={query.trim()}
-              driveName={selectedResult?.driveName ?? null}
-              onOpen={openResult}
+        <Command
+          shouldFilter={false}
+          disablePointerSelection
+          value={selectedId}
+          onValueChange={setSelectedResultId}
+          // h-auto overrides the wrapper's h-full so the footer keeps its slot.
+          className="h-auto min-h-0 flex-1 bg-transparent"
+        >
+          <div className="border-border flex items-center gap-2.5 border-b px-5 py-4">
+            <Search className="text-muted-foreground size-5 shrink-0" />
+            {/* Raw cmdk Input — the shadcn wrapper hardcodes its own
+                icon/chrome and can't host this flush header. */}
+            <CommandPrimitive.Input
+              ref={inputRef}
+              value={query}
+              onValueChange={setQuery}
+              onKeyDown={handleInputKeyDown}
+              placeholder="Search Drive…"
+              className="placeholder:text-muted-foreground/70 flex-1 bg-transparent text-base leading-none outline-none"
+              aria-label="Search Drive"
             />
+            {query.length > 0 && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => {
+                  setQuery("");
+                }}
+                className="text-muted-foreground hover:text-foreground size-7 shrink-0"
+                aria-label="Clear search"
+              >
+                <X className="size-4" />
+              </Button>
+            )}
           </div>
-        </div>
+
+          <div className="flex min-h-0 flex-1">
+            <CommandList className="h-full max-h-full w-2/5 min-w-0 border-r">
+              <div className="space-y-0.5 p-3">
+                {!hasQuery && (
+                  <div className="text-muted-foreground px-3 py-4 text-xs">
+                    Type at least 2 characters to search. Press ↑↓ to navigate, ⏎ to open.
+                  </div>
+                )}
+                {hasQuery && searchQuery.isFetching && results.length === 0 && (
+                  <div className="text-muted-foreground flex items-center gap-2 px-3 py-4 text-xs">
+                    <Loader2 className="size-3 animate-spin" /> Searching…
+                  </div>
+                )}
+                {hasQuery && !searchQuery.isFetching && results.length === 0 && (
+                  <div className="text-muted-foreground px-3 py-4 text-xs">No results</div>
+                )}
+                {results.map((result) => (
+                  <ResultRow key={result.id} result={result} driveName={result.driveName} />
+                ))}
+              </div>
+            </CommandList>
+
+            <div className="min-w-0 flex-1">
+              <PreviewPanel
+                result={selectedResult}
+                query={query.trim()}
+                driveName={selectedResult?.driveName ?? null}
+                onOpen={openResult}
+              />
+            </div>
+          </div>
+        </Command>
 
         <div className="border-border text-muted-foreground flex items-center justify-between gap-2 border-t px-5 py-2.5 text-[11px]">
           <span>
