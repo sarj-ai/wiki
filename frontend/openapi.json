@@ -243,7 +243,6 @@
             "type": "array"
           },
           "files_complete": {
-            "default": true,
             "title": "Files Complete",
             "type": "boolean"
           },
@@ -255,7 +254,7 @@
             "type": "array"
           }
         },
-        "required": ["drive_id", "folders", "files"],
+        "required": ["drive_id", "folders", "files", "files_complete"],
         "title": "DriveTree",
         "type": "object"
       },

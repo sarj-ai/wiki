@@ -41,6 +41,7 @@ def _tree() -> DriveTree:
             )
         ],
         files=[],
+        files_complete=True,
     )
 
 
@@ -177,6 +178,24 @@ def test_unparseable_row_is_treated_as_cache_miss() -> None:
     assert drive.walks == 1
     assert cached.tree == tree
     assert cached.refreshed_at is None
+
+
+def test_pre_files_complete_row_is_treated_as_cache_miss() -> None:
+    tree = _tree()
+    row = DriveTreeCache(
+        drive_id="drive-1",
+        tree=encrypt_cache('{"drive_id": "drive-1", "folders": [], "files": []}'),
+        refreshed_at=datetime.now(UTC),
+    )
+    db = FakeSession(row=row)
+    drive = FakeDrive(tree)
+    service = _service(drive, FakeSession())
+
+    cached = asyncio.run(service.get_drive_tree(db, "drive-1"))  # type: ignore[arg-type]
+
+    assert db.deleted == [row]
+    assert drive.walks == 1
+    assert cached.tree == tree
 
 
 def test_cache_max_age_is_long_enough_to_matter() -> None:

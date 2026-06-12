@@ -49,7 +49,7 @@ class _FakeExtras:
 
 
 def _tree(drive_id: str) -> DriveTree:
-    return DriveTree(drive_id=drive_id, folders=[], files=[])
+    return DriveTree(drive_id=drive_id, folders=[], files=[], files_complete=True)
 
 
 def _member_user() -> User:
