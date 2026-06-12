@@ -104,7 +104,7 @@ Drive's ACL on the target is the only source of truth. The shortcut entry's own 
 ```sql
 users:
   id, email, google_id, display_name, avatar_url,
-  encrypted_access_token, encrypted_refresh_token, token_expiry,
+  encrypted_access_token, encrypted_refresh_token,
   token_version  -- bumped on logout; embedded in JWTs for revocation
 
 drive_tree_cache:

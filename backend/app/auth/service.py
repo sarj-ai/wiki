@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 import secrets
 from typing import override
 import uuid
@@ -182,7 +181,6 @@ class GoogleAuthService(AuthService):
         return _GoogleTokens(
             access_token=data["access_token"],
             refresh_token=data.get("refresh_token"),
-            expires_in=data.get("expires_in"),
         )
 
     async def _fetch_userinfo(self, google_access_token: str) -> _Userinfo:
@@ -211,11 +209,6 @@ class GoogleAuthService(AuthService):
     async def _upsert_user(self, info: _Userinfo, tokens: _GoogleTokens) -> User:
         encrypted_access = encrypt_token(tokens.access_token)
         encrypted_refresh = encrypt_token(tokens.refresh_token) if tokens.refresh_token else None
-        token_expiry = (
-            datetime.now(UTC).replace(microsecond=0) + timedelta(seconds=tokens.expires_in)
-            if tokens.expires_in is not None
-            else None
-        )
 
         # Look up by google_id first, then by email (stub users from share/search
         # flows may exist with a different google_id from Admin Directory API).
@@ -228,7 +221,6 @@ class GoogleAuthService(AuthService):
                 avatar_url=info.avatar_url,
                 encrypted_access_token=encrypted_access,
                 encrypted_refresh_token=encrypted_refresh,
-                token_expiry=token_expiry,
             )
             self._db.add(user)
         else:
@@ -239,7 +231,6 @@ class GoogleAuthService(AuthService):
             user.encrypted_access_token = encrypted_access
             if encrypted_refresh is not None:
                 user.encrypted_refresh_token = encrypted_refresh
-            user.token_expiry = token_expiry
 
         await self._db.commit()
         await self._db.refresh(user)
@@ -273,7 +264,6 @@ class GoogleAuthService(AuthService):
 class _GoogleTokens:
     access_token: str
     refresh_token: str | None
-    expires_in: int | None
 
 
 @dataclass(frozen=True, slots=True)
