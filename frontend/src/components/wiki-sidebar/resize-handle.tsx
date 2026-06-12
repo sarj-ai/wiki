@@ -2,19 +2,19 @@
 
 import { useEffect, useState } from "react";
 
-const STORAGE_KEY = "wiki-sidebar-width";
-const MIN_WIDTH_PX = 224; // 14rem — below this the labels clip too hard
-const MAX_WIDTH_PX = 576; // 36rem — beyond this the viewer gets cramped
+import { ZSidebarWidthCss } from "@/lib/storage-schemas";
 
-// Reads the persisted width on mount and applies it to the shadcn
-// SidebarProvider wrapper (which sets --sidebar-width via inline style).
-// Runs once per session — subsequent drags update the CSS var directly.
+const STORAGE_KEY = "wiki-sidebar-width";
+const MIN_WIDTH_PX = 224;
+const MAX_WIDTH_PX = 576;
+
 function useRestoreSidebarWidth() {
   useEffect(() => {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    if (!saved) return;
+    const saved = ZSidebarWidthCss.parse(window.localStorage.getItem(STORAGE_KEY));
+    if (saved === null) return;
+    const px = Math.min(MAX_WIDTH_PX, Math.max(MIN_WIDTH_PX, Number.parseInt(saved, 10)));
     const wrapper = document.querySelector<HTMLElement>('[data-slot="sidebar-wrapper"]');
-    wrapper?.style.setProperty("--sidebar-width", saved);
+    wrapper?.style.setProperty("--sidebar-width", `${px}px`);
   }, []);
 }
 

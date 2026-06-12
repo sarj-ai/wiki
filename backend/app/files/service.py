@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, override
 
 from googleapiclient.errors import HttpError
 
+from app.drive.google_schemas import GoogleFile
 from app.drive.retry import execute_mutation, execute_with_retry
 from app.drive.schemas import MIME_FOLDER, NAVIGATOR_SUPPORTED_MIME_TYPES
 from app.drive.service import DriveService, GoogleDriveService
@@ -229,14 +230,14 @@ class GoogleFilesService(FilesService):
 
 
 def _to_response(raw: File) -> FileResponse:
-    parents = raw.get("parents") or []
+    file = GoogleFile.model_validate(raw)
     return FileResponse(
-        id=raw["id"],
-        name=raw["name"],
-        mime_type=raw["mimeType"],
-        parent_folder_id=parents[0] if parents else None,
-        drive_id=raw.get("driveId"),
-        modified_time=raw.get("modifiedTime"),
+        id=file.id,
+        name=file.name,
+        mime_type=file.mime_type,
+        parent_folder_id=file.parents[0] if file.parents else None,
+        drive_id=file.drive_id,
+        modified_time=file.modified_time,
     )
 
 

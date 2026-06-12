@@ -43,7 +43,6 @@
         "type": "object"
       },
       "BreadcrumbItem": {
-        "description": "One hop in a file's breadcrumb chain (drive → folders → file).",
         "properties": {
           "id": {
             "title": "Id",
@@ -59,7 +58,6 @@
         "type": "object"
       },
       "DocIconRead": {
-        "description": "Response shape — decoupled from the Write payload so fields are required.",
         "properties": {
           "cover_url": {
             "anyOf": [
@@ -93,11 +91,13 @@
         "type": "object"
       },
       "DocIconWrite": {
-        "description": "Set a Google Doc's icon and/or cover (global).",
         "properties": {
           "cover_url": {
             "anyOf": [
               {
+                "format": "uri",
+                "maxLength": 2083,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -109,6 +109,8 @@
           "icon": {
             "anyOf": [
               {
+                "maxLength": 8,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -260,9 +262,10 @@
         "type": "object"
       },
       "FileCopy": {
-        "description": "Duplicate a file — the copy inherits the source's parent folder.",
         "properties": {
           "name": {
+            "maxLength": 255,
+            "minLength": 1,
             "title": "Name",
             "type": "string"
           }
@@ -272,13 +275,14 @@
         "type": "object"
       },
       "FileCreate": {
-        "description": "Create a Google file of a given type inside a folder.",
         "properties": {
           "mime_type": {
             "title": "Mime Type",
             "type": "string"
           },
           "name": {
+            "maxLength": 255,
+            "minLength": 1,
             "title": "Name",
             "type": "string"
           },
@@ -292,7 +296,6 @@
         "type": "object"
       },
       "FileDetail": {
-        "description": "``FileResponse`` augmented with breadcrumb + drive name.\n\nReturned only by ``GET /files/{id}`` so the page can render the\ntoolbar trail without a separate ``/sidebar/drives`` round-trip\nor a client-side parent walk over the cached tree.",
         "properties": {
           "breadcrumb": {
             "items": {
@@ -385,6 +388,8 @@
       "FileRename": {
         "properties": {
           "name": {
+            "maxLength": 255,
+            "minLength": 1,
             "title": "Name",
             "type": "string"
           }
@@ -468,11 +473,12 @@
         "type": "object"
       },
       "FolderIconWrite": {
-        "description": "Per-user folder icon override.",
         "properties": {
           "icon": {
             "anyOf": [
               {
+                "maxLength": 8,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -696,7 +702,6 @@
         "type": "object"
       },
       "SortOrderBulkResult": {
-        "description": "Typed response for the bulk reorder endpoint.",
         "properties": {
           "updated": {
             "title": "Updated",
@@ -708,7 +713,6 @@
         "type": "object"
       },
       "SortOrderBulkWrite": {
-        "description": "Bulk reorder: one update per moved item.",
         "properties": {
           "items": {
             "default": [],
@@ -738,7 +742,6 @@
         "type": "object"
       },
       "SortOrderWrite": {
-        "description": "Single fractional-index drag-drop update.",
         "properties": {
           "drive_id": {
             "title": "Drive Id",
@@ -778,6 +781,7 @@
             "title": "Display Name"
           },
           "email": {
+            "format": "email",
             "title": "Email",
             "type": "string"
           },
@@ -979,6 +983,7 @@
             "name": "q",
             "required": true,
             "schema": {
+              "maxLength": 2048,
               "minLength": 1,
               "title": "Q",
               "type": "string"
@@ -1046,6 +1051,7 @@
             "name": "q",
             "required": true,
             "schema": {
+              "maxLength": 2048,
               "minLength": 1,
               "title": "Q",
               "type": "string"

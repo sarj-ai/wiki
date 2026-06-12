@@ -96,6 +96,7 @@ export function NamePromptDialog({
               ref={inputRef}
               id="name-prompt-input"
               value={value}
+              maxLength={255}
               onChange={(e) => {
                 setValue(e.target.value);
               }}

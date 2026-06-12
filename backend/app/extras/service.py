@@ -92,12 +92,13 @@ class PostgresExtrasService(ExtrasService):
 
     @override
     async def upsert_doc_icon(self, drive_id: str, payload: DocIconWrite) -> DocIconRead:
+        cover_url = str(payload.cover_url) if payload.cover_url is not None else None
         stmt = (
             pg_insert(DocIcon)
             .values(
                 drive_id=drive_id,
                 icon=payload.icon,
-                cover_url=payload.cover_url,
+                cover_url=cover_url,
                 updated_at=datetime.now(UTC),
                 updated_by=self._user.id,
             )
@@ -113,7 +114,7 @@ class PostgresExtrasService(ExtrasService):
         )
         await self._db.execute(stmt)
         await self._db.commit()
-        return DocIconRead(drive_id=drive_id, icon=payload.icon, cover_url=payload.cover_url)
+        return DocIconRead(drive_id=drive_id, icon=payload.icon, cover_url=cover_url)
 
     @override
     async def list_folder_icons(self) -> list[FolderIconRead]:

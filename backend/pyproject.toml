@@ -22,6 +22,7 @@ dependencies = [
     "slowapi>=0.1.9",
     "tenacity>=9.1.4",
     "cloud-sql-python-connector[asyncpg]>=1.20.3",
+    "pydantic[email]>=2.13.4",
 ]
 
 [dependency-groups]

@@ -17,7 +17,7 @@ _SEARCH_LIMIT = "30/minute"
 @limiter.limit(_SEARCH_LIMIT)  # pyright: ignore[reportUntypedFunctionDecorator]
 async def search(
     request: Request,  # noqa: ARG001 — slowapi reads the client IP off this
-    q: str = Query(..., min_length=1),
+    q: str = Query(..., min_length=1, max_length=2048),
     limit_per_drive: int = Query(20, ge=1, le=100),
     svc: DriveService = Depends(drive_service_dep),
 ) -> list[SearchResult]:
@@ -29,7 +29,7 @@ async def search(
 async def snippet(
     request: Request,  # noqa: ARG001 — slowapi reads the client IP off this
     file_id: str = Query(..., min_length=1),
-    q: str = Query(..., min_length=1),
+    q: str = Query(..., min_length=1, max_length=2048),
     mime_type: str | None = Query(None, max_length=256),
     svc: DriveService = Depends(drive_service_dep),
 ) -> SnippetResult:
