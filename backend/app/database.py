@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -68,8 +69,14 @@ async def _connect_via_connector() -> Any:
     connector = _connector
     if connector is None:
         # Lazy refresh is the documented mode for Cloud Run's
-        # CPU-throttled execution model.
-        connector = Connector(refresh_strategy=RefreshStrategy.LAZY)
+        # CPU-throttled execution model. The loop kwarg is required for
+        # connect_async: a bare Connector() binds to a private
+        # background-thread loop and raises ConnectorLoopError when
+        # called from the app's loop.
+        connector = Connector(
+            refresh_strategy=RefreshStrategy.LAZY,
+            loop=asyncio.get_running_loop(),
+        )
         _connector = connector
     return await connector.connect_async(
         instance,
