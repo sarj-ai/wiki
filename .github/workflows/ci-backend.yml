@@ -98,4 +98,4 @@ jobs:
 
       # --cov-fail-under is a no-regression ratchet: raise it, never lower it.
       - name: Run pytest
-        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=38
+        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70

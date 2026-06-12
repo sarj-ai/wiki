@@ -2,9 +2,10 @@
 #
 # What the Sarj Wiki backend needs at runtime:
 #   * Non-sensitive plaintext env: ALLOWED_DOMAIN, FRONTEND_URL,
-#     GOOGLE_REDIRECT_URI
-#   * Sensitive secrets (via Secret Manager): DATABASE_URL,
-#     SECRET_KEY, FERNET_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+#     GOOGLE_REDIRECT_URI, DB_INSTANCE_CONNECTION_NAME, DB_NAME,
+#     DB_IAM_USER (DB auth is IAM — the SA is the credential)
+#   * Sensitive secrets (via Secret Manager): SECRET_KEY, FERNET_KEY,
+#     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 #
 # What the legacy Sarj Wiki stack needed but Sarj Wiki does NOT:
 #   * DRIVE_WEBHOOK_TOKEN — no more Drive push notifications
@@ -107,16 +108,23 @@ resource "google_cloud_run_v2_service" "backend" {
         value = "https://${var.backend_domain}/auth/callback"
       }
 
-      # Sensitive env vars from Secret Manager
+      # Database via the Cloud SQL Python Connector with IAM database
+      # authentication — none of these are secrets; the credential is
+      # the service account itself.
       env {
-        name = "DATABASE_URL"
-        value_source {
-          secret_key_ref {
-            secret  = google_secret_manager_secret.secrets["db-url"].secret_id
-            version = "latest"
-          }
-        }
+        name  = "DB_INSTANCE_CONNECTION_NAME"
+        value = google_sql_database_instance.main.connection_name
       }
+      env {
+        name  = "DB_NAME"
+        value = google_sql_database.sarj_wiki.name
+      }
+      env {
+        name  = "DB_IAM_USER"
+        value = google_sql_user.wiki_app_iam.name
+      }
+
+      # Sensitive env vars from Secret Manager
       env {
         name = "SECRET_KEY"
         value_source {

@@ -26,18 +26,6 @@ variable "db_tier" {
   default     = "db-f1-micro"
 }
 
-variable "db_password" {
-  description = "Cloud SQL password for the legacy sarj_docs_app user (kept for rollback)"
-  type        = string
-  sensitive   = true
-}
-
-variable "wiki_db_password" {
-  description = "Cloud SQL password for the sarj_wiki_app user (post-pivot, primary)"
-  type        = string
-  sensitive   = true
-}
-
 variable "google_client_id" {
   description = "Google OAuth client ID"
   type        = string

@@ -26,7 +26,6 @@ class User(Base):
     avatar_url: Mapped[str | None] = mapped_column(Text)
     encrypted_access_token: Mapped[str | None] = mapped_column(Text)
     encrypted_refresh_token: Mapped[str | None] = mapped_column(Text)
-    token_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Incremented on logout to invalidate all existing JWTs
     token_version: Mapped[int] = mapped_column(
         default=0,

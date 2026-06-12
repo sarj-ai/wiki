@@ -2,6 +2,7 @@ import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query
 import { notFound } from "next/navigation";
 
 import { FilePageClient } from "@/components/wiki-document/file-page-client";
+import { zFileDetail } from "@/lib/generated/zod.gen";
 import { serverGet, ServerApiError } from "@/lib/server-api";
 import { wikiKeys } from "@/lib/wiki-keys";
 
@@ -11,7 +12,7 @@ export default async function FilePage({ params }: { params: Promise<{ driveId: 
   try {
     await queryClient.fetchQuery({
       queryKey: wikiKeys.file(driveId),
-      queryFn: () => serverGet(`files/${encodeURIComponent(driveId)}`),
+      queryFn: () => serverGet(`files/${encodeURIComponent(driveId)}`, zFileDetail),
     });
   } catch (err) {
     // 404 → (app)/not-found in the first response; anything else is

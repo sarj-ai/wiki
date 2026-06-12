@@ -1,11 +1,20 @@
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
 import { cookies } from "next/headers";
+import { z } from "zod";
 
 import { ErrorBoundary } from "@/components/error-boundary";
 import { RedirectAfterLogin } from "@/components/redirect-after-login";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { CommandPalette } from "@/components/wiki-search/command-palette";
 import { WikiSidebar } from "@/components/wiki-sidebar/wiki-sidebar";
+import {
+  zDocIconRead,
+  zDriveSummary,
+  zFolderIconRead,
+  zPreferencesRead,
+  zSortOrderRead,
+  zUserProfile,
+} from "@/lib/generated/zod.gen";
 import { serverGet } from "@/lib/server-api";
 import { authKeys, wikiKeys } from "@/lib/wiki-keys";
 
@@ -22,27 +31,27 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   await Promise.all([
     queryClient.prefetchQuery({
       queryKey: wikiKeys.drives,
-      queryFn: () => serverGet("sidebar/drives"),
+      queryFn: () => serverGet("sidebar/drives", z.array(zDriveSummary)),
     }),
     queryClient.prefetchQuery({
       queryKey: wikiKeys.preferences,
-      queryFn: () => serverGet("extras/preferences"),
+      queryFn: () => serverGet("extras/preferences", zPreferencesRead),
     }),
     queryClient.prefetchQuery({
       queryKey: wikiKeys.folderIcons,
-      queryFn: () => serverGet("extras/folder-icons"),
+      queryFn: () => serverGet("extras/folder-icons", z.array(zFolderIconRead)),
     }),
     queryClient.prefetchQuery({
       queryKey: wikiKeys.docIcons,
-      queryFn: () => serverGet("extras/doc-icons"),
+      queryFn: () => serverGet("extras/doc-icons", z.array(zDocIconRead)),
     }),
     queryClient.prefetchQuery({
       queryKey: wikiKeys.sortOrders,
-      queryFn: () => serverGet("extras/sort-order"),
+      queryFn: () => serverGet("extras/sort-order", z.array(zSortOrderRead)),
     }),
     queryClient.prefetchQuery({
       queryKey: authKeys.me,
-      queryFn: () => serverGet("auth/me"),
+      queryFn: () => serverGet("auth/me", zUserProfile),
     }),
   ]);
 

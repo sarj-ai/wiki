@@ -14,6 +14,10 @@ resource "google_sql_database_instance" "main" {
     ip_configuration {
       ipv4_enabled    = false
       private_network = google_compute_network.vpc.id
+      # Reject unencrypted connections outright. The Cloud SQL
+      # connector always uses mTLS; this closes the plaintext path for
+      # anything else inside the VPC.
+      ssl_mode = "ENCRYPTED_ONLY"
     }
 
     backup_configuration {
@@ -54,6 +58,25 @@ resource "google_sql_database_instance" "main" {
       name  = "maintenance_work_mem"
       value = "32768" # 32 MB — for VACUUM, index builds
     }
+
+    # IAM database authentication: the backend logs in as its service
+    # account (mTLS + short-lived IAM tokens) instead of a password.
+    database_flags {
+      name  = "cloudsql.iam_authentication"
+      value = "on"
+    }
+
+    # Audit DDL + role changes only — low volume, fits the deliberate
+    # 7-day log retention cap. Read/write classes would swamp it.
+    database_flags {
+      name  = "cloudsql.enable_pgaudit"
+      value = "on"
+    }
+
+    database_flags {
+      name  = "pgaudit.log"
+      value = "ddl,role"
+    }
   }
 
   deletion_protection = true
@@ -68,29 +91,34 @@ resource "google_sql_database_instance" "main" {
   ]
 }
 
-resource "google_sql_database" "sarj_docs" {
-  name     = "sarj_docs"
-  instance = google_sql_database_instance.main.name
-}
-
-resource "google_sql_user" "app" {
-  name     = "sarj_docs_app"
-  instance = google_sql_database_instance.main.name
-  password = var.db_password
-}
-
-# Sarj Wiki — post-pivot DB + user. Lives in the same instance as
-# ``sarj_docs`` so we share Cloud SQL overhead, but isolated to its
-# own database and credential. ``sarj_docs`` / ``sarj_docs_app``
-# stay in place untouched so a same-day rollback is just flipping the
-# ``sarj-docs-db-url`` secret back to the old DSN — no data motion.
 resource "google_sql_database" "sarj_wiki" {
   name     = "sarj_wiki"
   instance = google_sql_database_instance.main.name
 }
 
+# ``sarj_wiki_app`` owns every object in the sarj_wiki database, so the
+# in-database role must keep existing — but nothing logs in with its
+# password anymore (the app authenticates as the IAM user below, which
+# inherits the role). The password is Terraform-generated and lives
+# only in state; break-glass access = state access.
+resource "random_password" "wiki_db" {
+  length  = 64
+  special = false
+}
+
 resource "google_sql_user" "wiki_app" {
   name     = "sarj_wiki_app"
   instance = google_sql_database_instance.main.name
-  password = var.wiki_db_password
+  password = random_password.wiki_db.result
+}
+
+# IAM database-authentication principal for the backend service
+# account. The Postgres role name is the SA email minus the
+# ".gserviceaccount.com" suffix. LOGIN only — object privileges come
+# from the in-database `GRANT sarj_wiki_app` membership applied by the
+# Alembic migration `e5f6a7b8c9d0_grant_iam_user`.
+resource "google_sql_user" "wiki_app_iam" {
+  name     = trimsuffix(google_service_account.backend.email, ".gserviceaccount.com")
+  instance = google_sql_database_instance.main.name
+  type     = "CLOUD_IAM_SERVICE_ACCOUNT"
 }

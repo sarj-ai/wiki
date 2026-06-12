@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 from app.auth.router import router as auth_router
 from app.config import settings
-from app.database import async_session
+from app.database import async_session, close_connector
 from app.drive.search_router import router as drive_search_router
 from app.extras.router import router as extras_router
 from app.files.errors import FilesError
@@ -37,6 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     async with httpx.AsyncClient(timeout=10.0) as http_client:
         app.state.http_client = http_client
         yield
+    await close_connector()
 
 
 app = FastAPI(title="Sarj Wiki API", lifespan=lifespan)

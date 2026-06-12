@@ -238,51 +238,57 @@ export function useSetPreferences() {
 }
 
 export function useSetDocIcon() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ driveId, icon }: { driveId: string; icon: string | null }) =>
-      wikiApi.setDocIcon(driveId, { icon }),
-    onMutate: ({ driveId, icon }) => {
-      const previous = qc.getQueryData<DocIcon[]>(wikiKeys.docIcons);
-      if (previous) {
-        const rest = previous.filter((d) => d.driveId !== driveId);
-        const existing = previous.find((d) => d.driveId === driveId);
-        qc.setQueryData<DocIcon[]>(wikiKeys.docIcons, [
-          ...rest,
-          { driveId, icon, coverUrl: existing?.coverUrl ?? null },
-        ]);
-      }
-      return { previous };
-    },
-    onError: (_err, _vars, context) => {
-      if (context?.previous) qc.setQueryData(wikiKeys.docIcons, context.previous);
-    },
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: wikiKeys.docIcons });
-    },
+  return useIconMutation<DocIcon, { driveId: string; icon: string | null }>({
+    queryKey: wikiKeys.docIcons,
+    mutationFn: ({ driveId, icon }) => wikiApi.setDocIcon(driveId, { icon }),
+    matches: (item, { driveId }) => item.driveId === driveId,
+    // Preserve the existing entry's coverUrl — the icon mutation must
+    // not wipe a previously-set cover.
+    buildItem: ({ driveId, icon }, existing) => ({
+      driveId,
+      icon,
+      coverUrl: existing?.coverUrl ?? null,
+    }),
   });
 }
 
 export function useSetFolderIcon() {
+  return useIconMutation<FolderIcon, { folderDriveId: string; icon: string | null }>({
+    queryKey: wikiKeys.folderIcons,
+    mutationFn: ({ folderDriveId, icon }) => wikiApi.setFolderIcon(folderDriveId, icon),
+    matches: (item, { folderDriveId }) => item.folderDriveId === folderDriveId,
+    buildItem: ({ folderDriveId, icon }) => ({ folderDriveId, icon }),
+  });
+}
+
+// Shared optimistic list-replace shape for the per-doc / per-folder icon
+// caches: swap the matching entry in onMutate, roll back in onError,
+// reconcile with the server in onSettled.
+function useIconMutation<TItem, TVars>(config: {
+  queryKey: readonly unknown[];
+  mutationFn: (vars: TVars) => Promise<unknown>;
+  matches: (item: TItem, vars: TVars) => boolean;
+  buildItem: (vars: TVars, existing: TItem | undefined) => TItem;
+}) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ folderDriveId, icon }: { folderDriveId: string; icon: string | null }) =>
-      wikiApi.setFolderIcon(folderDriveId, icon),
-    onMutate: ({ folderDriveId, icon }) => {
-      const previous = qc.getQueryData<FolderIcon[]>(wikiKeys.folderIcons);
+    mutationFn: config.mutationFn,
+    onMutate: (vars: TVars) => {
+      const previous = qc.getQueryData<TItem[]>(config.queryKey);
       if (previous) {
-        qc.setQueryData<FolderIcon[]>(wikiKeys.folderIcons, [
-          ...previous.filter((f) => f.folderDriveId !== folderDriveId),
-          { folderDriveId, icon },
+        const existing = previous.find((item) => config.matches(item, vars));
+        qc.setQueryData<TItem[]>(config.queryKey, [
+          ...previous.filter((item) => !config.matches(item, vars)),
+          config.buildItem(vars, existing),
         ]);
       }
       return { previous };
     },
     onError: (_err, _vars, context) => {
-      if (context?.previous) qc.setQueryData(wikiKeys.folderIcons, context.previous);
+      if (context?.previous) qc.setQueryData(config.queryKey, context.previous);
     },
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: wikiKeys.folderIcons });
+      void qc.invalidateQueries({ queryKey: config.queryKey });
     },
   });
 }

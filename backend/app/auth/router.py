@@ -43,6 +43,7 @@ _SAMESITE: Literal["lax", "strict", "none"] = "lax"
 
 _ACCESS_MAX_AGE = 30 * 60  # 30 minutes (matches JWT expiry)
 _REFRESH_MAX_AGE = 7 * 86400  # 7 days (matches JWT expiry)
+_OAUTH_STATE_MAX_AGE = 10 * 60  # long enough for a slow consent screen
 
 
 class UserProfile(BaseModel):
@@ -86,7 +87,7 @@ async def login(_request: Request) -> RedirectResponse:
         httponly=True,
         samesite="lax",
         secure=_is_secure,
-        max_age=600,
+        max_age=_OAUTH_STATE_MAX_AGE,
         path="/",
     )
     return response

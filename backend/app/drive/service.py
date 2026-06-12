@@ -1,9 +1,9 @@
 """User-scoped Drive operations as a single service class.
 
-Consolidates the thin wrappers that used to live in ``drives.py``,
-``tree_walker.py``, and ``search.py``. Every operation runs against the
-user's OAuth token — ``drives.list()`` is also our access-control
-boundary because Drive only returns drives the caller is a member of.
+Covers drive listing, folder-tree walking, and search. Every operation
+runs against the user's OAuth token — ``drives.list()`` is also our
+access-control boundary because Drive only returns drives the caller
+is a member of.
 
 ``DriveService`` is the ABC the rest of the app codes against.
 ``GoogleDriveService`` is the production implementation that calls the
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache
 from itertools import batched
@@ -30,7 +31,7 @@ from googleapiclient.errors import HttpError
 import httplib2
 from loguru import logger
 
-from app.auth.encryption import decrypt_token
+from app.auth.encryption import decrypt_text
 from app.config import settings
 from app.drive import drives_cache
 from app.drive.retry import drive_retry, execute_with_retry
@@ -208,72 +209,56 @@ class GoogleDriveService(DriveService):
     # ------------------------------------------------------------------
 
     async def _resolve_shortcut_nodes(self, nodes: list[DriveNode]) -> list[DriveNode]:
-        shortcuts = [n for n in nodes if n.mime_type == MIME_SHORTCUT]
-        if not shortcuts:
-            return nodes
-        drive_names = await self._drive_names()
-        probes = await self._probe_targets([n.shortcut_target_id for n in shortcuts])
-        resolved = dict(zip((n.id for n in shortcuts), probes, strict=True))
-        out: list[DriveNode] = []
-        for node in nodes:
-            if node.mime_type != MIME_SHORTCUT:
-                out.append(node)
-                continue
-            probe = resolved[node.id]
-            if probe is None:
-                # Target deleted or trashed → auto-prune.
-                continue
-            if not probe.accessible:
-                out.append(node.model_copy(update={"shortcut_inaccessible": True}))
-                continue
-            target_drive_id = probe.target_drive_id
-            out.append(
-                node.model_copy(
-                    update={
-                        "shortcut_target_drive_id": target_drive_id,
-                        "shortcut_target_drive_name": (
-                            drive_names.get(target_drive_id) if target_drive_id else None
-                        ),
-                    }
-                )
-            )
-        return out
+        return await self._resolve_shortcuts(
+            nodes,
+            lambda target_drive_id, drive_names: {
+                "shortcut_target_drive_id": target_drive_id,
+                "shortcut_target_drive_name": (
+                    drive_names.get(target_drive_id) if target_drive_id else None
+                ),
+            },
+        )
 
     async def _resolve_shortcut_search_results(
         self, results: list[SearchResult]
     ) -> list[SearchResult]:
-        """Same probe + grey-out logic as :meth:`_resolve_shortcut_nodes`,
-        applied to search hits so the palette can render inaccessible
-        shortcut hits with the same UX as the sidebar (greyed-out tooltip,
-        click suppressed). Auto-prune behaves identically — shortcut hits
-        whose target is deleted/trashed are dropped from the result list.
-        """
-        shortcuts = [r for r in results if r.mime_type == MIME_SHORTCUT]
+        # Same probe + grey-out logic as the sidebar nodes so the palette
+        # renders inaccessible shortcut hits with the same UX. SearchResult
+        # has no shortcut_target_drive_id field, hence the smaller update.
+        return await self._resolve_shortcuts(
+            results,
+            lambda target_drive_id, drive_names: {
+                "shortcut_target_drive_name": (
+                    drive_names.get(target_drive_id) if target_drive_id else None
+                ),
+            },
+        )
+
+    async def _resolve_shortcuts[T: (DriveNode, SearchResult)](
+        self,
+        items: list[T],
+        accessible_update: Callable[[str | None, dict[str, str]], dict[str, str | None]],
+    ) -> list[T]:
+        shortcuts = [i for i in items if i.mime_type == MIME_SHORTCUT]
         if not shortcuts:
-            return results
+            return items
         drive_names = await self._drive_names()
-        probes = await self._probe_targets([r.shortcut_target_id for r in shortcuts])
-        resolved = dict(zip((r.id for r in shortcuts), probes, strict=True))
-        out: list[SearchResult] = []
-        for result in results:
-            if result.mime_type != MIME_SHORTCUT:
-                out.append(result)
+        probes = await self._probe_targets([i.shortcut_target_id for i in shortcuts])
+        resolved = dict(zip((i.id for i in shortcuts), probes, strict=True))
+        out: list[T] = []
+        for item in items:
+            if item.mime_type != MIME_SHORTCUT:
+                out.append(item)
                 continue
-            probe = resolved[result.id]
+            probe = resolved[item.id]
             if probe is None:
+                # Target deleted or trashed → auto-prune.
                 continue
             if not probe.accessible:
-                out.append(result.model_copy(update={"shortcut_inaccessible": True}))
+                out.append(item.model_copy(update={"shortcut_inaccessible": True}))
                 continue
-            target_drive_id = probe.target_drive_id
             out.append(
-                result.model_copy(
-                    update={
-                        "shortcut_target_drive_name": (
-                            drive_names.get(target_drive_id) if target_drive_id else None
-                        ),
-                    }
-                )
+                item.model_copy(update=accessible_update(probe.target_drive_id, drive_names))
             )
         return out
 
@@ -600,9 +585,9 @@ class GoogleDriveService(DriveService):
     def _build_credentials(user: User) -> Credentials:
         if user.encrypted_access_token is None:
             raise ValueError(f"User {user.id} has no encrypted_access_token")
-        access_token = decrypt_token(user.encrypted_access_token)
+        access_token = decrypt_text(user.encrypted_access_token)
         refresh_token = (
-            decrypt_token(user.encrypted_refresh_token) if user.encrypted_refresh_token else None
+            decrypt_text(user.encrypted_refresh_token) if user.encrypted_refresh_token else None
         )
         # google.oauth2 ships partial typing — mypy strict flags
         # ``Credentials(...)`` as an untyped call; pyright sees full

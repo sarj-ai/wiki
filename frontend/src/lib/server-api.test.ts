@@ -12,22 +12,27 @@ vi.mock("next/headers", () => ({
     }),
 }));
 
+import { z } from "zod";
+
 import { serverGet, ServerApiError } from "@/lib/server-api";
+import { ApiValidationError } from "@/lib/validated-payload";
 
 afterEach(() => {
   cookieValue.token = undefined;
   vi.unstubAllGlobals();
 });
 
+const ZAnyArray = z.array(z.unknown());
+
 describe("serverGet", () => {
   it("fails fast with 401 when no access token cookie exists", async () => {
-    await expect(serverGet("sidebar/drives")).rejects.toMatchObject({
+    await expect(serverGet("sidebar/drives", ZAnyArray)).rejects.toMatchObject({
       name: "ServerApiError",
       status: 401,
     });
   });
 
-  it("forwards the cookie and camelizes exactly like the client parseJson", async () => {
+  it("forwards the cookie, validates the raw payload, and camelizes like the client", async () => {
     cookieValue.token = "jwt-token";
     const fetchMock = vi
       .fn()
@@ -40,7 +45,16 @@ describe("serverGet", () => {
         ),
       );
     vi.stubGlobal("fetch", fetchMock);
-    const out = await serverGet("sidebar/drives");
+    const ZRows = z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        mime_type: z.string(),
+        parent_id: z.null(),
+        nested: z.object({ a_b: z.number() }),
+      }),
+    );
+    const out = await serverGet("sidebar/drives", ZRows);
     expect(out).toEqual([
       { id: "f1", name: "Doc", mimeType: "text/plain", parentId: null, nested: { aB: 1 } },
     ]);
@@ -48,10 +62,22 @@ describe("serverGet", () => {
     expect((init.headers as Record<string, string>)["cookie"]).toBe("access_token=jwt-token");
   });
 
+  it("throws ApiValidationError outside production when the payload drifts", async () => {
+    cookieValue.token = "jwt-token";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify([{ id: 1 }]), { status: 200 })),
+    );
+    const ZStrictRows = z.array(z.object({ id: z.string() }));
+    await expect(serverGet("sidebar/drives", ZStrictRows)).rejects.toBeInstanceOf(
+      ApiValidationError,
+    );
+  });
+
   it("throws ServerApiError with the upstream status on non-OK", async () => {
     cookieValue.token = "jwt-token";
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("nope", { status: 404 })));
-    await expect(serverGet("files/gone")).rejects.toBeInstanceOf(ServerApiError);
-    await expect(serverGet("files/gone")).rejects.toMatchObject({ status: 404 });
+    await expect(serverGet("files/gone", ZAnyArray)).rejects.toBeInstanceOf(ServerApiError);
+    await expect(serverGet("files/gone", ZAnyArray)).rejects.toMatchObject({ status: 404 });
   });
 });

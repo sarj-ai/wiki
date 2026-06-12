@@ -8,11 +8,10 @@ and all of it can be dropped and rebuilt from Drive if needed.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 import uuid
 
 from sqlalchemy import Boolean, DateTime, Double, ForeignKey, Text, text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -25,12 +24,16 @@ class DriveTreeCache(Base):
     and amortize the cold-walk cost across all users. Access control
     happens at sidebar load via ``drives.list()``; a non-member simply
     never queries this row even though it exists.
+
+    ``tree`` is the Fernet-encrypted JSON of a ``DriveTree`` — folder
+    names are user content, so the blob stays opaque to anyone reading
+    the database. Nothing ever queries inside it.
     """
 
     __tablename__ = "drive_tree_cache"
 
     drive_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    tree: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    tree: Mapped[str] = mapped_column(Text, nullable=False)
     refreshed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 import secrets
 from typing import override
 import uuid
@@ -30,7 +29,7 @@ from loguru import logger
 from sqlalchemy import case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.encryption import encrypt_token
+from app.auth.encryption import encrypt_text
 from app.auth.errors import (
     AuthError,
     AuthFailedError,
@@ -109,16 +108,12 @@ class GoogleAuthService(AuthService):
     @override
     async def refresh_session(self, refresh_token: str) -> AuthSession:
         payload = decode_token(refresh_token)
-        if payload.get("type") != "refresh":
+        if payload.type != "refresh":
             raise TokenRevokedError("Invalid token type")
-        user_id = payload.get("sub")
-        if not user_id:
-            raise TokenRevokedError("Malformed refresh token")
-        user = await self._load_user(uuid.UUID(user_id))
+        user = await self._load_user(uuid.UUID(payload.sub))
         if user is None:
             raise TokenRevokedError("User not found")
-        token_tv = payload.get("tv", 0)
-        if token_tv != user.token_version:
+        if payload.tv != user.token_version:
             raise TokenRevokedError("Token has been revoked")
         return self._issue_session(user)
 
@@ -128,12 +123,9 @@ class GoogleAuthService(AuthService):
             return
         try:
             payload = decode_token(access_token)
-            if payload.get("type") != "access":
+            if payload.type != "access":
                 return
-            user_id = payload.get("sub")
-            if not user_id:
-                return
-            user = await self._load_user(uuid.UUID(user_id))
+            user = await self._load_user(uuid.UUID(payload.sub))
             if user is None:
                 return
             user.token_version += 1
@@ -149,14 +141,12 @@ class GoogleAuthService(AuthService):
     @override
     async def resolve_current_user(self, jwt_token: str) -> User:
         payload = decode_token(jwt_token)
-        if payload.get("type") != "access":
+        if payload.type != "access":
             raise InvalidTokenError("Invalid token type")
-        user_id = payload["sub"]
-        user = await self._load_user(uuid.UUID(user_id))
+        user = await self._load_user(uuid.UUID(payload.sub))
         if user is None:
             raise TokenRevokedError("User not found")
-        token_tv = payload.get("tv", 0)
-        if token_tv != user.token_version:
+        if payload.tv != user.token_version:
             raise TokenRevokedError("Token has been revoked")
         return user
 
@@ -182,7 +172,6 @@ class GoogleAuthService(AuthService):
         return _GoogleTokens(
             access_token=data["access_token"],
             refresh_token=data.get("refresh_token"),
-            expires_in=data.get("expires_in"),
         )
 
     async def _fetch_userinfo(self, google_access_token: str) -> _Userinfo:
@@ -209,13 +198,8 @@ class GoogleAuthService(AuthService):
             raise DomainRestrictedError
 
     async def _upsert_user(self, info: _Userinfo, tokens: _GoogleTokens) -> User:
-        encrypted_access = encrypt_token(tokens.access_token)
-        encrypted_refresh = encrypt_token(tokens.refresh_token) if tokens.refresh_token else None
-        token_expiry = (
-            datetime.now(UTC).replace(microsecond=0) + timedelta(seconds=tokens.expires_in)
-            if tokens.expires_in is not None
-            else None
-        )
+        encrypted_access = encrypt_text(tokens.access_token)
+        encrypted_refresh = encrypt_text(tokens.refresh_token) if tokens.refresh_token else None
 
         # Look up by google_id first, then by email (stub users from share/search
         # flows may exist with a different google_id from Admin Directory API).
@@ -228,7 +212,6 @@ class GoogleAuthService(AuthService):
                 avatar_url=info.avatar_url,
                 encrypted_access_token=encrypted_access,
                 encrypted_refresh_token=encrypted_refresh,
-                token_expiry=token_expiry,
             )
             self._db.add(user)
         else:
@@ -239,7 +222,6 @@ class GoogleAuthService(AuthService):
             user.encrypted_access_token = encrypted_access
             if encrypted_refresh is not None:
                 user.encrypted_refresh_token = encrypted_refresh
-            user.token_expiry = token_expiry
 
         await self._db.commit()
         await self._db.refresh(user)
@@ -273,7 +255,6 @@ class GoogleAuthService(AuthService):
 class _GoogleTokens:
     access_token: str
     refresh_token: str | None
-    expires_in: int | None
 
 
 @dataclass(frozen=True, slots=True)

@@ -7,9 +7,9 @@ from app.config import settings
 _fernet = Fernet(settings.FERNET_KEY.encode())
 
 
-def encrypt_token(token: str) -> str:
-    return _fernet.encrypt(token.encode()).decode()
+def encrypt_text(plaintext: str) -> str:
+    return _fernet.encrypt(plaintext.encode()).decode()
 
 
-def decrypt_token(encrypted: str) -> str:
+def decrypt_text(encrypted: str) -> str:
     return _fernet.decrypt(encrypted.encode()).decode()

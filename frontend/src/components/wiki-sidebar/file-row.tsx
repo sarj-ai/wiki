@@ -7,7 +7,6 @@ import { memo } from "react";
 
 import type { DriveNode } from "@/types/wiki";
 
-import { Button } from "@/components/ui/button";
 import { SidebarMenuButton } from "@/components/ui/sidebar";
 import { useSetDocIcon } from "@/hooks/use-wiki-mutations";
 import { renderNodeIcon } from "@/lib/file-icons";
@@ -16,8 +15,9 @@ import { runWithErrorToast } from "@/lib/mutation-toast";
 import { cn } from "@/lib/utils";
 import { MIME_DOC, MIME_FORM, MIME_SHORTCUT } from "@/types/wiki";
 
-import { EmojiPickerPopover } from "./emoji-picker-popover";
 import { ItemMenu } from "./item-menu";
+import { ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants";
+import { PickableIcon } from "./pickable-icon";
 import { useIsMovingFile } from "./use-in-flight-moves";
 
 interface FileRowProps {
@@ -28,11 +28,6 @@ interface FileRowProps {
   iconOverride: string | null;
   depth: number;
 }
-
-// Width of the absolute-positioned icon column in pixels, including
-// the gap between it and the Link text. Used both for the icon's
-// ``left`` offset and the Link's compensating ``paddingLeft``.
-const ICON_COLUMN_WIDTH = 24;
 
 interface OpenRoute {
   isShortcut: boolean;
@@ -115,8 +110,8 @@ function FileRowImpl({
   // an anchor element, so there's no risk of Next.js Link navigating
   // on a supposedly "icon-only" click. The Link's left padding is
   // bumped by ICON_COLUMN_WIDTH so the title text stays readable.
-  const iconLeft = `${depth * 12 + 8}px`;
-  const linkPadding = `${depth * 12 + 8 + ICON_COLUMN_WIDTH}px`;
+  const iconLeft = `${rowIndent(depth)}px`;
+  const linkPadding = `${rowIndent(depth) + ICON_COLUMN_WIDTH}px`;
   const titleAttr = route.tooltip ?? (isForm ? `${node.name} — opens in a new tab` : node.name);
 
   return (
@@ -146,12 +141,14 @@ function FileRowImpl({
         )}
         style={{ left: iconLeft }}
       >
-        <RowIcon
-          isDoc={isDoc}
-          iconContent={iconContent}
-          iconOverride={iconOverride}
-          onIconChange={handleIconChange}
-        />
+        <PickableIcon
+          pickable={isDoc}
+          value={iconOverride}
+          onChange={handleIconChange}
+          ariaLabel="Change icon"
+        >
+          {iconContent}
+        </PickableIcon>
       </div>
       {/*
         Shortcut rows hide the rename / move / delete actions — they'd
@@ -264,35 +261,5 @@ function RowButton({
         <span className="truncate">{node.name}</span>
       </Link>
     </SidebarMenuButton>
-  );
-}
-
-interface RowIconProps {
-  isDoc: boolean;
-  iconContent: React.ReactNode;
-  iconOverride: string | null;
-  onIconChange: (next: string | null) => Promise<void>;
-}
-
-function RowIcon({ isDoc, iconContent, iconOverride, onIconChange }: RowIconProps) {
-  if (!isDoc) {
-    return <span className="flex size-6 shrink-0 items-center justify-center">{iconContent}</span>;
-  }
-  return (
-    <EmojiPickerPopover value={iconOverride} onChange={onIconChange}>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        aria-label="Change icon"
-        // Icon hover uses the full sidebar highlight color
-        // (``--sidebar-accent`` / ``--sidebar-accent-foreground``),
-        // the same pair that marks a selected row. Both theme
-        // variants are wired through those tokens so light and dark
-        // flip automatically.
-        className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground size-6 shrink-0 cursor-pointer transition-colors"
-      >
-        {iconContent}
-      </Button>
-    </EmojiPickerPopover>
   );
 }

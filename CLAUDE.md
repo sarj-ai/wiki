@@ -54,7 +54,7 @@ Routers never call Google APIs or the DB directly — they resolve a service via
 
 - **Python deps/scripts**: `uv` only. Never `pip`, `pip3`, `venv`, `python -m venv`.
 - **Shell**: use relative paths; cwd is already repo root.
-- **Backend checkers (blocking, run on every change)**: `ruff`, `mypy` (strict), `pyright` (strict), `ty`, `vulture`, `lint-imports` (import-linter layering contracts in `pyproject.toml`). All must pass. Tests run with `uv run pytest`; CI enforces `--cov-fail-under=38` (a ratchet — raise, never lower).
+- **Backend checkers (blocking, run on every change)**: `ruff`, `mypy` (strict), `pyright` (strict), `ty`, `vulture`, `lint-imports` (import-linter layering contracts in `pyproject.toml`). All must pass. Tests run with `uv run pytest`; CI enforces `--cov-fail-under=70` (a ratchet — raise, never lower).
 - **Frontend checkers (blocking)**: `prettier`, `eslint`, `tsc` (TS 6, extends `@sarj/tsconfig/strict.json`), `knip`, `type-coverage --at-least 99`.
 - **API contract**: `frontend/openapi.json` + `frontend/src/lib/generated/zod.gen.ts` are generated artifacts. After changing any backend Pydantic response model: `cd backend && uv run python scripts/export_openapi.py ../frontend/openapi.json && cd ../frontend && npm run generate:api`. On PRs, CI (`ci-quality.yml` api-contract) regenerates and auto-commits any drift to the branch; direct pushes fail on drift.
 - **Repo-wide pre-commit (blocking in CI via ci-quality.yml)**: hygiene hooks, gitleaks, actionlint, and the `sarj-*` AST rules from `sarj-ai/standards`. Suppress a sarj finding inline with `# sarj-noqa: SARJ00X — reason`.
@@ -104,12 +104,14 @@ Drive's ACL on the target is the only source of truth. The shortcut entry's own 
 ```sql
 users:
   id, email, google_id, display_name, avatar_url,
-  encrypted_access_token, encrypted_refresh_token, token_expiry,
+  encrypted_access_token, encrypted_refresh_token,
   token_version  -- bumped on logout; embedded in JWTs for revocation
 
 drive_tree_cache:
-  drive_id PK, tree (JSONB), refreshed_at, refreshed_by
-  -- one row per shared drive; amortized across members
+  drive_id PK, tree (text: Fernet-encrypted DriveTree JSON), refreshed_at, refreshed_by
+  -- one row per shared drive; amortized across members. Folder names are
+  -- user content, so the blob is opaque to anyone reading the DB; rows
+  -- older than CACHE_MAX_AGE (30d) are purged opportunistically on save
 
 doc_icons:
   drive_id PK, icon, cover_url, updated_at, updated_by
@@ -164,9 +166,14 @@ No service account, no Admin SDK, no domain-wide delegation.
 
 Loaded via `pydantic-settings` in `app/config.py`; `extra="ignore"` tolerates stale legacy keys.
 
+Exactly one database path must be configured: `DATABASE_URL` (local dev / CI), or the `DB_*` connector trio (production — Cloud SQL IAM database auth; the service account is the credential, no password exists).
+
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | Postgres DSN |
+| `DATABASE_URL` | Postgres DSN (dev/CI path) |
+| `DB_INSTANCE_CONNECTION_NAME` | Cloud SQL instance (`project:region:instance`, prod path) |
+| `DB_IAM_USER` | IAM database user (backend SA email sans `.gserviceaccount.com`) |
+| `DB_NAME` | Database name (default `sarj_wiki`) |
 | `SECRET_KEY` | JWT signing key (≥32 chars) |
 | `FERNET_KEY` | Token encryption key (valid Fernet key) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth credentials |
