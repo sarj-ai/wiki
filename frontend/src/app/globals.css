@@ -20,6 +20,9 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+  --color-overlay: var(--overlay);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -36,6 +39,15 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-icon-folder: var(--icon-folder);
+  --color-icon-doc: var(--icon-doc);
+  --color-icon-sheet: var(--icon-sheet);
+  --color-icon-slide: var(--icon-slide);
+  --color-icon-drawing: var(--icon-drawing);
+  --color-icon-form: var(--icon-form);
+  --color-icon-pdf: var(--icon-pdf);
+  --color-icon-image: var(--icon-image);
+  --color-icon-generic: var(--icon-generic);
 
   --font-sans: var(--font-nunito);
   --font-mono: var(--font-geist-mono);
@@ -56,41 +68,44 @@
 }
 
 :root {
-  /* Sarj.ai brand purple ramp (purple-100 = brand primary #2B165E). */
-  --purple-100: #2b165e;
-  --purple-90: #3f2873;
-  --purple-80: #54388a;
-  --purple-70: #6b4da1;
-  --purple-60: #8665b7;
-  --purple-50: #a081cc;
-  --purple-40: #b8a0dc;
-  --purple-30: #cec0e8;
-  --purple-20: #e2dcef;
-  --purple-10: #f0edf8;
+  /* Sarj.ai brand purple ramp (purple-100 = brand primary, #2B165E). */
+  --purple-100: oklch(0.2798 0.1196 289.74);
+  --purple-90: oklch(0.3493 0.1229 293.08);
+  --purple-80: oklch(0.4165 0.1312 295.94);
+  --purple-70: oklch(0.4922 0.1316 297.87);
+  --purple-60: oklch(0.5748 0.1264 301.09);
+  --purple-50: oklch(0.6613 0.1133 302.43);
+  --purple-40: oklch(0.7478 0.0885 302.63);
+  --purple-30: oklch(0.8322 0.0571 301.13);
+  --purple-20: oklch(0.9049 0.0264 300.25);
+  --purple-10: oklch(0.9516 0.015 298.56);
 
-  --background: #f6efe7;
-  --foreground: #231f20;
-  --card: #ffffff;
-  --card-foreground: #231f20;
-  --popover: #ffffff;
-  --popover-foreground: #231f20;
+  --background: oklch(0.9554 0.0131 71.33);
+  --foreground: oklch(0.2442 0.0064 0.59);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2442 0.0064 0.59);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2442 0.0064 0.59);
   --primary: var(--purple-100);
-  --primary-foreground: #ffffff;
+  --primary-foreground: oklch(1 0 0);
   --secondary: var(--purple-20);
   --secondary-foreground: var(--purple-100);
-  --muted: #f5f5f5;
-  --muted-foreground: #737373;
-  --accent: #f5f5f5;
-  --accent-foreground: #171717;
-  --destructive: #dc2626;
-  --border: #d5d5d5;
-  --input: #d5d5d5;
+  --muted: oklch(0.9702 0 0);
+  --muted-foreground: oklch(0.5555 0 0);
+  --accent: oklch(0.9702 0 0);
+  --accent-foreground: oklch(0.2046 0 0);
+  --destructive: oklch(0.5771 0.2152 27.33);
+  --destructive-foreground: oklch(1 0 0);
+  --warning: oklch(0.769 0.188 70.08);
+  --overlay: oklch(0 0 0 / 50%);
+  --border: oklch(0.873 0 0);
+  --input: oklch(0.873 0 0);
   --ring: var(--purple-100);
-  --chart-1: #e06000;
-  --chart-2: #009689;
-  --chart-3: #104e64;
-  --chart-4: #ffb900;
-  --chart-5: #fe9a00;
+  --chart-1: oklch(0.6407 0.1795 46.22);
+  --chart-2: oklch(0.6049 0.107 184.17);
+  --chart-3: oklch(0.3972 0.0698 227.19);
+  --chart-4: oklch(0.829 0.1712 81.04);
+  --chart-5: oklch(0.7724 0.1728 65.37);
   /* Sidebar base surface mirrors the main background so the sidebar
      and Navigator toolbar read as one unified chrome. --sidebar-accent
      is the brand purple and represents the ACTIVE/selected row. Hover
@@ -99,64 +114,94 @@
   --sidebar: var(--background);
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--purple-100);
-  --sidebar-primary-foreground: #ffffff;
+  --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: var(--purple-100);
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #d5d5d5;
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: var(--border);
   --sidebar-ring: var(--purple-100);
+  /* File-type icon tints — Google Workspace brand colors so each type
+     reads instantly (Docs blue, Sheets green, …). Dark mode lifts
+     lightness a touch for legibility on the dark surface. */
+  --icon-folder: oklch(0.4979 0.0094 253.91);
+  --icon-doc: oklch(0.6304 0.18 259.96);
+  --icon-sheet: oklch(0.6122 0.1507 154.1);
+  --icon-slide: oklch(0.8077 0.1662 82.7);
+  --icon-drawing: oklch(0.6257 0.2058 29.08);
+  --icon-form: oklch(0.4742 0.1862 294.78);
+  --icon-pdf: oklch(0.6083 0.209 27.03);
+  --icon-image: oklch(0.6821 0.118 210.05);
+  --icon-generic: oklch(0.6388 0.0327 229.55);
 
   --radius: 0.625rem;
 
-  --shadow-2xs: 0 1px 3px 0px rgb(0 0 0 / 0.05);
-  --shadow-xs: 0 1px 3px 0px rgb(0 0 0 / 0.05);
-  --shadow-sm: 0 1px 3px 0px rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-  --shadow: 0 1px 3px 0px rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-  --shadow-md: 0 1px 3px 0px rgb(0 0 0 / 0.1), 0 2px 4px -1px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 1px 3px 0px rgb(0 0 0 / 0.1), 0 4px 6px -1px rgb(0 0 0 / 0.1);
-  --shadow-xl: 0 1px 3px 0px rgb(0 0 0 / 0.1), 0 8px 10px -1px rgb(0 0 0 / 0.1);
-  --shadow-2xl: 0 1px 3px 0px rgb(0 0 0 / 0.25);
+  --shadow-2xs: 0 1px 3px 0px oklch(0 0 0 / 0.05);
+  --shadow-xs: 0 1px 3px 0px oklch(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0px oklch(0 0 0 / 0.1), 0 1px 2px -1px oklch(0 0 0 / 0.1);
+  --shadow: 0 1px 3px 0px oklch(0 0 0 / 0.1), 0 1px 2px -1px oklch(0 0 0 / 0.1);
+  --shadow-md: 0 1px 3px 0px oklch(0 0 0 / 0.1), 0 2px 4px -1px oklch(0 0 0 / 0.1);
+  --shadow-lg: 0 1px 3px 0px oklch(0 0 0 / 0.1), 0 4px 6px -1px oklch(0 0 0 / 0.1);
+  --shadow-xl: 0 1px 3px 0px oklch(0 0 0 / 0.1), 0 8px 10px -1px oklch(0 0 0 / 0.1);
+  --shadow-2xl: 0 1px 3px 0px oklch(0 0 0 / 0.25);
 }
 
 .dark {
-  --background: #161618;
-  --foreground: #fafafa;
-  --card: #171717;
-  --card-foreground: #fafafa;
-  --popover: #171717;
-  --popover-foreground: #fafafa;
-  --primary: #fafafa;
-  --primary-foreground: #0a0a0a;
+  --background: oklch(0.2011 0.0039 286.04);
+  --foreground: oklch(0.9851 0 0);
+  --card: oklch(0.2046 0 0);
+  --card-foreground: oklch(0.9851 0 0);
+  --popover: oklch(0.2046 0 0);
+  --popover-foreground: oklch(0.9851 0 0);
+  --primary: oklch(0.9851 0 0);
+  --primary-foreground: oklch(0.1448 0 0);
   --secondary: var(--purple-80);
-  --secondary-foreground: #fafafa;
-  --muted: #262626;
-  --muted-foreground: #a1a1a1;
-  --accent: #262626;
-  --accent-foreground: #fafafa;
-  --destructive: #f87171;
-  --border: #ffffff1a;
-  --input: #ffffff26;
+  --secondary-foreground: oklch(0.9851 0 0);
+  --muted: oklch(0.2686 0 0);
+  --muted-foreground: oklch(0.709 0 0);
+  --accent: oklch(0.2686 0 0);
+  --accent-foreground: oklch(0.9851 0 0);
+  --destructive: oklch(0.7106 0.1661 22.22);
+  --destructive-foreground: oklch(1 0 0);
+  --warning: oklch(0.828 0.189 84.43);
+  --overlay: oklch(0 0 0 / 50%);
+  --border: oklch(1 0 0 / 10.2%);
+  --input: oklch(1 0 0 / 14.9%);
   --ring: var(--purple-60);
-  --chart-1: #e06000;
-  --chart-2: #00bc7d;
-  --chart-3: #fe9a00;
-  --chart-4: #ad46ff;
-  --chart-5: #ff2056;
+  --chart-1: oklch(0.6407 0.1795 46.22);
+  --chart-2: oklch(0.7019 0.1577 160.44);
+  --chart-3: oklch(0.7724 0.1728 65.37);
+  --chart-4: oklch(0.6217 0.2589 305.31);
+  --chart-5: oklch(0.6435 0.2452 16.5);
   /* Match --background so the sidebar and Navigator toolbar share the
      exact same surface color in dark mode. Brand purple shifts to a
      lighter ramp value for legibility on the dark surface. */
   --sidebar: var(--background);
   --sidebar-foreground: var(--foreground);
-  --sidebar-primary: #fafafa;
-  --sidebar-primary-foreground: #fafafa;
+  --sidebar-primary: oklch(0.9851 0 0);
+  --sidebar-primary-foreground: oklch(0.9851 0 0);
   --sidebar-accent: var(--purple-80);
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #ffffff1a;
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: var(--border);
   --sidebar-ring: var(--purple-60);
+  --icon-folder: oklch(0.72 0.012 253.91);
+  --icon-doc: oklch(0.72 0.15 259.96);
+  --icon-sheet: oklch(0.72 0.145 154.1);
+  --icon-slide: oklch(0.83 0.1662 82.7);
+  --icon-drawing: oklch(0.72 0.17 29.08);
+  --icon-form: oklch(0.68 0.15 294.78);
+  --icon-pdf: oklch(0.71 0.17 27.03);
+  --icon-image: oklch(0.76 0.11 210.05);
+  --icon-generic: oklch(0.74 0.033 229.55);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    /* Thin, token-tinted scrollbars everywhere (sidebar, palette,
+       dropdowns, main). --muted-foreground at 35% stays visible on
+       both the light cream and dark surfaces — --border would melt
+       into the dark background at its 10% alpha. */
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 35%, transparent) transparent;
   }
   body {
     @apply bg-background text-foreground;
@@ -165,6 +210,13 @@
   [role="button"],
   a {
     cursor: pointer;
+  }
+  /* Reserve the scrollbar gutter in the sidebar tree so rows don't
+     re-truncate/jitter when expanding a folder tips the tree into
+     overflow. Targeted by data-slot to avoid editing the vendored
+     shadcn sidebar.tsx. */
+  [data-slot="sidebar-content"] {
+    scrollbar-gutter: stable;
   }
 }
 
@@ -191,7 +243,7 @@
   }
 }
 
-.animate-loading-bar {
+@utility animate-loading-bar {
   animation: loading-bar 1.2s ease-in-out infinite;
 }
 
@@ -211,7 +263,7 @@
   }
 }
 
-.animate-reveal-pulse {
+@utility animate-reveal-pulse {
   animation: reveal-pulse 1.2s ease-out;
 }
 

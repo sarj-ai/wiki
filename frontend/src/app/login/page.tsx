@@ -18,21 +18,21 @@ const ERROR_CONFIG: Record<
     title: "Access restricted",
     message:
       "Only @sarj.ai accounts can access Sarj Wiki. Please sign in with your Sarj work account.",
-    color: "text-amber-500",
+    color: "text-warning",
   },
   auth_failed: {
     icon: AlertCircle,
     title: "Authentication failed",
     message:
       "The login session expired or was invalid. This can happen if you waited too long. Please try again.",
-    color: "text-red-400",
+    color: "text-destructive",
   },
   server_error: {
     icon: ServerCrash,
     title: "Something went wrong",
     message:
       "We ran into an issue on our end. Please try again. If this keeps happening, contact your admin.",
-    color: "text-red-400",
+    color: "text-destructive",
   },
 };
 
@@ -87,7 +87,7 @@ function LoginContent() {
                     <p className="text-card-foreground text-sm font-semibold">
                       {errorConfig.title}
                     </p>
-                    <p className="text-muted-foreground text-sm leading-relaxed">
+                    <p className="text-muted-foreground text-sm leading-relaxed text-pretty">
                       {errorConfig.message}
                     </p>
                   </div>
