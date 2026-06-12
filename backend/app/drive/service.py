@@ -359,7 +359,7 @@ class GoogleDriveService(DriveService):
 
     def _walk_folders_sync(self, drive_id: str) -> DriveTree:
         client = self._client()
-        out = DriveTree(drive_id=drive_id, folders=[], files=[])
+        out = DriveTree(drive_id=drive_id, folders=[], files=[], files_complete=True)
         page_token: str | None = None
         # Folder walk also picks up shortcuts whose target is a folder
         # so cross-drive folder pointers render natively in the tree.

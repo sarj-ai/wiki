@@ -105,7 +105,10 @@ class DriveTree(BaseModel):
     drive_id: str
     folders: list[DriveNode]
     files: list[DriveNode]
-    files_complete: bool = True
+    # Required on purpose: cache rows written before this field existed
+    # fail validation in _decode_row and rewalk instead of rendering a
+    # tree whose file list has the wrong shape.
+    files_complete: bool
 
 
 class SearchResult(BaseModel):

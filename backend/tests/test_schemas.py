@@ -30,7 +30,7 @@ def test_drive_node_shortcut_defaults() -> None:
 
 
 def test_drive_tree_empty() -> None:
-    tree = DriveTree(drive_id="d1", folders=[], files=[])
+    tree = DriveTree(drive_id="d1", folders=[], files=[], files_complete=True)
     assert tree.folders == []
     assert tree.files == []
     # Round-trip through JSON stays stable — used by the JSONB cache.
