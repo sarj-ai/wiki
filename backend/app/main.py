@@ -14,6 +14,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy import text
 
 from app.auth.router import router as auth_router
+from app.bootstrap.router import router as bootstrap_router
 from app.config import settings
 from app.database import async_session, close_connector
 from app.drive.search_router import router as drive_search_router
@@ -83,6 +84,7 @@ async def files_error_handler(
 
 
 app.include_router(auth_router)
+app.include_router(bootstrap_router)
 app.include_router(sidebar_router)
 app.include_router(files_router)
 app.include_router(extras_router)

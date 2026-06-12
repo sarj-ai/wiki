@@ -1,10 +1,12 @@
 // Stable query keys (directive-free so server components can import them).
 const FOLDER_FILES_PREFIX = ["wiki", "folder-files"] as const;
+const DRIVE_TREE_PREFIX = ["wiki", "drive-tree"] as const;
 const DRIVE_SEARCH_PREFIX = ["wiki", "drive-search"] as const;
 
 export const wikiKeys = {
   drives: ["wiki", "drives"] as const,
-  driveTree: (driveId: string) => ["wiki", "drive-tree", driveId] as const,
+  driveTreePrefix: DRIVE_TREE_PREFIX,
+  driveTree: (driveId: string) => [...DRIVE_TREE_PREFIX, driveId] as const,
   folderFilesPrefix: FOLDER_FILES_PREFIX,
   folderFiles: (folderId: string) => [...FOLDER_FILES_PREFIX, folderId] as const,
   file: (fileId: string) => ["wiki", "file", fileId] as const,

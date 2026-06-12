@@ -9,6 +9,8 @@ without a second Drive call.
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,11 +60,16 @@ async def read_file(
     # The toolbar needs both the drive name and the parent-folder chain;
     # both are readily available on the server (drives.list runs as part
     # of files.get's strict-scope check, and the parent walk is a pure
-    # in-memory pass over the already-cached drive tree).
-    file = await files.get(file_id)
-    drives = await drive.list_drives()
+    # in-memory pass over the already-cached drive tree). The gather
+    # overlaps ``files.get``'s Google round-trip with ``drives.list``
+    # (which also pre-warms the per-user cache the scope check inside
+    # ``files.get`` consults). ``peek`` — never the walking read — keeps
+    # a cold tree cache from putting a multi-second BFS on the doc-open
+    # critical path; the breadcrumb just degrades to the drive name
+    # until the sidebar's own tree fetch warms the row.
+    file, drives = await asyncio.gather(files.get(file_id), drive.list_drives())
     drive_name = next((d.name for d in drives if d.id == file.drive_id), None)
-    cached = await cache.get_drive_tree(db, file.drive_id) if file.drive_id else None
+    cached = await cache.peek_drive_tree(db, file.drive_id) if file.drive_id else None
     tree = cached.tree if cached else None
     breadcrumb = build_breadcrumb(tree, file.drive_id, drive_name, file.parent_folder_id)
     return FileDetail(

@@ -131,7 +131,11 @@ function buildDestinationOrder(
   const folders = (tree?.folders ?? []).filter((f) =>
     isAtDriveRoot ? f.parentId === undefined : f.parentId === newParentFolderId,
   );
-  const filesCache = qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles(newParentFolderId));
+  // Root files ride on the drive tree; nested files come from the
+  // lazy folder-files cache for the destination folder.
+  const filesCache = isAtDriveRoot
+    ? tree?.files
+    : qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles(newParentFolderId));
   const files = (filesCache ?? []).filter((f) => f.mimeType !== MIME_FOLDER);
 
   // Combine folders + files, drop the moved node if the optimistic
@@ -238,9 +242,9 @@ export function useWikiReorder(driveId: string): WikiReorder {
   // arbitrary sub-folder file lists, and copying the data into a
   // Context just to re-derive it on every render would cost more.
   const findNodeById = (id: string): DriveNode | null => {
-    const tree = qc.getQueryData<{ folders: DriveNode[] }>(wikiKeys.driveTree(driveId));
-    const folder = tree?.folders.find((n) => n.id === id);
-    if (folder) return folder;
+    const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
+    const treeHit = tree?.folders.find((n) => n.id === id) ?? tree?.files.find((n) => n.id === id);
+    if (treeHit) return treeHit;
     const folderFilesCaches = qc.getQueriesData<DriveNode[]>({
       queryKey: wikiKeys.folderFilesPrefix,
     });

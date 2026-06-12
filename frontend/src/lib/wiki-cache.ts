@@ -3,7 +3,7 @@ import { type QueryClient } from "@tanstack/react-query";
 import type { DriveNode, DriveTree, FileResponse } from "@/types/wiki";
 
 import { wikiKeys } from "@/lib/wiki-keys";
-import { MIME_FOLDER } from "@/types/wiki";
+import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
 
 /**
  * Pure cache helpers for the optimistic insert/remove paths used by
@@ -17,6 +17,35 @@ import { MIME_FOLDER } from "@/types/wiki";
  * subsequent ``invalidateQueries`` in the mutation hooks reconciles
  * any drift; this module just smooths the paint.
  */
+
+/** Minimal node identity the file page needs to render before ``files/{id}`` lands. */
+export interface CachedNodeMeta {
+  name: string;
+  mimeType: string;
+}
+
+/**
+ * Look a file up in whatever sidebar data is already cached — folder
+ * file listings and drive trees — so the doc page can mount its
+ * toolbar and Google iframe immediately instead of blanking on a
+ * ~1.5s ``files/{id}`` round-trip. Shortcut rows route to their
+ * *target* id, so a shortcut whose target matches resolves to the
+ * target's mime type. Returns ``null`` when nothing cached matches;
+ * the caller falls back to the loading skeleton.
+ */
+export function findCachedNodeMeta(qc: QueryClient, fileId: string): CachedNodeMeta | null {
+  for (const [, nodes] of qc.getQueriesData<DriveNode[]>({
+    queryKey: wikiKeys.folderFilesPrefix,
+  })) {
+    const meta = metaFromNodes(nodes ?? [], fileId);
+    if (meta) return meta;
+  }
+  for (const [, tree] of qc.getQueriesData<DriveTree>({ queryKey: wikiKeys.driveTreePrefix })) {
+    const meta = tree && metaFromNodes([...tree.folders, ...tree.files], fileId);
+    if (meta) return meta;
+  }
+  return null;
+}
 
 /**
  * Project a fresh ``FileResponse`` from the server into the
@@ -58,14 +87,23 @@ export function injectNewFileIntoCaches(qc: QueryClient, file: FileResponse): vo
     });
   }
 
-  // Drive-tree cache only holds folders; files are no-ops here. Adding
-  // the new folder up front means an already-expanded ancestor paints
-  // it without waiting for the BFS walk to refresh.
+  // The drive tree carries folders (anywhere in the drive) and files
+  // (root level only — the walk lists them alongside the folder BFS).
+  // Splice the new node into whichever list the sidebar will read it
+  // from so it paints without waiting for a refetch.
   if (file.driveId && file.mimeType === MIME_FOLDER) {
     qc.setQueryData<DriveTree | undefined>(wikiKeys.driveTree(file.driveId), (prev) => {
       if (!prev) return prev;
       if (prev.folders.some((f) => f.id === node.id)) return prev;
       return { ...prev, folders: [...prev.folders, node] };
+    });
+  }
+  const isRootFile = file.driveId !== undefined && parentKey === file.driveId;
+  if (file.driveId && file.mimeType !== MIME_FOLDER && isRootFile) {
+    qc.setQueryData<DriveTree | undefined>(wikiKeys.driveTree(file.driveId), (prev) => {
+      if (!prev) return prev;
+      if (prev.files.some((f) => f.id === node.id)) return prev;
+      return { ...prev, files: [...prev.files, node] };
     });
   }
 }
@@ -133,10 +171,30 @@ export function removeFileFromCaches(
   if (driveId) {
     qc.setQueryData<DriveTree | undefined>(wikiKeys.driveTree(driveId), (prev) => {
       if (!prev) return prev;
-      return { ...prev, folders: prev.folders.filter((f) => f.id !== fileId) };
+      return {
+        ...prev,
+        folders: prev.folders.filter((f) => f.id !== fileId),
+        files: prev.files.filter((f) => f.id !== fileId),
+      };
     });
   }
   // Drop any stale per-file metadata so a re-navigation doesn't show
   // cached info for a file that's now in trash.
   qc.removeQueries({ queryKey: wikiKeys.file(fileId) });
+}
+
+function metaFromNodes(nodes: DriveNode[], fileId: string): CachedNodeMeta | null {
+  for (const node of nodes) {
+    if (node.id === fileId && node.mimeType !== MIME_SHORTCUT) {
+      return { name: node.name, mimeType: node.mimeType };
+    }
+    if (
+      node.mimeType === MIME_SHORTCUT &&
+      node.shortcutTargetId === fileId &&
+      node.shortcutTargetMimeType
+    ) {
+      return { name: node.name, mimeType: node.shortcutTargetMimeType };
+    }
+  }
+  return null;
 }

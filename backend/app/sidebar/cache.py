@@ -71,6 +71,17 @@ class SidebarCacheService(ABC):
     async def get_drive_tree(self, db: AsyncSession, drive_id: str) -> CachedDriveTree: ...
 
     @abstractmethod
+    async def peek_drive_tree(self, db: AsyncSession, drive_id: str) -> CachedDriveTree | None:
+        """Warm-row-only read: serve whatever is cached (scheduling a
+        background refresh when it's past TTL) and return ``None`` on a
+        cold cache instead of blocking on a multi-second Drive walk.
+        For callers that merely *decorate* with the tree — the
+        ``files/{id}`` breadcrumb — where a missing tree is a cosmetic
+        gap but a synchronous walk would sit on the doc-open critical
+        path.
+        """
+
+    @abstractmethod
     async def get_folder_children(self, folder_id: str) -> list[DriveNode]: ...
 
     @abstractmethod
@@ -116,18 +127,26 @@ class PostgresSidebarCacheService(SidebarCacheService):
         # Warm path: row exists → return it (stale is OK; refresh async).
         # Cold path: no row → run the walk through singleflight so concurrent
         # callers share one Drive call.
-        row = await self._load_row(db, drive_id)
-        if row is not None:
-            tree = await self._decode_row(db, row)
-            if tree is not None:
-                if datetime.now(UTC) - row.refreshed_at > settings.SIDEBAR_CACHE_TTL:
-                    self._schedule_refresh(drive_id)
-                return CachedDriveTree(tree=tree, refreshed_at=row.refreshed_at)
+        cached = await self.peek_drive_tree(db, drive_id)
+        if cached is not None:
+            return cached
         tree = await self._sf.do(
             f"drive:{drive_id}",
             lambda: self._walk_and_save(drive_id),
         )
         return CachedDriveTree(tree=tree, refreshed_at=None)
+
+    @override
+    async def peek_drive_tree(self, db: AsyncSession, drive_id: str) -> CachedDriveTree | None:
+        row = await self._load_row(db, drive_id)
+        if row is None:
+            return None
+        tree = await self._decode_row(db, row)
+        if tree is None:
+            return None
+        if datetime.now(UTC) - row.refreshed_at > settings.SIDEBAR_CACHE_TTL:
+            self._schedule_refresh(drive_id)
+        return CachedDriveTree(tree=tree, refreshed_at=row.refreshed_at)
 
     @override
     async def get_folder_children(self, folder_id: str) -> list[DriveNode]:

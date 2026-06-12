@@ -190,3 +190,33 @@ def test_unparseable_row_is_treated_as_cache_miss() -> None:
 def test_cache_max_age_is_long_enough_to_matter() -> None:
     assert timedelta(days=7) <= CACHE_MAX_AGE
     assert CACHE_MAX_AGE > settings.SIDEBAR_CACHE_TTL
+
+
+def test_peek_returns_warm_row_without_walking() -> None:
+    tree = _tree()
+    row = DriveTreeCache(
+        drive_id="drive-1",
+        tree=encrypt_text(tree.model_dump_json()),
+        refreshed_at=datetime.now(UTC),
+    )
+    drive = FakeDrive(tree)
+    service = _service(drive, FakeSession())
+
+    cached = asyncio.run(service.peek_drive_tree(FakeSession(row=row), "drive-1"))  # type: ignore[arg-type]
+
+    assert cached is not None
+    assert cached.tree == tree
+    assert drive.walks == 0
+
+
+def test_peek_cold_cache_returns_none_and_never_walks() -> None:
+    # The whole point of peek: a missing row must NOT trigger the
+    # multi-second BFS the way ``get_drive_tree`` does — the breadcrumb
+    # caller sits on the doc-open critical path.
+    drive = FakeDrive(_tree())
+    service = _service(drive, FakeSession())
+
+    cached = asyncio.run(service.peek_drive_tree(FakeSession(row=None), "drive-1"))  # type: ignore[arg-type]
+
+    assert cached is None
+    assert drive.walks == 0

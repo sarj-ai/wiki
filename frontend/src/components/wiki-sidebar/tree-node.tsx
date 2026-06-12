@@ -1,8 +1,10 @@
 "use client";
 
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Loader2 } from "lucide-react";
 import { memo, type ReactNode } from "react";
+import { useDebouncedCallback } from "use-debounce";
 
 import type { DriveNode } from "@/types/wiki";
 
@@ -13,6 +15,8 @@ import { useFolderFiles } from "@/hooks/use-wiki-tree";
 import { renderNodeIcon } from "@/lib/file-icons";
 import { runWithErrorToast } from "@/lib/mutation-toast";
 import { cn } from "@/lib/utils";
+import { wikiApi } from "@/lib/wiki-api";
+import { wikiKeys } from "@/lib/wiki-keys";
 import {
   applyOptimisticOrder,
   compareNodeOrder,
@@ -37,6 +41,13 @@ interface TreeNodeProps {
   parentFolderId: string | undefined;
   depth: number;
 }
+
+// Hover-intent threshold before prefetching a collapsed folder's
+// children. Long enough that sweeping the cursor down the sidebar
+// doesn't fan a request out per row passed; short enough that the
+// fetch is well underway by the time a deliberate hover turns into a
+// click (~200-400ms later).
+const HOVER_PREFETCH_DELAY_MS = 80;
 
 interface ShortcutMeta {
   isShortcut: boolean;
@@ -64,6 +75,8 @@ interface FolderHeaderProps {
   isMoving: boolean;
   iconEmoji: string | undefined;
   onIconChange: (next: string | null) => Promise<void>;
+  onHoverStart: () => void;
+  onHoverEnd: () => void;
   actions: ReactNode;
 }
 
@@ -112,6 +125,20 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
     meta.isFolder && !meta.inaccessible ? meta.expandFolderId : null,
     expanded,
   );
+  // Warm the lazy file listing while the cursor hovers a collapsed
+  // folder so the expand click finds the children already cached
+  // (folder expands measured ~1.4s cold in production). prefetchQuery
+  // dedupes against fresh cache entries and in-flight fetches, so
+  // repeated hovers cost nothing.
+  const queryClient = useQueryClient();
+  const prefetchChildren = useDebouncedCallback(() => {
+    const folderId = meta.expandFolderId;
+    if (expanded || meta.inaccessible || !folderId) return;
+    void queryClient.prefetchQuery({
+      queryKey: wikiKeys.folderFiles(folderId),
+      queryFn: () => wikiApi.getFolderFiles(folderId),
+    });
+  }, HOVER_PREFETCH_DELAY_MS);
   // Icon mutation lives at the top of the component so the hook
   // order is stable across folder vs non-folder branches below.
   const setFolderIcon = useSetFolderIcon();
@@ -158,6 +185,10 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
         isMoving={isMoving}
         iconEmoji={iconEmoji}
         onIconChange={handleFolderIconChange}
+        onHoverStart={prefetchChildren}
+        onHoverEnd={() => {
+          prefetchChildren.cancel();
+        }}
         actions={
           <RowActions>
             <CreateFileMenu parentFolderId={node.id} />
@@ -261,6 +292,8 @@ function FolderHeader({
   isMoving,
   iconEmoji,
   onIconChange,
+  onHoverStart,
+  onHoverEnd,
   actions,
 }: FolderHeaderProps) {
   // Layout mirrors file-row.tsx: the chevron stays inside the expand
@@ -282,6 +315,8 @@ function FolderHeader({
     <div className="relative">
       <SidebarMenuButton
         onClick={onToggle}
+        onPointerEnter={onHoverStart}
+        onPointerLeave={onHoverEnd}
         disabled={meta.inaccessible}
         className={cn(
           "pr-14 transition-[background-color,box-shadow] duration-150",

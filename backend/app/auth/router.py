@@ -13,10 +13,10 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
-from pydantic import BaseModel
 
 from app.auth.dependencies import auth_service_dep, get_current_user
 from app.auth.errors import AuthError
+from app.auth.schemas import UserProfile
 from app.auth.service import (
     OAUTH_SCOPES,
     AuthService,
@@ -44,13 +44,6 @@ _SAMESITE: Literal["lax", "strict", "none"] = "lax"
 _ACCESS_MAX_AGE = 30 * 60  # 30 minutes (matches JWT expiry)
 _REFRESH_MAX_AGE = 7 * 86400  # 7 days (matches JWT expiry)
 _OAUTH_STATE_MAX_AGE = 10 * 60  # long enough for a slow consent screen
-
-
-class UserProfile(BaseModel):
-    id: str
-    email: str
-    display_name: str | None
-    avatar_url: str | None
 
 
 @router.get("/login")
@@ -147,12 +140,7 @@ async def refresh(
 
 @router.get("/me")
 async def me(current_user: User = Depends(get_current_user)) -> UserProfile:
-    return UserProfile(
-        id=str(current_user.id),
-        email=current_user.email,
-        display_name=current_user.display_name,
-        avatar_url=current_user.avatar_url,
-    )
+    return UserProfile.from_user(current_user)
 
 
 def _set_auth_cookies(response: Response, session: AuthSession) -> None:

@@ -140,6 +140,7 @@ type = "forbidden"
 allow_indirect_imports = true
 source_modules = [
     "app.auth.router",
+    "app.bootstrap.router",
     "app.extras.router",
     "app.files.router",
     "app.sidebar.router",
@@ -156,6 +157,7 @@ name = "Services never import routers (no upward dependencies)"
 type = "forbidden"
 source_modules = [
     "app.auth.service",
+    "app.bootstrap.service",
     "app.drive.service",
     "app.extras.service",
     "app.files.service",
@@ -163,6 +165,7 @@ source_modules = [
 ]
 forbidden_modules = [
     "app.auth.router",
+    "app.bootstrap.router",
     "app.extras.router",
     "app.files.router",
     "app.sidebar.router",

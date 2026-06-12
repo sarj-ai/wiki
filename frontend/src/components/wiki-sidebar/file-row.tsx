@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -13,6 +14,8 @@ import { renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import { runWithErrorToast } from "@/lib/mutation-toast";
 import { cn } from "@/lib/utils";
+import { wikiApi } from "@/lib/wiki-api";
+import { wikiKeys } from "@/lib/wiki-keys";
 import { MIME_DOC, MIME_FORM, MIME_SHORTCUT } from "@/types/wiki";
 
 import { ItemMenu } from "./item-menu";
@@ -46,6 +49,7 @@ interface RowButtonProps {
   isMoving: boolean;
   linkPadding: string;
   titleAttr: string;
+  onPrefetch: () => void;
 }
 
 // Compute the routing/labeling target for a row. Shortcuts forward to
@@ -97,6 +101,18 @@ function FileRowImpl({
   const isActive = !isForm && (activeDriveId === route.id || pathname === href);
   const isMoving = useIsMovingFile(node.id);
 
+  // Warm ``files/{id}`` on pointerdown — it fires ~100-200ms before the
+  // click completes and intent is certain by then, so the breadcrumb
+  // round-trip overlaps the navigation instead of starting after it.
+  // prefetchQuery no-ops when the cache is still fresh.
+  const queryClient = useQueryClient();
+  const prefetchFile = (): void => {
+    void queryClient.prefetchQuery({
+      queryKey: wikiKeys.file(route.id),
+      queryFn: () => wikiApi.getFile(route.id),
+    });
+  };
+
   const setDocIcon = useSetDocIcon();
   const handleIconChange = async (next: string | null) => {
     await runWithErrorToast(async () => {
@@ -134,6 +150,7 @@ function FileRowImpl({
         isMoving={isMoving}
         linkPadding={linkPadding}
         titleAttr={titleAttr}
+        onPrefetch={prefetchFile}
       />
       {/*
         Doc icons open the EmojiPickerPopover; non-Doc icons are
@@ -199,6 +216,7 @@ function RowButton({
   isMoving,
   linkPadding,
   titleAttr,
+  onPrefetch,
 }: RowButtonProps) {
   if (route.inaccessible) {
     return (
@@ -255,6 +273,7 @@ function RowButton({
         // dnd-kit's PointerSensor own the drag lifecycle cleanly.
         draggable={false}
         title={titleAttr}
+        onPointerDown={onPrefetch}
       >
         <span className="truncate">{node.name}</span>
       </Link>

@@ -11,15 +11,24 @@ plain string inputs.
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 import uuid
 
 import pytest
 
-from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT
-from app.drive.service import GoogleDriveService, _ShortcutProbe
+from app.drive import probe_cache
+from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT, ShortcutProbe
+from app.drive.service import GoogleDriveService
 from app.drive.snippets import extract_snippet
 from app.models.user import User
+
+
+@pytest.fixture(autouse=True)
+def _reset_probe_cache() -> None:
+    """Probe outcomes are memoised module-wide; start each test clean
+    so a probe cached by one case can't satisfy another."""
+    probe_cache.clear()
 
 
 def _user() -> User:
@@ -31,40 +40,65 @@ def _user() -> User:
     return u
 
 
+class _FakePendingCall:
+    """A single prepared request. The page is captured at call time so
+    the walk's now-concurrent folder + children listings can't clobber
+    each other's pending response on the shared listable."""
+
+    def __init__(self, page: dict[str, Any]) -> None:
+        self._page = page
+
+    def execute(self) -> dict[str, Any]:
+        return self._page
+
+
 class _FakeListable:
     def __init__(self, pages: list[dict[str, Any]], captured: list[dict[str, Any]]) -> None:
         self._pages = pages
         self._captured = captured
         self._idx = 0
+        self._lock = threading.Lock()
 
-    def list(self, **kwargs: Any) -> _FakeListable:
-        self._captured.append(dict(kwargs))
-        self._pending = self._pages[self._idx]
-        self._idx += 1
-        return self
+    def list(self, **kwargs: Any) -> _FakePendingCall:
+        return self._record(dict(kwargs))
 
-    def execute(self) -> dict[str, Any]:
-        return self._pending
+    def _record(self, call: dict[str, Any]) -> _FakePendingCall:
+        with self._lock:
+            self._captured.append(call)
+            page = self._pages[self._idx]
+            self._idx += 1
+        return _FakePendingCall(page)
 
 
 class _FakeFilesListable(_FakeListable):
-    def get(self, **kwargs: Any) -> _FakeFilesListable:
-        self._captured.append({"_op": "get", **kwargs})
-        self._pending = self._pages[self._idx]
-        self._idx += 1
-        return self
+    """Routes ``'…' in parents`` listings (folder children / root files)
+    to their own page queue so the walk's parallel folder + children
+    calls consume deterministic pages regardless of thread arrival
+    order. Every other call (walk, search, get/update/create) draws
+    from the main queue."""
 
-    def update(self, **kwargs: Any) -> _FakeFilesListable:
-        self._captured.append({"_op": "update", **kwargs})
-        self._pending = self._pages[self._idx]
-        self._idx += 1
-        return self
+    def __init__(
+        self,
+        pages: list[dict[str, Any]],
+        children_pages: list[dict[str, Any]],
+        captured: list[dict[str, Any]],
+    ) -> None:
+        super().__init__(pages, captured)
+        self._children = _FakeListable(children_pages, captured)
 
-    def create(self, **kwargs: Any) -> _FakeFilesListable:
-        self._captured.append({"_op": "create", **kwargs})
-        self._pending = self._pages[self._idx]
-        self._idx += 1
-        return self
+    def list(self, **kwargs: Any) -> _FakePendingCall:
+        if "in parents" in str(kwargs.get("q", "")):
+            return self._children.list(**kwargs)
+        return super().list(**kwargs)
+
+    def get(self, **kwargs: Any) -> _FakePendingCall:
+        return self._record({"_op": "get", **kwargs})
+
+    def update(self, **kwargs: Any) -> _FakePendingCall:
+        return self._record({"_op": "update", **kwargs})
+
+    def create(self, **kwargs: Any) -> _FakePendingCall:
+        return self._record({"_op": "create", **kwargs})
 
 
 class _FakeClient:
@@ -73,11 +107,14 @@ class _FakeClient:
         *,
         drives_pages: list[dict[str, Any]] | None = None,
         files_pages: list[dict[str, Any]] | None = None,
+        children_pages: list[dict[str, Any]] | None = None,
     ) -> None:
         self.drives_captured: list[dict[str, Any]] = []
         self.files_captured: list[dict[str, Any]] = []
         self._drives = _FakeListable(drives_pages or [{}], self.drives_captured)
-        self._files = _FakeFilesListable(files_pages or [{}], self.files_captured)
+        self._files = _FakeFilesListable(
+            files_pages or [{}], children_pages or [{}], self.files_captured
+        )
 
     def drives(self) -> _FakeListable:
         return self._drives
@@ -185,8 +222,9 @@ async def test_walk_drive_folders_uses_corpora_drive_and_folder_query(
     assert tree.folders[0].parent_id is None
     assert tree.folders[1].parent_id == "f1"
 
-    call = client.files_captured[0]
-    assert call["corpora"] == "drive"
+    # The walk and the root-children listing run concurrently, so pick
+    # the walk's call out by its corpora instead of relying on order.
+    call = next(c for c in client.files_captured if c.get("corpora") == "drive")
     assert call["driveId"] == "the-drive"
     assert call["includeItemsFromAllDrives"] is True
     assert call["supportsAllDrives"] is True
@@ -213,12 +251,51 @@ async def test_walk_drive_folders_paginates(patch_drive_client: Any) -> None:
     patch_drive_client(client)
     tree = await _svc().walk_drive_folders("d")
     assert [f.id for f in tree.folders] == ["f1", "f2"]
-    assert client.files_captured[1].get("pageToken") == "NEXT"
+    walk_calls = [c for c in client.files_captured if c.get("corpora") == "drive"]
+    assert walk_calls[1].get("pageToken") == "NEXT"
+
+
+async def test_walk_populates_root_files_from_parallel_children_listing(
+    patch_drive_client: Any,
+) -> None:
+    client = _FakeClient(
+        files_pages=[
+            {
+                "files": [
+                    {"id": "f1", "name": "Folder", "mimeType": MIME_FOLDER, "parents": ["d"]},
+                ]
+            }
+        ],
+        children_pages=[
+            {
+                "files": [
+                    {
+                        "id": "doc1",
+                        "name": "Root Doc",
+                        "mimeType": "application/vnd.google-apps.document",
+                        "parents": ["d"],
+                    },
+                    # Folder-likes in the root listing are stripped —
+                    # the walk already owns them; double-surfacing would
+                    # render the same row twice in the sidebar.
+                    {"id": "f1", "name": "Folder", "mimeType": MIME_FOLDER, "parents": ["d"]},
+                ]
+            }
+        ],
+    )
+    patch_drive_client(client)
+
+    tree = await _svc().walk_drive_folders("d")
+
+    assert [f.id for f in tree.folders] == ["f1"]
+    assert [f.id for f in tree.files] == ["doc1"]
+    children_call = next(c for c in client.files_captured if "in parents" in c.get("q", ""))
+    assert "'d' in parents" in children_call["q"]
 
 
 async def test_list_folder_children_queries_by_parent(patch_drive_client: Any) -> None:
     client = _FakeClient(
-        files_pages=[
+        children_pages=[
             {
                 "files": [
                     {
@@ -245,10 +322,10 @@ async def test_list_folder_children_queries_by_parent(patch_drive_client: Any) -
 # ---------------------------------------------------------------------------
 
 
-def _stub_probes(svc: GoogleDriveService, mapping: dict[str, _ShortcutProbe | None]) -> None:
+def _stub_probes(svc: GoogleDriveService, mapping: dict[str, ShortcutProbe | None]) -> None:
     """Replace ``_probe_targets_sync`` with a deterministic table."""
 
-    def _fake(target_ids: list[str]) -> dict[str, _ShortcutProbe | None]:
+    def _fake(target_ids: list[str]) -> dict[str, ShortcutProbe | None]:
         return {tid: mapping.get(tid) for tid in target_ids}
 
     svc._probe_targets_sync = _fake  # type: ignore[method-assign]
@@ -298,7 +375,7 @@ async def test_walk_surfaces_folder_shortcuts_and_drops_file_shortcuts(
     svc = _svc()
     _stub_probes(
         svc,
-        {"eng-api-folder": _ShortcutProbe(accessible=True, target_drive_id="engineering")},
+        {"eng-api-folder": ShortcutProbe(accessible=True, target_drive_id="engineering")},
     )
 
     tree = await svc.walk_drive_folders("sales")
@@ -329,7 +406,7 @@ async def test_list_children_surfaces_file_shortcuts_with_target_mime(
         drives_pages=[
             {"drives": [{"id": "engineering", "name": "Engineering"}]},
         ],
-        files_pages=[
+        children_pages=[
             {
                 "files": [
                     {
@@ -366,7 +443,7 @@ async def test_list_children_surfaces_file_shortcuts_with_target_mime(
     svc = _svc()
     _stub_probes(
         svc,
-        {"eng-doc": _ShortcutProbe(accessible=True, target_drive_id="engineering")},
+        {"eng-doc": ShortcutProbe(accessible=True, target_drive_id="engineering")},
     )
 
     children = await svc.list_folder_children("folder-x")
@@ -402,7 +479,7 @@ async def test_resolver_marks_forbidden_target_inaccessible(
     )
     patch_drive_client(client)
     svc = _svc()
-    _stub_probes(svc, {"eng-locked": _ShortcutProbe(accessible=False)})
+    _stub_probes(svc, {"eng-locked": ShortcutProbe(accessible=False)})
 
     tree = await svc.walk_drive_folders("sales")
     assert len(tree.folders) == 1
@@ -564,17 +641,37 @@ async def test_probe_targets_dedupes_and_preserves_order() -> None:
     svc = _svc()
     seen: list[list[str]] = []
 
-    def _fake(target_ids: list[str]) -> dict[str, _ShortcutProbe | None]:
+    def _fake(target_ids: list[str]) -> dict[str, ShortcutProbe | None]:
         seen.append(list(target_ids))
-        return {tid: _ShortcutProbe(accessible=True, target_drive_id="d") for tid in target_ids}
+        return {tid: ShortcutProbe(accessible=True, target_drive_id="d") for tid in target_ids}
 
     svc._probe_targets_sync = _fake  # type: ignore[method-assign]
     out = await svc._probe_targets(["t1", None, "t2", "t1"])
 
     assert seen == [["t1", "t2"]]
-    assert out[0] == _ShortcutProbe(accessible=True, target_drive_id="d")
+    assert out[0] == ShortcutProbe(accessible=True, target_drive_id="d")
     assert out[1] is None
     assert out[3] == out[0]
+
+
+async def test_probe_targets_serves_repeat_walks_from_the_cache() -> None:
+    svc = _svc()
+    seen: list[list[str]] = []
+
+    def _fake(target_ids: list[str]) -> dict[str, ShortcutProbe | None]:
+        seen.append(list(target_ids))
+        return {tid: ShortcutProbe(accessible=True, target_drive_id="d") for tid in target_ids}
+
+    svc._probe_targets_sync = _fake  # type: ignore[method-assign]
+    first = await svc._probe_targets(["t1", "t2"])
+    # Second walk within the TTL: no new batch, only the unseen target
+    # is probed when one shows up.
+    second = await svc._probe_targets(["t1", "t2"])
+    third = await svc._probe_targets(["t1", "t3"])
+
+    assert seen == [["t1", "t2"], ["t3"]]
+    assert second == first
+    assert third[0] == first[0]
 
 
 def test_classify_probe_maps_statuses_like_the_old_per_call_path() -> None:
@@ -591,10 +688,10 @@ def test_classify_probe_maps_statuses_like_the_old_per_call_path() -> None:
         return HttpError(_Resp(status), b"{}")  # type: ignore[arg-type]
 
     assert svc._classify_probe("t", None, _err(404)) is None
-    assert svc._classify_probe("t", None, _err(403)) == _ShortcutProbe(accessible=False)
+    assert svc._classify_probe("t", None, _err(403)) == ShortcutProbe(accessible=False)
     assert svc._classify_probe("t", None, _err(500)) is None
     assert svc._classify_probe("t", {"trashed": True}, None) is None
-    assert svc._classify_probe("t", {"id": "t", "driveId": "eng"}, None) == _ShortcutProbe(
+    assert svc._classify_probe("t", {"id": "t", "driveId": "eng"}, None) == ShortcutProbe(
         accessible=True, target_drive_id="eng"
     )
 
