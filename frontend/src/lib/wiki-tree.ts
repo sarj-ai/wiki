@@ -2,6 +2,8 @@ import type { DriveNode } from "@/types/wiki";
 
 import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
 
+type NodeKind = "folder" | "file";
+
 /**
  * True when ``node`` should render as a folder in the sidebar — either
  * a native Drive folder or a shortcut whose target is a folder. Used
@@ -44,7 +46,6 @@ export function buildChildrenIndex(folders: DriveNode[]): Map<string, DriveNode[
   return map;
 }
 
-type NodeKind = "folder" | "file";
 export interface KindedNode {
   type: NodeKind;
   node: DriveNode;

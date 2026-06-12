@@ -14,6 +14,21 @@ import { create } from "zustand";
  * turned off) re-render, and the rest of the tree stays still.
  */
 
+interface DragOverState {
+  activeId: string | null;
+  activeContainerId: string | null;
+  overId: string | null;
+  overContainerId: string | null;
+  intent: DropIntent | null;
+  setActive: (active: { id: string | null; containerId: string | null }) => void;
+  setOver: (over: {
+    id: string | null;
+    containerId: string | null;
+    intent: DropIntent | null;
+  }) => void;
+  reset: () => void;
+}
+
 /**
  * Where the dragged row will land relative to the over row.
  *
@@ -30,21 +45,6 @@ import { create } from "zustand";
  * non-folder rows split the row in half (no into option).
  */
 export type DropIntent = "into" | "above" | "below";
-
-interface DragOverState {
-  activeId: string | null;
-  activeContainerId: string | null;
-  overId: string | null;
-  overContainerId: string | null;
-  intent: DropIntent | null;
-  setActive: (active: { id: string | null; containerId: string | null }) => void;
-  setOver: (over: {
-    id: string | null;
-    containerId: string | null;
-    intent: DropIntent | null;
-  }) => void;
-  reset: () => void;
-}
 
 export const useDragOverStore = create<DragOverState>((set) => ({
   activeId: null,

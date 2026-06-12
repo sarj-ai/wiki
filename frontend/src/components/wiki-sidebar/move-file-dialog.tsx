@@ -31,8 +31,8 @@ interface MoveFileDialogProps {
   onOpenChange: (open: boolean) => void;
   fileId: string;
   fileName: string;
-  currentDriveId: string | null;
-  currentParentFolderId: string | null;
+  currentDriveId: string | undefined;
+  currentParentFolderId: string | undefined;
 }
 
 interface FolderRowProps {
@@ -42,6 +42,14 @@ interface FolderRowProps {
   onSelect: (id: string) => void;
   disabledId: string;
   depth: number;
+}
+
+interface DriveRowProps {
+  driveId: string;
+  driveName: string;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  disabledId: string;
 }
 
 function FolderRow({
@@ -105,14 +113,6 @@ function FolderRow({
         ))}
     </>
   );
-}
-
-interface DriveRowProps {
-  driveId: string;
-  driveName: string;
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  disabledId: string;
 }
 
 // Subscribes to the drive-tree query for THIS drive. If the sidebar

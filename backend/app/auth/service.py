@@ -110,7 +110,7 @@ class GoogleAuthService(AuthService):
         payload = decode_token(refresh_token)
         if payload.type != "refresh":
             raise TokenRevokedError("Invalid token type")
-        user = await self._load_user(uuid.UUID(payload.sub))
+        user = await self._load_user(payload.sub)
         if user is None:
             raise TokenRevokedError("User not found")
         if payload.tv != user.token_version:
@@ -125,7 +125,7 @@ class GoogleAuthService(AuthService):
             payload = decode_token(access_token)
             if payload.type != "access":
                 return
-            user = await self._load_user(uuid.UUID(payload.sub))
+            user = await self._load_user(payload.sub)
             if user is None:
                 return
             user.token_version += 1
@@ -143,7 +143,7 @@ class GoogleAuthService(AuthService):
         payload = decode_token(jwt_token)
         if payload.type != "access":
             raise InvalidTokenError("Invalid token type")
-        user = await self._load_user(uuid.UUID(payload.sub))
+        user = await self._load_user(payload.sub)
         if user is None:
             raise TokenRevokedError("User not found")
         if payload.tv != user.token_version:
@@ -160,8 +160,8 @@ class GoogleAuthService(AuthService):
             data={
                 "code": code,
                 "client_id": settings.GOOGLE_CLIENT_ID,
-                "client_secret": settings.GOOGLE_CLIENT_SECRET,
-                "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+                "client_secret": settings.GOOGLE_CLIENT_SECRET.get_secret_value(),
+                "redirect_uri": str(settings.GOOGLE_REDIRECT_URI),
                 "grant_type": "authorization_code",
             },
         )
@@ -245,9 +245,9 @@ class GoogleAuthService(AuthService):
 
     def _issue_session(self, user: User) -> AuthSession:
         access = create_access_token(
-            user_id=str(user.id), email=user.email, token_version=user.token_version
+            user_id=user.id, email=user.email, token_version=user.token_version
         )
-        refresh = create_refresh_token(user_id=str(user.id), token_version=user.token_version)
+        refresh = create_refresh_token(user_id=user.id, token_version=user.token_version)
         return AuthSession(jwt_access=access, jwt_refresh=refresh)
 
 

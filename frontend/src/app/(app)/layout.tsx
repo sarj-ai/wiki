@@ -1,21 +1,12 @@
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
 import { cookies } from "next/headers";
-import { z } from "zod";
 
 import { ErrorBoundary } from "@/components/error-boundary";
 import { RedirectAfterLogin } from "@/components/redirect-after-login";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { CommandPalette } from "@/components/wiki-search/command-palette";
 import { WikiSidebar } from "@/components/wiki-sidebar/wiki-sidebar";
-import {
-  zDocIconRead,
-  zDriveSummary,
-  zFolderIconRead,
-  zPreferencesRead,
-  zSortOrderRead,
-  zUserProfile,
-} from "@/lib/generated/zod.gen";
-import { serverGet } from "@/lib/server-api";
+import { serverWikiApi } from "@/lib/server-api";
 import { authKeys, wikiKeys } from "@/lib/wiki-keys";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -31,27 +22,27 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   await Promise.all([
     queryClient.prefetchQuery({
       queryKey: wikiKeys.drives,
-      queryFn: () => serverGet("sidebar/drives", z.array(zDriveSummary)),
+      queryFn: serverWikiApi.getDrives,
     }),
     queryClient.prefetchQuery({
       queryKey: wikiKeys.preferences,
-      queryFn: () => serverGet("extras/preferences", zPreferencesRead),
+      queryFn: serverWikiApi.getPreferences,
     }),
     queryClient.prefetchQuery({
       queryKey: wikiKeys.folderIcons,
-      queryFn: () => serverGet("extras/folder-icons", z.array(zFolderIconRead)),
+      queryFn: serverWikiApi.listFolderIcons,
     }),
     queryClient.prefetchQuery({
       queryKey: wikiKeys.docIcons,
-      queryFn: () => serverGet("extras/doc-icons", z.array(zDocIconRead)),
+      queryFn: serverWikiApi.listDocIcons,
     }),
     queryClient.prefetchQuery({
       queryKey: wikiKeys.sortOrders,
-      queryFn: () => serverGet("extras/sort-order", z.array(zSortOrderRead)),
+      queryFn: serverWikiApi.listSortOrders,
     }),
     queryClient.prefetchQuery({
       queryKey: authKeys.me,
-      queryFn: () => serverGet("auth/me", zUserProfile),
+      queryFn: serverWikiApi.getMe,
     }),
   ]);
 

@@ -8,6 +8,20 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useIsClient } from "@/hooks/use-is-client";
 
+interface EmojiPickerPopoverProps {
+  /** Current icon value — shown in the trigger button. */
+  value: string | undefined;
+  /** Called with the new emoji, or ``null`` if the user clicks Remove. */
+  onChange: (next: string | null) => void | Promise<void>;
+  /** Trigger element to wrap (the file/folder icon in the sidebar row). */
+  children: React.ReactElement;
+}
+
+interface EmojiPickerBodyProps {
+  theme: "light" | "dark";
+  onSelect: (emoji: string) => void;
+}
+
 /**
  * Skeleton placeholder that matches the live emoji-mart picker's
  * footprint (~352×435px) so there's no layout jump when the real
@@ -59,13 +73,25 @@ function loadEmojiData(): Promise<unknown> {
   return cachedData;
 }
 
-interface EmojiPickerPopoverProps {
-  /** Current icon value — shown in the trigger button. */
-  value: string | null;
-  /** Called with the new emoji, or ``null`` if the user clicks Remove. */
-  onChange: (next: string | null) => void | Promise<void>;
-  /** Trigger element to wrap (the file/folder icon in the sidebar row). */
-  children: React.ReactElement;
+function EmojiPickerBody({ theme, onSelect }: EmojiPickerBodyProps) {
+  return (
+    <Picker
+      data={loadEmojiData}
+      theme={theme}
+      // Focus the picker's search input as soon as it mounts so the
+      // user can start typing to filter emojis without a second click.
+      // We prevented radix's auto-focus in the PopoverContent so radix
+      // doesn't grab focus first and land it on the wrong element.
+      autoFocus
+      onEmojiSelect={(picked: { native?: string; id?: string }) => {
+        const value = picked.native ?? picked.id ?? null;
+        if (value) onSelect(value);
+      }}
+      previewPosition="none"
+      skinTonePosition="none"
+      maxFrequentRows={2}
+    />
+  );
 }
 
 export function EmojiPickerPopover({ value, onChange, children }: EmojiPickerPopoverProps) {
@@ -119,31 +145,5 @@ export function EmojiPickerPopover({ value, onChange, children }: EmojiPickerPop
         )}
       </PopoverContent>
     </Popover>
-  );
-}
-
-interface EmojiPickerBodyProps {
-  theme: "light" | "dark";
-  onSelect: (emoji: string) => void;
-}
-
-function EmojiPickerBody({ theme, onSelect }: EmojiPickerBodyProps) {
-  return (
-    <Picker
-      data={loadEmojiData}
-      theme={theme}
-      // Focus the picker's search input as soon as it mounts so the
-      // user can start typing to filter emojis without a second click.
-      // We prevented radix's auto-focus in the PopoverContent so radix
-      // doesn't grab focus first and land it on the wrong element.
-      autoFocus
-      onEmojiSelect={(picked: { native?: string; id?: string }) => {
-        const value = picked.native ?? picked.id ?? null;
-        if (value) onSelect(value);
-      }}
-      previewPosition="none"
-      skinTonePosition="none"
-      maxFrequentRows={2}
-    />
   );
 }

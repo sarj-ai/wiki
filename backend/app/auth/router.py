@@ -30,7 +30,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 
-_is_secure = settings.FRONTEND_URL.startswith("https")
+_is_secure = settings.FRONTEND_URL.scheme == "https"
 # ``lax`` everywhere: frontend (``wiki.sarj.ai``) and backend
 # (``api-wiki.sarj.ai``) share the registrable parent ``sarj.ai``, so
 # the browser treats them as
@@ -73,7 +73,7 @@ async def login(_request: Request) -> RedirectResponse:
     # existing token on subsequent logins.
     oauth_params: dict[str, str] = {
         "client_id": settings.GOOGLE_CLIENT_ID,
-        "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+        "redirect_uri": str(settings.GOOGLE_REDIRECT_URI),
         "response_type": "code",
         "scope": " ".join(OAUTH_SCOPES),
         "access_type": "offline",
@@ -105,7 +105,7 @@ async def callback(
         session = await auth.exchange_code_for_session(code, state, expected_state)
     except AuthError as e:
         return _error_redirect(e.redirect_key)
-    redirect = RedirectResponse(url=settings.FRONTEND_URL, status_code=status.HTTP_302_FOUND)
+    redirect = RedirectResponse(url=settings.frontend_origin, status_code=status.HTTP_302_FOUND)
     _set_auth_cookies(redirect, session)
     redirect.delete_cookie(key="oauth_state", path="/")
     return redirect
@@ -208,6 +208,6 @@ def _clear_auth_cookies(response: Response) -> None:
 
 def _error_redirect(error_key: str) -> RedirectResponse:
     return RedirectResponse(
-        url=f"{settings.FRONTEND_URL}/login?error={error_key}",
+        url=f"{settings.frontend_origin}/login?error={error_key}",
         status_code=status.HTTP_302_FOUND,
     )

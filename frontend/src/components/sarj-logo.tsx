@@ -1,18 +1,18 @@
 import { cn } from "@/lib/utils";
 
-// Native viewBox of the Sarj wordmark SVGs in ``public/brand``. Used
-// to compute the rendered width from a caller's height (the ``size``
-// prop) so the wordmark never stretches.
-const LOGO_VIEWBOX_WIDTH = 977.19;
-const LOGO_VIEWBOX_HEIGHT = 528.06;
-const ASPECT_RATIO = LOGO_VIEWBOX_WIDTH / LOGO_VIEWBOX_HEIGHT;
-
 interface SarjLogoProps {
   /** Height in px; width is computed from the wordmark's aspect ratio. */
   size?: number;
   className?: string;
   priority?: boolean;
 }
+
+// Native viewBox of the Sarj wordmark SVGs in ``public/brand``. Used
+// to compute the rendered width from a caller's height (the ``size``
+// prop) so the wordmark never stretches.
+const LOGO_VIEWBOX_WIDTH = 977.19;
+const LOGO_VIEWBOX_HEIGHT = 528.06;
+const ASPECT_RATIO = LOGO_VIEWBOX_WIDTH / LOGO_VIEWBOX_HEIGHT;
 
 /**
  * Sarj wordmark logo. Renders as a plain ``<img>`` rather than

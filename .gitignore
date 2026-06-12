@@ -7,3 +7,4 @@
 .terraform/
 .mcp.json
 .playwright-mcp/
+.stamps/

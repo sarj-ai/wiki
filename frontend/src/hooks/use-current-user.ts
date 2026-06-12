@@ -2,9 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { apiClient, validatedJson } from "@/lib/api-client";
 import { type User } from "@/lib/auth";
-import { zUserProfile } from "@/lib/generated/zod.gen";
+import { wikiApi } from "@/lib/wiki-api";
 import { authKeys } from "@/lib/wiki-keys";
 
 /**
@@ -15,7 +14,7 @@ import { authKeys } from "@/lib/wiki-keys";
 export function useCurrentUser() {
   return useQuery<User>({
     queryKey: authKeys.me,
-    queryFn: () => validatedJson(apiClient.get("auth/me"), zUserProfile),
+    queryFn: wikiApi.getMe,
     staleTime: 5 * 60 * 1000,
   });
 }

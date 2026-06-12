@@ -24,6 +24,15 @@ import {
   MIME_SLIDE,
 } from "@/types/wiki";
 
+// Shortcut nodes carry their target's mime in ``shortcutTargetMimeType``
+// — the rendered icon should match the *target*, since that's the file
+// the user will actually open. The Link2 overlay then signals "this is
+// a pointer, not the original".
+interface NodeIconShape {
+  mimeType: string;
+  shortcutTargetMimeType?: string | null | undefined;
+}
+
 // Lucide outlines tinted per Workspace type via the --icon-* tokens in
 // globals.css (Google brand hues, dark-mode adjusted). Solid outlines
 // read cleanly at 16px — detailed mini-scenes with gradients got muddy
@@ -50,15 +59,6 @@ export function renderMimeIcon(mimeType: string, className?: string): ReactEleme
       : { icon: FileText, tint: "text-icon-generic" });
   const Icon = entry.icon;
   return <Icon className={cn(entry.tint, className)} />;
-}
-
-// Shortcut nodes carry their target's mime in ``shortcutTargetMimeType``
-// — the rendered icon should match the *target*, since that's the file
-// the user will actually open. The Link2 overlay then signals "this is
-// a pointer, not the original".
-interface NodeIconShape {
-  mimeType: string;
-  shortcutTargetMimeType?: string | null | undefined;
 }
 
 export function renderNodeIcon(node: NodeIconShape, className?: string): ReactElement {

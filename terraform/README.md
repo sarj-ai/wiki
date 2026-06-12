@@ -24,6 +24,16 @@ on GCP + Cloudflare. Updated for Sub-PR B (rev 8 of
 | `monitoring.tf` | Cloud Monitoring alert policies |
 | `outputs.tf` | Useful outputs (LB IP, backend URL, etc.) |
 
+## Variables (`terraform.tfvars`)
+
+`terraform.tfvars` is git-ignored and stored in Secret Manager
+(`terraform-tfvars` in project `sarj-docs`). From the repo root:
+
+```bash
+make pull-tf-secrets   # writes terraform/terraform.tfvars
+make push-tf-secrets   # publish local edits back
+```
+
 ## What was removed from the legacy (pre-pivot Sarj Docs) stack
 
 - `scheduler.tf` — Cloud Scheduler jobs for webhook renewal and

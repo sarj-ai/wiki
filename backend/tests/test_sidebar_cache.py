@@ -17,11 +17,12 @@ import uuid
 from sqlalchemy.dialects import postgresql
 
 from app.auth.encryption import decrypt_text, encrypt_text
+from app.config import settings
 from app.drive.schemas import DriveNode, DriveTree, SearchResult, SnippetResult
 from app.drive.service import DriveService
 from app.models.user import User
 from app.models.wiki import DriveTreeCache
-from app.sidebar.cache import CACHE_MAX_AGE, CACHE_TTL, PostgresSidebarCacheService
+from app.sidebar.cache import CACHE_MAX_AGE, PostgresSidebarCacheService
 from app.sidebar.singleflight import Singleflight
 
 
@@ -167,6 +168,25 @@ def test_save_tree_stores_ciphertext_and_purges_stale_rows() -> None:
     assert "refreshed_at <" in purge_sql
 
 
+def test_unparseable_row_is_treated_as_cache_miss() -> None:
+    tree = _tree()
+    row = DriveTreeCache(
+        drive_id="drive-1",
+        tree=encrypt_text('{"drive_id": "drive-1"}'),
+        refreshed_at=datetime.now(UTC),
+    )
+    db = FakeSession(row=row)
+    drive = FakeDrive(tree)
+    service = _service(drive, FakeSession())
+
+    cached = asyncio.run(service.get_drive_tree(db, "drive-1"))  # type: ignore[arg-type]
+
+    assert db.deleted == [row]
+    assert drive.walks == 1
+    assert cached.tree == tree
+    assert cached.refreshed_at is None
+
+
 def test_cache_max_age_is_long_enough_to_matter() -> None:
     assert timedelta(days=7) <= CACHE_MAX_AGE
-    assert CACHE_MAX_AGE > CACHE_TTL
+    assert CACHE_MAX_AGE > settings.SIDEBAR_CACHE_TTL

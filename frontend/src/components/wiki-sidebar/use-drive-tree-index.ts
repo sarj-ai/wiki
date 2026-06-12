@@ -9,10 +9,20 @@ import { buildChildrenIndex } from "@/lib/wiki-tree";
 
 interface DriveTreeIndex {
   childrenByParent: Map<string, DriveNode[]>;
-  iconOverrides: Map<string, string | null>;
-  docIconOverrides: Map<string, string | null>;
+  iconOverrides: Map<string, string | undefined>;
+  docIconOverrides: Map<string, string | undefined>;
   sortOrderMap: Map<string, number>;
   treeQuery: ReturnType<typeof useDriveTree>;
+}
+
+function mapByKey<T, V>(
+  items: readonly T[],
+  key: (item: T) => string,
+  value: (item: T) => V,
+): Map<string, V> {
+  const map = new Map<string, V>();
+  for (const item of items) map.set(key(item), value(item));
+  return map;
 }
 
 /**
@@ -47,7 +57,7 @@ export function useDriveTreeIndex(
   );
   const docIconOverrides = useMemo(
     () =>
-      mapByKey<DocIcon, string | null>(
+      mapByKey<DocIcon, string | undefined>(
         docIconsQuery.data ?? [],
         (d) => d.driveId,
         (d) => d.icon,
@@ -65,14 +75,4 @@ export function useDriveTreeIndex(
   );
 
   return { childrenByParent, iconOverrides, docIconOverrides, sortOrderMap, treeQuery };
-}
-
-function mapByKey<T, V>(
-  items: readonly T[],
-  key: (item: T) => string,
-  value: (item: T) => V,
-): Map<string, V> {
-  const map = new Map<string, V>();
-  for (const item of items) map.set(key(item), value(item));
-  return map;
 }

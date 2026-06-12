@@ -21,6 +21,42 @@ interface FileViewerProps {
   reloadKey?: number;
 }
 
+function FileViewerInner({ fileId, mimeType, title }: FileViewerProps) {
+  const src = embedUrlFor(mimeType, fileId);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const attachLoadListener = (iframe: HTMLIFrameElement | null) => {
+    if (!iframe) return;
+    const handleLoad = () => {
+      setIsLoading(false);
+    };
+    iframe.addEventListener("load", handleLoad);
+    return () => {
+      iframe.removeEventListener("load", handleLoad);
+    };
+  };
+
+  return (
+    <div className="relative h-full w-full">
+      {isLoading && (
+        <div
+          className="bg-background absolute inset-0 z-10 flex items-center justify-center"
+          aria-label="Loading document"
+        >
+          <FileLoadingIndicator />
+        </div>
+      )}
+      <iframe
+        ref={attachLoadListener}
+        title={title}
+        src={src}
+        className="block h-full w-full border-0"
+        allow="clipboard-read; clipboard-write"
+      />
+    </div>
+  );
+}
+
 // Full-height iframe for the selected file. Google Workspace types use
 // their `edit?embedded=true` variants so comments/suggesting/version
 // history all work natively; PDFs and images fall back to Drive's
@@ -43,31 +79,4 @@ interface FileViewerProps {
 export function FileViewer(props: FileViewerProps) {
   const key = `${props.fileId}:${props.reloadKey ?? 0}`;
   return <FileViewerInner key={key} {...props} />;
-}
-
-function FileViewerInner({ fileId, mimeType, title }: FileViewerProps) {
-  const src = embedUrlFor(mimeType, fileId);
-  const [isLoading, setIsLoading] = useState(true);
-
-  return (
-    <div className="relative h-full w-full">
-      {isLoading && (
-        <div
-          className="bg-background absolute inset-0 z-10 flex items-center justify-center"
-          aria-label="Loading document"
-        >
-          <FileLoadingIndicator />
-        </div>
-      )}
-      <iframe
-        title={title}
-        src={src}
-        className="block h-full w-full border-0"
-        allow="clipboard-read; clipboard-write"
-        onLoad={() => {
-          setIsLoading(false);
-        }}
-      />
-    </div>
-  );
 }

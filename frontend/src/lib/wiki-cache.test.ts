@@ -24,8 +24,13 @@ function makeNode(overrides: Partial<DriveNode> = {}): DriveNode {
     id: "n",
     name: "n",
     mimeType: MIME_DOC,
-    parentId: null,
-    modifiedTime: null,
+    parentId: undefined,
+    modifiedTime: undefined,
+    shortcutTargetId: undefined,
+    shortcutTargetMimeType: undefined,
+    shortcutTargetDriveId: undefined,
+    shortcutTargetDriveName: undefined,
+    shortcutInaccessible: false,
     ...overrides,
   };
 }
@@ -39,11 +44,16 @@ describe("fileToNode", () => {
       mimeType: MIME_DOC,
       parentId: "p",
       modifiedTime: "2025-01-01T00:00:00Z",
+      shortcutTargetId: undefined,
+      shortcutTargetMimeType: undefined,
+      shortcutTargetDriveId: undefined,
+      shortcutTargetDriveName: undefined,
+      shortcutInaccessible: false,
     });
   });
 
-  it("falls back to null when parentFolderId is missing", () => {
-    expect(fileToNode(makeFile({ parentFolderId: null })).parentId).toBeNull();
+  it("leaves parentId absent when parentFolderId is missing", () => {
+    expect(fileToNode(makeFile({ parentFolderId: undefined })).parentId).toBeUndefined();
   });
 });
 
@@ -60,11 +70,11 @@ describe("injectNewFileIntoCaches", () => {
     expect(updated?.[1]?.id).toBe("new");
   });
 
-  it("uses driveId as parent key when parentFolderId is null", () => {
+  it("uses driveId as parent key when parentFolderId is absent", () => {
     const qc = new QueryClient();
     qc.setQueryData<DriveNode[]>(wikiKeys.folderFiles("drive-1"), []);
 
-    injectNewFileIntoCaches(qc, makeFile({ parentFolderId: null }));
+    injectNewFileIntoCaches(qc, makeFile({ parentFolderId: undefined }));
 
     expect(qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles("drive-1"))).toHaveLength(1);
   });
@@ -121,7 +131,7 @@ describe("removeFileFromCaches", () => {
     };
     qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
 
-    removeFileFromCaches(qc, "f1", null, "drive-1");
+    removeFileFromCaches(qc, "f1", undefined, "drive-1");
 
     const updated = qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"));
     expect(updated?.folders.map((f) => f.id)).toEqual(["f2"]);
@@ -131,7 +141,7 @@ describe("removeFileFromCaches", () => {
     const qc = new QueryClient();
     qc.setQueryData(["wiki", "file", "x"], { id: "x" });
 
-    removeFileFromCaches(qc, "x", null, null);
+    removeFileFromCaches(qc, "x");
 
     expect(qc.getQueryData(["wiki", "file", "x"])).toBeUndefined();
   });
