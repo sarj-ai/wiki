@@ -54,7 +54,7 @@ Routers never call Google APIs or the DB directly — they resolve a service via
 
 - **Python deps/scripts**: `uv` only. Never `pip`, `pip3`, `venv`, `python -m venv`.
 - **Shell**: use relative paths; cwd is already repo root.
-- **Backend checkers (blocking, run on every change)**: `ruff`, `mypy` (strict), `pyright` (strict), `ty`, `vulture`, `lint-imports` (import-linter layering contracts in `pyproject.toml`). All must pass. Tests run with `uv run pytest`; CI enforces `--cov-fail-under=38` (a ratchet — raise, never lower).
+- **Backend checkers (blocking, run on every change)**: `ruff`, `mypy` (strict), `pyright` (strict), `ty`, `vulture`, `lint-imports` (import-linter layering contracts in `pyproject.toml`). All must pass. Tests run with `uv run pytest`; CI enforces `--cov-fail-under=70` (a ratchet — raise, never lower).
 - **Frontend checkers (blocking)**: `prettier`, `eslint`, `tsc` (TS 6, extends `@sarj/tsconfig/strict.json`), `knip`, `type-coverage --at-least 99`.
 - **API contract**: `frontend/openapi.json` + `frontend/src/lib/generated/zod.gen.ts` are generated artifacts. After changing any backend Pydantic response model: `cd backend && uv run python scripts/export_openapi.py ../frontend/openapi.json && cd ../frontend && npm run generate:api`. On PRs, CI (`ci-quality.yml` api-contract) regenerates and auto-commits any drift to the branch; direct pushes fail on drift.
 - **Repo-wide pre-commit (blocking in CI via ci-quality.yml)**: hygiene hooks, gitleaks, actionlint, and the `sarj-*` AST rules from `sarj-ai/standards`. Suppress a sarj finding inline with `# sarj-noqa: SARJ00X — reason`.
