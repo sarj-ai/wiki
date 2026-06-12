@@ -1,8 +1,9 @@
 from datetime import UTC, datetime, timedelta
 from typing import Literal
+import uuid
 
 import jwt
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, NonNegativeInt, ValidationError
 
 from app.auth.errors import InvalidTokenError
 from app.config import settings
@@ -21,40 +22,40 @@ class TokenPayload(BaseModel):
     out of the contract.
     """
 
-    sub: str
+    sub: uuid.UUID
     type: Literal["access", "refresh"]
-    tv: int = 0
+    tv: NonNegativeInt = 0
 
 
-def create_access_token(user_id: str, email: str, token_version: int = 0) -> str:
+def create_access_token(user_id: uuid.UUID, email: str, token_version: int = 0) -> str:
     now = datetime.now(UTC)
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),
         "email": email,
         "iat": now,
         "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
         "type": "access",
         "tv": token_version,
     }
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(payload, settings.SECRET_KEY.get_secret_value(), algorithm=ALGORITHM)
 
 
-def create_refresh_token(user_id: str, token_version: int = 0) -> str:
+def create_refresh_token(user_id: uuid.UUID, token_version: int = 0) -> str:
     now = datetime.now(UTC)
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),
         "iat": now,
         "exp": now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
         "type": "refresh",
         "tv": token_version,
     }
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(payload, settings.SECRET_KEY.get_secret_value(), algorithm=ALGORITHM)
 
 
 def decode_token(token: str) -> TokenPayload:
     """Raises :class:`InvalidTokenError` on invalid/expired/malformed tokens."""
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.SECRET_KEY.get_secret_value(), algorithms=[ALGORITHM])
     except jwt.PyJWTError as e:
         raise InvalidTokenError("Invalid or expired token") from e
     try:

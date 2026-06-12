@@ -20,7 +20,7 @@ def run_migrations_offline() -> None:
     if settings.DATABASE_URL is None:
         raise RuntimeError("Offline migrations require DATABASE_URL")
     context.configure(
-        url=settings.DATABASE_URL,
+        url=str(settings.DATABASE_URL),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},

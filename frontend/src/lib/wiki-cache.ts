@@ -27,8 +27,13 @@ export function fileToNode(file: FileResponse): DriveNode {
     id: file.id,
     name: file.name,
     mimeType: file.mimeType,
-    parentId: file.parentFolderId ?? null,
-    modifiedTime: file.modifiedTime ?? null,
+    parentId: file.parentFolderId,
+    modifiedTime: file.modifiedTime,
+    shortcutTargetId: undefined,
+    shortcutTargetMimeType: undefined,
+    shortcutTargetDriveId: undefined,
+    shortcutTargetDriveName: undefined,
+    shortcutInaccessible: false,
   };
 }
 
@@ -40,7 +45,7 @@ export function fileToNode(file: FileResponse): DriveNode {
 export function injectNewFileIntoCaches(qc: QueryClient, file: FileResponse): void {
   const node = fileToNode(file);
   // Root-level files live under ``folderFiles(driveId)`` — the drive
-  // section treats ``parentFolderId === null`` as "this drive's root"
+  // section treats an absent ``parentFolderId`` as "this drive's root"
   // and reads via ``useFolderFiles(drive.id)``. Fall back to the drive
   // id so the optimistic insert lands in the same cache.
   const parentKey = file.parentFolderId ?? file.driveId;
@@ -82,7 +87,7 @@ export function optimisticMoveFile(
   qc: QueryClient,
   node: DriveNode,
   destination: { parentFolderId: string; driveId: string },
-  source: { parentFolderId: string | null; driveId: string | null },
+  source: { parentFolderId: string | undefined; driveId: string | undefined },
 ): () => void {
   removeFileFromCaches(qc, node.id, source.parentFolderId, source.driveId);
   injectNewFileIntoCaches(qc, {
@@ -115,8 +120,8 @@ export function optimisticMoveFile(
 export function removeFileFromCaches(
   qc: QueryClient,
   fileId: string,
-  parentFolderId: string | null,
-  driveId: string | null,
+  parentFolderId?: string,
+  driveId?: string,
 ): void {
   const parentKey = parentFolderId ?? driveId;
   if (parentKey) {

@@ -10,7 +10,7 @@ import { EmojiPickerPopover } from "./emoji-picker-popover";
 interface PickableIconProps {
   pickable: boolean;
   dimmed?: boolean;
-  value: string | null;
+  value: string | undefined;
   onChange: (next: string | null) => Promise<void>;
   ariaLabel: string;
   children: ReactNode;

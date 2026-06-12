@@ -34,7 +34,7 @@ jobs:
         run: uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure
 
   api-contract:
-    name: OpenAPI spec / generated Zod schemas in sync
+    name: OpenAPI spec in sync
     runs-on: ubuntu-latest
     permissions:
       contents: write # pushes regenerated artifacts back to PR branches
@@ -66,14 +66,10 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Regenerate Zod schemas
-        working-directory: frontend
-        run: npm run generate:api
-
       - name: Detect drift
         id: drift
         run: |
-          if git diff --quiet -- frontend/openapi.json frontend/src/lib/generated; then
+          if git diff --quiet -- frontend/openapi.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -93,15 +89,15 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/openapi.json frontend/src/lib/generated
-          git commit -m "chore: regenerate OpenAPI spec + Zod schemas"
+          git add frontend/openapi.json
+          git commit -m "chore: regenerate OpenAPI spec"
           git push origin "HEAD:${GITHUB_HEAD_REF}"
 
       # Direct pushes (main, feat/**) have no PR branch to fix up —
       # drift that survived to here is a hard failure.
       - name: Fail on drift
         if: steps.drift.outputs.changed == 'true' && github.event_name != 'pull_request'
-        run: git diff --exit-code -- frontend/openapi.json frontend/src/lib/generated
+        run: git diff --exit-code -- frontend/openapi.json
 
   secret-scan:
     name: gitleaks (full history)

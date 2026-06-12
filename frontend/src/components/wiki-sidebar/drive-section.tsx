@@ -54,6 +54,95 @@ interface DriveSectionProps {
   sortOrders: SortOrder[];
 }
 
+interface BuildRootItemsArgs {
+  childrenByParent: Map<string, DriveNode[]>;
+  rootFiles: DriveNode[];
+  sortOrderMap: Map<string, number>;
+  showNonDocFiles: boolean;
+}
+
+/**
+ * Collision detection that prefers droppables under the user's
+ * cursor over droppables closest to the dragged element's center.
+ *
+ * The default sortable strategy ranks by ``active.rect``'s center vs.
+ * each droppable's center — fine when the cursor is roughly aligned
+ * with the dragged element, but with grab-at-edge or any non-center
+ * grab the dragged overlay can sit far from the cursor, and the
+ * "over" stays glued to the row visually under the OVERLAY rather
+ * than the row visually under the CURSOR. Users feel that as
+ * "drops keep going to the wrong place".
+ *
+ * Layered:
+ *   1. ``pointerWithin`` — exact "cursor is inside this rect"
+ *      collisions. Highest fidelity when present.
+ *   2. ``rectIntersection`` — second pass that catches drops where
+ *      the cursor is at a row's edge but the rect math misses it.
+ *   3. ``closestCorners`` — fallback for cursors in empty space (the
+ *      first/last row edges, or an empty SortableContext). Picks
+ *      the droppable whose corners are closest to the active rect.
+ *      Better than closestCenter for stacked rows of varying height.
+ */
+const cursorFirstCollision: CollisionDetection = (args) => {
+  const pointer = pointerWithin(args);
+  if (pointer.length > 0) return pointer;
+  const intersect = rectIntersection(args);
+  if (intersect.length > 0) return intersect;
+  return closestCorners(args);
+};
+
+// Combine root-level folders (from the cached drive tree) and root-
+// level files (from a lazy folder-files call keyed by drive id) into
+// a single sorted list. Single sort pass interleaves the two so a
+// drop that lands a file above a folder survives the round-trip.
+function buildRootItems({
+  childrenByParent,
+  rootFiles,
+  sortOrderMap,
+  showNonDocFiles,
+}: BuildRootItemsArgs): KindedNode[] {
+  const folders: KindedNode[] = (childrenByParent.get("__root__") ?? []).map((node) => ({
+    type: "folder",
+    node,
+  }));
+  // Strip folder-likes (native folders + folder-target shortcuts)
+  // from the lazy file list — the tree walk already surfaces them in
+  // ``childrenByParent``. Without this filter the same shortcut id
+  // appears twice and React renders the second copy as a FileRow,
+  // routing folder-shortcut clicks to ``/d/<targetFolderId>`` (which
+  // Google has no preview for).
+  const rawFiles = rootFiles.filter((n) => !isFolderLikeNode(n));
+  const visibleFiles = showNonDocFiles ? rawFiles : rawFiles.filter((n) => n.mimeType === MIME_DOC);
+  const files: KindedNode[] = visibleFiles.map((node) => ({ type: "file", node }));
+  return [...folders, ...files].sort((a, b) => compareNodeOrder(a, b, sortOrderMap));
+}
+
+// A handful of skeleton rows shaped like folder/file entries so the
+// loading state matches the rhythm of real content. Varied widths and
+// indentation keep the pulse from looking like a single bar.
+function DriveTreeSkeleton() {
+  return (
+    <SidebarMenuItem className="flex flex-col gap-1.5 px-2 py-1">
+      <div className="flex items-center gap-2 pl-1">
+        <Skeleton className="size-3.5 rounded-sm" />
+        <Skeleton className="h-3.5 w-32 rounded" />
+      </div>
+      <div className="flex items-center gap-2 pl-5">
+        <Skeleton className="size-3.5 rounded-sm" />
+        <Skeleton className="h-3.5 w-40 rounded" />
+      </div>
+      <div className="flex items-center gap-2 pl-5">
+        <Skeleton className="size-3.5 rounded-sm" />
+        <Skeleton className="h-3.5 w-24 rounded" />
+      </div>
+      <div className="flex items-center gap-2 pl-1">
+        <Skeleton className="size-3.5 rounded-sm" />
+        <Skeleton className="h-3.5 w-36 rounded" />
+      </div>
+    </SidebarMenuItem>
+  );
+}
+
 export function DriveSection({
   drive,
   activeDriveId,
@@ -215,14 +304,14 @@ export function DriveSection({
                         data={{ isFolder: type === "folder" }}
                       >
                         {type === "folder" ? (
-                          <TreeNode node={node} parentFolderId={null} depth={0} />
+                          <TreeNode node={node} parentFolderId={undefined} depth={0} />
                         ) : (
                           <FileRow
                             node={node}
                             driveId={drive.id}
-                            parentFolderId={null}
+                            parentFolderId={undefined}
                             activeDriveId={activeDriveId}
-                            iconOverride={docIconOverrides.get(node.id) ?? null}
+                            iconOverride={docIconOverrides.get(node.id)}
                             depth={0}
                           />
                         )}
@@ -252,14 +341,14 @@ export function DriveSection({
             <DragOverlay dropAnimation={null}>
               {reorder.activeNode ? (
                 reorder.activeNode.mimeType === MIME_FOLDER ? (
-                  <TreeNode node={reorder.activeNode} parentFolderId={null} depth={0} />
+                  <TreeNode node={reorder.activeNode} parentFolderId={undefined} depth={0} />
                 ) : (
                   <FileRow
                     node={reorder.activeNode}
                     driveId={drive.id}
-                    parentFolderId={null}
+                    parentFolderId={undefined}
                     activeDriveId={activeDriveId}
-                    iconOverride={docIconOverrides.get(reorder.activeNode.id) ?? null}
+                    iconOverride={docIconOverrides.get(reorder.activeNode.id)}
                     depth={0}
                   />
                 )
@@ -269,94 +358,5 @@ export function DriveSection({
         )}
       </SidebarGroup>
     </DriveSectionProvider>
-  );
-}
-
-/**
- * Collision detection that prefers droppables under the user's
- * cursor over droppables closest to the dragged element's center.
- *
- * The default sortable strategy ranks by ``active.rect``'s center vs.
- * each droppable's center — fine when the cursor is roughly aligned
- * with the dragged element, but with grab-at-edge or any non-center
- * grab the dragged overlay can sit far from the cursor, and the
- * "over" stays glued to the row visually under the OVERLAY rather
- * than the row visually under the CURSOR. Users feel that as
- * "drops keep going to the wrong place".
- *
- * Layered:
- *   1. ``pointerWithin`` — exact "cursor is inside this rect"
- *      collisions. Highest fidelity when present.
- *   2. ``rectIntersection`` — second pass that catches drops where
- *      the cursor is at a row's edge but the rect math misses it.
- *   3. ``closestCorners`` — fallback for cursors in empty space (the
- *      first/last row edges, or an empty SortableContext). Picks
- *      the droppable whose corners are closest to the active rect.
- *      Better than closestCenter for stacked rows of varying height.
- */
-const cursorFirstCollision: CollisionDetection = (args) => {
-  const pointer = pointerWithin(args);
-  if (pointer.length > 0) return pointer;
-  const intersect = rectIntersection(args);
-  if (intersect.length > 0) return intersect;
-  return closestCorners(args);
-};
-
-interface BuildRootItemsArgs {
-  childrenByParent: Map<string, DriveNode[]>;
-  rootFiles: DriveNode[];
-  sortOrderMap: Map<string, number>;
-  showNonDocFiles: boolean;
-}
-
-// Combine root-level folders (from the cached drive tree) and root-
-// level files (from a lazy folder-files call keyed by drive id) into
-// a single sorted list. Single sort pass interleaves the two so a
-// drop that lands a file above a folder survives the round-trip.
-function buildRootItems({
-  childrenByParent,
-  rootFiles,
-  sortOrderMap,
-  showNonDocFiles,
-}: BuildRootItemsArgs): KindedNode[] {
-  const folders: KindedNode[] = (childrenByParent.get("__root__") ?? []).map((node) => ({
-    type: "folder",
-    node,
-  }));
-  // Strip folder-likes (native folders + folder-target shortcuts)
-  // from the lazy file list — the tree walk already surfaces them in
-  // ``childrenByParent``. Without this filter the same shortcut id
-  // appears twice and React renders the second copy as a FileRow,
-  // routing folder-shortcut clicks to ``/d/<targetFolderId>`` (which
-  // Google has no preview for).
-  const rawFiles = rootFiles.filter((n) => !isFolderLikeNode(n));
-  const visibleFiles = showNonDocFiles ? rawFiles : rawFiles.filter((n) => n.mimeType === MIME_DOC);
-  const files: KindedNode[] = visibleFiles.map((node) => ({ type: "file", node }));
-  return [...folders, ...files].sort((a, b) => compareNodeOrder(a, b, sortOrderMap));
-}
-
-// A handful of skeleton rows shaped like folder/file entries so the
-// loading state matches the rhythm of real content. Varied widths and
-// indentation keep the pulse from looking like a single bar.
-function DriveTreeSkeleton() {
-  return (
-    <SidebarMenuItem className="flex flex-col gap-1.5 px-2 py-1">
-      <div className="flex items-center gap-2 pl-1">
-        <Skeleton className="size-3.5 rounded-sm" />
-        <Skeleton className="h-3.5 w-32 rounded" />
-      </div>
-      <div className="flex items-center gap-2 pl-5">
-        <Skeleton className="size-3.5 rounded-sm" />
-        <Skeleton className="h-3.5 w-40 rounded" />
-      </div>
-      <div className="flex items-center gap-2 pl-5">
-        <Skeleton className="size-3.5 rounded-sm" />
-        <Skeleton className="h-3.5 w-24 rounded" />
-      </div>
-      <div className="flex items-center gap-2 pl-1">
-        <Skeleton className="size-3.5 rounded-sm" />
-        <Skeleton className="h-3.5 w-36 rounded" />
-      </div>
-    </SidebarMenuItem>
   );
 }

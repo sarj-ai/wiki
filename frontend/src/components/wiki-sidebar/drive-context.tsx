@@ -4,6 +4,8 @@ import { createContext, useContext } from "react";
 
 import type { DriveNode } from "@/types/wiki";
 
+const DriveSectionContext = createContext<DriveSectionValue | null>(null);
+
 /**
  * Shared per-drive render context for the sidebar. ``DriveSection``
  * is the provider; every nested ``TreeNode`` reads from it instead of
@@ -19,13 +21,11 @@ export interface DriveSectionValue {
   activeDriveId: string | null;
   showNonDocFiles: boolean;
   childrenByParent: Map<string, DriveNode[]>;
-  iconOverrides: Map<string, string | null>;
-  docIconOverrides: Map<string, string | null>;
+  iconOverrides: Map<string, string | undefined>;
+  docIconOverrides: Map<string, string | undefined>;
   sortOrderMap: Map<string, number>;
   optimisticByContainer: Map<string, string[]>;
 }
-
-const DriveSectionContext = createContext<DriveSectionValue | null>(null);
 
 export const DriveSectionProvider = DriveSectionContext.Provider;
 

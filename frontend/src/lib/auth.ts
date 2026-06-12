@@ -1,13 +1,11 @@
-import { apiClient } from "@/lib/api-client";
+import { type z } from "zod";
 
-const API_URL = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:8000";
+import "@/lib/api-client";
+import { API_URL } from "@/lib/env";
+import { logoutAuthLogoutPost } from "@/lib/generated/sdk.gen";
+import { type userProfile } from "@/lib/wiki-schemas";
 
-export interface User {
-  id: string;
-  email: string;
-  displayName: string | null;
-  avatarUrl: string | null;
-}
+export type User = z.output<typeof userProfile>;
 
 export function getLoginUrl(): string {
   return `${API_URL}/auth/login`;
@@ -15,9 +13,8 @@ export function getLoginUrl(): string {
 
 export async function logout(): Promise<void> {
   try {
-    await apiClient.post("auth/logout");
+    await logoutAuthLogoutPost({ throwOnError: true });
   } catch {
-    // Logout is best-effort — the cookies clear server-side and the
-    // caller drops local user state regardless.
+    return;
   }
 }

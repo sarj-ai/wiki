@@ -24,21 +24,19 @@ from typing import override
 
 from cryptography.fernet import InvalidToken
 from loguru import logger
+from pydantic import ValidationError
 from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.auth.encryption import decrypt_text, encrypt_text
+from app.config import settings
 from app.drive.schemas import DriveNode, DriveTree
 from app.drive.service import DriveService
 from app.models.user import User
 from app.models.wiki import DriveTreeCache
 from app.sidebar.singleflight import Singleflight
 
-
-# Stale-while-revalidate window — reads older than this still serve the
-# cached tree but trigger an async refresh in the background.
-CACHE_TTL = timedelta(minutes=10)
 
 # Retention bound for rows nobody reads anymore (refresh only happens on
 # read, so an abandoned drive's folder names would otherwise sit in
@@ -122,7 +120,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
         if row is not None:
             tree = await self._decode_row(db, row)
             if tree is not None:
-                if datetime.now(UTC) - row.refreshed_at > CACHE_TTL:
+                if datetime.now(UTC) - row.refreshed_at > settings.SIDEBAR_CACHE_TTL:
                     self._schedule_refresh(drive_id)
                 return CachedDriveTree(tree=tree, refreshed_at=row.refreshed_at)
         tree = await self._sf.do(
@@ -191,7 +189,12 @@ class PostgresSidebarCacheService(SidebarCacheService):
             await db.delete(row)
             await db.commit()
             return None
-        return DriveTree.model_validate_json(decrypted)
+        try:
+            return DriveTree.model_validate_json(decrypted)
+        except ValidationError:
+            await db.delete(row)
+            await db.commit()
+            return None
 
     async def _save_tree(self, db: AsyncSession, tree: DriveTree) -> None:
         # Last-writer-wins on refreshed_at — a slower concurrent walker

@@ -164,6 +164,17 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-unused-expressions": "off",
       "@typescript-eslint/prefer-nullish-coalescing": "off",
       "sonarjs/no-duplicate-string": "off",
+      "@sarj/enforce-file-structure": "off",
+      "@sarj/no-unnecessary-use-client": "off",
+      "@sarj/prefer-shadcn": "off",
+    },
+  },
+  // next.config.ts evaluates before src/ modules can load, and env.ts IS
+  // the validated env module the rule points at.
+  {
+    files: ["next.config.ts", "src/lib/env.ts"],
+    rules: {
+      "@sarj/no-raw-env": "off",
     },
   },
   // Config files live outside the typed project — disable type-aware rules.
@@ -181,6 +192,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Codegen output (openapi-ts) — regenerated, never hand-edited.
     "src/lib/generated/**",
+    "scripts/**",
   ]),
 ]);
 

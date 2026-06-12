@@ -4,7 +4,7 @@ from app.config import settings
 
 
 # FERNET_KEY is validated in config.py at startup
-_fernet = Fernet(settings.FERNET_KEY.encode())
+_fernet = Fernet(settings.FERNET_KEY.get_secret_value().encode())
 
 
 def encrypt_text(plaintext: str) -> str:

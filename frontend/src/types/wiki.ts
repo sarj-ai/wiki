@@ -1,5 +1,19 @@
-// Google Workspace mime types Sarj Wiki renders natively.
-// Keep in sync with backend/app/drive/schemas.py.
+import { type z } from "zod";
+
+import {
+  type docIcon,
+  type driveNode,
+  type driveSummary,
+  type driveTree,
+  type fileDetail,
+  type fileResponse,
+  type folderIcon,
+  type preferences,
+  type searchResult,
+  type snippetResult,
+  type sortOrder,
+} from "@/lib/wiki-schemas";
+
 export const MIME_FOLDER = "application/vnd.google-apps.folder";
 export const MIME_DOC = "application/vnd.google-apps.document";
 export const MIME_SHEET = "application/vnd.google-apps.spreadsheet";
@@ -7,95 +21,17 @@ export const MIME_SLIDE = "application/vnd.google-apps.presentation";
 export const MIME_DRAWING = "application/vnd.google-apps.drawing";
 export const MIME_FORM = "application/vnd.google-apps.form";
 export const MIME_PDF = "application/pdf";
-// A pointer to a file/folder that lives elsewhere in Drive. Permission
-// checks happen against the *target* — the shortcut entry itself is
-// inert. The frontend renders shortcuts using the target's mime icon
-// plus an overlay glyph and routes navigation through the target id.
 export const MIME_SHORTCUT = "application/vnd.google-apps.shortcut";
 
-export interface DriveSummary {
-  id: string;
-  name: string;
-}
-
-export interface DriveNode {
-  id: string;
-  name: string;
-  mimeType: string;
-  parentId: string | null;
-  modifiedTime: string | null;
-  // Shortcut metadata — populated only when ``mimeType === MIME_SHORTCUT``.
-  // ``| undefined`` matches the zod-inferred shape under exactOptionalPropertyTypes.
-  shortcutTargetId?: string | null | undefined;
-  shortcutTargetMimeType?: string | null | undefined;
-  shortcutTargetDriveId?: string | null | undefined;
-  shortcutTargetDriveName?: string | null | undefined;
-  shortcutInaccessible?: boolean | undefined;
-}
-
-export interface DriveTree {
-  driveId: string;
-  folders: DriveNode[];
-  files: DriveNode[];
-}
-
-export interface FileResponse {
-  id: string;
-  name: string;
-  mimeType: string;
-  parentFolderId: string | null;
-  driveId: string | null;
-  modifiedTime: string | null;
-}
-
-export interface BreadcrumbItem {
-  id: string;
-  name: string;
-}
-
-export interface FileDetail extends FileResponse {
-  driveName: string | null;
-  breadcrumb: BreadcrumbItem[];
-}
-
-export interface DocIcon {
-  driveId: string;
-  icon: string | null;
-  coverUrl: string | null;
-}
-
-export interface FolderIcon {
-  folderDriveId: string;
-  icon: string | null;
-}
-
-export interface SortOrder {
-  driveId: string;
-  sortOrder: number;
-}
-
-export interface Preferences {
-  showNonDocFiles: boolean;
-  hiddenWorkspaceIds: string[];
-}
-
-export interface DriveSearchResult {
-  id: string;
-  name: string;
-  mimeType: string;
-  driveId: string | null;
-  driveName: string | null;
-  parentId: string | null;
-  modifiedTime: string | null;
-  shortcutTargetId?: string | null | undefined;
-  shortcutTargetMimeType?: string | null | undefined;
-  shortcutTargetDriveName?: string | null | undefined;
-  shortcutInaccessible?: boolean | undefined;
-}
-
-export interface SnippetResult {
-  fileId: string;
-  mimeType: string;
-  snippet: string | null;
-  matchTerm: string | null;
-}
+export type DriveSummary = z.output<typeof driveSummary>;
+export type DriveNode = z.output<typeof driveNode>;
+export type DriveTree = z.output<typeof driveTree>;
+export type DriveSearchResult = z.output<typeof searchResult>;
+export type SnippetResult = z.output<typeof snippetResult>;
+export type FileResponse = z.output<typeof fileResponse>;
+export type FileDetail = z.output<typeof fileDetail>;
+export type BreadcrumbItem = FileDetail["breadcrumb"][number];
+export type DocIcon = z.output<typeof docIcon>;
+export type FolderIcon = z.output<typeof folderIcon>;
+export type SortOrder = z.output<typeof sortOrder>;
+export type Preferences = z.output<typeof preferences>;

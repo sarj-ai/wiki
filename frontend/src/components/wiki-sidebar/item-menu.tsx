@@ -33,8 +33,8 @@ import { NamePromptDialog } from "./name-prompt-dialog";
 
 interface ItemMenuProps {
   fileId: string;
-  driveId: string | null;
-  parentFolderId: string | null;
+  driveId: string | undefined;
+  parentFolderId: string | undefined;
   currentName: string;
   isFolder: boolean;
 }

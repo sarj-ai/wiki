@@ -90,8 +90,14 @@ function relativeTime(iso: string | null): string {
   return formatDistanceToNowStrict(then, { addSuffix: true });
 }
 
-function ResultRow({ result, driveName }: { result: DriveSearchResult; driveName: string | null }) {
-  const inaccessible = result.shortcutInaccessible === true;
+function ResultRow({
+  result,
+  driveName,
+}: {
+  result: DriveSearchResult;
+  driveName: string | undefined;
+}) {
+  const inaccessible = result.shortcutInaccessible;
   const tooltip = inaccessible
     ? "You don't have access to this shortcut's target. Contact your admin."
     : undefined;
@@ -140,7 +146,7 @@ function PreviewPanel({
 }: {
   result: DriveSearchResult | null;
   query: string;
-  driveName: string | null;
+  driveName: string | undefined;
   onOpen: (result: DriveSearchResult) => void;
 }) {
   // Snippet fetch goes against the *target* — for shortcut hits the
@@ -406,7 +412,7 @@ export function CommandPalette() {
               <PreviewPanel
                 result={selectedResult}
                 query={query.trim()}
-                driveName={selectedResult?.driveName ?? null}
+                driveName={selectedResult?.driveName}
                 onOpen={openResult}
               />
             </div>

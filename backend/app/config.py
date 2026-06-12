@@ -1,5 +1,27 @@
-from pydantic import field_validator, model_validator
+from datetime import timedelta
+from typing import Annotated, Literal
+
+from pydantic import (
+    Field,
+    HttpUrl,
+    PostgresDsn,
+    SecretStr,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+NonEmptyStr = Annotated[str, StringConstraints(min_length=1)]
+DomainStr = Annotated[
+    str,
+    StringConstraints(pattern=r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"),
+]
+InstanceConnectionName = Annotated[
+    str, StringConstraints(pattern=r"^[a-z][a-z0-9-]*:[a-z0-9-]+:[a-z][a-z0-9-]*$")
+]
+LogLevel = Literal["TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"]
 
 
 class Settings(BaseSettings):
@@ -15,22 +37,27 @@ class Settings(BaseSettings):
     # * DB_INSTANCE_CONNECTION_NAME + DB_IAM_USER: Cloud SQL Python
     #   Connector with IAM database authentication (production; no
     #   password exists anywhere)
-    DATABASE_URL: str | None = None
-    DB_INSTANCE_CONNECTION_NAME: str | None = None
-    DB_IAM_USER: str | None = None
-    DB_NAME: str = "sarj_wiki"
-    SECRET_KEY: str
-    GOOGLE_CLIENT_ID: str
-    GOOGLE_CLIENT_SECRET: str
-    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/auth/callback"
-    FERNET_KEY: str
-    ALLOWED_DOMAIN: str = "sarj.ai"
-    FRONTEND_URL: str = "http://localhost:3000"
+    DATABASE_URL: PostgresDsn | None = None
+    DB_INSTANCE_CONNECTION_NAME: InstanceConnectionName | None = None
+    DB_IAM_USER: NonEmptyStr | None = None
+    DB_NAME: NonEmptyStr = "sarj_wiki"
+    SECRET_KEY: Annotated[SecretStr, Field(min_length=32)]
+    GOOGLE_CLIENT_ID: NonEmptyStr
+    GOOGLE_CLIENT_SECRET: Annotated[SecretStr, Field(min_length=1)]
+    GOOGLE_REDIRECT_URI: HttpUrl = HttpUrl("http://localhost:8000/auth/callback")
+    FERNET_KEY: SecretStr
+    ALLOWED_DOMAIN: DomainStr = "sarj.ai"
+    FRONTEND_URL: HttpUrl = HttpUrl("http://localhost:3000")
     # Cookie Domain for the auth JWT pair. None = host-only (dev); prod
     # sets "sarj.ai" so the Next server receives the JWTs on document loads.
-    COOKIE_DOMAIN: str | None = None
+    COOKIE_DOMAIN: DomainStr | None = None
     LOG_JSON: bool = False
-    LOG_LEVEL: str = "INFO"
+    LOG_LEVEL: LogLevel = "INFO"
+    SIDEBAR_CACHE_TTL: Annotated[timedelta, Field(gt=timedelta(0))] = timedelta(minutes=10)
+
+    @property
+    def frontend_origin(self) -> str:
+        return str(self.FRONTEND_URL).rstrip("/")
 
     @model_validator(mode="after")
     def exactly_one_database_path(self) -> Settings:
@@ -46,20 +73,13 @@ class Settings(BaseSettings):
             raise ValueError("DB_INSTANCE_CONNECTION_NAME and DB_IAM_USER must be set together")
         return self
 
-    @field_validator("SECRET_KEY")
-    @classmethod
-    def secret_key_min_length(cls, v: str) -> str:
-        if len(v) < 32:
-            raise ValueError("SECRET_KEY must be at least 32 characters")
-        return v
-
     @field_validator("FERNET_KEY")
     @classmethod
-    def fernet_key_valid(cls, v: str) -> str:
+    def fernet_key_valid(cls, v: SecretStr) -> SecretStr:
         from cryptography.fernet import Fernet
 
         try:
-            Fernet(v.encode())
+            Fernet(v.get_secret_value().encode())
         except Exception as e:
             raise ValueError(
                 "FERNET_KEY must be a valid Fernet key (32 url-safe base64-encoded bytes)"

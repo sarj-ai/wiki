@@ -36,7 +36,7 @@ def build_engine() -> AsyncEngine:
     """
     if settings.DATABASE_URL is not None:
         return create_async_engine(
-            settings.DATABASE_URL,
+            str(settings.DATABASE_URL),
             connect_args={
                 "server_settings": {"statement_timeout": _STATEMENT_TIMEOUT_MS},
             },

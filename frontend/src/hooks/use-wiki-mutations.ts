@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { DocIcon, DriveTree, FolderIcon, SortOrder } from "@/types/wiki";
 
 import { wikiKeys } from "@/hooks/use-wiki-tree";
-import { wikiApi, type CreateFileInput, type PreferencesInput } from "@/lib/wiki-api";
+import { wikiApi } from "@/lib/wiki-api";
 import { injectNewFileIntoCaches, removeFileFromCaches } from "@/lib/wiki-cache";
 
 // Drop the moved file's sort_order entry from the local cache. The
@@ -43,10 +43,42 @@ function useInvalidateTrees() {
   };
 }
 
+// Shared optimistic list-replace shape for the per-doc / per-folder icon
+// caches: swap the matching entry in onMutate, roll back in onError,
+// reconcile with the server in onSettled.
+function useIconMutation<TItem, TVars>(config: {
+  queryKey: readonly unknown[];
+  mutationFn: (vars: TVars) => Promise<unknown>;
+  matches: (item: TItem, vars: TVars) => boolean;
+  buildItem: (vars: TVars, existing: TItem | undefined) => TItem;
+}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: config.mutationFn,
+    onMutate: (vars: TVars) => {
+      const previous = qc.getQueryData<TItem[]>(config.queryKey);
+      if (previous) {
+        const existing = previous.find((item) => config.matches(item, vars));
+        qc.setQueryData<TItem[]>(config.queryKey, [
+          ...previous.filter((item) => !config.matches(item, vars)),
+          config.buildItem(vars, existing),
+        ]);
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) qc.setQueryData(config.queryKey, context.previous);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: config.queryKey });
+    },
+  });
+}
+
 export function useCreateFile() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreateFileInput) => wikiApi.createFile(input),
+    mutationFn: wikiApi.createFile,
     onSuccess: (file) => {
       // Splice the new file into the local caches and STOP — do NOT
       // invalidate folder-files here. Drive's file index lags a few
@@ -86,11 +118,11 @@ export function useMoveFile() {
       fileId: string;
       newParentFolderId: string;
       // Source coordinates so onSuccess can splice the row out of the
-      // old parent's cached file list. Both can be null for a root-of-
+      // old parent's cached file list. Both can be absent for a root-of-
       // a-drive item moved into a folder of the same drive, hence the
-      // explicit ``| null``.
-      sourceDriveId: string | null;
-      sourceParentFolderId: string | null;
+      // explicit ``| undefined``.
+      sourceDriveId: string | undefined;
+      sourceParentFolderId: string | undefined;
     }) => {
       const result = await wikiApi.moveFile(fileId, newParentFolderId);
       return { result, sourceDriveId, sourceParentFolderId };
@@ -166,7 +198,7 @@ export function useCopyFile() {
 export function useRefreshDrive() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (driveId: string) => wikiApi.refreshDriveFolders(driveId),
+    mutationFn: wikiApi.refreshDriveFolders,
     onSuccess: (tree: DriveTree) => {
       qc.setQueryData<DriveTree>(wikiKeys.driveTree(tree.driveId), tree);
       void qc.invalidateQueries({ queryKey: wikiKeys.folderFilesPrefix });
@@ -183,8 +215,8 @@ export function useDeleteFile() {
       parentFolderId: _parentFolderId,
     }: {
       fileId: string;
-      driveId: string | null;
-      parentFolderId: string | null;
+      driveId: string | undefined;
+      parentFolderId: string | undefined;
     }) => wikiApi.deleteFile(fileId),
     onSuccess: (_void, { fileId, driveId, parentFolderId }) => {
       removeFileFromCaches(qc, fileId, parentFolderId, driveId);
@@ -195,7 +227,7 @@ export function useDeleteFile() {
 export function useBulkSetSortOrders() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (items: SortOrder[]) => wikiApi.bulkSetSortOrders(items),
+    mutationFn: wikiApi.bulkSetSortOrders,
     // Optimistic update: write the new orders into the cache before
     // the server round-trip so the sidebar re-renders in the final
     // order on the same tick dnd-kit clears its drag transform.
@@ -228,7 +260,7 @@ export function useBulkSetSortOrders() {
 export function useSetPreferences() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: PreferencesInput) => wikiApi.setPreferences(payload),
+    mutationFn: wikiApi.setPreferences,
     onSuccess: (prefs) => {
       // Overwrite the preferences cache so the sidebar picks up the
       // new visibility flags immediately without a refetch round-trip.
@@ -246,8 +278,8 @@ export function useSetDocIcon() {
     // not wipe a previously-set cover.
     buildItem: ({ driveId, icon }, existing) => ({
       driveId,
-      icon,
-      coverUrl: existing?.coverUrl ?? null,
+      icon: icon ?? undefined,
+      coverUrl: existing?.coverUrl,
     }),
   });
 }
@@ -257,38 +289,6 @@ export function useSetFolderIcon() {
     queryKey: wikiKeys.folderIcons,
     mutationFn: ({ folderDriveId, icon }) => wikiApi.setFolderIcon(folderDriveId, icon),
     matches: (item, { folderDriveId }) => item.folderDriveId === folderDriveId,
-    buildItem: ({ folderDriveId, icon }) => ({ folderDriveId, icon }),
-  });
-}
-
-// Shared optimistic list-replace shape for the per-doc / per-folder icon
-// caches: swap the matching entry in onMutate, roll back in onError,
-// reconcile with the server in onSettled.
-function useIconMutation<TItem, TVars>(config: {
-  queryKey: readonly unknown[];
-  mutationFn: (vars: TVars) => Promise<unknown>;
-  matches: (item: TItem, vars: TVars) => boolean;
-  buildItem: (vars: TVars, existing: TItem | undefined) => TItem;
-}) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: config.mutationFn,
-    onMutate: (vars: TVars) => {
-      const previous = qc.getQueryData<TItem[]>(config.queryKey);
-      if (previous) {
-        const existing = previous.find((item) => config.matches(item, vars));
-        qc.setQueryData<TItem[]>(config.queryKey, [
-          ...previous.filter((item) => !config.matches(item, vars)),
-          config.buildItem(vars, existing),
-        ]);
-      }
-      return { previous };
-    },
-    onError: (_err, _vars, context) => {
-      if (context?.previous) qc.setQueryData(config.queryKey, context.previous);
-    },
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: config.queryKey });
-    },
+    buildItem: ({ folderDriveId, icon }) => ({ folderDriveId, icon: icon ?? undefined }),
   });
 }

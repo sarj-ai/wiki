@@ -13,12 +13,21 @@ Internal knowledge base for [@sarj.ai](https://sarj.ai), built on top of Google 
 
 ## Setup
 
+### Secrets
+
+Local-dev secrets live in Google Secret Manager (project `sarj-docs`).
+Pull them once after cloning (cached for 24h; `make pull-local-secrets-force`
+bypasses; `make push-local-secrets` publishes local edits back):
+
+```bash
+make pull-local-secrets   # writes backend/.env
+```
+
 ### Backend
 
 ```bash
 cd backend
 uv sync
-cp .env.example .env  # fill in your values
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload
 ```

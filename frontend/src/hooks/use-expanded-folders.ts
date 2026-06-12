@@ -26,6 +26,11 @@ interface FolderExpansionState {
   setExpanded: (id: string, next: boolean) => void;
 }
 
+interface DriveCollapseState {
+  collapsed: Record<string, true>;
+  setCollapsed: (id: string, next: boolean) => void;
+}
+
 const useFolderStore = create<FolderExpansionState>()(
   persist(
     (set) => ({
@@ -48,11 +53,6 @@ const useFolderStore = create<FolderExpansionState>()(
   ),
 );
 
-interface DriveCollapseState {
-  collapsed: Record<string, true>;
-  setCollapsed: (id: string, next: boolean) => void;
-}
-
 const useDriveCollapseStore = create<DriveCollapseState>()(
   persist(
     (set) => ({
@@ -74,6 +74,56 @@ const useDriveCollapseStore = create<DriveCollapseState>()(
     },
   ),
 );
+
+// One-shot reveal-request handle. The command palette's "open" path
+// asks the sidebar to walk its tree open to a specific file id; the
+// sidebar consumes the request once the breadcrumb data arrives,
+// then clears it. Manual sidebar nav and browser back/forward never
+// set it, so the user's collapse state survives those.
+let pendingReveal: string | null = null;
+
+/**
+ * Storage adapter that transparently migrates pre-zustand entries.
+ * The previous hand-rolled store wrote a bare JSON array of ids; the
+ * new state shape wraps them in ``{ <key>: { id1: true, … } }``.
+ * Detects the legacy shape on read and rewraps it into zustand's
+ * ``StorageValue`` envelope so existing users don't lose their
+ * expansion state on the swap.
+ */
+function legacyAwareStorage<S>(stateKey: "expanded" | "collapsed"): {
+  getItem: (name: string) => StorageValue<S> | null;
+  setItem: (name: string, value: StorageValue<S>) => void;
+  removeItem: (name: string) => void;
+} {
+  return {
+    getItem: (name) => {
+      if (typeof window === "undefined") return null;
+      const raw = window.localStorage.getItem(name);
+      if (!raw) return null;
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const map: Record<string, true> = {};
+          for (const id of parsed) {
+            if (typeof id === "string") map[id] = true;
+          }
+          return { state: { [stateKey]: map } as S, version: 0 };
+        }
+        return parsed as StorageValue<S>;
+      } catch {
+        return null;
+      }
+    },
+    setItem: (name, value) => {
+      if (typeof window === "undefined") return;
+      window.localStorage.setItem(name, JSON.stringify(value));
+    },
+    removeItem: (name) => {
+      if (typeof window === "undefined") return;
+      window.localStorage.removeItem(name);
+    },
+  };
+}
 
 /**
  * Expanded state for a single folder id. Default: collapsed.
@@ -121,13 +171,6 @@ export function expandPath(driveId: string, folderIds: readonly string[]): void 
   }
 }
 
-// One-shot reveal-request handle. The command palette's "open" path
-// asks the sidebar to walk its tree open to a specific file id; the
-// sidebar consumes the request once the breadcrumb data arrives,
-// then clears it. Manual sidebar nav and browser back/forward never
-// set it, so the user's collapse state survives those.
-let pendingReveal: string | null = null;
-
 export function requestReveal(fileId: string): void {
   pendingReveal = fileId;
 }
@@ -136,47 +179,4 @@ export function consumeRevealFor(fileId: string): boolean {
   if (pendingReveal !== fileId) return false;
   pendingReveal = null;
   return true;
-}
-
-/**
- * Storage adapter that transparently migrates pre-zustand entries.
- * The previous hand-rolled store wrote a bare JSON array of ids; the
- * new state shape wraps them in ``{ <key>: { id1: true, … } }``.
- * Detects the legacy shape on read and rewraps it into zustand's
- * ``StorageValue`` envelope so existing users don't lose their
- * expansion state on the swap.
- */
-function legacyAwareStorage<S>(stateKey: "expanded" | "collapsed"): {
-  getItem: (name: string) => StorageValue<S> | null;
-  setItem: (name: string, value: StorageValue<S>) => void;
-  removeItem: (name: string) => void;
-} {
-  return {
-    getItem: (name) => {
-      if (typeof window === "undefined") return null;
-      const raw = window.localStorage.getItem(name);
-      if (!raw) return null;
-      try {
-        const parsed: unknown = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          const map: Record<string, true> = {};
-          for (const id of parsed) {
-            if (typeof id === "string") map[id] = true;
-          }
-          return { state: { [stateKey]: map } as S, version: 0 };
-        }
-        return parsed as StorageValue<S>;
-      } catch {
-        return null;
-      }
-    },
-    setItem: (name, value) => {
-      if (typeof window === "undefined") return;
-      window.localStorage.setItem(name, JSON.stringify(value));
-    },
-    removeItem: (name) => {
-      if (typeof window === "undefined") return;
-      window.localStorage.removeItem(name);
-    },
-  };
 }

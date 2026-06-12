@@ -12,7 +12,7 @@ import { QUERY_CACHE_KEY, REDIRECT_KEY, sanitizeRedirectPath } from "@/lib/url-u
 
 // Bumped manually when persisted-cache shape would otherwise be
 // incompatible with the running app — drops every cached query.
-const CACHE_BUSTER = "v1";
+const CACHE_BUSTER = "v2";
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {

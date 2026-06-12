@@ -1,13 +1,9 @@
-"use client";
-
 import { AlertCircle, ShieldX, ServerCrash } from "lucide-react";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect } from "react";
 
 import { SarjLogo } from "@/components/sarj-logo";
+import { StashRedirect } from "@/components/stash-redirect";
 import { Button } from "@/components/ui/button";
 import { getLoginUrl } from "@/lib/auth";
-import { REDIRECT_KEY, sanitizeRedirectPath } from "@/lib/url-utils";
 
 const ERROR_CONFIG: Record<
   string,
@@ -36,67 +32,39 @@ const ERROR_CONFIG: Record<
   },
 };
 
-export default function LoginPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="bg-background text-foreground flex min-h-screen flex-col items-center justify-center">
-          <SarjLogo size={120} priority />
-        </div>
-      }
-    >
-      <LoginContent />
-    </Suspense>
-  );
-}
-
-function LoginContent() {
-  const searchParams = useSearchParams();
-  const errorType = searchParams.get("error");
-  const errorConfig = errorType ? ERROR_CONFIG[errorType] : null;
-
-  // The middleware gate redirects here with ?redirect=<original path>.
-  // The OAuth round-trip through Google won't carry the param, so stash
-  // it in localStorage; RedirectAfterLogin consumes it when the
-  // callback lands the user back on "/".
-  const redirect = searchParams.get("redirect");
-  useEffect(() => {
-    if (redirect) {
-      localStorage.setItem(REDIRECT_KEY, sanitizeRedirectPath(redirect));
-    }
-  }, [redirect]);
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const errorType = typeof params["error"] === "string" ? params["error"] : undefined;
+  const redirect = typeof params["redirect"] === "string" ? params["redirect"] : undefined;
+  const errorConfig = errorType ? ERROR_CONFIG[errorType] : undefined;
 
   return (
     <div className="bg-background text-foreground flex min-h-screen flex-col items-center justify-center px-4">
+      <StashRedirect redirect={redirect} />
       <div className="flex w-full max-w-sm flex-col items-center gap-8">
-        {/* Logo / Title */}
         <div className="flex flex-col items-center gap-3">
           <SarjLogo size={120} priority />
           <p className="text-muted-foreground text-sm">Internal knowledge base for Sarj</p>
         </div>
 
-        {/* Error card */}
-        {errorConfig &&
-          (() => {
-            const Icon = errorConfig.icon;
-            return (
-              <div className="border-border bg-card w-full rounded-xl border p-5">
-                <div className="flex gap-3">
-                  <Icon className={`mt-0.5 size-5 shrink-0 ${errorConfig.color}`} />
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-card-foreground text-sm font-semibold">
-                      {errorConfig.title}
-                    </p>
-                    <p className="text-muted-foreground text-sm leading-relaxed text-pretty">
-                      {errorConfig.message}
-                    </p>
-                  </div>
-                </div>
+        {errorConfig && (
+          <div className="border-border bg-card w-full rounded-xl border p-5">
+            <div className="flex gap-3">
+              <errorConfig.icon className={`mt-0.5 size-5 shrink-0 ${errorConfig.color}`} />
+              <div className="flex flex-col gap-1.5">
+                <p className="text-card-foreground text-sm font-semibold">{errorConfig.title}</p>
+                <p className="text-muted-foreground text-sm leading-relaxed text-pretty">
+                  {errorConfig.message}
+                </p>
               </div>
-            );
-          })()}
+            </div>
+          </div>
+        )}
 
-        {/* Sign in button */}
         <Button asChild size="lg" className="w-full gap-3 rounded-lg py-3">
           <a href={getLoginUrl()}>
             <svg className="size-5" viewBox="0 0 24 24">

@@ -25,23 +25,6 @@ import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
 import { useDragOverStore, type DropIntent } from "./use-drag-over-store";
 import { useInFlightMovesStore } from "./use-in-flight-moves";
 
-// SortableContext ids in the sidebar follow ``parent:<drive-or-folder-id>``.
-// Helper isolates that convention so the rest of this module can talk
-// in plain ids and we have one place to flip the encoding if it ever
-// changes.
-const CONTAINER_PREFIX = "parent:";
-function parentIdOf(containerId: string): string | null {
-  return containerId.startsWith(CONTAINER_PREFIX)
-    ? containerId.slice(CONTAINER_PREFIX.length)
-    : null;
-}
-
-// Folder rows are split into thirds so the user can drop above, into,
-// or below; non-folder rows split in half (no into option). The
-// thresholds are expressed as fractions of the row's height.
-const FOLDER_ABOVE_BAND = 0.3;
-const FOLDER_BELOW_BAND = 0.7;
-
 interface WikiReorder {
   // Map keyed by ``parent:<id>`` carrying the post-drop id order. Read
   // by every TreeNode at every depth so its children render in the
@@ -59,6 +42,24 @@ interface WikiReorder {
   onDragCancel: () => void;
 }
 
+// SortableContext ids in the sidebar follow ``parent:<drive-or-folder-id>``.
+// Helper isolates that convention so the rest of this module can talk
+// in plain ids and we have one place to flip the encoding if it ever
+// changes.
+const CONTAINER_PREFIX = "parent:";
+
+// Folder rows are split into thirds so the user can drop above, into,
+// or below; non-folder rows split in half (no into option). The
+// thresholds are expressed as fractions of the row's height.
+const FOLDER_ABOVE_BAND = 0.3;
+const FOLDER_BELOW_BAND = 0.7;
+
+function parentIdOf(containerId: string): string | null {
+  return containerId.startsWith(CONTAINER_PREFIX)
+    ? containerId.slice(CONTAINER_PREFIX.length)
+    : null;
+}
+
 function sortableContainerId(data: Record<string, unknown> | null | undefined): string | null {
   const sortable = data?.["sortable"] as { containerId?: string } | undefined;
   return sortable?.containerId ?? null;
@@ -66,6 +67,142 @@ function sortableContainerId(data: Record<string, unknown> | null | undefined): 
 
 function isFolderTarget(data: Record<string, unknown> | null | undefined): boolean {
   return data?.["isFolder"] === true;
+}
+
+/**
+ * Project the dragged row's CURRENT visual position into a drop
+ * intent relative to the over row.
+ *
+ * Signal: ``initial.top + delta.y`` — the dragged row's bounding box
+ * at drag start, shifted by the cumulative drag offset. That's the
+ * pixel-exact location the overlay sits at, grab-point independent.
+ *
+ * ``active.rect.current.translated`` looks like it should give the
+ * same number, but in practice it's frequently null when DragOverlay
+ * is in use — dnd-kit doesn't apply the transform to the source row
+ * because the overlay handles rendering, so the "translated" field
+ * isn't always populated. Falling through to a hard-coded "into"
+ * meant every folder hover reported "into" regardless of where the
+ * cursor actually was — which is exactly what the user observed.
+ *
+ * The ``initial`` rect is always set once a drag starts (it's the
+ * source row's bounding-client-rect captured on dragStart), and
+ * ``event.delta`` is always provided in onDragOver. So this signal
+ * is reliable.
+ */
+function computeDropIntent(
+  active: { rect: { current: { initial: { top: number; height: number } | null } } },
+  over: { rect: { top: number; height: number } },
+  delta: { x: number; y: number },
+  overIsFolder: boolean,
+): DropIntent {
+  const initial = active.rect.current.initial;
+  if (!initial) return overIsFolder ? "into" : "below";
+  const draggedCenter = initial.top + initial.height / 2 + delta.y;
+  const relativeY = (draggedCenter - over.rect.top) / over.rect.height;
+  if (overIsFolder) {
+    if (relativeY < FOLDER_ABOVE_BAND) return "above";
+    if (relativeY > FOLDER_BELOW_BAND) return "below";
+    return "into";
+  }
+  return relativeY < 0.5 ? "above" : "below";
+}
+
+/**
+ * Build a fresh sort_order list for the destination's children with
+ * the moved row pinned above or below the targeted row.
+ *
+ * Cross-container moves only change the file's parent on the server;
+ * order in the new home falls to the default sort (folders first,
+ * then alpha). That means a "drop above the folder" intent silently
+ * lands the file *below* the folder. Writing sort_orders for the
+ * full destination forces the moved file into the user's chosen slot
+ * without trying to be clever about fractional indexing.
+ */
+function buildDestinationOrder(
+  qc: ReturnType<typeof useQueryClient>,
+  driveId: string,
+  newParentFolderId: string,
+  movedNode: DriveNode,
+  positionHint: { rowId: string; intent: "above" | "below" },
+): SortOrder[] | null {
+  const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
+  const isAtDriveRoot = newParentFolderId === driveId;
+  const folders = (tree?.folders ?? []).filter((f) =>
+    isAtDriveRoot ? f.parentId === undefined : f.parentId === newParentFolderId,
+  );
+  const filesCache = qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles(newParentFolderId));
+  const files = (filesCache ?? []).filter((f) => f.mimeType !== MIME_FOLDER);
+
+  // Combine folders + files, drop the moved node if the optimistic
+  // insert already added it, then default-sort. This mirrors what
+  // the render path computes when no sort_orders apply, so the
+  // baseline order matches what's currently on screen.
+  const baseline = [...folders, ...files]
+    .filter((c) => c.id !== movedNode.id)
+    .sort((a, b) => {
+      const aIsFolder = a.mimeType === MIME_FOLDER;
+      const bIsFolder = b.mimeType === MIME_FOLDER;
+      if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+  const overIndex = baseline.findIndex((c) => c.id === positionHint.rowId);
+  if (overIndex < 0) return null;
+  const insertIdx = positionHint.intent === "below" ? overIndex + 1 : overIndex;
+  const finalOrder = [...baseline];
+  finalOrder.splice(insertIdx, 0, movedNode);
+  return finalOrder.map((node, i) => ({ driveId: node.id, sortOrder: i + 1 }));
+}
+
+/**
+ * Look up a folder's display name from the cached drive tree so the
+ * post-move toast can name the destination instead of falling back to
+ * "folder". The drive tree is always cached for any expanded drive
+ * (which the destination must be, since the user just dropped on a
+ * row inside it), so this lookup is essentially free.
+ */
+function lookupFolderName(
+  qc: ReturnType<typeof useQueryClient>,
+  driveId: string,
+  folderId: string,
+): string {
+  const tree = qc.getQueryData<{ folders: { id: string; name: string }[] }>(
+    wikiKeys.driveTree(driveId),
+  );
+  return tree?.folders.find((f) => f.id === folderId)?.name ?? "folder";
+}
+
+/**
+ * Resolve a folder id to its mime type via the cached drive tree, or
+ * ``null`` if the folder isn't in any cache the sidebar populated.
+ * Used by the drag-drop handler to short-circuit moves that would 403
+ * (e.g. dropping into a shortcut row).
+ */
+function lookupNodeMimeType(
+  qc: ReturnType<typeof useQueryClient>,
+  driveId: string,
+  folderId: string,
+): string | null {
+  const tree = qc.getQueryData<{ folders: { id: string; mimeType: string }[] }>(
+    wikiKeys.driveTree(driveId),
+  );
+  return tree?.folders.find((f) => f.id === folderId)?.mimeType ?? null;
+}
+
+/**
+ * Map move-mutation errors to user-readable toast text. Drive's raw
+ * 403 dump includes a JSON blob and HTTP status that reads as
+ * impenetrable to anyone who isn't debugging — translate the common
+ * cases here. ``ApiError`` carries the backend's status verbatim, so
+ * we can branch on ``status === 403`` without parsing the message.
+ */
+function translateMoveError(err: unknown): string {
+  if (err instanceof ApiError && err.status === 403) {
+    return "Drive denied this move — you may not have edit permission on the destination, or it's a shortcut.";
+  }
+  if (err instanceof Error) return err.message;
+  return "Move failed";
 }
 
 /**
@@ -361,140 +498,4 @@ export function useWikiReorder(driveId: string): WikiReorder {
     onDragEnd,
     onDragCancel,
   };
-}
-
-/**
- * Project the dragged row's CURRENT visual position into a drop
- * intent relative to the over row.
- *
- * Signal: ``initial.top + delta.y`` — the dragged row's bounding box
- * at drag start, shifted by the cumulative drag offset. That's the
- * pixel-exact location the overlay sits at, grab-point independent.
- *
- * ``active.rect.current.translated`` looks like it should give the
- * same number, but in practice it's frequently null when DragOverlay
- * is in use — dnd-kit doesn't apply the transform to the source row
- * because the overlay handles rendering, so the "translated" field
- * isn't always populated. Falling through to a hard-coded "into"
- * meant every folder hover reported "into" regardless of where the
- * cursor actually was — which is exactly what the user observed.
- *
- * The ``initial`` rect is always set once a drag starts (it's the
- * source row's bounding-client-rect captured on dragStart), and
- * ``event.delta`` is always provided in onDragOver. So this signal
- * is reliable.
- */
-function computeDropIntent(
-  active: { rect: { current: { initial: { top: number; height: number } | null } } },
-  over: { rect: { top: number; height: number } },
-  delta: { x: number; y: number },
-  overIsFolder: boolean,
-): DropIntent {
-  const initial = active.rect.current.initial;
-  if (!initial) return overIsFolder ? "into" : "below";
-  const draggedCenter = initial.top + initial.height / 2 + delta.y;
-  const relativeY = (draggedCenter - over.rect.top) / over.rect.height;
-  if (overIsFolder) {
-    if (relativeY < FOLDER_ABOVE_BAND) return "above";
-    if (relativeY > FOLDER_BELOW_BAND) return "below";
-    return "into";
-  }
-  return relativeY < 0.5 ? "above" : "below";
-}
-
-/**
- * Build a fresh sort_order list for the destination's children with
- * the moved row pinned above or below the targeted row.
- *
- * Cross-container moves only change the file's parent on the server;
- * order in the new home falls to the default sort (folders first,
- * then alpha). That means a "drop above the folder" intent silently
- * lands the file *below* the folder. Writing sort_orders for the
- * full destination forces the moved file into the user's chosen slot
- * without trying to be clever about fractional indexing.
- */
-function buildDestinationOrder(
-  qc: ReturnType<typeof useQueryClient>,
-  driveId: string,
-  newParentFolderId: string,
-  movedNode: DriveNode,
-  positionHint: { rowId: string; intent: "above" | "below" },
-): SortOrder[] | null {
-  const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
-  const isAtDriveRoot = newParentFolderId === driveId;
-  const folders = (tree?.folders ?? []).filter((f) =>
-    isAtDriveRoot ? f.parentId === null : f.parentId === newParentFolderId,
-  );
-  const filesCache = qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles(newParentFolderId));
-  const files = (filesCache ?? []).filter((f) => f.mimeType !== MIME_FOLDER);
-
-  // Combine folders + files, drop the moved node if the optimistic
-  // insert already added it, then default-sort. This mirrors what
-  // the render path computes when no sort_orders apply, so the
-  // baseline order matches what's currently on screen.
-  const baseline = [...folders, ...files]
-    .filter((c) => c.id !== movedNode.id)
-    .sort((a, b) => {
-      const aIsFolder = a.mimeType === MIME_FOLDER;
-      const bIsFolder = b.mimeType === MIME_FOLDER;
-      if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-
-  const overIndex = baseline.findIndex((c) => c.id === positionHint.rowId);
-  if (overIndex < 0) return null;
-  const insertIdx = positionHint.intent === "below" ? overIndex + 1 : overIndex;
-  const finalOrder = [...baseline];
-  finalOrder.splice(insertIdx, 0, movedNode);
-  return finalOrder.map((node, i) => ({ driveId: node.id, sortOrder: i + 1 }));
-}
-
-/**
- * Look up a folder's display name from the cached drive tree so the
- * post-move toast can name the destination instead of falling back to
- * "folder". The drive tree is always cached for any expanded drive
- * (which the destination must be, since the user just dropped on a
- * row inside it), so this lookup is essentially free.
- */
-function lookupFolderName(
-  qc: ReturnType<typeof useQueryClient>,
-  driveId: string,
-  folderId: string,
-): string {
-  const tree = qc.getQueryData<{ folders: { id: string; name: string }[] }>(
-    wikiKeys.driveTree(driveId),
-  );
-  return tree?.folders.find((f) => f.id === folderId)?.name ?? "folder";
-}
-
-/**
- * Resolve a folder id to its mime type via the cached drive tree, or
- * ``null`` if the folder isn't in any cache the sidebar populated.
- * Used by the drag-drop handler to short-circuit moves that would 403
- * (e.g. dropping into a shortcut row).
- */
-function lookupNodeMimeType(
-  qc: ReturnType<typeof useQueryClient>,
-  driveId: string,
-  folderId: string,
-): string | null {
-  const tree = qc.getQueryData<{ folders: { id: string; mimeType: string }[] }>(
-    wikiKeys.driveTree(driveId),
-  );
-  return tree?.folders.find((f) => f.id === folderId)?.mimeType ?? null;
-}
-
-/**
- * Map move-mutation errors to user-readable toast text. Drive's raw
- * 403 dump includes a JSON blob and HTTP status that reads as
- * impenetrable to anyone who isn't debugging — translate the common
- * cases here. ``ApiError`` carries the backend's status verbatim, so
- * we can branch on ``status === 403`` without parsing the message.
- */
-function translateMoveError(err: unknown): string {
-  if (err instanceof ApiError && err.status === 403) {
-    return "Drive denied this move — you may not have edit permission on the destination, or it's a shortcut.";
-  }
-  if (err instanceof Error) return err.message;
-  return "Move failed";
 }

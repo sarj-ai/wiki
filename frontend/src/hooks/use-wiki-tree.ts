@@ -21,7 +21,7 @@ export { wikiKeys };
 export function useDrives() {
   return useQuery<DriveSummary[]>({
     queryKey: wikiKeys.drives,
-    queryFn: () => wikiApi.getDrives(),
+    queryFn: wikiApi.getDrives,
   });
 }
 
@@ -52,27 +52,27 @@ export function useFolderFiles(folderId: string | null, enabled: boolean) {
 export function usePreferences() {
   return useQuery<Preferences>({
     queryKey: wikiKeys.preferences,
-    queryFn: () => wikiApi.getPreferences(),
+    queryFn: wikiApi.getPreferences,
   });
 }
 
 export function useFolderIcons() {
   return useQuery<FolderIcon[]>({
     queryKey: wikiKeys.folderIcons,
-    queryFn: () => wikiApi.listFolderIcons(),
+    queryFn: wikiApi.listFolderIcons,
   });
 }
 
 export function useDocIcons() {
   return useQuery<DocIcon[]>({
     queryKey: wikiKeys.docIcons,
-    queryFn: () => wikiApi.listDocIcons(),
+    queryFn: wikiApi.listDocIcons,
   });
 }
 
 export function useSortOrders() {
   return useQuery<SortOrder[]>({
     queryKey: wikiKeys.sortOrders,
-    queryFn: () => wikiApi.listSortOrders(),
+    queryFn: wikiApi.listSortOrders,
   });
 }

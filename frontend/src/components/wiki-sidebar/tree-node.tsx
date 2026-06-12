@@ -34,7 +34,7 @@ import { useIsMovingFile } from "./use-in-flight-moves";
 
 interface TreeNodeProps {
   node: DriveNode;
-  parentFolderId: string | null;
+  parentFolderId: string | undefined;
   depth: number;
 }
 
@@ -47,10 +47,30 @@ interface ShortcutMeta {
   tooltip: string | null;
 }
 
+interface DriveSectionCtxShape {
+  childrenByParent: Map<string, DriveNode[]>;
+  showNonDocFiles: boolean;
+  sortOrderMap: Map<string, number>;
+  optimisticByContainer: Map<string, readonly string[]>;
+}
+
+interface FolderHeaderProps {
+  node: DriveNode;
+  meta: ShortcutMeta;
+  depth: number;
+  expanded: boolean;
+  onToggle: () => void;
+  isDropIntoFolder: boolean;
+  isMoving: boolean;
+  iconEmoji: string | undefined;
+  onIconChange: (next: string | null) => Promise<void>;
+  actions: ReactNode;
+}
+
 function resolveShortcutMeta(node: DriveNode): ShortcutMeta {
   const isShortcut = node.mimeType === MIME_SHORTCUT;
   const isFolderShortcut = isShortcut && node.shortcutTargetMimeType === MIME_FOLDER;
-  const inaccessible = isShortcut && node.shortcutInaccessible === true;
+  const inaccessible = isShortcut && node.shortcutInaccessible;
   const tooltip = isShortcut
     ? inaccessible
       ? "You don't have access to this shortcut's target. Contact your admin."
@@ -81,8 +101,6 @@ function RowActions({ children }: { children: ReactNode }) {
   );
 }
 
-export const TreeNode = memo(TreeNodeImpl);
-
 function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
   const ctx = useDriveSectionContext();
   const meta = resolveShortcutMeta(node);
@@ -109,7 +127,7 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
         driveId={ctx.driveId}
         parentFolderId={parentFolderId}
         activeDriveId={ctx.activeDriveId}
-        iconOverride={ctx.docIconOverrides.get(node.id) ?? null}
+        iconOverride={ctx.docIconOverrides.get(node.id)}
         depth={depth}
       />
     );
@@ -117,7 +135,7 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
 
   const childItems = buildChildItems(node, meta, ctx, lazyFiles ?? []);
   const sortableItems = childItems.map((c) => c.node.id);
-  const iconEmoji = ctx.iconOverrides.get(node.id) ?? null;
+  const iconEmoji = ctx.iconOverrides.get(node.id);
 
   const handleFolderIconChange = async (next: string | null) => {
     await runWithErrorToast(async () => {
@@ -178,7 +196,7 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
                     driveId={ctx.driveId}
                     parentFolderId={node.id}
                     activeDriveId={ctx.activeDriveId}
-                    iconOverride={ctx.docIconOverrides.get(child.id) ?? null}
+                    iconOverride={ctx.docIconOverrides.get(child.id)}
                     depth={depth + 1}
                   />
                 )}
@@ -197,13 +215,6 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
       )}
     </>
   );
-}
-
-interface DriveSectionCtxShape {
-  childrenByParent: Map<string, DriveNode[]>;
-  showNonDocFiles: boolean;
-  sortOrderMap: Map<string, number>;
-  optimisticByContainer: Map<string, readonly string[]>;
 }
 
 // Native folders rely on the drive walk for their subfolders and on
@@ -238,19 +249,6 @@ function buildChildItems(
     ? raw
     : [...raw].sort((a, b) => compareNodeOrder(a, b, ctx.sortOrderMap));
   return applyOptimisticOrder(sorted, optimisticOrder);
-}
-
-interface FolderHeaderProps {
-  node: DriveNode;
-  meta: ShortcutMeta;
-  depth: number;
-  expanded: boolean;
-  onToggle: () => void;
-  isDropIntoFolder: boolean;
-  isMoving: boolean;
-  iconEmoji: string | null;
-  onIconChange: (next: string | null) => Promise<void>;
-  actions: ReactNode;
 }
 
 function FolderHeader({
@@ -343,3 +341,5 @@ function FolderHeader({
     </div>
   );
 }
+
+export const TreeNode = memo(TreeNodeImpl);

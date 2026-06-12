@@ -3,7 +3,12 @@ import type { Metadata, Viewport } from "next";
 import { GeistMono } from "geist/font/mono";
 import localFont from "next/font/local";
 
+import { GlobalLoadingBar } from "@/components/loading-bar";
+import { QueryProvider } from "@/components/query-provider";
 import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/sonner";
+
+import "./globals.css";
 
 const nunito = localFont({
   src: [
@@ -15,11 +20,6 @@ const nunito = localFont({
   variable: "--font-nunito",
   display: "swap",
 });
-import { GlobalLoadingBar } from "@/components/loading-bar";
-import { QueryProvider } from "@/components/query-provider";
-import { Toaster } from "@/components/ui/sonner";
-
-import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Sarj Wiki",

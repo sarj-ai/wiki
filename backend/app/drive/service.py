@@ -597,7 +597,7 @@ class GoogleDriveService(DriveService):
             refresh_token=refresh_token,
             token_uri="https://oauth2.googleapis.com/token",  # noqa: S106 — public OAuth endpoint
             client_id=settings.GOOGLE_CLIENT_ID,
-            client_secret=settings.GOOGLE_CLIENT_SECRET,
+            client_secret=settings.GOOGLE_CLIENT_SECRET.get_secret_value(),
         )
 
 

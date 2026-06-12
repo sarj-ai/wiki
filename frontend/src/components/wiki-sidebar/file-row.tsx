@@ -22,10 +22,10 @@ import { useIsMovingFile } from "./use-in-flight-moves";
 
 interface FileRowProps {
   node: DriveNode;
-  driveId: string | null;
-  parentFolderId: string | null;
+  driveId: string | undefined;
+  parentFolderId: string | undefined;
   activeDriveId: string | null;
-  iconOverride: string | null;
+  iconOverride: string | undefined;
   depth: number;
 }
 
@@ -35,6 +35,17 @@ interface OpenRoute {
   mimeType: string;
   id: string;
   tooltip: string | null;
+}
+
+interface RowButtonProps {
+  node: DriveNode;
+  route: OpenRoute;
+  href: string;
+  isActive: boolean;
+  isForm: boolean;
+  isMoving: boolean;
+  linkPadding: string;
+  titleAttr: string;
 }
 
 // Compute the routing/labeling target for a row. Shortcuts forward to
@@ -51,7 +62,7 @@ function resolveOpenRoute(node: DriveNode): OpenRoute {
       tooltip: null,
     };
   }
-  const inaccessible = node.shortcutInaccessible === true;
+  const inaccessible = node.shortcutInaccessible;
   const tooltip = inaccessible
     ? "You don't have access to this shortcut's target. Contact your admin."
     : node.shortcutTargetDriveName
@@ -65,8 +76,6 @@ function resolveOpenRoute(node: DriveNode): OpenRoute {
     tooltip,
   };
 }
-
-export const FileRow = memo(FileRowImpl);
 
 function FileRowImpl({
   node,
@@ -176,17 +185,6 @@ function FileRowImpl({
   );
 }
 
-interface RowButtonProps {
-  node: DriveNode;
-  route: OpenRoute;
-  href: string;
-  isActive: boolean;
-  isForm: boolean;
-  isMoving: boolean;
-  linkPadding: string;
-  titleAttr: string;
-}
-
 // Inaccessible shortcuts render as a non-interactive disabled row —
 // we can't navigate to a target the user isn't allowed to read, and
 // the iframe would just show Google's "You need access" page. The
@@ -263,3 +261,5 @@ function RowButton({
     </SidebarMenuButton>
   );
 }
+
+export const FileRow = memo(FileRowImpl);
