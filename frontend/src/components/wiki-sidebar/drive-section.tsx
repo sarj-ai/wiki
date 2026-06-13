@@ -61,28 +61,6 @@ interface BuildRootItemsArgs {
   showNonDocFiles: boolean;
 }
 
-/**
- * Collision detection that prefers droppables under the user's
- * cursor over droppables closest to the dragged element's center.
- *
- * The default sortable strategy ranks by ``active.rect``'s center vs.
- * each droppable's center — fine when the cursor is roughly aligned
- * with the dragged element, but with grab-at-edge or any non-center
- * grab the dragged overlay can sit far from the cursor, and the
- * "over" stays glued to the row visually under the OVERLAY rather
- * than the row visually under the CURSOR. Users feel that as
- * "drops keep going to the wrong place".
- *
- * Layered:
- *   1. ``pointerWithin`` — exact "cursor is inside this rect"
- *      collisions. Highest fidelity when present.
- *   2. ``rectIntersection`` — second pass that catches drops where
- *      the cursor is at a row's edge but the rect math misses it.
- *   3. ``closestCorners`` — fallback for cursors in empty space (the
- *      first/last row edges, or an empty SortableContext). Picks
- *      the droppable whose corners are closest to the active rect.
- *      Better than closestCenter for stacked rows of varying height.
- */
 const cursorFirstCollision: CollisionDetection = (args) => {
   const pointer = pointerWithin(args);
   if (pointer.length > 0) return pointer;
@@ -91,10 +69,6 @@ const cursorFirstCollision: CollisionDetection = (args) => {
   return closestCorners(args);
 };
 
-// Combine root-level folders (from the cached drive tree) and root-
-// level files (from a lazy folder-files call keyed by drive id) into
-// a single sorted list. Single sort pass interleaves the two so a
-// drop that lands a file above a folder survives the round-trip.
 function buildRootItems({
   childrenByParent,
   rootFiles,
@@ -105,21 +79,13 @@ function buildRootItems({
     type: "folder",
     node,
   }));
-  // Strip folder-likes (native folders + folder-target shortcuts)
-  // from the lazy file list — the tree walk already surfaces them in
-  // ``childrenByParent``. Without this filter the same shortcut id
-  // appears twice and React renders the second copy as a FileRow,
-  // routing folder-shortcut clicks to ``/d/<targetFolderId>`` (which
-  // Google has no preview for).
+
   const rawFiles = rootFiles.filter((n) => !isFolderLikeNode(n));
   const visibleFiles = showNonDocFiles ? rawFiles : rawFiles.filter((n) => n.mimeType === MIME_DOC);
   const files: KindedNode[] = visibleFiles.map((node) => ({ type: "file", node }));
   return [...folders, ...files].sort((a, b) => compareNodeOrder(a, b, sortOrderMap));
 }
 
-// A handful of skeleton rows shaped like folder/file entries so the
-// loading state matches the rhythm of real content. Varied widths and
-// indentation keep the pulse from looking like a single bar.
 function DriveTreeSkeleton() {
   return (
     <SidebarMenuItem className="flex flex-col gap-1.5 px-2 py-1">
@@ -165,9 +131,6 @@ export function DriveSection({
   const refreshDrive = useRefreshDrive();
 
   const handleRefresh = (e: React.MouseEvent) => {
-    // The header is itself a button that toggles expand on click. Stop
-    // propagation so the user's refresh click doesn't accidentally
-    // collapse the drive.
     e.stopPropagation();
     refreshDrive.mutate(drive.id, {
       onError: (err) => {
@@ -224,10 +187,7 @@ export function DriveSection({
             asChild
             className={cn(
               "rounded-md transition-[background-color,box-shadow] duration-150",
-              // Highlight the drive header when it's the active
-              // cross-container drop target — gives the user a clear
-              // signal that releasing here will move the dragged row
-              // into this drive's root.
+
               isDropTarget && "ring-primary/60 bg-primary/10 ring-1",
             )}
           >
@@ -269,15 +229,6 @@ export function DriveSection({
         {expanded && (
           <DndContext
             sensors={reorder.sensors}
-            // Cursor-following collision: prefer whatever droppable
-            // the cursor is *inside*; fall back to closestCorners
-            // when the cursor is in empty space (e.g. above the
-            // first row or below the last row in an otherwise
-            // sparse drive). closestCenter alone doesn't follow the
-            // cursor — it ranks by the dragged element's CENTER, so
-            // dragging an overlay far up while the cursor still
-            // hovers a sibling kept reporting the sibling as `over`
-            // and drops collapsed to same-container reorders.
             collisionDetection={cursorFirstCollision}
             onDragStart={reorder.onDragStart}
             onDragOver={reorder.onDragOver}
@@ -286,13 +237,6 @@ export function DriveSection({
           >
             <SidebarGroupContent>
               <SidebarMenu>
-                {/*
-                  Same gating as the file detail page: treat "errored
-                  but still trying" as loading. Without this, hard
-                  refresh during the access-token-expired window flashes
-                  "Failed to load drive" before ky's 401 → refresh →
-                  replay (and React Query's retry) lands the data.
-                */}
                 {(treeQuery.isPending || (!treeQuery.data && treeQuery.isFetching)) && (
                   <DriveTreeSkeleton />
                 )}
@@ -335,15 +279,7 @@ export function DriveSection({
                 )}
               </SidebarMenu>
             </SidebarGroupContent>
-            {/*
-              Portal-rendered preview of the row following the cursor.
-              ``dropAnimation={null}`` disables dnd-kit's "overlay flies
-              back to source slot on drop" tween — that ~200ms animation
-              read to users as a bounce when the source had already
-              rearranged to its new position. With null, the overlay
-              unmounts instantly; React's DOM reorder handles the final
-              position.
-            */}
+
             <DragOverlay dropAnimation={null}>
               {reorder.activeNode ? (
                 reorder.activeNode.mimeType === MIME_FOLDER ? (

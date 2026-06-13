@@ -1,4 +1,3 @@
-// Stable query keys (directive-free so server components can import them).
 const FOLDER_FILES_PREFIX = ["wiki", "folder-files"] as const;
 const DRIVE_TREE_PREFIX = ["wiki", "drive-tree"] as const;
 const DRIVE_SEARCH_PREFIX = ["wiki", "drive-search"] as const;
@@ -19,7 +18,6 @@ export const wikiKeys = {
     [...DRIVE_SEARCH_PREFIX, "snippet", fileId, query] as const,
 };
 
-// Outside ["wiki", ...] so the persister never writes the profile to localStorage.
 export const authKeys = {
   me: ["auth", "me"] as const,
 };

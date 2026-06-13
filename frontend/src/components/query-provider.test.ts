@@ -2,9 +2,6 @@ import { QueryClient } from "@tanstack/react-query";
 import { dehydrate, hydrate } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 
-// Pins the ordering contract in query-provider.tsx: hydrate() keeps
-// the entry with the newer dataUpdatedAt, so SSR data survives a
-// later persister restore.
 describe("hydrate ordering contract", () => {
   it("an older snapshot cannot clobber a newer cache entry", () => {
     const key = ["wiki", "drives"];

@@ -1,7 +1,3 @@
-"""Per-request correlation id, stored in a ``ContextVar`` so it survives
-``asyncio.to_thread`` hops and reaches every log line of a request.
-"""
-
 from __future__ import annotations
 
 from contextvars import ContextVar

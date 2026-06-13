@@ -13,10 +13,11 @@ import { useSetDocIcon } from "@/hooks/use-wiki-mutations";
 import { renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import { runWithErrorToast } from "@/lib/mutation-toast";
+import { resolveShortcutTarget, type ResolvedShortcut } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
 import { wikiApi } from "@/lib/wiki-api";
 import { wikiKeys } from "@/lib/wiki-keys";
-import { MIME_DOC, MIME_FORM, MIME_SHORTCUT } from "@/types/wiki";
+import { MIME_DOC, MIME_FORM } from "@/types/wiki";
 
 import { ItemMenu } from "./item-menu";
 import { ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants";
@@ -32,17 +33,9 @@ interface FileRowProps {
   depth: number;
 }
 
-interface OpenRoute {
-  isShortcut: boolean;
-  inaccessible: boolean;
-  mimeType: string;
-  id: string;
-  tooltip: string | null;
-}
-
 interface RowButtonProps {
   node: DriveNode;
-  route: OpenRoute;
+  route: ResolvedShortcut;
   href: string;
   isActive: boolean;
   isForm: boolean;
@@ -50,35 +43,6 @@ interface RowButtonProps {
   linkPadding: string;
   titleAttr: string;
   onPrefetch: () => void;
-}
-
-// Compute the routing/labeling target for a row. Shortcuts forward to
-// their target so opens, breadcrumbs, and active-state highlighting all
-// agree on the same id and mime — the host pointer is never what the
-// user wants to open.
-function resolveOpenRoute(node: DriveNode): OpenRoute {
-  if (node.mimeType !== MIME_SHORTCUT) {
-    return {
-      isShortcut: false,
-      inaccessible: false,
-      mimeType: node.mimeType,
-      id: node.id,
-      tooltip: null,
-    };
-  }
-  const inaccessible = node.shortcutInaccessible;
-  const tooltip = inaccessible
-    ? "You don't have access to this shortcut's target. Contact your admin."
-    : node.shortcutTargetDriveName
-      ? `Shortcut → ${node.shortcutTargetDriveName}`
-      : "Shortcut";
-  return {
-    isShortcut: true,
-    inaccessible,
-    mimeType: node.shortcutTargetMimeType ?? "",
-    id: node.shortcutTargetId ?? node.id,
-    tooltip,
-  };
 }
 
 function FileRowImpl({
@@ -90,22 +54,21 @@ function FileRowImpl({
   depth,
 }: FileRowProps) {
   const pathname = usePathname();
-  const route = resolveOpenRoute(node);
-  // Google Forms' /edit view can't be embedded in a cross-origin iframe
-  // — the editor hard-gates with a "You need access" page regardless of
-  // which API created the form or which account owns it. Opening Forms
-  // in a top-level tab is the only working path.
-  const isForm = route.mimeType === MIME_FORM;
+  const route = resolveShortcutTarget(node);
+
+  const isForm = route.targetMimeType === MIME_FORM;
   const isDoc = !route.isShortcut && node.mimeType === MIME_DOC;
-  const href = isForm ? openUrlFor(route.mimeType, route.id) : `/d/${encodeURIComponent(route.id)}`;
-  const isActive = !isForm && (activeDriveId === route.id || pathname === href);
+  const href = isForm
+    ? openUrlFor(route.targetMimeType, route.targetId)
+    : `/d/${encodeURIComponent(route.targetId)}`;
+  const isActive = !isForm && (activeDriveId === route.targetId || pathname === href);
   const isMoving = useIsMovingFile(node.id);
 
   const queryClient = useQueryClient();
   const prefetchFile = (): void => {
     void queryClient.prefetchQuery({
-      queryKey: wikiKeys.file(route.id),
-      queryFn: () => wikiApi.getFile(route.id),
+      queryKey: wikiKeys.file(route.targetId),
+      queryFn: () => wikiApi.getFile(route.targetId),
     });
   };
 
@@ -116,9 +79,6 @@ function FileRowImpl({
     }, "Failed to update icon");
   };
 
-  // Shortcuts ignore icon overrides — the doc_icons row belongs to the
-  // target, and we'd write to the wrong key if we exposed the picker
-  // here. Render the target's mime icon plus the shortcut overlay glyph.
   const iconContent =
     iconOverride && !route.isShortcut ? (
       <span className="text-base leading-none">{iconOverride}</span>
@@ -126,11 +86,6 @@ function FileRowImpl({
       renderNodeIcon(node, "size-4 shrink-0")
     );
 
-  // Icon sits OUTSIDE the <Link> as an absolutely-positioned overlay
-  // on top of the SidebarMenuButton. Clicking it never bubbles into
-  // an anchor element, so there's no risk of Next.js Link navigating
-  // on a supposedly "icon-only" click. The Link's left padding is
-  // bumped by ICON_COLUMN_WIDTH so the title text stays readable.
   const iconLeft = `${rowIndent(depth)}px`;
   const linkPadding = `${rowIndent(depth) + ICON_COLUMN_WIDTH}px`;
   const edited = node.modifiedTime
@@ -152,13 +107,7 @@ function FileRowImpl({
         titleAttr={titleAttr}
         onPrefetch={prefetchFile}
       />
-      {/*
-        Doc icons open the EmojiPickerPopover; non-Doc icons are
-        decorative — ``pointer-events-none`` lets clicks fall through
-        to the Link underneath so tapping the icon also opens the
-        file. Without this, the absolute overlay swallows the click
-        and nothing happens.
-      */}
+
       <div
         className={cn(
           "absolute top-1/2 z-10 -translate-y-1/2",
@@ -176,12 +125,7 @@ function FileRowImpl({
           {iconContent}
         </PickableIcon>
       </div>
-      {/*
-        Shortcut rows hide the rename / move / delete actions — they'd
-        operate on the *shortcut* (renaming the pointer in Sales) rather
-        than the doc users see, which is rarely what anyone wants. Open
-        Drive directly to manage shortcut entries.
-      */}
+
       {!route.isShortcut && !route.inaccessible && (
         <div className="absolute top-1/2 right-1 flex -translate-y-1/2 items-center opacity-0 group-hover/navitem:opacity-100 focus-within:opacity-100">
           <ItemMenu
@@ -202,11 +146,6 @@ function FileRowImpl({
   );
 }
 
-// Inaccessible shortcuts render as a non-interactive disabled row —
-// we can't navigate to a target the user isn't allowed to read, and
-// the iframe would just show Google's "You need access" page. The
-// branching lives here so the parent stays under the cognitive
-// complexity budget.
 function RowButton({
   node,
   route,
@@ -264,13 +203,7 @@ function RowButton({
       data-file-id={node.id}
     >
       <Link
-        href={`/d/${encodeURIComponent(route.id)}`}
-        // HTML5 native anchor drag is on by default. Chrome treats
-        // drag-and-drop of an anchor back onto the same page as a
-        // navigation to ``href`` — bypassing click handlers entirely.
-        // That was the path through which dnd-kit reorders landed the
-        // user on the dragged file's URL. Disabling native drag lets
-        // dnd-kit's PointerSensor own the drag lifecycle cleanly.
+        href={`/d/${encodeURIComponent(route.targetId)}`}
         draggable={false}
         title={titleAttr}
         onPointerDown={onPrefetch}

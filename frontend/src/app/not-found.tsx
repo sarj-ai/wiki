@@ -3,12 +3,6 @@ import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 
-/**
- * Root 404 boundary — catches anything that doesn't resolve under
- * /login or the (app) route group. Deliberately standalone (no
- * sidebar) because this path runs before the user is known. Still
- * uses the Sarj theme tokens so light/dark mode flip automatically.
- */
 export default function RootNotFound() {
   return (
     <div className="bg-background text-foreground flex min-h-screen items-center justify-center px-6">

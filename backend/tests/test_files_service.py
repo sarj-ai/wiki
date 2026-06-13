@@ -1,12 +1,3 @@
-"""FilesService — error mapping and strict-scope checks.
-
-Exercises ``GoogleFilesService`` directly with a fake ``DriveResource``
-stubbed in via ``GoogleDriveService.build_drive_client`` and an injected
-fake ``DriveService`` that returns a canned member-drive list. The
-service raises typed :class:`FilesError` subclasses; HTTP-status mapping
-happens at the app boundary and is exercised in router-level tests.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -28,8 +19,6 @@ from app.models.user import User
 
 
 class _FakeDriveService(DriveService):
-    """Fake ``DriveService`` that only answers ``list_drives``."""
-
     def __init__(self, drives: list[DriveSummary]) -> None:
         self._drives = drives
 
@@ -237,7 +226,6 @@ async def test_move_reuses_prefetched_parent(monkeypatch: pytest.MonkeyPatch) ->
 
 
 async def test_get_rejects_my_drive(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Files without a driveId (My Drive) must be hidden from the Navigator."""
 
     class _FakeFiles:
         def get(self, **_: Any) -> _FakeFiles:
@@ -249,7 +237,6 @@ async def test_get_rejects_my_drive(monkeypatch: pytest.MonkeyPatch) -> None:
                 "name": "Personal",
                 "mimeType": "application/vnd.google-apps.document",
                 "parents": [],
-                # No driveId — file lives in the user's My Drive.
             }
 
     class _FakeClient:
@@ -350,6 +337,5 @@ async def test_get_rejects_non_member_shared_drive(
             return _FakeFiles()
 
     _patch_client(monkeypatch, _FakeClient())
-    # User is only a member of "other-drive", not the file's drive.
     with pytest.raises(FileNotInScopeError):
         await _svc("other-drive").get("foreign-file")

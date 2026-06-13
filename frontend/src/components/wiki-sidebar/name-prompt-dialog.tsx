@@ -20,8 +20,7 @@ interface NamePromptDialogProps {
   onOpenChange: (open: boolean) => void;
   title: string;
   description?: string;
-  // Pre-populated value — used as both the initial input content and
-  // the default that surfaces every time the dialog reopens.
+
   defaultValue?: string;
   confirmLabel?: string;
   onConfirm: (value: string) => void | Promise<void>;
@@ -40,10 +39,6 @@ export function NamePromptDialog({
   const [submitting, startSubmit] = useTransition();
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Reset the field whenever the dialog opens so consecutive uses don't
-  // carry over a stale value from the previous run. The "reset on transition"
-  // pattern is the whole point of this effect — setState on open is the
-  // feature, not a bug.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (open) setValue(defaultValue);
@@ -63,12 +58,6 @@ export function NamePromptDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-sm"
-        // Take over the open-auto-focus cycle: prevent radix's
-        // default "focus the first focusable child" behavior (which
-        // competes with our Input's autoFocus and strips any text
-        // selection) and do the focus + select ourselves on the
-        // next animation frame, so the dialog's open transition
-        // has settled before we call .select().
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           requestAnimationFrame(() => {

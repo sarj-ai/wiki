@@ -14,6 +14,7 @@ import { useSetFolderIcon } from "@/hooks/use-wiki-mutations";
 import { useFolderFiles } from "@/hooks/use-wiki-tree";
 import { renderNodeIcon } from "@/lib/file-icons";
 import { runWithErrorToast } from "@/lib/mutation-toast";
+import { resolveShortcutTarget } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
 import { wikiApi } from "@/lib/wiki-api";
 import { wikiKeys } from "@/lib/wiki-keys";
@@ -23,7 +24,7 @@ import {
   isFolderLikeNode,
   type KindedNode,
 } from "@/lib/wiki-tree";
-import { MIME_DOC, MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
+import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
 
 import { CreateFileMenu } from "./create-file-menu";
 import { useDriveSectionContext } from "./drive-context";
@@ -80,31 +81,17 @@ interface FolderHeaderProps {
 }
 
 function resolveShortcutMeta(node: DriveNode): ShortcutMeta {
-  const isShortcut = node.mimeType === MIME_SHORTCUT;
-  const isFolderShortcut = isShortcut && node.shortcutTargetMimeType === MIME_FOLDER;
-  const inaccessible = isShortcut && node.shortcutInaccessible;
-  const tooltip = isShortcut
-    ? inaccessible
-      ? "You don't have access to this shortcut's target. Contact your admin."
-      : node.shortcutTargetDriveName
-        ? `Shortcut → ${node.shortcutTargetDriveName}`
-        : "Shortcut"
-    : null;
+  const s = resolveShortcutTarget(node);
   return {
-    isShortcut,
-    isFolderShortcut,
-    isFolder: node.mimeType === MIME_FOLDER || isFolderShortcut,
-    inaccessible,
-    // Folder shortcuts expand by listing the *target's* children — the
-    // shortcut's own id has no children of its own in Drive.
-    expandFolderId: isFolderShortcut ? (node.shortcutTargetId ?? null) : node.id,
-    tooltip,
+    isShortcut: s.isShortcut,
+    isFolderShortcut: s.isFolderShortcut,
+    isFolder: node.mimeType === MIME_FOLDER || s.isFolderShortcut,
+    inaccessible: s.inaccessible,
+    expandFolderId: s.isFolderShortcut ? (node.shortcutTargetId ?? null) : node.id,
+    tooltip: s.tooltip,
   };
 }
 
-// Overlay containing the hover-revealed "+" and "..." actions for a
-// folder row. Vertically centered so the ``...`` button lines up with
-// the icon and name instead of clinging to the top edge of the row.
 function RowActions({ children }: { children: ReactNode }) {
   return (
     <div className="absolute top-1/2 right-1 z-20 flex -translate-y-1/2 items-center gap-0.5 opacity-0 group-hover/navitem:opacity-100 focus-within:opacity-100">
@@ -131,12 +118,11 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
       queryFn: () => wikiApi.getFolderFiles(folderId),
     });
   }, HOVER_PREFETCH_DELAY_MS);
-  // Icon mutation lives at the top of the component so the hook
-  // order is stable across folder vs non-folder branches below.
+
   const setFolderIcon = useSetFolderIcon();
-  // True when the dragged row will land *inside* this folder.
+
   const isDropIntoFolder = useIsDropIntoFolder(node.id);
-  // Spinner overlay while this folder's move is settling with Drive.
+
   const isMoving = useIsMovingFile(node.id);
 
   if (!meta.isFolder) {
@@ -199,9 +185,6 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
         }
       />
       {expanded && (
-        // Flatten the nested sub so recursion doesn't compound margins
-        // across levels — depth indentation lives on the row content
-        // itself via paddingLeft so 8+ levels still have room to breathe.
         <SidebarMenuSub className="mx-0 gap-0.5 border-l-0 px-0">
           <SortableContext
             id={`parent:${node.id}`}
@@ -244,12 +227,6 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
   );
 }
 
-// Native folders rely on the drive walk for their subfolders and on
-// the lazy ``useFolderFiles`` call for the file-level children. Folder
-// shortcuts pointing into another drive don't appear in the source
-// drive's walk, so we surface their subfolders from the lazy fetch
-// instead — those subfolders then recurse through TreeNode and lazy-
-// load their own children one level at a time.
 function buildChildItems(
   node: DriveNode,
   meta: ShortcutMeta,
@@ -271,9 +248,7 @@ function buildChildItems(
     ...folderChildren.map((n): KindedNode => ({ type: "folder", node: n })),
     ...filteredFiles.map((n): KindedNode => ({ type: "file", node: n })),
   ];
-  // If a drop just happened in THIS folder, the optimistic map has the
-  // final order keyed by id — honour it verbatim and skip sortOrderMap,
-  // which would otherwise be stale for several frames post-drop.
+
   const optimisticOrder = ctx.optimisticByContainer.get(`parent:${node.id}`) ?? null;
   const sorted = optimisticOrder
     ? raw
@@ -297,12 +272,6 @@ function FolderHeader({
   onHoverEnd,
   actions,
 }: FolderHeaderProps) {
-  // Layout mirrors file-row.tsx: the chevron stays inside the expand
-  // button, but the folder icon is pulled out into an absolutely-
-  // positioned overlay. This guarantees that clicking the icon can
-  // never trigger the button's expand/collapse handler via event
-  // bubbling — the icon click lives in a different subtree entirely,
-  // so radix Popover's toggle runs cleanly.
   const chevronPadding = `${rowIndent(depth)}px`;
   const iconLeft = `${rowIndent(depth) + CHEVRON_OFFSET}px`;
   const iconContent =
@@ -321,10 +290,7 @@ function FolderHeader({
         disabled={meta.inaccessible || isEmpty}
         className={cn(
           "pr-14 transition-[background-color,box-shadow] duration-150",
-          // Tint + ring while a drop on this row would land INSIDE the
-          // folder. Distinct from the above/below drop line rendered by
-          // SortableItem so the user can read the two outcomes at a
-          // glance.
+
           isDropIntoFolder && "ring-primary/60 bg-primary/10 ring-1",
           isMoving && "opacity-60",
           meta.inaccessible && "text-muted-foreground/60 cursor-not-allowed",
@@ -333,8 +299,6 @@ function FolderHeader({
         style={{ paddingLeft: chevronPadding }}
         aria-expanded={meta.inaccessible || isEmpty ? undefined : expanded}
         title={meta.tooltip ?? (isEmpty ? `${node.name} — empty` : node.name)}
-        // Same attribute the file-reveal scroll-into-view query uses so
-        // folder hits in the command palette can land on this row too.
         data-file-id={node.id}
       >
         <ChevronRight
@@ -353,11 +317,7 @@ function FolderHeader({
           </span>
         )}
       </SidebarMenuButton>
-      {/*
-        Folder shortcuts skip the emoji picker — the icon belongs to
-        the target's home, not to the pointer. Inaccessible rows
-        likewise: nothing to customise on a row the user can't open.
-      */}
+
       <div className="absolute top-1/2 z-10 -translate-y-1/2" style={{ left: iconLeft }}>
         <PickableIcon
           pickable={!meta.isShortcut && !meta.inaccessible}
@@ -369,12 +329,7 @@ function FolderHeader({
           {iconContent}
         </PickableIcon>
       </div>
-      {/*
-        Shortcut rows hide the create / rename / move actions — the
-        host drive doesn't own the target, so those operations either
-        don't apply (create-inside) or would mutate the wrong file
-        (rename/move the *shortcut*, not the doc users see).
-      */}
+
       {!meta.isShortcut && !meta.inaccessible && actions}
       {isMoving && (
         <div className="text-muted-foreground pointer-events-none absolute top-1/2 right-2 -translate-y-1/2">

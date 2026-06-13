@@ -31,7 +31,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  // Mirrors --background in globals.css; tracks the OS scheme, not next-themes.
+
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#f6efe7" },
     { media: "(prefers-color-scheme: dark)", color: "#161618" },
@@ -50,17 +50,7 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://docs.google.com" />
         <link rel="preconnect" href={API_URL} crossOrigin="use-credentials" />
         <link rel="dns-prefetch" href={API_URL} />
-        {/*
-          Polyfill the esbuild ``__name`` helper for inline scripts.
-          Turbopack (Next.js 16) emits ``__name(fn, "fn")`` calls inside
-          inline ``<script>`` blocks — e.g. the ``next-themes`` no-flash
-          script — but the helper itself is only declared inside ES
-          modules, not in the global scope inline scripts run in.
-          Result: ``ReferenceError: __name is not defined`` on first
-          paint and the whole document fails to hydrate. Declaring the
-          helper here, ahead of any subsequent inline scripts, makes
-          those calls a cheap no-op.
-        */}
+
         <script
           dangerouslySetInnerHTML={{
             __html:

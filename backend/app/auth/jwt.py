@@ -15,13 +15,6 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 
 class TokenPayload(BaseModel):
-    """Claims our JWTs carry, validated on decode.
-
-    ``email``/``iat``/``exp`` also exist in the raw token but no caller
-    reads them (exp is enforced by ``jwt.decode`` itself), so they stay
-    out of the contract.
-    """
-
     sub: uuid.UUID
     type: Literal["access", "refresh"]
     tv: NonNegativeInt = 0
@@ -53,7 +46,6 @@ def create_refresh_token(user_id: uuid.UUID, token_version: int = 0) -> str:
 
 
 def decode_token(token: str) -> TokenPayload:
-    """Raises :class:`InvalidTokenError` on invalid/expired/malformed tokens."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY.get_secret_value(), algorithms=[ALGORITHM])
     except jwt.PyJWTError as e:

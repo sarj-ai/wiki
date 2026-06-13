@@ -27,15 +27,6 @@ function mapByKey<T, V>(
   return map;
 }
 
-/**
- * Centralises every derived Map the sidebar's render path consults.
- * Pulls the drive tree, doc icons, folder icons, and sort orders from
- * React Query and projects them into Map shapes for O(1) lookups
- * inside ``DriveSection`` and every ``TreeNode``.
- *
- * Exposing the underlying ``treeQuery`` lets the consumer surface
- * loading / error states without re-subscribing to the same query.
- */
 export function useDriveTreeIndex(
   driveId: string,
   folderIcons: FolderIcon[],

@@ -5,15 +5,6 @@ import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCommandPaletteState } from "@/hooks/use-command-palette";
 
-/**
- * Spotlight-style trigger in the sidebar header. Clicking opens the
- * command palette; the real search UI lives in
- * ``components/wiki-search/command-palette.tsx``. The kbd hint
- * uses ``⌘K`` on macOS and ``Ctrl K`` elsewhere — we keep the macOS
- * glyph here because Sarj Wiki is a Sarj-internal tool on
- * predominantly-Mac laptops; the hotkey binding itself handles both
- * modifier keys in ``use-command-palette.ts``.
- */
 export function DriveSearchBox() {
   const { setOpen } = useCommandPaletteState();
   return (

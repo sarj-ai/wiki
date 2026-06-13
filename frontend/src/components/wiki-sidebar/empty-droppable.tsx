@@ -5,19 +5,6 @@ import { useDroppable } from "@dnd-kit/core";
 import { SidebarMenuItem, SidebarMenuSubItem } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
-/**
- * Registers an empty container (drive root or folder) as a drop
- * target so users can drag items INTO it from elsewhere even when
- * there are no rows to land near. Without this, dnd-kit's collision
- * detection picks the closest sortable row — which is always
- * something INSIDE the source container — and the drop reads as a
- * same-container reorder rather than a cross-container move.
- *
- * The droppable id matches the SortableContext id convention
- * (``parent:<drive-or-folder-id>``) so onDragEnd can extract the
- * destination's parent id with the same ``parentIdOf`` helper used
- * for normal sortable drops.
- */
 interface EmptyDropZoneProps {
   parentId: string;
   variant: "item" | "subitem";

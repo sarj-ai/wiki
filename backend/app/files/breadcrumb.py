@@ -1,19 +1,9 @@
-"""Pure breadcrumb walker for ``GET /files/{id}``.
-
-Reads the cached ``DriveTree`` and chains parent-folder hops up from
-the file's immediate parent to the drive root. Pure function — no
-I/O — so it stays trivially testable and the caller (router) decides
-where the tree comes from.
-"""
-
 from __future__ import annotations
 
 from app.drive.schemas import DriveTree
 from app.files.schemas import BreadcrumbItem
 
 
-# Folder nesting beyond this depth is almost certainly a cycle in the
-# tree we shouldn't walk.
 _MAX_DEPTH = 64
 
 

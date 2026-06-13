@@ -1,22 +1,3 @@
-"""File CRUD service.
-
-Everything here uses the caller's own OAuth token — no service account.
-HTTP 4xx from Drive surfaces with the same status; 5xx and transport
-errors bubble as 502 — both via :class:`DriveUpstreamError`.
-
-Strict-mode scoping
--------------------
-
-Every file Sarj Wiki reads or writes must live in a shared drive
-the caller is a direct member of. A file the caller's token can see via
-``files.get`` could also be in their personal My Drive or in a shared
-drive they have one-off share access to but aren't a member of — both
-fall outside the sidebar's visible surface. ``_ensure_in_member_drive``
-runs after every metadata fetch and raises :class:`FileNotInScopeError`
-(404, not 403, to avoid leaking existence) for anything outside a
-member drive.
-"""
-
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -50,8 +31,6 @@ _FIELDS = "id,name,mimeType,parents,driveId,modifiedTime"
 
 
 class FilesService(ABC):
-    """Contract for Drive file CRUD against a member shared drive."""
-
     @abstractmethod
     async def create(self, parent_folder_id: str, name: str, mime_type: str) -> FileResponse: ...
 
@@ -72,8 +51,6 @@ class FilesService(ABC):
 
 
 class GoogleFilesService(FilesService):
-    """``FilesService`` backed by the real Drive v3 API."""
-
     def __init__(self, *, user: User, drive: DriveService) -> None:
         self._user = user
         self._drive = drive
@@ -94,8 +71,6 @@ class GoogleFilesService(FilesService):
 
     @override
     async def rename(self, file_id: str, new_name: str) -> FileResponse:
-        # Source scope check before mutating — stops callers from renaming
-        # something they only got a one-off share on.
         await self.get(file_id)
         return await asyncio.to_thread(self._rename_sync, file_id, new_name)
 
@@ -107,13 +82,6 @@ class GoogleFilesService(FilesService):
                 self._move_sync, file_id, new_parent_folder_id, source.parent_folder_id
             )
         except DriveUpstreamError as exc:
-            # Drive returns 403 for both ordinary permission failures and
-            # cross-shared-drive moves blocked by admin movement
-            # restrictions. The latter is common enough — and confusing
-            # enough — that we disambiguate here by fetching the
-            # destination's drive_id. Only on a real cross-drive case do
-            # we surface the typed CrossDriveMoveNotSupportedError; a
-            # within-drive 403 keeps Drive's original message.
             if exc.http_status == 403:
                 try:
                     destination = await self.get(new_parent_folder_id)
@@ -123,8 +91,6 @@ class GoogleFilesService(FilesService):
                     msg = "Drive blocked this cross-drive move — copy the file instead."
                     raise CrossDriveMoveNotSupportedError(msg) from exc
             raise
-        # Destination scope check — reject moves *out* of Sarj Wiki's
-        # visible surface (e.g. into My Drive).
         await self._ensure_in_member_drive(moved.drive_id)
         return MoveResult(source=source, moved=moved)
 
@@ -144,11 +110,6 @@ class GoogleFilesService(FilesService):
         source = await self.get(file_id)
         await asyncio.to_thread(self._trash_sync, file_id)
         return DeleteResult(source=source)
-
-    # ------------------------------------------------------------------
-    # Internals — sync Drive client wrapped by ``asyncio.to_thread`` so
-    # the event loop stays free during the blocking Google API calls.
-    # ------------------------------------------------------------------
 
     async def _ensure_in_member_drive(self, drive_id: str | None) -> None:
         if drive_id is None:

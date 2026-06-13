@@ -26,7 +26,6 @@ describe("sanitizeRedirectPath", () => {
   });
 
   it("rejects paths embedding a scheme later in the string", () => {
-    // Defends against tricks like /redirect?next=https://evil
     expect(sanitizeRedirectPath("/redirect?next=https://evil")).toBe("/");
   });
 

@@ -124,7 +124,6 @@
         "type": "object"
       },
       "DriveNode": {
-        "description": "A single node (file or folder) inside a drive's tree cache.\n\n``parent_id`` is None for drive-root children (where the Drive API\nreturns the drive id itself as the parent). Callers should treat\nroot-level children as top-level items inside the drive.\n\nShortcut fields are populated only when ``mime_type == MIME_SHORTCUT``.\nThe frontend renders the shortcut using the *target's* mime icon plus\nan overlay glyph; ``shortcut_inaccessible`` flips the row to a greyed\nstate when the user lacks permission on the target.",
         "properties": {
           "id": {
             "title": "Id",
@@ -215,7 +214,6 @@
         "type": "object"
       },
       "DriveSummary": {
-        "description": "A shared drive the user is a member of.",
         "properties": {
           "id": {
             "title": "Id",
@@ -231,7 +229,6 @@
         "type": "object"
       },
       "DriveTree": {
-        "description": "Serialized tree of a single shared drive.\n\n``nodes`` is a flat list — the client rebuilds the hierarchy by\njoining ``id`` to ``parent_id``. Flat storage keeps the JSONB compact\nand avoids recursive serialization cost.",
         "properties": {
           "drive_id": {
             "title": "Drive Id",
@@ -553,7 +550,6 @@
         "type": "object"
       },
       "SearchResult": {
-        "description": "One hit from a Drive Search API query.\n\n``drive_name`` is populated when the result is returned from the\nmulti-drive ``search()`` call (which already iterates the user's\ndrives) so the client doesn't need a second round-trip to render\nthe drive label next to each hit. Per-drive ``search_drive`` calls\nleave it ``None``.\n\nShortcut entries (``mime_type == MIME_SHORTCUT``) carry the same\n``shortcut_target_*`` fields as :class:`DriveNode` so the search UI\ncan render the target's icon plus the overlay glyph.",
         "properties": {
           "drive_id": {
             "anyOf": [
@@ -663,7 +659,6 @@
         "type": "object"
       },
       "SnippetResult": {
-        "description": "Snippet fetched from a file's plain-text export.",
         "properties": {
           "file_id": {
             "title": "File Id",

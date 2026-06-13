@@ -15,8 +15,6 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    # Offline mode is a dev-only tool for emitting SQL scripts; it needs
-    # a literal URL and can't go through the Cloud SQL connector.
     if settings.DATABASE_URL is None:
         raise RuntimeError("Offline migrations require DATABASE_URL")
     context.configure(
@@ -36,8 +34,6 @@ def do_run_migrations(connection):
 
 
 async def run_migrations_online() -> None:
-    # Shared factory so startup migrations use the same auth path
-    # (password DSN or IAM connector) as the app itself.
     connectable = build_engine()
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

@@ -18,30 +18,10 @@ import { expandPath, requestReveal } from "@/hooks/use-expanded-folders";
 import { wikiKeys } from "@/hooks/use-wiki-tree";
 import { isGoogleWorkspaceType, renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
+import { resolveShortcutTarget, SHORTCUT_INACCESSIBLE_TOOLTIP } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
-import { MIME_FOLDER, MIME_FORM, MIME_SHORTCUT } from "@/types/wiki";
+import { MIME_FOLDER, MIME_FORM } from "@/types/wiki";
 
-// A search hit's "open" target is its shortcut target when present —
-// otherwise the hit itself. Centralised so the row, the preview, and
-// the open handler all agree on which mime/id pair we route through.
-function resolveOpenTarget(result: DriveSearchResult): { mimeType: string; id: string } {
-  if (result.mimeType === MIME_SHORTCUT) {
-    return {
-      mimeType: result.shortcutTargetMimeType ?? "",
-      id: result.shortcutTargetId ?? result.id,
-    };
-  }
-  return { mimeType: result.mimeType, id: result.id };
-}
-
-/**
- * Walk up the cached drive tree from ``nodeId`` to compute every
- * ancestor folder id along the path. Used by folder hits in the
- * command palette to expand the sidebar imperatively (the URL-driven
- * reveal effect doesn't fire for folders, since we no longer
- * navigate). Returns an empty list if the drive tree isn't cached or
- * the node isn't found — callers should still expand the drive root.
- */
 function ancestorChain(qc: QueryClient, driveId: string, nodeId: string): string[] {
   const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
   if (!tree) return [];
@@ -55,11 +35,6 @@ function ancestorChain(qc: QueryClient, driveId: string, nodeId: string): string
   return chain;
 }
 
-/**
- * Renders ``text`` with every case-insensitive occurrence of ``term``
- * wrapped in ``<mark>`` so the match stands out inside the preview.
- * Returns the input unchanged when ``term`` is empty.
- */
 function Highlighted({ text, term }: { text: string; term: string | null }) {
   if (!term) return <>{text}</>;
   const parts: React.ReactNode[] = [];
@@ -98,15 +73,8 @@ function ResultRow({
   driveName: string | undefined;
 }) {
   const inaccessible = result.shortcutInaccessible;
-  const tooltip = inaccessible
-    ? "You don't have access to this shortcut's target. Contact your admin."
-    : undefined;
+  const tooltip = inaccessible ? SHORTCUT_INACCESSIBLE_TOOLTIP : undefined;
   return (
-    // Click/arrow only moves selection — preview on the right; hover
-    // never preselects (the snippet fetch would race). Enter or the
-    // preview's Open button navigates. Inaccessible hits stay enabled
-    // (cmdk-disabled rows are skipped by keyboard nav) so the preview
-    // can explain why; the open path is gated in openResult.
     <CommandItem
       value={result.id}
       title={tooltip}
@@ -119,13 +87,6 @@ function ResultRow({
         {renderNodeIcon(result, "size-4")}
       </span>
       <div className="min-w-0 flex-1">
-        {/*
-          Names can be very long (Drive doesn't enforce a length
-          cap and slug-style filenames are common). break-words
-          plus the parent's flex layout lets them wrap to multiple
-          lines instead of truncating, so users can read the whole
-          filename without hovering for a tooltip.
-        */}
         <div className="text-foreground font-medium break-words">{result.name}</div>
         {driveName && <div className="text-muted-foreground text-xs break-words">{driveName}</div>}
       </div>
@@ -149,16 +110,13 @@ function PreviewPanel({
   driveName: string | undefined;
   onOpen: (result: DriveSearchResult) => void;
 }) {
-  // Snippet fetch goes against the *target* — for shortcut hits the
-  // shortcut entry has no exportable content. Inaccessible targets
-  // skip the fetch entirely (it'd 403 against Drive's export).
-  const target = result ? resolveOpenTarget(result) : null;
+  const target = result ? resolveShortcutTarget(result) : null;
   const inaccessible = result?.shortcutInaccessible === true;
   const snippetQuery = useDriveSearchSnippet(
-    target && !inaccessible ? target.id : null,
+    target && !inaccessible ? target.targetId : null,
     query,
     target !== null && !inaccessible,
-    target !== null && target.mimeType !== "" ? target.mimeType : undefined,
+    target !== null && target.targetMimeType !== "" ? target.targetMimeType : undefined,
   );
 
   if (!result || !target) {
@@ -169,7 +127,7 @@ function PreviewPanel({
     );
   }
 
-  const isForm = target.mimeType === MIME_FORM;
+  const isForm = target.targetMimeType === MIME_FORM;
   const snippet = snippetQuery.data;
 
   return (
@@ -197,7 +155,7 @@ function PreviewPanel({
         )}
         {!inaccessible && !snippetQuery.isLoading && !snippet?.snippet && (
           <div className="text-muted-foreground text-sm">
-            {isGoogleWorkspaceType(target.mimeType)
+            {isGoogleWorkspaceType(target.targetMimeType)
               ? "Drive matched this file but we couldn't pinpoint the exact phrase in its text. Open it to see the match in context."
               : "Inline text preview isn't available for this file type — open it to view the content."}
           </div>
@@ -238,8 +196,7 @@ export function CommandPalette() {
   const qc = useQueryClient();
 
   const [query, setQuery] = useState("");
-  // Selection is controlled by id, derived during render — id-stable
-  // across debounced result swaps, no reset-from-effect.
+
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -253,11 +210,6 @@ export function CommandPalette() {
   const selectedResult = results.find((r) => r.id === selectedId) ?? null;
   const hasQuery = query.trim().length >= 2;
 
-  // Centralised close so programmatic dismissals (e.g. after openResult)
-  // run the same reset as user-driven dismissals (Esc, click outside).
-  // Radix's onOpenChange only fires for the latter, so calling
-  // ``setOpen(false)`` directly used to leave the previous query in
-  // state — surfacing as stale text on the next open.
   const closePalette = () => {
     setQuery("");
     setSelectedResultId(null);
@@ -273,36 +225,23 @@ export function CommandPalette() {
   };
 
   const openResult = (result: DriveSearchResult) => {
-    // Inaccessible shortcut hits have no working open path — Drive
-    // would 403 on the target. Preview-panel button is disabled and
-    // Enter is gated below; this guard covers any other call site.
     if (result.shortcutInaccessible) {
       closePalette();
       return;
     }
-    // Shortcut hits route to the *target* — that's the file Drive
-    // actually opens, the breadcrumb we want, and the id the sidebar
-    // should reveal in its home drive's tree.
-    const target = resolveOpenTarget(result);
-    if (target.mimeType === MIME_FORM) {
-      window.open(openUrlFor(target.mimeType, target.id), "_blank", "noopener,noreferrer");
-    } else if (target.mimeType === MIME_FOLDER) {
-      // Folders have no iframe content — ``/d/<folderId>`` would land
-      // on Drive's "no preview" page. Expand the sidebar imperatively
-      // instead: walk the cached drive tree from the result's id up to
-      // its drive root, then expand each ancestor so the row becomes
-      // visible. We use ``result.id`` (the shortcut entry, in the host
-      // drive) — not ``target.id`` (the real folder, possibly in a
-      // drive we never walked). For folder *shortcuts* this also
-      // sidesteps inaccessible-target concerns: the reveal happens
-      // entirely within the host drive.
+
+    const target = resolveShortcutTarget(result);
+    if (target.targetMimeType === MIME_FORM) {
+      window.open(
+        openUrlFor(target.targetMimeType, target.targetId),
+        "_blank",
+        "noopener,noreferrer",
+      );
+    } else if (target.targetMimeType === MIME_FOLDER) {
       const driveId = result.driveId;
       if (driveId) {
         expandPath(driveId, ancestorChain(qc, driveId, result.id));
-        // Best-effort scroll into view after the sidebar re-renders.
-        // Folder rows don't carry data-file-id (only file rows do), so
-        // we look up by row id via a generic data attribute. Falls
-        // through gracefully if the row isn't yet in the DOM.
+
         requestAnimationFrame(() => {
           const el = document.querySelector<HTMLElement>(
             `[data-file-id="${CSS.escape(result.id)}"]`,
@@ -311,17 +250,12 @@ export function CommandPalette() {
         });
       }
     } else {
-      // Tell the sidebar to walk its tree open to this file once the
-      // breadcrumb arrives. Manual sidebar nav and back/forward never
-      // set this, so they leave the user's collapse state alone.
-      requestReveal(target.id);
-      router.push(`/d/${encodeURIComponent(target.id)}`);
+      requestReveal(target.targetId);
+      router.push(`/d/${encodeURIComponent(target.targetId)}`);
     }
     closePalette();
   };
 
-  // Intercept Enter before cmdk's select-as-open (its handler bails on
-  // defaultPrevented); isComposing guards IME confirmation keystrokes.
   const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
     event.preventDefault();
@@ -332,36 +266,23 @@ export function CommandPalette() {
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         className="flex h-[min(640px,85dvh)] !max-w-5xl flex-col gap-0 overflow-hidden p-0 sm:!max-w-5xl"
-        // Hide shadcn's default floating close X — it lands right on
-        // top of the search input at the top-right corner of our
-        // palette. The footer strip documents Esc as the close key.
         showCloseButton={false}
-        // Focus the input on open so typing immediately drives the
-        // search. Radix's default auto-focus would hit the first
-        // focusable child, which ruins the Spotlight UX.
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           requestAnimationFrame(() => inputRef.current?.focus());
         }}
       >
-        {/*
-          Radix requires a DialogTitle for screen-reader users. The
-          palette's visual entry point is the search input, so the
-          title is hidden visually while still being announced.
-        */}
         <DialogTitle className="sr-only">Search Drive</DialogTitle>
         <Command
           shouldFilter={false}
           disablePointerSelection
           value={selectedId}
           onValueChange={setSelectedResultId}
-          // h-auto overrides the wrapper's h-full so the footer keeps its slot.
           className="h-auto min-h-0 flex-1 bg-transparent"
         >
           <div className="border-border flex items-center gap-2.5 border-b px-5 py-4">
             <Search className="text-muted-foreground size-5 shrink-0" />
-            {/* Raw cmdk Input — the shadcn wrapper hardcodes its own
-                icon/chrome and can't host this flush header. */}
+
             <CommandPrimitive.Input
               ref={inputRef}
               value={query}

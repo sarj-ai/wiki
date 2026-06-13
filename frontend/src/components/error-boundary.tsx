@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 
 interface Props {
   children: React.ReactNode;
-  /** When this key changes (e.g. pathname), the error state resets automatically. */
+
   resetKey?: string;
   fallback?: React.ReactNode;
 }
@@ -26,7 +26,6 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   override componentDidUpdate(prevProps: Props) {
-    // Reset error state when resetKey changes (e.g. route navigation)
     if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
       this.setState({ hasError: false });
     }

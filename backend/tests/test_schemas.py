@@ -1,10 +1,3 @@
-"""Lightweight schema validation tests.
-
-Covers the bits where Pydantic's default behavior isn't obvious:
-optional fields defaulting to None, and the flat-list shape the
-frontend depends on.
-"""
-
 from __future__ import annotations
 
 from app.drive.schemas import (
@@ -33,7 +26,6 @@ def test_drive_tree_empty() -> None:
     tree = DriveTree(drive_id="d1", folders=[], files=[], files_complete=True)
     assert tree.folders == []
     assert tree.files == []
-    # Round-trip through JSON stays stable — used by the JSONB cache.
     restored = DriveTree.model_validate(tree.model_dump(mode="json"))
     assert restored.drive_id == "d1"
 

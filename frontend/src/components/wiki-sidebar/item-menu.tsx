@@ -67,8 +67,7 @@ export function ItemMenu({
   const handleDuplicate = async (name: string) => {
     await runWithErrorToast(async () => {
       const file = await copyFile.mutateAsync({ fileId, name });
-      // Forms can't be iframed (see file-row.tsx) so the duplicate
-      // opens in a new tab. Other Workspace types open inline.
+
       if (file.mimeType === MIME_FORM) {
         window.open(openUrlFor(file.mimeType, file.id), "_blank", "noopener,noreferrer");
       } else if (isGoogleWorkspaceType(file.mimeType)) {
@@ -79,18 +78,11 @@ export function ItemMenu({
   };
 
   const handleDelete = async () => {
-    // Keep the dialog open while the delete is in flight so the
-    // confirm button can show a spinner and block double-clicks —
-    // closing eagerly and relying on the toast leaves the user
-    // without any feedback during the round-trip.
     await runWithErrorToast(async () => {
       await deleteFile.mutateAsync({ fileId, driveId, parentFolderId });
       setConfirmingDelete(false);
       toast.success(isFolder ? "Folder moved to trash" : "File moved to trash");
-      // If the user is currently viewing the deleted file's iframe,
-      // route them back to the landing page — otherwise the viewer
-      // would hang on a file that now 404s (or worse, keep showing
-      // the iframe of a trashed doc).
+
       if (pathname === `/d/${encodeURIComponent(fileId)}`) {
         router.push("/");
       }
@@ -157,8 +149,6 @@ export function ItemMenu({
       <AlertDialog
         open={confirmingDelete}
         onOpenChange={(open) => {
-          // Block closing while the delete is in flight so the user
-          // can't escape-dismiss the spinner mid-request.
           if (deleteFile.isPending) return;
           setConfirmingDelete(open);
         }}
@@ -177,9 +167,6 @@ export function ItemMenu({
             <AlertDialogCancel disabled={deleteFile.isPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
-                // radix closes the alert on click by default. Override
-                // that so the dialog stays open until the delete
-                // settles — the `onOpenChange` guard above enforces it.
                 e.preventDefault();
                 void handleDelete();
               }}

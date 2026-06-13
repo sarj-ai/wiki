@@ -47,13 +47,6 @@ export function WikiSidebar() {
     [drivesQuery.data, hiddenWorkspaceIds],
   );
 
-  // Reveal the active file in the sidebar tree — but only when the
-  // navigation was kicked off by the command palette's "Open" action,
-  // which calls `requestReveal(fileId)` before pushing the route.
-  // Manual sidebar nav, browser back/forward, and direct URL loads
-  // never set the request, so the user's collapse state survives.
-  // The breadcrumb endpoint is already fetched for the toolbar; reuse
-  // it here once it arrives. The breadcrumb is [drive, ...folders].
   const activeFileQuery = useFile(activeDriveId);
   const breadcrumb = activeFileQuery.data?.breadcrumb;
   useEffect(() => {
@@ -65,9 +58,7 @@ export function WikiSidebar() {
       driveCrumb.id,
       folderCrumbs.map((c) => c.id),
     );
-    // Expansion fires synchronous setState in subscribers; React
-    // commits the new tree before the rAF callback runs, so the
-    // FileRow tagged with this id is already in the DOM by then.
+
     const targetId = activeDriveId;
     const handle = requestAnimationFrame(() => {
       const el = document.querySelector<HTMLElement>(`[data-file-id="${CSS.escape(targetId)}"]`);
