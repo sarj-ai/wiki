@@ -1,5 +1,6 @@
 "use client";
 
+import { type Route } from "next";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 
@@ -16,7 +17,7 @@ export function RedirectAfterLogin() {
     localStorage.removeItem(REDIRECT_KEY);
     const safePath = sanitizeRedirectPath(stashed);
     if (safePath !== pathname) {
-      router.replace(safePath);
+      router.replace(safePath as Route);
     }
   }, [pathname, router]);
 
