@@ -115,21 +115,11 @@ function FolderRow({
   );
 }
 
-// Subscribes to the drive-tree query for THIS drive. If the sidebar
-// already expanded the drive earlier in the session (or persisted it
-// to localStorage), the data is served instantly from cache. If not,
-// the dialog kicks off a fresh fetch — the user gets a brief loading
-// state instead of an empty list, which the previous qc.getQueryData
-// approach silently produced.
 function DriveRow({ driveId, driveName, selectedId, onSelect, disabledId }: DriveRowProps) {
   const [expanded, setExpanded] = useState(false);
-  // Only fetch once the user expands this drive — otherwise opening
-  // the dialog kicks N drive-tree walks for every shared drive.
+
   const treeQuery = useDriveTree(expanded ? driveId : null);
-  // Folder shortcuts can't be move destinations — Drive rejects "move
-  // file into a shortcut" because the shortcut isn't a real container.
-  // Strip them from the destination tree so users can't pick something
-  // that would silently fail at submit time.
+
   const childrenByParent = useMemo(
     () =>
       buildChildrenIndex(
@@ -142,13 +132,6 @@ function DriveRow({ driveId, driveName, selectedId, onSelect, disabledId }: Driv
 
   return (
     <>
-      {/*
-        Disabled drives stay expandable so users can navigate to
-        subfolders inside them — even when the drive ROOT itself
-        can't be the destination (because it's the file's current
-        parent). The chevron Button stays enabled while the
-        selection Button takes the disabled state.
-      */}
       <div className="flex items-center gap-1">
         <Button
           type="button"
@@ -229,10 +212,7 @@ export function MoveFileDialog({
         onOpenChange(false);
         setSelectedId(null);
       },
-      // 403s here are rare (we already strip shortcut destinations
-      // from the picker) but keep the same friendly translation as
-      // the drag-drop path so a misconfigured drive ACL doesn't show
-      // the raw Drive error to the user.
+
       (err) =>
         err instanceof ApiError && err.status === 403
           ? "Drive denied this move — you may not have edit permission on the destination."
@@ -240,15 +220,12 @@ export function MoveFileDialog({
     );
   };
 
-  // Disable the file's current parent so users can't no-op-move.
   const disabledId = currentParentFolderId ?? currentDriveId ?? "";
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        // Block dismissal while the move is in flight so the user
-        // can't escape-dismiss the spinner mid-request.
         if (moveFile.isPending) return;
         onOpenChange(next);
       }}

@@ -1,8 +1,7 @@
 # Sarj Wiki Terraform
 
 Infrastructure-as-code for the Sarj Wiki production environment
-on GCP + Cloudflare. Updated for Sub-PR B (rev 8 of
-`PIVOT_PLAN.md`).
+on GCP + Cloudflare.
 
 ## Layout
 

@@ -29,8 +29,7 @@ import { NamePromptDialog } from "./name-prompt-dialog";
 
 interface CreateFileMenuProps {
   parentFolderId: string;
-  // Compact variant: icon-only trigger meant to sit inline in a sidebar
-  // row. Falls back to a labeled button otherwise.
+
   compact?: boolean;
 }
 
@@ -53,8 +52,7 @@ export function CreateFileMenu({ parentFolderId, compact = true }: CreateFileMen
   const router = useRouter();
   const createFile = useCreateFile();
   const [menuOpen, setMenuOpen] = useState(false);
-  // Which type the user picked from the dropdown — the dialog for the
-  // actual name input opens once `pendingType` is non-null.
+
   const [pendingType, setPendingType] = useState<CreateType | null>(null);
 
   const pickType = (type: CreateType) => {
@@ -70,11 +68,7 @@ export function CreateFileMenu({ parentFolderId, compact = true }: CreateFileMen
         name,
         mimeType: pendingType.mimeType,
       });
-      // Forms have a Drive-API-level permission quirk that makes the
-      // /edit URL bounce on a "You need access" gate when iframed, so
-      // they get launched in a fresh tab where the user's top-level
-      // Google session handles the ACL check. Other Workspace types
-      // open inline in Sarj Wiki viewer.
+
       if (file.mimeType === MIME_FORM) {
         window.open(openUrlFor(file.mimeType, file.id), "_blank", "noopener,noreferrer");
       } else if (isGoogleWorkspaceType(file.mimeType)) {

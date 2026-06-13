@@ -1,12 +1,3 @@
-"""HTTP surface for Sarj Wiki file CRUD.
-
-Every endpoint invalidates the affected drive's sidebar cache inline
-so the next sidebar load reflects the write. Move and delete are
-service-orchestrated: the service returns a composite result carrying
-the pre-mutation source so the router can invalidate the source drive
-without a second Drive call.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -57,10 +48,6 @@ async def read_file(
     drive: DriveService = Depends(drive_service_dep),
     cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
 ) -> FileDetail:
-    # The toolbar needs both the drive name and the parent-folder chain;
-    # both are readily available on the server (drives.list runs as part
-    # of files.get's strict-scope check, and the parent walk is a pure
-    # in-memory pass over the already-cached drive tree).
     file, drives = await asyncio.gather(files.get(file_id), drive.list_drives())
     drive_name = next((d.name for d in drives if d.id == file.drive_id), None)
     cached = await cache.peek_drive_tree(db, file.drive_id) if file.drive_id else None
@@ -95,18 +82,9 @@ async def move_file(
     extras: ExtrasService = Depends(extras_service_dep),
     cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
 ) -> FileResponse:
-    # Service returns both the pre-move source and the post-move file so
-    # we can invalidate both drives without a second Drive call.
     result = await files.move(file_id, payload.new_parent_folder_id)
     await _invalidate_drive_of(db, cache, result.source)
     await _invalidate_drive_of(db, cache, result.moved)
-    # When the file lands in a new parent, any sort_order the user set
-    # while it was in its old parent no longer reflects intent in the
-    # new one. Without this, ``compareNodeOrder`` keeps surfacing the
-    # moved file at the top of the destination because it has an
-    # explicit sort_order while its new siblings don't. Clear the
-    # entry; the file then sorts by the default folders-first / alpha
-    # rule alongside the rest of the destination's children.
     if result.source.parent_folder_id != result.moved.parent_folder_id:
         await extras.clear_sort_order(file_id)
     return result.moved
@@ -141,7 +119,5 @@ async def _invalidate_drive_of(
     cache: SidebarCacheService,
     file: FileResponse,
 ) -> None:
-    # ``driveId`` is set for every shared-drive file; a missing one means
-    # My Drive, which we don't cache.
     if file.drive_id:
         await cache.invalidate_drive(db, file.drive_id)

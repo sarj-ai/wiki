@@ -1,13 +1,3 @@
-"""Singleflight coalescer behaviour.
-
-Focus is on the guarantees that matter for the sidebar cache:
-- Concurrent callers for the same key run ``fn`` exactly once.
-- Different keys run independently.
-- Exceptions propagate to every waiter and release the entry.
-- After a call completes, the next call with the same key runs
-  ``fn`` again (not stale-pinned to the first result).
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -34,7 +24,6 @@ async def test_coalesces_concurrent_calls_onto_one_fn() -> None:
     await started.wait()
     task_b = asyncio.create_task(sf.do("k", work))
     task_c = asyncio.create_task(sf.do("k", work))
-    # Give B and C a chance to hit the singleflight entry.
     await asyncio.sleep(0)
     release.set()
     results = list(await asyncio.gather(task_a, task_b, task_c))
@@ -71,7 +60,6 @@ async def test_entry_cleared_after_completion() -> None:
     first = await sf.do("k", work)
     second = await sf.do("k", work)
 
-    # Entry was removed after the first call; the second call re-ran.
     assert first == 1
     assert second == 2
 
@@ -85,7 +73,6 @@ async def test_exception_propagates_and_clears_entry() -> None:
     with pytest.raises(RuntimeError, match="boom"):
         await sf.do("k", boom)
 
-    # Same key can run again afterwards — entry was not pinned.
     async def ok() -> str:
         return "ok"
 

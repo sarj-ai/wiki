@@ -1,17 +1,3 @@
-"""User-scoped Drive operations as a single service class.
-
-Covers drive listing, folder-tree walking, and search. Every operation
-runs against the user's OAuth token — ``drives.list()`` is also our
-access-control boundary because Drive only returns drives the caller
-is a member of.
-
-``DriveService`` is the ABC the rest of the app codes against.
-``GoogleDriveService`` is the production implementation that calls the
-real Google Drive v3 API; swap it for a fake in tests by subclassing
-``DriveService`` directly, or by patching
-``GoogleDriveService.build_drive_client``.
-"""
-
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -66,14 +52,8 @@ _PROBE_BATCH_SIZE = 100
 
 _SEARCH_PAGE_SIZE = 50
 
-# Caps the drive-wide file listing baked into the tree cache. Drives
-# past the cap fall back to lazy per-folder listings client-side
-# (files_complete=False) instead of hauling an unbounded payload.
 _MAX_DRIVE_FILE_PAGES = 3
 
-# Google Workspace types that expose a clean text/plain export. Other
-# types (PDF, images, Forms) can't export useful text — we return a
-# null snippet and let the UI show a type-specific placeholder.
 _TEXT_EXPORTABLE_MIME_TYPES = frozenset(
     {
         "application/vnd.google-apps.document",
@@ -82,12 +62,10 @@ _TEXT_EXPORTABLE_MIME_TYPES = frozenset(
     }
 )
 
-_MAX_EXPORT_BYTES = 2 * 1024 * 1024  # cap huge docs so search doesn't stall
+_MAX_EXPORT_BYTES = 2 * 1024 * 1024
 
 
 class DriveService(ABC):
-    """Contract for per-user Drive operations."""
-
     @abstractmethod
     async def list_drives(self) -> list[DriveSummary]: ...
 
@@ -103,39 +81,20 @@ class DriveService(ABC):
     ) -> list[SearchResult]: ...
 
     @abstractmethod
-    async def search(self, query: str, *, limit_per_drive: int = 20) -> list[SearchResult]:
-        """Search every drive the user is a member of.
-
-        Folds ``list_drives`` + per-drive fan-out so callers don't have to
-        compose them. Empty/whitespace queries and zero-drive accounts both
-        short-circuit to ``[]``.
-        """
+    async def search(self, query: str, *, limit_per_drive: int = 20) -> list[SearchResult]: ...
 
     @abstractmethod
     async def fetch_snippet(
         self, file_id: str, query: str, *, mime_type: str | None = None
-    ) -> SnippetResult:
-        """Extract a match snippet from a file's text export.
-
-        A caller-supplied ``mime_type`` skips the metadata lookup; it's an
-        optimization, not an authority — the export still runs under the
-        user's own token, so a wrong value just yields no snippet.
-        """
+    ) -> SnippetResult: ...
 
 
 class GoogleDriveService(DriveService):
-    """Production ``DriveService`` backed by the Google Drive v3 API."""
-
     def __init__(self, user: User) -> None:
         self._user = user
 
     @override
     async def list_drives(self) -> list[DriveSummary]:
-        # Stale-while-revalidate: fresh entries serve instantly, stale
-        # entries also serve instantly while a background refetch
-        # repopulates the cache for the next request. Cold path is the
-        # only synchronous fetch — typically once per session.
-        # Invalidated on logout (see ``AuthService.revoke_session``).
         return await drives_cache.get_drives(
             str(self._user.id),
             lambda: asyncio.to_thread(self._list_drives_sync),
@@ -208,13 +167,6 @@ class GoogleDriveService(DriveService):
     ) -> SnippetResult:
         return await asyncio.to_thread(self._fetch_snippet_sync, file_id, query, mime_type)
 
-    # ------------------------------------------------------------------
-    # Shortcut resolver. Runs after walk/list to enrich shortcut nodes
-    # with target accessibility + the target's home-drive name, and to
-    # auto-prune shortcuts whose target was deleted or trashed. Probes
-    # are deduplicated and sent as Drive batch HTTP requests.
-    # ------------------------------------------------------------------
-
     async def _resolve_shortcut_nodes(self, nodes: list[DriveNode]) -> list[DriveNode]:
         return await self._resolve_shortcuts(
             nodes,
@@ -229,9 +181,6 @@ class GoogleDriveService(DriveService):
     async def _resolve_shortcut_search_results(
         self, results: list[SearchResult]
     ) -> list[SearchResult]:
-        # Same probe + grey-out logic as the sidebar nodes so the palette
-        # renders inaccessible shortcut hits with the same UX. SearchResult
-        # has no shortcut_target_drive_id field, hence the smaller update.
         return await self._resolve_shortcuts(
             results,
             lambda target_drive_id, drive_names: {
@@ -261,7 +210,6 @@ class GoogleDriveService(DriveService):
                 continue
             probe = resolved[item.id]
             if probe is None:
-                # Target deleted or trashed → auto-prune.
                 continue
             if not probe.accessible:
                 out.append(item.model_copy(update={"shortcut_inaccessible": True}))
@@ -275,7 +223,6 @@ class GoogleDriveService(DriveService):
         return {d.id: d.name for d in await self.list_drives()}
 
     async def _probe_targets(self, target_ids: list[str | None]) -> list[ShortcutProbe | None]:
-        """Probe targets once each (deduplicated), preserving input order."""
         unique_ids = sorted({tid for tid in target_ids if tid})
         if not unique_ids:
             return [None] * len(target_ids)
@@ -334,12 +281,6 @@ class GoogleDriveService(DriveService):
             return None
         return ShortcutProbe(accessible=True, target_drive_id=probe.drive_id)
 
-    # ------------------------------------------------------------------
-    # Sync implementations. Wrapped in asyncio.to_thread by the public
-    # methods above so the event loop stays free during the blocking
-    # Google API client calls.
-    # ------------------------------------------------------------------
-
     def _list_drives_sync(self) -> list[DriveSummary]:
         client = self._client()
         out: list[DriveSummary] = []
@@ -372,10 +313,6 @@ class GoogleDriveService(DriveService):
         client = self._client()
         out = DriveTree(drive_id=drive_id, folders=[], files=[], files_complete=True)
         page_token: str | None = None
-        # Folder walk also picks up shortcuts whose target is a folder
-        # so cross-drive folder pointers render natively in the tree.
-        # The mime filter on ``targetMimeType`` happens client-side
-        # because Drive's q grammar doesn't support shortcutDetails fields.
         query = f"(mimeType='{MIME_FOLDER}' or mimeType='{MIME_SHORTCUT}') and trashed=false"
         while True:
             params: dict[str, Any] = {
@@ -546,9 +483,6 @@ class GoogleDriveService(DriveService):
         return [_search_result_from_api(raw, drive_id) for raw in resp.get("files", [])]
 
     def _search_all_drives_sync(self, query: str, page_size: int) -> list[SearchResult] | None:
-        """Single cross-drive search; ``None`` means fall back to the
-        per-drive fan-out (incomplete results or the call failed).
-        """
         escaped = escape_query_value(query)
         q = f"(name contains '{escaped}' or fullText contains '{escaped}') and trashed=false"
         client = self._client()
@@ -591,9 +525,6 @@ class GoogleDriveService(DriveService):
                 file_id=file_id, mime_type=mime_type, snippet=None, match_term=None
             )
 
-        # ``size`` is only set on binary files; Workspace docs don't report
-        # a byte size, so we can't pre-filter. The export itself is the
-        # backstop — we truncate before decoding if the response is huge.
         try:
             raw = execute_with_retry(client.files().export(fileId=file_id, mimeType="text/plain"))
         except HttpError:
@@ -626,23 +557,10 @@ class GoogleDriveService(DriveService):
 
     @staticmethod
     def build_drive_client(user: User) -> DriveResource:
-        """Construct an authenticated Drive v3 client for ``user``.
-
-        Public so :class:`~app.files.service.GoogleFilesService` can
-        spin up its own client off the same per-user credentials. The
-        actual credential decryption stays in ``_build_credentials``
-        because no caller outside this class should touch the OAuth
-        secret material directly.
-
-        Clients are deliberately NOT shared across operations: httplib2
-        connections aren't thread-safe, and operations run on
-        ``asyncio.to_thread`` workers.
-        """
         authed_http = google_auth_httplib2.AuthorizedHttp(
             GoogleDriveService._build_credentials(user),
             http=httplib2.Http(timeout=_DRIVE_HTTP_TIMEOUT_SECONDS),
         )
-        # build_from_document is public API the stubs package omits.
         built = discovery.build_from_document(  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
             _drive_discovery_document(), http=authed_http
         )
@@ -656,9 +574,6 @@ class GoogleDriveService(DriveService):
         refresh_token = (
             decrypt_text(user.encrypted_refresh_token) if user.encrypted_refresh_token else None
         )
-        # google.oauth2 ships partial typing — mypy strict flags
-        # ``Credentials(...)`` as an untyped call; pyright sees full
-        # types. Narrow ignore for mypy only.
         return Credentials(  # type: ignore[no-untyped-call]
             token=access_token,
             refresh_token=refresh_token,
@@ -670,7 +585,6 @@ class GoogleDriveService(DriveService):
 
 @cache
 def _drive_discovery_document() -> dict[str, Any]:
-    """Parse the bundled Drive v3 discovery document once per process."""
     content = get_static_doc("drive", "v3")  # type: ignore[no-untyped-call]
     if content is None:
         raise RuntimeError("Bundled Drive v3 discovery document not found")
@@ -679,19 +593,10 @@ def _drive_discovery_document() -> dict[str, Any]:
 
 @drive_retry
 def _execute_batch_with_retry(batch: BatchHttpRequest) -> None:
-    """Run a Drive batch request; per-item outcomes land in the callback,
-    only whole-batch transport failures raise (and retry).
-    """
     batch.execute()
 
 
 def _build_mime_clause() -> str:
-    # Folders always included so the tree is walkable; everything else
-    # filtered to Workspace + PDFs + common images so we don't haul down
-    # random binary blobs a user happens to have in a drive. Shortcuts
-    # are included unconditionally — we filter them client-side based on
-    # ``shortcutDetails.targetMimeType`` since Drive's q grammar can't
-    # filter on shortcut details.
     quoted = " or ".join(
         f"mimeType='{m}'" for m in (*NAVIGATOR_SUPPORTED_MIME_TYPES, MIME_SHORTCUT)
     )

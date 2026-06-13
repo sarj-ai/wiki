@@ -1,5 +1,3 @@
-"""FastAPI dependency wiring for ``FilesService``."""
-
 from __future__ import annotations
 
 from fastapi import Depends

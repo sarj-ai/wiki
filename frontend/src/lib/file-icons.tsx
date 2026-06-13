@@ -24,19 +24,11 @@ import {
   MIME_SLIDE,
 } from "@/types/wiki";
 
-// Shortcut nodes carry their target's mime in ``shortcutTargetMimeType``
-// — the rendered icon should match the *target*, since that's the file
-// the user will actually open. The Link2 overlay then signals "this is
-// a pointer, not the original".
 interface NodeIconShape {
   mimeType: string;
   shortcutTargetMimeType?: string | null | undefined;
 }
 
-// Lucide outlines tinted per Workspace type via the --icon-* tokens in
-// globals.css (Google brand hues, dark-mode adjusted). Solid outlines
-// read cleanly at 16px — detailed mini-scenes with gradients got muddy
-// at that size.
 const MIME_ICONS: Record<string, { icon: typeof FileText; tint: string }> = {
   [MIME_FOLDER]: { icon: Folder, tint: "text-icon-folder" },
   [MIME_DOC]: { icon: FileText, tint: "text-icon-doc" },
@@ -47,10 +39,6 @@ const MIME_ICONS: Record<string, { icon: typeof FileText; tint: string }> = {
   [MIME_PDF]: { icon: FileType2, tint: "text-icon-pdf" },
 };
 
-// Renders the icon for a mime type as a JSX element. The map holds
-// module-scope component references, so aliasing one at render time
-// doesn't trip the React Compiler "components created during render"
-// lint rule (same idiom as ERROR_CONFIG in login/page.tsx).
 export function renderMimeIcon(mimeType: string, className?: string): ReactElement {
   const entry =
     MIME_ICONS[mimeType] ??
@@ -65,8 +53,7 @@ export function renderNodeIcon(node: NodeIconShape, className?: string): ReactEl
   if (node.mimeType !== MIME_SHORTCUT) {
     return renderMimeIcon(node.mimeType, className);
   }
-  // Fall back to the folder icon if the target mime is missing — should
-  // never happen post-resolver, but keeps the render defensive.
+
   const targetMime = node.shortcutTargetMimeType ?? MIME_FOLDER;
   return (
     <span className="relative inline-flex shrink-0">
@@ -79,7 +66,6 @@ export function renderNodeIcon(node: NodeIconShape, className?: string): ReactEl
   );
 }
 
-/** Human-readable label for the Open-in-Google button per type. */
 export function openInGoogleLabel(mimeType: string): string {
   if (mimeType === MIME_DOC) return "Open in Google Docs";
   if (mimeType === MIME_SHEET) return "Open in Google Sheets";
@@ -89,7 +75,6 @@ export function openInGoogleLabel(mimeType: string): string {
   return "Open in Drive";
 }
 
-/** True when the file is a Google Workspace type with full editing inside the iframe. */
 export function isGoogleWorkspaceType(mimeType: string): boolean {
   return (
     mimeType === MIME_DOC ||
@@ -100,12 +85,6 @@ export function isGoogleWorkspaceType(mimeType: string): boolean {
   );
 }
 
-/**
- * True when the file's iframe always renders its own filename header,
- * so Sarj Wiki toolbar shouldn't duplicate it in the breadcrumb.
- * Confirmed against the live Google embed for each listed type —
- * add Forms/PDF/other as they're checked.
- */
 export function iframeShowsOwnTitle(mimeType: string): boolean {
   return (
     mimeType === MIME_DOC ||

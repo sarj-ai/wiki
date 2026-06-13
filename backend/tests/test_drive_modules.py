@@ -1,14 +1,3 @@
-"""DriveService + snippet helper tests.
-
-``GoogleDriveService`` is exercised with a fake ``DriveResource`` stubbed
-in via ``GoogleDriveService.build_drive_client``. The fake records every
-kwarg the service passes so we can assert the q-string, corpora scoping,
-and pagination semantics that matter for correctness.
-
-The pure snippet helpers have no Drive dependency; they're tested with
-plain string inputs.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -114,7 +103,6 @@ class _FakeClient:
 
 @pytest.fixture
 def patch_drive_client(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
-    """Return a helper that patches ``GoogleDriveService.build_drive_client``."""
 
     def _install(client: Any) -> None:
         monkeypatch.setattr(
@@ -128,11 +116,6 @@ def patch_drive_client(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-unty
 
 def _svc() -> GoogleDriveService:
     return GoogleDriveService(_user())
-
-
-# ---------------------------------------------------------------------------
-# list_drives
-# ---------------------------------------------------------------------------
 
 
 async def test_list_drives_paginates_until_empty_token(patch_drive_client: Any) -> None:
@@ -174,11 +157,6 @@ async def test_list_drives_skips_entries_missing_fields(patch_drive_client: Any)
     assert [d.id for d in result] == ["d1"]
 
 
-# ---------------------------------------------------------------------------
-# walk_drive_folders + list_folder_children
-# ---------------------------------------------------------------------------
-
-
 async def test_walk_drive_folders_uses_corpora_drive_and_folder_query(
     patch_drive_client: Any,
 ) -> None:
@@ -207,7 +185,6 @@ async def test_walk_drive_folders_uses_corpora_drive_and_folder_query(
     tree = await _svc().walk_drive_folders("the-drive")
     assert tree.drive_id == "the-drive"
     assert [f.id for f in tree.folders] == ["f1", "f2"]
-    # Root-level folder is normalized: parent_id None, not the drive id.
     assert tree.folders[0].parent_id is None
     assert tree.folders[1].parent_id == "f1"
 
@@ -340,13 +317,7 @@ async def test_list_folder_children_queries_by_parent(patch_drive_client: Any) -
     assert call["corpora"] == "allDrives"
 
 
-# ---------------------------------------------------------------------------
-# shortcut surfacing + resolver
-# ---------------------------------------------------------------------------
-
-
 def _stub_probes(svc: GoogleDriveService, mapping: dict[str, ShortcutProbe | None]) -> None:
-    """Replace ``_probe_targets_sync`` with a deterministic table."""
 
     def _fake(target_ids: list[str]) -> dict[str, ShortcutProbe | None]:
         return {tid: mapping.get(tid) for tid in target_ids}
@@ -403,7 +374,6 @@ async def test_walk_surfaces_folder_shortcuts_and_drops_file_shortcuts(
 
     tree = await svc.walk_drive_folders("sales")
     ids = [n.id for n in tree.folders]
-    # File-target shortcut excluded from the folder walk; folder-target kept.
     assert ids == ["f1", "sc-folder"]
 
     sc = next(n for n in tree.folders if n.id == "sc-folder")
@@ -414,8 +384,6 @@ async def test_walk_surfaces_folder_shortcuts_and_drops_file_shortcuts(
     assert sc.shortcut_target_drive_name == "Engineering"
     assert sc.shortcut_inaccessible is False
 
-    # Walk query asks for both folders and shortcuts so the API returns
-    # the shortcut row alongside native folders.
     q = client.files_captured[0]["q"]
     assert f"mimeType='{MIME_FOLDER}'" in q
     assert f"mimeType='{MIME_SHORTCUT}'" in q
@@ -471,7 +439,6 @@ async def test_list_children_surfaces_file_shortcuts_with_target_mime(
 
     children = await svc.list_folder_children("folder-x")
     ids = [c.id for c in children]
-    # Unsupported-target shortcut is dropped before the resolver even runs.
     assert ids == ["doc1", "sc-doc"]
     sc = next(c for c in children if c.id == "sc-doc")
     assert sc.shortcut_target_id == "eng-doc"
@@ -507,8 +474,6 @@ async def test_resolver_marks_forbidden_target_inaccessible(
     tree = await svc.walk_drive_folders("sales")
     assert len(tree.folders) == 1
     assert tree.folders[0].shortcut_inaccessible is True
-    # Drive name not filled when target is forbidden — we don't know which
-    # drive it lives in.
     assert tree.folders[0].shortcut_target_drive_id is None
     assert tree.folders[0].shortcut_target_drive_name is None
 
@@ -543,17 +508,10 @@ async def test_resolver_prunes_deleted_or_trashed_targets(
     )
     patch_drive_client(client)
     svc = _svc()
-    # ``None`` from the probe means "drop this shortcut" — covers both
-    # 404 and trashed=true paths in the real probe.
     _stub_probes(svc, {"deleted-target": None})
 
     tree = await svc.walk_drive_folders("sales")
     assert [n.id for n in tree.folders] == ["f1"]
-
-
-# ---------------------------------------------------------------------------
-# search_drive + search
-# ---------------------------------------------------------------------------
 
 
 async def test_search_drive_escapes_quotes_and_passes_scoping(
@@ -578,7 +536,6 @@ async def test_search_drive_escapes_quotes_and_passes_scoping(
     results = await _svc().search_drive("d1", "O'Brien")
     assert [r.id for r in results] == ["s1"]
     call = client.files_captured[0]
-    # Single-quote escaped as backslash-quote in Drive q-string.
     assert r"O\'Brien" in call["q"]
     assert call["corpora"] == "drive"
     assert call["driveId"] == "d1"
@@ -588,7 +545,6 @@ async def test_search_drive_empty_query_returns_empty(patch_drive_client: Any) -
     client = _FakeClient()
     patch_drive_client(client)
     assert await _svc().search_drive("d1", "   ") == []
-    # No API calls were made.
     assert client.files_captured == []
 
 
@@ -651,13 +607,7 @@ async def test_search_short_circuits_on_empty_query(patch_drive_client: Any) -> 
     client = _FakeClient()
     patch_drive_client(client)
     assert await _svc().search("   ") == []
-    # Never even fetched drives.
     assert client.drives_captured == []
-
-
-# ---------------------------------------------------------------------------
-# probe batching + snippet RPC elision
-# ---------------------------------------------------------------------------
 
 
 async def test_probe_targets_dedupes_and_preserves_order() -> None:
@@ -767,11 +717,6 @@ def test_discovery_document_parsed_once() -> None:
     assert first is second
 
 
-# ---------------------------------------------------------------------------
-# snippet extraction — pure function, no Drive calls
-# ---------------------------------------------------------------------------
-
-
 def test_extract_snippet_basic_match() -> None:
     text = "The quick brown fox jumps over the lazy dog under the tree"
     result = extract_snippet(text, "brown", context_chars=10)
@@ -794,19 +739,15 @@ def test_extract_snippet_picks_first_word_with_match() -> None:
     result = extract_snippet(text, "charlie bravo alpha", context_chars=20)
     assert result is not None
     _, word = result
-    # alpha occurs at index 0 (as "Alpha"), bravo later, charlie never —
-    # so alpha wins. matched_word preserves the original casing.
     assert word == "Alpha"
 
 
 def test_extract_snippet_prefix_fallback_plural() -> None:
-    # Drive's full-text search stems "phases" → "phase"; we mirror that.
     text = "The project has one phase left before the launch is ready to go"
     result = extract_snippet(text, "phases", context_chars=20)
     assert result is not None
     snippet, word = result
     assert "phase" in snippet.lower()
-    # The prefix that actually matched is the shortened "phase".
     assert word.lower() == "phase"
 
 

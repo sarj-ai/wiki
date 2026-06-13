@@ -1,10 +1,3 @@
-"""Dump the FastAPI OpenAPI spec to JSON without starting the server.
-
-Usage (from backend/):
-
-    uv run python scripts/export_openapi.py ../frontend/openapi.json
-"""
-
 from __future__ import annotations
 
 import json
@@ -15,7 +8,6 @@ import sys
 from cryptography.fernet import Fernet
 
 
-# Settings validates at import; throwaway values, mirrors tests/conftest.py.
 os.environ.setdefault("FERNET_KEY", Fernet.generate_key().decode())  # noqa: TID251 — pre-import env setup
 os.environ.setdefault("SECRET_KEY", "x" * 40)  # noqa: TID251 — pre-import env setup
 os.environ.setdefault("GOOGLE_CLIENT_ID", "export-spec")  # noqa: TID251 — pre-import env setup

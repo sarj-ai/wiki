@@ -1,10 +1,3 @@
-"""HTTP surface for auth: OAuth redirect, callback, refresh, logout, /me.
-
-The router is thin — it handles cookies and redirects; all OAuth and
-session logic (including OAuth-state CSRF validation) lives in
-``AuthService``.
-"""
-
 from __future__ import annotations
 
 import secrets
@@ -31,39 +24,16 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 
 _is_secure = settings.FRONTEND_URL.scheme == "https"
-# ``lax`` everywhere: frontend (``wiki.sarj.ai``) and backend
-# (``api-wiki.sarj.ai``) share the registrable parent ``sarj.ai``, so
-# the browser treats them as
-# same-site. ``SameSite=lax`` permits the cookie on the top-level redirect
-# back from Google OAuth while still blocking cross-site sub-requests —
-# strictly safer than ``none`` and removes the ``Secure``-only requirement.
-# ``Secure`` is still set when ``FRONTEND_URL`` is HTTPS (prod); local dev
-# over HTTP falls through to insecure cookies.
 _SAMESITE: Literal["lax", "strict", "none"] = "lax"
 
-_ACCESS_MAX_AGE = 30 * 60  # 30 minutes (matches JWT expiry)
-_REFRESH_MAX_AGE = 7 * 86400  # 7 days (matches JWT expiry)
-_OAUTH_STATE_MAX_AGE = 10 * 60  # long enough for a slow consent screen
+_ACCESS_MAX_AGE = 30 * 60
+_REFRESH_MAX_AGE = 7 * 86400
+_OAUTH_STATE_MAX_AGE = 10 * 60
 
 
 @router.get("/login")
 async def login(_request: Request) -> RedirectResponse:
-    # Generate a CSRF state token and stash it in a short-lived cookie so
-    # we can verify the callback came from our own redirect.
     state = secrets.token_urlsafe(32)
-    # ``prompt=consent`` forces Google to re-show the consent screen on
-    # every login and — critically — re-issue a ``refresh_token``.
-    # Google's default behaviour returns a refresh token only on the
-    # FIRST consent for a given (client_id, user, scope) tuple; users
-    # who previously consented (e.g. against the old Navigator app
-    # sharing this same OAuth client) get an access token but no
-    # refresh token, and the backend's Drive calls 500 with
-    # ``RefreshError: credentials do not contain the necessary
-    # fields`` once the access token expires (~1 hour). Forcing
-    # consent costs one extra click per login but guarantees we have
-    # a refresh token to renew with. ``_upsert_user`` only writes the
-    # refresh token when one is present, so this can't clobber an
-    # existing token on subsequent logins.
     oauth_params: dict[str, str] = {
         "client_id": settings.GOOGLE_CLIENT_ID,
         "redirect_uri": str(settings.GOOGLE_REDIRECT_URI),
@@ -144,11 +114,8 @@ async def me(current_user: User = Depends(get_current_user)) -> UserProfile:
 
 
 def _set_auth_cookies(response: Response, session: AuthSession) -> None:
-    # Read at call time — tests monkeypatch the settings singleton.
     domain = settings.COOKIE_DOMAIN
     if domain is not None:
-        # Expire the legacy host-only pair first — a Domain= cookie is a
-        # different cookie-store entry; refresh migrates active sessions too.
         response.delete_cookie(
             key="access_token", httponly=True, samesite=_SAMESITE, secure=_is_secure, path="/"
         )
@@ -178,7 +145,6 @@ def _set_auth_cookies(response: Response, session: AuthSession) -> None:
 
 
 def _clear_auth_cookies(response: Response) -> None:
-    # Delete both variants — legacy host-only cookies must still log out.
     domains: list[str | None] = [None]
     if settings.COOKIE_DOMAIN is not None:
         domains.append(settings.COOKIE_DOMAIN)

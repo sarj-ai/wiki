@@ -1,11 +1,5 @@
 import { WikiNotFound } from "@/components/wiki-not-found";
 
-/**
- * 404 boundary for routes inside the (app) layout. Rendering it from
- * this location means the parent layout — which wraps WikiSidebar
- * + SidebarProvider — stays mounted, so the user keeps the full
- * sidebar instead of being bounced to the default Next.js 404 chrome.
- */
 export default function AppNotFound() {
   return (
     <WikiNotFound

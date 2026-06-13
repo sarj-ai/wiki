@@ -4,19 +4,11 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 interface WikiNotFoundProps {
-  /** Main heading — defaults to "File not found" but callers can tailor. */
   title?: string;
-  /** Sub-text explaining the most likely reasons. */
+
   description?: string;
 }
 
-/**
- * Shared empty-state view for 404-like situations. Rendered inside the
- * Sarj Wiki's (app) layout so the sidebar stays visible — the user
- * doesn't feel like they fell out of the app. Styled with the same
- * surface colors as the rest of Sarj Wiki chrome so it blends into
- * a light- or dark-mode shell without extra theme wiring.
- */
 export function WikiNotFound({
   title = "File not found",
   description = "This file isn't available. It may have been moved, deleted, or it lives outside your shared drives.",

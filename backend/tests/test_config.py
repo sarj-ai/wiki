@@ -62,7 +62,7 @@ def test_frontend_origin_strips_httpurl_trailing_slash(monkeypatch: pytest.Monke
     ("key", "value"),
     [
         ("DATABASE_URL", "mysql://u:p@localhost/db"),
-        ("SECRET_KEY", "x" * 31),  # below min_length
+        ("SECRET_KEY", "x" * 31),
         ("GOOGLE_CLIENT_ID", ""),
         ("GOOGLE_CLIENT_SECRET", ""),
         ("FERNET_KEY", "not-a-fernet-key"),

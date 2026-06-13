@@ -39,11 +39,7 @@ describe("serverWikiApi", () => {
     cookieValue.token = "jwt-token";
     const fetchMock = vi.fn((request: Request) => {
       expect(request.headers.get("cookie")).toBe("access_token=jwt-token");
-      return Promise.resolve(
-        jsonResponse([
-          { id: "f1", name: "Doc", icon: null }, // folder icon row, icon cleared
-        ]),
-      );
+      return Promise.resolve(jsonResponse([{ id: "f1", name: "Doc", icon: null }]));
     });
     vi.stubGlobal("fetch", fetchMock);
 

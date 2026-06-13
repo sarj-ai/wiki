@@ -1,9 +1,3 @@
-"""Persistence service for icons, sort order, and user preferences.
-
-Pure DB; no Drive API. One instance per request, constructed with the
-acting user and the request-bound session via ``dependencies.py``.
-"""
-
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -38,9 +32,6 @@ _DEFAULT_PREFS = PreferencesRead(show_non_doc_files=True, hidden_workspace_ids=[
 
 
 class ExtrasService(ABC):
-    """Contract for Sarj Wiki UI overlay persistence."""
-
-    # Doc icons (global, any user with Drive write access can edit).
     @abstractmethod
     async def list_doc_icons(self) -> list[DocIconRead]: ...
     @abstractmethod
@@ -48,7 +39,6 @@ class ExtrasService(ABC):
     @abstractmethod
     async def upsert_doc_icon(self, drive_id: str, payload: DocIconWrite) -> DocIconRead: ...
 
-    # Folder icons (per-user overrides).
     @abstractmethod
     async def list_folder_icons(self) -> list[FolderIconRead]: ...
     @abstractmethod
@@ -56,7 +46,6 @@ class ExtrasService(ABC):
         self, folder_drive_id: str, payload: FolderIconWrite
     ) -> FolderIconRead: ...
 
-    # Drag-drop sort order (per-user, fractional index).
     @abstractmethod
     async def list_sort_orders(self) -> list[SortOrderRead]: ...
     @abstractmethod
@@ -64,7 +53,6 @@ class ExtrasService(ABC):
     @abstractmethod
     async def clear_sort_order(self, drive_id: str) -> None: ...
 
-    # UI preferences.
     @abstractmethod
     async def get_preferences(self) -> PreferencesRead: ...
     @abstractmethod
@@ -72,8 +60,6 @@ class ExtrasService(ABC):
 
 
 class PostgresExtrasService(ExtrasService):
-    """Postgres-backed implementation."""
-
     def __init__(self, *, db: AsyncSession, user: User) -> None:
         self._db = db
         self._user = user
@@ -170,8 +156,6 @@ class PostgresExtrasService(ExtrasService):
     async def upsert_sort_orders(self, items: list[SortOrderWrite]) -> None:
         if not items:
             return
-        # Single round-trip bulk upsert. Drag-drop reorders batch through
-        # /extras/sort-order in one request; this keeps that to one INSERT.
         stmt = pg_insert(UserSortOrder).values(
             [
                 {
@@ -211,9 +195,6 @@ class PostgresExtrasService(ExtrasService):
 
     @override
     async def upsert_preferences(self, payload: PreferencesWrite) -> PreferencesRead:
-        # Partial update with no read-modify-write race: only the fields the
-        # caller actually provided land in ``set_``; INSERT path supplies
-        # safe defaults for the rest. RETURNING reflects the persisted row.
         now = datetime.now(UTC)
         stmt = pg_insert(UserPreferences).values(
             user_id=self._user.id,

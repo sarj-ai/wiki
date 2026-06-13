@@ -1,5 +1,3 @@
-"""Retry policy tests: mutation no-retry semantics + Retry-After handling."""
-
 from __future__ import annotations
 
 from typing import Any, cast
@@ -12,8 +10,6 @@ from app.drive.retry import _retry_after_seconds, execute_mutation, execute_with
 
 
 class _Resp(dict[str, str]):
-    """Shape-compatible stand-in for httplib2.Response."""
-
     def __init__(self, status: int, headers: dict[str, str] | None = None) -> None:
         super().__init__(headers or {})
         self.status = status
@@ -25,8 +21,6 @@ def _http_error(status: int, headers: dict[str, str] | None = None) -> HttpError
 
 
 class _FlakyRequest:
-    """Fails ``failures`` times with ``error``, then succeeds."""
-
     def __init__(self, failures: int, error: HttpError) -> None:
         self.attempts = 0
         self._failures = failures

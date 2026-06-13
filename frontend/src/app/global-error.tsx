@@ -1,9 +1,5 @@
 "use client";
 
-// Replaces the root layout on render errors above the in-app
-// boundaries — must render its own <html>/<body>; globals.css and
-// fonts aren't guaranteed here, hence inline styles. Color literals
-// mirror the light-mode tokens in globals.css — keep them in sync.
 export default function GlobalError({ reset }: { reset: () => void }) {
   return (
     <html lang="en">

@@ -1,5 +1,3 @@
-"""FastAPI dependencies for auth: current-user resolution + AuthService wiring."""
-
 from __future__ import annotations
 
 from fastapi import Depends, HTTPException, Request, status
@@ -39,8 +37,6 @@ async def get_current_user(
 
 
 def _extract_token(request: Request) -> str:
-    # Cookie first so browser sessions work seamlessly; Authorization
-    # header fallback for non-browser clients.
     token = request.cookies.get("access_token")
     if token:
         return token

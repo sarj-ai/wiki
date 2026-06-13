@@ -17,18 +17,9 @@ import { findCachedNodeMeta } from "@/lib/wiki-cache";
 export function FilePageClient({ driveId }: { driveId: string }) {
   const queryClient = useQueryClient();
   const fileQuery = useFile(driveId);
-  // Counter the toolbar's Reload button bumps to force the embedded
-  // iframe to remount with a clean Google editor session — recovery
-  // path for blank/black frames after long browser-tab backgrounding.
+
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Treat "still trying" as loading even after the first attempt
-  // errored. React Query's ``retry: 1`` policy and ky's 401 → refresh
-  // → replay both produce a window where ``isError`` is true while a
-  // recovery attempt is in flight (``isFetching: true`` with no data
-  // yet). Without this guard the page flashes the "can't load" UI on
-  // hard refresh whenever the access token has expired, then snaps to
-  // the file once the retry succeeds.
   const isLoading = fileQuery.isPending || (!fileQuery.data && fileQuery.isFetching);
   if (isLoading) {
     const hint = findCachedNodeMeta(queryClient, driveId);
@@ -49,16 +40,10 @@ export function FilePageClient({ driveId }: { driveId: string }) {
     );
   }
 
-  // 404 from the backend means either the file truly doesn't exist or
-  // it's outside Sarj Wiki's strict shared-drive scope (My Drive
-  // files, non-member shared drives).
   if (fileQuery.isError && fileQuery.error instanceof ApiError && fileQuery.error.status === 404) {
     notFound();
   }
 
-  // After the isLoading guard above, ``isError`` is the only way we
-  // can have no usable data — React Query's success branch always
-  // populates ``data``, so the type narrows to non-null below.
   if (fileQuery.isError) {
     return (
       <WikiNotFound

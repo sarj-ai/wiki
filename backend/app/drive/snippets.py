@@ -1,11 +1,3 @@
-"""Pure snippet-extraction helpers used by the Drive search service.
-
-Separated from the service so they can be unit-tested without a user,
-a Drive client, or a running event loop. Drive's full-text search stems
-before matching (``phases`` → ``phase``); these helpers mirror that so
-the snippet we show in the UI matches what Drive actually hit on.
-"""
-
 from __future__ import annotations
 
 
@@ -14,7 +6,6 @@ _PREFIX_MIN_CHARS = 4
 
 
 def escape_query_value(value: str) -> str:
-    """Escape a raw user query for safe inclusion in a Drive ``q=`` string."""
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
@@ -23,12 +14,6 @@ def extract_snippet(
     query: str,
     context_chars: int = _SNIPPET_CONTEXT_CHARS,
 ) -> tuple[str, str] | None:
-    """Extract ~``context_chars`` of text around the first query match.
-
-    Returns ``(snippet, matched_word)`` or ``None`` if nothing matched.
-    Collapses runs of whitespace and prepends/appends an ellipsis when
-    content was trimmed off.
-    """
     match = _first_match_offset(text, query)
     if match is None:
         return None
@@ -61,10 +46,6 @@ def _first_match_offset(text: str, query: str) -> tuple[int, int, str] | None:
 
 
 def _find_with_prefix_fallback(text_lower: str, word: str) -> tuple[int, int] | None:
-    # Drive's search stems words before matching, so the full query word
-    # may not appear verbatim even when Drive reports a hit. Try the full
-    # word first, then shorten one char at a time until we hit or fall
-    # below the minimum-prefix threshold.
     candidate = word
     while len(candidate) >= _PREFIX_MIN_CHARS:
         idx = text_lower.find(candidate)

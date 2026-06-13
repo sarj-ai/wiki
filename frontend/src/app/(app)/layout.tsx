@@ -16,7 +16,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const cookieStore = await cookies();
   const defaultOpen = ZSidebarStateCookie.parse(cookieStore.get("sidebar_state")?.value);
 
-  // Fresh per-request client — module-level would leak between users.
   const queryClient = new QueryClient();
   const bootstrap = await serverWikiApi.getBootstrap().catch(() => null);
   if (bootstrap) {
@@ -37,19 +36,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <WikiSidebar />
         </ErrorBoundary>
         <main className="flex-1 overflow-auto">
-          {/* Mobile-only sidebar trigger. On desktop the sidebar is
-              permanently visible to the left of ``main`` so the trigger
-              would be redundant; on phones (< 768px) ``Sidebar`` renders
-              as a slide-out ``Sheet`` and this is the only affordance
-              for opening it. Floats at top-left so it stays reachable
-              on every screen — home page, file view, 404, etc. */}
           <SidebarTrigger className="bg-background/80 fixed top-3 left-3 z-50 backdrop-blur md:hidden" />
           <ErrorBoundary>{children}</ErrorBoundary>
         </main>
-        {/* Mounted once per authenticated session. Registers the global
-            Cmd+K hotkey and renders the Spotlight-style palette on demand.
-            Has its own boundary so a palette render error degrades to a
-            broken palette, not a full-page global-error takeover. */}
+
         <ErrorBoundary>
           <CommandPalette />
         </ErrorBoundary>

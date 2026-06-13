@@ -15,37 +15,21 @@ interface WikiToolbarProps {
   mimeType: string;
   title: string;
   breadcrumb: BreadcrumbItem[];
-  // Recovery affordance for Google's embedded editor going black/blank
-  // after long browser-tab backgrounding. The page bumps the iframe's
-  // ``reloadKey`` in response, which forces a fresh editor session.
+
   onReload: () => void;
 }
 
-// How long the "Copied" check-mark + label stay before the button
-// reverts to the default Copy icon. Two seconds is the sweet spot
-// users have learned from GitHub / Linear / Notion: long enough to
-// register the confirmation, short enough that re-copying doesn't
-// feel sticky.
 const COPY_FEEDBACK_MS = 2000;
 
 export function WikiToolbar({ fileId, mimeType, title, breadcrumb, onReload }: WikiToolbarProps) {
   const openUrl = openUrlFor(mimeType, fileId);
   const openLabel = openInGoogleLabel(mimeType);
   const [copied, setCopied] = useState(false);
-  // Docs/Sheets/Slides/Drawings always render their own title inside
-  // the iframe, so duplicating it in our breadcrumb is pure visual
-  // noise. For every other type (images, PDFs, until confirmed) we
-  // append the filename so the user can still identify the file.
+
   const trail: BreadcrumbItem[] = iframeShowsOwnTitle(mimeType)
     ? breadcrumb
     : [...breadcrumb, { id: fileId, name: title }];
 
-  // Copy the *Sarj Wiki* URL (the current page) rather than the raw
-  // Drive URL: that way pasting the link into Slack/email keeps
-  // recipients inside Sarj Wiki's iframe-embedded view, with the
-  // sidebar context intact. Using ``window.location.href`` instead of
-  // hand-rolling ``/d/<fileId>`` lets any future query params or hash
-  // anchors come along for free.
   const handleCopy = (): void => {
     void navigator.clipboard
       .writeText(window.location.href)

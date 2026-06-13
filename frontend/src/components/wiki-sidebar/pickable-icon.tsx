@@ -16,12 +16,6 @@ interface PickableIconProps {
   children: ReactNode;
 }
 
-// Icon cell shared by file and folder rows: a plain decorative span when
-// the row's icon can't be customised, or an EmojiPickerPopover trigger
-// when it can. Hover uses the full sidebar highlight tokens
-// (``--sidebar-accent`` / ``--sidebar-accent-foreground``) — the same
-// pair that marks a selected row — so the pickable affordance is shared
-// and both theme variants flip automatically.
 export function PickableIcon({
   pickable,
   dimmed,

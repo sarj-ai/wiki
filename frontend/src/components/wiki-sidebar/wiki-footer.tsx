@@ -26,9 +26,6 @@ export function WikiFooter() {
   const user = useCurrentUser().data ?? null;
   const queryClient = useQueryClient();
   const logout = async () => {
-    // Clear caches after the call settles, then hard-navigate — the
-    // navigation kills the persister's throttled write before it can
-    // re-write pre-clear state.
     await apiLogout();
     queryClient.clear();
     localStorage.removeItem(QUERY_CACHE_KEY);
@@ -36,9 +33,7 @@ export function WikiFooter() {
   };
   const { resolvedTheme, setTheme } = useTheme();
   const mounted = useIsClient();
-  // Preferences dialog state is owned by the footer so the dropdown
-  // can close while the dialog stays open — the two radix popovers
-  // don't nest cleanly otherwise.
+
   const [prefsOpen, setPrefsOpen] = useState(false);
 
   const isDark = mounted && resolvedTheme === "dark";
@@ -64,9 +59,6 @@ export function WikiFooter() {
           >
             <Avatar className="bg-sidebar-accent text-sidebar-accent-foreground">
               {user?.avatarUrl && (
-                // lh3.googleusercontent.com 403s on requests that send
-                // a cross-origin Referer header — referrerPolicy
-                // strips it so the avatar actually loads.
                 <AvatarImage
                   src={user.avatarUrl}
                   alt={user.displayName ?? user.email}

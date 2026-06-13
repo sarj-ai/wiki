@@ -16,17 +16,12 @@ class User(Base):
         primary_key=True,
         server_default=text("gen_random_uuid()"),
     )
-    # Stored as Postgres ``citext`` (see migration ``b3d4f5a6c7e8``) so
-    # ``foo@Sarj.ai`` and ``foo@sarj.ai`` collide on the unique index.
-    # SQLAlchemy treats it as ``Text`` end-to-end; the case-insensitive
-    # comparison happens in Postgres.
     email: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     google_id: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     display_name: Mapped[str | None] = mapped_column(Text)
     avatar_url: Mapped[str | None] = mapped_column(Text)
     encrypted_access_token: Mapped[str | None] = mapped_column(Text)
     encrypted_refresh_token: Mapped[str | None] = mapped_column(Text)
-    # Incremented on logout to invalidate all existing JWTs
     token_version: Mapped[int] = mapped_column(
         default=0,
         server_default=text("0"),
