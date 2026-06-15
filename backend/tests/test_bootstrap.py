@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import cast
 import uuid
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bootstrap.service import AggregatingBootstrapService
 from app.drive.schemas import DriveNode, DriveSummary, DriveTree, SearchResult, SnippetResult
@@ -17,6 +20,7 @@ from app.extras.schemas import (
 )
 from app.extras.service import ExtrasService
 from app.models.user import User
+from app.sidebar.cache import CachedDriveTree, SidebarCacheService
 
 
 class _FakeDriveService(DriveService):
@@ -80,6 +84,33 @@ class _FakeExtrasService(ExtrasService):
         raise NotImplementedError
 
 
+class _FakeCacheService(SidebarCacheService):
+    def __init__(self, tree: DriveTree | None = None) -> None:
+        self._tree = tree
+        self.peeked: list[str] = []
+
+    async def get_drive_tree(self, db: AsyncSession, drive_id: str) -> CachedDriveTree:
+        raise NotImplementedError
+
+    async def peek_drive_tree(self, db: AsyncSession, drive_id: str) -> CachedDriveTree | None:
+        self.peeked.append(drive_id)
+        if self._tree is None:
+            return None
+        return CachedDriveTree(tree=self._tree, refreshed_at=None)
+
+    async def get_folder_children(self, folder_id: str) -> list[DriveNode]:
+        raise NotImplementedError
+
+    async def invalidate_drive(self, db: AsyncSession, drive_id: str) -> None:
+        raise NotImplementedError
+
+    async def refresh_drive(self, db: AsyncSession, drive_id: str) -> DriveTree:
+        raise NotImplementedError
+
+
+_NO_DB = cast("AsyncSession", None)
+
+
 def _user() -> User:
     u = User()
     u.id = uuid.uuid4()
@@ -90,11 +121,18 @@ def _user() -> User:
     return u
 
 
+def _tree(drive_id: str) -> DriveTree:
+    return DriveTree(drive_id=drive_id, folders=[], files=[], files_complete=True)
+
+
 async def test_load_aggregates_all_six_reads() -> None:
     user = _user()
+    cache = _FakeCacheService(_tree("d1"))
     svc = AggregatingBootstrapService(
         drive=_FakeDriveService([DriveSummary(id="d1", name="Eng")]),
         extras=_FakeExtrasService(),
+        cache=cache,
+        db=_NO_DB,
         user=user,
     )
 
@@ -109,6 +147,23 @@ async def test_load_aggregates_all_six_reads() -> None:
     assert out.me.id == str(user.id)
     assert out.me.email == "test@sarj.ai"
     assert out.me.display_name == "Test User"
+    assert cache.peeked == ["d1"]
+    assert out.first_drive_tree is not None
+    assert out.first_drive_tree.drive_id == "d1"
+
+
+async def test_load_omits_first_tree_on_cache_miss() -> None:
+    cache = _FakeCacheService(None)
+    out = await AggregatingBootstrapService(
+        drive=_FakeDriveService([DriveSummary(id="d1", name="Eng")]),
+        extras=_FakeExtrasService(),
+        cache=cache,
+        db=_NO_DB,
+        user=_user(),
+    ).load()
+
+    assert cache.peeked == ["d1"]
+    assert out.first_drive_tree is None
 
 
 async def test_load_handles_empty_overlays() -> None:
@@ -122,9 +177,12 @@ async def test_load_handles_empty_overlays() -> None:
         async def list_sort_orders(self) -> list[SortOrderRead]:
             return []
 
+    cache = _FakeCacheService(_tree("unused"))
     out = await AggregatingBootstrapService(
         drive=_FakeDriveService([]),
         extras=_EmptyExtras(),
+        cache=cache,
+        db=_NO_DB,
         user=_user(),
     ).load()
 
@@ -132,3 +190,5 @@ async def test_load_handles_empty_overlays() -> None:
     assert out.doc_icons == []
     assert out.folder_icons == []
     assert out.sort_orders == []
+    assert cache.peeked == []
+    assert out.first_drive_tree is None

@@ -124,5 +124,6 @@ export const bootstrapRead = zBootstrapRead.transform((b) => ({
   folderIcons: b.folder_icons.map((f) => folderIcon.parse(f)),
   docIcons: b.doc_icons.map((d) => docIcon.parse(d)),
   sortOrders: b.sort_orders.map((s) => sortOrder.parse(s)),
+  firstDriveTree: b.first_drive_tree ? driveTree.parse(b.first_drive_tree) : undefined,
   me: userProfile.parse(b.me),
 }));

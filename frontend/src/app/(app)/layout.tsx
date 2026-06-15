@@ -26,6 +26,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     queryClient.setQueryData(wikiKeys.docIcons, bootstrap.docIcons);
     queryClient.setQueryData(wikiKeys.sortOrders, bootstrap.sortOrders);
     queryClient.setQueryData(authKeys.me, bootstrap.me);
+    if (bootstrap.firstDriveTree) {
+      queryClient.setQueryData(
+        wikiKeys.driveTree(bootstrap.firstDriveTree.driveId),
+        bootstrap.firstDriveTree,
+      );
+    }
   }
 
   return (
