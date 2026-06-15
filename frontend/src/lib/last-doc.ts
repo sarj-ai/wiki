@@ -1,6 +1,8 @@
-import { ZLastDoc } from "@/lib/storage-schemas";
+import { ZRecentDocs } from "@/lib/storage-schemas";
 
-const LAST_DOC_KEY = "sarj-wiki:last-doc";
+const RECENT_DOCS_KEY = "sarj-wiki:recent-docs";
+
+const MAX_RECENT = 6;
 
 export interface LastDoc {
   fileId: string;
@@ -10,16 +12,20 @@ export interface LastDoc {
 
 export function saveLastDoc(doc: LastDoc): void {
   try {
-    localStorage.setItem(LAST_DOC_KEY, JSON.stringify(doc));
+    const next = [doc, ...readRecentDocs().filter((d) => d.fileId !== doc.fileId)].slice(
+      0,
+      MAX_RECENT,
+    );
+    localStorage.setItem(RECENT_DOCS_KEY, JSON.stringify(next));
   } catch {
     // localStorage unavailable (private mode / quota) — warm-up just skips.
   }
 }
 
-export function readLastDoc(): LastDoc | null {
+export function readRecentDocs(): LastDoc[] {
   try {
-    return ZLastDoc.parse(JSON.parse(localStorage.getItem(LAST_DOC_KEY) ?? "null"));
+    return ZRecentDocs.parse(JSON.parse(localStorage.getItem(RECENT_DOCS_KEY) ?? "[]"));
   } catch {
-    return null;
+    return [];
   }
 }

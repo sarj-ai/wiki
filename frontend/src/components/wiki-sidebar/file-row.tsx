@@ -77,7 +77,7 @@ function FileRowImpl({
   };
 
   const setPrewarm = useDocViewerStore((s) => s.setPrewarm);
-  const schedulePrewarm = useDebouncedCallback(() => {
+  const prewarmNow = (): void => {
     if (isForm || route.inaccessible) return;
     setPrewarm({
       fileId: route.targetId,
@@ -85,7 +85,12 @@ function FileRowImpl({
       title: node.name,
       reloadKey: 0,
     });
-  }, 120);
+  };
+  const schedulePrewarm = useDebouncedCallback(prewarmNow, 120);
+  const handleCommit = (): void => {
+    prefetchFile();
+    prewarmNow();
+  };
 
   const setDocIcon = useSetDocIcon();
   const handleIconChange = async (next: string | null) => {
@@ -120,7 +125,7 @@ function FileRowImpl({
         isMoving={isMoving}
         linkPadding={linkPadding}
         titleAttr={titleAttr}
-        onPrefetch={prefetchFile}
+        onPrefetch={handleCommit}
         onPrewarm={schedulePrewarm}
         onPrewarmCancel={schedulePrewarm.cancel}
       />
