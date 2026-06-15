@@ -164,7 +164,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
             return cached
         try:
             tree = await asyncio.to_thread(_decrypt_and_parse, row.tree)
-        except InvalidToken, ValidationError:
+        except (InvalidToken, ValidationError):
             await db.delete(row)
             await db.commit()
             return None
