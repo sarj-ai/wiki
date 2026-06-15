@@ -19,3 +19,16 @@ binding = "ASSETS"
 [[routes]]
 pattern = "wiki.sarj.ai"
 custom_domain = true
+
+# Workers Observability fully on: capture 100% of invocations (head sampling
+# rate 1) plus invocation logs, persisted to the Cloudflare dashboard where
+# they're queryable. Lets us see real edge request latency / errors / console
+# output without a separate logging pipeline.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+head_sampling_rate = 1
