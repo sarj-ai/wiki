@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+import time
 from typing import Literal
 from urllib.parse import urlencode
 
@@ -122,6 +123,9 @@ def _set_auth_cookies(response: Response, session: AuthSession) -> None:
         response.delete_cookie(
             key="refresh_token", httponly=True, samesite=_SAMESITE, secure=_is_secure, path="/"
         )
+        response.delete_cookie(
+            key="session_exp", httponly=False, samesite=_SAMESITE, secure=_is_secure, path="/"
+        )
     response.set_cookie(
         key="access_token",
         value=session.jwt_access,
@@ -137,6 +141,16 @@ def _set_auth_cookies(response: Response, session: AuthSession) -> None:
         value=session.jwt_refresh,
         max_age=_REFRESH_MAX_AGE,
         httponly=True,
+        samesite=_SAMESITE,
+        secure=_is_secure,
+        path="/",
+        domain=domain,
+    )
+    response.set_cookie(
+        key="session_exp",
+        value=str(int(time.time() * 1000) + _ACCESS_MAX_AGE * 1000),
+        max_age=_REFRESH_MAX_AGE,
+        httponly=False,
         samesite=_SAMESITE,
         secure=_is_secure,
         path="/",
@@ -158,6 +172,14 @@ def _clear_auth_cookies(response: Response) -> None:
                 path="/",
                 domain=domain,
             )
+        response.delete_cookie(
+            key="session_exp",
+            httponly=False,
+            samesite=_SAMESITE,
+            secure=_is_secure,
+            path="/",
+            domain=domain,
+        )
 
 
 def _error_redirect(error_key: str) -> RedirectResponse:
