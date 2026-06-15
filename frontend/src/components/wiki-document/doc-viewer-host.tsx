@@ -16,9 +16,12 @@ interface SlotRect {
 
 const MAX_POOL = 3;
 
+const MAX_MOUNTED = 4;
+
 export function DocViewerHost() {
   const active = useDocViewerStore((s) => s.active);
   const prewarm = useDocViewerStore((s) => s.prewarm);
+  const warm = useDocViewerStore((s) => s.warm);
   const slot = useDocViewerStore((s) => s.slot);
   const [pool, setPool] = useState<ActiveDoc[]>([]);
   const [rect, setRect] = useState<SlotRect | null>(null);
@@ -33,8 +36,14 @@ export function DocViewerHost() {
     setPool([active, ...pool.filter((entry) => entry.fileId !== active.fileId)].slice(0, MAX_POOL));
   }
 
-  const mounted =
-    prewarm && !pool.some((entry) => entry.fileId === prewarm.fileId) ? [...pool, prewarm] : pool;
+  const mounted: ActiveDoc[] = [];
+  const seen = new Set<string>();
+  for (const entry of [...pool, ...(prewarm ? [prewarm] : []), ...warm]) {
+    if (seen.has(entry.fileId)) continue;
+    seen.add(entry.fileId);
+    mounted.push(entry);
+    if (mounted.length >= MAX_MOUNTED) break;
+  }
 
   useEffect(() => {
     if (!slot) return;

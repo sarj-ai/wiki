@@ -4,14 +4,13 @@ const ZExpansionMap = z.record(z.string(), z.literal(true));
 
 export const ZLastRefreshMs = z.coerce.number().int().nonnegative().catch(0);
 
-export const ZLastDoc = z
-  .object({
-    fileId: z.string().min(1),
-    mimeType: z.string(),
-    title: z.string(),
-  })
-  .nullable()
-  .catch(null);
+const ZDocRef = z.object({
+  fileId: z.string().min(1),
+  mimeType: z.string(),
+  title: z.string(),
+});
+
+export const ZRecentDocs = z.array(ZDocRef).catch([]);
 
 export const ZSidebarWidthCss = z
   .string()
