@@ -6,6 +6,7 @@ import { RedirectAfterLogin } from "@/components/redirect-after-login";
 import { SessionRefresh } from "@/components/session-refresh";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { DocViewerHost } from "@/components/wiki-document/doc-viewer-host";
+import { DocWarmup } from "@/components/wiki-document/doc-warmup";
 import { CommandPaletteMount } from "@/components/wiki-search/command-palette-mount";
 import { WikiSidebar } from "@/components/wiki-sidebar/wiki-sidebar";
 import { serverWikiApi } from "@/lib/server-api";
@@ -46,6 +47,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <ErrorBoundary>
           <DocViewerHost />
         </ErrorBoundary>
+        <DocWarmup />
       </SidebarProvider>
     </HydrationBoundary>
   );

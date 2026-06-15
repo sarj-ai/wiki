@@ -11,6 +11,7 @@ import { FilePageSkeleton } from "@/components/wiki-document/file-page-skeleton"
 import { WikiToolbar } from "@/components/wiki-document/wiki-toolbar";
 import { WikiNotFound } from "@/components/wiki-not-found";
 import { useFile } from "@/hooks/use-wiki-tree";
+import { saveLastDoc } from "@/lib/last-doc";
 import { ApiError } from "@/lib/wiki-api";
 import { findCachedNodeMeta } from "@/lib/wiki-cache";
 
@@ -91,6 +92,7 @@ function FilePageBody({
 
   useEffect(() => {
     setActive({ fileId, mimeType, title, reloadKey });
+    saveLastDoc({ fileId, mimeType, title });
   }, [fileId, mimeType, title, reloadKey, setActive]);
   useEffect(
     () => () => {
