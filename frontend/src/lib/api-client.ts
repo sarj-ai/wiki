@@ -21,7 +21,21 @@ client.setConfig({
   throwOnError: true,
 });
 
-client.interceptors.request.use((request) => {
+const SESSION_EXP_SKEW_MS = 30_000;
+
+const SESSION_EXP_COOKIE = /(?:^|;\s*)session_exp=(\d+)/;
+
+function sessionExpiresAt(): number | null {
+  if (typeof document === "undefined") return null;
+  const match = SESSION_EXP_COOKIE.exec(document.cookie);
+  return match ? Number(match[1]) : null;
+}
+
+client.interceptors.request.use(async (request) => {
+  const exp = sessionExpiresAt();
+  if (exp !== null && Date.now() > exp - SESSION_EXP_SKEW_MS) {
+    await deduplicatedRefresh();
+  }
   if (request.method !== "GET" && request.method !== "HEAD") {
     replayCache.set(request, request.clone());
   }

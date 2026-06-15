@@ -27,8 +27,18 @@ def test_default_no_domain_attribute() -> None:
     response = Response()
     _set_auth_cookies(response, _session())
     headers = _set_cookie_headers(response)
-    assert len(headers) == 2
+    assert len(headers) == 3
     assert all("Domain=" not in h for h in headers)
+
+
+def test_session_exp_cookie_is_js_readable_and_numeric() -> None:
+    response = Response()
+    _set_auth_cookies(response, _session())
+    exp = [h for h in _set_cookie_headers(response) if h.startswith("session_exp=")]
+    assert len(exp) == 1
+    assert "HttpOnly" not in exp[0]
+    value = int(exp[0].split("session_exp=")[1].split(";")[0])
+    assert value > 0
 
 
 def test_domain_set_emits_domain_pair_and_legacy_deletions(
@@ -38,12 +48,12 @@ def test_domain_set_emits_domain_pair_and_legacy_deletions(
     response = Response()
     _set_auth_cookies(response, _session())
     headers = _set_cookie_headers(response)
-    assert len(headers) == 4
+    assert len(headers) == 6
     deletions = _deletions(headers)
-    assert len(deletions) == 2
+    assert len(deletions) == 3
     assert all("Domain=" not in h for h in deletions)
     sets = [h for h in headers if h not in deletions]
-    assert len(sets) == 2
+    assert len(sets) == 3
     assert all("Domain=sarj.ai" in h for h in sets)
 
 
@@ -51,7 +61,7 @@ def test_clear_default_deletes_host_only_pair() -> None:
     response = Response()
     _clear_auth_cookies(response)
     headers = _set_cookie_headers(response)
-    assert len(headers) == 2
+    assert len(headers) == 3
     assert all("Domain=" not in h for h in headers)
 
 
@@ -60,8 +70,8 @@ def test_clear_with_domain_deletes_both_variants(monkeypatch: pytest.MonkeyPatch
     response = Response()
     _clear_auth_cookies(response)
     headers = _set_cookie_headers(response)
-    assert len(headers) == 4
-    assert sum("Domain=sarj.ai" in h for h in headers) == 2
+    assert len(headers) == 6
+    assert sum("Domain=sarj.ai" in h for h in headers) == 3
 
 
 def test_settings_read_at_call_time_not_module_import(monkeypatch: pytest.MonkeyPatch) -> None:

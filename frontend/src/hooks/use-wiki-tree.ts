@@ -18,10 +18,13 @@ import { wikiKeys } from "@/lib/wiki-keys";
 
 export { wikiKeys };
 
+const TREE_STALE_MS = 5 * 60 * 1000;
+
 export function useDrives() {
   return useQuery<DriveSummary[]>({
     queryKey: wikiKeys.drives,
     queryFn: wikiApi.getDrives,
+    staleTime: TREE_STALE_MS,
   });
 }
 
@@ -30,6 +33,7 @@ export function useDriveTree(driveId: string | null) {
     queryKey: wikiKeys.driveTree(driveId ?? "disabled"),
     queryFn: () => wikiApi.getDriveFolders(driveId ?? ""),
     enabled: !!driveId,
+    staleTime: TREE_STALE_MS,
   });
 }
 
@@ -46,6 +50,7 @@ export function useFolderFiles(folderId: string | null, enabled: boolean) {
     queryKey: wikiKeys.folderFiles(folderId ?? "disabled"),
     queryFn: () => wikiApi.getFolderFiles(folderId ?? ""),
     enabled: enabled && !!folderId,
+    staleTime: TREE_STALE_MS,
   });
 }
 

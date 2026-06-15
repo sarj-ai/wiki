@@ -15,11 +15,15 @@ from app.sidebar.dependencies import sidebar_cache_service_dep
 
 router = APIRouter(prefix="/sidebar", tags=["sidebar"])
 
+_CACHE_CONTROL = "private, max-age=60, stale-while-revalidate=600"
+
 
 @router.get("/drives")
 async def get_drives(
+    response: Response,
     drive: DriveService = Depends(drive_service_dep),
 ) -> list[DriveSummary]:
+    response.headers["Cache-Control"] = _CACHE_CONTROL
     return await drive.list_drives()
 
 
@@ -38,11 +42,15 @@ async def get_drive_folders(
     cached = await cache.get_drive_tree(db, drive_id)
     etag = _tree_etag(drive_id, cached.refreshed_at)
     if etag is None:
+        response.headers["Cache-Control"] = _CACHE_CONTROL
         return cached.tree
     if request.headers.get("if-none-match") == etag:
-        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": etag})
+        return Response(
+            status_code=status.HTTP_304_NOT_MODIFIED,
+            headers={"ETag": etag, "Cache-Control": _CACHE_CONTROL},
+        )
     response.headers["ETag"] = etag
-    response.headers["Cache-Control"] = "private, no-cache"
+    response.headers["Cache-Control"] = _CACHE_CONTROL
     return cached.tree
 
 
@@ -58,8 +66,10 @@ async def refresh_drive_folders(
 @router.get("/folders/{folder_id}/files")
 async def get_folder_files(
     folder_id: str,
+    response: Response,
     cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
 ) -> list[DriveNode]:
+    response.headers["Cache-Control"] = _CACHE_CONTROL
     return await cache.get_folder_children(folder_id)
 
 
