@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from types import FrameType
 from typing import TYPE_CHECKING, override
 
@@ -14,18 +15,24 @@ if TYPE_CHECKING:
     import loguru
 
 
+_last_log_time = time.perf_counter()
+
+_process_start = time.perf_counter()
+
+
 _PRETTY_FORMAT = (
     "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
     "<level>{level: <8}</level> | "
     "<magenta>{extra[request_id]}</magenta> | "
     "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
-    "<level>{message}</level>"
+    "<level>{message}</level> "
+    "<yellow>{extra[timing]}</yellow>"
 )
 
 
 def configure_logging(*, json: bool = False, level: str = "INFO") -> None:
     logger.remove()
-    logger.configure(patcher=_bind_request_id)
+    logger.configure(patcher=_patch_record)
     if json:
         logger.add(sys.stdout, level=level, serialize=True, backtrace=False, diagnose=False)
     else:
@@ -38,8 +45,25 @@ def configure_logging(*, json: bool = False, level: str = "INFO") -> None:
         std.propagate = False
 
 
-def _bind_request_id(record: loguru.Record) -> None:
+def _patch_record(record: loguru.Record) -> None:
     record["extra"].setdefault("request_id", request_id_var.get())
+    delta = _delta_ms()
+    elapsed = _process_elapsed_ms()
+    record["extra"]["delta_ms"] = round(delta, 1)
+    record["extra"]["process_elapsed_ms"] = round(elapsed, 1)
+    record["extra"]["timing"] = f"| +{delta:6.1f}ms ({elapsed / 1000:5.1f}s)"
+
+
+def _delta_ms() -> float:
+    global _last_log_time
+    now = time.perf_counter()
+    delta = (now - _last_log_time) * 1000
+    _last_log_time = now
+    return delta
+
+
+def _process_elapsed_ms() -> float:
+    return (time.perf_counter() - _process_start) * 1000
 
 
 class _InterceptHandler(logging.Handler):
