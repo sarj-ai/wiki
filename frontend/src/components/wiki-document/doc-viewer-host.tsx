@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 
+import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
 import { useDocViewerStore, type ActiveDoc } from "@/components/wiki-document/doc-viewer-store";
-import { FileLoadingIndicator } from "@/components/wiki-document/file-loading-indicator";
 import { embedUrlFor } from "@/lib/file-urls";
+import { markNav } from "@/lib/perf-marks";
 import { cn } from "@/lib/utils";
 
 interface SlotRect {
@@ -95,9 +96,14 @@ function PooledIframe({ fileId, mimeType, title }: PooledIframeProps) {
   const src = embedUrlFor(mimeType, fileId);
   const [isLoading, setIsLoading] = useState(true);
 
+  useEffect(() => {
+    markNav(fileId, "iframeMount");
+  }, [fileId]);
+
   const attachLoadListener = (iframe: HTMLIFrameElement | null) => {
     if (!iframe) return;
     const handleLoad = () => {
+      markNav(fileId, "iframeLoad");
       setIsLoading(false);
     };
     iframe.addEventListener("load", handleLoad);
@@ -110,10 +116,10 @@ function PooledIframe({ fileId, mimeType, title }: PooledIframeProps) {
     <div className="relative h-full w-full">
       {isLoading && (
         <div
-          className="bg-background absolute inset-0 z-10 flex items-center justify-center"
+          className="bg-background absolute inset-0 z-10 overflow-hidden"
           aria-label="Loading document"
         >
-          <FileLoadingIndicator />
+          <DocSkeleton />
         </div>
       )}
       <iframe
