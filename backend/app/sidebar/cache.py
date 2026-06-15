@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import override
@@ -27,6 +28,28 @@ CACHE_MAX_AGE = timedelta(days=30)
 SINGLEFLIGHT = Singleflight()
 
 BG_TASKS: set[asyncio.Task[None]] = set()
+
+_DECODE_CACHE_MAX = 32
+
+_decoded_trees: OrderedDict[tuple[str, str], DriveTree] = OrderedDict()
+
+
+def _decrypt_and_parse(blob: str) -> DriveTree:
+    return DriveTree.model_validate_json(decrypt_cache(blob))
+
+
+def _decoded_get(key: tuple[str, str]) -> DriveTree | None:
+    tree = _decoded_trees.get(key)
+    if tree is not None:
+        _decoded_trees.move_to_end(key)
+    return tree
+
+
+def _decoded_put(key: tuple[str, str], tree: DriveTree) -> None:
+    _decoded_trees[key] = tree
+    _decoded_trees.move_to_end(key)
+    while len(_decoded_trees) > _DECODE_CACHE_MAX:
+        _decoded_trees.popitem(last=False)
 
 
 @dataclass(frozen=True)
@@ -135,18 +158,18 @@ class PostgresSidebarCacheService(SidebarCacheService):
         return tree
 
     async def _decode_row(self, db: AsyncSession, row: DriveTreeCache) -> DriveTree | None:
+        key = (row.drive_id, row.refreshed_at.isoformat())
+        cached = _decoded_get(key)
+        if cached is not None:
+            return cached
         try:
-            decrypted = decrypt_cache(row.tree)
-        except InvalidToken:
+            tree = await asyncio.to_thread(_decrypt_and_parse, row.tree)
+        except InvalidToken, ValidationError:
             await db.delete(row)
             await db.commit()
             return None
-        try:
-            return DriveTree.model_validate_json(decrypted)
-        except ValidationError:
-            await db.delete(row)
-            await db.commit()
-            return None
+        _decoded_put(key, tree)
+        return tree
 
     async def _save_tree(self, db: AsyncSession, tree: DriveTree) -> None:
         stmt = (
