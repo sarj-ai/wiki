@@ -58,6 +58,7 @@ export function usePreferences() {
   return useQuery<Preferences>({
     queryKey: wikiKeys.preferences,
     queryFn: wikiApi.getPreferences,
+    staleTime: TREE_STALE_MS,
   });
 }
 
@@ -65,6 +66,7 @@ export function useFolderIcons() {
   return useQuery<FolderIcon[]>({
     queryKey: wikiKeys.folderIcons,
     queryFn: wikiApi.listFolderIcons,
+    staleTime: TREE_STALE_MS,
   });
 }
 
@@ -72,6 +74,7 @@ export function useDocIcons() {
   return useQuery<DocIcon[]>({
     queryKey: wikiKeys.docIcons,
     queryFn: wikiApi.listDocIcons,
+    staleTime: TREE_STALE_MS,
   });
 }
 
@@ -79,5 +82,6 @@ export function useSortOrders() {
   return useQuery<SortOrder[]>({
     queryKey: wikiKeys.sortOrders,
     queryFn: wikiApi.listSortOrders,
+    staleTime: TREE_STALE_MS,
   });
 }
