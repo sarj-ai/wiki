@@ -2,7 +2,6 @@
 
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { Command as CommandPrimitive } from "cmdk";
-import { formatDistanceToNowStrict } from "date-fns";
 import { ExternalLink, Loader2, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
@@ -12,7 +11,7 @@ import type { DriveSearchResult, DriveTree } from "@/types/wiki";
 import { Button } from "@/components/ui/button";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { useCommandPaletteHotkey, useCommandPaletteState } from "@/hooks/use-command-palette";
+import { useCommandPaletteState } from "@/hooks/use-command-palette";
 import { useDriveSearch, useDriveSearchSnippet } from "@/hooks/use-drive-search";
 import { expandPath, requestReveal } from "@/hooks/use-expanded-folders";
 import { wikiKeys } from "@/hooks/use-wiki-tree";
@@ -20,7 +19,20 @@ import { isGoogleWorkspaceType, renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import { resolveShortcutTarget, SHORTCUT_INACCESSIBLE_TOOLTIP } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
+import { wikiApi } from "@/lib/wiki-api";
 import { MIME_FOLDER, MIME_FORM } from "@/types/wiki";
+
+const RELATIVE_TIME_FORMAT = new Intl.RelativeTimeFormat("en", { numeric: "always" });
+
+const RELATIVE_TIME_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ["year", 31536000],
+  ["month", 2592000],
+  ["week", 604800],
+  ["day", 86400],
+  ["hour", 3600],
+  ["minute", 60],
+  ["second", 1],
+];
 
 function ancestorChain(qc: QueryClient, driveId: string, nodeId: string): string[] {
   const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
@@ -62,15 +74,24 @@ function relativeTime(iso: string | null): string {
   if (!iso) return "";
   const then = new Date(iso);
   if (Number.isNaN(then.getTime())) return "";
-  return formatDistanceToNowStrict(then, { addSuffix: true });
+  const deltaSeconds = (then.getTime() - Date.now()) / 1000;
+  const abs = Math.abs(deltaSeconds);
+  for (const [unit, secondsPerUnit] of RELATIVE_TIME_UNITS) {
+    if (abs >= secondsPerUnit || unit === "second") {
+      return RELATIVE_TIME_FORMAT.format(Math.round(deltaSeconds / secondsPerUnit), unit);
+    }
+  }
+  return "";
 }
 
 function ResultRow({
   result,
   driveName,
+  onPrefetch,
 }: {
   result: DriveSearchResult;
   driveName: string | undefined;
+  onPrefetch: () => void;
 }) {
   const inaccessible = result.shortcutInaccessible;
   const tooltip = inaccessible ? SHORTCUT_INACCESSIBLE_TOOLTIP : undefined;
@@ -78,6 +99,7 @@ function ResultRow({
     <CommandItem
       value={result.id}
       title={tooltip}
+      onPointerEnter={onPrefetch}
       className={cn(
         "flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left text-sm",
         inaccessible && "text-muted-foreground/60",
@@ -190,7 +212,6 @@ function PreviewPanel({
 }
 
 export function CommandPalette() {
-  useCommandPaletteHotkey();
   const { open, setOpen } = useCommandPaletteState();
   const router = useRouter();
   const qc = useQueryClient();
@@ -262,6 +283,28 @@ export function CommandPalette() {
     if (selectedResult) openResult(selectedResult);
   };
 
+  const prefetchResult = (result: DriveSearchResult) => {
+    if (result.shortcutInaccessible) return;
+    const target = resolveShortcutTarget(result);
+    if (target.targetMimeType === MIME_FORM || target.targetMimeType === MIME_FOLDER) return;
+    void qc.prefetchQuery({
+      queryKey: wikiKeys.file(target.targetId),
+      queryFn: () => wikiApi.getFile(target.targetId),
+    });
+    const trimmed = query.trim();
+    if (trimmed.length >= 2) {
+      void qc.prefetchQuery({
+        queryKey: wikiKeys.driveSearchSnippet(target.targetId, trimmed),
+        queryFn: () =>
+          wikiApi.driveSearchSnippet(
+            target.targetId,
+            trimmed,
+            target.targetMimeType !== "" ? target.targetMimeType : undefined,
+          ),
+      });
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
@@ -324,7 +367,14 @@ export function CommandPalette() {
                   <div className="text-muted-foreground px-3 py-4 text-xs">No results</div>
                 )}
                 {results.map((result) => (
-                  <ResultRow key={result.id} result={result} driveName={result.driveName} />
+                  <ResultRow
+                    key={result.id}
+                    result={result}
+                    driveName={result.driveName}
+                    onPrefetch={() => {
+                      prefetchResult(result);
+                    }}
+                  />
                 ))}
               </div>
             </CommandList>

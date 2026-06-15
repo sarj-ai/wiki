@@ -5,10 +5,12 @@ import { ExternalLink, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { memo } from "react";
+import { useDebouncedCallback } from "use-debounce";
 
 import type { DriveNode } from "@/types/wiki";
 
 import { SidebarMenuButton } from "@/components/ui/sidebar";
+import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
 import { useSetDocIcon } from "@/hooks/use-wiki-mutations";
 import { renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
@@ -43,6 +45,8 @@ interface RowButtonProps {
   linkPadding: string;
   titleAttr: string;
   onPrefetch: () => void;
+  onPrewarm: () => void;
+  onPrewarmCancel: () => void;
 }
 
 function FileRowImpl({
@@ -71,6 +75,17 @@ function FileRowImpl({
       queryFn: () => wikiApi.getFile(route.targetId),
     });
   };
+
+  const setPrewarm = useDocViewerStore((s) => s.setPrewarm);
+  const schedulePrewarm = useDebouncedCallback(() => {
+    if (isForm || route.inaccessible) return;
+    setPrewarm({
+      fileId: route.targetId,
+      mimeType: route.isShortcut ? route.targetMimeType : node.mimeType,
+      title: node.name,
+      reloadKey: 0,
+    });
+  }, 120);
 
   const setDocIcon = useSetDocIcon();
   const handleIconChange = async (next: string | null) => {
@@ -106,6 +121,8 @@ function FileRowImpl({
         linkPadding={linkPadding}
         titleAttr={titleAttr}
         onPrefetch={prefetchFile}
+        onPrewarm={schedulePrewarm}
+        onPrewarmCancel={schedulePrewarm.cancel}
       />
 
       <div
@@ -156,6 +173,8 @@ function RowButton({
   linkPadding,
   titleAttr,
   onPrefetch,
+  onPrewarm,
+  onPrewarmCancel,
 }: RowButtonProps) {
   if (route.inaccessible) {
     return (
@@ -207,6 +226,8 @@ function RowButton({
         draggable={false}
         title={titleAttr}
         onPointerDown={onPrefetch}
+        onPointerEnter={onPrewarm}
+        onPointerLeave={onPrewarmCancel}
       >
         <span className="truncate">{node.name}</span>
       </Link>

@@ -18,6 +18,7 @@ const MAX_POOL = 3;
 
 export function DocViewerHost() {
   const active = useDocViewerStore((s) => s.active);
+  const prewarm = useDocViewerStore((s) => s.prewarm);
   const slot = useDocViewerStore((s) => s.slot);
   const [pool, setPool] = useState<ActiveDoc[]>([]);
   const [rect, setRect] = useState<SlotRect | null>(null);
@@ -31,6 +32,9 @@ export function DocViewerHost() {
   ) {
     setPool([active, ...pool.filter((entry) => entry.fileId !== active.fileId)].slice(0, MAX_POOL));
   }
+
+  const mounted =
+    prewarm && !pool.some((entry) => entry.fileId === prewarm.fileId) ? [...pool, prewarm] : pool;
 
   useEffect(() => {
     if (!slot) return;
@@ -55,7 +59,7 @@ export function DocViewerHost() {
       style={visible ? { ...rect } : { top: 0, left: 0, width: 0, height: 0 }}
       aria-hidden={!visible}
     >
-      {pool.map((entry) => (
+      {mounted.map((entry) => (
         <div
           key={entry.fileId}
           className={cn("absolute inset-0", entry.fileId !== active?.fileId && "hidden")}

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from functools import cache
 from itertools import batched
 import json
+import threading
 from typing import TYPE_CHECKING, Any, cast, override
 
 from google.oauth2.credentials import Credentials
@@ -92,6 +93,7 @@ class DriveService(ABC):
 class GoogleDriveService(DriveService):
     def __init__(self, user: User) -> None:
         self._user = user
+        self._clients: dict[int, DriveResource] = {}
 
     @override
     async def list_drives(self) -> list[DriveSummary]:
@@ -553,7 +555,7 @@ class GoogleDriveService(DriveService):
         )
 
     def _client(self) -> DriveResource:
-        return self.build_drive_client(self._user)
+        return reuse_drive_client(self._user, self._clients)
 
     @staticmethod
     def build_drive_client(user: User) -> DriveResource:
@@ -581,6 +583,15 @@ class GoogleDriveService(DriveService):
             client_id=settings.GOOGLE_CLIENT_ID,
             client_secret=settings.GOOGLE_CLIENT_SECRET.get_secret_value(),
         )
+
+
+def reuse_drive_client(user: User, clients: dict[int, DriveResource]) -> DriveResource:
+    thread_id = threading.get_ident()
+    client = clients.get(thread_id)
+    if client is None:
+        client = GoogleDriveService.build_drive_client(user)
+        clients[thread_id] = client
+    return client
 
 
 @cache

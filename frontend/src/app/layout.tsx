@@ -11,6 +11,18 @@ import { API_URL } from "@/lib/env";
 
 import "./globals.css";
 
+const GOOGLE_DOC_ORIGINS = [
+  "https://accounts.google.com",
+  "https://apis.google.com",
+  "https://clients6.google.com",
+  "https://ssl.gstatic.com",
+  "https://fonts.gstatic.com",
+  "https://lh3.googleusercontent.com",
+  "https://lh4.googleusercontent.com",
+  "https://lh5.googleusercontent.com",
+  "https://lh6.googleusercontent.com",
+];
+
 const nunito = localFont({
   src: [
     { path: "../../public/fonts/Nunito-Regular.ttf", weight: "400", style: "normal" },
@@ -50,6 +62,10 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://docs.google.com" />
         <link rel="preconnect" href={API_URL} crossOrigin="use-credentials" />
         <link rel="dns-prefetch" href={API_URL} />
+
+        {GOOGLE_DOC_ORIGINS.map((origin) => (
+          <link key={origin} rel="preconnect" href={origin} />
+        ))}
 
         <script
           dangerouslySetInnerHTML={{

@@ -11,7 +11,7 @@ from googleapiclient.errors import HttpError
 from app.drive.google_schemas import GoogleFile
 from app.drive.retry import execute_mutation, execute_with_retry
 from app.drive.schemas import MIME_FOLDER, NAVIGATOR_SUPPORTED_MIME_TYPES
-from app.drive.service import DriveService, GoogleDriveService
+from app.drive.service import DriveService, reuse_drive_client
 from app.files.errors import (
     CrossDriveMoveNotSupportedError,
     DriveUpstreamError,
@@ -54,6 +54,7 @@ class GoogleFilesService(FilesService):
     def __init__(self, *, user: User, drive: DriveService) -> None:
         self._user = user
         self._drive = drive
+        self._clients: dict[int, DriveResource] = {}
 
     @override
     async def create(self, parent_folder_id: str, name: str, mime_type: str) -> FileResponse:
@@ -187,7 +188,7 @@ class GoogleFilesService(FilesService):
             )
 
     def _client(self) -> DriveResource:
-        return GoogleDriveService.build_drive_client(self._user)
+        return reuse_drive_client(self._user, self._clients)
 
 
 def _to_response(raw: File) -> FileResponse:

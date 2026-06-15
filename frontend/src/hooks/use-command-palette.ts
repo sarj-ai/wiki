@@ -5,20 +5,27 @@ import { create } from "zustand";
 
 interface CommandPaletteState {
   open: boolean;
+  mounted: boolean;
   setOpen: (next: boolean) => void;
   toggle: () => void;
 }
 
 const useCommandPaletteStore = create<CommandPaletteState>((set, get) => ({
   open: false,
+  mounted: false,
   setOpen: (next) => {
     if (get().open === next) return;
-    set({ open: next });
+    set({ open: next, mounted: get().mounted || next });
   },
   toggle: () => {
-    set({ open: !get().open });
+    const next = !get().open;
+    set({ open: next, mounted: get().mounted || next });
   },
 }));
+
+export function useCommandPaletteMounted(): boolean {
+  return useCommandPaletteStore((s) => s.mounted);
+}
 
 export function useCommandPaletteState(): {
   open: boolean;
