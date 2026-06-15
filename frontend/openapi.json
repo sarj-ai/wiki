@@ -17,6 +17,16 @@
             "title": "Drives",
             "type": "array"
           },
+          "first_drive_tree": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriveTree"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "folder_icons": {
             "items": {
               "$ref": "#/components/schemas/FolderIconRead"
@@ -38,7 +48,15 @@
             "type": "array"
           }
         },
-        "required": ["drives", "preferences", "folder_icons", "doc_icons", "sort_orders", "me"],
+        "required": [
+          "drives",
+          "preferences",
+          "folder_icons",
+          "doc_icons",
+          "sort_orders",
+          "first_drive_tree",
+          "me"
+        ],
         "title": "BootstrapRead",
         "type": "object"
       },
