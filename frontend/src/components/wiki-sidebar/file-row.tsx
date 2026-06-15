@@ -15,6 +15,7 @@ import { useSetDocIcon } from "@/hooks/use-wiki-mutations";
 import { renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import { runWithErrorToast } from "@/lib/mutation-toast";
+import { markNav } from "@/lib/perf-marks";
 import { resolveShortcutTarget, type ResolvedShortcut } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
 import { wikiApi } from "@/lib/wiki-api";
@@ -88,6 +89,7 @@ function FileRowImpl({
   };
   const schedulePrewarm = useDebouncedCallback(prewarmNow, 120);
   const handleCommit = (): void => {
+    markNav(route.targetId, "click");
     prefetchFile();
     prewarmNow();
   };
@@ -233,6 +235,8 @@ function RowButton({
         onPointerDown={onPrefetch}
         onPointerEnter={onPrewarm}
         onPointerLeave={onPrewarmCancel}
+        onFocus={onPrewarm}
+        onBlur={onPrewarmCancel}
       >
         <span className="truncate">{node.name}</span>
       </Link>
