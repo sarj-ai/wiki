@@ -26,6 +26,7 @@ import { ItemMenu } from "./item-menu";
 import { ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants";
 import { PickableIcon } from "./pickable-icon";
 import { useIsMovingFile } from "./use-in-flight-moves";
+import { treeRowProps } from "./use-sidebar-keyboard-nav";
 
 interface FileRowProps {
   node: DriveNode;
@@ -43,6 +44,7 @@ interface RowButtonProps {
   isActive: boolean;
   isForm: boolean;
   isMoving: boolean;
+  level: number;
   linkPadding: string;
   titleAttr: string;
   onPrefetch: () => void;
@@ -125,6 +127,7 @@ function FileRowImpl({
         isActive={isActive}
         isForm={isForm}
         isMoving={isMoving}
+        level={depth + 2}
         linkPadding={linkPadding}
         titleAttr={titleAttr}
         onPrefetch={handleCommit}
@@ -177,6 +180,7 @@ function RowButton({
   isActive,
   isForm,
   isMoving,
+  level,
   linkPadding,
   titleAttr,
   onPrefetch,
@@ -187,6 +191,7 @@ function RowButton({
     return (
       <SidebarMenuButton
         disabled
+        {...treeRowProps(node.id, level, "file")}
         className={cn("text-muted-foreground/60 cursor-not-allowed pr-8", isMoving && "opacity-60")}
         style={{ paddingLeft: linkPadding }}
         title={titleAttr}
@@ -200,6 +205,7 @@ function RowButton({
       <SidebarMenuButton
         asChild
         isActive={isActive}
+        {...treeRowProps(node.id, level, "file")}
         className={cn("pr-8 transition-opacity", isMoving && "opacity-60")}
         style={{ paddingLeft: linkPadding }}
         data-file-id={node.id}
@@ -224,6 +230,7 @@ function RowButton({
     <SidebarMenuButton
       asChild
       isActive={isActive}
+      {...treeRowProps(node.id, level, "file")}
       className={cn("pr-8 transition-opacity", isMoving && "opacity-60")}
       style={{ paddingLeft: linkPadding }}
       data-file-id={node.id}

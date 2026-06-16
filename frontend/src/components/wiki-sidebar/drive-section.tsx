@@ -44,6 +44,7 @@ import { SortableItem } from "./sortable-item";
 import { TreeNode } from "./tree-node";
 import { useIsCrossContainerDropTarget } from "./use-drag-over-store";
 import { useDriveTreeIndex } from "./use-drive-tree-index";
+import { treeRowProps } from "./use-sidebar-keyboard-nav";
 import { useWikiReorder } from "./use-wiki-reorder";
 
 interface DriveSectionProps {
@@ -193,6 +194,7 @@ export function DriveSection({
           >
             <button
               type="button"
+              {...treeRowProps(drive.id, 1, "drive")}
               onClick={() => {
                 setExpanded(!expanded);
               }}

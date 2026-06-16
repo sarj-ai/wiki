@@ -5,6 +5,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { RedirectAfterLogin } from "@/components/redirect-after-login";
 import { SessionRefresh } from "@/components/session-refresh";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { DocSiblingWarmer } from "@/components/wiki-document/doc-sibling-warmer";
 import { DocViewerHost } from "@/components/wiki-document/doc-viewer-host";
 import { DocWarmup } from "@/components/wiki-document/doc-warmup";
 import { CommandPaletteMount } from "@/components/wiki-search/command-palette-mount";
@@ -54,6 +55,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <DocViewerHost />
         </ErrorBoundary>
         <DocWarmup />
+        <DocSiblingWarmer />
       </SidebarProvider>
     </HydrationBoundary>
   );

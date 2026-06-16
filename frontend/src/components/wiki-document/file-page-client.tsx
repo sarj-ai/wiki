@@ -6,9 +6,8 @@ import { useEffect, useRef, useState } from "react";
 
 import type { BreadcrumbItem } from "@/types/wiki";
 
-import { Skeleton } from "@/components/ui/skeleton";
-import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
 import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
+import { FileLoadingIndicator } from "@/components/wiki-document/file-loading-indicator";
 import { WikiToolbar } from "@/components/wiki-document/wiki-toolbar";
 import { WikiNotFound } from "@/components/wiki-not-found";
 import { useFile } from "@/hooks/use-wiki-tree";
@@ -129,19 +128,8 @@ function FilePageBody({
 
 function FilePagePending() {
   return (
-    <div className="flex h-[100dvh] flex-col" aria-busy="true" aria-label="Loading file">
-      <header className="border-border bg-background flex items-center gap-2 border-b px-4 py-2">
-        <Skeleton className="size-4 shrink-0 rounded" />
-        <Skeleton className="h-4 w-48" />
-        <div className="ml-auto flex items-center gap-2">
-          <Skeleton className="h-6 w-8" />
-          <Skeleton className="h-6 w-24" />
-          <Skeleton className="h-6 w-28" />
-        </div>
-      </header>
-      <div className="flex-1 overflow-hidden">
-        <DocSkeleton />
-      </div>
+    <div className="flex h-[100dvh] flex-col items-center justify-center" aria-label="Loading file">
+      <FileLoadingIndicator />
     </div>
   );
 }

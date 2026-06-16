@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 
-import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
 import { useDocViewerStore, type ActiveDoc } from "@/components/wiki-document/doc-viewer-store";
+import { FileLoadingIndicator } from "@/components/wiki-document/file-loading-indicator";
+import { SIBLING_RADIUS } from "@/lib/doc-siblings";
 import { embedUrlFor } from "@/lib/file-urls";
 import { markNav } from "@/lib/perf-marks";
 import { cn } from "@/lib/utils";
@@ -17,7 +18,7 @@ interface SlotRect {
 
 const MAX_POOL = 3;
 
-const MAX_MOUNTED = 4;
+const MAX_MOUNTED = 1 + 2 * SIBLING_RADIUS + 1;
 
 export function DocViewerHost() {
   const active = useDocViewerStore((s) => s.active);
@@ -39,7 +40,12 @@ export function DocViewerHost() {
 
   const mounted: ActiveDoc[] = [];
   const seen = new Set<string>();
-  for (const entry of [...pool, ...(prewarm ? [prewarm] : []), ...warm]) {
+  for (const entry of [
+    ...(active ? [active] : []),
+    ...warm,
+    ...(prewarm ? [prewarm] : []),
+    ...pool,
+  ]) {
     if (seen.has(entry.fileId)) continue;
     seen.add(entry.fileId);
     mounted.push(entry);
@@ -116,10 +122,10 @@ function PooledIframe({ fileId, mimeType, title }: PooledIframeProps) {
     <div className="relative h-full w-full">
       {isLoading && (
         <div
-          className="bg-background absolute inset-0 z-10 overflow-hidden"
+          className="bg-background absolute inset-0 z-10 flex items-center justify-center overflow-hidden"
           aria-label="Loading document"
         >
-          <DocSkeleton />
+          <FileLoadingIndicator />
         </div>
       )}
       <iframe

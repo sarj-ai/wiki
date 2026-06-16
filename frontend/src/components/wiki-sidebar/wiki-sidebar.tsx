@@ -18,6 +18,7 @@ import {
 import { DriveSearchBox } from "./drive-search-box";
 import { DriveSection } from "./drive-section";
 import { SidebarResizeHandle } from "./resize-handle";
+import { useSidebarKeyboardNav } from "./use-sidebar-keyboard-nav";
 import { WikiFooter } from "./wiki-footer";
 
 export function WikiSidebar() {
@@ -46,6 +47,8 @@ export function WikiSidebar() {
     () => (drivesQuery.data ?? []).filter((d) => !hiddenWorkspaceIds.has(d.id)),
     [drivesQuery.data, hiddenWorkspaceIds],
   );
+
+  const treeNav = useSidebarKeyboardNav(activeDriveId);
 
   const activeFileQuery = useFile(activeDriveId);
   const breadcrumb = activeFileQuery.data?.breadcrumb;
@@ -92,18 +95,20 @@ export function WikiSidebar() {
           {drivesQuery.isError && (
             <div className="text-destructive px-3 py-2 text-xs">Failed to load drives</div>
           )}
-          {visibleDrives.map((drive, index) => (
-            <div key={drive.id}>
-              <DriveSection
-                drive={drive}
-                activeDriveId={activeDriveId}
-                showNonDocFiles={showNonDocFiles}
-                folderIcons={folderIconsQuery.data ?? []}
-                sortOrders={sortOrdersQuery.data ?? []}
-              />
-              {index < visibleDrives.length - 1 && <SidebarSeparator />}
-            </div>
-          ))}
+          <div {...treeNav}>
+            {visibleDrives.map((drive, index) => (
+              <div key={drive.id}>
+                <DriveSection
+                  drive={drive}
+                  activeDriveId={activeDriveId}
+                  showNonDocFiles={showNonDocFiles}
+                  folderIcons={folderIconsQuery.data ?? []}
+                  sortOrders={sortOrdersQuery.data ?? []}
+                />
+                {index < visibleDrives.length - 1 && <SidebarSeparator />}
+              </div>
+            ))}
+          </div>
           {!drivesQuery.isLoading && visibleDrives.length === 0 && (
             <div className="text-muted-foreground px-3 py-2 text-xs">No accessible drives</div>
           )}

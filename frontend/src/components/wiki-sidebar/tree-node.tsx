@@ -36,6 +36,7 @@ import { PickableIcon } from "./pickable-icon";
 import { SortableItem } from "./sortable-item";
 import { useIsDropIntoFolder } from "./use-drag-over-store";
 import { useIsMovingFile } from "./use-in-flight-moves";
+import { treeRowProps } from "./use-sidebar-keyboard-nav";
 
 interface TreeNodeProps {
   node: DriveNode;
@@ -185,7 +186,7 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
         }
       />
       {expanded && (
-        <SidebarMenuSub className="mx-0 gap-0.5 border-l-0 px-0">
+        <SidebarMenuSub role="group" className="mx-0 gap-0.5 border-l-0 px-0">
           <SortableContext
             id={`parent:${node.id}`}
             items={sortableItems}
@@ -284,6 +285,7 @@ function FolderHeader({
   return (
     <div className="relative">
       <SidebarMenuButton
+        {...treeRowProps(node.id, depth + 2, "folder")}
         onClick={onToggle}
         onPointerEnter={onHoverStart}
         onPointerLeave={onHoverEnd}

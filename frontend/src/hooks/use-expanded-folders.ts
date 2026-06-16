@@ -131,6 +131,14 @@ export function expandPath(driveId: string, folderIds: readonly string[]): void 
   }
 }
 
+export function setFolderExpanded(folderId: string, next: boolean): void {
+  useFolderStore.getState().setExpanded(folderId, next);
+}
+
+export function setDriveExpanded(driveId: string, next: boolean): void {
+  useDriveCollapseStore.getState().setCollapsed(driveId, !next);
+}
+
 export function requestReveal(fileId: string): void {
   pendingReveal = fileId;
 }
