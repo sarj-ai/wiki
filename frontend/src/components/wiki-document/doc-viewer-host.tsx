@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
 import { useDocViewerStore, type ActiveDoc } from "@/components/wiki-document/doc-viewer-store";
-import { FileLoadingIndicator } from "@/components/wiki-document/file-loading-indicator";
 import { embedUrlFor } from "@/lib/file-urls";
 import { cn } from "@/lib/utils";
 
@@ -101,10 +101,11 @@ function PooledIframe({ fileId, mimeType, title }: PooledIframeProps) {
     <div className="relative h-full w-full">
       {isLoading && (
         <div
-          className="bg-background absolute inset-0 z-10 flex items-center justify-center"
+          className="animate-in fade-in-0 absolute inset-0 z-10 duration-200"
+          aria-busy="true"
           aria-label="Loading document"
         >
-          <FileLoadingIndicator />
+          <DocSkeleton />
         </div>
       )}
       <iframe
