@@ -53,6 +53,13 @@ jobs:
           tags: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Artifact Registry has immutable_tags enabled (terraform/registry.tf).
+          # buildx provenance/SBOM attestations push the image under the tag and
+          # then *update* the tag to a manifest index — which immutable tags
+          # reject ("cannot update tag"), failing every deploy. Push a single
+          # image manifest instead so the tag is only ever created, not updated.
+          provenance: false
+          sbom: false
 
       - name: Trivy image scan (report-only)
         uses: aquasecurity/trivy-action@v0.36.0

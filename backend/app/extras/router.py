@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.drive.dependencies import require_member_drive
 from app.extras.dependencies import extras_service_dep
 from app.extras.errors import DocIconNotFoundError
 from app.extras.schemas import (
@@ -17,6 +16,7 @@ from app.extras.schemas import (
     SortOrderRead,
 )
 from app.extras.service import ExtrasService
+from app.files.dependencies import require_accessible_doc
 
 
 router = APIRouter(prefix="/extras", tags=["extras"])
@@ -29,7 +29,7 @@ async def list_doc_icons(
     return await svc.list_doc_icons()
 
 
-@router.get("/doc-icons/{drive_id}", dependencies=[Depends(require_member_drive)])
+@router.get("/doc-icons/{drive_id}", dependencies=[Depends(require_accessible_doc)])
 async def read_doc_icon(
     drive_id: str,
     svc: ExtrasService = Depends(extras_service_dep),
@@ -40,7 +40,7 @@ async def read_doc_icon(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No icon") from e
 
 
-@router.put("/doc-icons/{drive_id}", dependencies=[Depends(require_member_drive)])
+@router.put("/doc-icons/{drive_id}", dependencies=[Depends(require_accessible_doc)])
 async def set_doc_icon(
     drive_id: str,
     payload: DocIconWrite,
