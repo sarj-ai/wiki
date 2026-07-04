@@ -45,6 +45,15 @@ describe("themedSrcdoc", () => {
     expect(out).toContain("background: #ede8dd");
   });
 
+  it("keeps in-doc anchors in the same frame despite base target=_blank", () => {
+    const out = themedSrcdoc(
+      '<html><head></head><body><a class="c3" href="#h.abc">TOC</a><a href="https://x.com">ext</a></body></html>',
+      true,
+    );
+    expect(out).toContain('<a target="_self" class="c3" href="#h.abc">');
+    expect(out).toContain('<a href="https://x.com">');
+  });
+
   it("injects Paged.js so the doc renders as discrete pages", () => {
     const out = themedSrcdoc(wrap(""), true);
     expect(out).toContain("paged.polyfill.js");

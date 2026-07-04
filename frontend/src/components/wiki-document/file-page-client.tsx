@@ -16,12 +16,20 @@ import { saveLastDoc } from "@/lib/last-doc";
 import { markNav, markPaint } from "@/lib/perf-marks";
 import { ApiError } from "@/lib/wiki-api";
 import { findCachedNodeMeta } from "@/lib/wiki-cache";
+import { wikiKeys } from "@/lib/wiki-keys";
 
 export function FilePageClient({ driveId }: { driveId: string }) {
   const queryClient = useQueryClient();
   const fileQuery = useFile(driveId);
 
   const [reloadKey, setReloadKey] = useState(0);
+  // Drop the doc caches so the remount refetches fresh content (the app runs
+  // with refetchOnMount: false, so a stale entry would otherwise be reused).
+  const reload = () => {
+    queryClient.removeQueries({ queryKey: wikiKeys.docHtml(driveId) });
+    queryClient.removeQueries({ queryKey: wikiKeys.docComments(driveId) });
+    setReloadKey((n) => n + 1);
+  };
 
   const committed = useRef<string | null>(null);
   useEffect(() => {
@@ -43,9 +51,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
         title={hint.name}
         breadcrumb={[]}
         reloadKey={reloadKey}
-        onReload={() => {
-          setReloadKey((n) => n + 1);
-        }}
+        onReload={reload}
       />
     );
   }
@@ -72,9 +78,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
       title={file.name}
       breadcrumb={file.breadcrumb}
       reloadKey={reloadKey}
-      onReload={() => {
-        setReloadKey((n) => n + 1);
-      }}
+      onReload={reload}
     />
   );
 }

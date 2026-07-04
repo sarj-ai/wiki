@@ -10,6 +10,7 @@ import type { DocComment } from "@/types/wiki";
 import { Button } from "@/components/ui/button";
 import { splitDocTabs, themedSrcdoc } from "@/components/wiki-document/doc-read-html";
 import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
+import { markNav } from "@/lib/perf-marks";
 import { cn } from "@/lib/utils";
 import { wikiApi } from "@/lib/wiki-api";
 import { wikiKeys } from "@/lib/wiki-keys";
@@ -51,7 +52,7 @@ export function DocReadView({ fileId, title, onEdit }: DocReadViewProps) {
   // Docs API tab tree arrives in the same depth-first order the export flattens
   // to, so levels map to sections by index; on mismatch everything renders flat.
   const levels =
-    data !== undefined && sections !== undefined && data.tabs.length === sections.length
+    data !== undefined && data.tabs.length === sections?.length
       ? data.tabs.map((t) => t.level)
       : undefined;
   const active = sections?.[tab] ?? sections?.[0];
@@ -97,6 +98,16 @@ export function DocReadView({ fileId, title, onEdit }: DocReadViewProps) {
           // in a new tab via allow-popups. The export's own ACL already gated
           // this content to the signed-in user.
           <iframe
+            ref={(iframe) => {
+              if (!iframe) return;
+              const handleLoad = () => {
+                markNav(fileId, "iframeLoad");
+              };
+              iframe.addEventListener("load", handleLoad);
+              return () => {
+                iframe.removeEventListener("load", handleLoad);
+              };
+            }}
             title={active?.title ?? title}
             srcDoc={srcDoc}
             sandbox="allow-scripts allow-popups"

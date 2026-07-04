@@ -49,6 +49,10 @@ const GENERIC_FAMILY = /\b(?:serif|sans-serif|monospace|inherit|initial|unset)\b
 // Google exports list bullet glyphs as literal question marks.
 const BROKEN_BULLET = /content:"\?\s*"/g;
 
+// In-doc links (TOC, bookmarks) are hash-only; without an explicit target they
+// inherit <base target="_blank"> and open a new app tab instead of scrolling.
+const HASH_ANCHOR = /<a\b(?![^>]*\btarget=)([^>]*?)href="#/g;
+
 // Document tabs are flattened into sequential sections, each opening with the
 // tab's name in a title-styled paragraph.
 const TAB_TITLE = /<p class="title"[^>]*>([\s\S]*?)<\/p>/g;
@@ -73,7 +77,9 @@ export interface DocSection {
 
 export function themedSrcdoc(html: string, dark: boolean): string {
   const base = dark ? recolorDeclarations(html) : html;
-  const themed = addFontFallbacks(base).replaceAll(BROKEN_BULLET, 'content:"•  "');
+  const themed = addFontFallbacks(base)
+    .replaceAll(BROKEN_BULLET, 'content:"•  "')
+    .replaceAll(HASH_ANCHOR, '<a target="_self"$1href="#');
   const head = dark ? DARK_HEAD : LIGHT_HEAD;
   return themed.includes("</head>") ? themed.replace("</head>", `${head}</head>`) : head + themed;
 }

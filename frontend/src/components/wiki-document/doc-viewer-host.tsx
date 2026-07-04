@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -10,6 +11,8 @@ import { useDocViewerStore, type ActiveDoc } from "@/components/wiki-document/do
 import { embedUrlFor } from "@/lib/file-urls";
 import { markNav } from "@/lib/perf-marks";
 import { cn } from "@/lib/utils";
+import { wikiApi } from "@/lib/wiki-api";
+import { wikiKeys } from "@/lib/wiki-keys";
 import { MIME_DOC } from "@/types/wiki";
 
 interface SlotRect {
@@ -49,6 +52,7 @@ export function DocViewerHost() {
     mounted.push(entry);
     if (mounted.length >= MAX_MOUNTED) break;
   }
+  const pooled = new Set(pool.map((entry) => entry.fileId));
 
   useEffect(() => {
     if (!slot) return;
@@ -83,6 +87,7 @@ export function DocViewerHost() {
             fileId={entry.fileId}
             mimeType={entry.mimeType}
             title={entry.title}
+            warmOnly={!pooled.has(entry.fileId)}
           />
         </div>
       ))}
@@ -94,17 +99,27 @@ interface PooledIframeProps {
   fileId: string;
   mimeType: string;
   title: string;
+  warmOnly: boolean;
 }
 
-function PooledIframe({ fileId, mimeType, title }: PooledIframeProps) {
+function PooledIframe({ fileId, mimeType, title, warmOnly }: PooledIframeProps) {
+  const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const src = embedUrlFor(mimeType, fileId);
   const [isLoading, setIsLoading] = useState(true);
   const isDoc = mimeType === MIME_DOC;
+  const prefetchOnly = isDoc && warmOnly;
 
   useEffect(() => {
+    if (prefetchOnly) return; // no view mounted yet — don't skew the perf marks
     markNav(fileId, "iframeMount");
-  }, [fileId]);
+  }, [fileId, prefetchOnly]);
+
+  // Warm/prewarm docs the user hasn't opened only prefetch the export — no
+  // hidden iframe, no Paged.js layout work until the doc becomes active.
+  if (prefetchOnly) {
+    return <DocPrefetch fileId={fileId} />;
+  }
 
   // Google Docs open in the themed read view; Edit swaps in the live Google
   // editor, View swaps back.
@@ -155,6 +170,9 @@ function PooledIframe({ fileId, mimeType, title }: PooledIframeProps) {
           type="button"
           size="sm"
           onClick={() => {
+            // Post-edit content changed: drop the caches so View refetches.
+            queryClient.removeQueries({ queryKey: wikiKeys.docHtml(fileId) });
+            queryClient.removeQueries({ queryKey: wikiKeys.docComments(fileId) });
             setEditing(false);
           }}
           className="absolute right-6 bottom-6 z-10 shadow-lg"
@@ -165,4 +183,14 @@ function PooledIframe({ fileId, mimeType, title }: PooledIframeProps) {
       )}
     </div>
   );
+}
+
+function DocPrefetch({ fileId }: { fileId: string }) {
+  useQuery({
+    queryKey: wikiKeys.docHtml(fileId),
+    queryFn: () => wikiApi.getDocHtml(fileId),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+  return null;
 }

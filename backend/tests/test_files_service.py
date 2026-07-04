@@ -77,6 +77,25 @@ def _patch_client(monkeypatch: pytest.MonkeyPatch, client: Any) -> None:
     )
 
 
+def _patch_docs_client(monkeypatch: pytest.MonkeyPatch, tabs: list[dict[str, Any]]) -> None:
+    class _FakeDocuments:
+        def get(self, **_: Any) -> Any:
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            return {"tabs": tabs}
+
+    class _FakeDocsClient:
+        def documents(self) -> _FakeDocuments:
+            return _FakeDocuments()
+
+    monkeypatch.setattr(
+        GoogleDriveService,
+        "build_docs_client",
+        staticmethod(lambda _u: _FakeDocsClient()),
+    )
+
+
 async def test_create_rejects_unsupported_mime_type() -> None:
     with pytest.raises(UnsupportedMimeError):
         await _svc("d1").create(
@@ -316,7 +335,7 @@ async def test_copy_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls["copy_kwargs"]["supportsAllDrives"] is True
 
 
-async def test_export_html_rejects_non_doc(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_export_doc_rejects_non_doc(monkeypatch: pytest.MonkeyPatch) -> None:
     class _FakeFiles:
         def get(self, **_: Any) -> _FakeFiles:
             return self
@@ -336,10 +355,10 @@ async def test_export_html_rejects_non_doc(monkeypatch: pytest.MonkeyPatch) -> N
 
     _patch_client(monkeypatch, _FakeClient())
     with pytest.raises(UnsupportedMimeError):
-        await _svc("d1").export_html("sheet-id")
+        await _svc("d1").export_doc("sheet-id")
 
 
-async def test_export_html_decodes_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_export_doc_decodes_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
     class _FakeFiles:
         def __init__(self) -> None:
             self._mode = "get"
@@ -368,8 +387,10 @@ async def test_export_html_decodes_bytes(monkeypatch: pytest.MonkeyPatch) -> Non
             return _FakeFiles()
 
     _patch_client(monkeypatch, _FakeClient())
-    html = await _svc("d1").export_html("doc-id")
-    assert "héllo" in html
+    _patch_docs_client(monkeypatch, tabs=[])
+    result = await _svc("d1").export_doc("doc-id")
+    assert "héllo" in result.html
+    assert result.tabs == []
 
 
 async def test_list_comments_maps_fields(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -447,17 +468,27 @@ async def test_list_tabs_flattens_hierarchy_depth_first(
             return _FakeDocuments()
 
     class _FakeFiles:
+        def __init__(self) -> None:
+            self._mode = "get"
+
         def get(self, **_: Any) -> _FakeFiles:
+            self._mode = "get"
             return self
 
-        def execute(self) -> dict[str, Any]:
-            return {
-                "id": "doc-id",
-                "name": "Doc",
-                "mimeType": "application/vnd.google-apps.document",
-                "parents": ["p"],
-                "driveId": "d1",
-            }
+        def export(self, **_: Any) -> _FakeFiles:
+            self._mode = "export"
+            return self
+
+        def execute(self) -> Any:
+            if self._mode == "get":
+                return {
+                    "id": "doc-id",
+                    "name": "Doc",
+                    "mimeType": "application/vnd.google-apps.document",
+                    "parents": ["p"],
+                    "driveId": "d1",
+                }
+            return b"<html></html>"
 
     class _FakeClient:
         def files(self) -> _FakeFiles:
@@ -469,8 +500,8 @@ async def test_list_tabs_flattens_hierarchy_depth_first(
         "build_docs_client",
         staticmethod(lambda _u: _FakeDocsClient()),
     )
-    tabs = await _svc("d1").list_tabs("doc-id")
-    assert [(t.title, t.level) for t in tabs] == [
+    result = await _svc("d1").export_doc("doc-id")
+    assert [(t.title, t.level) for t in result.tabs] == [
         ("Principles", 0),
         ("Product Roadmap", 0),
         ("Overview", 1),

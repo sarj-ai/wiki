@@ -67,8 +67,7 @@ async def read_file_html(
     file_id: str,
     files: FilesService = Depends(files_service_dep),
 ) -> DocHtml:
-    html, tabs = await asyncio.gather(files.export_html(file_id), files.list_tabs(file_id))
-    return DocHtml(html=html, tabs=tabs)
+    return await files.export_doc(file_id)
 
 
 @router.get("/{file_id}/comments")

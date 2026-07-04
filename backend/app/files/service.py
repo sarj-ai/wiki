@@ -24,6 +24,7 @@ from app.files.schemas import (
     CommentReply,
     DeleteResult,
     DocComment,
+    DocHtml,
     DocTab,
     FileResponse,
     MoveResult,
@@ -58,13 +59,10 @@ class FilesService(ABC):
     async def delete(self, file_id: str) -> DeleteResult: ...
 
     @abstractmethod
-    async def export_html(self, file_id: str) -> str: ...
+    async def export_doc(self, file_id: str) -> DocHtml: ...
 
     @abstractmethod
     async def list_comments(self, file_id: str) -> list[DocComment]: ...
-
-    @abstractmethod
-    async def list_tabs(self, file_id: str) -> list[DocTab]: ...
 
 
 class GoogleFilesService(FilesService):
@@ -130,23 +128,20 @@ class GoogleFilesService(FilesService):
         return DeleteResult(source=source)
 
     @override
-    async def export_html(self, file_id: str) -> str:
-        file = await self.get(file_id)  # enforces drive membership
+    async def export_doc(self, file_id: str) -> DocHtml:
+        file = await self.get(file_id)  # one scope check covers both fetches below
         if file.mime_type != MIME_DOC:
             raise UnsupportedMimeError("Only Google Docs can be exported to HTML")
-        return await asyncio.to_thread(self._export_html_sync, file_id)
+        html, tabs = await asyncio.gather(
+            asyncio.to_thread(self._export_html_sync, file_id),
+            asyncio.to_thread(self._list_tabs_sync, file_id),
+        )
+        return DocHtml(html=html, tabs=tabs)
 
     @override
     async def list_comments(self, file_id: str) -> list[DocComment]:
         await self.get(file_id)  # enforces drive membership
         return await asyncio.to_thread(self._list_comments_sync, file_id)
-
-    @override
-    async def list_tabs(self, file_id: str) -> list[DocTab]:
-        file = await self.get(file_id)  # enforces drive membership
-        if file.mime_type != MIME_DOC:
-            return []
-        return await asyncio.to_thread(self._list_tabs_sync, file_id)
 
     async def _ensure_in_member_drive(self, drive_id: str | None) -> None:
         if drive_id is None:

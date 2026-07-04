@@ -65,6 +65,10 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
           const [root, scope] = query.queryKey;
           if (root !== "wiki") return false;
           if (scope === "drive-search") return false;
+          // Doc content and comments stay in memory only: never at rest in
+          // localStorage (privacy), and a single export can blow the ~5MB quota,
+          // which would break persistence for everything else.
+          if (scope === "doc-html" || scope === "doc-comments") return false;
           return true;
         },
       },
