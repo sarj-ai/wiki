@@ -44,6 +44,7 @@ from app.models.user import User
 
 
 if TYPE_CHECKING:
+    from googleapiclient._apis.docs.v1.resources import DocsResource
     from googleapiclient._apis.drive.v3.resources import DriveResource
     from googleapiclient.http import BatchHttpRequest
 
@@ -569,6 +570,17 @@ class GoogleDriveService(DriveService):
         return cast("DriveResource", built)
 
     @staticmethod
+    def build_docs_client(user: User) -> DocsResource:
+        authed_http = google_auth_httplib2.AuthorizedHttp(
+            GoogleDriveService._build_credentials(user),
+            http=httplib2.Http(timeout=_DRIVE_HTTP_TIMEOUT_SECONDS),
+        )
+        built = discovery.build_from_document(  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+            _docs_discovery_document(), http=authed_http
+        )
+        return cast("DocsResource", built)
+
+    @staticmethod
     def _build_credentials(user: User) -> Credentials:
         if user.encrypted_access_token is None:
             raise ValueError(f"User {user.id} has no encrypted_access_token")
@@ -599,6 +611,14 @@ def _drive_discovery_document() -> dict[str, Any]:
     content = get_static_doc("drive", "v3")  # type: ignore[no-untyped-call]
     if content is None:
         raise RuntimeError("Bundled Drive v3 discovery document not found")
+    return cast("dict[str, Any]", json.loads(content))
+
+
+@cache
+def _docs_discovery_document() -> dict[str, Any]:
+    content = get_static_doc("docs", "v1")  # type: ignore[no-untyped-call]
+    if content is None:
+        raise RuntimeError("Bundled Docs v1 discovery document not found")
     return cast("dict[str, Any]", json.loads(content))
 
 

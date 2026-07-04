@@ -4,14 +4,15 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, cast, override
 
 from googleapiclient.errors import HttpError
+from loguru import logger
 
 from app.drive.google_schemas import GoogleFile
 from app.drive.retry import execute_mutation, execute_with_retry
-from app.drive.schemas import MIME_FOLDER, NAVIGATOR_SUPPORTED_MIME_TYPES
-from app.drive.service import DriveService, reuse_drive_client
+from app.drive.schemas import MIME_DOC, MIME_FOLDER, NAVIGATOR_SUPPORTED_MIME_TYPES
+from app.drive.service import DriveService, GoogleDriveService, reuse_drive_client
 from app.files.errors import (
     CrossDriveMoveNotSupportedError,
     DriveUpstreamError,
@@ -19,7 +20,14 @@ from app.files.errors import (
     FolderCopyNotSupportedError,
     UnsupportedMimeError,
 )
-from app.files.schemas import DeleteResult, FileResponse, MoveResult
+from app.files.schemas import (
+    CommentReply,
+    DeleteResult,
+    DocComment,
+    DocTab,
+    FileResponse,
+    MoveResult,
+)
 from app.models.user import User
 
 
@@ -48,6 +56,15 @@ class FilesService(ABC):
 
     @abstractmethod
     async def delete(self, file_id: str) -> DeleteResult: ...
+
+    @abstractmethod
+    async def export_html(self, file_id: str) -> str: ...
+
+    @abstractmethod
+    async def list_comments(self, file_id: str) -> list[DocComment]: ...
+
+    @abstractmethod
+    async def list_tabs(self, file_id: str) -> list[DocTab]: ...
 
 
 class GoogleFilesService(FilesService):
@@ -111,6 +128,25 @@ class GoogleFilesService(FilesService):
         source = await self.get(file_id)
         await asyncio.to_thread(self._trash_sync, file_id)
         return DeleteResult(source=source)
+
+    @override
+    async def export_html(self, file_id: str) -> str:
+        file = await self.get(file_id)  # enforces drive membership
+        if file.mime_type != MIME_DOC:
+            raise UnsupportedMimeError("Only Google Docs can be exported to HTML")
+        return await asyncio.to_thread(self._export_html_sync, file_id)
+
+    @override
+    async def list_comments(self, file_id: str) -> list[DocComment]:
+        await self.get(file_id)  # enforces drive membership
+        return await asyncio.to_thread(self._list_comments_sync, file_id)
+
+    @override
+    async def list_tabs(self, file_id: str) -> list[DocTab]:
+        file = await self.get(file_id)  # enforces drive membership
+        if file.mime_type != MIME_DOC:
+            return []
+        return await asyncio.to_thread(self._list_tabs_sync, file_id)
 
     async def _ensure_in_member_drive(self, drive_id: str | None) -> None:
         if drive_id is None:
@@ -187,8 +223,87 @@ class GoogleFilesService(FilesService):
                 client.files().update(fileId=file_id, body=body, supportsAllDrives=True)
             )
 
+    def _export_html_sync(self, file_id: str) -> str:
+        # HTML export embeds images as base64 data URIs, so the blob is self-contained.
+        client = self._client()
+        with _translated_drive_errors():
+            raw = execute_with_retry(client.files().export(fileId=file_id, mimeType="text/html"))
+        return raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
+
+    def _list_tabs_sync(self, file_id: str) -> list[DocTab]:
+        client = GoogleDriveService.build_docs_client(self._user)
+        try:
+            raw = execute_with_retry(
+                client.documents().get(documentId=file_id, includeTabsContent=False, fields="tabs")
+            )
+        except HttpError:
+            # Docs API disabled or doc predates tabs — the view falls back to a flat list.
+            logger.warning("doc tabs fetch failed file={}", file_id)
+            return []
+        tabs: list[DocTab] = []
+        _walk_tabs(raw.get("tabs", []), 0, tabs)
+        return tabs
+
+    def _list_comments_sync(self, file_id: str) -> list[DocComment]:
+        client = self._client()
+        fields = (
+            "comments(id,content,author(displayName),quotedFileContent(value),"
+            "resolved,createdTime,replies(content,author(displayName),createdTime))"
+        )
+        with _translated_drive_errors():
+            # ponytail: first 100 comments only; add paging if a doc ever exceeds that
+            raw = execute_with_retry(
+                client.comments().list(fileId=file_id, fields=fields, pageSize=100)
+            )
+        return [_to_comment(c) for c in raw.get("comments", [])]
+
     def _client(self) -> DriveResource:
         return reuse_drive_client(self._user, self._clients)
+
+
+def _as_dict(value: object) -> dict[str, object]:
+    return cast("dict[str, object]", value) if isinstance(value, dict) else {}
+
+
+def _walk_tabs(nodes: list[object], level: int, out: list[DocTab]) -> None:
+    for node in nodes:
+        tab = _as_dict(node)
+        title = _as_dict(tab.get("tabProperties")).get("title")
+        out.append(DocTab(title=str(title or "Untitled"), level=level))
+        children = tab.get("childTabs")
+        _walk_tabs(
+            cast("list[object]", children) if isinstance(children, list) else [], level + 1, out
+        )
+
+
+def _to_comment(raw: dict[str, object]) -> DocComment:
+    replies = raw.get("replies")
+    return DocComment(
+        id=str(raw.get("id", "")),
+        author=_author_of(raw),
+        content=str(raw.get("content", "")),
+        quoted_text=_opt_str(_as_dict(raw.get("quotedFileContent")).get("value")),
+        resolved=bool(raw.get("resolved", False)),
+        created_time=_opt_str(raw.get("createdTime")),
+        replies=[_to_reply(_as_dict(r)) for r in (replies if isinstance(replies, list) else [])],
+    )
+
+
+def _to_reply(raw: dict[str, object]) -> CommentReply:
+    return CommentReply(
+        author=_author_of(raw),
+        content=str(raw.get("content", "")),
+        created_time=_opt_str(raw.get("createdTime")),
+    )
+
+
+def _author_of(node: dict[str, object]) -> str:
+    name = _as_dict(node.get("author")).get("displayName")
+    return name if isinstance(name, str) else "Unknown"
+
+
+def _opt_str(value: object) -> str | None:
+    return str(value) if value is not None else None
 
 
 def _to_response(raw: File) -> FileResponse:

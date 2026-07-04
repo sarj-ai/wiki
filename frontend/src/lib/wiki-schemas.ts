@@ -2,6 +2,8 @@ import { type z } from "zod";
 
 import {
   zBootstrapRead,
+  zDocComment,
+  zDocHtml,
   zDocIconRead,
   zDriveNode,
   zDriveSummary,
@@ -84,6 +86,22 @@ export const fileDetail = zFileDetail.transform((f) => ({
   ...toFileResponse(f),
   driveName: f.drive_name ?? undefined,
   breadcrumb: f.breadcrumb.map((b) => ({ id: b.id, name: b.name })),
+}));
+
+export const docHtml = zDocHtml;
+
+export const docComment = zDocComment.transform((c) => ({
+  id: c.id,
+  author: c.author,
+  content: c.content,
+  quotedText: c.quoted_text ?? undefined,
+  resolved: c.resolved,
+  createdTime: c.created_time ?? undefined,
+  replies: c.replies.map((r) => ({
+    author: r.author,
+    content: r.content,
+    createdTime: r.created_time ?? undefined,
+  })),
 }));
 
 export const docIcon = zDocIconRead.transform((d) => ({

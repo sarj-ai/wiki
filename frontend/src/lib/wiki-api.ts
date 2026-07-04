@@ -1,6 +1,8 @@
 import * as z from "zod";
 
 import type {
+  DocComment,
+  DocHtml,
   DocIcon,
   DriveNode,
   DriveSearchResult,
@@ -33,6 +35,8 @@ import {
   moveFileFilesFileIdMovePatch,
   readDocIconExtrasDocIconsDriveIdGet,
   readFileFilesFileIdGet,
+  readFileCommentsFilesFileIdCommentsGet,
+  readFileHtmlFilesFileIdHtmlGet,
   readPreferencesExtrasPreferencesGet,
   refreshDriveFoldersSidebarDrivesDriveIdRefreshPost,
   renameFileFilesFileIdRenamePatch,
@@ -44,6 +48,8 @@ import {
 } from "@/lib/generated/sdk.gen";
 import {
   bootstrapRead,
+  docComment,
+  docHtml,
   docIcon,
   driveNode,
   driveSummary,
@@ -109,6 +115,16 @@ export function makeWikiApi(client?: Client) {
 
     getFile: (fileId: string): Promise<FileDetail> =>
       call(readFileFilesFileIdGet, { path: { file_id: fileId } }, fileDetail),
+
+    getDocComments: (fileId: string): Promise<DocComment[]> =>
+      call(
+        readFileCommentsFilesFileIdCommentsGet,
+        { path: { file_id: fileId } },
+        z.array(docComment),
+      ),
+
+    getDocHtml: (fileId: string): Promise<DocHtml> =>
+      call(readFileHtmlFilesFileIdHtmlGet, { path: { file_id: fileId } }, docHtml),
 
     createFile: (input: CreateFileInput): Promise<FileResponse> =>
       call(

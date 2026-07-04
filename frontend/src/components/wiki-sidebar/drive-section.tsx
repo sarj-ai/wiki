@@ -228,6 +228,7 @@ export function DriveSection({
         </div>
         {expanded && (
           <DndContext
+            id={`drive-dnd-${drive.id}`}
             sensors={reorder.sensors}
             collisionDetection={cursorFirstCollision}
             onDragStart={reorder.onDragStart}

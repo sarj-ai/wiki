@@ -1,0 +1,84 @@
+import { describe, expect, it } from "vitest";
+
+import { splitDocTabs, themedSrcdoc } from "@/components/wiki-document/doc-read-html";
+
+const wrap = (css: string) =>
+  `<html><head><style type="text/css">${css}</style></head><body></body></html>`;
+
+describe("themedSrcdoc", () => {
+  it("lightens the explicit black text Google exports put on every span", () => {
+    expect(themedSrcdoc(wrap(".c0{color:#000000}"), true)).toContain("color:#ebebeb");
+  });
+
+  it("keeps already-light text untouched", () => {
+    expect(themedSrcdoc(wrap(".c0{color:#e6e6e6}"), true)).toContain("color:#e6e6e6");
+  });
+
+  it("darkens white backgrounds, keeps dark ones", () => {
+    const out = themedSrcdoc(
+      wrap("td{background-color:#ffffff}.hdr{background-color:#123456}"),
+      true,
+    );
+    expect(out).toContain("background-color:#2e2e2e");
+    expect(out).toContain("background-color:#123456");
+  });
+
+  it("makes black table borders visible", () => {
+    expect(themedSrcdoc(wrap("td{border:1pt solid #000000}"), true)).toContain(
+      "border:1pt solid #616161",
+    );
+  });
+
+  it("adds a sans fallback for fonts that are likely not installed", () => {
+    expect(themedSrcdoc(wrap('.c0{font-family:"Proxima Nova"}'), true)).toContain(
+      'font-family:"Proxima Nova",Arial,sans-serif',
+    );
+  });
+
+  it("injects the dark base stylesheet into head", () => {
+    expect(themedSrcdoc(wrap(""), true)).toContain("color-scheme: dark");
+  });
+
+  it("keeps Google's colors in light mode but still paints the app canvas", () => {
+    const out = themedSrcdoc(wrap(".c0{color:#000000}"), false);
+    expect(out).toContain("color:#000000");
+    expect(out).toContain("background: #ede8dd");
+  });
+
+  it("injects Paged.js so the doc renders as discrete pages", () => {
+    const out = themedSrcdoc(wrap(""), true);
+    expect(out).toContain("paged.polyfill.js");
+    expect(out).toContain("@page { size: Letter");
+  });
+
+  it("repairs the literal '?' bullets Google exports emit", () => {
+    expect(themedSrcdoc(wrap('.lst-a>li:before{content:"?  "}'), true)).toContain('content:"•  "');
+  });
+});
+
+describe("splitDocTabs", () => {
+  const tab = (name: string, body: string) =>
+    `<p class="title" id="h.x" style="font-size:26pt"><span>${name}</span></p>${body}`;
+  const doc = (inner: string) =>
+    `<html><head><style>.a{}</style></head><body>${inner}</body></html>`;
+
+  it("splits a tabbed export into one section per tab, decoding entities", () => {
+    const html = doc(
+      tab("&#129312; Principles", "<p>a</p>") + tab("Sales &amp; Roadmap", "<p>b</p>"),
+    );
+    const sections = splitDocTabs(html, "Fallback");
+    expect(sections.map((s) => s.title)).toEqual(["🤠 Principles", "Sales & Roadmap"]);
+    expect(sections[0]?.html).toContain("<p>a</p>");
+    expect(sections[0]?.html).not.toContain("<p>b</p>");
+    expect(sections[1]?.html).toContain("<p>b</p>");
+    // every section stays a complete document with the shared styles
+    expect(sections[1]?.html).toContain("<style>.a{}</style>");
+    expect(sections[1]?.html).toContain("</body>");
+  });
+
+  it("returns a single fallback-titled section for tabless docs", () => {
+    const sections = splitDocTabs(doc(tab("Only Title", "<p>a</p>")), "Doc name");
+    expect(sections).toHaveLength(1);
+    expect(sections[0]?.title).toBe("Doc name");
+  });
+});

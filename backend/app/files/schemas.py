@@ -52,3 +52,29 @@ class BreadcrumbItem(BaseModel):
 class FileDetail(FileResponse):
     drive_name: str | None
     breadcrumb: list[BreadcrumbItem]
+
+
+class DocTab(BaseModel):
+    title: str
+    level: int
+
+
+class DocHtml(BaseModel):
+    html: str
+    tabs: list[DocTab]
+
+
+class CommentReply(BaseModel):
+    author: str
+    content: str
+    created_time: str | None
+
+
+class DocComment(BaseModel):
+    id: str
+    author: str
+    content: str
+    quoted_text: str | None
+    resolved: bool
+    created_time: str | None
+    replies: list[CommentReply]

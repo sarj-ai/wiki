@@ -1,12 +1,16 @@
 "use client";
 
+import { BookOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { DocReadView } from "@/components/wiki-document/doc-read-view";
 import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
 import { useDocViewerStore, type ActiveDoc } from "@/components/wiki-document/doc-viewer-store";
 import { embedUrlFor } from "@/lib/file-urls";
 import { markNav } from "@/lib/perf-marks";
 import { cn } from "@/lib/utils";
+import { MIME_DOC } from "@/types/wiki";
 
 interface SlotRect {
   top: number;
@@ -93,12 +97,28 @@ interface PooledIframeProps {
 }
 
 function PooledIframe({ fileId, mimeType, title }: PooledIframeProps) {
+  const [editing, setEditing] = useState(false);
   const src = embedUrlFor(mimeType, fileId);
   const [isLoading, setIsLoading] = useState(true);
+  const isDoc = mimeType === MIME_DOC;
 
   useEffect(() => {
     markNav(fileId, "iframeMount");
   }, [fileId]);
+
+  // Google Docs open in the themed read view; Edit swaps in the live Google
+  // editor, View swaps back.
+  if (isDoc && !editing) {
+    return (
+      <DocReadView
+        fileId={fileId}
+        title={title}
+        onEdit={() => {
+          setEditing(true);
+        }}
+      />
+    );
+  }
 
   const attachLoadListener = (iframe: HTMLIFrameElement | null) => {
     if (!iframe) return;
@@ -129,6 +149,20 @@ function PooledIframe({ fileId, mimeType, title }: PooledIframeProps) {
         className="block h-full w-full border-0"
         allow="clipboard-read; clipboard-write"
       />
+      {isDoc && (
+        // bottom-right so it doesn't cover the editor's Share/toolbar area
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => {
+            setEditing(false);
+          }}
+          className="absolute right-6 bottom-6 z-10 shadow-lg"
+        >
+          <BookOpen className="size-4" />
+          View
+        </Button>
+      )}
     </div>
   );
 }

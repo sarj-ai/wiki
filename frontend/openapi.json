@@ -75,6 +75,110 @@
         "title": "BreadcrumbItem",
         "type": "object"
       },
+      "CommentReply": {
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Time"
+          }
+        },
+        "required": ["author", "content", "created_time"],
+        "title": "CommentReply",
+        "type": "object"
+      },
+      "DocComment": {
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Time"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "quoted_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quoted Text"
+          },
+          "replies": {
+            "items": {
+              "$ref": "#/components/schemas/CommentReply"
+            },
+            "title": "Replies",
+            "type": "array"
+          },
+          "resolved": {
+            "title": "Resolved",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "author",
+          "content",
+          "quoted_text",
+          "resolved",
+          "created_time",
+          "replies"
+        ],
+        "title": "DocComment",
+        "type": "object"
+      },
+      "DocHtml": {
+        "properties": {
+          "html": {
+            "title": "Html",
+            "type": "string"
+          },
+          "tabs": {
+            "items": {
+              "$ref": "#/components/schemas/DocTab"
+            },
+            "title": "Tabs",
+            "type": "array"
+          }
+        },
+        "required": ["html", "tabs"],
+        "title": "DocHtml",
+        "type": "object"
+      },
       "DocIconRead": {
         "properties": {
           "cover_url": {
@@ -139,6 +243,21 @@
           }
         },
         "title": "DocIconWrite",
+        "type": "object"
+      },
+      "DocTab": {
+        "properties": {
+          "level": {
+            "title": "Level",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": ["title", "level"],
+        "title": "DocTab",
         "type": "object"
       },
       "DriveNode": {
@@ -1556,6 +1675,50 @@
         "tags": ["files"]
       }
     },
+    "/files/{file_id}/comments": {
+      "get": {
+        "operationId": "read_file_comments_files__file_id__comments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DocComment"
+                  },
+                  "title": "Response Read File Comments Files  File Id  Comments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read File Comments",
+        "tags": ["files"]
+      }
+    },
     "/files/{file_id}/copy": {
       "post": {
         "operationId": "copy_file_files__file_id__copy_post",
@@ -1603,6 +1766,46 @@
           }
         },
         "summary": "Copy File",
+        "tags": ["files"]
+      }
+    },
+    "/files/{file_id}/html": {
+      "get": {
+        "operationId": "read_file_html_files__file_id__html_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocHtml"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read File Html",
         "tags": ["files"]
       }
     },

@@ -9,6 +9,9 @@ export const wikiKeys = {
   folderFilesPrefix: FOLDER_FILES_PREFIX,
   folderFiles: (folderId: string) => [...FOLDER_FILES_PREFIX, folderId] as const,
   file: (fileId: string) => ["wiki", "file", fileId] as const,
+  // v2: payload became { html, tabs } — the bump ignores persisted string-shaped entries
+  docHtml: (fileId: string) => ["wiki", "doc-html", "v2", fileId] as const,
+  docComments: (fileId: string) => ["wiki", "doc-comments", fileId] as const,
   preferences: ["wiki", "preferences"] as const,
   folderIcons: ["wiki", "folder-icons"] as const,
   docIcons: ["wiki", "doc-icons"] as const,

@@ -316,6 +316,168 @@ async def test_copy_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls["copy_kwargs"]["supportsAllDrives"] is True
 
 
+async def test_export_html_rejects_non_doc(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeFiles:
+        def get(self, **_: Any) -> _FakeFiles:
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            return {
+                "id": "sheet-id",
+                "name": "Numbers",
+                "mimeType": "application/vnd.google-apps.spreadsheet",
+                "parents": ["p"],
+                "driveId": "d1",
+            }
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    _patch_client(monkeypatch, _FakeClient())
+    with pytest.raises(UnsupportedMimeError):
+        await _svc("d1").export_html("sheet-id")
+
+
+async def test_export_html_decodes_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeFiles:
+        def __init__(self) -> None:
+            self._mode = "get"
+
+        def get(self, **_: Any) -> _FakeFiles:
+            self._mode = "get"
+            return self
+
+        def export(self, **_: Any) -> _FakeFiles:
+            self._mode = "export"
+            return self
+
+        def execute(self) -> Any:
+            if self._mode == "get":
+                return {
+                    "id": "doc-id",
+                    "name": "Doc",
+                    "mimeType": "application/vnd.google-apps.document",
+                    "parents": ["p"],
+                    "driveId": "d1",
+                }
+            return "<html><body>héllo</body></html>".encode()
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    _patch_client(monkeypatch, _FakeClient())
+    html = await _svc("d1").export_html("doc-id")
+    assert "héllo" in html
+
+
+async def test_list_comments_maps_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeComments:
+        def list(self, **_: Any) -> _FakeComments:
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            return {
+                "comments": [
+                    {
+                        "id": "c1",
+                        "content": "Should we rename this?",
+                        "author": {"displayName": "Rana"},
+                        "quotedFileContent": {"value": "Technical Assumptions"},
+                        "resolved": False,
+                        "createdTime": "2026-07-01T10:00:00Z",
+                        "replies": [
+                            {"content": "Yes", "author": {"displayName": "Mo"}},
+                        ],
+                    }
+                ]
+            }
+
+    class _FakeFiles:
+        def get(self, **_: Any) -> _FakeFiles:
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            return {
+                "id": "doc-id",
+                "name": "Doc",
+                "mimeType": "application/vnd.google-apps.document",
+                "parents": ["p"],
+                "driveId": "d1",
+            }
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+        def comments(self) -> _FakeComments:
+            return _FakeComments()
+
+    _patch_client(monkeypatch, _FakeClient())
+    comments = await _svc("d1").list_comments("doc-id")
+    assert len(comments) == 1
+    assert comments[0].author == "Rana"
+    assert comments[0].quoted_text == "Technical Assumptions"
+    assert comments[0].replies[0].author == "Mo"
+    assert comments[0].replies[0].created_time is None
+
+
+async def test_list_tabs_flattens_hierarchy_depth_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeDocuments:
+        def get(self, **_: Any) -> _FakeDocuments:
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            return {
+                "tabs": [
+                    {"tabProperties": {"title": "Principles"}},
+                    {
+                        "tabProperties": {"title": "Product Roadmap"},
+                        "childTabs": [{"tabProperties": {"title": "Overview"}}],
+                    },
+                    {"tabProperties": {"title": "Plan"}},
+                ]
+            }
+
+    class _FakeDocsClient:
+        def documents(self) -> _FakeDocuments:
+            return _FakeDocuments()
+
+    class _FakeFiles:
+        def get(self, **_: Any) -> _FakeFiles:
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            return {
+                "id": "doc-id",
+                "name": "Doc",
+                "mimeType": "application/vnd.google-apps.document",
+                "parents": ["p"],
+                "driveId": "d1",
+            }
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    _patch_client(monkeypatch, _FakeClient())
+    monkeypatch.setattr(
+        GoogleDriveService,
+        "build_docs_client",
+        staticmethod(lambda _u: _FakeDocsClient()),
+    )
+    tabs = await _svc("d1").list_tabs("doc-id")
+    assert [(t.title, t.level) for t in tabs] == [
+        ("Principles", 0),
+        ("Product Roadmap", 0),
+        ("Overview", 1),
+        ("Plan", 0),
+    ]
+
+
 async def test_get_rejects_non_member_shared_drive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -1,6 +1,8 @@
 import { type z } from "zod";
 
 import {
+  type docComment,
+  type docHtml,
   type docIcon,
   type driveNode,
   type driveSummary,
@@ -32,6 +34,8 @@ export type FileResponse = z.output<typeof fileResponse>;
 export type FileDetail = z.output<typeof fileDetail>;
 export type BreadcrumbItem = FileDetail["breadcrumb"][number];
 export type DocIcon = z.output<typeof docIcon>;
+export type DocComment = z.output<typeof docComment>;
+export type DocHtml = z.output<typeof docHtml>;
 export type FolderIcon = z.output<typeof folderIcon>;
 export type SortOrder = z.output<typeof sortOrder>;
 export type Preferences = z.output<typeof preferences>;

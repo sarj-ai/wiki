@@ -13,6 +13,8 @@ from app.extras.service import ExtrasService
 from app.files.breadcrumb import build_breadcrumb
 from app.files.dependencies import files_service_dep
 from app.files.schemas import (
+    DocComment,
+    DocHtml,
     FileCopy,
     FileCreate,
     FileDetail,
@@ -58,6 +60,23 @@ async def read_file(
         drive_name=drive_name,
         breadcrumb=breadcrumb,
     )
+
+
+@router.get("/{file_id}/html")
+async def read_file_html(
+    file_id: str,
+    files: FilesService = Depends(files_service_dep),
+) -> DocHtml:
+    html, tabs = await asyncio.gather(files.export_html(file_id), files.list_tabs(file_id))
+    return DocHtml(html=html, tabs=tabs)
+
+
+@router.get("/{file_id}/comments")
+async def read_file_comments(
+    file_id: str,
+    files: FilesService = Depends(files_service_dep),
+) -> list[DocComment]:
+    return await files.list_comments(file_id)
 
 
 @router.patch("/{file_id}/rename")
