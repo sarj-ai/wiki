@@ -5,13 +5,12 @@ import { BookOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { DocReadView } from "@/components/wiki-document/doc-read-view";
+import { DocReadView, docHtmlQuery } from "@/components/wiki-document/doc-read-view";
 import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
 import { useDocViewerStore, type ActiveDoc } from "@/components/wiki-document/doc-viewer-store";
 import { embedUrlFor } from "@/lib/file-urls";
 import { markNav } from "@/lib/perf-marks";
 import { cn } from "@/lib/utils";
-import { wikiApi } from "@/lib/wiki-api";
 import { wikiKeys } from "@/lib/wiki-keys";
 import { MIME_DOC } from "@/types/wiki";
 
@@ -186,11 +185,6 @@ function PooledIframe({ fileId, mimeType, title, warmOnly }: PooledIframeProps) 
 }
 
 function DocPrefetch({ fileId }: { fileId: string }) {
-  useQuery({
-    queryKey: wikiKeys.docHtml(fileId),
-    queryFn: () => wikiApi.getDocHtml(fileId),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-  });
+  useQuery(docHtmlQuery(fileId));
   return null;
 }

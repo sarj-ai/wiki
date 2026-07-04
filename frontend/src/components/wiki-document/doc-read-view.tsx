@@ -21,6 +21,14 @@ interface DocReadViewProps {
   onEdit: () => void;
 }
 
+// Shared with the warm-pool prefetch in doc-viewer-host.
+export const docHtmlQuery = (fileId: string) => ({
+  queryKey: wikiKeys.docHtml(fileId),
+  queryFn: () => wikiApi.getDocHtml(fileId),
+  staleTime: 5 * 60 * 1000,
+  gcTime: 10 * 60 * 1000,
+});
+
 // Google has no themable editor to embed, so docs open in a read view we fully
 // control: the doc is exported as self-contained HTML, split back into its
 // document tabs, themed to match the app (both modes), and rendered in a
@@ -32,12 +40,7 @@ export function DocReadView({ fileId, title, onEdit }: DocReadViewProps) {
   const [tab, setTab] = useState(0);
   const [showComments, setShowComments] = useState(false);
 
-  const { data } = useQuery({
-    queryKey: wikiKeys.docHtml(fileId),
-    queryFn: () => wikiApi.getDocHtml(fileId),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-  });
+  const { data } = useQuery(docHtmlQuery(fileId));
   const comments = useQuery({
     queryKey: wikiKeys.docComments(fileId),
     queryFn: () => wikiApi.getDocComments(fileId),
@@ -76,7 +79,7 @@ export function DocReadView({ fileId, title, onEdit }: DocReadViewProps) {
               onClick={() => {
                 setTab(i);
               }}
-              style={{ paddingLeft: `${String(12 + (levels?.[i] ?? 0) * 16)}px` }}
+              style={{ paddingLeft: 12 + (levels?.[i] ?? 0) * 16 }}
               className={cn(
                 "w-full justify-start truncate font-normal",
                 i === tab && "bg-accent font-medium",
@@ -98,15 +101,8 @@ export function DocReadView({ fileId, title, onEdit }: DocReadViewProps) {
           // in a new tab via allow-popups. The export's own ACL already gated
           // this content to the signed-in user.
           <iframe
-            ref={(iframe) => {
-              if (!iframe) return;
-              const handleLoad = () => {
-                markNav(fileId, "iframeLoad");
-              };
-              iframe.addEventListener("load", handleLoad);
-              return () => {
-                iframe.removeEventListener("load", handleLoad);
-              };
+            onLoad={() => {
+              markNav(fileId, "iframeLoad");
             }}
             title={active?.title ?? title}
             srcDoc={srcDoc}
