@@ -80,13 +80,11 @@ describe("themedSrcdoc", () => {
     expect(out).toContain('class="doc-status doc-status-warning">Deferred</span>');
   });
 
-  it("uses purple-only status colors (no blue/green/amber rainbow)", () => {
+  it("forces purple-only link underlines (letter colors can stay multi-hue)", () => {
     const out = themedSrcdoc(wrap(""), true);
-    expect(out).toContain("rgba(75, 52, 131"); // brand purple tint
-    expect(out).not.toContain("#60a5fa");
-    expect(out).not.toContain("#2563eb");
-    expect(out).not.toContain("#4ade80");
-    expect(out).not.toContain("#fbbf24");
+    expect(out).toContain("text-decoration-color: #4b3483");
+    // Status letter colors stay multi-hue (Active blue, etc.)
+    expect(out).toContain("#60a5fa");
   });
 });
 
