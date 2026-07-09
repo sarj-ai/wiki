@@ -69,7 +69,7 @@ export function DocReadView({ fileId, title }: DocReadViewProps) {
     <div className="bg-background flex h-full w-full">
       {sections !== undefined && sections.length > 1 && (
         <aside className="border-border bg-background w-56 shrink-0 overflow-y-auto border-r p-2">
-          <p className="text-muted-foreground px-3 py-2 text-xs font-medium tracking-wide uppercase">
+          <p className="text-muted-foreground px-3 py-2 text-xs font-semibold tracking-wide uppercase">
             Document tabs
           </p>
           {sections.map((section, i) => (
@@ -84,7 +84,8 @@ export function DocReadView({ fileId, title }: DocReadViewProps) {
               style={{ paddingLeft: 12 + (levels?.[i] ?? 0) * 16 }}
               className={cn(
                 "text-muted-foreground w-full justify-start truncate font-normal",
-                i === tab && "bg-accent text-foreground font-semibold",
+                i === tab &&
+                  "bg-sidebar-accent text-sidebar-accent-foreground hover:bg-sidebar-accent/90 font-semibold",
               )}
             >
               {section.title}
@@ -98,16 +99,17 @@ export function DocReadView({ fileId, title }: DocReadViewProps) {
             <DocSkeleton />
           </div>
         ) : (
-          // No scripts: theming is pure static HTML/CSS. Links open in a new tab
-          // via allow-popups. The export's own ACL already gated this content to
-          // the signed-in user.
+          // No scripts: theming is pure static HTML/CSS. allow-same-origin lets
+          // @font-face load /fonts/Nunito from the app shell (no parent access
+          // without scripts). Links open in a new tab via allow-popups. The
+          // export's own ACL already gated this content to the signed-in user.
           <iframe
             onLoad={() => {
               markNav(fileId, "iframeLoad");
             }}
             title={active?.title ?? title}
             srcDoc={srcDoc}
-            sandbox="allow-popups"
+            sandbox="allow-popups allow-same-origin"
             className="block h-full w-full border-0"
           />
         )}

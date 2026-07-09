@@ -35,14 +35,20 @@ describe("themedSrcdoc", () => {
     );
   });
 
-  it("injects the dark base stylesheet into head", () => {
-    expect(themedSrcdoc(wrap(""), true)).toContain("color-scheme: dark");
+  it("injects the classic dark design system (purple accents, Nunito, canvas)", () => {
+    const out = themedSrcdoc(wrap(""), true);
+    expect(out).toContain("color-scheme: dark");
+    expect(out).toContain("#161618"); // classic dark canvas
+    expect(out).toContain("#4b3483"); // signature purple secondary
+    expect(out).toContain('font-family: "Nunito"');
+    expect(out).toContain("/fonts/Nunito-Regular.ttf");
   });
 
-  it("keeps Google's colors in light mode but still paints the app canvas", () => {
+  it("keeps Google's colors in light mode but paints the classic canvas + purple", () => {
     const out = themedSrcdoc(wrap(".c0{color:#000000}"), false);
     expect(out).toContain("color:#000000");
-    expect(out).toContain("background: #ede8dd");
+    expect(out).toContain("#f4f2ef"); // classic light canvas
+    expect(out).toContain("#d0c3df"); // light purple secondary
   });
 
   it("keeps in-doc anchors in the same frame despite base target=_blank", () => {
@@ -56,13 +62,22 @@ describe("themedSrcdoc", () => {
 
   it("uses continuous scroll layout (no paged paper sheets)", () => {
     const out = themedSrcdoc(wrap(""), true);
-    expect(out).toContain("max-width: 56rem");
+    expect(out).toContain("max-width: 64rem");
     expect(out).not.toContain("paged.polyfill.js");
     expect(out).not.toContain("@page { size: Letter");
   });
 
   it("repairs the literal '?' bullets Google exports emit", () => {
     expect(themedSrcdoc(wrap('.lst-a>li:before{content:"?  "}'), true)).toContain('content:"•  "');
+  });
+
+  it("promotes known status labels into classic pill badges", () => {
+    const out = themedSrcdoc(
+      "<html><head></head><body><td><span>Active</span></td><td><span>Deferred</span></td></body></html>",
+      true,
+    );
+    expect(out).toContain('class="doc-status doc-status-active">Active</span>');
+    expect(out).toContain('class="doc-status doc-status-warning">Deferred</span>');
   });
 });
 
