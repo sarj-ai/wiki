@@ -39,7 +39,7 @@ describe("themedSrcdoc", () => {
     const out = themedSrcdoc(wrap(""), true);
     expect(out).toContain("color-scheme: dark");
     expect(out).toContain("#161618"); // classic dark canvas
-    expect(out).toContain("#4b3483"); // signature purple secondary
+    expect(out).toContain("#4B3483"); // signature purple secondary (exact --secondary)
     expect(out).toContain('font-family: "Nunito"');
     expect(out).toContain("/fonts/Nunito-Regular.ttf");
   });
@@ -48,7 +48,7 @@ describe("themedSrcdoc", () => {
     const out = themedSrcdoc(wrap(".c0{color:#000000}"), false);
     expect(out).toContain("color:#000000");
     expect(out).toContain("#f4f2ef"); // classic light canvas
-    expect(out).toContain("#d0c3df"); // light purple secondary
+    expect(out).toContain("#D0C3DF"); // light purple secondary (exact --secondary)
   });
 
   it("keeps in-doc anchors in the same frame despite base target=_blank", () => {
@@ -80,10 +80,13 @@ describe("themedSrcdoc", () => {
     expect(out).toContain('class="doc-status doc-status-warning">Deferred</span>');
   });
 
-  it("forces purple-only link underlines (letter colors can stay multi-hue)", () => {
+  it("copies classic .doc-link: foreground text + secondary purple underline", () => {
     const out = themedSrcdoc(wrap(""), true);
-    expect(out).toContain("text-decoration-color: #4b3483");
-    // Status letter colors stay multi-hue (Active blue, etc.)
+    // Exact pre-Navigator tokens
+    expect(out).toContain("text-decoration-color: #4B3483");
+    expect(out).toContain("text-underline-offset: 3px");
+    expect(out).toContain("text-decoration-thickness: 2px");
+    // Status pills still multi-hue for Active/etc.
     expect(out).toContain("#60a5fa");
   });
 });

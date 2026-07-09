@@ -21,10 +21,11 @@ const TOKENS = {
     muted: "#737373",
     card: "#ffffff",
     border: "#d5d5d5",
-    secondary: "#d0c3df",
+    secondary: "#D0C3DF",
     secondaryFg: "#251040",
     accent: "#4b3483",
-    selection: "rgba(208, 195, 223, 0.45)",
+    // color-mix(in srgb, var(--secondary) 25%, transparent) with #D0C3DF
+    selection: "rgba(208, 195, 223, 0.25)",
   },
   dark: {
     bg: "#161618",
@@ -32,10 +33,12 @@ const TOKENS = {
     muted: "#a1a1a1",
     card: "#1c1c1e",
     border: "rgba(255, 255, 255, 0.1)",
-    secondary: "#4b3483",
+    // Exact pre-Navigator --secondary
+    secondary: "#4B3483",
     secondaryFg: "#fafafa",
     accent: "#9b87d4",
-    selection: "rgba(75, 52, 131, 0.45)",
+    // color-mix(in srgb, var(--secondary) 25%, transparent) with #4B3483
+    selection: "rgba(75, 52, 131, 0.25)",
   },
 } as const;
 
@@ -175,8 +178,16 @@ h3 {
 p { margin-top: 0.35em !important; margin-bottom: 0 !important; }
 strong, b { font-weight: 650 !important; color: ${t.fg} !important; }
 
-/* ── Links: keep Google/status letter colors; underlines are purple only ── */
+/* ── Links: exact copy of pre-Navigator .doc-link ──
+   color: var(--foreground);
+   text-decoration: underline;
+   text-decoration-color: var(--secondary);  // #4B3483 dark / #D0C3DF light
+   text-underline-offset: 3px;
+   text-decoration-thickness: 2px;
+   hover → underline becomes foreground
+*/
 a {
+  color: ${t.fg} !important;
   text-decoration: underline !important;
   text-decoration-color: ${t.secondary} !important;
   text-underline-offset: 3px !important;
@@ -184,7 +195,8 @@ a {
   transition: text-decoration-color 0.15s ease;
 }
 a:hover { text-decoration-color: ${t.fg} !important; }
-/* Don't force link text color — status blues/greens stay; only the line is purple. */
+/* Google paints color on nested spans; inherit so text stays foreground. */
+a span { color: inherit !important; }
 
 /* ── Lists: purple bullets ── */
 ul { list-style: none !important; padding-inline-start: 1.5em !important; }
