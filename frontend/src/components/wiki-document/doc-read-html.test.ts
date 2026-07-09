@@ -79,6 +79,15 @@ describe("themedSrcdoc", () => {
     expect(out).toContain('class="doc-status doc-status-active">Active</span>');
     expect(out).toContain('class="doc-status doc-status-warning">Deferred</span>');
   });
+
+  it("uses purple-only status colors (no blue/green/amber rainbow)", () => {
+    const out = themedSrcdoc(wrap(""), true);
+    expect(out).toContain("rgba(75, 52, 131"); // brand purple tint
+    expect(out).not.toContain("#60a5fa");
+    expect(out).not.toContain("#2563eb");
+    expect(out).not.toContain("#4ade80");
+    expect(out).not.toContain("#fbbf24");
+  });
 });
 
 describe("splitDocTabs", () => {

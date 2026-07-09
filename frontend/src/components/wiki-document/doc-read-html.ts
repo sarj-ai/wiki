@@ -175,16 +175,19 @@ h3 {
 p { margin-top: 0.35em !important; margin-bottom: 0 !important; }
 strong, b { font-weight: 650 !important; color: ${t.fg} !important; }
 
-/* ── Links: purple underline (classic doc-link), not Google blue ── */
+/* ── Links: purple only (no Google blue text or underline) ── */
 a {
-  color: ${t.fg} !important;
+  color: ${t.accent} !important;
   text-decoration: underline !important;
   text-decoration-color: ${t.secondary} !important;
   text-underline-offset: 3px !important;
   text-decoration-thickness: 2px !important;
-  transition: text-decoration-color 0.15s ease;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
 }
-a:hover { text-decoration-color: ${t.fg} !important; }
+a:hover {
+  color: ${t.fg} !important;
+  text-decoration-color: ${t.fg} !important;
+}
 a span { color: inherit !important; }
 
 /* ── Lists: purple bullets ── */
@@ -264,8 +267,14 @@ table tr:not(:first-child):hover td { background: ${hover} !important; }
 }
 
 function skinStatus(t: SkinTokens, dark: boolean): string {
+  // One brand-purple palette only — no blue/green/amber status rainbow.
+  // Dark: lavender on deep purple tint. Light: deep purple on soft lilac.
+  const pillBg = dark ? "rgba(75, 52, 131, 0.4)" : "rgba(208, 195, 223, 0.55)";
+  const pillFg = dark ? "#d4c4f0" : "#251040";
+  const pillSoftBg = dark ? "rgba(75, 52, 131, 0.22)" : "rgba(208, 195, 223, 0.35)";
+  const pillSoftFg = dark ? "#b8a0e8" : "#4b3483";
   return `
-/* ── Status pills (injected by promoteStatusBadges) ── */
+/* ── Status pills: purple-only (matches classic Sarj accent) ── */
 .doc-status {
   display: inline-flex !important;
   align-items: center !important;
@@ -278,29 +287,29 @@ function skinStatus(t: SkinTokens, dark: boolean): string {
   line-height: 1.4 !important;
   text-decoration: none !important;
   border: none !important;
+  background: ${pillBg} !important;
+  color: ${pillFg} !important;
 }
-.doc-status-active {
-  background: ${dark ? "rgba(96, 165, 250, 0.15)" : "rgba(59, 130, 246, 0.15)"} !important;
-  color: ${dark ? "#60a5fa" : "#2563eb"} !important;
-}
+.doc-status-active,
 .doc-status-success {
-  background: ${dark ? "rgba(74, 222, 128, 0.15)" : "rgba(34, 197, 94, 0.15)"} !important;
-  color: ${dark ? "#4ade80" : "#16a34a"} !important;
+  background: ${pillBg} !important;
+  color: ${pillFg} !important;
 }
-.doc-status-warning {
-  background: ${dark ? "rgba(251, 191, 36, 0.15)" : "rgba(245, 158, 11, 0.15)"} !important;
-  color: ${dark ? "#fbbf24" : "#d97706"} !important;
-}
-.doc-status-blocked {
-  background: ${dark ? "rgba(248, 113, 113, 0.15)" : "rgba(239, 68, 68, 0.12)"} !important;
-  color: ${dark ? "#f87171" : "#dc2626"} !important;
-}
+.doc-status-warning,
+.doc-status-blocked,
 .doc-status-neutral {
-  background: ${dark ? "rgba(161, 161, 161, 0.15)" : "rgba(115, 115, 115, 0.12)"} !important;
-  color: ${t.muted} !important;
+  background: ${pillSoftBg} !important;
+  color: ${pillSoftFg} !important;
 }
-a:has(> .doc-status) { text-decoration: none !important; border-radius: 9999px !important; }
+a:has(> .doc-status) {
+  text-decoration: none !important;
+  border-radius: 9999px !important;
+  color: inherit !important;
+}
 a:has(> .doc-status) > .doc-status { pointer-events: none; }
+/* Kill any leftover Google-blue on spans inside cells — purple only. */
+table a { color: ${t.accent} !important; }
+table a span { color: inherit !important; }
 `;
 }
 
