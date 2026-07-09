@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { MessageSquare, Pencil } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useMemo, useState } from "react";
 
@@ -10,6 +9,7 @@ import type { DocComment } from "@/types/wiki";
 import { Button } from "@/components/ui/button";
 import { splitDocTabs, themedSrcdoc } from "@/components/wiki-document/doc-read-html";
 import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
+import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
 import { markNav } from "@/lib/perf-marks";
 import { cn } from "@/lib/utils";
 import { wikiApi } from "@/lib/wiki-api";
@@ -18,7 +18,6 @@ import { wikiKeys } from "@/lib/wiki-keys";
 interface DocReadViewProps {
   fileId: string;
   title: string;
-  onEdit: () => void;
 }
 
 // Shared with the warm-pool prefetch in doc-viewer-host.
@@ -33,12 +32,13 @@ export const docHtmlQuery = (fileId: string) => ({
 // control: the doc is exported as self-contained HTML, split back into its
 // document tabs, themed to match the app (both modes), and rendered in a
 // sandboxed iframe. Comments come from the Drive API into a side panel.
-// Editing swaps in the live Google editor.
-export function DocReadView({ fileId, title, onEdit }: DocReadViewProps) {
+// Edit / Comments controls live in WikiToolbar (classic chrome), not over the
+// content. Editing swaps in the live Google editor via the store.
+export function DocReadView({ fileId, title }: DocReadViewProps) {
   const { resolvedTheme } = useTheme();
   const dark = resolvedTheme === "dark";
   const [tab, setTab] = useState(0);
-  const [showComments, setShowComments] = useState(false);
+  const showComments = useDocViewerStore((s) => s.showComments);
 
   const { data } = useQuery(docHtmlQuery(fileId));
   const comments = useQuery({
@@ -68,8 +68,10 @@ export function DocReadView({ fileId, title, onEdit }: DocReadViewProps) {
   return (
     <div className="bg-background flex h-full w-full">
       {sections !== undefined && sections.length > 1 && (
-        <aside className="border-border w-56 shrink-0 overflow-y-auto border-r p-2">
-          <p className="text-muted-foreground px-3 py-2 text-xs font-medium">Document tabs</p>
+        <aside className="border-border bg-background w-56 shrink-0 overflow-y-auto border-r p-2">
+          <p className="text-muted-foreground px-3 py-2 text-xs font-medium tracking-wide uppercase">
+            Document tabs
+          </p>
           {sections.map((section, i) => (
             <Button
               key={section.title + String(i)}
@@ -81,8 +83,8 @@ export function DocReadView({ fileId, title, onEdit }: DocReadViewProps) {
               }}
               style={{ paddingLeft: 12 + (levels?.[i] ?? 0) * 16 }}
               className={cn(
-                "w-full justify-start truncate font-normal",
-                i === tab && "bg-accent font-medium",
+                "text-muted-foreground w-full justify-start truncate font-normal",
+                i === tab && "bg-accent text-foreground font-semibold",
               )}
             >
               {section.title}
@@ -96,43 +98,25 @@ export function DocReadView({ fileId, title, onEdit }: DocReadViewProps) {
             <DocSkeleton />
           </div>
         ) : (
-          // ponytail: allow-scripts runs only our injected Paged.js (opaque
-          // origin, no same-origin grant — it can't reach the app). Links open
-          // in a new tab via allow-popups. The export's own ACL already gated
-          // this content to the signed-in user.
+          // No scripts: theming is pure static HTML/CSS. Links open in a new tab
+          // via allow-popups. The export's own ACL already gated this content to
+          // the signed-in user.
           <iframe
             onLoad={() => {
               markNav(fileId, "iframeLoad");
             }}
             title={active?.title ?? title}
             srcDoc={srcDoc}
-            sandbox="allow-scripts allow-popups"
+            sandbox="allow-popups"
             className="block h-full w-full border-0"
           />
         )}
-        <div className="absolute top-3 right-4 z-10 flex gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              setShowComments((v) => !v);
-            }}
-            className="shadow"
-            aria-pressed={showComments}
-          >
-            <MessageSquare className="size-4" />
-            Comments
-          </Button>
-          <Button type="button" size="sm" onClick={onEdit} className="shadow">
-            <Pencil className="size-4" />
-            Edit
-          </Button>
-        </div>
       </div>
       {showComments && (
-        <aside className="border-border w-80 shrink-0 overflow-y-auto border-l p-3">
-          <p className="text-muted-foreground px-1 pb-2 text-xs font-medium">Comments</p>
+        <aside className="border-border bg-background w-80 shrink-0 overflow-y-auto border-l p-3">
+          <p className="text-muted-foreground px-1 pb-2 text-xs font-medium tracking-wide uppercase">
+            Comments
+          </p>
           {comments.isPending && <p className="text-muted-foreground px-1 text-sm">Loading…</p>}
           {comments.isError && (
             <p className="text-muted-foreground px-1 text-sm">Couldn&apos;t load comments</p>
@@ -151,7 +135,7 @@ export function DocReadView({ fileId, title, onEdit }: DocReadViewProps) {
 
 function CommentCard({ comment }: { comment: DocComment }) {
   return (
-    <div className="border-border mb-3 rounded-md border p-3">
+    <div className="border-border bg-card mb-3 rounded-md border p-3 shadow-xs">
       <p className="text-sm font-medium">{comment.author}</p>
       {comment.quotedText !== undefined && (
         <p className="text-muted-foreground border-border mt-1 line-clamp-2 border-l-2 pl-2 text-xs italic">

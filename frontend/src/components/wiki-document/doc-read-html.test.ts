@@ -54,10 +54,11 @@ describe("themedSrcdoc", () => {
     expect(out).toContain('<a href="https://x.com">');
   });
 
-  it("injects Paged.js so the doc renders as discrete pages", () => {
+  it("uses continuous scroll layout (no paged paper sheets)", () => {
     const out = themedSrcdoc(wrap(""), true);
-    expect(out).toContain("paged.polyfill.js");
-    expect(out).toContain("@page { size: Letter");
+    expect(out).toContain("max-width: 56rem");
+    expect(out).not.toContain("paged.polyfill.js");
+    expect(out).not.toContain("@page { size: Letter");
   });
 
   it("repairs the literal '?' bullets Google exports emit", () => {

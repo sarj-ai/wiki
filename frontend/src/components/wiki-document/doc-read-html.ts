@@ -2,38 +2,47 @@
 // explicit hex color on every span (body text is color:#000000), so a static
 // dark stylesheet loses on specificity — instead rewrite the hex values
 // themselves by luminance: dark text lightens (hue kept), light backgrounds
-// darken, borders normalize. The export's <body> is already the 8.5in "page";
-// DARK_HEAD paints it as a dark paper sheet on a darker canvas.
+// darken, borders normalize.
+//
+// Layout mirrors the pre-Navigator native viewer: continuous scroll on the app
+// canvas (no discrete Letter pages), content column centered at max-w-4xl.
 // ponytail: Dark-Reader-lite via string regex, no DOM/CSSOM pass. Ceilings: hex
 // colors only (Google exports emit hex exclusively), and prose that literally
 // contains "color: #hex" (CSS snippets in a doc) gets rewritten too. Upgrade to
 // a real CSSOM walk if either bites.
 
-// Paged.js re-flows the export into discrete Letter pages like the Docs canvas.
-// The export's own body padding (the page margins) moves to @page; each
-// .pagedjs_page renders as a paper sheet on the canvas.
-// ponytail: fixed Letter/1in — read the doc's real page setup from the Docs API
-// if mixed page sizes ever matter.
-const PAGE_SETUP = `<style>
-  @page { size: Letter; margin: 1in; }
-  body { margin: 0 !important; padding: 0 !important; max-width: none !important; background: transparent !important; }
-  .pagedjs_pages { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 16px 8px; }
-  .pagedjs_page { background: var(--paper); border-radius: 2px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
-</style><script src="/vendor/paged.polyfill.js"></script>`;
+// Continuous reading surface — matches the old native DocViewer chrome:
+// app canvas background, content column centered (max-w-4xl), no paper sheets.
+// Google's export body often pins an 8.5in page width; we override that.
+const LAYOUT = `<style>
+  html { height: 100%; }
+  body {
+    max-width: 56rem !important;
+    margin: 0 auto !important;
+    padding: 2rem 1.5rem 4rem !important;
+    min-height: 100%;
+    box-sizing: border-box;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+</style>`;
 
 // Light variant mirrors the website's light palette (globals.css :root) so the
 // reading surface matches the app instead of Google's plain white.
+// #ede8dd ≈ --background light (oklch 0.9554 0.0131 71.33).
 const LIGHT_HEAD = `<base target="_blank"><style>
-  :root { --paper: #ffffff; }
   html { background: #ede8dd !important; }
-</style>${PAGE_SETUP}`;
+  body { color: #1f1f1f; }
+  a { color: #2b165e; }
+</style>${LAYOUT}`;
 
+// Dark canvas matches globals.css .dark --background (oklch 0.2011 ≈ #1c1c20).
 const DARK_HEAD = `<base target="_blank"><style>
-  :root { color-scheme: dark; --paper: #1e1e1e; }
-  html { background: #131313 !important; }
+  :root { color-scheme: dark; }
+  html { background: #1c1c20 !important; }
   body { color: #e6e6e6; }
-  a { color: #8ab4f8; }
-</style>${PAGE_SETUP}`;
+  a { color: #b8a0e8; }
+</style>${LAYOUT}`;
 
 const COLOR_DECLARATION =
   /(color|background(?:-color)?|border[^:;{}]*|outline[^:;{}]*)(\s*:\s*)([^;}]+)/gi;

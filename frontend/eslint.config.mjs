@@ -193,8 +193,6 @@ const eslintConfig = defineConfig([
     // Codegen output (openapi-ts) — regenerated, never hand-edited.
     "src/lib/generated/**",
     "scripts/**",
-    // Vendored iframe assets copied from node_modules on postinstall.
-    "public/vendor/**",
   ]),
 ]);
 
