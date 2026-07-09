@@ -35,7 +35,7 @@ const nunito = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Sarj Wiki",
+  title: { default: "Sarj Wiki", template: "%s · Sarj Wiki" },
   description: "Internal knowledge base for Sarj",
   robots: { index: false, follow: false },
 };
