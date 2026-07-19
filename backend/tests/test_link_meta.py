@@ -9,7 +9,7 @@ amplification limits) and the unauthenticated /link-meta endpoint (no-cookie
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from httpx import ASGITransport, AsyncClient
@@ -21,7 +21,12 @@ from app.database import get_db
 from app.drive.schemas import DriveNode, DriveTree
 from app.main import app
 from app.models.wiki import DriveTreeCache
-from app.sidebar.cache import _decoded_trees, _undecodable_keys, find_cached_file_name
+from app.sidebar.cache import (
+    PUBLIC_TITLE_MAX_AGE,
+    _decoded_trees,
+    _undecodable_keys,
+    find_cached_file_name,
+)
 
 
 DOC_ID = "1AbC_dEf-123"
@@ -38,12 +43,14 @@ def _node(file_id: str, name: str, *, shortcut_target_id: str | None = None) -> 
     )
 
 
-def _row(drive_id: str, files: list[DriveNode]) -> DriveTreeCache:
+def _row(
+    drive_id: str, files: list[DriveNode], *, refreshed_at: datetime | None = None
+) -> DriveTreeCache:
     tree = DriveTree(drive_id=drive_id, folders=[], files=files, files_complete=True)
     return DriveTreeCache(
         drive_id=drive_id,
         tree=encrypt_cache(tree.model_dump_json()),
-        refreshed_at=datetime.now(UTC),
+        refreshed_at=refreshed_at if refreshed_at is not None else datetime.now(UTC),
     )
 
 
@@ -105,6 +112,12 @@ async def test_finds_name_via_shortcut_target() -> None:
     shortcut = _node("shortcut-1", "Plan (shortcut)", shortcut_target_id=DOC_ID)
     rows = [_row("drive-1", [shortcut])]
     assert await find_cached_file_name(_db(rows), DOC_ID) == "Plan (shortcut)"
+
+
+async def test_stale_row_is_not_served_publicly() -> None:
+    stale = datetime.now(UTC) - PUBLIC_TITLE_MAX_AGE - timedelta(minutes=1)
+    rows = [_row("drive-1", [_node(DOC_ID, "Quarterly Plan")], refreshed_at=stale)]
+    assert await find_cached_file_name(_db(rows), DOC_ID) is None
 
 
 async def test_miss_returns_none() -> None:

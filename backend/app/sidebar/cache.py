@@ -25,6 +25,13 @@ from app.sidebar.singleflight import Singleflight
 
 CACHE_MAX_AGE = timedelta(days=30)
 
+# Distinct from CACHE_MAX_AGE on purpose: that constant is internal storage
+# hygiene, while this one bounds how long a deleted or unshared doc's title
+# stays readable via the public /link-meta endpoint after a drive's last
+# refresh. Actively used drives refresh every SIDEBAR_CACHE_TTL of use, so
+# only abandoned drives' titles age out of public serving.
+PUBLIC_TITLE_MAX_AGE = timedelta(days=7)
+
 SINGLEFLIGHT = Singleflight()
 
 BG_TASKS: set[asyncio.Task[None]] = set()
@@ -76,9 +83,15 @@ async def find_cached_file_name(db: AsyncSession, file_id: str) -> str | None:
     (drive_id, refreshed_at) keys are fetched up front; a blob is pulled and
     decrypted only when the shared decode LRU misses, and keys that failed to
     decode are memoized so corrupt rows can't force decrypt work per request.
+
+    Rows not refreshed within PUBLIC_TITLE_MAX_AGE are skipped, bounding how
+    long a deleted/unshared doc's title stays publicly readable.
     """
     keys = (await db.execute(select(DriveTreeCache.drive_id, DriveTreeCache.refreshed_at))).all()
+    now = datetime.now(UTC)
     for drive_id, refreshed_at in keys:
+        if now - refreshed_at > PUBLIC_TITLE_MAX_AGE:
+            continue
         key = (drive_id, refreshed_at.isoformat())
         tree = _decoded_get(key)
         if tree is None:
