@@ -20,6 +20,7 @@ from app.drive.search_router import router as drive_search_router
 from app.extras.router import router as extras_router
 from app.files.errors import FilesError
 from app.files.router import router as files_router
+from app.linkmeta.router import router as linkmeta_router
 from app.logging_config import configure_logging
 from app.ratelimit import limiter
 from app.request_id import RequestIDMiddleware
@@ -79,6 +80,7 @@ app.include_router(sidebar_router)
 app.include_router(files_router)
 app.include_router(extras_router)
 app.include_router(drive_search_router)
+app.include_router(linkmeta_router)
 
 
 @app.get("/health")

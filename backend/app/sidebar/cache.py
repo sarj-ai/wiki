@@ -10,7 +10,7 @@ from typing import override
 from cryptography.fernet import InvalidToken
 from loguru import logger
 from pydantic import ValidationError
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -24,6 +24,13 @@ from app.sidebar.singleflight import Singleflight
 
 
 CACHE_MAX_AGE = timedelta(days=30)
+
+# Distinct from CACHE_MAX_AGE on purpose: that constant is internal storage
+# hygiene, while this one bounds how long a deleted or unshared doc's title
+# stays readable via the public /link-meta endpoint after a drive's last
+# refresh. Actively used drives refresh every SIDEBAR_CACHE_TTL of use, so
+# only abandoned drives' titles age out of public serving.
+PUBLIC_TITLE_MAX_AGE = timedelta(days=7)
 
 SINGLEFLIGHT = Singleflight()
 
@@ -56,6 +63,64 @@ def _decoded_put(key: tuple[str, str], tree: DriveTree) -> None:
 class CachedDriveTree:
     tree: DriveTree
     refreshed_at: datetime | None
+
+
+_UNDECODABLE_KEYS_MAX = 64
+
+_undecodable_keys: set[tuple[str, str]] = set()
+
+
+async def find_cached_file_name(db: AsyncSession, file_id: str) -> str | None:
+    """Best-effort doc-name lookup across every cached drive tree.
+
+    Serves the public link-preview endpoint, so it is deliberately read-only
+    and credential-free: no Drive walks, no refreshes, no row deletion. A miss
+    (cold cache, incomplete file listing, corrupt row) just means "no title" —
+    the authenticated sidebar path owns cache maintenance.
+
+    Two-phase on purpose: the endpoint is unauthenticated, so a request must
+    not amplify into a full-table transfer of encrypted tree blobs. Only the
+    (drive_id, refreshed_at) keys are fetched up front; a blob is pulled and
+    decrypted only when the shared decode LRU misses, and keys that failed to
+    decode are memoized so corrupt rows can't force decrypt work per request.
+
+    Rows not refreshed within PUBLIC_TITLE_MAX_AGE are skipped, bounding how
+    long a deleted/unshared doc's title stays publicly readable.
+    """
+    keys = (await db.execute(select(DriveTreeCache.drive_id, DriveTreeCache.refreshed_at))).all()
+    now = datetime.now(UTC)
+    for drive_id, refreshed_at in keys:
+        if now - refreshed_at > PUBLIC_TITLE_MAX_AGE:
+            continue
+        key = (drive_id, refreshed_at.isoformat())
+        tree = _decoded_get(key)
+        if tree is None:
+            if key in _undecodable_keys:
+                continue
+            tree = await _fetch_and_decode(db, key)  # sarj-noqa: SARJ001 — shared db session
+            if tree is None:
+                continue
+        name = next((f.name for f in tree.files if file_id in (f.id, f.shortcut_target_id)), None)
+        if name is not None:
+            return name
+    return None
+
+
+async def _fetch_and_decode(db: AsyncSession, key: tuple[str, str]) -> DriveTree | None:
+    blob = (
+        await db.execute(select(DriveTreeCache.tree).where(DriveTreeCache.drive_id == key[0]))
+    ).scalar_one_or_none()
+    if blob is None:
+        return None
+    try:
+        tree = await asyncio.to_thread(_decrypt_and_parse, blob)
+    except InvalidToken, ValidationError:
+        if len(_undecodable_keys) >= _UNDECODABLE_KEYS_MAX:
+            _undecodable_keys.clear()
+        _undecodable_keys.add(key)
+        return None
+    _decoded_put(key, tree)
+    return tree
 
 
 class SidebarCacheService(ABC):

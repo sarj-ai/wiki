@@ -518,6 +518,24 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "LinkMeta": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": ["name"],
+        "title": "LinkMeta",
+        "type": "object"
+      },
       "PreferencesRead": {
         "properties": {
           "hidden_workspace_ids": {
@@ -1726,6 +1744,47 @@
           }
         },
         "summary": "Health Check"
+      }
+    },
+    "/link-meta/{file_id}": {
+      "get": {
+        "description": "Doc name for link previews — public by design, no auth.\n\nServes ``og:title`` to unfurl crawlers (Slack, Teams, iMessage, …).\nNames come only from the already-populated sidebar cache: no Google\ncalls, no user credentials, and a miss returns ``name: null``. Doc ids\nare high-entropy Drive ids, so possessing an id is the deliberate\ncapability to read that doc's title — and nothing else.",
+        "operationId": "get_link_meta_link_meta__file_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkMeta"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Link Meta",
+        "tags": ["link-meta"]
       }
     },
     "/sidebar/drives": {
