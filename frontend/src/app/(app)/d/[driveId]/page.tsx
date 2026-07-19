@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 
 import { FilePageClient } from "@/components/wiki-document/file-page-client";
+import { getPublicDocName } from "@/lib/public-api";
 import { serverWikiApi } from "@/lib/server-api";
+
+function docMetadata(name: string): Metadata {
+  return { title: name, openGraph: { title: name, siteName: "Sarj Wiki" } };
+}
 
 export async function generateMetadata({
   params,
@@ -11,10 +16,13 @@ export async function generateMetadata({
   const { driveId } = await params;
   try {
     const file = await serverWikiApi.getFile(driveId);
-    return { title: file.name };
+    return docMetadata(file.name);
   } catch {
-    // getFile throws on 401/404 — fall back to the root layout's default title.
-    return {};
+    // getFile throws on 401/404. No session usually means a link-preview
+    // crawler — fall back to the public cache-backed name so unfurls can
+    // show the doc title; if that misses too, the root default title wins.
+    const name = await getPublicDocName(driveId);
+    return name === null ? {} : docMetadata(name);
   }
 }
 

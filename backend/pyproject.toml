@@ -146,6 +146,7 @@ source_modules = [
     "app.files.router",
     "app.sidebar.router",
     "app.drive.search_router",
+    "app.linkmeta.router",
 ]
 forbidden_modules = [
     "googleapiclient",
@@ -171,6 +172,7 @@ forbidden_modules = [
     "app.files.router",
     "app.sidebar.router",
     "app.drive.search_router",
+    "app.linkmeta.router",
 ]
 
 [tool.mypy]
