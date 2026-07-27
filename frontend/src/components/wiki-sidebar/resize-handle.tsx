@@ -88,11 +88,7 @@ export function SidebarResizeHandle() {
       />
 
       {dragging && (
-        <div
-          aria-hidden="true"
-          className="fixed inset-0 z-50 cursor-col-resize"
-          style={{ backgroundColor: "rgba(0,0,0,0.001)" }}
-        />
+        <div aria-hidden="true" className="fixed inset-0 z-50 cursor-col-resize bg-transparent" />
       )}
     </>
   );

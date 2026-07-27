@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import Depends, HTTPException, Request, status
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,15 +18,15 @@ def http_client_dep(request: Request) -> httpx.AsyncClient:
 
 
 def auth_service_dep(
-    db: AsyncSession = Depends(get_db),
-    http: httpx.AsyncClient = Depends(http_client_dep),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    http: Annotated[httpx.AsyncClient, Depends(http_client_dep)],
 ) -> AuthService:
     return GoogleAuthService(db=db, http_client=http)
 
 
 async def get_current_user(
     request: Request,
-    auth: AuthService = Depends(auth_service_dep),
+    auth: Annotated[AuthService, Depends(auth_service_dep)],
 ) -> User:
     token = _extract_token(request)
     try:

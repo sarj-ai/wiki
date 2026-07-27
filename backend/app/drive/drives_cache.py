@@ -68,7 +68,7 @@ def _spawn_revalidation(
         try:
             drives = await fetcher()
             _entries[user_id] = _Entry(drives=tuple(drives), fetched_at=time.monotonic())
-        except Exception:  # noqa: BLE001 — background; log and move on.
+        except Exception:  # ruff: ignore[blind-except] — background; log and move on.
             logger.opt(exception=True).warning(
                 "drives.list revalidation failed for user={}", user_id
             )

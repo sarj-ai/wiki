@@ -3,34 +3,16 @@
 export default function GlobalError({ reset }: { reset: () => void }) {
   return (
     <html lang="en">
-      <body
-        style={{
-          display: "flex",
-          minHeight: "100vh",
-          alignItems: "center",
-          justifyContent: "center",
-          fontFamily: "system-ui, sans-serif",
-          background: "#f6efe7",
-          color: "#231f20",
-          margin: 0,
-        }}
-      >
-        <div style={{ textAlign: "center", padding: "2rem" }}>
-          <h1 style={{ fontSize: "1.25rem", marginBottom: "0.5rem" }}>Something went wrong</h1>
-          <p style={{ marginBottom: "1.5rem", opacity: 0.7 }}>
+      <body className="bg-background text-foreground m-0 flex min-h-screen items-center justify-center font-sans">
+        <div className="p-8 text-center">
+          <h1 className="mb-2 text-xl">Something went wrong</h1>
+          <p className="mb-6 opacity-70">
             Sarj Wiki hit an unexpected error. Reloading usually fixes it.
           </p>
           <button
             type="button"
             onClick={reset}
-            style={{
-              padding: "0.5rem 1.25rem",
-              borderRadius: "0.5rem",
-              border: "1px solid #d5d5d5",
-              background: "#fff",
-              cursor: "pointer",
-              font: "inherit",
-            }}
+            className="bg-background cursor-pointer rounded-lg border px-5 py-2 font-[inherit]"
           >
             Try again
           </button>

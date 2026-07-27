@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from app.drive.schemas import DriveTree
-from app.sidebar.cache import _DECODE_CACHE_MAX, _decoded_get, _decoded_put, _decoded_trees
+from app.sidebar.cache import (
+    DECODE_CACHE_MAX,
+    clear_public_title_decode_caches,
+    decoded_tree_cache_size,
+    get_cached_decoded_tree,
+    put_cached_decoded_tree,
+)
 
 
 def _tree() -> DriveTree:
@@ -9,19 +15,19 @@ def _tree() -> DriveTree:
 
 
 def test_decoded_cache_hit_returns_same_object() -> None:
-    _decoded_trees.clear()
+    clear_public_title_decode_caches()
     tree = _tree()
-    _decoded_put(("drive-1", "2026-06-15T00:00:00+00:00"), tree)
-    assert _decoded_get(("drive-1", "2026-06-15T00:00:00+00:00")) is tree
-    assert _decoded_get(("drive-1", "other-timestamp")) is None
+    put_cached_decoded_tree(("drive-1", "2026-06-15T00:00:00+00:00"), tree)
+    assert get_cached_decoded_tree(("drive-1", "2026-06-15T00:00:00+00:00")) is tree
+    assert get_cached_decoded_tree(("drive-1", "other-timestamp")) is None
 
 
 def test_decoded_cache_evicts_oldest_beyond_max() -> None:
-    _decoded_trees.clear()
-    for i in range(_DECODE_CACHE_MAX + 5):
-        _decoded_put((f"drive-{i}", "ts"), _tree())
-    assert len(_decoded_trees) == _DECODE_CACHE_MAX
+    clear_public_title_decode_caches()
+    for i in range(DECODE_CACHE_MAX + 5):
+        put_cached_decoded_tree((f"drive-{i}", "ts"), _tree())
+    assert decoded_tree_cache_size() == DECODE_CACHE_MAX
     # the earliest inserted keys were evicted; the most recent survive
-    assert _decoded_get(("drive-0", "ts")) is None
-    assert _decoded_get((f"drive-{_DECODE_CACHE_MAX + 4}", "ts")) is not None
-    _decoded_trees.clear()
+    assert get_cached_decoded_tree(("drive-0", "ts")) is None
+    assert get_cached_decoded_tree((f"drive-{DECODE_CACHE_MAX + 4}", "ts")) is not None
+    clear_public_title_decode_caches()

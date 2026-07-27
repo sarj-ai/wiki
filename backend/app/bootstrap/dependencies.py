@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,10 +18,10 @@ from app.sidebar.dependencies import sidebar_cache_service_dep
 
 
 def bootstrap_service_dep(
-    drive: DriveService = Depends(drive_service_dep),
-    extras: ExtrasService = Depends(extras_service_dep),
-    cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    drive: Annotated[DriveService, Depends(drive_service_dep)],
+    extras: Annotated[ExtrasService, Depends(extras_service_dep)],
+    cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
 ) -> BootstrapService:
     return AggregatingBootstrapService(drive=drive, extras=extras, cache=cache, db=db, user=user)

@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Internal knowledge base API for Sarj"
 requires-python = ">=3.14"
 dependencies = [
-    "fastapi>=0.136.3",
+    "fastapi>=0.140.1",
     "uvicorn[standard]>=0.49.0",
     "sqlalchemy[asyncio]>=2.0.50",
     "asyncpg>=0.31.0",
@@ -12,11 +12,11 @@ dependencies = [
     "cryptography>=48.0.1",
     "httpx>=0.28.1",
     "google-api-python-client>=2.197.0",
-    "google-auth>=2.53.0",
+    "google-auth>=2.56.2",
     "google-auth-httplib2>=0.2.0",
     "google-auth-oauthlib>=1.4.0",
-    "httplib2>=0.22.0",
-    "pydantic-settings>=2.14.1",
+    "httplib2>=0.32.0",
+    "pydantic-settings>=2.14.2",
     "pyjwt>=2.13.0",
     "loguru>=0.7.3",
     "slowapi>=0.1.9",
@@ -27,7 +27,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.16",
+    "ruff>=0.16.0",
     "mypy>=2.1.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.4.0",
@@ -36,9 +36,10 @@ dev = [
     "types-httplib2>=0.22.0",
     "vulture>=2.16",
     "pyright>=1.1.410",
+    "basedpyright>=1.39.0",
     "ty>=0.0.47",
     "google-api-python-client-stubs>=1.37.0",
-    "sarj-lint-configs>=0.1.0",
+    "sarj-lint-configs>=0.8.1",
     "import-linter>=2.11",
     "pip-audit>=2.10.0",
 ]
@@ -51,67 +52,70 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.ruff]
+extend = ".ruff-strict.toml"
 target-version = "py314"
 line-length = 100
 extend-exclude = [
     "alembic/versions",
 ]
 
-[tool.ruff.lint]
-select = [
-    "E",     # pycodestyle errors
-    "W",     # pycodestyle warnings
-    "F",     # pyflakes
-    "I",     # isort
-    "B",     # bugbear
-    "C4",    # comprehensions
-    "SIM",   # simplify
-    "UP",    # pyupgrade
-    "N",     # pep8-naming
-    "RUF",   # ruff-specific
-    "S",     # bandit (security)
-    "ARG",   # unused arguments
-    "PTH",   # pathlib
-    "RET",   # return
-    "PIE",   # misc
-    "TID",   # tidy imports
-    "ASYNC",
-    "FA",    # future annotations
-    # New (Wave 1)
-    "DTZ",   # datetime — naive datetime detection (DB / JWT timezone bugs)
-    "LOG",   # flake8-logging — deprecated logger.warn etc.
-    "G",     # logging-format — enforces logger.info("msg with {arg}", arg=value)
-    "T20",   # print — we use loguru, never print()
-    "BLE",   # blind-except — bare except: swallows AuthError / Drive failures
-    "PGH",   # pygrep — # type: ignore without code
-    "A",     # builtins — flag id/type/list shadowing
-    "TC",    # type-checking — move type-only imports into TYPE_CHECKING
-    "PT",    # pytest-style
-    "RSE",   # raise — raise Foo() with no args
-    "FURB",  # refurb — Python 3.14 modernizations
-    "T10",   # debugger statements
-    "TRY400",
-    "TRY401",
-    "PERF402",
-    "FBT001",
-    "FBT002",
-    "FBT003",
-]
-ignore = [
-    "E501",    # line too long — formatter handles wrapping
-    "RET504",  # clarity often wins over terseness for assign-then-return
-    "S104",    # bind-all-interfaces is intentional for containerized app
-    "B008",    # FastAPI uses Depends() in defaults
-    "A003",    # SQLAlchemy model attrs (id, type) shadow builtins by design
-    "TC001",   # FastAPI/Pydantic resolve annotations at runtime
-    "TC002",
-    "TC003",
-    "PT011",   # broad pytest.raises is sometimes warranted
-]
-
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "ARG", "PLR2004", "SLF001"]
 "alembic/env.py" = ["ALL"]
+"app/**" = [
+    # FastAPI, Pydantic, and SQLAlchemy evaluate annotations for dependency
+    # injection, schema generation, and ORM mapping; type-only rewrites are not
+    # safe as a blanket rule here under Python 3.14's annotation semantics.
+    "typing-only-first-party-import",
+    "typing-only-third-party-import",
+    "typing-only-standard-library-import",
+]
+"app/auth/service.py" = [
+    "magic-value-comparison",
+    "no-self-use",
+    "too-many-statements-in-try-clause",
+]
+"app/database.py" = ["any-type", "global-statement", "yield-in-context-manager-in-async-generator"]
+"app/drive/retry.py" = ["any-type", "magic-value-comparison"]
+"app/drive/service.py" = ["any-type", "magic-value-comparison"]
+"app/drive/snippets.py" = ["magic-value-comparison"]
+"app/files/errors.py" = ["magic-value-comparison"]
+"app/files/dependencies.py" = ["docstring-missing-returns"]
+"app/files/router.py" = ["too-many-positional-arguments"]
+"app/files/service.py" = ["any-type", "magic-value-comparison"]
+"app/linkmeta/router.py" = ["docstring-missing-returns"]
+"app/logging_config.py" = ["global-statement"]
+"app/main.py" = ["unused-async"]
+"app/sidebar/cache.py" = ["docstring-missing-returns", "no-self-use"]
+"tests/**" = [
+    "any-type",
+    "assert",
+    "unused-method-argument",
+    "boolean-type-hint-positional-argument",
+    "boolean-default-value-positional-argument",
+    "boolean-positional-value-in-call",
+    "float-equality-comparison",
+    "magic-value-comparison",
+    "private-member-access",
+    "suspicious-subprocess-import",
+    "subprocess-without-shell-equals-true",
+    "start-process-with-partial-path",
+    "pytest-fixture-autouse",
+    "no-self-use",
+    "unused-async",
+    "typing-only-first-party-import",
+    "typing-only-third-party-import",
+    "typing-only-standard-library-import",
+    "import-outside-top-level",
+]
+"test_*.py" = ["missing-return-type-undocumented-public-function", "missing-return-type-private-function"]
+"scripts/**" = [
+    "print",
+    "hardcoded-password-string",
+    "raise-vanilla-class",
+    "raise-vanilla-args",
+    "blind-except",
+    "import-outside-top-level",
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
@@ -211,33 +215,6 @@ ignore_missing_imports = true
 # as Any; pyright sees these as fully typed, so we defer to pyright here.
 disallow_any_unimported = false
 disallow_untyped_calls = false
-
-[tool.pyright]
-include = ["app", "tests"]
-exclude = ["alembic/versions", "**/__pycache__"]
-pythonVersion = "3.14"
-typeCheckingMode = "strict"
-reportMissingTypeStubs = "warning"
-reportUnknownMemberType = "warning"
-reportUnknownArgumentType = "warning"
-reportUnknownVariableType = "warning"
-# The Google Drive API stubs declare every field as NotRequired because Drive
-# only echoes back fields named in the `fields=` query param. Our call sites
-# always pass a `_FIELDS` string covering id/name/mimeType, so the strict
-# NotRequired rule produces noise without catching real bugs.
-reportTypedDictNotRequiredAccess = "none"
-# google-api-python-client-stubs ships only .pyi stubs for the `_apis.drive`
-# modules — pyright warns that the source can't be resolved. That's expected;
-# the stubs are the authoritative type definitions.
-reportMissingModuleSource = "none"
-# Bumps from "none"/"warning" to "error" (Wave 1):
-# reportUnnecessaryTypeIgnoreComment deliberately off — pyright recursively
-# flags mypy `# type: ignore` comments as unnecessary even when mypy needs
-# them (e.g. google.oauth2.Credentials). mypy strict's warn_unused_ignores
-# already covers the same intent for mypy-style ignores.
-reportImplicitOverride = "error"              # fits service-layer ABC pattern
-reportImplicitStringConcatenation = "error"   # catches missing commas in lists
-reportPropertyTypeMismatch = "error"
 
 [tool.ty.src]
 include = ["app", "tests"]

@@ -59,7 +59,8 @@ class GoogleFilesService(FilesService):
     @override
     async def create(self, parent_folder_id: str, name: str, mime_type: str) -> FileResponse:
         if mime_type not in NAVIGATOR_SUPPORTED_MIME_TYPES:
-            raise UnsupportedMimeError(f"Unsupported mimeType: {mime_type}")
+            msg = f"Unsupported mimeType: {mime_type}"
+            raise UnsupportedMimeError(msg)
         result = await asyncio.to_thread(self._create_sync, parent_folder_id, name, mime_type)
         await self._ensure_in_member_drive(result.drive_id)
         return result
@@ -73,14 +74,17 @@ class GoogleFilesService(FilesService):
     @override
     async def rename(self, file_id: str, new_name: str) -> FileResponse:
         await self.get(file_id)
-        return await asyncio.to_thread(self._rename_sync, file_id, new_name)
+        return await asyncio.to_thread(self._rename_sync, file_id=file_id, new_name=new_name)
 
     @override
     async def move(self, file_id: str, new_parent_folder_id: str) -> MoveResult:
         source = await self.get(file_id)
         try:
             moved = await asyncio.to_thread(
-                self._move_sync, file_id, new_parent_folder_id, source.parent_folder_id
+                self._move_sync,
+                file_id=file_id,
+                new_parent_folder_id=new_parent_folder_id,
+                prev_parent_folder_id=source.parent_folder_id,
             )
         except DriveUpstreamError as exc:
             if exc.http_status == 403:
@@ -99,10 +103,9 @@ class GoogleFilesService(FilesService):
     async def copy(self, file_id: str, new_name: str) -> FileResponse:
         source = await self.get(file_id)
         if source.mime_type == MIME_FOLDER:
-            raise FolderCopyNotSupportedError(
-                "Folders can't be duplicated — copy individual files instead"
-            )
-        result = await asyncio.to_thread(self._copy_sync, file_id, new_name)
+            msg = "Folders can't be duplicated — copy individual files instead"
+            raise FolderCopyNotSupportedError(msg)
+        result = await asyncio.to_thread(self._copy_sync, file_id=file_id, new_name=new_name)
         await self._ensure_in_member_drive(result.drive_id)
         return result
 
@@ -114,10 +117,12 @@ class GoogleFilesService(FilesService):
 
     async def _ensure_in_member_drive(self, drive_id: str | None) -> None:
         if drive_id is None:
-            raise FileNotInScopeError("File not available in Sarj Wiki")
+            msg = "File not available in Sarj Wiki"
+            raise FileNotInScopeError(msg)
         drives = await self._drive.list_drives()
         if not any(d.id == drive_id for d in drives):
-            raise FileNotInScopeError("File not available in Sarj Wiki")
+            msg = "File not available in Sarj Wiki"
+            raise FileNotInScopeError(msg)
 
     def _create_sync(self, parent_folder_id: str, name: str, mime_type: str) -> FileResponse:
         client = self._client()
@@ -136,7 +141,7 @@ class GoogleFilesService(FilesService):
             )
         return _to_response(raw)
 
-    def _rename_sync(self, file_id: str, new_name: str) -> FileResponse:
+    def _rename_sync(self, *, file_id: str, new_name: str) -> FileResponse:
         client = self._client()
         body: File = {"name": new_name}
         with _translated_drive_errors():
@@ -148,7 +153,7 @@ class GoogleFilesService(FilesService):
         return _to_response(raw)
 
     def _move_sync(
-        self, file_id: str, new_parent_folder_id: str, prev_parent_folder_id: str | None
+        self, *, file_id: str, new_parent_folder_id: str, prev_parent_folder_id: str | None
     ) -> FileResponse:
         client = self._client()
         with _translated_drive_errors():
@@ -168,7 +173,7 @@ class GoogleFilesService(FilesService):
             )
         return _to_response(raw)
 
-    def _copy_sync(self, file_id: str, new_name: str) -> FileResponse:
+    def _copy_sync(self, *, file_id: str, new_name: str) -> FileResponse:
         client = self._client()
         body: File = {"name": new_name}
         with _translated_drive_errors():

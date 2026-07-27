@@ -49,8 +49,10 @@ def decode_token(token: str) -> TokenPayload:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY.get_secret_value(), algorithms=[ALGORITHM])
     except jwt.PyJWTError as e:
-        raise InvalidTokenError("Invalid or expired token") from e
+        msg = "Invalid or expired token"
+        raise InvalidTokenError(msg) from e
     try:
         return TokenPayload.model_validate(payload)
     except ValidationError as e:
-        raise InvalidTokenError("Invalid token: malformed claims") from e
+        msg = "Invalid token: malformed claims"
+        raise InvalidTokenError(msg) from e

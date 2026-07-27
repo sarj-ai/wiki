@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends
 
 from app.bootstrap.dependencies import bootstrap_service_dep
@@ -11,5 +13,7 @@ router = APIRouter(tags=["bootstrap"])
 
 
 @router.get("/bootstrap")
-async def bootstrap(svc: BootstrapService = Depends(bootstrap_service_dep)) -> BootstrapRead:
+async def bootstrap(
+    svc: Annotated[BootstrapService, Depends(bootstrap_service_dep)],
+) -> BootstrapRead:
     return await svc.load()

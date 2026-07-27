@@ -70,7 +70,8 @@ class _FakeFiles:
                 drive_id=MEMBER_DRIVE,
                 modified_time=None,
             )
-        raise FileNotInScopeError("File not available in Sarj Wiki")
+        msg = "File not available in Sarj Wiki"
+        raise FileNotInScopeError(msg)
 
 
 def _tree(drive_id: str) -> DriveTree:

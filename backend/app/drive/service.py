@@ -159,8 +159,7 @@ class GoogleDriveService(DriveService):
         results = await asyncio.gather(*tasks)
         merged: list[SearchResult] = []
         for drive, per_drive in zip(drives, results, strict=True):
-            for hit in per_drive:
-                merged.append(hit.model_copy(update={"drive_name": drive.name}))
+            merged.extend(hit.model_copy(update={"drive_name": drive.name}) for hit in per_drive)
         return merged
 
     @override
@@ -258,7 +257,9 @@ class GoogleDriveService(DriveService):
             try:
                 _execute_batch_with_retry(batch)
             except HttpError:
-                logger.exception("shortcut probe batch failed user={}", self._user.id)
+                logger.exception(
+                    "shortcut probe batch failed user={user_id}", user_id=self._user.id
+                )
                 for tid in chunk:
                     probes.setdefault(tid, None)
         return probes
@@ -273,9 +274,9 @@ class GoogleDriveService(DriveService):
             if status == 403:
                 return ShortcutProbe(accessible=False)
             logger.opt(exception=exception).warning(
-                "shortcut target probe failed user={} target={}",
-                self._user.id,
-                target_id,
+                "shortcut target probe failed user={user_id} target={target_id}",
+                user_id=self._user.id,
+                target_id=target_id,
             )
             return None
         probe = GoogleFileProbe.model_validate(response)
@@ -297,7 +298,7 @@ class GoogleDriveService(DriveService):
             try:
                 resp = execute_with_retry(client.drives().list(**params))
             except HttpError:
-                logger.exception("drives.list failed for user={}", self._user.id)
+                logger.exception("drives.list failed for user={user_id}", user_id=self._user.id)
                 return out
             for d in resp.get("drives", []):
                 try:
@@ -335,9 +336,9 @@ class GoogleDriveService(DriveService):
                 resp = execute_with_retry(client.files().list(**params))
             except HttpError:
                 logger.exception(
-                    "walk_drive_folders failed user={} drive={}",
-                    self._user.id,
-                    drive_id,
+                    "walk_drive_folders failed user={user_id} drive={drive_id}",
+                    user_id=self._user.id,
+                    drive_id=drive_id,
                 )
                 return out
             for raw in resp.get("files", []):
@@ -374,9 +375,9 @@ class GoogleDriveService(DriveService):
                 resp = execute_with_retry(client.files().list(**params))
             except HttpError:
                 logger.exception(
-                    "list_folder_children failed user={} folder={}",
-                    self._user.id,
-                    folder_id,
+                    "list_folder_children failed user={user_id} folder={folder_id}",
+                    user_id=self._user.id,
+                    folder_id=folder_id,
                 )
                 return out
             for raw in resp.get("files", []):
@@ -428,9 +429,9 @@ class GoogleDriveService(DriveService):
                 resp = execute_with_retry(client.files().list(**params))
             except HttpError:
                 logger.exception(
-                    "list_drive_files failed user={} drive={}",
-                    self._user.id,
-                    drive_id,
+                    "list_drive_files failed user={user_id} drive={drive_id}",
+                    user_id=self._user.id,
+                    drive_id=drive_id,
                 )
                 return out, False
             for raw in resp.get("files", []):
@@ -450,9 +451,9 @@ class GoogleDriveService(DriveService):
             pages += 1
             if pages >= _MAX_DRIVE_FILE_PAGES:
                 logger.warning(
-                    "drive file listing truncated at {} pages drive={}",
-                    pages,
-                    drive_id,
+                    "drive file listing truncated at {pages} pages drive={drive_id}",
+                    pages=pages,
+                    drive_id=drive_id,
                 )
                 return out, False
 
@@ -476,10 +477,10 @@ class GoogleDriveService(DriveService):
             resp = execute_with_retry(client.files().list(**params))
         except HttpError:
             logger.exception(
-                "search_drive failed user={} drive={} q={!r}",
-                self._user.id,
-                drive_id,
-                query,
+                "search_drive failed user={user_id} drive={drive_id} q={query!r}",
+                user_id=self._user.id,
+                drive_id=drive_id,
+                query=query,
             )
             return []
         return [_search_result_from_api(raw, drive_id) for raw in resp.get("files", [])]
@@ -502,7 +503,11 @@ class GoogleDriveService(DriveService):
         try:
             resp = execute_with_retry(client.files().list(**params))
         except HttpError:
-            logger.exception("all-drives search failed user={} q={!r}", self._user.id, query)
+            logger.exception(
+                "all-drives search failed user={user_id} q={query!r}",
+                user_id=self._user.id,
+                query=query,
+            )
             return None
         if resp.get("incompleteResults"):
             return None
@@ -518,7 +523,7 @@ class GoogleDriveService(DriveService):
                     )
                 )
             except HttpError:
-                logger.exception("snippet metadata fetch failed file={}", file_id)
+                logger.exception("snippet metadata fetch failed file={file_id}", file_id=file_id)
                 return SnippetResult(file_id=file_id, mime_type="", snippet=None, match_term=None)
             mime_type = GoogleFileMetadata.model_validate(meta).mime_type
 
@@ -530,7 +535,7 @@ class GoogleDriveService(DriveService):
         try:
             raw = execute_with_retry(client.files().export(fileId=file_id, mimeType="text/plain"))
         except HttpError:
-            logger.exception("snippet export failed file={}", file_id)
+            logger.exception("snippet export failed file={file_id}", file_id=file_id)
             return SnippetResult(
                 file_id=file_id, mime_type=mime_type, snippet=None, match_term=None
             )
@@ -564,14 +569,15 @@ class GoogleDriveService(DriveService):
             http=httplib2.Http(timeout=_DRIVE_HTTP_TIMEOUT_SECONDS),
         )
         built = discovery.build_from_document(  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
-            _drive_discovery_document(), http=authed_http
+            drive_discovery_document(), http=authed_http
         )
         return cast("DriveResource", built)
 
     @staticmethod
     def _build_credentials(user: User) -> Credentials:
         if user.encrypted_access_token is None:
-            raise ValueError(f"User {user.id} has no encrypted_access_token")
+            msg = f"User {user.id} has no encrypted_access_token"
+            raise ValueError(msg)
         access_token = decrypt_text(user.encrypted_access_token)
         refresh_token = (
             decrypt_text(user.encrypted_refresh_token) if user.encrypted_refresh_token else None
@@ -579,7 +585,7 @@ class GoogleDriveService(DriveService):
         return Credentials(  # type: ignore[no-untyped-call]
             token=access_token,
             refresh_token=refresh_token,
-            token_uri="https://oauth2.googleapis.com/token",  # noqa: S106 — public OAuth endpoint
+            token_uri="https://oauth2.googleapis.com/token",
             client_id=settings.GOOGLE_CLIENT_ID,
             client_secret=settings.GOOGLE_CLIENT_SECRET.get_secret_value(),
         )
@@ -595,10 +601,11 @@ def reuse_drive_client(user: User, clients: dict[int, DriveResource]) -> DriveRe
 
 
 @cache
-def _drive_discovery_document() -> dict[str, Any]:
+def drive_discovery_document() -> dict[str, Any]:
     content = get_static_doc("drive", "v3")  # type: ignore[no-untyped-call]
     if content is None:
-        raise RuntimeError("Bundled Drive v3 discovery document not found")
+        msg = "Bundled Drive v3 discovery document not found"
+        raise RuntimeError(msg)
     return cast("dict[str, Any]", json.loads(content))
 
 

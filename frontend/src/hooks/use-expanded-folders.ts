@@ -33,7 +33,10 @@ const useFolderStore = create<FolderExpansionState>()(
     }),
     {
       name: "wiki-expanded-folders",
-      storage: legacyAwareStorage("expanded"),
+      storage: legacyAwareStorage("expanded", (map, version) => ({
+        state: { expanded: map },
+        version,
+      })),
     },
   ),
 );
@@ -55,20 +58,26 @@ const useDriveCollapseStore = create<DriveCollapseState>()(
     }),
     {
       name: "wiki-collapsed-drives",
-      storage: legacyAwareStorage("collapsed"),
+      storage: legacyAwareStorage("collapsed", (map, version) => ({
+        state: { collapsed: map },
+        version,
+      })),
     },
   ),
 );
 
 let pendingReveal: string | null = null;
 
-function legacyAwareStorage<S>(stateKey: "expanded" | "collapsed"): {
+function legacyAwareStorage<S>(
+  stateKey: "expanded" | "collapsed",
+  toValue: (map: Record<string, true>, version: number) => StorageValue<S>,
+): {
   getItem: (name: string) => StorageValue<S> | null;
   setItem: (name: string, value: StorageValue<S>) => void;
   removeItem: (name: string) => void;
 } {
   return {
-    getItem: (name) => {
+    getItem: (name: string) => {
       if (typeof window === "undefined") return null;
       const raw = window.localStorage.getItem(name);
       if (!raw) return null;
@@ -79,20 +88,20 @@ function legacyAwareStorage<S>(stateKey: "expanded" | "collapsed"): {
           for (const id of parsed) {
             if (typeof id === "string") map[id] = true;
           }
-          return { state: { [stateKey]: map } as S, version: 0 };
+          return toValue(map, 0);
         }
         const validated = ZPersistedExpansion.safeParse(parsed);
         if (!validated.success) return null;
-        return validated.data as unknown as StorageValue<S>;
+        return toValue(validated.data.state[stateKey] ?? {}, validated.data.version);
       } catch {
         return null;
       }
     },
-    setItem: (name, value) => {
+    setItem: (name: string, value: StorageValue<S>) => {
       if (typeof window === "undefined") return;
       window.localStorage.setItem(name, JSON.stringify(value));
     },
-    removeItem: (name) => {
+    removeItem: (name: string) => {
       if (typeof window === "undefined") return;
       window.localStorage.removeItem(name);
     },

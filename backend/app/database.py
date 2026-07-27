@@ -56,7 +56,8 @@ async def _connect_via_connector() -> Any:
     instance = settings.DB_INSTANCE_CONNECTION_NAME
     iam_user = settings.DB_IAM_USER
     if instance is None or iam_user is None:  # pragma: no cover — config validator forbids this
-        raise RuntimeError("Connector path requires DB_INSTANCE_CONNECTION_NAME and DB_IAM_USER")
+        msg = "Connector path requires DB_INSTANCE_CONNECTION_NAME and DB_IAM_USER"
+        raise RuntimeError(msg)
     global _connector
     connector = _connector
     if connector is None:

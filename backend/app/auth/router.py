@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import secrets
 import time
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -62,7 +62,7 @@ async def callback(
     request: Request,
     code: str,
     state: str,
-    auth: AuthService = Depends(auth_service_dep),
+    auth: Annotated[AuthService, Depends(auth_service_dep)],
 ) -> RedirectResponse:
     expected_state = request.cookies.get("oauth_state")
     try:
@@ -70,7 +70,7 @@ async def callback(
     except AuthError as e:
         return _error_redirect(e.redirect_key)
     redirect = RedirectResponse(url=settings.frontend_origin, status_code=status.HTTP_302_FOUND)
-    _set_auth_cookies(redirect, session)
+    set_auth_cookies(redirect, session)
     redirect.delete_cookie(key="oauth_state", path="/")
     return redirect
 
@@ -78,18 +78,18 @@ async def callback(
 @router.post("/logout")
 async def logout(
     request: Request,
-    auth: AuthService = Depends(auth_service_dep),
+    auth: Annotated[AuthService, Depends(auth_service_dep)],
 ) -> JSONResponse:
     await auth.revoke_session(request.cookies.get("access_token"))
     response = JSONResponse(content={"message": "logged out"})
-    _clear_auth_cookies(response)
+    clear_auth_cookies(response)
     return response
 
 
 @router.post("/refresh")
 async def refresh(
     request: Request,
-    auth: AuthService = Depends(auth_service_dep),
+    auth: Annotated[AuthService, Depends(auth_service_dep)],
 ) -> JSONResponse:
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
@@ -105,16 +105,16 @@ async def refresh(
             detail=str(e) or "Token has been revoked",
         ) from e
     response = JSONResponse(content={"message": "refreshed"})
-    _set_auth_cookies(response, session)
+    set_auth_cookies(response, session)
     return response
 
 
 @router.get("/me")
-async def me(current_user: User = Depends(get_current_user)) -> UserProfile:
+async def me(current_user: Annotated[User, Depends(get_current_user)]) -> UserProfile:
     return UserProfile.from_user(current_user)
 
 
-def _set_auth_cookies(response: Response, session: AuthSession) -> None:
+def set_auth_cookies(response: Response, session: AuthSession) -> None:
     domain = settings.COOKIE_DOMAIN
     if domain is not None:
         response.delete_cookie(
@@ -158,7 +158,7 @@ def _set_auth_cookies(response: Response, session: AuthSession) -> None:
     )
 
 
-def _clear_auth_cookies(response: Response) -> None:
+def clear_auth_cookies(response: Response) -> None:
     domains: list[str | None] = [None]
     if settings.COOKIE_DOMAIN is not None:
         domains.append(settings.COOKIE_DOMAIN)

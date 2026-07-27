@@ -35,7 +35,7 @@ def store(user_id: str, probes: dict[str, ShortcutProbe | None]) -> None:
         _prune_expired()
     now = time.monotonic()
     for target_id, probe in probes.items():
-        _entries[(user_id, target_id)] = _Entry(probe=probe, fetched_at=now)
+        _entries[user_id, target_id] = _Entry(probe=probe, fetched_at=now)
 
 
 def clear() -> None:

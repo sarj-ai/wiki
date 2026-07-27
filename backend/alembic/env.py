@@ -1,5 +1,4 @@
 import asyncio
-from logging.config import fileConfig
 
 from alembic import context
 
@@ -8,8 +7,6 @@ from app.database import Base, build_engine, close_connector
 from app.models import wiki, user  # noqa: F401 — side-effect: register models on Base
 
 config = context.config
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
 

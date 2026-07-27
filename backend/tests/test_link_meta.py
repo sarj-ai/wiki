@@ -23,8 +23,7 @@ from app.main import app
 from app.models.wiki import DriveTreeCache
 from app.sidebar.cache import (
     PUBLIC_TITLE_MAX_AGE,
-    _decoded_trees,
-    _undecodable_keys,
+    clear_public_title_decode_caches,
     find_cached_file_name,
 )
 
@@ -93,11 +92,9 @@ def _db(rows: list[DriveTreeCache]) -> AsyncSession:
 
 @pytest.fixture(autouse=True)
 def _clear_lookup_state() -> Iterator[None]:
-    _decoded_trees.clear()
-    _undecodable_keys.clear()
+    clear_public_title_decode_caches()
     yield
-    _decoded_trees.clear()
-    _undecodable_keys.clear()
+    clear_public_title_decode_caches()
 
 
 async def test_finds_name_across_drives() -> None:

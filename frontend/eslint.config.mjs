@@ -125,22 +125,11 @@ const eslintConfig = defineConfig([
     },
   },
   // Rule set sourced from the plugin so new @sarj rules are picked up
-  // automatically; "warn" is the non-breaking floor, with the currently-clean
-  // rules promoted to error below.
+  // automatically. Every rule is an error; scoped overrides below handle
+  // framework-owned files and this repo's env source of truth.
   {
     plugins: { "@sarj": sarj },
-    rules: Object.fromEntries(Object.keys(sarj.rules).map((name) => [`@sarj/${name}`, "warn"])),
-  },
-  {
-    rules: {
-      "@sarj/no-client-side-data-fetching": "error",
-      "@sarj/no-enum": "error",
-      "@sarj/prefer-schema-for-api-payload": "error",
-      "@sarj/prefer-server-actions": "error",
-      "@sarj/require-assert-never": "error",
-      "@sarj/require-zod-form-validation": "error",
-      "@sarj/zod-naming-convention": "error",
-    },
+    rules: Object.fromEntries(Object.keys(sarj.rules).map((name) => [`@sarj/${name}`, "error"])),
   },
   // Test-file-only configs.
   {

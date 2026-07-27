@@ -19,9 +19,7 @@
 # manage SCC at the org level via Terraform, add a
 # google_scc_v2_organization_source resource here.
 #
-# ---------------------------------------------------------------------------
 # Branch protection for ``main``
-# ---------------------------------------------------------------------------
 #
 # Managed via the GitHub API rather than Terraform because the
 # hashicorp/github provider requires a PAT with repo-admin scope

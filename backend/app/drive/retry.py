@@ -31,7 +31,7 @@ def _is_rate_limit_error(exc: BaseException) -> bool:
     return isinstance(exc, HttpError) and exc.resp.status == 429
 
 
-def _retry_after_seconds(exc: BaseException | None) -> float | None:
+def retry_after_seconds(exc: BaseException | None) -> float | None:
     if not isinstance(exc, HttpError):
         return None
     header_get = getattr(exc.resp, "get", None)
@@ -52,7 +52,7 @@ class _WaitRetryAfter(wait_base):
     @override
     def __call__(self, retry_state: RetryCallState) -> float:
         exc = retry_state.outcome.exception() if retry_state.outcome else None
-        suggested = _retry_after_seconds(exc)
+        suggested = retry_after_seconds(exc)
         if suggested is not None:
             return suggested
         return self._fallback(retry_state)
