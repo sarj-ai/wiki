@@ -20,20 +20,20 @@ concurrency:
 
 jobs:
   trivy-config:
-    name: Trivy IaC scan (report-only)
+    name: Trivy IaC scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
-      - name: Trivy config scan (report HIGH+CRITICAL)
+      - name: Trivy config scan (gate HIGH+CRITICAL)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: terraform
           severity: HIGH,CRITICAL
-          exit-code: "0"
+          exit-code: "1"
           format: table
           output: trivy-report.txt
 
@@ -46,12 +46,3 @@ jobs:
             cat trivy-report.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Trivy config scan (gate CRITICAL)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: config
-          scan-ref: terraform
-          severity: CRITICAL
-          exit-code: "1"
-          format: table

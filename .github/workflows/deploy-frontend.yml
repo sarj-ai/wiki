@@ -34,8 +34,36 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+
+      - name: Run pre-commit custom standards
+        working-directory: .
+        run: uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Prettier check
+        run: npm run format:check
+
+      - name: TypeScript check
+        run: npm run typecheck
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Knip
+        run: npm run knip
+
+      - name: Type coverage
+        run: npm run type-coverage
+
+      - name: npm audit
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: Run vitest
+        run: npm test
 
       - name: Build for Cloudflare Workers
         run: npm run build:worker

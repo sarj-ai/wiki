@@ -36,20 +36,6 @@ resource "google_monitoring_uptime_check_config" "backend_health" {
   depends_on = [google_project_service.apis["monitoring.googleapis.com"]]
 }
 
-# Alert: backend is down
-#
-# Temporarily commented out — GCP rejects the filter+aggregation combo
-# with "filter does not specify a valid combination of metric and
-# monitored resource descriptors." Likely needs ``REDUCE_COUNT_TRUE``
-# + ``COMPARISON_LT`` instead, or the newer ``uptime_check`` resource
-# type. The uptime check itself (above) is still active and visible
-# in Cloud Monitoring; this is only the auto-alert wiring. Re-add
-# once the canonical filter shape is verified against a live check.
-#
-# resource "google_monitoring_alert_policy" "uptime_failure" {
-#   ...
-# }
-
 # Alert: high 5xx error rate
 resource "google_monitoring_alert_policy" "backend_errors" {
   display_name = "Backend 5xx Errors"

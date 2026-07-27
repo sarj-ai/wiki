@@ -674,7 +674,8 @@ async def test_snippet_with_known_mime_skips_metadata_get(
 
     class _FakeFiles:
         def get(self, **_: Any) -> _FakeFiles:
-            raise AssertionError("metadata get must be skipped when mime_type is supplied")
+            msg = "metadata get must be skipped when mime_type is supplied"
+            raise AssertionError(msg)
 
         def export(self, **kwargs: Any) -> _FakeFiles:
             captured.append({"_op": "export", **kwargs})
@@ -700,7 +701,8 @@ async def test_snippet_with_non_exportable_mime_makes_no_drive_calls(
 ) -> None:
     class _ExplodingClient:
         def files(self) -> Any:
-            raise AssertionError("no Drive call expected for non-exportable types")
+            msg = "no Drive call expected for non-exportable types"
+            raise AssertionError(msg)
 
     patch_drive_client(_ExplodingClient())
     result = await _svc().fetch_snippet("f1", "match", mime_type="application/pdf")
@@ -709,11 +711,11 @@ async def test_snippet_with_non_exportable_mime_makes_no_drive_calls(
 
 
 def test_discovery_document_parsed_once() -> None:
-    from app.drive.service import _drive_discovery_document
+    from app.drive.service import drive_discovery_document
 
-    _drive_discovery_document.cache_clear()
-    first = _drive_discovery_document()
-    second = _drive_discovery_document()
+    drive_discovery_document.cache_clear()
+    first = drive_discovery_document()
+    second = drive_discovery_document()
     assert first is second
 
 

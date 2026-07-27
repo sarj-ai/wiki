@@ -68,7 +68,8 @@ async def test_exception_propagates_and_clears_entry() -> None:
     sf = Singleflight()
 
     async def boom() -> str:
-        raise RuntimeError("boom")
+        msg = "boom"
+        raise RuntimeError(msg)
 
     with pytest.raises(RuntimeError, match="boom"):
         await sf.do("k", boom)
@@ -87,7 +88,8 @@ async def test_exception_propagates_to_concurrent_waiters() -> None:
     async def boom() -> str:
         started.set()
         await release.wait()
-        raise RuntimeError("boom")
+        msg = "boom"
+        raise RuntimeError(msg)
 
     task_a = asyncio.create_task(sf.do("k", boom))
     await started.wait()

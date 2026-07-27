@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +22,7 @@ _CACHE_CONTROL = "private, max-age=60, stale-while-revalidate=600"
 @router.get("/drives")
 async def get_drives(
     response: Response,
-    drive: DriveService = Depends(drive_service_dep),
+    drive: Annotated[DriveService, Depends(drive_service_dep)],
 ) -> list[DriveSummary]:
     response.headers["Cache-Control"] = _CACHE_CONTROL
     return await drive.list_drives()
@@ -36,8 +37,8 @@ async def get_drive_folders(
     drive_id: str,
     request: Request,
     response: Response,
-    db: AsyncSession = Depends(get_db),
-    cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
 ) -> DriveTree | Response:
     cached = await cache.get_drive_tree(db, drive_id)
     etag = _tree_etag(drive_id, cached.refreshed_at)
@@ -57,8 +58,8 @@ async def get_drive_folders(
 @router.post("/drives/{drive_id}/refresh", dependencies=[Depends(require_member_drive)])
 async def refresh_drive_folders(
     drive_id: str,
-    db: AsyncSession = Depends(get_db),
-    cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
 ) -> DriveTree:
     return await cache.refresh_drive(db, drive_id)
 
@@ -67,7 +68,7 @@ async def refresh_drive_folders(
 async def get_folder_files(
     folder_id: str,
     response: Response,
-    cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
+    cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
 ) -> list[DriveNode]:
     response.headers["Cache-Control"] = _CACHE_CONTROL
     return await cache.get_folder_children(folder_id)

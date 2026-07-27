@@ -54,9 +54,13 @@ app.add_middleware(RequestIDMiddleware)
 @app.exception_handler(Exception)
 async def global_exception_handler(
     request: Request,
-    exc: Exception,  # noqa: ARG001 — FastAPI signature requirement
+    exc: Exception,  # ruff: ignore[unused-function-argument] — FastAPI signature requirement
 ) -> JSONResponse:
-    logger.exception("Unhandled exception on {} {}", request.method, request.url.path)
+    logger.error(
+        "Unhandled exception on {method} {path}",
+        method=request.method,
+        path=request.url.path,
+    )
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"},
@@ -91,7 +95,7 @@ async def health_check(_request: Request) -> dict[str, str]:
         async with async_session() as db:
             await db.execute(text("SELECT 1"))
         result["database"] = "ok"
-    except Exception:  # noqa: BLE001 — /health must never 500; report degraded instead.
+    except Exception:  # ruff: ignore[blind-except] — /health must never 500; report degraded instead.
         result["status"] = "degraded"
         result["database"] = "unavailable"
     return result

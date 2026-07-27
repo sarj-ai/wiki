@@ -36,7 +36,7 @@ SINGLEFLIGHT = Singleflight()
 
 BG_TASKS: set[asyncio.Task[None]] = set()
 
-_DECODE_CACHE_MAX = 32
+DECODE_CACHE_MAX = 32
 
 _decoded_trees: OrderedDict[tuple[str, str], DriveTree] = OrderedDict()
 
@@ -55,7 +55,7 @@ def _decoded_get(key: tuple[str, str]) -> DriveTree | None:
 def _decoded_put(key: tuple[str, str], tree: DriveTree) -> None:
     _decoded_trees[key] = tree
     _decoded_trees.move_to_end(key)
-    while len(_decoded_trees) > _DECODE_CACHE_MAX:
+    while len(_decoded_trees) > DECODE_CACHE_MAX:
         _decoded_trees.popitem(last=False)
 
 
@@ -68,6 +68,23 @@ class CachedDriveTree:
 _UNDECODABLE_KEYS_MAX = 64
 
 _undecodable_keys: set[tuple[str, str]] = set()
+
+
+def get_cached_decoded_tree(key: tuple[str, str]) -> DriveTree | None:
+    return _decoded_get(key)
+
+
+def put_cached_decoded_tree(key: tuple[str, str], tree: DriveTree) -> None:
+    _decoded_put(key, tree)
+
+
+def decoded_tree_cache_size() -> int:
+    return len(_decoded_trees)
+
+
+def clear_public_title_decode_caches() -> None:
+    _decoded_trees.clear()
+    _undecodable_keys.clear()
 
 
 async def find_cached_file_name(db: AsyncSession, file_id: str) -> str | None:
@@ -100,7 +117,7 @@ async def find_cached_file_name(db: AsyncSession, file_id: str) -> str | None:
             tree = await _fetch_and_decode(db, key)  # sarj-noqa: SARJ001 — shared db session
             if tree is None:
                 continue
-        name = next((f.name for f in tree.files if file_id in (f.id, f.shortcut_target_id)), None)
+        name = next((f.name for f in tree.files if file_id in {f.id, f.shortcut_target_id}), None)
         if name is not None:
             return name
     return None
@@ -213,8 +230,8 @@ class PostgresSidebarCacheService(SidebarCacheService):
                 f"drive:{drive_id}",
                 lambda: self._walk_and_save(drive_id),
             )
-        except Exception:  # noqa: BLE001 — bg fire-and-forget; log and discard so the task pool stays healthy.
-            logger.exception("background drive refresh failed drive={}", drive_id)
+        except Exception:
+            logger.exception("background drive refresh failed drive={drive_id}", drive_id=drive_id)
 
     async def _walk_and_save(self, drive_id: str) -> DriveTree:
         tree = await self._drive.walk_drive_folders(drive_id)

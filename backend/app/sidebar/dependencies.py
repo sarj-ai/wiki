@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import Depends
 
 from app.auth.dependencies import get_current_user
@@ -16,8 +18,8 @@ from app.sidebar.cache import (
 
 
 def sidebar_cache_service_dep(
-    user: User = Depends(get_current_user),
-    drive: DriveService = Depends(drive_service_dep),
+    user: Annotated[User, Depends(get_current_user)],
+    drive: Annotated[DriveService, Depends(drive_service_dep)],
 ) -> SidebarCacheService:
     return PostgresSidebarCacheService(
         drive=drive,

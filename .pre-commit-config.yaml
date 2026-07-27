@@ -24,9 +24,51 @@ repos:
       - id: actionlint
 
   - repo: https://github.com/sarj-ai/standards
-    rev: python-v0.2.0
+    rev: python-v0.21.0
     hooks:
       - id: sarj-no-sequential-await
       - id: sarj-inefficient-string-concat-in-loop
-      - id: sarj-prefer-discriminated-union
       - id: sarj-prefer-str-enum
+      - id: sarj-no-fat-try-blocks
+      - id: sarj-pydantic-at-boundaries
+      - id: sarj-no-isinstance-union-chain
+      - id: sarj-prefer-class-row
+      - id: sarj-prefer-timedelta-for-durations
+      - id: sarj-prefer-struct-over-namedtuple
+      - id: sarj-no-comment-cruft
+      - id: sarj-no-restated-comment
+      - id: sarj-redundant-docstring
+      - id: sarj-trailing-value-narration
+      - id: sarj-no-fstring-in-log
+      - id: sarj-prefer-match-assert-never
+      - id: sarj-kwonly-same-type-params
+      - id: sarj-no-raw-sql-in-tests
+      - id: sarj-no-file-level-suppression
+      - id: sarj-prefer-module-level-constant
+      - id: sarj-enforce-timestamptz
+      - id: sarj-ban-postgres-enums
+      - id: sarj-ban-create-trigger
+      - id: sarj-prefer-text-over-varchar
+      - id: sarj-idempotent-ddl
+      - id: sarj-insert-requires-on-conflict
+      - id: sarj-prefer-jsonb
+      - id: sarj-no-limit-offset
+      - id: sarj-index-concurrently
+      - id: sarj-require-deletion-protection
+      - id: sarj-no-comment-cruft-iac
+      - id: sarj-mock-without-spec
+      - id: sarj-test-loops-over-literal-cases
+      - id: sarj-parametrize-case-needs-id
+      - id: sarj-zero-assertion-test
+      - id: sarj-fixture-returns-bare-tuple
+      - id: sarj-kwarg-heavy-construction-in-test
+      - id: sarj-xfail-requires-strict
+      - id: sarj-sleep-with-computed-arg-in-test
+      - id: sarj-no-first-party-private-import
+      - id: sarj-no-stdlib-logging
+      - id: sarj-no-gen-random-uuid-in-sql
+      - id: sarj-no-file-level-escape-hatch-noqa
+      - id: sarj-prefer-uuidv7-default
+      - id: sarj-suppression-ratchet
+      - id: sarj-fakes-in-shared-location
+      - id: sarj-no-raw-connection-in-tests

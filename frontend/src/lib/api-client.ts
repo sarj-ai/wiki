@@ -1,4 +1,4 @@
-import { type z } from "zod";
+import { z } from "zod";
 
 import { API_URL } from "@/lib/env";
 import { type Client } from "@/lib/generated/client";
@@ -22,8 +22,21 @@ client.setConfig({
 });
 
 const SESSION_EXP_SKEW_MS = 30_000;
+const REFRESH_TIMEOUT_MS = 10_000;
 
 const SESSION_EXP_COOKIE = /(?:^|;\s*)session_exp=(\d+)/;
+const ZErrorDetail = z.object({
+  detail: z
+    .union([
+      z.string(),
+      z.array(
+        z.object({
+          msg: z.string().optional(),
+        }),
+      ),
+    ])
+    .optional(),
+});
 
 function sessionExpiresAt(): number | null {
   if (typeof document === "undefined") return null;
@@ -62,8 +75,9 @@ async function readErrorMessage(response: Response): Promise<string | null> {
     const text = await response.clone().text();
     if (!text) return null;
     const parsed: unknown = JSON.parse(text);
-    if (!parsed || typeof parsed !== "object") return null;
-    const detail = (parsed as { detail?: unknown }).detail;
+    const payload = ZErrorDetail.safeParse(parsed);
+    if (!payload.success) return null;
+    const { detail } = payload.data;
     if (typeof detail === "string" && detail.trim().length > 0) return detail;
     if (Array.isArray(detail) && detail.length > 0) {
       const first = detail[0] as { msg?: unknown };
@@ -87,6 +101,7 @@ async function rawRefresh(): Promise<boolean> {
     const res = await fetch(`${API_URL}/auth/refresh`, {
       method: "POST",
       credentials: "include",
+      signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),
     });
     return res.ok;
   } catch {

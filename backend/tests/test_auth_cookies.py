@@ -1,12 +1,10 @@
-# pyright: reportPrivateUsage=false
-
 from __future__ import annotations
 
 from fastapi import Response
 from httpx import ASGITransport, AsyncClient
 import pytest
 
-from app.auth.router import _clear_auth_cookies, _set_auth_cookies
+from app.auth.router import clear_auth_cookies, set_auth_cookies
 from app.auth.service import AuthSession
 from app.config import settings
 
@@ -25,7 +23,7 @@ def _deletions(headers: list[str]) -> list[str]:
 
 def test_default_no_domain_attribute() -> None:
     response = Response()
-    _set_auth_cookies(response, _session())
+    set_auth_cookies(response, _session())
     headers = _set_cookie_headers(response)
     assert len(headers) == 3
     assert all("Domain=" not in h for h in headers)
@@ -33,7 +31,7 @@ def test_default_no_domain_attribute() -> None:
 
 def test_session_exp_cookie_is_js_readable_and_numeric() -> None:
     response = Response()
-    _set_auth_cookies(response, _session())
+    set_auth_cookies(response, _session())
     exp = [h for h in _set_cookie_headers(response) if h.startswith("session_exp=")]
     assert len(exp) == 1
     assert "HttpOnly" not in exp[0]
@@ -46,7 +44,7 @@ def test_domain_set_emits_domain_pair_and_legacy_deletions(
 ) -> None:
     monkeypatch.setattr(settings, "COOKIE_DOMAIN", "sarj.ai")
     response = Response()
-    _set_auth_cookies(response, _session())
+    set_auth_cookies(response, _session())
     headers = _set_cookie_headers(response)
     assert len(headers) == 6
     deletions = _deletions(headers)
@@ -59,7 +57,7 @@ def test_domain_set_emits_domain_pair_and_legacy_deletions(
 
 def test_clear_default_deletes_host_only_pair() -> None:
     response = Response()
-    _clear_auth_cookies(response)
+    clear_auth_cookies(response)
     headers = _set_cookie_headers(response)
     assert len(headers) == 3
     assert all("Domain=" not in h for h in headers)
@@ -68,7 +66,7 @@ def test_clear_default_deletes_host_only_pair() -> None:
 def test_clear_with_domain_deletes_both_variants(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "COOKIE_DOMAIN", "sarj.ai")
     response = Response()
-    _clear_auth_cookies(response)
+    clear_auth_cookies(response)
     headers = _set_cookie_headers(response)
     assert len(headers) == 6
     assert sum("Domain=sarj.ai" in h for h in headers) == 3
@@ -76,10 +74,10 @@ def test_clear_with_domain_deletes_both_variants(monkeypatch: pytest.MonkeyPatch
 
 def test_settings_read_at_call_time_not_module_import(monkeypatch: pytest.MonkeyPatch) -> None:
     response_before = Response()
-    _set_auth_cookies(response_before, _session())
+    set_auth_cookies(response_before, _session())
     monkeypatch.setattr(settings, "COOKIE_DOMAIN", "example.com")
     response_after = Response()
-    _set_auth_cookies(response_after, _session())
+    set_auth_cookies(response_after, _session())
     assert all("Domain=" not in h for h in _set_cookie_headers(response_before))
     assert any("Domain=example.com" in h for h in _set_cookie_headers(response_after))
 

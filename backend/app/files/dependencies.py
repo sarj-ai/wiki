@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import Depends
 
 from app.auth.dependencies import get_current_user
@@ -10,15 +12,15 @@ from app.models.user import User
 
 
 def files_service_dep(
-    user: User = Depends(get_current_user),
-    drive: DriveService = Depends(drive_service_dep),
+    user: Annotated[User, Depends(get_current_user)],
+    drive: Annotated[DriveService, Depends(drive_service_dep)],
 ) -> FilesService:
     return GoogleFilesService(user=user, drive=drive)
 
 
 async def require_accessible_doc(
     drive_id: str,
-    files: FilesService = Depends(files_service_dep),
+    files: Annotated[FilesService, Depends(files_service_dep)],
 ) -> str:
     """IDOR guard for the global ``doc_icons`` table, keyed by document id.
 

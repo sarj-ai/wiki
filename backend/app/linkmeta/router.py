@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,9 +17,9 @@ router = APIRouter(prefix="/link-meta", tags=["link-meta"])
 @router.get("/{file_id}")
 @limiter.limit("60/minute")  # pyright: ignore[reportUntypedFunctionDecorator]
 async def get_link_meta(
-    request: Request,  # noqa: ARG001 — slowapi's limiter requires the request in the signature
+    request: Request,  # ruff: ignore[unused-function-argument] — slowapi's limiter requires the request in the signature
     file_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> LinkMeta:
     """Doc name for link previews — public by design, no auth.
 

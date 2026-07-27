@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+from collections import UserDict
 from typing import Any, cast
 
 from googleapiclient.errors import HttpError
 from googleapiclient.http import HttpRequest
 import pytest
 
-from app.drive.retry import _retry_after_seconds, execute_mutation, execute_with_retry
+from app.drive.retry import execute_mutation, execute_with_retry, retry_after_seconds
 
 
-class _Resp(dict[str, str]):
+class _Resp(UserDict[str, str]):
     def __init__(self, status: int, headers: dict[str, str] | None = None) -> None:
         super().__init__(headers or {})
         self.status = status
@@ -34,11 +35,11 @@ class _FlakyRequest:
 
 
 def test_retry_after_parses_and_caps() -> None:
-    assert _retry_after_seconds(_http_error(429, {"retry-after": "7"})) == 7.0
-    assert _retry_after_seconds(_http_error(429, {"retry-after": "9999"})) == 30.0
-    assert _retry_after_seconds(_http_error(429)) is None
-    assert _retry_after_seconds(_http_error(429, {"retry-after": "soon"})) is None
-    assert _retry_after_seconds(ValueError("not http")) is None
+    assert retry_after_seconds(_http_error(429, {"retry-after": "7"})) == 7.0
+    assert retry_after_seconds(_http_error(429, {"retry-after": "9999"})) == 30.0
+    assert retry_after_seconds(_http_error(429)) is None
+    assert retry_after_seconds(_http_error(429, {"retry-after": "soon"})) is None
+    assert retry_after_seconds(ValueError("not http")) is None
 
 
 def test_execute_with_retry_retries_transient_5xx() -> None:

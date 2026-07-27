@@ -18,7 +18,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const defaultOpen = ZSidebarStateCookie.parse(cookieStore.get("sidebar_state")?.value);
 
   const queryClient = new QueryClient();
-  const bootstrap = await serverWikiApi.getBootstrap().catch(() => null);
+  const bootstrap = await serverWikiApi.getBootstrap().catch((error: unknown) => {
+    console.error("Bootstrap preload failed", error);
+    return null;
+  });
   if (bootstrap) {
     queryClient.setQueryData(wikiKeys.drives, bootstrap.drives);
     queryClient.setQueryData(wikiKeys.preferences, bootstrap.preferences);

@@ -26,7 +26,7 @@ from app.drive import drives_cache
 from app.models.user import User
 
 
-GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105 — public OAuth endpoint
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 
@@ -71,14 +71,15 @@ class GoogleAuthService(AuthService):
     ) -> AuthSession:
         if not expected_state or not secrets.compare_digest(state, expected_state):
             logger.warning("auth: OAuth state mismatch (possible CSRF)")
-            raise AuthFailedError("OAuth state mismatch")
+            msg = "OAuth state mismatch"
+            raise AuthFailedError(msg)
         google_tokens = await self._exchange_google_code(code)
         userinfo = await self._fetch_userinfo(google_tokens.access_token)
         self._enforce_domain(userinfo.email)
         try:
             user = await self._upsert_user(userinfo, google_tokens)
         except Exception as e:
-            logger.exception("Auth callback failed for {}", userinfo.email)
+            logger.exception("Auth callback failed for {email}", email=userinfo.email)
             raise AuthError from e
         return self._issue_session(user)
 
@@ -86,46 +87,49 @@ class GoogleAuthService(AuthService):
     async def refresh_session(self, refresh_token: str) -> AuthSession:
         payload = decode_token(refresh_token)
         if payload.type != "refresh":
-            raise TokenRevokedError("Invalid token type")
+            msg = "Invalid token type"
+            raise TokenRevokedError(msg)
         user = await self._load_user(payload.sub)
         if user is None:
-            raise TokenRevokedError("User not found")
+            msg = "User not found"
+            raise TokenRevokedError(msg)
         if payload.tv != user.token_version:
-            logger.warning("auth: revoked refresh token presented user={}", user.id)
-            raise TokenRevokedError("Token has been revoked")
+            logger.warning("auth: revoked refresh token presented user={user_id}", user_id=user.id)
+            msg = "Token has been revoked"
+            raise TokenRevokedError(msg)
         return self._issue_session(user)
 
     @override
     async def revoke_session(self, access_token: str | None) -> None:
         if access_token is None:
             return
+        user: User | None = None
         try:
-            payload = decode_token(access_token)
-            if payload.type != "access":
-                return
-            user = await self._load_user(payload.sub)
+            user = await self._revokable_access_user(access_token)
             if user is None:
                 return
-            user.token_version += 1
-            await self._db.commit()
-            await self._revoke_google_token(user)
-            drives_cache.invalidate(str(user.id))
-        except Exception:  # noqa: BLE001 — logout proceeds even if DB bump fails; cookies still clear.
+            await self._revoke_user_session(user)
+        except Exception:  # ruff: ignore[blind-except] — logout proceeds even if DB bump fails; cookies still clear.
             logger.opt(exception=True).warning(
                 "logout: failed to bump token_version; proceeding to clear cookies"
             )
+            return
+        drives_cache.invalidate(str(user.id))
 
     @override
     async def resolve_current_user(self, jwt_token: str) -> User:
         payload = decode_token(jwt_token)
         if payload.type != "access":
-            raise InvalidTokenError("Invalid token type")
+            msg = "Invalid token type"
+            raise InvalidTokenError(msg)
         user = await self._load_user(payload.sub)
         if user is None:
-            raise TokenRevokedError("User not found")
+            msg = "User not found"
+            raise TokenRevokedError(msg)
         if payload.tv != user.token_version:
-            logger.warning("auth: revoked access token presented user={}", user.id)
-            raise TokenRevokedError("Token has been revoked")
+            logger.warning("auth: revoked access token presented user={user_id}", user_id=user.id)
+            msg = "Token has been revoked"
+            raise TokenRevokedError(msg)
         return user
 
     async def _revoke_google_token(self, user: User) -> None:
@@ -134,10 +138,21 @@ class GoogleAuthService(AuthService):
         try:
             refresh_token = decrypt_text(user.encrypted_refresh_token)
             await self._http.post(GOOGLE_REVOKE_URL, data={"token": refresh_token})
-        except Exception:  # noqa: BLE001 — best-effort; logout proceeds regardless.
+        except Exception:  # ruff: ignore[blind-except] — best-effort; logout proceeds regardless.
             logger.opt(exception=True).warning(
-                "logout: Google token revocation failed user={}", user.id
+                "logout: Google token revocation failed user={user_id}", user_id=user.id
             )
+
+    async def _revokable_access_user(self, access_token: str) -> User | None:
+        payload = decode_token(access_token)
+        if payload.type != "access":
+            return None
+        return await self._load_user(payload.sub)
+
+    async def _revoke_user_session(self, user: User) -> None:
+        user.token_version += 1
+        await self._db.commit()
+        await self._revoke_google_token(user)
 
     async def _exchange_google_code(self, code: str) -> _GoogleTokens:
         resp = await self._http.post(
@@ -151,7 +166,9 @@ class GoogleAuthService(AuthService):
             },
         )
         if resp.status_code != 200:
-            logger.warning("Google token exchange failed: {}", resp.status_code)
+            logger.warning(
+                "Google token exchange failed: {status_code}", status_code=resp.status_code
+            )
             raise AuthFailedError
         data = GoogleTokenResponse.model_validate(resp.json())
         return _GoogleTokens(
@@ -178,8 +195,8 @@ class GoogleAuthService(AuthService):
         parts = email.rsplit("@", 1)
         if len(parts) != 2 or parts[1] != settings.ALLOWED_DOMAIN:
             logger.warning(
-                "auth: domain-restricted login rejected domain={}",
-                parts[1] if len(parts) == 2 else "<malformed>",
+                "auth: domain-restricted login rejected domain={domain}",
+                domain=parts[1] if len(parts) == 2 else "<malformed>",
             )
             raise DomainRestrictedError
 
@@ -187,7 +204,7 @@ class GoogleAuthService(AuthService):
         encrypted_access = encrypt_text(tokens.access_token)
         encrypted_refresh = encrypt_text(tokens.refresh_token) if tokens.refresh_token else None
 
-        user = await self._find_existing_user(info.google_id, info.email)
+        user = await self._find_existing_user(google_id=info.google_id, email=info.email)
         if user is None:
             user = User(
                 email=info.email,
@@ -211,7 +228,7 @@ class GoogleAuthService(AuthService):
         await self._db.refresh(user)
         return user
 
-    async def _find_existing_user(self, google_id: str, email: str) -> User | None:
+    async def _find_existing_user(self, *, google_id: str, email: str) -> User | None:
         stmt = (
             select(User)
             .where(or_(User.google_id == google_id, User.email == email))

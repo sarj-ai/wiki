@@ -72,11 +72,12 @@ class Settings(BaseSettings):
         if dsn == connector:
             msg = (
                 "Configure exactly one database path: DATABASE_URL,"
-                + " or DB_INSTANCE_CONNECTION_NAME + DB_IAM_USER"
+                " or DB_INSTANCE_CONNECTION_NAME + DB_IAM_USER"
             )
             raise ValueError(msg)
         if connector and (self.DB_INSTANCE_CONNECTION_NAME is None or self.DB_IAM_USER is None):
-            raise ValueError("DB_INSTANCE_CONNECTION_NAME and DB_IAM_USER must be set together")
+            msg_0 = "DB_INSTANCE_CONNECTION_NAME and DB_IAM_USER must be set together"
+            raise ValueError(msg_0)
         return self
 
     @field_validator("FERNET_KEY", "CACHE_FERNET_KEY")
@@ -85,7 +86,8 @@ class Settings(BaseSettings):
         if v is None:
             return None
         if not parse_fernet_keys(v.get_secret_value()):
-            raise ValueError("must be a comma-separated list of valid Fernet keys")
+            msg = "must be a comma-separated list of valid Fernet keys"
+            raise ValueError(msg)
         return v
 
 

@@ -52,8 +52,8 @@ jobs:
       - name: Mypy strict
         run: uv run mypy app
 
-      - name: Pyright strict (app)
-        run: uv run pyright app
+      - name: Basedpyright strict
+        run: uv run basedpyright -p pyrightconfig.json
 
       - name: ty check (app)
         run: uv run ty check app
@@ -64,17 +64,14 @@ jobs:
       - name: Import contracts
         run: uv run lint-imports
 
-      - name: pip-audit (report-only)
-        continue-on-error: true
+      - name: pip-audit
         run: uv run pip-audit
 
-      - name: org-strict ruff (report-only)
-        continue-on-error: true
-        run: uv run ruff check --config .ruff-strict.toml --output-format=github .
+      - name: Standards Ruff strict
+        run: uv run ruff check --output-format=github .
 
-      - name: org-strict pyright (report-only)
-        continue-on-error: true
-        run: uv run pyright -p .pyright-strict.toml app
+      - name: Standards Basedpyright strict
+        run: uv run basedpyright -p pyrightconfig.json
 
   test:
     name: Unit tests

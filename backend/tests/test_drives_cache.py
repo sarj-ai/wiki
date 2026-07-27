@@ -126,7 +126,14 @@ async def test_invalidate_drops_only_targeted_user() -> None:
 
 @pytest.mark.asyncio
 async def test_invalidate_unknown_user_is_a_noop() -> None:
+    fetcher = _Fetcher([_drives("Alpha")])
+    await drives_cache.get_drives("alice", fetcher)
+
     drives_cache.invalidate("ghost")
+
+    drives = await drives_cache.get_drives("alice", fetcher)
+    assert fetcher.calls == 1
+    assert [d.name for d in drives] == ["Alpha"]
 
 
 @pytest.mark.asyncio
@@ -158,7 +165,8 @@ async def test_background_refresh_failure_keeps_serving_stale(
         if call_count == 1:
             return _drives("Alpha")
         if call_count == 2:
-            raise RuntimeError("Drive 502")
+            msg = "Drive 502"
+            raise RuntimeError(msg)
         return _drives("Beta")
 
     await drives_cache.get_drives("alice", flaky_fetcher)

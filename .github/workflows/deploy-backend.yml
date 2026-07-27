@@ -32,6 +32,59 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Set up Python
+        working-directory: backend
+        run: uv python install
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --group dev --frozen
+
+      - name: Run pre-commit custom standards
+        run: uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure
+
+      - name: Ruff check
+        working-directory: backend
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        working-directory: backend
+        run: uv run ruff format --check .
+
+      - name: Mypy strict
+        working-directory: backend
+        run: uv run mypy app
+
+      - name: Basedpyright strict
+        working-directory: backend
+        run: uv run basedpyright -p pyrightconfig.json
+
+      - name: ty check
+        working-directory: backend
+        run: uv run ty check app
+
+      - name: Vulture dead-code check
+        working-directory: backend
+        run: uv run vulture
+
+      - name: Import contracts
+        working-directory: backend
+        run: uv run lint-imports
+
+      - name: pip-audit
+        working-directory: backend
+        run: uv run pip-audit
+
+      - name: Unit tests
+        working-directory: backend
+        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70
+
       - id: auth
         uses: google-github-actions/auth@v3
         with:
@@ -61,13 +114,13 @@ jobs:
           provenance: false
           sbom: false
 
-      - name: Trivy image scan (report-only)
+      - name: Trivy image scan
         uses: aquasecurity/trivy-action@v0.36.0
-        continue-on-error: true
         with:
           image-ref: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}
           format: table
           severity: HIGH,CRITICAL
+          exit-code: "1"
 
       - name: Deploy to Cloud Run
         run: |

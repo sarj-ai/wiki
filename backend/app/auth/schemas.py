@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from pydantic import BaseModel, ConfigDict, EmailStr
 
 from app.models.user import User
@@ -26,7 +28,7 @@ class GoogleTokenResponse(BaseModel):
 
     access_token: str
     refresh_token: str | None = None
-    expires_in: int | None = None
+    expires_in: timedelta | None = None
 
 
 class GoogleUserInfo(BaseModel):

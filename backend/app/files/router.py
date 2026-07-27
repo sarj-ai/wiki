@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,9 +32,9 @@ router = APIRouter(prefix="/files", tags=["files"])
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_file(
     payload: FileCreate,
-    db: AsyncSession = Depends(get_db),
-    files: FilesService = Depends(files_service_dep),
-    cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    files: Annotated[FilesService, Depends(files_service_dep)],
+    cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
 ) -> FileResponse:
     result = await files.create(payload.parent_folder_id, payload.name, payload.mime_type)
     await _invalidate_drive_of(db, cache, result)
@@ -43,10 +44,10 @@ async def create_file(
 @router.get("/{file_id}")
 async def read_file(
     file_id: str,
-    db: AsyncSession = Depends(get_db),
-    files: FilesService = Depends(files_service_dep),
-    drive: DriveService = Depends(drive_service_dep),
-    cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    files: Annotated[FilesService, Depends(files_service_dep)],
+    drive: Annotated[DriveService, Depends(drive_service_dep)],
+    cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
 ) -> FileDetail:
     file, drives = await asyncio.gather(files.get(file_id), drive.list_drives())
     drive_name = next((d.name for d in drives if d.id == file.drive_id), None)
@@ -64,9 +65,9 @@ async def read_file(
 async def rename_file(
     file_id: str,
     payload: FileRename,
-    db: AsyncSession = Depends(get_db),
-    files: FilesService = Depends(files_service_dep),
-    cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    files: Annotated[FilesService, Depends(files_service_dep)],
+    cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
 ) -> FileResponse:
     result = await files.rename(file_id, payload.name)
     await _invalidate_drive_of(db, cache, result)
@@ -77,10 +78,10 @@ async def rename_file(
 async def move_file(
     file_id: str,
     payload: FileMove,
-    db: AsyncSession = Depends(get_db),
-    files: FilesService = Depends(files_service_dep),
-    extras: ExtrasService = Depends(extras_service_dep),
-    cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    files: Annotated[FilesService, Depends(files_service_dep)],
+    extras: Annotated[ExtrasService, Depends(extras_service_dep)],
+    cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
 ) -> FileResponse:
     result = await files.move(file_id, payload.new_parent_folder_id)
     await _invalidate_drive_of(db, cache, result.source)
@@ -94,9 +95,9 @@ async def move_file(
 async def copy_file(
     file_id: str,
     payload: FileCopy,
-    db: AsyncSession = Depends(get_db),
-    files: FilesService = Depends(files_service_dep),
-    cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    files: Annotated[FilesService, Depends(files_service_dep)],
+    cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
 ) -> FileResponse:
     result = await files.copy(file_id, payload.name)
     await _invalidate_drive_of(db, cache, result)
@@ -106,9 +107,9 @@ async def copy_file(
 @router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_file(
     file_id: str,
-    db: AsyncSession = Depends(get_db),
-    files: FilesService = Depends(files_service_dep),
-    cache: SidebarCacheService = Depends(sidebar_cache_service_dep),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    files: Annotated[FilesService, Depends(files_service_dep)],
+    cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
 ) -> None:
     result = await files.delete(file_id)
     await _invalidate_drive_of(db, cache, result.source)

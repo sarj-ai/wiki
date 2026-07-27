@@ -55,8 +55,6 @@ variable "github_repo" {
   default     = "sarj-ai/wiki"
 }
 
-# ---------------------------------------------------------------------------
 # Sub-PR B — perimeter security (load balancer + Cloud Armor WAF)
-# ---------------------------------------------------------------------------
 # Cloudflare WAF rules and DNS are managed manually in the Cloudflare
 # dashboard — no Terraform resources or API token required.
