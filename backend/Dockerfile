@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM python:3.14-slim AS builder
+FROM python:3.14-slim-bookworm AS builder
 
 WORKDIR /app
 
@@ -10,6 +10,9 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
 COPY pyproject.toml uv.lock ./
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
@@ -19,11 +22,14 @@ COPY alembic.ini .
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
-FROM python:3.14-slim AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 
 WORKDIR /app
 
-RUN useradd --create-home --uid 1001 app
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && useradd --create-home --uid 1001 app \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder --chown=app:app /app/.venv .venv
 COPY --from=builder --chown=app:app /app/app app
