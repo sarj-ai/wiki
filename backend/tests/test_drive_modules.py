@@ -136,7 +136,27 @@ async def test_list_drives_paginates_until_empty_token(patch_drive_client: Any) 
     assert [d.id for d in result] == ["d1", "d2"]
     assert [d.name for d in result] == ["Engineering", "Marketing"]
     assert len(client.drives_captured) == 2
+    assert client.drives_captured[0]["fields"] == "nextPageToken,drives(id,name,hidden)"
     assert client.drives_captured[1].get("pageToken") == "t1"
+
+
+async def test_list_drives_skips_hidden_entries(patch_drive_client: Any) -> None:
+    client = _FakeClient(
+        drives_pages=[
+            {
+                "drives": [
+                    {"id": "d1", "name": "Engineering"},
+                    {"id": "d2", "name": "Healthcare", "hidden": True},
+                    {"id": "d3", "name": "Marketing", "hidden": False},
+                ]
+            }
+        ]
+    )
+    patch_drive_client(client)
+
+    result = await _svc().list_drives()
+
+    assert [d.id for d in result] == ["d1", "d3"]
 
 
 async def test_list_drives_skips_entries_missing_fields(patch_drive_client: Any) -> None:

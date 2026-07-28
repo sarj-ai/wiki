@@ -291,7 +291,7 @@ class GoogleDriveService(DriveService):
         while True:
             params: dict[str, Any] = {
                 "pageSize": 100,
-                "fields": "nextPageToken,drives(id,name)",
+                "fields": "nextPageToken,drives(id,name,hidden)",
             }
             if page_token:
                 params["pageToken"] = page_token
@@ -305,7 +305,7 @@ class GoogleDriveService(DriveService):
                     drive = GoogleDrive.model_validate(d)
                 except ValidationError:
                     continue
-                if not drive.id or not drive.name:
+                if not drive.id or not drive.name or drive.hidden:
                     continue
                 out.append(DriveSummary(id=drive.id, name=drive.name))
             page_token = resp.get("nextPageToken")
