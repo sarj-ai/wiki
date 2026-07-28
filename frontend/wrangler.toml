@@ -1,14 +1,14 @@
-#:schema node_modules/wrangler/config-schema.json
+#:schema https://unpkg.com/wrangler@4.114.0/config-schema.json
 
-name = "sarj-wiki"
-main = ".open-next/worker.js"
 compatibility_date = "2025-04-01"
 compatibility_flags = ["nodejs_compat"]
+main = ".open-next/worker.js"
+name = "sarj-wiki"
 
 # Static assets built by OpenNext
 [assets]
-directory = ".open-next/assets"
 binding = "ASSETS"
+directory = ".open-next/assets"
 
 # Bind ``wiki.sarj.ai`` as a Workers Custom Domain. With
 # ``custom_domain = true`` Cloudflare provisions the DNS record and
@@ -17,8 +17,8 @@ binding = "ASSETS"
 # executes the OpenNext bundle) → ``api-wiki.sarj.ai`` for backend
 # calls via ``NEXT_PUBLIC_API_URL``.
 [[routes]]
-pattern = "wiki.sarj.ai"
 custom_domain = true
+pattern = "wiki.sarj.ai"
 
 # Workers Observability fully on: capture 100% of invocations (head sampling
 # rate 1) plus invocation logs, persisted to the Cloudflare dashboard where
@@ -30,5 +30,5 @@ head_sampling_rate = 1
 
 [observability.logs]
 enabled = true
-invocation_logs = true
 head_sampling_rate = 1
+invocation_logs = true
