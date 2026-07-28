@@ -1,3 +1,4 @@
+import sarj from "@sarj/eslint-plugin";
 import vitest from "@vitest/eslint-plugin";
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
@@ -8,9 +9,6 @@ import sonarjs from "eslint-plugin-sonarjs";
 import testingLibrary from "eslint-plugin-testing-library";
 import unicorn from "eslint-plugin-unicorn";
 import tseslint from "typescript-eslint";
-
-import sarjStrict from "./eslint.strict.mjs";
-import sarj from "./eslint-plugin-latest.mjs";
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -26,32 +24,12 @@ const eslintConfig = defineConfig([
   },
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
-  ...sarjStrict,
   // Disables ESLint rules that conflict with Prettier. Must come last among
   // the broad config sets — scoped overrides below it still win.
   prettier,
   {
     rules: {
       "@typescript-eslint/consistent-type-imports": ["error", { fixStyle: "inline-type-imports" }],
-      "@typescript-eslint/naming-convention": [
-        "error",
-        { format: ["camelCase"], leadingUnderscore: "allow", selector: "default" },
-        {
-          format: ["camelCase", "UPPER_CASE", "PascalCase"],
-          leadingUnderscore: "allow",
-          selector: "variable",
-        },
-        { format: ["camelCase", "PascalCase"], selector: "function" },
-        { format: ["PascalCase"], selector: "typeLike" },
-        { format: ["camelCase", "PascalCase", "UPPER_CASE"], selector: "import" },
-        { format: null, selector: "objectLiteralProperty" },
-        { format: null, selector: "typeProperty" },
-        {
-          format: ["camelCase", "snake_case"],
-          leadingUnderscore: "allow",
-          selector: "parameter",
-        },
-      ],
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-unused-vars": [
         "error",
@@ -165,97 +143,14 @@ const eslintConfig = defineConfig([
       "@sarj/no-raw-env": "off",
     },
   },
-  // Framework bootstrap code must use native escape hatches before the app's
-  // design system or hydration lifecycle is available.
-  {
-    files: ["src/app/global-error.tsx"],
-    rules: { "react/forbid-elements": "off" },
-  },
-  {
-    files: ["src/app/layout.tsx"],
-    rules: { "react/no-danger": "off" },
-  },
-  // Existing modules whose stable public filenames intentionally describe a
-  // broader responsibility than the primary-export heuristic. The rule stays
-  // enabled for every new and otherwise unlisted module.
-  {
-    files: [
-      "src/components/loading-bar.tsx",
-      "src/components/wiki-document/doc-viewer-store.ts",
-      "src/components/wiki-sidebar/empty-droppable.tsx",
-      "src/components/wiki-sidebar/resize-handle.tsx",
-      "src/components/wiki-sidebar/use-in-flight-moves.ts",
-      "src/hooks/use-mobile.ts",
-      "src/lib/file-urls.ts",
-      "src/lib/mutation-toast.ts",
-      "src/lib/perf-marks.ts",
-      "src/lib/public-api.ts",
-      "src/lib/server-api.ts",
-    ],
-    rules: { "@sarj/primary-export-file-name": "off" },
-  },
-  // Narrow migration baseline for pre-existing, typed integration boundaries.
-  // Assertions remain forbidden everywhere else.
-  {
-    files: [
-      "src/components/redirect-after-login.tsx",
-      "src/components/wiki-sidebar/use-wiki-reorder.ts",
-      "src/lib/api-client.ts",
-      "src/lib/api-client.test.ts",
-      "src/lib/server-api.test.ts",
-    ],
-    rules: {
-      "@typescript-eslint/consistent-type-assertions": "off",
-      "@typescript-eslint/no-unsafe-type-assertion": "off",
-    },
-  },
-  // These established interactive components use runtime geometry and stable
-  // callback identities. Keep the strict rules active outside this baseline.
-  {
-    files: [
-      "src/components/wiki-document/doc-viewer-host.tsx",
-      "src/components/wiki-sidebar/drive-section.tsx",
-      "src/components/wiki-sidebar/emoji-picker-popover.tsx",
-      "src/components/wiki-sidebar/file-row.tsx",
-      "src/components/wiki-sidebar/move-file-dialog.tsx",
-      "src/components/wiki-sidebar/tree-node.tsx",
-    ],
-    rules: {
-      "react/forbid-component-props": "off",
-      "react/forbid-dom-props": "off",
-    },
-  },
-  {
-    files: [
-      "src/components/wiki-sidebar/drive-section.tsx",
-      "src/components/wiki-sidebar/move-file-dialog.tsx",
-      "src/components/wiki-sidebar/use-drive-tree-index.ts",
-      "src/components/wiki-sidebar/wiki-sidebar.tsx",
-      "src/hooks/use-expanded-folders.ts",
-    ],
-    rules: { "no-restricted-syntax": "off" },
-  },
-  {
-    files: [
-      "src/components/wiki-document/doc-viewer-host.tsx",
-      "src/components/wiki-sidebar/resize-handle.tsx",
-    ],
-    rules: { "unicorn/consistent-function-scoping": "off" },
-  },
   {
     files: ["src/components/wiki-sidebar/drive-section.tsx"],
-    rules: {
-      "react/forbid-elements": "off",
-      "sonarjs/cognitive-complexity": "off",
-    },
+    rules: { "sonarjs/cognitive-complexity": "off" },
   },
   // Config files live outside the typed project — disable type-aware rules.
   {
     extends: [tseslint.configs.disableTypeChecked],
     files: ["**/*.config.{ts,mjs,js}", "**/*.mjs"],
-    rules: {
-      "@sarj/primary-export-file-name": "off",
-    },
   },
   globalIgnores([
     // Default ignores of eslint-config-next:
@@ -269,8 +164,6 @@ const eslintConfig = defineConfig([
     "src/lib/generated/**",
     // Copied shadcn primitives track upstream and are formatted, not linted.
     "src/components/ui/**",
-    "eslint.strict.mjs",
-    "eslint-rules/**",
   ]),
 ]);
 
