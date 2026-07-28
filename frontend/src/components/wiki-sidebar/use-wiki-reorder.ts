@@ -1,39 +1,38 @@
 "use client";
 
 import {
-  PointerSensor,
-  useSensor,
-  useSensors,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
 } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import type { DriveNode, DriveTree, SortOrder } from "@/types/wiki";
-
 import { expandPath } from "@/hooks/use-expanded-folders";
 import { useBulkSetSortOrders, useMoveFile } from "@/hooks/use-wiki-mutations";
 import { wikiKeys } from "@/hooks/use-wiki-tree";
 import { ApiError } from "@/lib/api-client";
 import { optimisticMoveFile } from "@/lib/wiki-cache";
+import type { DriveNode, DriveTree, SortOrder } from "@/types/wiki";
 import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
 
-import { useDragOverStore, type DropIntent } from "./use-drag-over-store";
+import { type DropIntent, useDragOverStore } from "./use-drag-over-store";
 import { useInFlightMovesStore } from "./use-in-flight-moves";
 
 interface WikiReorder {
-  optimisticByContainer: Map<string, string[]>;
-
   activeNode: DriveNode | null;
-  sensors: ReturnType<typeof useSensors>;
-  onDragStart: (event: DragStartEvent) => void;
-  onDragOver: (event: DragOverEvent) => void;
-  onDragEnd: (event: DragEndEvent) => void;
+
   onDragCancel: () => void;
+  onDragEnd: (event: DragEndEvent) => void;
+  onDragOver: (event: DragOverEvent) => void;
+  onDragStart: (event: DragStartEvent) => void;
+  optimisticByContainer: Map<string, string[]>;
+  sensors: ReturnType<typeof useSensors>;
 }
 
 const CONTAINER_PREFIX = "parent:";
@@ -41,18 +40,18 @@ const CONTAINER_PREFIX = "parent:";
 const FOLDER_ABOVE_BAND = 0.3;
 const FOLDER_BELOW_BAND = 0.7;
 
-function parentIdOf(containerId: string): string | null {
+function parentIdOf(containerId: string): null | string {
   return containerId.startsWith(CONTAINER_PREFIX)
     ? containerId.slice(CONTAINER_PREFIX.length)
     : null;
 }
 
-function sortableContainerId(data: Record<string, unknown> | null | undefined): string | null {
+function sortableContainerId(data: null | Record<string, unknown> | undefined): null | string {
   const sortable = data?.["sortable"] as { containerId?: string } | undefined;
   return sortable?.containerId ?? null;
 }
 
-function isFolderTarget(data: Record<string, unknown> | null | undefined): boolean {
+function isFolderTarget(data: null | Record<string, unknown> | undefined): boolean {
   return data?.["isFolder"] === true;
 }
 
@@ -80,7 +79,7 @@ function buildDestinationOrder(
   newParentFolderId: string,
   movedNode: DriveNode,
   positionHint: { rowId: string; intent: "above" | "below" },
-): SortOrder[] | null {
+): null | SortOrder[] {
   const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
   const isAtDriveRoot = newParentFolderId === driveId;
   const folders = (tree?.folders ?? []).filter((f) =>
@@ -124,7 +123,7 @@ function lookupNodeMimeType(
   qc: ReturnType<typeof useQueryClient>,
   driveId: string,
   folderId: string,
-): string | null {
+): null | string {
   const tree = qc.getQueryData<{ folders: { id: string; mimeType: string }[] }>(
     wikiKeys.driveTree(driveId),
   );
@@ -167,23 +166,23 @@ export function useWikiReorder(driveId: string): WikiReorder {
   const onDragStart = (event: DragStartEvent) => {
     setActiveNode(findNodeById(String(event.active.id)));
     useDragOverStore.getState().setActive({
-      id: String(event.active.id),
       containerId: sortableContainerId(event.active.data.current),
+      id: String(event.active.id),
     });
   };
 
   const onDragOver = (event: DragOverEvent) => {
-    const { active, over, delta } = event;
+    const { active, delta, over } = event;
     if (!over) {
-      useDragOverStore.getState().setOver({ id: null, containerId: null, intent: null });
+      useDragOverStore.getState().setOver({ containerId: null, id: null, intent: null });
       return;
     }
     const overIdStr = String(over.id);
 
     if (overIdStr.startsWith(CONTAINER_PREFIX)) {
       useDragOverStore.getState().setOver({
-        id: overIdStr,
         containerId: overIdStr,
+        id: overIdStr,
         intent: null,
       });
       return;
@@ -206,8 +205,8 @@ export function useWikiReorder(driveId: string): WikiReorder {
       intent = computeDropIntent(active, over, delta, overEligibleForInto);
     }
     useDragOverStore.getState().setOver({
-      id: String(over.id),
       containerId: sortableContainerId(over.data.current),
+      id: String(over.id),
       intent,
     });
   };
@@ -252,7 +251,7 @@ export function useWikiReorder(driveId: string): WikiReorder {
       const newParentFolderId = parentIdOf(overContainerId);
       const positionHint =
         (intent === "above" || intent === "below") && newParentFolderId
-          ? { rowId: String(over.id), intent }
+          ? { intent, rowId: String(over.id) }
           : null;
       if (newParentFolderId) handleMoveInto(node, newParentFolderId, positionHint);
       return;
@@ -308,8 +307,8 @@ export function useWikiReorder(driveId: string): WikiReorder {
     const rollback = optimisticMoveFile(
       qc,
       node,
-      { parentFolderId: newParentFolderId, driveId },
-      { parentFolderId: node.parentId, driveId },
+      { driveId, parentFolderId: newParentFolderId },
+      { driveId, parentFolderId: node.parentId },
     );
 
     if (newParentFolderId !== driveId) {
@@ -343,12 +342,12 @@ export function useWikiReorder(driveId: string): WikiReorder {
   };
 
   return {
-    optimisticByContainer,
     activeNode,
-    sensors,
-    onDragStart,
-    onDragOver,
-    onDragEnd,
     onDragCancel,
+    onDragEnd,
+    onDragOver,
+    onDragStart,
+    optimisticByContainer,
+    sensors,
   };
 }

@@ -28,27 +28,27 @@ import {
 import { NamePromptDialog } from "./name-prompt-dialog";
 
 interface CreateFileMenuProps {
-  parentFolderId: string;
-
   compact?: boolean;
+
+  parentFolderId: string;
 }
 
 interface CreateType {
-  mimeType: string;
-  label: string;
   defaultName: string;
+  label: string;
+  mimeType: string;
 }
 
 const CREATE_TYPES: CreateType[] = [
-  { mimeType: MIME_DOC, label: "Doc", defaultName: "Untitled Doc" },
-  { mimeType: MIME_SHEET, label: "Sheet", defaultName: "Untitled Sheet" },
-  { mimeType: MIME_SLIDE, label: "Slides", defaultName: "Untitled Slides" },
-  { mimeType: MIME_DRAWING, label: "Drawing", defaultName: "Untitled Drawing" },
-  { mimeType: MIME_FORM, label: "Form", defaultName: "Untitled Form" },
-  { mimeType: MIME_FOLDER, label: "Folder", defaultName: "New Folder" },
+  { defaultName: "Untitled Doc", label: "Doc", mimeType: MIME_DOC },
+  { defaultName: "Untitled Sheet", label: "Sheet", mimeType: MIME_SHEET },
+  { defaultName: "Untitled Slides", label: "Slides", mimeType: MIME_SLIDE },
+  { defaultName: "Untitled Drawing", label: "Drawing", mimeType: MIME_DRAWING },
+  { defaultName: "Untitled Form", label: "Form", mimeType: MIME_FORM },
+  { defaultName: "New Folder", label: "Folder", mimeType: MIME_FOLDER },
 ];
 
-export function CreateFileMenu({ parentFolderId, compact = true }: CreateFileMenuProps) {
+export function CreateFileMenu({ compact = true, parentFolderId }: CreateFileMenuProps) {
   const router = useRouter();
   const createFile = useCreateFile();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -64,9 +64,9 @@ export function CreateFileMenu({ parentFolderId, compact = true }: CreateFileMen
     if (!pendingType) return;
     await runWithErrorToast(async () => {
       const file = await createFile.mutateAsync({
-        parentFolderId,
-        name,
         mimeType: pendingType.mimeType,
+        name,
+        parentFolderId,
       });
 
       if (file.mimeType === MIME_FORM) {
@@ -80,16 +80,16 @@ export function CreateFileMenu({ parentFolderId, compact = true }: CreateFileMen
 
   return (
     <>
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <DropdownMenu onOpenChange={setMenuOpen} open={menuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="ghost"
-            size="icon-xs"
+            aria-label="Create item"
+            className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground size-5 shrink-0 rounded-sm"
             onClick={(e) => {
               e.stopPropagation();
             }}
-            className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground size-5 shrink-0 rounded"
-            aria-label="Create item"
+            size="icon-xs"
+            variant="ghost"
           >
             <Plus className={compact ? "size-3" : "size-3.5"} />
           </Button>
@@ -97,11 +97,11 @@ export function CreateFileMenu({ parentFolderId, compact = true }: CreateFileMen
         <DropdownMenuContent align="start" className="w-44">
           {CREATE_TYPES.map((type) => (
             <DropdownMenuItem
+              className="flex items-center gap-2 text-sm"
               key={type.mimeType}
               onClick={() => {
                 pickType(type);
               }}
-              className="flex items-center gap-2 text-sm"
             >
               {renderMimeIcon(type.mimeType, "size-4")}
               {type.label}
@@ -110,17 +110,17 @@ export function CreateFileMenu({ parentFolderId, compact = true }: CreateFileMen
         </DropdownMenuContent>
       </DropdownMenu>
       <NamePromptDialog
-        open={pendingType !== null}
-        onOpenChange={(open) => {
-          if (!open) setPendingType(null);
-        }}
-        title={pendingType ? `New ${pendingType.label}` : ""}
+        confirmLabel="Create"
+        defaultValue={pendingType?.defaultName ?? ""}
         description={
           pendingType ? `Creates a new ${pendingType.label.toLowerCase()} in this folder.` : ""
         }
-        defaultValue={pendingType?.defaultName ?? ""}
-        confirmLabel="Create"
         onConfirm={confirmCreate}
+        onOpenChange={(open) => {
+          if (!open) setPendingType(null);
+        }}
+        open={pendingType !== null}
+        title={pendingType ? `New ${pendingType.label}` : ""}
       />
     </>
   );

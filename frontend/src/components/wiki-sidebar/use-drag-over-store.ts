@@ -3,46 +3,46 @@
 import { create } from "zustand";
 
 interface DragOverState {
-  activeId: string | null;
-  activeContainerId: string | null;
-  overId: string | null;
-  overContainerId: string | null;
+  activeContainerId: null | string;
+  activeId: null | string;
   intent: DropIntent | null;
-  setActive: (active: { id: string | null; containerId: string | null }) => void;
+  overContainerId: null | string;
+  overId: null | string;
+  reset: () => void;
+  setActive: (active: { id: null | string; containerId: null | string }) => void;
   setOver: (over: {
-    id: string | null;
-    containerId: string | null;
+    id: null | string;
+    containerId: null | string;
     intent: DropIntent | null;
   }) => void;
-  reset: () => void;
 }
 
-export type DropIntent = "into" | "above" | "below";
+export type DropIntent = "above" | "below" | "into";
 
 export const useDragOverStore = create<DragOverState>((set) => ({
-  activeId: null,
   activeContainerId: null,
-  overId: null,
-  overContainerId: null,
+  activeId: null,
   intent: null,
-  setActive: ({ id, containerId }) => {
-    set({ activeId: id, activeContainerId: containerId });
+  overContainerId: null,
+  overId: null,
+  reset: () => {
+    set({
+      activeContainerId: null,
+      activeId: null,
+      intent: null,
+      overContainerId: null,
+      overId: null,
+    });
   },
-  setOver: ({ id, containerId, intent }) => {
+  setActive: ({ containerId, id }) => {
+    set({ activeContainerId: containerId, activeId: id });
+  },
+  setOver: ({ containerId, id, intent }) => {
     set((state) => {
       if (state.overId === id && state.overContainerId === containerId && state.intent === intent) {
         return state;
       }
-      return { overId: id, overContainerId: containerId, intent };
-    });
-  },
-  reset: () => {
-    set({
-      activeId: null,
-      activeContainerId: null,
-      overId: null,
-      overContainerId: null,
-      intent: null,
+      return { intent, overContainerId: containerId, overId: id };
     });
   },
 }));

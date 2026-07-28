@@ -2,18 +2,16 @@
 
 import {
   closestCorners,
+  type CollisionDetection,
   DndContext,
   DragOverlay,
   pointerWithin,
   rectIntersection,
-  type CollisionDetection,
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ChevronRight, HardDrive, Loader2, RefreshCw } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
-
-import type { DriveNode, DriveSummary, FolderIcon, SortOrder } from "@/types/wiki";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +32,7 @@ import {
   isFolderLikeNode,
   type KindedNode,
 } from "@/lib/wiki-tree";
+import type { DriveNode, DriveSummary, FolderIcon, SortOrder } from "@/types/wiki";
 import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
 
 import { CreateFileMenu } from "./create-file-menu";
@@ -47,18 +46,18 @@ import { useDriveTreeIndex } from "./use-drive-tree-index";
 import { useWikiReorder } from "./use-wiki-reorder";
 
 interface DriveSectionProps {
+  activeDriveId: null | string;
   drive: DriveSummary;
-  activeDriveId: string | null;
-  showNonDocFiles: boolean;
   folderIcons: FolderIcon[];
+  showNonDocFiles: boolean;
   sortOrders: SortOrder[];
 }
 
 interface BuildRootItemsArgs {
   childrenByParent: Map<string, DriveNode[]>;
   rootFiles: DriveNode[];
-  sortOrderMap: Map<string, number>;
   showNonDocFiles: boolean;
+  sortOrderMap: Map<string, number>;
 }
 
 const cursorFirstCollision: CollisionDetection = (args) => {
@@ -72,17 +71,17 @@ const cursorFirstCollision: CollisionDetection = (args) => {
 function buildRootItems({
   childrenByParent,
   rootFiles,
-  sortOrderMap,
   showNonDocFiles,
+  sortOrderMap,
 }: BuildRootItemsArgs): KindedNode[] {
   const folders: KindedNode[] = (childrenByParent.get("__root__") ?? []).map((node) => ({
-    type: "folder",
     node,
+    type: "folder",
   }));
 
   const rawFiles = rootFiles.filter((n) => !isFolderLikeNode(n));
   const visibleFiles = showNonDocFiles ? rawFiles : rawFiles.filter((n) => n.mimeType === MIME_DOC);
-  const files: KindedNode[] = visibleFiles.map((node) => ({ type: "file", node }));
+  const files: KindedNode[] = visibleFiles.map((node) => ({ node, type: "file" }));
   return [...folders, ...files].sort((a, b) => compareNodeOrder(a, b, sortOrderMap));
 }
 
@@ -91,38 +90,38 @@ function DriveTreeSkeleton() {
     <SidebarMenuItem className="flex flex-col gap-1.5 px-2 py-1">
       <div className="flex items-center gap-2 pl-1">
         <Skeleton className="size-3.5 rounded-sm" />
-        <Skeleton className="h-3.5 w-32 rounded" />
+        <Skeleton className="h-3.5 w-32 rounded-sm" />
       </div>
       <div className="flex items-center gap-2 pl-5">
         <Skeleton className="size-3.5 rounded-sm" />
-        <Skeleton className="h-3.5 w-40 rounded" />
+        <Skeleton className="h-3.5 w-40 rounded-sm" />
       </div>
       <div className="flex items-center gap-2 pl-5">
         <Skeleton className="size-3.5 rounded-sm" />
-        <Skeleton className="h-3.5 w-24 rounded" />
+        <Skeleton className="h-3.5 w-24 rounded-sm" />
       </div>
       <div className="flex items-center gap-2 pl-1">
         <Skeleton className="size-3.5 rounded-sm" />
-        <Skeleton className="h-3.5 w-36 rounded" />
+        <Skeleton className="h-3.5 w-36 rounded-sm" />
       </div>
     </SidebarMenuItem>
   );
 }
 
 export function DriveSection({
-  drive,
   activeDriveId,
-  showNonDocFiles,
+  drive,
   folderIcons,
+  showNonDocFiles,
   sortOrders,
 }: DriveSectionProps) {
   const [expanded, setExpanded] = useExpandedDrive(drive.id);
   const {
     childrenByParent,
+    docIconOverrides,
     filesByParent,
     filesComplete,
     iconOverrides,
-    docIconOverrides,
     sortOrderMap,
     treeQuery,
   } = useDriveTreeIndex(drive.id, folderIcons, sortOrders);
@@ -145,8 +144,8 @@ export function DriveSection({
   const rootItems = buildRootItems({
     childrenByParent,
     rootFiles: filesComplete ? (filesByParent.get("__root__") ?? []) : (lazyRootFiles.data ?? []),
-    sortOrderMap,
     showNonDocFiles,
+    sortOrderMap,
   });
   const optimisticOrder = reorder.optimisticByContainer.get(rootContainerId) ?? null;
   const displayItems = applyOptimisticOrder(rootItems, optimisticOrder);
@@ -154,16 +153,16 @@ export function DriveSection({
 
   const contextValue: DriveSectionValue = useMemo(
     () => ({
-      driveId: drive.id,
       activeDriveId,
-      showNonDocFiles,
       childrenByParent,
-      filesByParent,
-      treeFilesComplete: filesComplete,
-      iconOverrides,
       docIconOverrides,
-      sortOrderMap,
+      driveId: drive.id,
+      filesByParent,
+      iconOverrides,
       optimisticByContainer: reorder.optimisticByContainer,
+      showNonDocFiles,
+      sortOrderMap,
+      treeFilesComplete: filesComplete,
     }),
     [
       drive.id,
@@ -192,12 +191,12 @@ export function DriveSection({
             )}
           >
             <button
-              type="button"
+              aria-expanded={expanded}
+              className="flex w-full items-center gap-1 pr-7"
               onClick={() => {
                 setExpanded(!expanded);
               }}
-              className="flex w-full items-center gap-1 pr-7"
-              aria-expanded={expanded}
+              type="button"
             >
               <ChevronRight
                 className={cn("size-3 transition-transform", expanded && "rotate-90")}
@@ -208,14 +207,14 @@ export function DriveSection({
           </SidebarGroupLabel>
           <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover/driveheader:opacity-100 focus-within:opacity-100">
             <Button
+              aria-label="Refresh drive"
+              className="size-6 shrink-0"
+              disabled={refreshDrive.isPending}
+              onClick={handleRefresh}
+              size="icon-xs"
+              title="Refresh drive — pulls the latest from Drive instead of waiting for the cache to expire"
               type="button"
               variant="ghost"
-              size="icon-xs"
-              aria-label="Refresh drive"
-              title="Refresh drive — pulls the latest from Drive instead of waiting for the cache to expire"
-              onClick={handleRefresh}
-              disabled={refreshDrive.isPending}
-              className="size-6 shrink-0"
             >
               {refreshDrive.isPending ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -226,48 +225,48 @@ export function DriveSection({
             <CreateFileMenu parentFolderId={drive.id} />
           </div>
         </div>
-        {expanded && (
+        {expanded ? (
           <DndContext
-            sensors={reorder.sensors}
             collisionDetection={cursorFirstCollision}
-            onDragStart={reorder.onDragStart}
-            onDragOver={reorder.onDragOver}
-            onDragEnd={reorder.onDragEnd}
             onDragCancel={reorder.onDragCancel}
+            onDragEnd={reorder.onDragEnd}
+            onDragOver={reorder.onDragOver}
+            onDragStart={reorder.onDragStart}
+            sensors={reorder.sensors}
           >
             <SidebarGroupContent>
               <SidebarMenu>
-                {(treeQuery.isPending || (!treeQuery.data && treeQuery.isFetching)) && (
+                {treeQuery.isPending || (!treeQuery.data && treeQuery.isFetching) ? (
                   <DriveTreeSkeleton />
-                )}
-                {treeQuery.isError && !treeQuery.isFetching && !treeQuery.data && (
+                ) : null}
+                {treeQuery.isError && !treeQuery.isFetching && !treeQuery.data ? (
                   <SidebarMenuItem>
                     <span className="text-destructive px-2 py-1 text-xs">Failed to load drive</span>
                   </SidebarMenuItem>
-                )}
+                ) : null}
                 {!treeQuery.isLoading && (
                   <SortableContext
                     id={rootContainerId}
                     items={displayItemIds}
                     strategy={verticalListSortingStrategy}
                   >
-                    {displayItems.map(({ type, node }) => (
+                    {displayItems.map(({ node, type }) => (
                       <SortableItem
-                        key={node.id}
-                        id={node.id}
-                        variant="item"
                         data={{ isFolder: type === "folder" }}
+                        id={node.id}
+                        key={node.id}
+                        variant="item"
                       >
                         {type === "folder" ? (
-                          <TreeNode node={node} parentFolderId={undefined} depth={0} />
+                          <TreeNode depth={0} node={node} parentFolderId={undefined} />
                         ) : (
                           <FileRow
-                            node={node}
-                            driveId={drive.id}
-                            parentFolderId={undefined}
                             activeDriveId={activeDriveId}
-                            iconOverride={docIconOverrides.get(node.id)}
                             depth={0}
+                            driveId={drive.id}
+                            iconOverride={docIconOverrides.get(node.id)}
+                            node={node}
+                            parentFolderId={undefined}
                           />
                         )}
                       </SortableItem>
@@ -275,7 +274,7 @@ export function DriveSection({
                   </SortableContext>
                 )}
                 {!treeQuery.isLoading && rootItems.length === 0 && (
-                  <EmptyDropZone parentId={drive.id} variant="item" label="Empty drive" />
+                  <EmptyDropZone label="Empty drive" parentId={drive.id} variant="item" />
                 )}
               </SidebarMenu>
             </SidebarGroupContent>
@@ -283,21 +282,21 @@ export function DriveSection({
             <DragOverlay dropAnimation={null}>
               {reorder.activeNode ? (
                 reorder.activeNode.mimeType === MIME_FOLDER ? (
-                  <TreeNode node={reorder.activeNode} parentFolderId={undefined} depth={0} />
+                  <TreeNode depth={0} node={reorder.activeNode} parentFolderId={undefined} />
                 ) : (
                   <FileRow
-                    node={reorder.activeNode}
-                    driveId={drive.id}
-                    parentFolderId={undefined}
                     activeDriveId={activeDriveId}
-                    iconOverride={docIconOverrides.get(reorder.activeNode.id)}
                     depth={0}
+                    driveId={drive.id}
+                    iconOverride={docIconOverrides.get(reorder.activeNode.id)}
+                    node={reorder.activeNode}
+                    parentFolderId={undefined}
                   />
                 )
               ) : null}
             </DragOverlay>
           </DndContext>
-        )}
+        ) : null}
       </SidebarGroup>
     </DriveSectionProvider>
   );

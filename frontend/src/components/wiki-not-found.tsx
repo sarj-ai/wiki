@@ -4,14 +4,14 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 interface WikiNotFoundProps {
-  title?: string;
-
   description?: string;
+
+  title?: string;
 }
 
 export function WikiNotFound({
-  title = "File not found",
   description = "This file isn't available. It may have been moved, deleted, or it lives outside your shared drives.",
+  title = "File not found",
 }: WikiNotFoundProps) {
   return (
     <div className="flex h-full min-h-[calc(100dvh-4rem)] items-center justify-center px-6">

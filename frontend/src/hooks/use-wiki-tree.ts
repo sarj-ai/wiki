@@ -2,6 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import { wikiApi } from "@/lib/wiki-api";
+import { wikiKeys } from "@/lib/wiki-keys";
 import type {
   DocIcon,
   DriveNode,
@@ -13,75 +15,72 @@ import type {
   SortOrder,
 } from "@/types/wiki";
 
-import { wikiApi } from "@/lib/wiki-api";
-import { wikiKeys } from "@/lib/wiki-keys";
-
 export { wikiKeys };
 
 const TREE_STALE_MS = 5 * 60 * 1000;
 
 export function useDrives() {
   return useQuery<DriveSummary[]>({
-    queryKey: wikiKeys.drives,
     queryFn: wikiApi.getDrives,
+    queryKey: wikiKeys.drives,
     staleTime: TREE_STALE_MS,
   });
 }
 
-export function useDriveTree(driveId: string | null) {
+export function useDriveTree(driveId: null | string) {
   return useQuery<DriveTree>({
-    queryKey: wikiKeys.driveTree(driveId ?? "disabled"),
-    queryFn: () => wikiApi.getDriveFolders(driveId ?? ""),
     enabled: !!driveId,
+    queryFn: async () => wikiApi.getDriveFolders(driveId ?? ""),
+    queryKey: wikiKeys.driveTree(driveId ?? "disabled"),
     staleTime: TREE_STALE_MS,
   });
 }
 
-export function useFile(fileId: string | null) {
+export function useFile(fileId: null | string) {
   return useQuery<FileDetail>({
-    queryKey: wikiKeys.file(fileId ?? "disabled"),
-    queryFn: () => wikiApi.getFile(fileId ?? ""),
     enabled: !!fileId,
+    queryFn: async () => wikiApi.getFile(fileId ?? ""),
+    queryKey: wikiKeys.file(fileId ?? "disabled"),
   });
 }
 
-export function useFolderFiles(folderId: string | null, enabled: boolean) {
+export function useFolderFiles(folderId: null | string, enabled: boolean) {
   return useQuery<DriveNode[]>({
-    queryKey: wikiKeys.folderFiles(folderId ?? "disabled"),
-    queryFn: () => wikiApi.getFolderFiles(folderId ?? ""),
     enabled: enabled && !!folderId,
+    queryFn: async () => wikiApi.getFolderFiles(folderId ?? ""),
+    queryKey: wikiKeys.folderFiles(folderId ?? "disabled"),
     staleTime: TREE_STALE_MS,
   });
 }
 
 export function usePreferences() {
   return useQuery<Preferences>({
-    queryKey: wikiKeys.preferences,
     queryFn: wikiApi.getPreferences,
+    queryKey: wikiKeys.preferences,
     staleTime: TREE_STALE_MS,
   });
 }
 
 export function useFolderIcons() {
   return useQuery<FolderIcon[]>({
-    queryKey: wikiKeys.folderIcons,
     queryFn: wikiApi.listFolderIcons,
+    queryKey: wikiKeys.folderIcons,
     staleTime: TREE_STALE_MS,
   });
 }
 
 export function useDocIcons() {
   return useQuery<DocIcon[]>({
-    queryKey: wikiKeys.docIcons,
     queryFn: wikiApi.listDocIcons,
+    queryKey: wikiKeys.docIcons,
     staleTime: TREE_STALE_MS,
   });
 }
 
 export function useSortOrders() {
   return useQuery<SortOrder[]>({
-    queryKey: wikiKeys.sortOrders,
     queryFn: wikiApi.listSortOrders,
+    queryKey: wikiKeys.sortOrders,
     staleTime: TREE_STALE_MS,
   });
 }

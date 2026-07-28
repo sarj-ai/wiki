@@ -146,9 +146,9 @@ class GoogleDriveService(DriveService):
         else:
             names = {d.id: d.name for d in drives}
             merged = [
-                hit.model_copy(update={"drive_name": names[hit.drive_id]})
+                hit.model_copy(update={"drive_name": names[drive_id]})
                 for hit in hits
-                if hit.drive_id in names
+                if (drive_id := hit.drive_id) in names
             ]
         return await self._resolve_shortcut_search_results(merged)
 

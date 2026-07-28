@@ -1,14 +1,13 @@
 "use client";
 
-import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-
-import type { DriveTree } from "@/types/wiki";
 
 import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
 import { isGoogleWorkspaceType } from "@/lib/file-icons";
-import { readRecentDocs, type LastDoc } from "@/lib/last-doc";
+import { type LastDoc, readRecentDocs } from "@/lib/last-doc";
 import { wikiKeys } from "@/lib/wiki-keys";
+import type { DriveTree } from "@/types/wiki";
 
 const WARMUP_DELAY_MS = 1500;
 

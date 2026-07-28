@@ -1,13 +1,12 @@
-import { type QueryClient } from "@tanstack/react-query";
-
-import type { DriveNode, DriveTree, FileResponse } from "@/types/wiki";
+import type { QueryClient } from "@tanstack/react-query";
 
 import { wikiKeys } from "@/lib/wiki-keys";
+import type { DriveNode, DriveTree, FileResponse } from "@/types/wiki";
 import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
 
 export interface CachedNodeMeta {
-  name: string;
   mimeType: string;
+  name: string;
 }
 
 export function findCachedNodeMeta(qc: QueryClient, fileId: string): CachedNodeMeta | null {
@@ -27,15 +26,15 @@ export function findCachedNodeMeta(qc: QueryClient, fileId: string): CachedNodeM
 export function fileToNode(file: FileResponse): DriveNode {
   return {
     id: file.id,
-    name: file.name,
     mimeType: file.mimeType,
-    parentId: file.parentFolderId,
     modifiedTime: file.modifiedTime,
-    shortcutTargetId: undefined,
-    shortcutTargetMimeType: undefined,
+    name: file.name,
+    parentId: file.parentFolderId,
+    shortcutInaccessible: false,
     shortcutTargetDriveId: undefined,
     shortcutTargetDriveName: undefined,
-    shortcutInaccessible: false,
+    shortcutTargetId: undefined,
+    shortcutTargetMimeType: undefined,
   };
 }
 
@@ -78,22 +77,22 @@ export function optimisticMoveFile(
 ): () => void {
   removeFileFromCaches(qc, node.id, source.parentFolderId, source.driveId);
   injectNewFileIntoCaches(qc, {
-    id: node.id,
-    name: node.name,
-    mimeType: node.mimeType,
-    parentFolderId: destination.parentFolderId,
     driveId: destination.driveId,
+    id: node.id,
+    mimeType: node.mimeType,
     modifiedTime: node.modifiedTime,
+    name: node.name,
+    parentFolderId: destination.parentFolderId,
   });
   return () => {
     removeFileFromCaches(qc, node.id, destination.parentFolderId, destination.driveId);
     injectNewFileIntoCaches(qc, {
-      id: node.id,
-      name: node.name,
-      mimeType: node.mimeType,
-      parentFolderId: source.parentFolderId,
       driveId: source.driveId,
+      id: node.id,
+      mimeType: node.mimeType,
       modifiedTime: node.modifiedTime,
+      name: node.name,
+      parentFolderId: source.parentFolderId,
     });
   };
 }
@@ -116,8 +115,8 @@ export function removeFileFromCaches(
       if (!prev) return prev;
       return {
         ...prev,
-        folders: prev.folders.filter((f) => f.id !== fileId),
         files: prev.files.filter((f) => f.id !== fileId),
+        folders: prev.folders.filter((f) => f.id !== fileId),
       };
     });
   }
@@ -128,14 +127,14 @@ export function removeFileFromCaches(
 function metaFromNodes(nodes: DriveNode[], fileId: string): CachedNodeMeta | null {
   for (const node of nodes) {
     if (node.id === fileId && node.mimeType !== MIME_SHORTCUT) {
-      return { name: node.name, mimeType: node.mimeType };
+      return { mimeType: node.mimeType, name: node.name };
     }
     if (
       node.mimeType === MIME_SHORTCUT &&
       node.shortcutTargetId === fileId &&
       node.shortcutTargetMimeType
     ) {
-      return { name: node.name, mimeType: node.shortcutTargetMimeType };
+      return { mimeType: node.shortcutTargetMimeType, name: node.name };
     }
   }
   return null;

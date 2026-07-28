@@ -5,7 +5,7 @@ import { getPublicDocName } from "@/lib/public-api";
 import { serverWikiApi } from "@/lib/server-api";
 
 function docMetadata(name: string): Metadata {
-  return { title: name, openGraph: { title: name, siteName: "Sarj Wiki" } };
+  return { openGraph: { siteName: "Sarj Wiki", title: name }, title: name };
 }
 
 export async function generateMetadata({

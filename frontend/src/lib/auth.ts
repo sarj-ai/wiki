@@ -1,9 +1,10 @@
-import { type z } from "zod";
-
 import "@/lib/api-client";
+
+import type { z } from "zod";
+
 import { API_URL } from "@/lib/env";
 import { logoutAuthLogoutPost } from "@/lib/generated/sdk.gen";
-import { type userProfile } from "@/lib/wiki-schemas";
+import type { userProfile } from "@/lib/wiki-schemas";
 
 export type User = z.output<typeof userProfile>;
 

@@ -46,7 +46,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <WikiSidebar />
         </ErrorBoundary>
         <main className="flex-1 overflow-auto">
-          <SidebarTrigger className="bg-background/80 fixed top-3 left-3 z-50 backdrop-blur md:hidden" />
+          <SidebarTrigger className="bg-background/80 fixed top-3 left-3 z-50 backdrop-blur-sm md:hidden" />
           <ErrorBoundary>{children}</ErrorBoundary>
         </main>
 

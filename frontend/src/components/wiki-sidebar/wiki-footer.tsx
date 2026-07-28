@@ -53,19 +53,19 @@ export function WikiFooter() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="ghost"
-            className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-auto w-full justify-start px-2 py-1.5 font-normal"
             aria-label="Account menu"
+            className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-auto w-full justify-start px-2 py-1.5 font-normal"
+            variant="ghost"
           >
             <Avatar className="bg-sidebar-accent text-sidebar-accent-foreground">
-              {user?.avatarUrl && (
+              {user?.avatarUrl ? (
                 <AvatarImage
-                  src={user.avatarUrl}
                   alt={user.displayName ?? user.email}
-                  referrerPolicy="no-referrer"
                   className="object-cover"
+                  referrerPolicy="no-referrer"
+                  src={user.avatarUrl}
                 />
-              )}
+              ) : null}
               <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground text-xs font-semibold">
                 {initials || "?"}
               </AvatarFallback>
@@ -81,40 +81,40 @@ export function WikiFooter() {
             <ChevronsUpDown className="text-muted-foreground size-4 shrink-0" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" side="top" className="w-56">
+        <DropdownMenuContent align="end" className="w-56" side="top">
           <DropdownMenuItem
+            className="flex items-center gap-2 text-sm"
             onSelect={(e) => {
               e.preventDefault();
               setPrefsOpen(true);
             }}
-            className="flex items-center gap-2 text-sm"
           >
             <Settings className="size-4" />
             Preferences
           </DropdownMenuItem>
           <DropdownMenuItem
+            className="flex items-center gap-2 text-sm"
             onSelect={(e) => {
               e.preventDefault();
               toggleTheme();
             }}
-            className="flex items-center gap-2 text-sm"
           >
-            {mounted && (isDark ? <Sun className="size-4" /> : <Moon className="size-4" />)}
+            {mounted ? isDark ? <Sun className="size-4" /> : <Moon className="size-4" /> : null}
             {isDark ? "Switch to light mode" : "Switch to dark mode"}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
+            className="text-destructive focus:text-destructive flex items-center gap-2 text-sm"
             onSelect={() => {
               void logout();
             }}
-            className="text-destructive focus:text-destructive flex items-center gap-2 text-sm"
           >
             <LogOut className="size-4" />
             Log out
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <PreferencesDialog open={prefsOpen} onOpenChange={setPrefsOpen} />
+      <PreferencesDialog onOpenChange={setPrefsOpen} open={prefsOpen} />
     </SidebarFooter>
   );
 }

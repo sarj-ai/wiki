@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { API_URL } from "@/lib/env";
-import { type Client } from "@/lib/generated/client";
+import type { Client } from "@/lib/generated/client";
 import { client } from "@/lib/generated/client.gen";
 
 type AnyOperation = (options: never) => Promise<unknown>;
@@ -13,7 +13,7 @@ type OperationOptions<Op extends AnyOperation> = Omit<
 
 const replayCache = new WeakMap<Request, Request>();
 
-let refreshPromise: Promise<boolean> | null = null;
+let refreshPromise: null | Promise<boolean> = null;
 
 client.setConfig({
   baseUrl: API_URL,
@@ -38,7 +38,7 @@ const ZErrorDetail = z.object({
     .optional(),
 });
 
-function sessionExpiresAt(): number | null {
+function sessionExpiresAt(): null | number {
   if (typeof document === "undefined") return null;
   const match = SESSION_EXP_COOKIE.exec(document.cookie);
   return match ? Number(match[1]) : null;
@@ -70,7 +70,7 @@ client.interceptors.response.use(async (response, request) => {
   return settled;
 });
 
-async function readErrorMessage(response: Response): Promise<string | null> {
+async function readErrorMessage(response: Response): Promise<null | string> {
   try {
     const text = await response.clone().text();
     if (!text) return null;
@@ -89,7 +89,7 @@ async function readErrorMessage(response: Response): Promise<string | null> {
   }
 }
 
-export function deduplicatedRefresh(): Promise<boolean> {
+export async function deduplicatedRefresh(): Promise<boolean> {
   refreshPromise ??= rawRefresh().finally(() => {
     refreshPromise = null;
   });
@@ -99,8 +99,8 @@ export function deduplicatedRefresh(): Promise<boolean> {
 async function rawRefresh(): Promise<boolean> {
   try {
     const res = await fetch(`${API_URL}/auth/refresh`, {
-      method: "POST",
       credentials: "include",
+      method: "POST",
       signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),
     });
     return res.ok;
@@ -133,7 +133,7 @@ export function makeCall(clientOverride?: Client) {
     operation: Op,
     options: OperationOptions<Op>,
     schema?: S,
-  ): Promise<z.output<S> | void> {
+  ): Promise<void | z.output<S>> {
     const merged = {
       ...options,
       ...(clientOverride === undefined ? {} : { client: clientOverride }),

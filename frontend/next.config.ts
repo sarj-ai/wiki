@@ -78,9 +78,6 @@ const SECURITY_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
-  output: "standalone",
-  reactCompiler: true,
-  typedRoutes: true,
   experimental: {
     optimizePackageImports: [
       "lucide-react",
@@ -92,19 +89,22 @@ const nextConfig: NextConfig = {
   },
   headers: async () => [
     {
-      // Static brand assets are immutable in practice; cache them instead of revalidating.
-      source: "/brand/:path*",
       headers: [
         { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
         ...SECURITY_HEADERS,
       ],
+      // Static brand assets are immutable in practice; cache them instead of revalidating.
+      source: "/brand/:path*",
     },
     {
+      headers: [{ key: "Cache-Control", value: "no-cache, must-revalidate" }, ...SECURITY_HEADERS],
       // HTML pages: always revalidate (browser checks for new version).
       source: "/((?!_next/static|_next/image|brand/).*)",
-      headers: [{ key: "Cache-Control", value: "no-cache, must-revalidate" }, ...SECURITY_HEADERS],
     },
   ],
+  output: "standalone",
+  reactCompiler: true,
+  typedRoutes: true,
 };
 
 export default nextConfig;

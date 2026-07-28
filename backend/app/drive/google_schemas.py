@@ -17,7 +17,7 @@ class GoogleFile(_GoogleModel):
     name: str
     mime_type: str = Field(alias="mimeType")  # sarj-noqa: SARJ006 — raw Google API MIME type
     drive_id: str | None = Field(default=None, alias="driveId")
-    parents: list[str] | None = None
+    parents: list[str] = Field(default_factory=list)
     modified_time: str | None = Field(default=None, alias="modifiedTime")
     shortcut_details: GoogleShortcutDetails | None = Field(default=None, alias="shortcutDetails")
 

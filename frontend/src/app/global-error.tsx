@@ -10,9 +10,9 @@ export default function GlobalError({ reset }: { reset: () => void }) {
             Sarj Wiki hit an unexpected error. Reloading usually fixes it.
           </p>
           <button
-            type="button"
-            onClick={reset}
             className="bg-background cursor-pointer rounded-lg border px-5 py-2 font-[inherit]"
+            onClick={reset}
+            type="button"
           >
             Try again
           </button>

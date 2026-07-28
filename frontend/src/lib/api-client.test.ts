@@ -5,10 +5,10 @@ import { ApiError, wikiApi } from "@/lib/wiki-api";
 
 const RAW_NODE = {
   id: "n1",
-  name: "Doc",
   mime_type: "text/plain",
-  parent_id: null,
   modified_time: null,
+  name: "Doc",
+  parent_id: null,
   shortcut_inaccessible: false,
 };
 
@@ -18,8 +18,8 @@ afterEach(() => {
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status,
     headers: { "content-type": "application/json" },
+    status,
   });
 }
 
@@ -32,15 +32,15 @@ describe("response parsing through the transform schemas", () => {
     expect(out).toEqual([
       {
         id: "n1",
-        name: "Doc",
         mimeType: "text/plain",
-        parentId: undefined,
         modifiedTime: undefined,
-        shortcutTargetId: undefined,
-        shortcutTargetMimeType: undefined,
+        name: "Doc",
+        parentId: undefined,
+        shortcutInaccessible: false,
         shortcutTargetDriveId: undefined,
         shortcutTargetDriveName: undefined,
-        shortcutInaccessible: false,
+        shortcutTargetId: undefined,
+        shortcutTargetMimeType: undefined,
       },
     ]);
   });
@@ -56,25 +56,25 @@ describe("request bodies", () => {
   it("sends the explicitly mapped snake_case wire shape", async () => {
     const fetchMock = vi.fn(async (request: Request) => {
       expect(JSON.parse(await request.text())).toEqual({
-        parent_folder_id: "1kl4",
-        name: "RFC: Unify SIP",
         mime_type: "application/vnd.google-apps.document",
+        name: "RFC: Unify SIP",
+        parent_folder_id: "1kl4",
       });
       return jsonResponse({
-        id: "f1",
-        name: "RFC: Unify SIP",
-        mime_type: "application/vnd.google-apps.document",
-        parent_folder_id: "1kl4",
         drive_id: "d1",
+        id: "f1",
+        mime_type: "application/vnd.google-apps.document",
         modified_time: null,
+        name: "RFC: Unify SIP",
+        parent_folder_id: "1kl4",
       });
     });
     vi.stubGlobal("fetch", fetchMock);
 
     const out = await wikiApi.createFile({
-      parentFolderId: "1kl4",
-      name: "RFC: Unify SIP",
       mimeType: "application/vnd.google-apps.document",
+      name: "RFC: Unify SIP",
+      parentFolderId: "1kl4",
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -91,9 +91,9 @@ describe("error mapping", () => {
     );
 
     await expect(wikiApi.getFile("gone")).rejects.toMatchObject({
+      message: "File not found",
       name: "ApiError",
       status: 404,
-      message: "File not found",
     });
   });
 
@@ -102,7 +102,7 @@ describe("error mapping", () => {
       "fetch",
       vi
         .fn()
-        .mockResolvedValue(jsonResponse({ detail: [{ msg: "field required", loc: [] }] }, 422)),
+        .mockResolvedValue(jsonResponse({ detail: [{ loc: [], msg: "field required" }] }, 422)),
     );
 
     await expect(wikiApi.getDrives()).rejects.toMatchObject({ message: "field required" });
@@ -120,7 +120,7 @@ describe("error mapping", () => {
 describe("401 refresh-and-replay", () => {
   it("refreshes once, replays the original request, and resolves", async () => {
     const calls: string[] = [];
-    const fetchMock = vi.fn((input: Request | string | URL) => {
+    const fetchMock = vi.fn(async (input: Request | string | URL) => {
       const url = input instanceof Request ? input.url : String(input);
       calls.push(url);
       if (calls.length === 1) return Promise.resolve(jsonResponse({ detail: "expired" }, 401));
@@ -147,12 +147,12 @@ describe("401 refresh-and-replay", () => {
       if (fetchMock.mock.calls.length === 1) return jsonResponse({ detail: "expired" }, 401);
       if (url.endsWith("/auth/refresh")) return new Response(null, { status: 200 });
       return jsonResponse({
-        id: "f1",
-        name: "Renamed",
-        mime_type: "text/plain",
-        parent_folder_id: null,
         drive_id: null,
+        id: "f1",
+        mime_type: "text/plain",
         modified_time: null,
+        name: "Renamed",
+        parent_folder_id: null,
       });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -164,7 +164,7 @@ describe("401 refresh-and-replay", () => {
   });
 
   it("does not refresh when /auth/refresh itself returns 401", async () => {
-    const fetchMock = vi.fn((input: Request | string | URL) => {
+    const fetchMock = vi.fn(async (input: Request | string | URL) => {
       const url = input instanceof Request ? input.url : String(input);
       expect(url.endsWith("/auth/refresh")).toBe(false);
       return Promise.resolve(jsonResponse({ detail: "expired" }, 401));

@@ -49,7 +49,7 @@ class SortOrderBulkResult(BaseModel):
 
 class PreferencesWrite(BaseModel):
     show_non_doc_files: bool | None = None
-    hidden_workspace_ids: list[str] | None = None
+    hidden_workspace_ids: list[str] = Field(default_factory=list)
 
 
 class PreferencesRead(BaseModel):

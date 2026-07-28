@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -8,21 +8,21 @@ import { cn } from "@/lib/utils";
 import { EmojiPickerPopover } from "./emoji-picker-popover";
 
 interface PickableIconProps {
-  pickable: boolean;
-  dimmed?: boolean;
-  value: string | undefined;
-  onChange: (next: string | null) => Promise<void>;
   ariaLabel: string;
   children: ReactNode;
+  dimmed?: boolean;
+  onChange: (next: null | string) => Promise<void>;
+  pickable: boolean;
+  value: string | undefined;
 }
 
 export function PickableIcon({
-  pickable,
-  dimmed,
-  value,
-  onChange,
   ariaLabel,
   children,
+  dimmed,
+  onChange,
+  pickable,
+  value,
 }: PickableIconProps) {
   if (!pickable) {
     return (
@@ -34,12 +34,12 @@ export function PickableIcon({
     );
   }
   return (
-    <EmojiPickerPopover value={value} onChange={onChange}>
+    <EmojiPickerPopover onChange={onChange} value={value}>
       <Button
-        variant="ghost"
-        size="icon-xs"
         aria-label={ariaLabel}
         className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground size-6 shrink-0 cursor-pointer transition-colors"
+        size="icon-xs"
+        variant="ghost"
       >
         {children}
       </Button>

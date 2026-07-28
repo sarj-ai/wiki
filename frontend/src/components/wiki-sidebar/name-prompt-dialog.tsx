@@ -16,31 +16,31 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 interface NamePromptDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  title: string;
-  description?: string;
-
-  defaultValue?: string;
   confirmLabel?: string;
-  onConfirm: (value: string) => void | Promise<void>;
+  defaultValue?: string;
+  description?: string;
+  onConfirm: (value: string) => Promise<void> | void;
+
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  title: string;
 }
 
 export function NamePromptDialog({
-  open,
-  onOpenChange,
-  title,
-  description,
-  defaultValue = "",
   confirmLabel = "Create",
+  defaultValue = "",
+  description,
   onConfirm,
+  onOpenChange,
+  open,
+  title,
 }: NamePromptDialogProps) {
   const [value, setValue] = useState(defaultValue);
   const [submitting, startSubmit] = useTransition();
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Prop changes intentionally reset controlled input state.
     if (open) setValue(defaultValue);
   }, [open, defaultValue]);
 
@@ -55,7 +55,7 @@ export function NamePromptDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         className="max-w-sm"
         onOpenAutoFocus={(e) => {
@@ -70,41 +70,41 @@ export function NamePromptDialog({
       >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          {description && <DialogDescription>{description}</DialogDescription>}
+          {description ? <DialogDescription>{description}</DialogDescription> : null}
         </DialogHeader>
         <form
+          className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
             handleSubmit();
           }}
-          className="space-y-3"
         >
           <div className="space-y-1.5">
             <Label htmlFor="name-prompt-input">Name</Label>
             <Input
-              ref={inputRef}
+              disabled={submitting}
               id="name-prompt-input"
-              value={value}
               maxLength={255}
               onChange={(e) => {
                 setValue(e.target.value);
               }}
-              disabled={submitting}
+              ref={inputRef}
+              value={value}
             />
           </div>
           <DialogFooter>
             <Button
-              type="button"
-              variant="outline"
+              disabled={submitting}
               onClick={() => {
                 onOpenChange(false);
               }}
-              disabled={submitting}
+              type="button"
+              variant="outline"
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting || !value.trim()}>
-              {submitting && <Loader2 className="size-4 animate-spin" />}
+            <Button disabled={submitting || !value.trim()} type="submit">
+              {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
               {submitting ? "Working…" : confirmLabel}
             </Button>
           </DialogFooter>

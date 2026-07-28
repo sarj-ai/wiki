@@ -1,5 +1,5 @@
 from datetime import timedelta
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
 from cryptography.fernet import Fernet
 from pydantic import (
@@ -26,7 +26,7 @@ LogLevel = Literal["TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRI
 
 
 def parse_fernet_keys(raw: str) -> list[str]:
-    keys = [k.strip() for k in raw.split(",") if k.strip()]
+    keys = [key for raw_key in raw.split(",") if (key := raw_key.strip())]
     if not keys:
         return []
     try:
@@ -66,7 +66,7 @@ class Settings(BaseSettings):
         return str(self.FRONTEND_URL).rstrip("/")
 
     @model_validator(mode="after")
-    def exactly_one_database_path(self) -> Settings:
+    def exactly_one_database_path(self) -> Self:
         dsn = self.DATABASE_URL is not None
         connector = self.DB_INSTANCE_CONNECTION_NAME is not None or self.DB_IAM_USER is not None
         if dsn == connector:

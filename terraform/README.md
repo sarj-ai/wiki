@@ -5,23 +5,23 @@ on GCP + Cloudflare.
 
 ## Layout
 
-| File | Purpose |
-|---|---|
-| `main.tf` | GCP + Cloudflare providers, enabled APIs |
-| `versions.tf` | Terraform + provider version pins, GCS backend |
-| `variables.tf` | All inputs (project/region, domains, OAuth, Cloudflare) |
-| `network.tf` | VPC, private services access, VPC connector for Cloud Run → Cloud SQL |
-| `database.tf` | Cloud SQL Postgres instance + user + database |
-| `secrets.tf` | Secret Manager entries for DB URL, Fernet, OAuth secrets |
-| `iam.tf` | Service accounts and IAM bindings |
-| `cloudrun.tf` | Cloud Run backend service definition |
-| `loadbalancer.tf` | Global HTTPS LB + Cloud Armor WAF + managed TLS cert *(Sub-PR B, new)* |
-| `cloudflare.tf` | ~~removed~~ — Cloudflare WAF rules and DNS managed manually in the dashboard |
-| `security.tf` | Security Command Center enablement + branch protection docs *(Sub-PR B, new)* |
-| `registry.tf` | Artifact Registry for backend Docker images |
-| `cicd.tf` | Workload Identity Federation for GitHub Actions deploys |
-| `monitoring.tf` | Cloud Monitoring alert policies |
-| `outputs.tf` | Useful outputs (LB IP, backend URL, etc.) |
+| File              | Purpose                                                                       |
+| ----------------- | ----------------------------------------------------------------------------- |
+| `main.tf`         | GCP + Cloudflare providers, enabled APIs                                      |
+| `versions.tf`     | Terraform + provider version pins, GCS backend                                |
+| `variables.tf`    | All inputs (project/region, domains, OAuth, Cloudflare)                       |
+| `network.tf`      | VPC, private services access, VPC connector for Cloud Run → Cloud SQL         |
+| `database.tf`     | Cloud SQL Postgres instance + user + database                                 |
+| `secrets.tf`      | Secret Manager entries for DB URL, Fernet, OAuth secrets                      |
+| `iam.tf`          | Service accounts and IAM bindings                                             |
+| `cloudrun.tf`     | Cloud Run backend service definition                                          |
+| `loadbalancer.tf` | Global HTTPS LB + Cloud Armor WAF + managed TLS cert _(Sub-PR B, new)_        |
+| `cloudflare.tf`   | ~~removed~~ — Cloudflare WAF rules and DNS managed manually in the dashboard  |
+| `security.tf`     | Security Command Center enablement + branch protection docs _(Sub-PR B, new)_ |
+| `registry.tf`     | Artifact Registry for backend Docker images                                   |
+| `cicd.tf`         | Workload Identity Federation for GitHub Actions deploys                       |
+| `monitoring.tf`   | Cloud Monitoring alert policies                                               |
+| `outputs.tf`      | Useful outputs (LB IP, backend URL, etc.)                                     |
 
 ## Variables (`terraform.tfvars`)
 
@@ -138,15 +138,15 @@ gcloud secrets versions disable OLD_VERSION --secret=sarj-docs-secret-key
 
 ## Cost posture (rough)
 
-| Component | Order-of-magnitude monthly |
-|---|---|
-| Cloud Run (1 always-on instance, 1 vCPU / 512 MB) | ~$25 |
-| Cloud SQL (db-f1-micro) | ~$10 |
-| Global LB + forwarding rule + Cloud Armor | ~$25 |
-| Certificate Manager | free for the first cert |
-| Secret Manager | <$1 for active secret count |
-| Cloudflare Free tier | $0 |
-| Security Command Center Standard | $0 |
-| **Total** | **~$60/month** |
+| Component                                         | Order-of-magnitude monthly  |
+| ------------------------------------------------- | --------------------------- |
+| Cloud Run (1 always-on instance, 1 vCPU / 512 MB) | ~$25                        |
+| Cloud SQL (db-f1-micro)                           | ~$10                        |
+| Global LB + forwarding rule + Cloud Armor         | ~$25                        |
+| Certificate Manager                               | free for the first cert     |
+| Secret Manager                                    | <$1 for active secret count |
+| Cloudflare Free tier                              | $0                          |
+| Security Command Center Standard                  | $0                          |
+| **Total**                                         | **~$60/month**              |
 
 Does not include Drive / Workspace licenses, which are orthogonal.

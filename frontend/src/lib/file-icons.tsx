@@ -1,9 +1,7 @@
-import type { ReactElement } from "react";
-
 import {
   ClipboardList,
-  FileType2,
   FileText,
+  FileType2,
   Folder,
   Image as LucideImage,
   Link2,
@@ -11,6 +9,7 @@ import {
   Presentation,
   Table,
 } from "lucide-react";
+import type { ReactElement } from "react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -26,17 +25,17 @@ import {
 
 interface NodeIconShape {
   mimeType: string;
-  shortcutTargetMimeType?: string | null | undefined;
+  shortcutTargetMimeType?: null | string | undefined;
 }
 
 const MIME_ICONS: Record<string, { icon: typeof FileText; tint: string }> = {
-  [MIME_FOLDER]: { icon: Folder, tint: "text-icon-folder" },
   [MIME_DOC]: { icon: FileText, tint: "text-icon-doc" },
-  [MIME_SHEET]: { icon: Table, tint: "text-icon-sheet" },
-  [MIME_SLIDE]: { icon: Presentation, tint: "text-icon-slide" },
   [MIME_DRAWING]: { icon: Palette, tint: "text-icon-drawing" },
+  [MIME_FOLDER]: { icon: Folder, tint: "text-icon-folder" },
   [MIME_FORM]: { icon: ClipboardList, tint: "text-icon-form" },
   [MIME_PDF]: { icon: FileType2, tint: "text-icon-pdf" },
+  [MIME_SHEET]: { icon: Table, tint: "text-icon-sheet" },
+  [MIME_SLIDE]: { icon: Presentation, tint: "text-icon-slide" },
 };
 
 export function renderMimeIcon(mimeType: string, className?: string): ReactElement {
@@ -59,8 +58,8 @@ export function renderNodeIcon(node: NodeIconShape, className?: string): ReactEl
     <span className="relative inline-flex shrink-0">
       {renderMimeIcon(targetMime, className)}
       <Link2
-        className="bg-background text-muted-foreground absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full p-[1px]"
         aria-hidden
+        className="bg-background text-muted-foreground absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full p-[1px]"
       />
     </span>
   );

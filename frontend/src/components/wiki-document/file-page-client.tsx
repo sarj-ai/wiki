@@ -4,8 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { notFound } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import type { BreadcrumbItem } from "@/types/wiki";
-
 import { Skeleton } from "@/components/ui/skeleton";
 import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
 import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
@@ -16,6 +14,7 @@ import { saveLastDoc } from "@/lib/last-doc";
 import { markNav, markPaint } from "@/lib/perf-marks";
 import { ApiError } from "@/lib/wiki-api";
 import { findCachedNodeMeta } from "@/lib/wiki-cache";
+import type { BreadcrumbItem } from "@/types/wiki";
 
 export function FilePageClient({ driveId }: { driveId: string }) {
   const queryClient = useQueryClient();
@@ -23,7 +22,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
 
   const [reloadKey, setReloadKey] = useState(0);
 
-  const committed = useRef<string | null>(null);
+  const committed = useRef<null | string>(null);
   useEffect(() => {
     if (committed.current === driveId) return;
     committed.current = driveId;
@@ -38,14 +37,14 @@ export function FilePageClient({ driveId }: { driveId: string }) {
     }
     return (
       <FilePageBody
+        breadcrumb={[]}
         fileId={driveId}
         mimeType={hint.mimeType}
-        title={hint.name}
-        breadcrumb={[]}
-        reloadKey={reloadKey}
         onReload={() => {
           setReloadKey((n) => n + 1);
         }}
+        reloadKey={reloadKey}
+        title={hint.name}
       />
     );
   }
@@ -57,8 +56,8 @@ export function FilePageClient({ driveId }: { driveId: string }) {
   if (fileQuery.isError) {
     return (
       <WikiNotFound
-        title="Can't load this file"
         description="Something went wrong fetching this file from Google Drive. Try again in a moment, or pick another file from the sidebar."
+        title="Can't load this file"
       />
     );
   }
@@ -67,34 +66,34 @@ export function FilePageClient({ driveId }: { driveId: string }) {
 
   return (
     <FilePageBody
+      breadcrumb={file.breadcrumb}
       fileId={file.id}
       mimeType={file.mimeType}
-      title={file.name}
-      breadcrumb={file.breadcrumb}
-      reloadKey={reloadKey}
       onReload={() => {
         setReloadKey((n) => n + 1);
       }}
+      reloadKey={reloadKey}
+      title={file.name}
     />
   );
 }
 
 interface FilePageBodyProps {
+  breadcrumb: BreadcrumbItem[];
   fileId: string;
   mimeType: string;
-  title: string;
-  breadcrumb: BreadcrumbItem[];
-  reloadKey: number;
   onReload: () => void;
+  reloadKey: number;
+  title: string;
 }
 
 function FilePageBody({
+  breadcrumb,
   fileId,
   mimeType,
-  title,
-  breadcrumb,
-  reloadKey,
   onReload,
+  reloadKey,
+  title,
 }: FilePageBodyProps) {
   const setActive = useDocViewerStore((s) => s.setActive);
   const setSlot = useDocViewerStore((s) => s.setSlot);
@@ -103,7 +102,7 @@ function FilePageBody({
     markPaint(fileId, "toolbarPaint");
   }, [fileId]);
   useEffect(() => {
-    setActive({ fileId, mimeType, title, reloadKey });
+    setActive({ fileId, mimeType, reloadKey, title });
     saveLastDoc({ fileId, mimeType, title });
   }, [fileId, mimeType, title, reloadKey, setActive]);
   useEffect(
@@ -116,22 +115,22 @@ function FilePageBody({
   return (
     <div className="flex h-[100dvh] flex-col">
       <WikiToolbar
+        breadcrumb={breadcrumb}
         fileId={fileId}
         mimeType={mimeType}
-        title={title}
-        breadcrumb={breadcrumb}
         onReload={onReload}
+        title={title}
       />
-      <div ref={setSlot} className="flex-1 overflow-hidden" />
+      <div className="flex-1 overflow-hidden" ref={setSlot} />
     </div>
   );
 }
 
 function FilePagePending() {
   return (
-    <div className="flex h-[100dvh] flex-col" aria-busy="true" aria-label="Loading file">
+    <div aria-busy="true" aria-label="Loading file" className="flex h-[100dvh] flex-col">
       <header className="border-border bg-background flex items-center gap-2 border-b px-4 py-2">
-        <Skeleton className="size-4 shrink-0 rounded" />
+        <Skeleton className="size-4 shrink-0 rounded-sm" />
         <Skeleton className="h-4 w-48" />
         <div className="ml-auto flex items-center gap-2">
           <Skeleton className="h-6 w-8" />

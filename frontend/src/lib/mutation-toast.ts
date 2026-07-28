@@ -2,7 +2,7 @@ import { toast } from "sonner";
 
 export async function runWithErrorToast(
   fn: () => Promise<void>,
-  fallback: string | ((err: unknown) => string),
+  fallback: ((err: unknown) => string) | string,
 ): Promise<void> {
   try {
     await fn();

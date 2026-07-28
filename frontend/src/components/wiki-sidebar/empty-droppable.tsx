@@ -6,14 +6,14 @@ import { SidebarMenuItem, SidebarMenuSubItem } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
 interface EmptyDropZoneProps {
+  label: string;
   parentId: string;
   variant: "item" | "subitem";
-  label: string;
 }
 
-export function EmptyDropZone({ parentId, variant, label }: EmptyDropZoneProps) {
+export function EmptyDropZone({ label, parentId, variant }: EmptyDropZoneProps) {
   const containerId = `parent:${parentId}`;
-  const { setNodeRef, isOver } = useDroppable({ id: containerId });
+  const { isOver, setNodeRef } = useDroppable({ id: containerId });
 
   const className = cn(
     "transition-[background-color,box-shadow] duration-150",
@@ -22,13 +22,13 @@ export function EmptyDropZone({ parentId, variant, label }: EmptyDropZoneProps) 
 
   if (variant === "subitem") {
     return (
-      <SidebarMenuSubItem ref={setNodeRef} className={className}>
+      <SidebarMenuSubItem className={className} ref={setNodeRef}>
         <span className="text-muted-foreground px-2 py-1 text-xs">{label}</span>
       </SidebarMenuSubItem>
     );
   }
   return (
-    <SidebarMenuItem ref={setNodeRef} className={className}>
+    <SidebarMenuItem className={className} ref={setNodeRef}>
       <span className="text-muted-foreground px-2 py-1 text-xs">{label}</span>
     </SidebarMenuItem>
   );

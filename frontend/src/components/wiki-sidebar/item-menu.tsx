@@ -32,19 +32,19 @@ import { MoveFileDialog } from "./move-file-dialog";
 import { NamePromptDialog } from "./name-prompt-dialog";
 
 interface ItemMenuProps {
-  fileId: string;
-  driveId: string | undefined;
-  parentFolderId: string | undefined;
   currentName: string;
+  driveId: string | undefined;
+  fileId: string;
   isFolder: boolean;
+  parentFolderId: string | undefined;
 }
 
 export function ItemMenu({
-  fileId,
-  driveId,
-  parentFolderId,
   currentName,
+  driveId,
+  fileId,
   isFolder,
+  parentFolderId,
 }: ItemMenuProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -79,7 +79,7 @@ export function ItemMenu({
 
   const handleDelete = async () => {
     await runWithErrorToast(async () => {
-      await deleteFile.mutateAsync({ fileId, driveId, parentFolderId });
+      await deleteFile.mutateAsync({ driveId, fileId, parentFolderId });
       setConfirmingDelete(false);
       toast.success(isFolder ? "Folder moved to trash" : "File moved to trash");
 
@@ -94,52 +94,52 @@ export function ItemMenu({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="ghost"
-            size="icon-xs"
+            aria-label={`Actions for ${currentName}`}
+            className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground size-5 shrink-0 rounded-sm"
             onClick={(e) => {
               e.stopPropagation();
             }}
-            className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground size-5 shrink-0 rounded"
-            aria-label={`Actions for ${currentName}`}
+            size="icon-xs"
+            variant="ghost"
           >
             <MoreHorizontal className="size-3" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-40">
           <DropdownMenuItem
+            className="flex items-center gap-2 text-sm"
             onClick={() => {
               setRenaming(true);
             }}
-            className="flex items-center gap-2 text-sm"
           >
             <Pencil className="size-4" />
             Rename
           </DropdownMenuItem>
           <DropdownMenuItem
+            className="flex items-center gap-2 text-sm"
             onClick={() => {
               setMovingFile(true);
             }}
-            className="flex items-center gap-2 text-sm"
           >
             <FolderInput className="size-4" />
             Move to…
           </DropdownMenuItem>
           {!isFolder && (
             <DropdownMenuItem
+              className="flex items-center gap-2 text-sm"
               onClick={() => {
                 setDuplicating(true);
               }}
-              className="flex items-center gap-2 text-sm"
             >
               <Copy className="size-4" />
               Duplicate
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
+            className="text-destructive focus:text-destructive flex items-center gap-2 text-sm"
             onClick={() => {
               setConfirmingDelete(true);
             }}
-            className="text-destructive focus:text-destructive flex items-center gap-2 text-sm"
           >
             <Trash2 className="size-4" />
             Move to trash
@@ -147,11 +147,11 @@ export function ItemMenu({
         </DropdownMenuContent>
       </DropdownMenu>
       <AlertDialog
-        open={confirmingDelete}
         onOpenChange={(open) => {
           if (deleteFile.isPending) return;
           setConfirmingDelete(open);
         }}
+        open={confirmingDelete}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -166,11 +166,11 @@ export function ItemMenu({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleteFile.isPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              disabled={deleteFile.isPending}
               onClick={(e) => {
                 e.preventDefault();
                 void handleDelete();
               }}
-              disabled={deleteFile.isPending}
             >
               {deleteFile.isPending ? (
                 <>
@@ -185,29 +185,29 @@ export function ItemMenu({
         </AlertDialogContent>
       </AlertDialog>
       <MoveFileDialog
-        open={movingFile}
-        onOpenChange={setMovingFile}
-        fileId={fileId}
-        fileName={currentName}
         currentDriveId={driveId}
         currentParentFolderId={parentFolderId}
+        fileId={fileId}
+        fileName={currentName}
+        onOpenChange={setMovingFile}
+        open={movingFile}
       />
       <NamePromptDialog
-        open={renaming}
-        onOpenChange={setRenaming}
-        title={isFolder ? "Rename folder" : "Rename file"}
-        defaultValue={currentName}
         confirmLabel="Rename"
+        defaultValue={currentName}
         onConfirm={handleRenameSubmit}
+        onOpenChange={setRenaming}
+        open={renaming}
+        title={isFolder ? "Rename folder" : "Rename file"}
       />
       <NamePromptDialog
-        open={duplicating}
-        onOpenChange={setDuplicating}
-        title="Duplicate file"
-        description="Creates a copy as a sibling of the original."
-        defaultValue={`Copy of ${currentName}`}
         confirmLabel="Duplicate"
+        defaultValue={`Copy of ${currentName}`}
+        description="Creates a copy as a sibling of the original."
         onConfirm={handleDuplicate}
+        onOpenChange={setDuplicating}
+        open={duplicating}
+        title="Duplicate file"
       />
     </>
   );

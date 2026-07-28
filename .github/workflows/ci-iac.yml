@@ -1,6 +1,6 @@
 name: CI IaC
 
-on:
+"on":
   push:
     branches: [main, "feat/**"]
     paths:

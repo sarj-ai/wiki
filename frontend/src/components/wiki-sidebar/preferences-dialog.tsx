@@ -18,15 +18,15 @@ import { useDrives, usePreferences } from "@/hooks/use-wiki-tree";
 import { runWithErrorToast } from "@/lib/mutation-toast";
 
 interface PreferencesDialogProps {
-  open: boolean;
   onOpenChange: (open: boolean) => void;
+  open: boolean;
 }
 
 function CheckboxRow({
+  checked,
+  description,
   id,
   label,
-  description,
-  checked,
   onChange,
 }: {
   id: string;
@@ -37,26 +37,26 @@ function CheckboxRow({
 }) {
   return (
     <label
-      htmlFor={id}
       className="hover:bg-accent/50 flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-sm"
+      htmlFor={id}
     >
       <Checkbox
-        id={id}
         checked={checked}
+        className="mt-0.5"
+        id={id}
         onCheckedChange={(next) => {
           onChange(next === true);
         }}
-        className="mt-0.5"
       />
       <div className="min-w-0 flex-1">
         <div className="font-medium">{label}</div>
-        {description && <div className="text-muted-foreground text-xs">{description}</div>}
+        {description ? <div className="text-muted-foreground text-xs">{description}</div> : null}
       </div>
     </label>
   );
 }
 
-export function PreferencesDialog({ open, onOpenChange }: PreferencesDialogProps) {
+export function PreferencesDialog({ onOpenChange, open }: PreferencesDialogProps) {
   const drivesQuery = useDrives();
   const prefsQuery = usePreferences();
   const setPreferences = useSetPreferences();
@@ -72,7 +72,7 @@ export function PreferencesDialog({ open, onOpenChange }: PreferencesDialogProps
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -90,10 +90,10 @@ export function PreferencesDialog({ open, onOpenChange }: PreferencesDialogProps
               Display
             </div>
             <CheckboxRow
+              checked={showNonDocFiles}
+              description="Include Sheets, Slides, Forms, Drawings, PDFs and images in the sidebar."
               id="pref-show-non-doc"
               label="Show non-Doc files"
-              description="Include Sheets, Slides, Forms, Drawings, PDFs and images in the sidebar."
-              checked={showNonDocFiles}
               onChange={(next) => {
                 void updatePrefs({ showNonDocFiles: next });
               }}
@@ -112,10 +112,10 @@ export function PreferencesDialog({ open, onOpenChange }: PreferencesDialogProps
                 const isHidden = hiddenSet.has(drive.id);
                 return (
                   <CheckboxRow
-                    key={drive.id}
-                    id={`pref-drive-${drive.id}`}
-                    label={drive.name}
                     checked={!isHidden}
+                    id={`pref-drive-${drive.id}`}
+                    key={drive.id}
+                    label={drive.name}
                     onChange={(next) => {
                       const nextHidden = next
                         ? hiddenWorkspaceIds.filter((id) => id !== drive.id)

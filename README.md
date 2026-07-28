@@ -13,6 +13,19 @@ Internal knowledge base for [@sarj.ai](https://sarj.ai), built on top of Google 
 
 ## Setup
 
+### Git hooks
+
+Use Node 24+ and npm 11 (the versions used by CI). `npm install` in `frontend/`
+installs Lefthook automatically. It applies Ruff,
+ESLint, Prettier, Markdownlint, and Taplo fixes to staged files, then runs every
+pinned Sarj standards rule before commits and the full quality suite before
+pushes. To reinstall the hooks manually:
+
+```bash
+cd frontend
+npm run hooks:install
+```
+
 ### Secrets
 
 Local-dev secrets live in Google Secret Manager (project `sarj-docs`).
@@ -52,28 +65,28 @@ npm run dev
 
 ### Backend (`backend/app/`)
 
-| Package | Purpose |
-|---------|---------|
-| `auth/` | OAuth flow, JWT (with token versioning), encryption, auth dependencies |
-| `docs_transformer/` | Google Docs API response → structured content blocks (13 modules) |
-| `drive/` | Drive API helpers: credentials, files, folders, content, changes |
-| `pages/` | Page CRUD, content fetching, background tasks, sync, tree building |
-| `permissions/` | Page sharing and access control |
-| `search/` | Full-text search with PostgreSQL tsvector |
-| `webhooks/` | Drive push notification handling and verification |
-| `workspaces/` | Google Groups sync, workspace management |
-| `internal/` | Cloud Scheduler endpoints (reindex, webhook renewal) |
+| Package             | Purpose                                                                |
+| ------------------- | ---------------------------------------------------------------------- |
+| `auth/`             | OAuth flow, JWT (with token versioning), encryption, auth dependencies |
+| `docs_transformer/` | Google Docs API response → structured content blocks (13 modules)      |
+| `drive/`            | Drive API helpers: credentials, files, folders, content, changes       |
+| `pages/`            | Page CRUD, content fetching, background tasks, sync, tree building     |
+| `permissions/`      | Page sharing and access control                                        |
+| `search/`           | Full-text search with PostgreSQL tsvector                              |
+| `webhooks/`         | Drive push notification handling and verification                      |
+| `workspaces/`       | Google Groups sync, workspace management                               |
+| `internal/`         | Cloud Scheduler endpoints (reindex, webhook renewal)                   |
 
 ### Frontend (`frontend/src/`)
 
-| Directory | Purpose |
-|-----------|---------|
-| `app/` | Next.js App Router pages (login, app shell, document view) |
-| `components/sidebar/` | Collapsible tree, workspace switcher, drag-and-drop |
-| `components/document/` | Document header, iframe embed, loading skeletons |
-| `components/permissions/` | Share dialog and share button |
-| `hooks/` | React Query hooks for page tree, workspaces, current user |
-| `lib/` | API client, auth helpers, utilities |
+| Directory                 | Purpose                                                    |
+| ------------------------- | ---------------------------------------------------------- |
+| `app/`                    | Next.js App Router pages (login, app shell, document view) |
+| `components/sidebar/`     | Collapsible tree, workspace switcher, drag-and-drop        |
+| `components/document/`    | Document header, iframe embed, loading skeletons           |
+| `components/permissions/` | Share dialog and share button                              |
+| `hooks/`                  | React Query hooks for page tree, workspaces, current user  |
+| `lib/`                    | API client, auth helpers, utilities                        |
 
 ## Deployment
 
@@ -89,31 +102,31 @@ Infrastructure is managed via **Terraform** in the `terraform/` directory:
 
 ### Backend (required)
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `GOOGLE_CLIENT_ID` | OAuth 2.0 client ID |
-| `GOOGLE_CLIENT_SECRET` | OAuth 2.0 client secret |
-| `GOOGLE_REDIRECT_URI` | OAuth callback URL |
-| `JWT_SECRET_KEY` | Secret key for signing JWTs |
-| `FERNET_KEY` | Encryption key for Google tokens at rest |
-| `DRIVE_ROOT_FOLDER_ID` | Root `Sarj Docs` folder ID in Google Drive |
-| `SERVICE_ACCOUNT_JSON` | Service account key JSON (base64 or raw) |
+| Variable                         | Description                                   |
+| -------------------------------- | --------------------------------------------- |
+| `DATABASE_URL`                   | PostgreSQL connection string                  |
+| `GOOGLE_CLIENT_ID`               | OAuth 2.0 client ID                           |
+| `GOOGLE_CLIENT_SECRET`           | OAuth 2.0 client secret                       |
+| `GOOGLE_REDIRECT_URI`            | OAuth callback URL                            |
+| `JWT_SECRET_KEY`                 | Secret key for signing JWTs                   |
+| `FERNET_KEY`                     | Encryption key for Google tokens at rest      |
+| `DRIVE_ROOT_FOLDER_ID`           | Root `Sarj Docs` folder ID in Google Drive    |
+| `SERVICE_ACCOUNT_JSON`           | Service account key JSON (base64 or raw)      |
 | `GOOGLE_ADMIN_IMPERSONATE_EMAIL` | Admin email for service account impersonation |
-| `DRIVE_WEBHOOK_TOKEN` | Token for verifying Drive webhook headers |
-| `FRONTEND_URL` | Frontend origin for CORS and redirects |
+| `DRIVE_WEBHOOK_TOKEN`            | Token for verifying Drive webhook headers     |
+| `FRONTEND_URL`                   | Frontend origin for CORS and redirects        |
 
 ### Backend (optional)
 
-| Variable | Description |
-|----------|-------------|
-| `SHARED_DRIVE_ID` | Shared Drive ID for Changes API (leave empty for folder-level SA access) |
-| `INTERNAL_AUDIENCE` | Cloud Run service URL for OIDC audience verification (production) |
-| `INTERNAL_SCHEDULER_SECRET` | Shared secret for internal endpoints (local dev, min 32 chars) |
-| `WEBHOOK_BASE_URL` | Base URL for Drive webhook registration |
+| Variable                    | Description                                                              |
+| --------------------------- | ------------------------------------------------------------------------ |
+| `SHARED_DRIVE_ID`           | Shared Drive ID for Changes API (leave empty for folder-level SA access) |
+| `INTERNAL_AUDIENCE`         | Cloud Run service URL for OIDC audience verification (production)        |
+| `INTERNAL_SCHEDULER_SECRET` | Shared secret for internal endpoints (local dev, min 32 chars)           |
+| `WEBHOOK_BASE_URL`          | Base URL for Drive webhook registration                                  |
 
 ### Frontend
 
-| Variable | Description |
-|----------|-------------|
+| Variable              | Description          |
+| --------------------- | -------------------- |
 | `NEXT_PUBLIC_API_URL` | Backend API base URL |

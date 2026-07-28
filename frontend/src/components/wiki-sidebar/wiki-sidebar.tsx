@@ -27,7 +27,7 @@ export function WikiSidebar() {
   const folderIconsQuery = useFolderIcons();
   const sortOrdersQuery = useSortOrders();
 
-  const activeDriveId: string | null = (() => {
+  const activeDriveId: null | string = (() => {
     if (!pathname.startsWith("/d/")) return null;
     try {
       return decodeURIComponent(pathname.split("/")[2] ?? "") || null;
@@ -78,7 +78,7 @@ export function WikiSidebar() {
     <Sidebar>
       <SidebarHeader>
         <div className="flex items-center gap-2 px-2 py-1.5">
-          <SarjLogo size={28} priority />
+          <SarjLogo priority size={28} />
         </div>
         <div className="px-2 pb-1">
           <DriveSearchBox />
@@ -86,19 +86,19 @@ export function WikiSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <ErrorBoundary>
-          {drivesQuery.isLoading && (
+          {drivesQuery.isLoading ? (
             <div className="text-muted-foreground px-3 py-2 text-xs">Loading drives…</div>
-          )}
-          {drivesQuery.isError && (
+          ) : null}
+          {drivesQuery.isError ? (
             <div className="text-destructive px-3 py-2 text-xs">Failed to load drives</div>
-          )}
+          ) : null}
           {visibleDrives.map((drive, index) => (
             <div key={drive.id}>
               <DriveSection
-                drive={drive}
                 activeDriveId={activeDriveId}
-                showNonDocFiles={showNonDocFiles}
+                drive={drive}
                 folderIcons={folderIconsQuery.data ?? []}
+                showNonDocFiles={showNonDocFiles}
                 sortOrders={sortOrdersQuery.data ?? []}
               />
               {index < visibleDrives.length - 1 && <SidebarSeparator />}

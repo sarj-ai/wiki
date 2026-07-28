@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+import hmac
 import secrets
 from typing import override
 import uuid
@@ -93,7 +94,7 @@ class GoogleAuthService(AuthService):
         if user is None:
             msg = "User not found"
             raise TokenRevokedError(msg)
-        if payload.tv != user.token_version:
+        if not hmac.compare_digest(str(payload.tv), str(user.token_version)):
             logger.warning("auth: revoked refresh token presented user={user_id}", user_id=user.id)
             msg = "Token has been revoked"
             raise TokenRevokedError(msg)
@@ -113,8 +114,8 @@ class GoogleAuthService(AuthService):
             logger.opt(exception=True).warning(
                 "logout: failed to bump token_version; proceeding to clear cookies"
             )
-            return
-        drives_cache.invalidate(str(user.id))
+        if user is not None:
+            drives_cache.invalidate(str(user.id))
 
     @override
     async def resolve_current_user(self, jwt_token: str) -> User:
@@ -126,22 +127,11 @@ class GoogleAuthService(AuthService):
         if user is None:
             msg = "User not found"
             raise TokenRevokedError(msg)
-        if payload.tv != user.token_version:
+        if not hmac.compare_digest(str(payload.tv), str(user.token_version)):
             logger.warning("auth: revoked access token presented user={user_id}", user_id=user.id)
             msg = "Token has been revoked"
             raise TokenRevokedError(msg)
         return user
-
-    async def _revoke_google_token(self, user: User) -> None:
-        if user.encrypted_refresh_token is None:
-            return
-        try:
-            refresh_token = decrypt_text(user.encrypted_refresh_token)
-            await self._http.post(GOOGLE_REVOKE_URL, data={"token": refresh_token})
-        except Exception:  # ruff: ignore[blind-except] — best-effort; logout proceeds regardless.
-            logger.opt(exception=True).warning(
-                "logout: Google token revocation failed user={user_id}", user_id=user.id
-            )
 
     async def _revokable_access_user(self, access_token: str) -> User | None:
         payload = decode_token(access_token)
@@ -153,6 +143,17 @@ class GoogleAuthService(AuthService):
         user.token_version += 1
         await self._db.commit()
         await self._revoke_google_token(user)
+
+    async def _revoke_google_token(self, user: User) -> None:
+        if user.encrypted_refresh_token is None:
+            return
+        try:
+            refresh_token = decrypt_text(user.encrypted_refresh_token)
+            await self._http.post(GOOGLE_REVOKE_URL, data={"token": refresh_token})
+        except Exception:  # ruff: ignore[blind-except] — best-effort; logout proceeds regardless.
+            logger.opt(exception=True).warning(
+                "logout: Google token revocation failed user={user_id}", user_id=user.id
+            )
 
     async def _exchange_google_code(self, code: str) -> _GoogleTokens:
         resp = await self._http.post(

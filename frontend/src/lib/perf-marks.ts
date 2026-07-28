@@ -1,10 +1,10 @@
-type PerfExtra = Record<string, string | number | boolean>;
+type PerfExtra = Record<string, boolean | number | string>;
 
 interface PerfRecord {
+  extra: null | PerfExtra;
   id: string;
   phase: string;
   t: number;
-  extra: PerfExtra | null;
 }
 
 declare global {
@@ -27,9 +27,9 @@ function readPerfFlag(): boolean {
 
 const enabled = readPerfFlag();
 
-export function markNav(id: string, phase: string, extra: PerfExtra | null = null): void {
+export function markNav(id: string, phase: string, extra: null | PerfExtra = null): void {
   if (!enabled || typeof window === "undefined") return;
-  (window.__sarjPerf ??= []).push({ id, phase, t: performance.now(), extra });
+  (window.__sarjPerf ??= []).push({ extra, id, phase, t: performance.now() });
 }
 
 export function markPaint(id: string, phase: string): void {
