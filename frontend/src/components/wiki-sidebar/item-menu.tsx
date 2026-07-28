@@ -1,6 +1,14 @@
 "use client";
 
-import { Copy, FolderInput, Loader2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import {
+  Copy,
+  ExternalLink,
+  FolderInput,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -24,7 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useCopyFile, useDeleteFile, useRenameFile } from "@/hooks/use-wiki-mutations";
 import { isGoogleWorkspaceType } from "@/lib/file-icons";
-import { openUrlFor } from "@/lib/file-urls";
+import { folderUrlFor, openUrlFor } from "@/lib/file-urls";
 import { runWithErrorToast } from "@/lib/mutation-toast";
 import { MIME_FORM } from "@/types/wiki";
 
@@ -133,6 +141,14 @@ export function ItemMenu({
             >
               <Copy className="size-4" />
               Duplicate
+            </DropdownMenuItem>
+          )}
+          {isFolder && (
+            <DropdownMenuItem asChild className="flex items-center gap-2 text-sm">
+              <a href={folderUrlFor(fileId)} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="size-4" />
+                Open in Google Drive
+              </a>
             </DropdownMenuItem>
           )}
           <DropdownMenuItem

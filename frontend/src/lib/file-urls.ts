@@ -23,3 +23,7 @@ export function embedUrlFor(mimeType: string, id: string): string {
 export function openUrlFor(mimeType: string, id: string): string {
   return workspaceUrl(mimeType, id, "view");
 }
+
+export function folderUrlFor(id: string): string {
+  return `https://drive.google.com/drive/folders/${encodeURIComponent(id)}`;
+}
