@@ -25,6 +25,7 @@ class GoogleFile(_GoogleModel):
 class GoogleDrive(_GoogleModel):
     id: str
     name: str
+    hidden: bool = False
 
 
 class GoogleFileProbe(_GoogleModel):
