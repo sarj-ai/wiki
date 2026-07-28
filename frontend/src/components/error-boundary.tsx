@@ -35,7 +35,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
     }
   }
 
-  override async render() {
+  override render() {
     if (this.state.hasError) {
       return (
         this.props.fallback ?? (
