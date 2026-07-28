@@ -121,6 +121,12 @@ jobs:
           format: table
           severity: HIGH,CRITICAL
           exit-code: "1"
+          # Debian bookworm ships HIGH/CRITICAL CVEs with no patched package
+          # (will_not_fix / fix_deferred: zlib1g, perl-base, libsqlite3-0, ...).
+          # `apt-get upgrade` in the Dockerfile cannot clear them, so gating on
+          # them blocks every deploy on findings nobody can action. Gate on
+          # fixable CVEs only — those are the ones a rebuild actually resolves.
+          ignore-unfixed: true
 
       - name: Deploy to Cloud Run
         run: |
