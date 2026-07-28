@@ -230,7 +230,9 @@ export function makeWikiApi(client?: Client) {
         writePreferencesExtrasPreferencesPut,
         {
           body: {
-            hidden_workspace_ids: payload.hiddenWorkspaceIds ?? null,
+            ...(payload.hiddenWorkspaceIds === undefined
+              ? {}
+              : { hidden_workspace_ids: payload.hiddenWorkspaceIds }),
             show_non_doc_files: payload.showNonDocFiles ?? null,
           },
         },
