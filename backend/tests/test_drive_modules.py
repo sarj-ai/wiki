@@ -137,6 +137,8 @@ async def test_list_drives_paginates_until_empty_token(patch_drive_client: Any) 
     assert [d.name for d in result] == ["Engineering", "Marketing"]
     assert len(client.drives_captured) == 2
     assert client.drives_captured[0]["fields"] == "nextPageToken,drives(id,name,hidden)"
+    assert all(call["q"] == "hidden = false" for call in client.drives_captured)
+    assert all(call["useDomainAdminAccess"] is False for call in client.drives_captured)
     assert client.drives_captured[1].get("pageToken") == "t1"
 
 
