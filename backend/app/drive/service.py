@@ -291,6 +291,8 @@ class GoogleDriveService(DriveService):
         while True:
             params: dict[str, Any] = {
                 "pageSize": 100,
+                "q": "hidden = false",
+                "useDomainAdminAccess": False,
                 "fields": "nextPageToken,drives(id,name,hidden)",
             }
             if page_token:
