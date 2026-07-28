@@ -157,30 +157,6 @@ const eslintConfig = defineConfig([
     files: ["**/*.test.tsx"],
     ...testingLibrary.configs["flat/react"],
   },
-  // shadcn primitives we copied in but don't own — relax stylistic rules
-  // that would force us to fork upstream patterns.
-  {
-    files: ["src/components/ui/**"],
-    rules: {
-      "@sarj/enforce-file-structure": "off",
-      "@sarj/no-unnecessary-use-client": "off",
-      "@sarj/prefer-shadcn": "off",
-      "@sarj/primary-export-file-name": "off",
-      "@typescript-eslint/consistent-type-assertions": "off",
-      "@typescript-eslint/consistent-type-definitions": "off",
-      "@typescript-eslint/naming-convention": "off",
-      "@typescript-eslint/no-confusing-void-expression": "off",
-      "@typescript-eslint/no-shadow": "off",
-      "@typescript-eslint/no-unsafe-type-assertion": "off",
-      "@typescript-eslint/no-unused-expressions": "off",
-      "@typescript-eslint/prefer-nullish-coalescing": "off",
-      "no-param-reassign": "off",
-      "react-hooks/purity": "off",
-      "react/forbid-component-props": "off",
-      "react/forbid-dom-props": "off",
-      "sonarjs/no-duplicate-string": "off",
-    },
-  },
   // next.config.ts evaluates before src/ modules can load, and env.ts IS
   // the validated env module the rule points at.
   {
@@ -291,9 +267,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Codegen output (openapi-ts) — regenerated, never hand-edited.
     "src/lib/generated/**",
-    "scripts/**",
+    // Copied shadcn primitives track upstream and are formatted, not linted.
+    "src/components/ui/**",
     "eslint.strict.mjs",
-    "eslint-plugin-latest.mjs",
     "eslint-rules/**",
   ]),
 ]);
