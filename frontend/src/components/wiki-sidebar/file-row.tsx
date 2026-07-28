@@ -7,8 +7,6 @@ import { usePathname } from "next/navigation";
 import { memo } from "react";
 import { useDebouncedCallback } from "use-debounce";
 
-import type { DriveNode } from "@/types/wiki";
-
 import { SidebarMenuButton } from "@/components/ui/sidebar";
 import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
 import { useSetDocIcon } from "@/hooks/use-wiki-mutations";
@@ -16,10 +14,11 @@ import { renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import { runWithErrorToast } from "@/lib/mutation-toast";
 import { markNav } from "@/lib/perf-marks";
-import { resolveShortcutTarget, type ResolvedShortcut } from "@/lib/shortcut-resolver";
+import { type ResolvedShortcut, resolveShortcutTarget } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
 import { wikiApi } from "@/lib/wiki-api";
 import { wikiKeys } from "@/lib/wiki-keys";
+import type { DriveNode } from "@/types/wiki";
 import { MIME_DOC, MIME_FORM } from "@/types/wiki";
 
 import { ItemMenu } from "./item-menu";
@@ -28,35 +27,35 @@ import { PickableIcon } from "./pickable-icon";
 import { useIsMovingFile } from "./use-in-flight-moves";
 
 interface FileRowProps {
-  node: DriveNode;
-  driveId: string | undefined;
-  parentFolderId: string | undefined;
-  activeDriveId: string | null;
-  iconOverride: string | undefined;
+  activeDriveId: null | string;
   depth: number;
+  driveId: string | undefined;
+  iconOverride: string | undefined;
+  node: DriveNode;
+  parentFolderId: string | undefined;
 }
 
 interface RowButtonProps {
-  node: DriveNode;
-  route: ResolvedShortcut;
   href: string;
   isActive: boolean;
   isForm: boolean;
   isMoving: boolean;
   linkPadding: string;
-  titleAttr: string;
+  node: DriveNode;
   onPrefetch: () => void;
   onPrewarm: () => void;
   onPrewarmCancel: () => void;
+  route: ResolvedShortcut;
+  titleAttr: string;
 }
 
 function FileRowImpl({
-  node,
-  driveId,
-  parentFolderId,
   activeDriveId,
-  iconOverride,
   depth,
+  driveId,
+  iconOverride,
+  node,
+  parentFolderId,
 }: FileRowProps) {
   const pathname = usePathname();
   const route = resolveShortcutTarget(node);
@@ -72,8 +71,8 @@ function FileRowImpl({
   const queryClient = useQueryClient();
   const prefetchFile = (): void => {
     void queryClient.prefetchQuery({
+      queryFn: async () => wikiApi.getFile(route.targetId),
       queryKey: wikiKeys.file(route.targetId),
-      queryFn: () => wikiApi.getFile(route.targetId),
     });
   };
 
@@ -83,8 +82,8 @@ function FileRowImpl({
     setPrewarm({
       fileId: route.targetId,
       mimeType: route.isShortcut ? route.targetMimeType : node.mimeType,
-      title: node.name,
       reloadKey: 0,
+      title: node.name,
     });
   };
   const schedulePrewarm = useDebouncedCallback(prewarmNow, 120);
@@ -95,7 +94,7 @@ function FileRowImpl({
   };
 
   const setDocIcon = useSetDocIcon();
-  const handleIconChange = async (next: string | null) => {
+  const handleIconChange = async (next: null | string) => {
     await runWithErrorToast(async () => {
       await setDocIcon.mutateAsync({ driveId: node.id, icon: next });
     }, "Failed to update icon");
@@ -119,17 +118,17 @@ function FileRowImpl({
   return (
     <>
       <RowButton
-        node={node}
-        route={route}
         href={href}
         isActive={isActive}
         isForm={isForm}
         isMoving={isMoving}
         linkPadding={linkPadding}
-        titleAttr={titleAttr}
+        node={node}
         onPrefetch={handleCommit}
         onPrewarm={schedulePrewarm}
         onPrewarmCancel={schedulePrewarm.cancel}
+        route={route}
+        titleAttr={titleAttr}
       />
 
       <div
@@ -141,10 +140,10 @@ function FileRowImpl({
         style={{ left: iconLeft }}
       >
         <PickableIcon
+          ariaLabel="Change icon"
+          onChange={handleIconChange}
           pickable={isDoc}
           value={iconOverride}
-          onChange={handleIconChange}
-          ariaLabel="Change icon"
         >
           {iconContent}
         </PickableIcon>
@@ -153,41 +152,41 @@ function FileRowImpl({
       {!route.isShortcut && !route.inaccessible && (
         <div className="absolute top-1/2 right-1 flex -translate-y-1/2 items-center opacity-0 group-hover/navitem:opacity-100 focus-within:opacity-100">
           <ItemMenu
-            fileId={node.id}
-            driveId={driveId}
-            parentFolderId={parentFolderId}
             currentName={node.name}
+            driveId={driveId}
+            fileId={node.id}
             isFolder={false}
+            parentFolderId={parentFolderId}
           />
         </div>
       )}
-      {isMoving && (
+      {isMoving ? (
         <div className="text-muted-foreground pointer-events-none absolute top-1/2 right-2 -translate-y-1/2">
           <Loader2 className="size-3 animate-spin" />
         </div>
-      )}
+      ) : null}
     </>
   );
 }
 
 function RowButton({
-  node,
-  route,
   href,
   isActive,
   isForm,
   isMoving,
   linkPadding,
-  titleAttr,
+  node,
   onPrefetch,
   onPrewarm,
   onPrewarmCancel,
+  route,
+  titleAttr,
 }: RowButtonProps) {
   if (route.inaccessible) {
     return (
       <SidebarMenuButton
-        disabled
         className={cn("text-muted-foreground/60 cursor-not-allowed pr-8", isMoving && "opacity-60")}
+        disabled
         style={{ paddingLeft: linkPadding }}
         title={titleAttr}
       >
@@ -199,22 +198,22 @@ function RowButton({
     return (
       <SidebarMenuButton
         asChild
-        isActive={isActive}
         className={cn("pr-8 transition-opacity", isMoving && "opacity-60")}
-        style={{ paddingLeft: linkPadding }}
         data-file-id={node.id}
+        isActive={isActive}
+        style={{ paddingLeft: linkPadding }}
       >
         <a
-          href={href}
           draggable={false}
-          title={titleAttr}
-          target="_blank"
+          href={href}
           rel="noopener noreferrer"
+          target="_blank"
+          title={titleAttr}
         >
           <span className="truncate">{node.name}</span>
           <ExternalLink
-            className="text-muted-foreground ml-auto size-3 shrink-0"
             aria-label="Opens in a new tab"
+            className="text-muted-foreground ml-auto size-3 shrink-0"
           />
         </a>
       </SidebarMenuButton>
@@ -223,20 +222,20 @@ function RowButton({
   return (
     <SidebarMenuButton
       asChild
-      isActive={isActive}
       className={cn("pr-8 transition-opacity", isMoving && "opacity-60")}
-      style={{ paddingLeft: linkPadding }}
       data-file-id={node.id}
+      isActive={isActive}
+      style={{ paddingLeft: linkPadding }}
     >
       <Link
-        href={`/d/${encodeURIComponent(route.targetId)}`}
         draggable={false}
-        title={titleAttr}
+        href={`/d/${encodeURIComponent(route.targetId)}`}
+        onBlur={onPrewarmCancel}
+        onFocus={onPrewarm}
         onPointerDown={onPrefetch}
         onPointerEnter={onPrewarm}
         onPointerLeave={onPrewarmCancel}
-        onFocus={onPrewarm}
-        onBlur={onPrewarmCancel}
+        title={titleAttr}
       >
         <span className="truncate">{node.name}</span>
       </Link>

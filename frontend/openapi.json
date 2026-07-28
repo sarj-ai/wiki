@@ -557,18 +557,11 @@
       "PreferencesWrite": {
         "properties": {
           "hidden_workspace_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Hidden Workspace Ids"
+            "items": {
+              "type": "string"
+            },
+            "title": "Hidden Workspace Ids",
+            "type": "array"
           },
           "show_non_doc_files": {
             "anyOf": [

@@ -196,6 +196,7 @@ class PostgresExtrasService(ExtrasService):
     @override
     async def upsert_preferences(self, payload: PreferencesWrite) -> PreferencesRead:
         now = datetime.now(UTC)
+        updates_hidden_workspaces = "hidden_workspace_ids" in payload.model_fields_set
         stmt = pg_insert(UserPreferences).values(
             user_id=self._user.id,
             show_non_doc_files=(
@@ -204,16 +205,16 @@ class PostgresExtrasService(ExtrasService):
                 else payload.show_non_doc_files
             ),
             hidden_workspace_ids=(
-                list(_DEFAULT_PREFS.hidden_workspace_ids)
-                if payload.hidden_workspace_ids is None
-                else payload.hidden_workspace_ids
+                payload.hidden_workspace_ids
+                if updates_hidden_workspaces
+                else list(_DEFAULT_PREFS.hidden_workspace_ids)
             ),
             updated_at=now,
         )
         set_: dict[str, object] = {"updated_at": stmt.excluded.updated_at}
         if payload.show_non_doc_files is not None:
             set_["show_non_doc_files"] = stmt.excluded.show_non_doc_files
-        if payload.hidden_workspace_ids is not None:
+        if updates_hidden_workspaces:
             set_["hidden_workspace_ids"] = stmt.excluded.hidden_workspace_ids
         upsert = stmt.on_conflict_do_update(index_elements=["user_id"], set_=set_).returning(
             UserPreferences

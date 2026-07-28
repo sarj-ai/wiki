@@ -1,21 +1,21 @@
 import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
 
 interface ShortcutFields {
-  mimeType: string;
   id: string;
+  mimeType: string;
   shortcutInaccessible: boolean;
+  shortcutTargetDriveName?: string | undefined;
   shortcutTargetId?: string | undefined;
   shortcutTargetMimeType?: string | undefined;
-  shortcutTargetDriveName?: string | undefined;
 }
 
 export interface ResolvedShortcut {
-  isShortcut: boolean;
-  isFolderShortcut: boolean;
   inaccessible: boolean;
-  targetMimeType: string;
+  isFolderShortcut: boolean;
+  isShortcut: boolean;
   targetId: string;
-  tooltip: string | null;
+  targetMimeType: string;
+  tooltip: null | string;
 }
 
 export const SHORTCUT_INACCESSIBLE_TOOLTIP =
@@ -24,11 +24,11 @@ export const SHORTCUT_INACCESSIBLE_TOOLTIP =
 export function resolveShortcutTarget(node: ShortcutFields): ResolvedShortcut {
   if (node.mimeType !== MIME_SHORTCUT) {
     return {
-      isShortcut: false,
-      isFolderShortcut: false,
       inaccessible: false,
-      targetMimeType: node.mimeType,
+      isFolderShortcut: false,
+      isShortcut: false,
       targetId: node.id,
+      targetMimeType: node.mimeType,
       tooltip: null,
     };
   }
@@ -39,11 +39,11 @@ export function resolveShortcutTarget(node: ShortcutFields): ResolvedShortcut {
       ? `Shortcut → ${node.shortcutTargetDriveName}`
       : "Shortcut";
   return {
-    isShortcut: true,
-    isFolderShortcut: node.shortcutTargetMimeType === MIME_FOLDER,
     inaccessible,
-    targetMimeType: node.shortcutTargetMimeType ?? "",
+    isFolderShortcut: node.shortcutTargetMimeType === MIME_FOLDER,
+    isShortcut: true,
     targetId: node.shortcutTargetId ?? node.id,
+    targetMimeType: node.shortcutTargetMimeType ?? "",
     tooltip,
   };
 }

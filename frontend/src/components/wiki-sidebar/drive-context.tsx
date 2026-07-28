@@ -7,16 +7,16 @@ import type { DriveNode } from "@/types/wiki";
 const DriveSectionContext = createContext<DriveSectionValue | null>(null);
 
 export interface DriveSectionValue {
-  driveId: string;
-  activeDriveId: string | null;
-  showNonDocFiles: boolean;
+  activeDriveId: null | string;
   childrenByParent: Map<string, DriveNode[]>;
-  filesByParent: Map<string, DriveNode[]>;
-  treeFilesComplete: boolean;
-  iconOverrides: Map<string, string | undefined>;
   docIconOverrides: Map<string, string | undefined>;
-  sortOrderMap: Map<string, number>;
+  driveId: string;
+  filesByParent: Map<string, DriveNode[]>;
+  iconOverrides: Map<string, string | undefined>;
   optimisticByContainer: Map<string, string[]>;
+  showNonDocFiles: boolean;
+  sortOrderMap: Map<string, number>;
+  treeFilesComplete: boolean;
 }
 
 export const DriveSectionProvider = DriveSectionContext.Provider;

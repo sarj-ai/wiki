@@ -1,0 +1,47 @@
+pre-commit:
+  parallel: false
+  commands:
+    backend-ruff-fix:
+      root: backend/
+      glob: "*.py"
+      run: uv run ruff check --fix {staged_files}
+      stage_fixed: true
+    backend-ruff-format:
+      root: backend/
+      glob: "*.py"
+      run: uv run ruff format {staged_files}
+      stage_fixed: true
+    frontend-eslint-fix:
+      root: frontend/
+      glob: "*.{js,mjs,cjs,ts,tsx}"
+      run: npm exec -- eslint --fix --no-warn-ignored {staged_files}
+      stage_fixed: true
+    frontend-prettier:
+      root: frontend/
+      glob: "*.{js,mjs,cjs,ts,tsx,json,css,md,yml,yaml}"
+      run: npm exec -- prettier --write --ignore-unknown {staged_files}
+      stage_fixed: true
+    markdownlint-fix:
+      glob: "*.md"
+      run: frontend/node_modules/.bin/markdownlint-cli2 --config .markdownlint.yaml --fix {staged_files}
+      stage_fixed: true
+    taplo-format:
+      glob: "*.toml"
+      run: frontend/node_modules/.bin/taplo fmt --config .taplo.toml {staged_files}
+      stage_fixed: true
+    yamllint:
+      glob: "*.{yml,yaml}"
+      run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache uvx --python 3.14 yamllint --strict --config-file .yamllint.yaml {staged_files}
+    standards:
+      run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache uvx --python 3.14 pre-commit run
+      stage_fixed: true
+
+pre-push:
+  parallel: true
+  commands:
+    standards-all:
+      run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure
+    backend-quality:
+      run: cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run pyright && uv run ty check app && uv run vulture && uv run lint-imports && uv run pytest -q
+    frontend-quality:
+      run: cd frontend && npm run format:check && npm run lint && npm run typecheck && npm run knip && npm run type-coverage && npm test

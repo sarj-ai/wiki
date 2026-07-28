@@ -1,8 +1,7 @@
 import type { DriveNode } from "@/types/wiki";
-
 import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
 
-type NodeKind = "folder" | "file";
+type NodeKind = "file" | "folder";
 
 export function isFolderLikeNode(node: DriveNode): boolean {
   return (
@@ -23,8 +22,8 @@ export function buildChildrenIndex(folders: DriveNode[]): Map<string, DriveNode[
 }
 
 export interface KindedNode {
-  type: NodeKind;
   node: DriveNode;
+  type: NodeKind;
 }
 
 export function compareNodeOrder(
@@ -43,7 +42,7 @@ export function compareNodeOrder(
 
 export function applyOptimisticOrder(
   items: KindedNode[],
-  order: readonly string[] | null,
+  order: null | readonly string[],
 ): KindedNode[] {
   if (!order) return items;
   const byId = new Map<string, KindedNode>(items.map((item) => [item.node.id, item]));

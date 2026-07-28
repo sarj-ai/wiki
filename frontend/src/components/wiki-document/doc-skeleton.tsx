@@ -17,14 +17,14 @@ const DOC_SKELETON_LINES = [
 export function DocSkeleton() {
   return (
     <div
-      className="mx-auto flex h-full w-full max-w-3xl flex-col gap-4 px-6 py-10"
       aria-hidden="true"
+      className="mx-auto flex h-full w-full max-w-3xl flex-col gap-4 px-6 py-10"
     >
       <Skeleton className="h-8 w-2/3" />
       <Skeleton className="h-4 w-1/3" />
       <div className="mt-4 flex flex-col gap-3">
         {DOC_SKELETON_LINES.map((line) => (
-          <Skeleton key={line.id} className={cn("h-4", line.w)} />
+          <Skeleton className={cn("h-4", line.w)} key={line.id} />
         ))}
       </div>
     </div>

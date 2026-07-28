@@ -10,23 +10,23 @@ import { cn } from "@/lib/utils";
 import { useDropEdgeForRow } from "./use-drag-over-store";
 
 interface SortableItemProps {
-  id: string;
-
-  variant: "item" | "subitem";
+  children: React.ReactNode;
 
   data?: Record<string, unknown>;
-  children: React.ReactNode;
+
+  id: string;
+  variant: "item" | "subitem";
 }
 
 const DRAG_CLICK_SUPPRESS_PX = 5;
 
 const NO_LAYOUT_ANIMATION = () => false;
 
-export function SortableItem({ id, variant, data = {}, children }: SortableItemProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id,
-    data,
+export function SortableItem({ children, data = {}, id, variant }: SortableItemProps) {
+  const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
     animateLayoutChanges: NO_LAYOUT_ANIMATION,
+    data,
+    id,
   });
 
   const dropEdge = useDropEdgeForRow(id);
@@ -55,11 +55,11 @@ export function SortableItem({ id, variant, data = {}, children }: SortableItemP
   };
 
   const props = {
+    className,
+    onClickCapture: handleClickCapture,
+    onPointerDownCapture: handlePointerDownCapture,
     ref: setNodeRef,
     style,
-    className,
-    onPointerDownCapture: handlePointerDownCapture,
-    onClickCapture: handleClickCapture,
     ...attributes,
     ...listeners,
   };

@@ -35,15 +35,15 @@ export function SidebarResizeHandle() {
     const widthElements = document.querySelectorAll<HTMLElement>(
       '[data-slot="sidebar-gap"], [data-slot="sidebar-container"]',
     );
-    widthElements.forEach((el) => {
+    for (const el of widthElements) {
       el.style.transition = "none";
-    });
+    }
     document.body.style.userSelect = "none";
     document.body.style.cursor = "col-resize";
     setDragging(true);
 
-    let pendingX: number | null = null;
-    let rafId: number | null = null;
+    let pendingX: null | number = null;
+    let rafId: null | number = null;
     const apply = () => {
       rafId = null;
       if (pendingX === null) return;
@@ -65,9 +65,9 @@ export function SidebarResizeHandle() {
       apply();
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
-      widthElements.forEach((el) => {
+      for (const el of widthElements) {
         el.style.transition = "";
-      });
+      }
       const final = wrapper.style.getPropertyValue("--sidebar-width");
       if (final) window.localStorage.setItem(STORAGE_KEY, final);
       setDragging(false);
@@ -80,16 +80,16 @@ export function SidebarResizeHandle() {
   return (
     <>
       <div
+        aria-label="Resize sidebar"
+        aria-orientation="vertical"
+        className="hover:bg-sidebar-border/80 absolute top-0 right-0 z-20 h-full w-1 cursor-col-resize transition-colors"
         onPointerDown={handlePointerDown}
         role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize sidebar"
-        className="hover:bg-sidebar-border/80 absolute top-0 right-0 z-20 h-full w-1 cursor-col-resize transition-colors"
       />
 
-      {dragging && (
+      {dragging ? (
         <div aria-hidden="true" className="fixed inset-0 z-50 cursor-col-resize bg-transparent" />
-      )}
+      ) : null}
     </>
   );
 }

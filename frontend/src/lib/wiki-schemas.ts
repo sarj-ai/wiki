@@ -1,4 +1,4 @@
-import { type z } from "zod";
+import type { z } from "zod";
 
 import {
   zBootstrapRead,
@@ -20,26 +20,26 @@ import {
 function toDriveNode(n: z.infer<typeof zDriveNode>) {
   return {
     id: n.id,
-    name: n.name,
     mimeType: n.mime_type,
-    parentId: n.parent_id ?? undefined,
     modifiedTime: n.modified_time ?? undefined,
-    shortcutTargetId: n.shortcut_target_id ?? undefined,
-    shortcutTargetMimeType: n.shortcut_target_mime_type ?? undefined,
+    name: n.name,
+    parentId: n.parent_id ?? undefined,
+    shortcutInaccessible: n.shortcut_inaccessible,
     shortcutTargetDriveId: n.shortcut_target_drive_id ?? undefined,
     shortcutTargetDriveName: n.shortcut_target_drive_name ?? undefined,
-    shortcutInaccessible: n.shortcut_inaccessible,
+    shortcutTargetId: n.shortcut_target_id ?? undefined,
+    shortcutTargetMimeType: n.shortcut_target_mime_type ?? undefined,
   };
 }
 
 function toFileResponse(f: z.infer<typeof zFileResponse>) {
   return {
-    id: f.id,
-    name: f.name,
-    mimeType: f.mime_type,
-    parentFolderId: f.parent_folder_id ?? undefined,
     driveId: f.drive_id ?? undefined,
+    id: f.id,
+    mimeType: f.mime_type,
     modifiedTime: f.modified_time ?? undefined,
+    name: f.name,
+    parentFolderId: f.parent_folder_id ?? undefined,
   };
 }
 
@@ -52,44 +52,44 @@ export const driveNode = zDriveNode.transform(toDriveNode);
 
 export const driveTree = zDriveTree.transform((t) => ({
   driveId: t.drive_id,
-  folders: t.folders.map(toDriveNode),
   files: t.files.map(toDriveNode),
   filesComplete: t.files_complete,
+  folders: t.folders.map(toDriveNode),
 }));
 
 export const searchResult = zSearchResult.transform((r) => ({
-  id: r.id,
-  name: r.name,
-  mimeType: r.mime_type,
   driveId: r.drive_id ?? undefined,
   driveName: r.drive_name ?? undefined,
-  parentId: r.parent_id ?? undefined,
+  id: r.id,
+  mimeType: r.mime_type,
   modifiedTime: r.modified_time ?? undefined,
+  name: r.name,
+  parentId: r.parent_id ?? undefined,
+  shortcutInaccessible: r.shortcut_inaccessible,
+  shortcutTargetDriveName: r.shortcut_target_drive_name ?? undefined,
   shortcutTargetId: r.shortcut_target_id ?? undefined,
   shortcutTargetMimeType: r.shortcut_target_mime_type ?? undefined,
-  shortcutTargetDriveName: r.shortcut_target_drive_name ?? undefined,
-  shortcutInaccessible: r.shortcut_inaccessible,
 }));
 
 export const snippetResult = zSnippetResult.transform((s) => ({
   fileId: s.file_id,
+  matchTerm: s.match_term ?? undefined,
   mimeType: s.mime_type,
   snippet: s.snippet ?? undefined,
-  matchTerm: s.match_term ?? undefined,
 }));
 
 export const fileResponse = zFileResponse.transform(toFileResponse);
 
 export const fileDetail = zFileDetail.transform((f) => ({
   ...toFileResponse(f),
-  driveName: f.drive_name ?? undefined,
   breadcrumb: f.breadcrumb.map((b) => ({ id: b.id, name: b.name })),
+  driveName: f.drive_name ?? undefined,
 }));
 
 export const docIcon = zDocIconRead.transform((d) => ({
+  coverUrl: d.cover_url ?? undefined,
   driveId: d.drive_id,
   icon: d.icon ?? undefined,
-  coverUrl: d.cover_url ?? undefined,
 }));
 
 export const folderIcon = zFolderIconRead.transform((f) => ({
@@ -107,23 +107,23 @@ export const sortOrderBulkResult = zSortOrderBulkResult.transform((r) => ({
 }));
 
 export const preferences = zPreferencesRead.transform((p) => ({
-  showNonDocFiles: p.show_non_doc_files,
   hiddenWorkspaceIds: p.hidden_workspace_ids,
+  showNonDocFiles: p.show_non_doc_files,
 }));
 
 export const userProfile = zUserProfile.transform((u) => ({
-  id: u.id,
-  email: u.email,
-  displayName: u.display_name ?? undefined,
   avatarUrl: u.avatar_url ?? undefined,
+  displayName: u.display_name ?? undefined,
+  email: u.email,
+  id: u.id,
 }));
 
 export const bootstrapRead = zBootstrapRead.transform((b) => ({
-  drives: b.drives.map((d) => driveSummary.parse(d)),
-  preferences: preferences.parse(b.preferences),
-  folderIcons: b.folder_icons.map((f) => folderIcon.parse(f)),
   docIcons: b.doc_icons.map((d) => docIcon.parse(d)),
-  sortOrders: b.sort_orders.map((s) => sortOrder.parse(s)),
+  drives: b.drives.map((d) => driveSummary.parse(d)),
   firstDriveTree: b.first_drive_tree ? driveTree.parse(b.first_drive_tree) : undefined,
+  folderIcons: b.folder_icons.map((f) => folderIcon.parse(f)),
   me: userProfile.parse(b.me),
+  preferences: preferences.parse(b.preferences),
+  sortOrders: b.sort_orders.map((s) => sortOrder.parse(s)),
 }));

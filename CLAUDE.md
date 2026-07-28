@@ -6,17 +6,17 @@ Notion-like sidebar layered on top of Google Drive for `@sarj.ai`. The user's re
 
 ## Stack
 
-| Layer    | Tech                                               |
-|----------|----------------------------------------------------|
-| Frontend | Next.js 16 App Router, React 19, shadcn, Tailwind  |
-| Backend  | FastAPI, Python 3.14                               |
-| DB       | Postgres, SQLAlchemy async, Alembic                |
-| Auth     | Google OAuth 2.0 (restricted to `@sarj.ai`)        |
-| Content  | Google Drive / Docs (iframe embedded)              |
+| Layer    | Tech                                              |
+| -------- | ------------------------------------------------- |
+| Frontend | Next.js 16 App Router, React 19, shadcn, Tailwind |
+| Backend  | FastAPI, Python 3.14                              |
+| DB       | Postgres, SQLAlchemy async, Alembic               |
+| Auth     | Google OAuth 2.0 (restricted to `@sarj.ai`)       |
+| Content  | Google Drive / Docs (iframe embedded)             |
 
 ## Repo layout
 
-```
+```text
 backend/    FastAPI app (see "Backend layout" below)
 frontend/   Next.js 16 App Router
 terraform/  infra
@@ -25,9 +25,9 @@ scripts/    one-off ops scripts
 
 ## Backend layout
 
-Most modules that hold business logic follow the same shape: `service.py` defines an ABC + concrete implementation, `dependencies.py` wires it through FastAPI `Depends`, `router.py` is a thin HTTP adapter. Module-local helpers (`errors.py`, `schemas.py`, retry/encryption/jwt utilities) sit alongside as needed. Two modules deviate: `sidebar/` names its service file `cache.py` (the cache *is* the service), and `drive/` has no `router.py` of its own — its listing endpoints are mounted from `sidebar/router.py`, and only its full-text search endpoint lives in `drive/search_router.py`.
+Most modules that hold business logic follow the same shape: `service.py` defines an ABC + concrete implementation, `dependencies.py` wires it through FastAPI `Depends`, `router.py` is a thin HTTP adapter. Module-local helpers (`errors.py`, `schemas.py`, retry/encryption/jwt utilities) sit alongside as needed. Two modules deviate: `sidebar/` names its service file `cache.py` (the cache _is_ the service), and `drive/` has no `router.py` of its own — its listing endpoints are mounted from `sidebar/router.py`, and only its full-text search endpoint lives in `drive/search_router.py`.
 
-```
+```text
 backend/app/
   auth/       AuthService (OAuth exchange, JWT lifecycle, token_version revocation)
               + encryption.py (Fernet), jwt.py, errors.py (AuthError hierarchy)
@@ -93,11 +93,12 @@ Audit commands at `/sarj-audit:*` (from the `sarj-agentic` plugin, enabled via `
 **Drive membership is the only source of truth.** We store no `page_permissions`, no `workspace_memberships`. A user sees a drive/folder/file iff Google Drive says they can. `DriveService.list_drives` is the boundary — results from there decide what appears in the sidebar.
 
 **Shortcuts (`application/vnd.google-apps.shortcut`) are surfaced as native nodes** with a `Link2` overlay glyph. `_walk_folders_sync` and `_list_children_sync` include shortcuts in their queries, pull `shortcutDetails(targetId, targetMimeType)`, and feed the result through `_resolve_shortcut_nodes` — an async resolver that probes each shortcut's target via `files.get` in parallel. Probe outcomes:
+
 - `200 OK` → shortcut renders normally; `shortcut_target_drive_id`/`shortcut_target_drive_name` populated for the tooltip.
 - `403` → `shortcut_inaccessible=True`; the row renders greyed-out with a "contact admin" tooltip and click is suppressed (sidebar) / Open is disabled (search).
 - `404` or `trashed=true` → the shortcut is dropped from results entirely (auto-prune).
 
-Drive's ACL on the target is the only source of truth. The shortcut entry's own ACL (which controls *visibility* of the row) is independent — shortcuts can be visible to users who lack target access, hence the inaccessible-state UX. Folder shortcuts expand by listing the *target's* children via the existing `/sidebar/folders/{id}/files` endpoint; their subtree is lazy-fetched, never denormalized into the host drive's `drive_tree_cache`. Search results run through the same resolver so the palette greys out hits the user can't open.
+Drive's ACL on the target is the only source of truth. The shortcut entry's own ACL (which controls _visibility_ of the row) is independent — shortcuts can be visible to users who lack target access, hence the inaccessible-state UX. Folder shortcuts expand by listing the _target's_ children via the existing `/sidebar/folders/{id}/files` endpoint; their subtree is lazy-fetched, never denormalized into the host drive's `drive_tree_cache`. Search results run through the same resolver so the palette greys out hits the user can't open.
 
 ## Database schema
 
@@ -139,7 +140,7 @@ No Drive webhooks, no `files.watch`, no push subscriptions. Cache staleness hand
 
 ## Google Docs iframe
 
-```
+```text
 https://docs.google.com/document/d/{DRIVE_ID}/edit?embedded=true
 ```
 
@@ -168,17 +169,17 @@ Loaded via `pydantic-settings` in `app/config.py`; `extra="ignore"` tolerates st
 
 Exactly one database path must be configured: `DATABASE_URL` (local dev / CI), or the `DB_*` connector trio (production — Cloud SQL IAM database auth; the service account is the credential, no password exists).
 
-| Variable | Purpose |
-|---|---|
-| `DATABASE_URL` | Postgres DSN (dev/CI path) |
-| `DB_INSTANCE_CONNECTION_NAME` | Cloud SQL instance (`project:region:instance`, prod path) |
-| `DB_IAM_USER` | IAM database user (backend SA email sans `.gserviceaccount.com`) |
-| `DB_NAME` | Database name (default `sarj_wiki`) |
-| `SECRET_KEY` | JWT signing key (≥32 chars) |
-| `FERNET_KEY` | Token encryption key (valid Fernet key) |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth credentials |
-| `GOOGLE_REDIRECT_URI` | OAuth callback URL |
-| `ALLOWED_DOMAIN` | Default `sarj.ai` |
-| `FRONTEND_URL` | CORS origin + cookie secure-mode inference |
-| `LOG_JSON` | Emit JSON log lines (default `false`) |
-| `LOG_LEVEL` | Default `INFO` |
+| Variable                                    | Purpose                                                          |
+| ------------------------------------------- | ---------------------------------------------------------------- |
+| `DATABASE_URL`                              | Postgres DSN (dev/CI path)                                       |
+| `DB_INSTANCE_CONNECTION_NAME`               | Cloud SQL instance (`project:region:instance`, prod path)        |
+| `DB_IAM_USER`                               | IAM database user (backend SA email sans `.gserviceaccount.com`) |
+| `DB_NAME`                                   | Database name (default `sarj_wiki`)                              |
+| `SECRET_KEY`                                | JWT signing key (≥32 chars)                                      |
+| `FERNET_KEY`                                | Token encryption key (valid Fernet key)                          |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth credentials                                                |
+| `GOOGLE_REDIRECT_URI`                       | OAuth callback URL                                               |
+| `ALLOWED_DOMAIN`                            | Default `sarj.ai`                                                |
+| `FRONTEND_URL`                              | CORS origin + cookie secure-mode inference                       |
+| `LOG_JSON`                                  | Emit JSON log lines (default `false`)                            |
+| `LOG_LEVEL`                                 | Default `INFO`                                                   |

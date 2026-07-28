@@ -1,7 +1,7 @@
 "use client";
 
-import { useTheme } from "next-themes";
 import dynamic from "next/dynamic";
+import { useTheme } from "next-themes";
 import { useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -9,16 +9,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useIsClient } from "@/hooks/use-is-client";
 
 interface EmojiPickerPopoverProps {
-  value: string | undefined;
-
-  onChange: (next: string | null) => void | Promise<void>;
-
   children: React.ReactElement;
+
+  onChange: (next: null | string) => Promise<void> | void;
+
+  value: string | undefined;
 }
 
 interface EmojiPickerBodyProps {
-  theme: "light" | "dark";
   onSelect: (emoji: string) => void;
+  theme: "dark" | "light";
 }
 
 function EmojiPickerSkeleton() {
@@ -28,15 +28,15 @@ function EmojiPickerSkeleton() {
 
       <div className="flex items-center gap-1">
         {Array.from({ length: 9 }).map((_, i) => (
-          <div key={i} className="bg-muted size-6 animate-pulse rounded-sm" />
+          <div className="bg-muted size-6 animate-pulse rounded-sm" key={i} />
         ))}
       </div>
 
       <div className="grid flex-1 grid-cols-9 gap-1 overflow-hidden">
         {Array.from({ length: 54 }).map((_, i) => (
           <div
-            key={i}
             className="bg-muted/60 aspect-square animate-pulse rounded-sm"
+            key={i}
             style={{ animationDelay: `${(i % 9) * 30}ms` }}
           />
         ))}
@@ -45,41 +45,41 @@ function EmojiPickerSkeleton() {
   );
 }
 
-const Picker = dynamic(() => import("@emoji-mart/react").then((m) => m.default), {
-  ssr: false,
+const Picker = dynamic(async () => import("@emoji-mart/react").then((m) => m.default), {
   loading: () => <EmojiPickerSkeleton />,
+  ssr: false,
 });
 
-let cachedData: Promise<unknown> | null = null;
-function loadEmojiData(): Promise<unknown> {
+let cachedData: null | Promise<unknown> = null;
+async function loadEmojiData(): Promise<unknown> {
   cachedData ??= import("@emoji-mart/data").then((m: { default: unknown }) => m.default);
   return cachedData;
 }
 
-function EmojiPickerBody({ theme, onSelect }: EmojiPickerBodyProps) {
+function EmojiPickerBody({ onSelect, theme }: EmojiPickerBodyProps) {
   return (
     <Picker
-      data={loadEmojiData}
-      theme={theme}
       autoFocus
+      data={loadEmojiData}
+      maxFrequentRows={2}
       onEmojiSelect={(picked: { native?: string; id?: string }) => {
         const value = picked.native ?? picked.id ?? null;
         if (value) onSelect(value);
       }}
       previewPosition="none"
       skinTonePosition="none"
-      maxFrequentRows={2}
+      theme={theme}
     />
   );
 }
 
-export function EmojiPickerPopover({ value, onChange, children }: EmojiPickerPopoverProps) {
+export function EmojiPickerPopover({ children, onChange, value }: EmojiPickerPopoverProps) {
   const { resolvedTheme } = useTheme();
   const mounted = useIsClient();
   const theme = mounted && resolvedTheme === "dark" ? "dark" : "light";
   const [pending, startChange] = useTransition();
 
-  const handleChange = (next: string | null) => {
+  const handleChange = (next: null | string) => {
     if (pending) return;
     startChange(async () => {
       await onChange(next);
@@ -90,35 +90,35 @@ export function EmojiPickerPopover({ value, onChange, children }: EmojiPickerPop
     <Popover>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
-        side="right"
         align="start"
-        sideOffset={8}
         className="w-auto border-0 bg-transparent p-0 shadow-none"
         onOpenAutoFocus={(e) => {
           e.preventDefault();
         }}
+        side="right"
+        sideOffset={8}
       >
         <EmojiPickerBody
-          theme={theme}
           onSelect={(emoji) => {
             handleChange(emoji);
           }}
+          theme={theme}
         />
-        {value && (
+        {value ? (
           <div className="mt-2 flex justify-end">
             <Button
-              type="button"
-              variant="outline"
-              size="sm"
               disabled={pending}
               onClick={() => {
                 handleChange(null);
               }}
+              size="sm"
+              type="button"
+              variant="outline"
             >
               Remove icon
             </Button>
           </div>
-        )}
+        ) : null}
       </PopoverContent>
     </Popover>
   );

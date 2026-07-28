@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 interface Props {
   children: React.ReactNode;
 
-  resetKey?: string;
   fallback?: React.ReactNode;
+  resetKey?: string;
 }
 
 interface State {
@@ -25,17 +25,17 @@ export class ErrorBoundary extends React.Component<Props, State> {
     return { hasError: true };
   }
 
+  override componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("ErrorBoundary caught:", error, errorInfo);
+  }
+
   override componentDidUpdate(prevProps: Props) {
     if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
       this.setState({ hasError: false });
     }
   }
 
-  override componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("ErrorBoundary caught:", error, errorInfo);
-  }
-
-  override render() {
+  override async render() {
     if (this.state.hasError) {
       return (
         this.props.fallback ?? (
@@ -44,11 +44,11 @@ export class ErrorBoundary extends React.Component<Props, State> {
               Something went wrong rendering this section.
             </p>
             <Button
-              variant="link"
-              size="sm"
               onClick={() => {
                 this.setState({ hasError: false });
               }}
+              size="sm"
+              variant="link"
             >
               Try again
             </Button>

@@ -1,7 +1,7 @@
 "use client";
 
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
-import { MutationCache, QueryCache, QueryClient, type Query } from "@tanstack/react-query";
+import { MutationCache, type Query, QueryCache, QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -27,19 +27,19 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     return new QueryClient({
       defaultOptions: {
         queries: {
-          staleTime: 60 * 1000,
+          gcTime: ONE_DAY_MS,
           refetchOnMount: false,
 
-          gcTime: ONE_DAY_MS,
           retry: (failureCount, error) => {
             if (failureCount >= 1) return false;
             if (error instanceof ApiError) return error.status >= 500;
             return true;
           },
+          staleTime: 60 * 1000,
         },
       },
-      queryCache: new QueryCache({ onError: handle401 }),
       mutationCache: new MutationCache({ onError: handle401 }),
+      queryCache: new QueryCache({ onError: handle401 }),
     });
   });
 
@@ -47,17 +47,12 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     const storage =
       typeof window === "undefined"
         ? {
-            getItem: () => Promise.resolve(null),
-            setItem: () => Promise.resolve(),
-            removeItem: () => Promise.resolve(),
+            getItem: async () => Promise.resolve(null),
+            removeItem: async () => Promise.resolve(),
+            setItem: async () => Promise.resolve(),
           }
         : window.localStorage;
     return {
-      persister: createAsyncStoragePersister({
-        storage,
-        key: QUERY_CACHE_KEY,
-      }),
-      maxAge: ONE_DAY_MS,
       buster: CACHE_BUSTER,
       dehydrateOptions: {
         shouldDehydrateQuery: (query: Query) => {
@@ -68,6 +63,11 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
           return true;
         },
       },
+      maxAge: ONE_DAY_MS,
+      persister: createAsyncStoragePersister({
+        key: QUERY_CACHE_KEY,
+        storage,
+      }),
     };
   });
 

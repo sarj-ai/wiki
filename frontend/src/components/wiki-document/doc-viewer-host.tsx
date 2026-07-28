@@ -3,16 +3,16 @@
 import { useEffect, useState } from "react";
 
 import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
-import { useDocViewerStore, type ActiveDoc } from "@/components/wiki-document/doc-viewer-store";
+import { type ActiveDoc, useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
 import { embedUrlFor } from "@/lib/file-urls";
 import { markNav } from "@/lib/perf-marks";
 import { cn } from "@/lib/utils";
 
 interface SlotRect {
-  top: number;
-  left: number;
-  width: number;
   height: number;
+  left: number;
+  top: number;
+  width: number;
 }
 
 const MAX_POOL = 3;
@@ -25,7 +25,7 @@ export function DocViewerHost() {
   const warm = useDocViewerStore((s) => s.warm);
   const slot = useDocViewerStore((s) => s.slot);
   const [pool, setPool] = useState<ActiveDoc[]>([]);
-  const [rect, setRect] = useState<SlotRect | null>(null);
+  const [rect, setRect] = useState<null | SlotRect>(null);
 
   const head = pool[0];
   if (
@@ -50,7 +50,7 @@ export function DocViewerHost() {
     if (!slot) return;
     const sync = () => {
       const r = slot.getBoundingClientRect();
-      setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+      setRect({ height: r.height, left: r.left, top: r.top, width: r.width });
     };
     const observer = new ResizeObserver(sync);
     observer.observe(slot);
@@ -65,18 +65,18 @@ export function DocViewerHost() {
 
   return (
     <div
-      className={cn("fixed z-10", !visible && "pointer-events-none invisible")}
-      style={visible ? { ...rect } : { top: 0, left: 0, width: 0, height: 0 }}
       aria-hidden={!visible}
+      className={cn("fixed z-10", !visible && "pointer-events-none invisible")}
+      style={visible ? { ...rect } : { height: 0, left: 0, top: 0, width: 0 }}
     >
       {mounted.map((entry) => (
         <div
-          key={entry.fileId}
           className={cn("absolute inset-0", entry.fileId !== active?.fileId && "hidden")}
+          key={entry.fileId}
         >
           <PooledIframe
-            key={`${entry.fileId}:${entry.reloadKey}`}
             fileId={entry.fileId}
+            key={`${entry.fileId}:${entry.reloadKey}`}
             mimeType={entry.mimeType}
             title={entry.title}
           />
@@ -114,20 +114,20 @@ function PooledIframe({ fileId, mimeType, title }: PooledIframeProps) {
 
   return (
     <div className="relative h-full w-full">
-      {isLoading && (
+      {isLoading ? (
         <div
-          className="bg-background absolute inset-0 z-10 overflow-hidden"
           aria-label="Loading document"
+          className="bg-background absolute inset-0 z-10 overflow-hidden"
         >
           <DocSkeleton />
         </div>
-      )}
+      ) : null}
       <iframe
-        ref={attachLoadListener}
-        title={title}
-        src={src}
-        className="block h-full w-full border-0"
         allow="clipboard-read; clipboard-write"
+        className="block h-full w-full border-0"
+        ref={attachLoadListener}
+        src={src}
+        title={title}
       />
     </div>
   );

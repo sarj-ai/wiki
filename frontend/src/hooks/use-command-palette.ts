@@ -4,22 +4,22 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { create } from "zustand";
 
 interface CommandPaletteState {
-  open: boolean;
   mounted: boolean;
+  open: boolean;
   setOpen: (next: boolean) => void;
   toggle: () => void;
 }
 
 const useCommandPaletteStore = create<CommandPaletteState>((set, get) => ({
-  open: false,
   mounted: false,
+  open: false,
   setOpen: (next) => {
     if (get().open === next) return;
-    set({ open: next, mounted: get().mounted || next });
+    set({ mounted: get().mounted || next, open: next });
   },
   toggle: () => {
     const next = !get().open;
-    set({ open: next, mounted: get().mounted || next });
+    set({ mounted: get().mounted || next, open: next });
   },
 }));
 

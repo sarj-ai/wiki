@@ -1,17 +1,17 @@
-import { type z } from "zod";
+import type { z } from "zod";
 
-import {
-  type docIcon,
-  type driveNode,
-  type driveSummary,
-  type driveTree,
-  type fileDetail,
-  type fileResponse,
-  type folderIcon,
-  type preferences,
-  type searchResult,
-  type snippetResult,
-  type sortOrder,
+import type {
+  docIcon,
+  driveNode,
+  driveSummary,
+  driveTree,
+  fileDetail,
+  fileResponse,
+  folderIcon,
+  preferences,
+  searchResult,
+  snippetResult,
+  sortOrder,
 } from "@/lib/wiki-schemas";
 
 export const MIME_FOLDER = "application/vnd.google-apps.folder";

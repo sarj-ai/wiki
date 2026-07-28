@@ -12,7 +12,7 @@ const publicClient = createClient(createConfig({ baseUrl: API_URL, cache: "no-st
 
 const call = makeCall(publicClient);
 
-export async function getPublicDocName(fileId: string): Promise<string | null> {
+export async function getPublicDocName(fileId: string): Promise<null | string> {
   try {
     const meta = await call(
       getLinkMetaLinkMetaFileIdGet,

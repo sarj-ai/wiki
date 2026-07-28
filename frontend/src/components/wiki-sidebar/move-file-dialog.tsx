@@ -4,8 +4,6 @@ import { ChevronRight, Folder, HardDrive, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import type { DriveNode } from "@/types/wiki";
-
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,43 +20,44 @@ import { ApiError } from "@/lib/api-client";
 import { runWithErrorToast, toErrorMessage } from "@/lib/mutation-toast";
 import { cn } from "@/lib/utils";
 import { buildChildrenIndex } from "@/lib/wiki-tree";
+import type { DriveNode } from "@/types/wiki";
 import { MIME_SHORTCUT } from "@/types/wiki";
 
 import { rowIndent } from "./layout-constants";
 
 interface MoveFileDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  fileId: string;
-  fileName: string;
   currentDriveId: string | undefined;
   currentParentFolderId: string | undefined;
+  fileId: string;
+  fileName: string;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
 }
 
 interface FolderRowProps {
-  folder: DriveNode;
   childrenByParent: Map<string, DriveNode[]>;
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  disabledId: string;
   depth: number;
+  disabledId: string;
+  folder: DriveNode;
+  onSelect: (id: string) => void;
+  selectedId: null | string;
 }
 
 interface DriveRowProps {
+  disabledId: string;
   driveId: string;
   driveName: string;
-  selectedId: string | null;
   onSelect: (id: string) => void;
-  disabledId: string;
+  selectedId: null | string;
 }
 
 function FolderRow({
-  folder,
   childrenByParent,
-  selectedId,
-  onSelect,
-  disabledId,
   depth,
+  disabledId,
+  folder,
+  onSelect,
+  selectedId,
 }: FolderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const subFolders = childrenByParent.get(folder.id) ?? [];
@@ -68,54 +67,55 @@ function FolderRow({
     <>
       <div className="flex items-center gap-1" style={{ paddingLeft: `${rowIndent(depth)}px` }}>
         <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
+          aria-label={expanded ? "Collapse" : "Expand"}
+          className="hover:bg-muted size-4 shrink-0 rounded-sm"
           onClick={() => {
             setExpanded((v) => !v);
           }}
-          className="hover:bg-muted size-4 shrink-0 rounded"
-          aria-label={expanded ? "Collapse" : "Expand"}
+          size="icon-xs"
+          type="button"
+          variant="ghost"
         >
           {subFolders.length > 0 && (
             <ChevronRight className={cn("size-3 transition-transform", expanded && "rotate-90")} />
           )}
         </Button>
         <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={isDisabled}
-          onClick={() => {
-            onSelect(folder.id);
-          }}
           className={cn(
             "h-7 flex-1 justify-start gap-1 px-2 font-normal",
             selectedId === folder.id && "bg-accent",
             isDisabled && "opacity-40",
           )}
+          disabled={isDisabled}
+          onClick={() => {
+            onSelect(folder.id);
+          }}
+          size="sm"
+          type="button"
+          variant="ghost"
         >
           <Folder className="size-4 shrink-0" />
           <span className="truncate">{folder.name}</span>
         </Button>
       </div>
-      {expanded &&
-        subFolders.map((child) => (
-          <FolderRow
-            key={child.id}
-            folder={child}
-            childrenByParent={childrenByParent}
-            selectedId={selectedId}
-            onSelect={onSelect}
-            disabledId={disabledId}
-            depth={depth + 1}
-          />
-        ))}
+      {expanded
+        ? subFolders.map((child) => (
+            <FolderRow
+              childrenByParent={childrenByParent}
+              depth={depth + 1}
+              disabledId={disabledId}
+              folder={child}
+              key={child.id}
+              onSelect={onSelect}
+              selectedId={selectedId}
+            />
+          ))
+        : null}
     </>
   );
 }
 
-function DriveRow({ driveId, driveName, selectedId, onSelect, disabledId }: DriveRowProps) {
+function DriveRow({ disabledId, driveId, driveName, onSelect, selectedId }: DriveRowProps) {
   const [expanded, setExpanded] = useState(false);
 
   const treeQuery = useDriveTree(expanded ? driveId : null);
@@ -134,69 +134,69 @@ function DriveRow({ driveId, driveName, selectedId, onSelect, disabledId }: Driv
     <>
       <div className="flex items-center gap-1">
         <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
+          aria-label={expanded ? "Collapse" : "Expand"}
+          className="hover:bg-muted size-4 shrink-0 rounded-sm"
           onClick={() => {
             setExpanded((v) => !v);
           }}
-          className="hover:bg-muted size-4 shrink-0 rounded"
-          aria-label={expanded ? "Collapse" : "Expand"}
+          size="icon-xs"
+          type="button"
+          variant="ghost"
         >
           <ChevronRight className={cn("size-3 transition-transform", expanded && "rotate-90")} />
         </Button>
         <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={isDriveDisabled}
-          onClick={() => {
-            onSelect(driveId);
-          }}
           className={cn(
             "h-7 flex-1 justify-start gap-1 px-2",
             selectedId === driveId && !isDriveDisabled && "bg-accent",
             isDriveDisabled && "opacity-60",
           )}
+          disabled={isDriveDisabled}
+          onClick={() => {
+            onSelect(driveId);
+          }}
+          size="sm"
+          type="button"
+          variant="ghost"
         >
           <HardDrive className="size-4 shrink-0" />
           <span className="truncate">{driveName}</span>
         </Button>
       </div>
-      {expanded && treeQuery.isLoading && (
+      {expanded && treeQuery.isLoading ? (
         <div className="text-muted-foreground flex items-center gap-2 px-4 py-1 text-xs">
           <Loader2 className="size-3 animate-spin" />
           Loading folders…
         </div>
-      )}
-      {expanded &&
-        !treeQuery.isLoading &&
-        rootFolders.map((folder) => (
-          <FolderRow
-            key={folder.id}
-            folder={folder}
-            childrenByParent={childrenByParent}
-            selectedId={selectedId}
-            onSelect={onSelect}
-            disabledId={disabledId}
-            depth={1}
-          />
-        ))}
+      ) : null}
+      {expanded && !treeQuery.isLoading
+        ? rootFolders.map((folder) => (
+            <FolderRow
+              childrenByParent={childrenByParent}
+              depth={1}
+              disabledId={disabledId}
+              folder={folder}
+              key={folder.id}
+              onSelect={onSelect}
+              selectedId={selectedId}
+            />
+          ))
+        : null}
     </>
   );
 }
 
 export function MoveFileDialog({
-  open,
-  onOpenChange,
-  fileId,
-  fileName,
   currentDriveId,
   currentParentFolderId,
+  fileId,
+  fileName,
+  onOpenChange,
+  open,
 }: MoveFileDialogProps) {
   const drivesQuery = useDrives();
   const moveFile = useMoveFile();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<null | string>(null);
 
   const handleConfirm = async () => {
     if (!selectedId) return;
@@ -224,11 +224,11 @@ export function MoveFileDialog({
 
   return (
     <Dialog
-      open={open}
       onOpenChange={(next) => {
         if (moveFile.isPending) return;
         onOpenChange(next);
       }}
+      open={open}
     >
       <DialogContent className="max-w-md">
         <DialogHeader>
@@ -238,35 +238,35 @@ export function MoveFileDialog({
             settings — copy the file instead if that fails.
           </DialogDescription>
         </DialogHeader>
-        <ScrollArea className="h-72 rounded border">
+        <ScrollArea className="h-72 rounded-sm border">
           <div className="space-y-0.5 p-1">
             {(drivesQuery.data ?? []).map((drive) => (
               <DriveRow
-                key={drive.id}
+                disabledId={disabledId}
                 driveId={drive.id}
                 driveName={drive.name}
-                selectedId={selectedId}
+                key={drive.id}
                 onSelect={setSelectedId}
-                disabledId={disabledId}
+                selectedId={selectedId}
               />
             ))}
           </div>
         </ScrollArea>
         <DialogFooter>
           <Button
-            variant="outline"
+            disabled={moveFile.isPending}
             onClick={() => {
               onOpenChange(false);
             }}
-            disabled={moveFile.isPending}
+            variant="outline"
           >
             Cancel
           </Button>
           <Button
+            disabled={!selectedId || moveFile.isPending}
             onClick={() => {
               void handleConfirm();
             }}
-            disabled={!selectedId || moveFile.isPending}
           >
             {moveFile.isPending ? (
               <>

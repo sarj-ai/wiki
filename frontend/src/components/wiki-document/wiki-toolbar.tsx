@@ -4,24 +4,23 @@ import { Check, ChevronRight, Copy, ExternalLink, RefreshCw } from "lucide-react
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
 
-import type { BreadcrumbItem } from "@/types/wiki";
-
 import { Button } from "@/components/ui/button";
 import { iframeShowsOwnTitle, openInGoogleLabel, renderMimeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
+import type { BreadcrumbItem } from "@/types/wiki";
 
 interface WikiToolbarProps {
+  breadcrumb: BreadcrumbItem[];
   fileId: string;
   mimeType: string;
-  title: string;
-  breadcrumb: BreadcrumbItem[];
-
   onReload: () => void;
+
+  title: string;
 }
 
 const COPY_FEEDBACK_MS = 2000;
 
-export function WikiToolbar({ fileId, mimeType, title, breadcrumb, onReload }: WikiToolbarProps) {
+export function WikiToolbar({ breadcrumb, fileId, mimeType, onReload, title }: WikiToolbarProps) {
   const openUrl = openUrlFor(mimeType, fileId);
   const openLabel = openInGoogleLabel(mimeType);
   const [copied, setCopied] = useState(false);
@@ -72,27 +71,27 @@ export function WikiToolbar({ fileId, mimeType, title, breadcrumb, onReload }: W
         </nav>
       </div>
       <Button
+        aria-label="Reload"
+        onClick={onReload}
+        size="xs"
+        title="Reload the embedded view if it appears blank"
         type="button"
         variant="outline"
-        size="xs"
-        onClick={onReload}
-        aria-label="Reload"
-        title="Reload the embedded view if it appears blank"
       >
         <RefreshCw className="size-3.5" />
       </Button>
       <Button
+        aria-label={copied ? "Link copied" : "Copy link"}
+        onClick={handleCopy}
+        size="xs"
         type="button"
         variant="outline"
-        size="xs"
-        onClick={handleCopy}
-        aria-label={copied ? "Link copied" : "Copy link"}
       >
         {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         {copied ? "Copied" : "Copy link"}
       </Button>
-      <Button asChild variant="outline" size="xs">
-        <a href={openUrl} target="_blank" rel="noopener noreferrer">
+      <Button asChild size="xs" variant="outline">
+        <a href={openUrl} rel="noopener noreferrer" target="_blank">
           <ExternalLink className="size-3.5" />
           {openLabel}
         </a>

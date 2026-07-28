@@ -1,6 +1,7 @@
-import type { Metadata, Viewport } from "next";
+import "./globals.css";
 
 import { GeistMono } from "geist/font/mono";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 
 import { GlobalLoadingBar } from "@/components/loading-bar";
@@ -8,8 +9,6 @@ import { QueryProvider } from "@/components/query-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { API_URL } from "@/lib/env";
-
-import "./globals.css";
 
 const GOOGLE_DOC_ORIGINS = [
   "https://accounts.google.com",
@@ -24,30 +23,30 @@ const GOOGLE_DOC_ORIGINS = [
 ];
 
 const nunito = localFont({
+  display: "swap",
   src: [
-    { path: "../../public/fonts/Nunito-Regular.ttf", weight: "400", style: "normal" },
-    { path: "../../public/fonts/Nunito-Medium.ttf", weight: "500", style: "normal" },
-    { path: "../../public/fonts/Nunito-SemiBold.ttf", weight: "600", style: "normal" },
-    { path: "../../public/fonts/Nunito-Bold.ttf", weight: "700", style: "normal" },
+    { path: "../../public/fonts/Nunito-Regular.ttf", style: "normal", weight: "400" },
+    { path: "../../public/fonts/Nunito-Medium.ttf", style: "normal", weight: "500" },
+    { path: "../../public/fonts/Nunito-SemiBold.ttf", style: "normal", weight: "600" },
+    { path: "../../public/fonts/Nunito-Bold.ttf", style: "normal", weight: "700" },
   ],
   variable: "--font-nunito",
-  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: { default: "Sarj Wiki", template: "%s · Sarj Wiki" },
   description: "Internal knowledge base for Sarj",
-  robots: { index: false, follow: false },
+  robots: { follow: false, index: false },
+  title: { default: "Sarj Wiki", template: "%s · Sarj Wiki" },
 };
 
 export const viewport: Viewport = {
-  width: "device-width",
   initialScale: 1,
-
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f6efe7" },
-    { media: "(prefers-color-scheme: dark)", color: "#161618" },
+    { color: "#f6efe7", media: "(prefers-color-scheme: light)" },
+    { color: "#161618", media: "(prefers-color-scheme: dark)" },
   ],
+
+  width: "device-width",
 };
 
 export default function RootLayout({
@@ -56,15 +55,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${nunito.variable} ${GeistMono.variable}`}>
+    <html className={`${nunito.variable} ${GeistMono.variable}`} lang="en" suppressHydrationWarning>
       <head>
-        <link rel="preconnect" href="https://docs.google.com" />
-        <link rel="dns-prefetch" href="https://docs.google.com" />
-        <link rel="preconnect" href={API_URL} crossOrigin="use-credentials" />
-        <link rel="dns-prefetch" href={API_URL} />
+        <link href="https://docs.google.com" rel="preconnect" />
+        <link href="https://docs.google.com" rel="dns-prefetch" />
+        <link crossOrigin="use-credentials" href={API_URL} rel="preconnect" />
+        <link href={API_URL} rel="dns-prefetch" />
 
         {GOOGLE_DOC_ORIGINS.map((origin) => (
-          <link key={origin} rel="preconnect" href={origin} />
+          <link href={origin} key={origin} rel="preconnect" />
         ))}
 
         <script
@@ -78,8 +77,8 @@ export default function RootLayout({
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
-          enableSystem
           disableTransitionOnChange
+          enableSystem
         >
           <QueryProvider>
             {children}

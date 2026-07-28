@@ -1,18 +1,20 @@
+extend-exclude = ["sdk"]
 line-length = 120
 target-version = "py314"
-extend-exclude = ["sdk"]
 
 [format]
-quote-style              = "double"
-indent-style             = "space"
+indent-style = "space"
+line-ending = "auto"
+quote-style = "double"
 skip-magic-trailing-comma = false
-line-ending              = "auto"
 
 [lint]
-select = ["ALL"]
 external = ["SARJ"]
+logger-objects = [
+  "loguru.logger",
+] # treat loguru as a logger so G004/G010 fire on it (bulbul house logger)
 preview = true
-logger-objects = ["loguru.logger"]  # treat loguru as a logger so G004/G010 fire on it (bulbul house logger)
+select = ["ALL"]
 # TC001/2/3 stay advisory but are NEVER auto-applied: the rewrite is an *unsafe*
 # fix that silently moves runtime-needed FastAPI/pydantic/livekit annotation
 # imports into `TYPE_CHECKING`, breaking them under PEP 649 (bulbul shipped two
@@ -109,7 +111,14 @@ ignore = [
 
   # Docstrings are optional (D100-107 off); D203/D213 conflict with D211/D212.
   # Everything else in the D/DOC families is enforced (matches bulbul).
-  "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",
+  "D100",
+  "D101",
+  "D102",
+  "D103",
+  "D104",
+  "D105",
+  "D106",
+  "D107",
   "D203",
   "D213",
   "CPY001",
@@ -174,9 +183,9 @@ ignore = [
 # needs `# pyright: ignore[reportPrivateUsage]`.
 
 [lint.isort]
-force-single-line          = false
-lines-after-imports        = 2
+force-single-line = false
 force-sort-within-sections = true
+lines-after-imports = 2
 
 # Under PEP 649 (py314) plain annotations are lazy, so TC001-003 moving their
 # imports into `TYPE_CHECKING` is safe — EXCEPT for constructs that eagerly read
@@ -216,25 +225,40 @@ runtime-evaluated-decorators = [
   "fastapi.FastAPI.api_route",
 ]
 
+[lint.flake8-pytest-style]
+# PT011's default list omits RuntimeError, which is the one ambiguous builtin this
+# house raises deliberately. Restate Ruff's defaults because this setting replaces
+# rather than extends the list.
+raises-require-match-for = [
+  "BaseException",
+  "Exception",
+  "ValueError",
+  "OSError",
+  "IOError",
+  "EnvironmentError",
+  "RuntimeError",
+  "socket.error",
+]
+
 [lint.flake8-tidy-imports.banned-api]
-"unittest.mock.Mock".msg              = "Prefer real fixtures or hand-rolled fakes implementing the relevant ABC. If a mock is genuinely required, import with `# noqa: TID251 — <reason>`."
-"unittest.mock.AsyncMock".msg         = "Same as Mock."
-"unittest.mock.MagicMock".msg         = "Same as Mock."
-"unittest.mock.patch".msg             = "Prefer dependency injection via fixtures over monkey-patching."
-"pytest_mock".msg                     = "pytest-mock's `mocker` fixture is unittest.mock with a different spelling — it bypasses the mock bans above without any noqa trail. Use real fixtures/fakes; for a genuine external boundary use `from unittest import mock` + inline `# noqa: TID251 — <reason>`."
+"pytest_mock".msg = "pytest-mock's `mocker` fixture is unittest.mock with a different spelling — it bypasses the mock bans above without any noqa trail. Use real fixtures/fakes; for a genuine external boundary use `from unittest import mock` + inline `# noqa: TID251 — <reason>`."
+"unittest.mock.AsyncMock".msg = "Same as Mock."
+"unittest.mock.MagicMock".msg = "Same as Mock."
+"unittest.mock.Mock".msg = "Prefer real fixtures or hand-rolled fakes implementing the relevant ABC. If a mock is genuinely required, import with `# noqa: TID251 — <reason>`."
+"unittest.mock.patch".msg = "Prefer dependency injection via fixtures over monkey-patching."
 
-"datetime.datetime.utcnow".msg        = "Deprecated in Python 3.12. Use `datetime.now(UTC)`."
-"pickle.load".msg                     = "Pickle deserializes arbitrary objects and is unsafe on untrusted input. Use JSON via Pydantic, or msgspec/orjson."
-"pickle.loads".msg                    = "Same — pickle is unsafe."
+"datetime.datetime.utcnow".msg = "Deprecated in Python 3.12. Use `datetime.now(UTC)`."
+"pickle.load".msg = "Pickle deserializes arbitrary objects and is unsafe on untrusted input. Use JSON via Pydantic, or msgspec/orjson."
+"pickle.loads".msg = "Same — pickle is unsafe."
 
-"os.environ".msg                      = "Use a Pydantic Settings class instead. If you genuinely need raw os.environ, add `# noqa: TID251 — <reason>` inline."
-"os.getenv".msg                       = "Same — use a Pydantic Settings class instead of os.getenv."
+"os.environ".msg = "Use a Pydantic Settings class instead. If you genuinely need raw os.environ, add `# noqa: TID251 — <reason>` inline."
+"os.getenv".msg = "Same — use a Pydantic Settings class instead of os.getenv."
 
-"fastapi.UploadFile".msg              = "Use a pre-signed URL so the client uploads directly to object storage."
+"fastapi.UploadFile".msg = "Use a pre-signed URL so the client uploads directly to object storage."
+"psycopg.sql.Literal".msg = "Use parameterized queries (psycopg's `%s` placeholders) instead of sql.Literal."
 "pydantic.alias_generators.to_camel".msg = "Don't camelCase API contracts in the backend. Keep snake_case; transform on the frontend with Zod."
-"typing.cast".msg                     = "Prefer discriminated unions or `isinstance` narrowing over `cast`."
-"psycopg.sql.Literal".msg             = "Use parameterized queries (psycopg's `%s` placeholders) instead of sql.Literal."
-"uuid.uuid4".msg                      = "Use uuid.uuid7() — time-ordered, aligns with the DB uuidv7() default. For unguessable secrets use secrets.token_urlsafe(), not a UUID."
+"typing.cast".msg = "Prefer discriminated unions or `isinstance` narrowing over `cast`."
+"uuid.uuid4".msg = "Use uuid.uuid7() — time-ordered, aligns with the DB uuidv7() default. For unguessable secrets use secrets.token_urlsafe(), not a UUID."
 
 [lint.per-file-ignores]
 # Tests routinely assert, take boolean params, use magic numbers, and shell out
@@ -242,10 +266,21 @@ runtime-evaluated-decorators = [
 # Union of this standard's prior test idioms and bulbul's: subprocess (S404/603/607)
 # for CLI tools that shell out to the binary under test; RUF076 (autouse) and
 # PLR6301 (test methods that never use self) for pytest class/fixture idioms.
-"**/tests/**"     = ["S101", "FBT001", "FBT002", "FBT003", "PLR2004", "S404", "S603", "S607", "RUF076", "PLR6301"]
-"**/test_*.py"    = ["ANN201", "ANN202"]
-"scripts/**"      = ["T201", "S", "BLE001", "TRY002"]
+"**/test_*.py" = ["ANN201", "ANN202"]
+"**/tests/**" = [
+  "S101",
+  "FBT001",
+  "FBT002",
+  "FBT003",
+  "PLR2004",
+  "S404",
+  "S603",
+  "S607",
+  "RUF076",
+  "PLR6301",
+]
+"scripts/**" = ["T201", "S", "BLE001", "TRY002"]
 # CLI entrypoints print to stdout — that's their job, not stray debug output.
-"**/__main__.py"  = ["T201"]
-"__init__.py"     = []
-"**/settings.py"  = []
+"**/__main__.py" = ["T201"]
+"**/settings.py" = []
+"__init__.py" = []

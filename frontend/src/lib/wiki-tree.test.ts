@@ -1,36 +1,35 @@
 import { describe, expect, it } from "vitest";
 
-import type { DriveNode } from "@/types/wiki";
-
 import { applyOptimisticOrder, buildChildrenIndex, compareNodeOrder } from "@/lib/wiki-tree";
+import type { DriveNode } from "@/types/wiki";
 import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
 
 function folder(id: string, parentId?: string, name = id): DriveNode {
   return {
     id,
-    name,
     mimeType: MIME_FOLDER,
-    parentId,
     modifiedTime: undefined,
-    shortcutTargetId: undefined,
-    shortcutTargetMimeType: undefined,
+    name,
+    parentId,
+    shortcutInaccessible: false,
     shortcutTargetDriveId: undefined,
     shortcutTargetDriveName: undefined,
-    shortcutInaccessible: false,
+    shortcutTargetId: undefined,
+    shortcutTargetMimeType: undefined,
   };
 }
 function file(id: string, name = id): DriveNode {
   return {
     id,
-    name,
     mimeType: MIME_DOC,
-    parentId: undefined,
     modifiedTime: undefined,
-    shortcutTargetId: undefined,
-    shortcutTargetMimeType: undefined,
+    name,
+    parentId: undefined,
+    shortcutInaccessible: false,
     shortcutTargetDriveId: undefined,
     shortcutTargetDriveName: undefined,
-    shortcutInaccessible: false,
+    shortcutTargetId: undefined,
+    shortcutTargetMimeType: undefined,
   };
 }
 
@@ -60,37 +59,37 @@ describe("compareNodeOrder", () => {
   ]);
 
   it("orders by sort_order when both items have one", () => {
-    const a = { type: "folder" as const, node: folder("pinned-b") };
-    const b = { type: "folder" as const, node: folder("pinned-a") };
+    const a = { node: folder("pinned-b"), type: "folder" as const };
+    const b = { node: folder("pinned-a"), type: "folder" as const };
     expect(compareNodeOrder(a, b, orders)).toBeGreaterThan(0);
   });
 
   it("places items with sort_order before items without", () => {
-    const a = { type: "folder" as const, node: folder("pinned-a") };
-    const b = { type: "folder" as const, node: folder("unpinned") };
+    const a = { node: folder("pinned-a"), type: "folder" as const };
+    const b = { node: folder("unpinned"), type: "folder" as const };
     expect(compareNodeOrder(a, b, orders)).toBeLessThan(0);
     expect(compareNodeOrder(b, a, orders)).toBeGreaterThan(0);
   });
 
   it("falls back to folders-before-files when neither is pinned", () => {
-    const a = { type: "file" as const, node: file("a") };
-    const b = { type: "folder" as const, node: folder("b") };
+    const a = { node: file("a"), type: "file" as const };
+    const b = { node: folder("b"), type: "folder" as const };
     expect(compareNodeOrder(a, b, orders)).toBeGreaterThan(0);
     expect(compareNodeOrder(b, a, orders)).toBeLessThan(0);
   });
 
   it("falls back to alphabetical inside the same kind", () => {
-    const a = { type: "folder" as const, node: folder("zzz", undefined, "Zebra") };
-    const b = { type: "folder" as const, node: folder("aaa", undefined, "Apple") };
+    const a = { node: folder("zzz", undefined, "Zebra"), type: "folder" as const };
+    const b = { node: folder("aaa", undefined, "Apple"), type: "folder" as const };
     expect(compareNodeOrder(a, b, orders)).toBeGreaterThan(0);
   });
 });
 
 describe("applyOptimisticOrder", () => {
   const items = [
-    { type: "folder" as const, node: folder("a") },
-    { type: "folder" as const, node: folder("b") },
-    { type: "file" as const, node: file("c") },
+    { node: folder("a"), type: "folder" as const },
+    { node: folder("b"), type: "folder" as const },
+    { node: file("c"), type: "file" as const },
   ];
 
   it("returns items unchanged when no order is supplied", () => {

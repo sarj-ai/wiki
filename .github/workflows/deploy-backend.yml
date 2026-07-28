@@ -1,6 +1,6 @@
 name: Deploy Backend
 
-on:
+"on":
   push:
     branches: [main]
     paths:

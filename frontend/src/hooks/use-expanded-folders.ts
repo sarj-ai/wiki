@@ -66,13 +66,13 @@ const useDriveCollapseStore = create<DriveCollapseState>()(
   ),
 );
 
-let pendingReveal: string | null = null;
+let pendingReveal: null | string = null;
 
 function legacyAwareStorage<S>(
-  stateKey: "expanded" | "collapsed",
+  stateKey: "collapsed" | "expanded",
   toValue: (map: Record<string, true>, version: number) => StorageValue<S>,
 ): {
-  getItem: (name: string) => StorageValue<S> | null;
+  getItem: (name: string) => null | StorageValue<S>;
   setItem: (name: string, value: StorageValue<S>) => void;
   removeItem: (name: string) => void;
 } {
@@ -97,13 +97,13 @@ function legacyAwareStorage<S>(
         return null;
       }
     },
-    setItem: (name: string, value: StorageValue<S>) => {
-      if (typeof window === "undefined") return;
-      window.localStorage.setItem(name, JSON.stringify(value));
-    },
     removeItem: (name: string) => {
       if (typeof window === "undefined") return;
       window.localStorage.removeItem(name);
+    },
+    setItem: (name: string, value: StorageValue<S>) => {
+      if (typeof window === "undefined") return;
+      window.localStorage.setItem(name, JSON.stringify(value));
     },
   };
 }

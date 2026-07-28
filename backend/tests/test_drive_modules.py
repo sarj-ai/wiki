@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Any
+from typing import Any, Self
 import uuid
 
 import pytest
@@ -697,7 +697,7 @@ async def test_snippet_with_known_mime_skips_metadata_get(
             msg = "metadata get must be skipped when mime_type is supplied"
             raise AssertionError(msg)
 
-        def export(self, **kwargs: Any) -> _FakeFiles:
+        def export(self, **kwargs: Any) -> Self:
             captured.append({"_op": "export", **kwargs})
             return self
 
@@ -756,12 +756,34 @@ def test_extract_snippet_case_insensitive() -> None:
     assert "BACKEND" in snippet
 
 
-def test_extract_snippet_picks_first_word_with_match() -> None:
-    text = "Alpha comes first then bravo appears here in the middle somewhere"
-    result = extract_snippet(text, "charlie bravo alpha", context_chars=20)
+@pytest.mark.parametrize(
+    ("text", "query", "context_chars", "expected_word"),
+    [
+        (
+            "Alpha comes first then bravo appears here in the middle somewhere",
+            "charlie bravo alpha",
+            20,
+            "Alpha",
+        ),
+        (
+            "Longest word here is collaborator with many characters around it",
+            "of collaborator",
+            10,
+            "collaborator",
+        ),
+    ],
+    ids=["first-query-word-present", "skip-short-query-words"],
+)
+def test_extract_snippet_selects_query_word(
+    text: str,
+    query: str,
+    context_chars: int,
+    expected_word: str,
+) -> None:
+    result = extract_snippet(text, query, context_chars=context_chars)
     assert result is not None
     _, word = result
-    assert word == "Alpha"
+    assert word == expected_word
 
 
 def test_extract_snippet_prefix_fallback_plural() -> None:
@@ -771,14 +793,6 @@ def test_extract_snippet_prefix_fallback_plural() -> None:
     snippet, word = result
     assert "phase" in snippet.lower()
     assert word.lower() == "phase"
-
-
-def test_extract_snippet_skips_short_words() -> None:
-    text = "Longest word here is collaborator with many characters around it"
-    result = extract_snippet(text, "of collaborator", context_chars=10)
-    assert result is not None
-    _, word = result
-    assert word == "collaborator"
 
 
 def test_extract_snippet_no_match_returns_none() -> None:

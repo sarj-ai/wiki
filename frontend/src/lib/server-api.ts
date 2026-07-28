@@ -1,4 +1,5 @@
 import "server-only";
+
 import { cookies } from "next/headers";
 
 import { API_URL } from "@/lib/env";
@@ -8,7 +9,8 @@ import { makeWikiApi } from "@/lib/wiki-api";
 const serverClient = createClient(createConfig({ baseUrl: API_URL, cache: "no-store" }));
 
 serverClient.interceptors.request.use(async (request) => {
-  const token = (await cookies()).get("access_token")?.value;
+  const cookieStore = await cookies();
+  const token = cookieStore.get("access_token")?.value;
   if (token === undefined) {
     throw new ServerApiError(401);
   }

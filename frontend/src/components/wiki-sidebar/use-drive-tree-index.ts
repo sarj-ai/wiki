@@ -2,17 +2,16 @@
 
 import { useMemo } from "react";
 
-import type { DocIcon, DriveNode, FolderIcon, SortOrder } from "@/types/wiki";
-
 import { useDocIcons, useDriveTree } from "@/hooks/use-wiki-tree";
 import { buildChildrenIndex } from "@/lib/wiki-tree";
+import type { DocIcon, DriveNode, FolderIcon, SortOrder } from "@/types/wiki";
 
 interface DriveTreeIndex {
   childrenByParent: Map<string, DriveNode[]>;
+  docIconOverrides: Map<string, string | undefined>;
   filesByParent: Map<string, DriveNode[]>;
   filesComplete: boolean;
   iconOverrides: Map<string, string | undefined>;
-  docIconOverrides: Map<string, string | undefined>;
   sortOrderMap: Map<string, number>;
   treeQuery: ReturnType<typeof useDriveTree>;
 }
@@ -75,10 +74,10 @@ export function useDriveTreeIndex(
 
   return {
     childrenByParent,
+    docIconOverrides,
     filesByParent,
     filesComplete,
     iconOverrides,
-    docIconOverrides,
     sortOrderMap,
     treeQuery,
   };

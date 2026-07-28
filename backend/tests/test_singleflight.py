@@ -97,7 +97,7 @@ async def test_exception_propagates_to_concurrent_waiters() -> None:
     await asyncio.sleep(0)
     release.set()
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="boom"):
         await task_a
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="boom"):
         await task_b

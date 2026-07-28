@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Self
 import uuid
 
 from googleapiclient.errors import HttpError
@@ -86,13 +86,23 @@ async def test_create_rejects_unsupported_mime_type() -> None:
         )
 
 
-async def test_http_404_surfaces_as_drive_upstream(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("google_status", "file_id", "expected_status"),
+    [(404, "missing", 404), (500, "x", 502)],
+    ids=["not-found", "upstream-failure"],
+)
+async def test_http_errors_map_to_drive_upstream(
+    monkeypatch: pytest.MonkeyPatch,
+    google_status: int,
+    file_id: str,
+    expected_status: int,
+) -> None:
     class _FakeFiles:
-        def get(self, **_: Any) -> _FakeFiles:
+        def get(self, **_: Any) -> Self:
             return self
 
         def execute(self) -> dict[str, Any]:
-            raise _make_http_error(404)
+            raise _make_http_error(google_status)
 
     class _FakeClient:
         def files(self) -> _FakeFiles:
@@ -100,31 +110,13 @@ async def test_http_404_surfaces_as_drive_upstream(monkeypatch: pytest.MonkeyPat
 
     _patch_client(monkeypatch, _FakeClient())
     with pytest.raises(DriveUpstreamError) as excinfo:
-        await _svc("d1").get("missing")
-    assert excinfo.value.http_status == 404
-
-
-async def test_http_500_maps_to_502(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _FakeFiles:
-        def get(self, **_: Any) -> _FakeFiles:
-            return self
-
-        def execute(self) -> dict[str, Any]:
-            raise _make_http_error(500)
-
-    class _FakeClient:
-        def files(self) -> _FakeFiles:
-            return _FakeFiles()
-
-    _patch_client(monkeypatch, _FakeClient())
-    with pytest.raises(DriveUpstreamError) as excinfo:
-        await _svc("d1").get("x")
-    assert excinfo.value.http_status == 502
+        await _svc("d1").get(file_id)
+    assert excinfo.value.http_status == expected_status
 
 
 async def test_create_success_returns_file_response(monkeypatch: pytest.MonkeyPatch) -> None:
     class _FakeFiles:
-        def create(self, **_: Any) -> _FakeFiles:
+        def create(self, **_: Any) -> Self:
             return self
 
         def execute(self) -> dict[str, Any]:
@@ -156,7 +148,7 @@ async def test_create_does_not_retry_ambiguous_5xx(monkeypatch: pytest.MonkeyPat
     attempts = {"create": 0}
 
     class _FakeFiles:
-        def create(self, **_: Any) -> _FakeFiles:
+        def create(self, **_: Any) -> Self:
             return self
 
         def execute(self) -> dict[str, Any]:
@@ -184,7 +176,7 @@ async def test_move_reuses_prefetched_parent(monkeypatch: pytest.MonkeyPatch) ->
         def __init__(self) -> None:
             self._result: dict[str, Any] = {}
 
-        def get(self, **kwargs: Any) -> _FakeFiles:
+        def get(self, **kwargs: Any) -> Self:
             ops.append({"_op": "get", **kwargs})
             self._result = {
                 "id": "f",
@@ -195,7 +187,7 @@ async def test_move_reuses_prefetched_parent(monkeypatch: pytest.MonkeyPatch) ->
             }
             return self
 
-        def update(self, **kwargs: Any) -> _FakeFiles:
+        def update(self, **kwargs: Any) -> Self:
             ops.append({"_op": "update", **kwargs})
             self._result = {
                 "id": "f",
@@ -228,7 +220,7 @@ async def test_move_reuses_prefetched_parent(monkeypatch: pytest.MonkeyPatch) ->
 async def test_get_rejects_my_drive(monkeypatch: pytest.MonkeyPatch) -> None:
 
     class _FakeFiles:
-        def get(self, **_: Any) -> _FakeFiles:
+        def get(self, **_: Any) -> Self:
             return self
 
         def execute(self) -> dict[str, Any]:
@@ -250,7 +242,7 @@ async def test_get_rejects_my_drive(monkeypatch: pytest.MonkeyPatch) -> None:
 
 async def test_copy_rejects_folder(monkeypatch: pytest.MonkeyPatch) -> None:
     class _FakeFiles:
-        def get(self, **_: Any) -> _FakeFiles:
+        def get(self, **_: Any) -> Self:
             return self
 
         def execute(self) -> dict[str, Any]:
@@ -275,11 +267,11 @@ async def test_copy_success(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: dict[str, Any] = {}
 
     class _FakeFiles:
-        def get(self, **_: Any) -> _FakeFiles:
+        def get(self, **_: Any) -> Self:
             self._mode = "get"
             return self
 
-        def copy(self, **kwargs: Any) -> _FakeFiles:
+        def copy(self, **kwargs: Any) -> Self:
             calls["copy_kwargs"] = kwargs
             self._mode = "copy"
             return self
@@ -320,7 +312,7 @@ async def test_get_rejects_non_member_shared_drive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class _FakeFiles:
-        def get(self, **_: Any) -> _FakeFiles:
+        def get(self, **_: Any) -> Self:
             return self
 
         def execute(self) -> dict[str, Any]:

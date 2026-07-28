@@ -6,8 +6,6 @@ import { ChevronRight, Loader2 } from "lucide-react";
 import { memo, type ReactNode } from "react";
 import { useDebouncedCallback } from "use-debounce";
 
-import type { DriveNode } from "@/types/wiki";
-
 import { SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem } from "@/components/ui/sidebar";
 import { useExpandedFolder } from "@/hooks/use-expanded-folders";
 import { useSetFolderIcon } from "@/hooks/use-wiki-mutations";
@@ -24,6 +22,7 @@ import {
   isFolderLikeNode,
   type KindedNode,
 } from "@/lib/wiki-tree";
+import type { DriveNode } from "@/types/wiki";
 import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
 
 import { CreateFileMenu } from "./create-file-menu";
@@ -38,56 +37,56 @@ import { useIsDropIntoFolder } from "./use-drag-over-store";
 import { useIsMovingFile } from "./use-in-flight-moves";
 
 interface TreeNodeProps {
+  depth: number;
   node: DriveNode;
   parentFolderId: string | undefined;
-  depth: number;
 }
 
 const HOVER_PREFETCH_DELAY_MS = 80;
 
 interface ShortcutMeta {
-  isShortcut: boolean;
-  isFolderShortcut: boolean;
-  isFolder: boolean;
+  expandFolderId: null | string;
   inaccessible: boolean;
-  expandFolderId: string | null;
-  tooltip: string | null;
+  isFolder: boolean;
+  isFolderShortcut: boolean;
+  isShortcut: boolean;
+  tooltip: null | string;
 }
 
 interface DriveSectionCtxShape {
   childrenByParent: Map<string, DriveNode[]>;
   filesByParent: Map<string, DriveNode[]>;
-  treeFilesComplete: boolean;
+  optimisticByContainer: Map<string, readonly string[]>;
   showNonDocFiles: boolean;
   sortOrderMap: Map<string, number>;
-  optimisticByContainer: Map<string, readonly string[]>;
+  treeFilesComplete: boolean;
 }
 
 interface FolderHeaderProps {
-  node: DriveNode;
-  meta: ShortcutMeta;
+  actions: ReactNode;
   depth: number;
   expanded: boolean;
-  onToggle: () => void;
-  isDropIntoFolder: boolean;
-  isMoving: boolean;
   iconEmoji: string | undefined;
-  itemCount: number | undefined;
+  isDropIntoFolder: boolean;
   isEmpty: boolean;
-  onIconChange: (next: string | null) => Promise<void>;
-  onHoverStart: () => void;
+  isMoving: boolean;
+  itemCount: number | undefined;
+  meta: ShortcutMeta;
+  node: DriveNode;
   onHoverEnd: () => void;
-  actions: ReactNode;
+  onHoverStart: () => void;
+  onIconChange: (next: null | string) => Promise<void>;
+  onToggle: () => void;
 }
 
 function resolveShortcutMeta(node: DriveNode): ShortcutMeta {
   const s = resolveShortcutTarget(node);
   return {
-    isShortcut: s.isShortcut,
-    isFolderShortcut: s.isFolderShortcut,
-    isFolder: node.mimeType === MIME_FOLDER || s.isFolderShortcut,
-    inaccessible: s.inaccessible,
     expandFolderId: s.isFolderShortcut ? (node.shortcutTargetId ?? null) : node.id,
+    inaccessible: s.inaccessible,
+    isFolder: node.mimeType === MIME_FOLDER || s.isFolderShortcut,
+    isFolderShortcut: s.isFolderShortcut,
+    isShortcut: s.isShortcut,
     tooltip: s.tooltip,
   };
 }
@@ -100,7 +99,7 @@ function RowActions({ children }: { children: ReactNode }) {
   );
 }
 
-function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
+function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
   const ctx = useDriveSectionContext();
   const meta = resolveShortcutMeta(node);
   const [expanded, setExpanded] = useExpandedFolder(node.id);
@@ -114,8 +113,8 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
     const folderId = meta.expandFolderId;
     if (!needsLazyFiles || expanded || meta.inaccessible || !folderId) return;
     void queryClient.prefetchQuery({
+      queryFn: async () => wikiApi.getFolderFiles(folderId),
       queryKey: wikiKeys.folderFiles(folderId),
-      queryFn: () => wikiApi.getFolderFiles(folderId),
     });
   }, HOVER_PREFETCH_DELAY_MS);
 
@@ -128,12 +127,12 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
   if (!meta.isFolder) {
     return (
       <FileRow
-        node={node}
-        driveId={ctx.driveId}
-        parentFolderId={parentFolderId}
         activeDriveId={ctx.activeDriveId}
-        iconOverride={ctx.docIconOverrides.get(node.id)}
         depth={depth}
+        driveId={ctx.driveId}
+        iconOverride={ctx.docIconOverrides.get(node.id)}
+        node={node}
+        parentFolderId={parentFolderId}
       />
     );
   }
@@ -144,7 +143,7 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
   const itemCount = meta.isFolderShortcut || !ctx.treeFilesComplete ? undefined : childItems.length;
   const isEmpty = itemCount === 0;
 
-  const handleFolderIconChange = async (next: string | null) => {
+  const handleFolderIconChange = async (next: null | string) => {
     await runWithErrorToast(async () => {
       await setFolderIcon.mutateAsync({ folderDriveId: node.id, icon: next });
     }, "Failed to update icon");
@@ -153,76 +152,76 @@ function TreeNodeImpl({ node, parentFolderId, depth }: TreeNodeProps) {
   return (
     <>
       <FolderHeader
-        node={node}
-        meta={meta}
-        depth={depth}
-        expanded={expanded}
-        onToggle={() => {
-          if (meta.inaccessible || isEmpty) return;
-          setExpanded(!expanded);
-        }}
-        isDropIntoFolder={isDropIntoFolder}
-        isMoving={isMoving}
-        iconEmoji={iconEmoji}
-        itemCount={itemCount}
-        isEmpty={isEmpty}
-        onIconChange={handleFolderIconChange}
-        onHoverStart={prefetchChildren}
-        onHoverEnd={() => {
-          prefetchChildren.cancel();
-        }}
         actions={
           <RowActions>
             <CreateFileMenu parentFolderId={node.id} />
             <ItemMenu
-              fileId={node.id}
-              driveId={ctx.driveId}
-              parentFolderId={parentFolderId}
               currentName={node.name}
+              driveId={ctx.driveId}
+              fileId={node.id}
               isFolder
+              parentFolderId={parentFolderId}
             />
           </RowActions>
         }
+        depth={depth}
+        expanded={expanded}
+        iconEmoji={iconEmoji}
+        isDropIntoFolder={isDropIntoFolder}
+        isEmpty={isEmpty}
+        isMoving={isMoving}
+        itemCount={itemCount}
+        meta={meta}
+        node={node}
+        onHoverEnd={() => {
+          prefetchChildren.cancel();
+        }}
+        onHoverStart={prefetchChildren}
+        onIconChange={handleFolderIconChange}
+        onToggle={() => {
+          if (meta.inaccessible || isEmpty) return;
+          setExpanded(!expanded);
+        }}
       />
-      {expanded && (
+      {expanded ? (
         <SidebarMenuSub className="mx-0 gap-0.5 border-l-0 px-0">
           <SortableContext
             id={`parent:${node.id}`}
             items={sortableItems}
             strategy={verticalListSortingStrategy}
           >
-            {childItems.map(({ type, node: child }) => (
+            {childItems.map(({ node: child, type }) => (
               <SortableItem
-                key={child.id}
-                id={child.id}
-                variant="subitem"
                 data={{ isFolder: type === "folder" }}
+                id={child.id}
+                key={child.id}
+                variant="subitem"
               >
                 {type === "folder" ? (
-                  <TreeNode node={child} parentFolderId={node.id} depth={depth + 1} />
+                  <TreeNode depth={depth + 1} node={child} parentFolderId={node.id} />
                 ) : (
                   <FileRow
-                    node={child}
-                    driveId={ctx.driveId}
-                    parentFolderId={node.id}
                     activeDriveId={ctx.activeDriveId}
-                    iconOverride={ctx.docIconOverrides.get(child.id)}
                     depth={depth + 1}
+                    driveId={ctx.driveId}
+                    iconOverride={ctx.docIconOverrides.get(child.id)}
+                    node={child}
+                    parentFolderId={node.id}
                   />
                 )}
               </SortableItem>
             ))}
           </SortableContext>
-          {filesLoading && (
+          {filesLoading ? (
             <SidebarMenuSubItem>
               <span className="text-muted-foreground px-2 py-1 text-xs">Loading files…</span>
             </SidebarMenuSubItem>
-          )}
+          ) : null}
           {!filesLoading && childItems.length === 0 && (
-            <EmptyDropZone parentId={node.id} variant="subitem" label="Empty" />
+            <EmptyDropZone label="Empty" parentId={node.id} variant="subitem" />
           )}
         </SidebarMenuSub>
-      )}
+      ) : null}
     </>
   );
 }
@@ -245,8 +244,8 @@ function buildChildItems(
     : (ctx.childrenByParent.get(node.id) ?? []);
 
   const raw: KindedNode[] = [
-    ...folderChildren.map((n): KindedNode => ({ type: "folder", node: n })),
-    ...filteredFiles.map((n): KindedNode => ({ type: "file", node: n })),
+    ...folderChildren.map((n): KindedNode => ({ node: n, type: "folder" })),
+    ...filteredFiles.map((n): KindedNode => ({ node: n, type: "file" })),
   ];
 
   const optimisticOrder = ctx.optimisticByContainer.get(`parent:${node.id}`) ?? null;
@@ -257,20 +256,20 @@ function buildChildItems(
 }
 
 function FolderHeader({
-  node,
-  meta,
+  actions,
   depth,
   expanded,
-  onToggle,
-  isDropIntoFolder,
-  isMoving,
   iconEmoji,
-  itemCount,
+  isDropIntoFolder,
   isEmpty,
-  onIconChange,
-  onHoverStart,
+  isMoving,
+  itemCount,
+  meta,
+  node,
   onHoverEnd,
-  actions,
+  onHoverStart,
+  onIconChange,
+  onToggle,
 }: FolderHeaderProps) {
   const chevronPadding = `${rowIndent(depth)}px`;
   const iconLeft = `${rowIndent(depth) + CHEVRON_OFFSET}px`;
@@ -284,10 +283,7 @@ function FolderHeader({
   return (
     <div className="relative">
       <SidebarMenuButton
-        onClick={onToggle}
-        onPointerEnter={onHoverStart}
-        onPointerLeave={onHoverEnd}
-        disabled={meta.inaccessible || isEmpty}
+        aria-expanded={meta.inaccessible || isEmpty ? undefined : expanded}
         className={cn(
           "pr-14 transition-[background-color,box-shadow] duration-150",
 
@@ -296,10 +292,13 @@ function FolderHeader({
           meta.inaccessible && "text-muted-foreground/60 cursor-not-allowed",
           isEmpty && "text-muted-foreground/60 cursor-default",
         )}
-        style={{ paddingLeft: chevronPadding }}
-        aria-expanded={meta.inaccessible || isEmpty ? undefined : expanded}
-        title={meta.tooltip ?? (isEmpty ? `${node.name} — empty` : node.name)}
         data-file-id={node.id}
+        disabled={meta.inaccessible || isEmpty}
+        onClick={onToggle}
+        onPointerEnter={onHoverStart}
+        onPointerLeave={onHoverEnd}
+        style={{ paddingLeft: chevronPadding }}
+        title={meta.tooltip ?? (isEmpty ? `${node.name} — empty` : node.name)}
       >
         <ChevronRight
           className={cn(
@@ -309,7 +308,7 @@ function FolderHeader({
             isEmpty && "invisible",
           )}
         />
-        <span className="shrink-0" style={{ width: ICON_COLUMN_WIDTH - 4 }} aria-hidden="true" />
+        <span aria-hidden="true" className="shrink-0" style={{ width: ICON_COLUMN_WIDTH - 4 }} />
         <span className="truncate">{node.name}</span>
         {itemCount !== undefined && itemCount > 0 && (
           <span className="text-muted-foreground/70 ml-auto shrink-0 pl-1 text-[10px] tabular-nums group-hover/navitem:opacity-0">
@@ -320,22 +319,22 @@ function FolderHeader({
 
       <div className="absolute top-1/2 z-10 -translate-y-1/2" style={{ left: iconLeft }}>
         <PickableIcon
-          pickable={!meta.isShortcut && !meta.inaccessible}
-          dimmed={meta.inaccessible}
-          value={iconEmoji}
-          onChange={onIconChange}
           ariaLabel="Change folder icon"
+          dimmed={meta.inaccessible}
+          onChange={onIconChange}
+          pickable={!meta.isShortcut && !meta.inaccessible}
+          value={iconEmoji}
         >
           {iconContent}
         </PickableIcon>
       </div>
 
       {!meta.isShortcut && !meta.inaccessible && actions}
-      {isMoving && (
+      {isMoving ? (
         <div className="text-muted-foreground pointer-events-none absolute top-1/2 right-2 -translate-y-1/2">
           <Loader2 className="size-3 animate-spin" />
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

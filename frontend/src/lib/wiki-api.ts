@@ -1,21 +1,7 @@
 import * as z from "zod";
 
-import type {
-  DocIcon,
-  DriveNode,
-  DriveSearchResult,
-  DriveSummary,
-  DriveTree,
-  FileDetail,
-  FileResponse,
-  FolderIcon,
-  Preferences,
-  SnippetResult,
-  SortOrder,
-} from "@/types/wiki";
-
 import { ApiError, makeCall } from "@/lib/api-client";
-import { type Client } from "@/lib/generated/client";
+import type { Client } from "@/lib/generated/client";
 import {
   bootstrapBootstrapGet,
   bulkSetSortOrdersExtrasSortOrderPut,
@@ -58,23 +44,36 @@ import {
   sortOrderBulkResult,
   userProfile,
 } from "@/lib/wiki-schemas";
+import type {
+  DocIcon,
+  DriveNode,
+  DriveSearchResult,
+  DriveSummary,
+  DriveTree,
+  FileDetail,
+  FileResponse,
+  FolderIcon,
+  Preferences,
+  SnippetResult,
+  SortOrder,
+} from "@/types/wiki";
 
 export { ApiError };
 
 export interface CreateFileInput {
-  parentFolderId: string;
-  name: string;
   mimeType: string;
+  name: string;
+  parentFolderId: string;
 }
 
 export interface DocIconInput {
-  icon?: string | null;
-  coverUrl?: string | null;
+  coverUrl?: null | string;
+  icon?: null | string;
 }
 
 export interface PreferencesInput {
-  showNonDocFiles?: boolean;
   hiddenWorkspaceIds?: string[];
+  showNonDocFiles?: boolean;
 }
 
 export type UserProfile = z.output<typeof userProfile>;
@@ -83,100 +82,7 @@ export type Bootstrap = z.output<typeof bootstrapRead>;
 export function makeWikiApi(client?: Client) {
   const call = makeCall(client);
   return {
-    getDrives: (): Promise<DriveSummary[]> =>
-      call(getDrivesSidebarDrivesGet, {}, z.array(driveSummary)),
-
-    getDriveFolders: (driveId: string): Promise<DriveTree> =>
-      call(
-        getDriveFoldersSidebarDrivesDriveIdFoldersGet,
-        { path: { drive_id: driveId } },
-        driveTree,
-      ),
-
-    refreshDriveFolders: (driveId: string): Promise<DriveTree> =>
-      call(
-        refreshDriveFoldersSidebarDrivesDriveIdRefreshPost,
-        { path: { drive_id: driveId } },
-        driveTree,
-      ),
-
-    getFolderFiles: (folderId: string): Promise<DriveNode[]> =>
-      call(
-        getFolderFilesSidebarFoldersFolderIdFilesGet,
-        { path: { folder_id: folderId } },
-        z.array(driveNode),
-      ),
-
-    getFile: (fileId: string): Promise<FileDetail> =>
-      call(readFileFilesFileIdGet, { path: { file_id: fileId } }, fileDetail),
-
-    createFile: (input: CreateFileInput): Promise<FileResponse> =>
-      call(
-        createFileFilesPost,
-        {
-          body: {
-            parent_folder_id: input.parentFolderId,
-            name: input.name,
-            mime_type: input.mimeType,
-          },
-        },
-        fileResponse,
-      ),
-
-    renameFile: (fileId: string, name: string): Promise<FileResponse> =>
-      call(
-        renameFileFilesFileIdRenamePatch,
-        { path: { file_id: fileId }, body: { name } },
-        fileResponse,
-      ),
-
-    moveFile: (fileId: string, newParentFolderId: string): Promise<FileResponse> =>
-      call(
-        moveFileFilesFileIdMovePatch,
-        { path: { file_id: fileId }, body: { new_parent_folder_id: newParentFolderId } },
-        fileResponse,
-      ),
-
-    copyFile: (fileId: string, name: string): Promise<FileResponse> =>
-      call(
-        copyFileFilesFileIdCopyPost,
-        { path: { file_id: fileId }, body: { name } },
-        fileResponse,
-      ),
-
-    deleteFile: (fileId: string): Promise<void> =>
-      call(deleteFileFilesFileIdDelete, { path: { file_id: fileId } }),
-
-    listDocIcons: (): Promise<DocIcon[]> =>
-      call(listDocIconsExtrasDocIconsGet, {}, z.array(docIcon)),
-
-    getDocIcon: (driveId: string): Promise<DocIcon> =>
-      call(readDocIconExtrasDocIconsDriveIdGet, { path: { drive_id: driveId } }, docIcon),
-
-    setDocIcon: (driveId: string, payload: DocIconInput): Promise<DocIcon> =>
-      call(
-        setDocIconExtrasDocIconsDriveIdPut,
-        {
-          path: { drive_id: driveId },
-          body: { icon: payload.icon ?? null, cover_url: payload.coverUrl ?? null },
-        },
-        docIcon,
-      ),
-
-    listFolderIcons: (): Promise<FolderIcon[]> =>
-      call(listMyFolderIconsExtrasFolderIconsGet, {}, z.array(folderIcon)),
-
-    setFolderIcon: (folderDriveId: string, icon: string | null): Promise<FolderIcon> =>
-      call(
-        setFolderIconExtrasFolderIconsFolderDriveIdPut,
-        { path: { folder_drive_id: folderDriveId }, body: { icon } },
-        folderIcon,
-      ),
-
-    listSortOrders: (): Promise<SortOrder[]> =>
-      call(listMySortOrdersExtrasSortOrderGet, {}, z.array(sortOrder)),
-
-    bulkSetSortOrders: (items: SortOrder[]): Promise<{ updated: number }> =>
+    bulkSetSortOrders: async (items: SortOrder[]): Promise<{ updated: number }> =>
       call(
         bulkSetSortOrdersExtrasSortOrderPut,
         {
@@ -187,29 +93,33 @@ export function makeWikiApi(client?: Client) {
         sortOrderBulkResult,
       ),
 
-    clearSortOrder: (driveId: string): Promise<void> =>
+    clearSortOrder: async (driveId: string): Promise<void> =>
       call(deleteSortOrderExtrasSortOrderDriveIdDelete, { path: { drive_id: driveId } }),
 
-    getPreferences: (): Promise<Preferences> =>
-      call(readPreferencesExtrasPreferencesGet, {}, preferences),
-
-    setPreferences: (payload: PreferencesInput): Promise<Preferences> =>
+    copyFile: async (fileId: string, name: string): Promise<FileResponse> =>
       call(
-        writePreferencesExtrasPreferencesPut,
-        {
-          body: {
-            show_non_doc_files: payload.showNonDocFiles ?? null,
-            hidden_workspace_ids: payload.hiddenWorkspaceIds ?? null,
-          },
-        },
-        preferences,
+        copyFileFilesFileIdCopyPost,
+        { body: { name }, path: { file_id: fileId } },
+        fileResponse,
       ),
 
-    getMe: (): Promise<UserProfile> => call(meAuthMeGet, {}, userProfile),
+    createFile: async (input: CreateFileInput): Promise<FileResponse> =>
+      call(
+        createFileFilesPost,
+        {
+          body: {
+            mime_type: input.mimeType,
+            name: input.name,
+            parent_folder_id: input.parentFolderId,
+          },
+        },
+        fileResponse,
+      ),
 
-    getBootstrap: (): Promise<Bootstrap> => call(bootstrapBootstrapGet, {}, bootstrapRead),
+    deleteFile: async (fileId: string): Promise<void> =>
+      call(deleteFileFilesFileIdDelete, { path: { file_id: fileId } }),
 
-    driveSearch: (query: string, limitPerDrive?: number): Promise<DriveSearchResult[]> =>
+    driveSearch: async (query: string, limitPerDrive?: number): Promise<DriveSearchResult[]> =>
       call(
         searchDriveSearchGet,
         {
@@ -221,7 +131,7 @@ export function makeWikiApi(client?: Client) {
         z.array(searchResult),
       ),
 
-    driveSearchSnippet: (
+    driveSearchSnippet: async (
       fileId: string,
       query: string,
       mimeType?: string,
@@ -236,6 +146,97 @@ export function makeWikiApi(client?: Client) {
           },
         },
         snippetResult,
+      ),
+
+    getBootstrap: async (): Promise<Bootstrap> => call(bootstrapBootstrapGet, {}, bootstrapRead),
+
+    getDocIcon: async (driveId: string): Promise<DocIcon> =>
+      call(readDocIconExtrasDocIconsDriveIdGet, { path: { drive_id: driveId } }, docIcon),
+
+    getDriveFolders: async (driveId: string): Promise<DriveTree> =>
+      call(
+        getDriveFoldersSidebarDrivesDriveIdFoldersGet,
+        { path: { drive_id: driveId } },
+        driveTree,
+      ),
+
+    getDrives: async (): Promise<DriveSummary[]> =>
+      call(getDrivesSidebarDrivesGet, {}, z.array(driveSummary)),
+
+    getFile: async (fileId: string): Promise<FileDetail> =>
+      call(readFileFilesFileIdGet, { path: { file_id: fileId } }, fileDetail),
+
+    getFolderFiles: async (folderId: string): Promise<DriveNode[]> =>
+      call(
+        getFolderFilesSidebarFoldersFolderIdFilesGet,
+        { path: { folder_id: folderId } },
+        z.array(driveNode),
+      ),
+
+    getMe: async (): Promise<UserProfile> => call(meAuthMeGet, {}, userProfile),
+
+    getPreferences: async (): Promise<Preferences> =>
+      call(readPreferencesExtrasPreferencesGet, {}, preferences),
+
+    listDocIcons: async (): Promise<DocIcon[]> =>
+      call(listDocIconsExtrasDocIconsGet, {}, z.array(docIcon)),
+
+    listFolderIcons: async (): Promise<FolderIcon[]> =>
+      call(listMyFolderIconsExtrasFolderIconsGet, {}, z.array(folderIcon)),
+
+    listSortOrders: async (): Promise<SortOrder[]> =>
+      call(listMySortOrdersExtrasSortOrderGet, {}, z.array(sortOrder)),
+
+    moveFile: async (fileId: string, newParentFolderId: string): Promise<FileResponse> =>
+      call(
+        moveFileFilesFileIdMovePatch,
+        { body: { new_parent_folder_id: newParentFolderId }, path: { file_id: fileId } },
+        fileResponse,
+      ),
+
+    refreshDriveFolders: async (driveId: string): Promise<DriveTree> =>
+      call(
+        refreshDriveFoldersSidebarDrivesDriveIdRefreshPost,
+        { path: { drive_id: driveId } },
+        driveTree,
+      ),
+
+    renameFile: async (fileId: string, name: string): Promise<FileResponse> =>
+      call(
+        renameFileFilesFileIdRenamePatch,
+        { body: { name }, path: { file_id: fileId } },
+        fileResponse,
+      ),
+
+    setDocIcon: async (driveId: string, payload: DocIconInput): Promise<DocIcon> =>
+      call(
+        setDocIconExtrasDocIconsDriveIdPut,
+        {
+          body: { cover_url: payload.coverUrl ?? null, icon: payload.icon ?? null },
+          path: { drive_id: driveId },
+        },
+        docIcon,
+      ),
+
+    setFolderIcon: async (folderDriveId: string, icon: null | string): Promise<FolderIcon> =>
+      call(
+        setFolderIconExtrasFolderIconsFolderDriveIdPut,
+        { body: { icon }, path: { folder_drive_id: folderDriveId } },
+        folderIcon,
+      ),
+
+    setPreferences: async (payload: PreferencesInput): Promise<Preferences> =>
+      call(
+        writePreferencesExtrasPreferencesPut,
+        {
+          body: {
+            ...(payload.hiddenWorkspaceIds === undefined
+              ? {}
+              : { hidden_workspace_ids: payload.hiddenWorkspaceIds }),
+            show_non_doc_files: payload.showNonDocFiles ?? null,
+          },
+        },
+        preferences,
       ),
   };
 }

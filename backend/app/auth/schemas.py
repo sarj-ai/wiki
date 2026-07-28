@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 
@@ -14,7 +15,7 @@ class UserProfile(BaseModel):
     avatar_url: str | None
 
     @classmethod
-    def from_user(cls, user: User) -> UserProfile:
+    def from_user(cls, user: User) -> Self:
         return cls(
             id=str(user.id),
             email=user.email,

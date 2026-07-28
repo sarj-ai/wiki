@@ -2,10 +2,10 @@ import { MIME_DOC, MIME_DRAWING, MIME_FORM, MIME_SHEET, MIME_SLIDE } from "@/typ
 
 const EDITOR_PATHS: Record<string, string> = {
   [MIME_DOC]: "document",
-  [MIME_SHEET]: "spreadsheets",
-  [MIME_SLIDE]: "presentation",
   [MIME_DRAWING]: "drawings",
   [MIME_FORM]: "forms",
+  [MIME_SHEET]: "spreadsheets",
+  [MIME_SLIDE]: "presentation",
 };
 
 function workspaceUrl(mimeType: string, id: string, driveFallback: "preview" | "view"): string {

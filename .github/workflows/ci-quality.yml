@@ -1,6 +1,6 @@
 name: CI Quality
 
-on:
+"on":
   push:
     branches: [main, "feat/**"]
   pull_request:

@@ -42,7 +42,7 @@ def test_supported_mime_types_include_all_workspace_apps() -> None:
     assert expected.issubset(set(NAVIGATOR_SUPPORTED_MIME_TYPES))
 
 
-def test_search_result_round_trip() -> None:
+def test_search_result_defaults_shortcut_accessible() -> None:
     r = SearchResult(
         id="x",
         name="X",
@@ -52,8 +52,8 @@ def test_search_result_round_trip() -> None:
         parent_id=None,
         modified_time=None,
     )
-    assert r.drive_id is None
-    assert r.parent_id is None
+    assert r.shortcut_inaccessible is False
+    assert r.shortcut_target_id is None
 
 
 def test_drive_summary_is_minimal() -> None:
@@ -61,10 +61,11 @@ def test_drive_summary_is_minimal() -> None:
     assert d.model_dump() == {"id": "d1", "name": "Engineering"}
 
 
-def test_preferences_write_partial_fields_default_none() -> None:
+def test_preferences_write_tracks_omitted_collection() -> None:
     p = PreferencesWrite()
     assert p.show_non_doc_files is None
-    assert p.hidden_workspace_ids is None
+    assert p.hidden_workspace_ids == []
+    assert "hidden_workspace_ids" not in p.model_fields_set
 
 
 def test_preferences_read_serializes_defaults() -> None:

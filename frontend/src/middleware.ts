@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 // Link-preview crawlers (Slack, Discord, Teams, iMessage, …) must reach the
 // page to read its og: tags. They see server-rendered metadata and the

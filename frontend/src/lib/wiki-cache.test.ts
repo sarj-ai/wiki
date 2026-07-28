@@ -1,8 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 
-import type { DriveNode, DriveTree, FileResponse } from "@/types/wiki";
-
 import { wikiKeys } from "@/hooks/use-wiki-tree";
 import {
   fileToNode,
@@ -10,16 +8,17 @@ import {
   injectNewFileIntoCaches,
   removeFileFromCaches,
 } from "@/lib/wiki-cache";
+import type { DriveNode, DriveTree, FileResponse } from "@/types/wiki";
 import { MIME_DOC, MIME_FOLDER, MIME_SHEET, MIME_SHORTCUT } from "@/types/wiki";
 
 function makeFile(overrides: Partial<FileResponse> = {}): FileResponse {
   return {
-    id: "file-1",
-    name: "Untitled",
-    mimeType: MIME_DOC,
-    parentFolderId: "folder-a",
     driveId: "drive-1",
+    id: "file-1",
+    mimeType: MIME_DOC,
     modifiedTime: "2025-01-01T00:00:00Z",
+    name: "Untitled",
+    parentFolderId: "folder-a",
     ...overrides,
   };
 }
@@ -27,15 +26,15 @@ function makeFile(overrides: Partial<FileResponse> = {}): FileResponse {
 function makeNode(overrides: Partial<DriveNode> = {}): DriveNode {
   return {
     id: "n",
-    name: "n",
     mimeType: MIME_DOC,
-    parentId: undefined,
     modifiedTime: undefined,
-    shortcutTargetId: undefined,
-    shortcutTargetMimeType: undefined,
+    name: "n",
+    parentId: undefined,
+    shortcutInaccessible: false,
     shortcutTargetDriveId: undefined,
     shortcutTargetDriveName: undefined,
-    shortcutInaccessible: false,
+    shortcutTargetId: undefined,
+    shortcutTargetMimeType: undefined,
     ...overrides,
   };
 }
@@ -45,15 +44,15 @@ describe("fileToNode", () => {
     const node = fileToNode(makeFile({ id: "f", name: "Doc", parentFolderId: "p" }));
     expect(node).toEqual({
       id: "f",
-      name: "Doc",
       mimeType: MIME_DOC,
-      parentId: "p",
       modifiedTime: "2025-01-01T00:00:00Z",
-      shortcutTargetId: undefined,
-      shortcutTargetMimeType: undefined,
+      name: "Doc",
+      parentId: "p",
+      shortcutInaccessible: false,
       shortcutTargetDriveId: undefined,
       shortcutTargetDriveName: undefined,
-      shortcutInaccessible: false,
+      shortcutTargetId: undefined,
+      shortcutTargetMimeType: undefined,
     });
   });
 
@@ -102,7 +101,7 @@ describe("injectNewFileIntoCaches", () => {
 
   it("splices nested files into tree.files with their parent retained", () => {
     const qc = new QueryClient();
-    const tree: DriveTree = { driveId: "drive-1", folders: [], files: [], filesComplete: true };
+    const tree: DriveTree = { driveId: "drive-1", files: [], filesComplete: true, folders: [] };
     qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
 
     injectNewFileIntoCaches(qc, makeFile({ mimeType: MIME_DOC, parentFolderId: "folder-a" }));
@@ -116,7 +115,7 @@ describe("injectNewFileIntoCaches", () => {
 
   it("splices root-level files into the drive tree's files list", () => {
     const qc = new QueryClient();
-    const tree: DriveTree = { driveId: "drive-1", folders: [], files: [], filesComplete: true };
+    const tree: DriveTree = { driveId: "drive-1", files: [], filesComplete: true, folders: [] };
     qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
 
     injectNewFileIntoCaches(
@@ -137,23 +136,23 @@ describe("findCachedNodeMeta", () => {
   it("finds a file in a folder-files listing", () => {
     const qc = new QueryClient();
     qc.setQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"), [
-      makeNode({ id: "doc-1", name: "Roadmap", mimeType: MIME_DOC }),
+      makeNode({ id: "doc-1", mimeType: MIME_DOC, name: "Roadmap" }),
     ]);
 
-    expect(findCachedNodeMeta(qc, "doc-1")).toEqual({ name: "Roadmap", mimeType: MIME_DOC });
+    expect(findCachedNodeMeta(qc, "doc-1")).toEqual({ mimeType: MIME_DOC, name: "Roadmap" });
   });
 
   it("finds a folder in a drive tree", () => {
     const qc = new QueryClient();
     const tree: DriveTree = {
       driveId: "drive-1",
-      folders: [makeNode({ id: "folder-x", name: "Specs", mimeType: MIME_FOLDER })],
       files: [],
       filesComplete: true,
+      folders: [makeNode({ id: "folder-x", mimeType: MIME_FOLDER, name: "Specs" })],
     };
     qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
 
-    expect(findCachedNodeMeta(qc, "folder-x")).toEqual({ name: "Specs", mimeType: MIME_FOLDER });
+    expect(findCachedNodeMeta(qc, "folder-x")).toEqual({ mimeType: MIME_FOLDER, name: "Specs" });
   });
 
   it("resolves a shortcut by its target id with the target's mime type", () => {
@@ -161,16 +160,16 @@ describe("findCachedNodeMeta", () => {
     qc.setQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"), [
       makeNode({
         id: "shortcut-1",
-        name: "Budget (link)",
         mimeType: MIME_SHORTCUT,
+        name: "Budget (link)",
         shortcutTargetId: "sheet-9",
         shortcutTargetMimeType: MIME_SHEET,
       }),
     ]);
 
     expect(findCachedNodeMeta(qc, "sheet-9")).toEqual({
-      name: "Budget (link)",
       mimeType: MIME_SHEET,
+      name: "Budget (link)",
     });
     expect(findCachedNodeMeta(qc, "shortcut-1")).toBeNull();
   });
@@ -201,9 +200,9 @@ describe("removeFileFromCaches", () => {
     const qc = new QueryClient();
     const tree: DriveTree = {
       driveId: "drive-1",
-      folders: [makeNode({ id: "f1" }), makeNode({ id: "f2" })],
       files: [],
       filesComplete: true,
+      folders: [makeNode({ id: "f1" }), makeNode({ id: "f2" })],
     };
     qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
 
