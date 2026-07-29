@@ -41,7 +41,7 @@ jobs:
         run: uv python install
 
       - name: Install dependencies
-        run: uv sync --group dev --frozen
+        run: uv sync --group dev --locked
 
       - name: Ruff check
         run: uv run ruff check .
@@ -91,7 +91,7 @@ jobs:
         run: uv python install
 
       - name: Install dependencies
-        run: uv sync --group dev --frozen
+        run: uv sync --group dev --locked
 
       - name: Run pytest
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70

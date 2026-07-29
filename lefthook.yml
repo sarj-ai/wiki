@@ -1,42 +1,44 @@
+min_version: 2.1.10
 assert_lefthook_installed: true
 
 pre-commit:
   parallel: false
   commands:
-    backend-ruff-fix:
+    standards-config:
+      run: make standards-check
+      fail_text: "Canonical Standards configs drifted. Run 'make standards-sync', stage the result, and retry."
+    backend-ruff:
       root: backend/
       glob: "*.py"
-      run: uv run ruff check --fix {staged_files}
-      stage_fixed: true
+      run: uv run ruff check {staged_files}
+      fail_text: "Ruff rejected staged Python. Run its suggested fix, stage, and retry."
     backend-ruff-format:
       root: backend/
       glob: "*.py"
-      run: uv run ruff format {staged_files}
-      stage_fixed: true
-    frontend-eslint-fix:
+      run: uv run ruff format --check {staged_files}
+    frontend-eslint:
       root: frontend/
       glob: "*.{js,mjs,cjs,ts,tsx}"
-      run: npm exec -- next typegen && npm exec -- eslint --fix --no-warn-ignored {staged_files}
-      stage_fixed: true
+      run: >-
+        npm exec -- next typegen &&
+        npm exec -- eslint --no-warn-ignored {staged_files} &&
+        npm exec -- tsc --noEmit --pretty false
+      fail_text: "ESLint or TypeScript rejected staged frontend code. Fix the reported issue, stage, and retry."
     frontend-prettier:
       root: frontend/
       glob: "*.{js,mjs,cjs,ts,tsx,json,css,md,yml,yaml}"
-      run: npm exec -- prettier --write --ignore-unknown {staged_files}
-      stage_fixed: true
-    markdownlint-fix:
+      run: npm exec -- prettier --check --ignore-unknown {staged_files}
+    markdownlint:
       glob: "*.md"
-      run: frontend/node_modules/.bin/markdownlint-cli2 --config .markdownlint.yaml --fix {staged_files}
-      stage_fixed: true
-    taplo-format:
+      run: frontend/node_modules/.bin/markdownlint-cli2 --config .markdownlint.yaml {staged_files}
+    taplo:
       glob: "*.toml"
-      run: frontend/node_modules/.bin/taplo fmt --config .taplo.toml {staged_files}
-      stage_fixed: true
+      run: frontend/node_modules/.bin/taplo lint --config .taplo.toml {staged_files}
     yamllint:
       glob: "*.{yml,yaml}"
       run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache uvx --python 3.14 yamllint --strict --config-file .yamllint.yaml {staged_files}
     standards:
       run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache uvx --python 3.14 pre-commit run
-      stage_fixed: true
 
 pre-push:
   parallel: true

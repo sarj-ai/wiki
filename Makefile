@@ -2,8 +2,32 @@ GCP_PROJECT := sarj-docs
 STAMPS := .stamps
 SECRETS_TTL := 1440
 
-.PHONY: pull-local-secrets pull-local-secrets-force pull-tf-secrets \
-	pull-tf-secrets-force push-local-secrets push-tf-secrets
+.PHONY: setup setup-hooks standards-sync standards-check standards-upgrade pull-local-secrets \
+	pull-local-secrets-force pull-tf-secrets pull-tf-secrets-force \
+	push-local-secrets push-tf-secrets
+
+setup-hooks:
+	@cd frontend && npm exec -- lefthook install
+
+standards-sync:
+	@uv run --project backend --locked sarj-lint-configs sync \
+		--python-dest backend --typescript-dest frontend --dest . --force
+
+standards-check:
+	@uv run --project backend --locked sarj-lint-configs sync \
+		--python-dest backend --typescript-dest frontend --dest . --check
+
+# Upgrade every Standards package, both locks, and all generated configs in one command.
+standards-upgrade:
+	@uv add --project backend --group dev --exact --upgrade-package sarj-lint-configs sarj-lint-configs
+	@npm install --prefix frontend --save-dev --save-exact \
+		@sarj/eslint-plugin@latest @sarj/tsconfig@latest
+	@$(MAKE) standards-sync
+	@$(MAKE) standards-check
+
+setup: setup-hooks standards-sync
+	@$(MAKE) -C backend setup-dependencies
+	@npm ci --prefix frontend
 
 $(STAMPS):
 	@mkdir -p $(STAMPS)

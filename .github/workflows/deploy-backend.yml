@@ -44,7 +44,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: uv sync --group dev --frozen
+        run: uv sync --group dev --locked
 
       - name: Run pre-commit custom standards
         run: uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure

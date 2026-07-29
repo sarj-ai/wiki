@@ -49,6 +49,9 @@ jobs:
       - name: ESLint
         run: npm run lint
 
+      - name: Verify exact ESLint baseline
+        run: npm run lint:baseline-check
+
       - name: Knip
         run: npm run knip
 

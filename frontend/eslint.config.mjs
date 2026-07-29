@@ -1,4 +1,3 @@
-import sarj from "@sarj/eslint-plugin";
 import vitest from "@vitest/eslint-plugin";
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
@@ -10,15 +9,21 @@ import testingLibrary from "eslint-plugin-testing-library";
 import unicorn from "eslint-plugin-unicorn";
 import tseslint from "typescript-eslint";
 
-const eslintConfig = defineConfig([
+import sarjStrict from "./eslint.strict.mjs";
+
+const { dirname: tsconfigRootDir } = import.meta;
+const { "flat/react": testingLibraryReact } = testingLibrary.configs;
+
+export default defineConfig([
   ...nextVitals,
   ...nextTs,
+  ...sarjStrict,
   // Type-aware linting: turn on the typed rule sets across the project.
   {
     languageOptions: {
       parserOptions: {
         projectService: true,
-        tsconfigRootDir: import.meta.dirname,
+        tsconfigRootDir,
       },
     },
   },
@@ -117,13 +122,6 @@ const eslintConfig = defineConfig([
       "jsx-a11y/no-static-element-interactions": "warn",
     },
   },
-  // Rule set sourced from the plugin so new @sarj rules are picked up
-  // automatically. Every rule is an error; scoped overrides below handle
-  // framework-owned files and this repo's env source of truth.
-  {
-    plugins: { "@sarj": sarj },
-    rules: Object.fromEntries(Object.keys(sarj.rules).map((name) => [`@sarj/${name}`, "error"])),
-  },
   // Test-file-only configs.
   {
     files: ["**/*.test.{ts,tsx}"],
@@ -133,7 +131,7 @@ const eslintConfig = defineConfig([
   },
   {
     files: ["**/*.test.tsx"],
-    ...testingLibrary.configs["flat/react"],
+    ...testingLibraryReact,
   },
   // next.config.ts evaluates before src/ modules can load, and env.ts IS
   // the validated env module the rule points at.
@@ -160,11 +158,11 @@ const eslintConfig = defineConfig([
     "coverage/**",
     ".open-next/**",
     "next-env.d.ts",
+    // Canonical generated Standards artifact; drift is checked byte-for-byte.
+    "eslint.strict.mjs",
     // Codegen output (openapi-ts) — regenerated, never hand-edited.
     "src/lib/generated/**",
     // Copied shadcn primitives track upstream and are formatted, not linted.
     "src/components/ui/**",
   ]),
 ]);
-
-export default eslintConfig;

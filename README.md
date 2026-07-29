@@ -15,16 +15,25 @@ Internal knowledge base for [@sarj.ai](https://sarj.ai), built on top of Google 
 
 ### Git hooks
 
-Use Node 24+ and npm 11 (the versions used by CI). `npm install` in `frontend/`
-installs Lefthook automatically. It applies Ruff,
-ESLint, Prettier, Markdownlint, and Taplo fixes to staged files, then runs every
-pinned Sarj standards rule before commits and the full quality suite before
-pushes. To reinstall the hooks manually:
+Use Node 24+, npm 11, Python 3.14, and uv. Root `make setup`, backend `make setup`,
+and `npm install` in `frontend/` install Lefthook automatically. Hooks check staged
+files with Ruff, ESLint, TypeScript, Prettier, Markdownlint, Taplo, and every rule
+discovered from the pinned Sarj registries, then run the full quality suite before pushes.
+To reinstall the hooks manually:
 
 ```bash
-cd frontend
-npm run hooks:install
+make setup-hooks
 ```
+
+Upgrade every Sarj Standards package, refresh both locks, and regenerate all six
+canonical configs with one command:
+
+```bash
+make standards-upgrade
+```
+
+Commit the package manifests, locks, and generated configs together. Hooks and CI
+run `make standards-check` and reject config or lock drift.
 
 ### Secrets
 
@@ -40,7 +49,7 @@ make pull-local-secrets   # writes backend/.env
 
 ```bash
 cd backend
-uv sync
+make setup
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload
 ```
