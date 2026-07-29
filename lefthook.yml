@@ -19,7 +19,11 @@ pre-commit:
     frontend-eslint:
       root: frontend/
       glob: "*.{js,mjs,cjs,ts,tsx}"
-      run: npm exec -- next typegen && npm exec -- eslint --no-warn-ignored {staged_files}
+      run: >-
+        npm exec -- next typegen &&
+        npm exec -- eslint --no-warn-ignored {staged_files} &&
+        npm exec -- tsc --noEmit --pretty false
+      fail_text: "ESLint or TypeScript rejected staged frontend code. Fix the reported issue, stage, and retry."
     frontend-prettier:
       root: frontend/
       glob: "*.{js,mjs,cjs,ts,tsx,json,css,md,yml,yaml}"

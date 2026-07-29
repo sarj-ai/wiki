@@ -17,13 +17,23 @@ Internal knowledge base for [@sarj.ai](https://sarj.ai), built on top of Google 
 
 Use Node 24+, npm 11, Python 3.14, and uv. Root `make setup`, backend `make setup`,
 and `npm install` in `frontend/` install Lefthook automatically. Hooks check staged
-files with Ruff, ESLint, Prettier, Markdownlint, Taplo, and every rule discovered
-from the pinned Sarj registries, then run the full quality suite before pushes.
+files with Ruff, ESLint, TypeScript, Prettier, Markdownlint, Taplo, and every rule
+discovered from the pinned Sarj registries, then run the full quality suite before pushes.
 To reinstall the hooks manually:
 
 ```bash
 make setup-hooks
 ```
+
+Upgrade every Sarj Standards package, refresh both locks, and regenerate all six
+canonical configs with one command:
+
+```bash
+make standards-upgrade
+```
+
+Commit the package manifests, locks, and generated configs together. Hooks and CI
+run `make standards-check` and reject config or lock drift.
 
 ### Secrets
 

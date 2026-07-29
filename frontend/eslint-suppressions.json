@@ -1,12 +1,4 @@
 {
-  "eslint.config.mjs": {
-    "@sarj/no-implicit-attribute-access": {
-      "count": 1
-    },
-    "@sarj/primary-export-file-name": {
-      "count": 1
-    }
-  },
   "next.config.ts": {
     "@sarj/primary-export-file-name": {
       "count": 1

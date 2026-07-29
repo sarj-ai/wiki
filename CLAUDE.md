@@ -5,10 +5,10 @@ Lefthook 2.1.10; root `make setup`, backend `make setup`, frontend `npm install`
 `npm ci`, and `npm run dev` also install it automatically. Fix hook failures and
 retry the commit instead of bypassing them.
 
-Canonical configs come from `sarj-lint-configs==0.9.1`. Run `make standards-sync`
-after upgrading Standards and commit all six generated files; `make standards-check`,
-hooks, and CI reject drift. `scripts/check_standards.py` discovers every installed
-Python, SQL, and IaC registry rule, so never maintain a handwritten hook list.
+Run `make standards-upgrade` to upgrade every Standards package, refresh both locks,
+and regenerate all six canonical configs as one change. `make standards-check`, hooks,
+and CI reject config or lock drift. `scripts/check_standards.py` discovers every
+installed Python, SQL, and IaC registry rule, so never maintain a handwritten hook list.
 
 ## Overview
 
@@ -68,7 +68,7 @@ Routers never call Google APIs or the DB directly — they resolve a service via
 - **Frontend checkers (blocking)**: `prettier`, `eslint`, `tsc` (TS 6, extends `@sarj/tsconfig/strict.json`), `knip`, `type-coverage --at-least 99`.
 - **API contract**: `frontend/openapi.json` is the committed contract artifact; `frontend/src/lib/generated/` (hey-api client + zod schemas) is git-ignored and regenerated from it on `npm install` (postinstall) or via `npm run generate:api`. After changing any backend Pydantic model: `cd backend && uv run python scripts/export_openapi.py ../frontend/openapi.json && cd ../frontend && npm run generate:api`. On PRs, CI (`ci-quality.yml` api-contract) regenerates and auto-commits `openapi.json` drift to the branch; direct pushes fail on drift.
 - **Repo-wide pre-commit (blocking in CI via ci-quality.yml)**: hygiene hooks, gitleaks, actionlint, and the `sarj-*` AST rules from `sarj-ai/standards`. Suppress a sarj finding inline with `# sarj-noqa: SARJ00X — reason`.
-- **Report-only layers (informational, never gate)**: org-strict ruff (`backend/.ruff-strict.toml`), org-strict pyright (`backend/.pyright-strict.json`), `pip-audit`, Trivy IaC scan on `terraform/`. Strict files are byte-for-byte canonical; repository-specific overrides belong in `backend/pyproject.toml` or `backend/pyrightconfig.json`, never in generated files.
+- **Canonical strict layers (blocking)**: org-strict Ruff (`backend/.ruff-strict.toml`), org-strict pyright (`backend/.pyright-strict.json`), `pip-audit`, and Trivy scans. Strict files are byte-for-byte canonical; repository-specific overrides belong in `backend/pyproject.toml` or `backend/pyrightconfig.json`, never in generated files.
 
 ## Architecture rules
 

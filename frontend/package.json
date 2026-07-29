@@ -13,6 +13,7 @@
     "deploy": "wrangler deploy",
     "start": "next start",
     "lint": "next typegen && eslint",
+    "lint:baseline-check": "node scripts/check-eslint-baseline.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "generate:api": "openapi-ts && node scripts/patch-generated.mjs && prettier --write openapi.json src/lib/generated",

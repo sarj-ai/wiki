@@ -11,7 +11,10 @@ import tseslint from "typescript-eslint";
 
 import sarjStrict from "./eslint.strict.mjs";
 
-const eslintConfig = defineConfig([
+const { dirname: tsconfigRootDir } = import.meta;
+const { "flat/react": testingLibraryReact } = testingLibrary.configs;
+
+export default defineConfig([
   ...nextVitals,
   ...nextTs,
   ...sarjStrict,
@@ -20,7 +23,7 @@ const eslintConfig = defineConfig([
     languageOptions: {
       parserOptions: {
         projectService: true,
-        tsconfigRootDir: import.meta.dirname,
+        tsconfigRootDir,
       },
     },
   },
@@ -128,7 +131,7 @@ const eslintConfig = defineConfig([
   },
   {
     files: ["**/*.test.tsx"],
-    ...testingLibrary.configs["flat/react"],
+    ...testingLibraryReact,
   },
   // next.config.ts evaluates before src/ modules can load, and env.ts IS
   // the validated env module the rule points at.
@@ -163,5 +166,3 @@ const eslintConfig = defineConfig([
     "src/components/ui/**",
   ]),
 ]);
-
-export default eslintConfig;

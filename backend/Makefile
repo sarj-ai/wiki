@@ -5,4 +5,4 @@ setup:
 	@$(MAKE) setup-dependencies
 
 setup-dependencies:
-	@uv sync --frozen
+	@uv sync --locked

@@ -45,6 +45,6 @@ repos:
         types: [yaml]
       - id: sarj-current-registries
         name: "sarj-config: every current Python, SQL, and IaC rule"
-        entry: uv run --with sarj-lint-configs==0.9.1 python scripts/check_standards.py
+        entry: uv run --project backend --locked python scripts/check_standards.py
         language: system
         types_or: [python, sql, terraform, yaml]
