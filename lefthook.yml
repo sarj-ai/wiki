@@ -1,3 +1,5 @@
+assert_lefthook_installed: true
+
 pre-commit:
   parallel: false
   commands:
@@ -14,7 +16,7 @@ pre-commit:
     frontend-eslint-fix:
       root: frontend/
       glob: "*.{js,mjs,cjs,ts,tsx}"
-      run: npm exec -- eslint --fix --no-warn-ignored {staged_files}
+      run: npm exec -- next typegen && npm exec -- eslint --fix --no-warn-ignored {staged_files}
       stage_fixed: true
     frontend-prettier:
       root: frontend/
