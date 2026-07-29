@@ -46,6 +46,6 @@ pre-push:
     standards-all:
       run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure
     backend-quality:
-      run: cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run pyright && uv run ty check app && uv run vulture && uv run lint-imports && uv run pytest -q
+      run: cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run basedpyright -p pyrightconfig.json && uv run ty check app && uv run vulture && uv run lint-imports && uv run pytest -q
     frontend-quality:
       run: cd frontend && npm run format:check && npm run lint && npm run typecheck && npm run knip && npm run type-coverage && npm test
