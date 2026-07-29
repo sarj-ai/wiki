@@ -19,6 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Install uv
@@ -29,6 +30,24 @@ jobs:
         with:
           path: ~/.cache/pre-commit
           key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Verify canonical Standards configs
+        run: make standards-check
+
+      - name: Reject lint baseline growth
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          for baseline in python-standards-baseline.json frontend/eslint-suppressions.json; do
+            base_file="$RUNNER_TEMP/$(basename "$baseline")"
+            if git show "$BASE_SHA:$baseline" > "$base_file" 2>/dev/null; then
+              uv run --project backend --frozen python scripts/check_baseline_growth.py "$base_file" "$baseline"
+            else
+              echo "Establishing initial shrink-only baseline: $baseline"
+            fi
+          done
 
       - name: Run pre-commit
         run: uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure
