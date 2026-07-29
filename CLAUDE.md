@@ -1,5 +1,10 @@
 # Sarj Wiki — Project Reference for Claude
 
+Before editing or committing, run `cd frontend && npm run hooks:install`. It
+idempotently installs Lefthook 2.1.10; `npm install`, `npm ci`, and `npm run dev`
+also install it automatically. Fix hook failures and retry the commit instead
+of bypassing them.
+
 ## Overview
 
 Notion-like sidebar layered on top of Google Drive for `@sarj.ai`. The user's real Drive hierarchy **is** the sidebar — we don't maintain a parallel tree. Postgres is an overlay for icons, per-user ordering, and UI prefs; nothing in our DB is authoritative and all of it can be dropped and rebuilt from Drive.
