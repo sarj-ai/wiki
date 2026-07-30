@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
+from typing import override
 import uuid
 
 from httpx import ASGITransport, AsyncClient
@@ -9,7 +10,7 @@ import pytest
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.drive.dependencies import drive_service_dep
-from app.drive.schemas import DriveSummary, DriveTree
+from app.drive.schemas import DriveNode, DriveSummary, DriveTree
 from app.extras.dependencies import extras_service_dep
 from app.extras.schemas import DocIconRead
 from app.files.dependencies import files_service_dep
@@ -29,18 +30,23 @@ INACCESSIBLE_DOC = "inaccessible-doc"
 
 
 class _FakeCache(SidebarCacheService):
+    @override
     async def get_drive_tree(self, db: object, drive_id: str) -> CachedDriveTree:
         return CachedDriveTree(tree=_tree(drive_id), refreshed_at=None)
 
+    @override
     async def peek_drive_tree(self, db: object, drive_id: str) -> CachedDriveTree | None:
         return None
 
-    async def get_folder_children(self, folder_id: str) -> list:
+    @override
+    async def get_folder_children(self, folder_id: str) -> list[DriveNode]:
         return []
 
+    @override
     async def invalidate_drive(self, db: object, drive_id: str) -> None:
         return None
 
+    @override
     async def refresh_drive(self, db: object, drive_id: str) -> DriveTree:
         return _tree(drive_id)
 

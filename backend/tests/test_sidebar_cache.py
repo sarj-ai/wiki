@@ -4,10 +4,11 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast, override
 import uuid
 
-from sqlalchemy.dialects import postgresql
+from sqlalchemy.engine import Dialect, make_url
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.auth.encryption import decrypt_cache, encrypt_cache
 from app.config import settings
@@ -17,6 +18,14 @@ from app.models.user import User
 from app.models.wiki import DriveTreeCache
 from app.sidebar.cache import CACHE_MAX_AGE, PostgresSidebarCacheService
 from app.sidebar.singleflight import Singleflight
+
+
+def _pg_dialect() -> Dialect:
+    return make_url("postgresql+psycopg://wiki/wiki").get_dialect()()
+
+
+def _as_db(session: FakeSession) -> AsyncSession:
+    return cast("AsyncSession", session)
 
 
 def _user() -> User:
@@ -50,24 +59,30 @@ class FakeDrive(DriveService):
         self.tree = tree
         self.walks = 0
 
+    @override
     async def list_drives(self) -> list[Any]:
         return []
 
+    @override
     async def walk_drive_folders(self, drive_id: str) -> DriveTree:
         self.walks += 1
         return self.tree
 
+    @override
     async def list_folder_children(self, folder_id: str) -> list[DriveNode]:
         return []
 
+    @override
     async def search_drive(
         self, drive_id: str, query: str, *, limit: int = 50
     ) -> list[SearchResult]:
         return []
 
+    @override
     async def search(self, query: str, *, limit_per_drive: int = 20) -> list[SearchResult]:
         return []
 
+    @override
     async def fetch_snippet(
         self, file_id: str, query: str, *, mime_type: str | None = None
     ) -> SnippetResult:
@@ -104,7 +119,7 @@ def _service(drive: FakeDrive, save_session: FakeSession) -> PostgresSidebarCach
         user=_user(),
         singleflight=Singleflight(),
         bg_tasks=set(),
-        sessionmaker=fake_sessionmaker,  # type: ignore[arg-type]
+        sessionmaker=cast("async_sessionmaker[AsyncSession]", fake_sessionmaker),
     )
 
 
@@ -118,7 +133,7 @@ def test_warm_row_round_trips_through_encryption() -> None:
     db = FakeSession(row=row)
     service = _service(FakeDrive(tree), FakeSession())
 
-    cached = asyncio.run(service.get_drive_tree(db, "drive-1"))  # type: ignore[arg-type]
+    cached = asyncio.run(service.get_drive_tree(_as_db(db), "drive-1"))
 
     assert cached.tree == tree
     assert cached.refreshed_at == row.refreshed_at
@@ -136,7 +151,7 @@ def test_undecryptable_row_is_treated_as_cache_miss() -> None:
     drive = FakeDrive(tree)
     service = _service(drive, FakeSession())
 
-    cached = asyncio.run(service.get_drive_tree(db, "drive-1"))  # type: ignore[arg-type]
+    cached = asyncio.run(service.get_drive_tree(_as_db(db), "drive-1"))
 
     assert db.deleted == [row]
     assert drive.walks == 1
@@ -149,14 +164,14 @@ def test_save_tree_stores_ciphertext_and_purges_stale_rows() -> None:
     save_session = FakeSession()
     service = _service(FakeDrive(tree), save_session)
 
-    asyncio.run(service.refresh_drive(FakeSession(), "drive-1"))  # type: ignore[arg-type]
+    asyncio.run(service.refresh_drive(_as_db(FakeSession()), "drive-1"))
 
     upsert, purge = save_session.executed
-    stored = upsert.compile(dialect=postgresql.dialect()).params["tree"]
+    stored = upsert.compile(dialect=_pg_dialect()).params["tree"]
     assert stored != tree.model_dump_json()
     assert DriveTree.model_validate_json(decrypt_cache(stored)) == tree
 
-    purge_sql = str(purge.compile(dialect=postgresql.dialect()))
+    purge_sql = str(purge.compile(dialect=_pg_dialect()))
     assert "DELETE FROM drive_tree_cache" in purge_sql
     assert "refreshed_at <" in purge_sql
 
@@ -172,7 +187,7 @@ def test_unparseable_row_is_treated_as_cache_miss() -> None:
     drive = FakeDrive(tree)
     service = _service(drive, FakeSession())
 
-    cached = asyncio.run(service.get_drive_tree(db, "drive-1"))  # type: ignore[arg-type]
+    cached = asyncio.run(service.get_drive_tree(_as_db(db), "drive-1"))
 
     assert db.deleted == [row]
     assert drive.walks == 1
@@ -191,7 +206,7 @@ def test_pre_files_complete_row_is_treated_as_cache_miss() -> None:
     drive = FakeDrive(tree)
     service = _service(drive, FakeSession())
 
-    cached = asyncio.run(service.get_drive_tree(db, "drive-1"))  # type: ignore[arg-type]
+    cached = asyncio.run(service.get_drive_tree(_as_db(db), "drive-1"))
 
     assert db.deleted == [row]
     assert drive.walks == 1
@@ -213,7 +228,7 @@ def test_peek_returns_warm_row_without_walking() -> None:
     drive = FakeDrive(tree)
     service = _service(drive, FakeSession())
 
-    cached = asyncio.run(service.peek_drive_tree(FakeSession(row=row), "drive-1"))  # type: ignore[arg-type]
+    cached = asyncio.run(service.peek_drive_tree(_as_db(FakeSession(row=row)), "drive-1"))
 
     assert cached is not None
     assert cached.tree == tree
@@ -224,7 +239,7 @@ def test_peek_cold_cache_returns_none_and_never_walks() -> None:
     drive = FakeDrive(_tree())
     service = _service(drive, FakeSession())
 
-    cached = asyncio.run(service.peek_drive_tree(FakeSession(row=None), "drive-1"))  # type: ignore[arg-type]
+    cached = asyncio.run(service.peek_drive_tree(_as_db(FakeSession(row=None)), "drive-1"))
 
     assert cached is None
     assert drive.walks == 0

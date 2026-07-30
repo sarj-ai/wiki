@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 
@@ -53,7 +54,7 @@ async def test_stale_cache_returns_cached_and_refreshes_in_background(
 ) -> None:
     base = 1_000_000.0
     now = base
-    monkeypatch.setattr(drives_cache.time, "monotonic", lambda: now)
+    monkeypatch.setattr(time, "monotonic", lambda: now)
 
     fetcher = _Fetcher([_drives("Alpha"), _drives("Beta")])
     await drives_cache.get_drives("alice", fetcher)
@@ -76,7 +77,7 @@ async def test_stale_cache_returns_cached_and_refreshes_in_background(
 async def test_concurrent_stale_reads_singleflight(monkeypatch: pytest.MonkeyPatch) -> None:
     base = 1_000_000.0
     now = base
-    monkeypatch.setattr(drives_cache.time, "monotonic", lambda: now)
+    monkeypatch.setattr(time, "monotonic", lambda: now)
 
     fetcher = _Fetcher([_drives("Alpha"), _drives("Beta")])
     await drives_cache.get_drives("alice", fetcher)
@@ -98,7 +99,7 @@ async def test_concurrent_stale_reads_singleflight(monkeypatch: pytest.MonkeyPat
 async def test_hard_expiry_falls_back_to_cold_path(monkeypatch: pytest.MonkeyPatch) -> None:
     base = 1_000_000.0
     now = base
-    monkeypatch.setattr(drives_cache.time, "monotonic", lambda: now)
+    monkeypatch.setattr(time, "monotonic", lambda: now)
 
     fetcher = _Fetcher([_drives("Alpha"), _drives("Beta")])
     await drives_cache.get_drives("alice", fetcher)
@@ -155,7 +156,7 @@ async def test_background_refresh_failure_keeps_serving_stale(
 ) -> None:
     base = 1_000_000.0
     now = base
-    monkeypatch.setattr(drives_cache.time, "monotonic", lambda: now)
+    monkeypatch.setattr(time, "monotonic", lambda: now)
 
     call_count = 0
 

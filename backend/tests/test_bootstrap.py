@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import cast, override
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,23 +27,29 @@ class _FakeDriveService(DriveService):
     def __init__(self, drives: list[DriveSummary]) -> None:
         self._drives = drives
 
+    @override
     async def list_drives(self) -> list[DriveSummary]:
         return list(self._drives)
 
+    @override
     async def walk_drive_folders(self, drive_id: str) -> DriveTree:
         raise NotImplementedError
 
+    @override
     async def list_folder_children(self, folder_id: str) -> list[DriveNode]:
         raise NotImplementedError
 
+    @override
     async def search_drive(
         self, drive_id: str, query: str, *, limit: int = 50
     ) -> list[SearchResult]:
         raise NotImplementedError
 
+    @override
     async def search(self, query: str, *, limit_per_drive: int = 20) -> list[SearchResult]:
         raise NotImplementedError
 
+    @override
     async def fetch_snippet(
         self, file_id: str, query: str, *, mime_type: str | None = None
     ) -> SnippetResult:
@@ -51,35 +57,45 @@ class _FakeDriveService(DriveService):
 
 
 class _FakeExtrasService(ExtrasService):
+    @override
     async def list_doc_icons(self) -> list[DocIconRead]:
         return [DocIconRead(drive_id="doc-1", icon="📚", cover_url=None)]
 
+    @override
     async def get_doc_icon(self, drive_id: str) -> DocIconRead:
         raise NotImplementedError
 
+    @override
     async def upsert_doc_icon(self, drive_id: str, payload: DocIconWrite) -> DocIconRead:
         raise NotImplementedError
 
+    @override
     async def list_folder_icons(self) -> list[FolderIconRead]:
         return [FolderIconRead(folder_drive_id="folder-1", icon="🚀")]
 
+    @override
     async def upsert_folder_icon(
         self, folder_drive_id: str, payload: FolderIconWrite
     ) -> FolderIconRead:
         raise NotImplementedError
 
+    @override
     async def list_sort_orders(self) -> list[SortOrderRead]:
         return [SortOrderRead(drive_id="doc-1", sort_order=1.5)]
 
+    @override
     async def upsert_sort_orders(self, items: list[SortOrderWrite]) -> None:
         raise NotImplementedError
 
+    @override
     async def clear_sort_order(self, drive_id: str) -> None:
         raise NotImplementedError
 
+    @override
     async def get_preferences(self) -> PreferencesRead:
         return PreferencesRead(show_non_doc_files=False, hidden_workspace_ids=["hidden-1"])
 
+    @override
     async def upsert_preferences(self, payload: PreferencesWrite) -> PreferencesRead:
         raise NotImplementedError
 
@@ -89,21 +105,26 @@ class _FakeCacheService(SidebarCacheService):
         self._tree = tree
         self.peeked: list[str] = []
 
+    @override
     async def get_drive_tree(self, db: AsyncSession, drive_id: str) -> CachedDriveTree:
         raise NotImplementedError
 
+    @override
     async def peek_drive_tree(self, db: AsyncSession, drive_id: str) -> CachedDriveTree | None:
         self.peeked.append(drive_id)
         if self._tree is None:
             return None
         return CachedDriveTree(tree=self._tree, refreshed_at=None)
 
+    @override
     async def get_folder_children(self, folder_id: str) -> list[DriveNode]:
         raise NotImplementedError
 
+    @override
     async def invalidate_drive(self, db: AsyncSession, drive_id: str) -> None:
         raise NotImplementedError
 
+    @override
     async def refresh_drive(self, db: AsyncSession, drive_id: str) -> DriveTree:
         raise NotImplementedError
 
@@ -168,12 +189,15 @@ async def test_load_omits_first_tree_on_cache_miss() -> None:
 
 async def test_load_handles_empty_overlays() -> None:
     class _EmptyExtras(_FakeExtrasService):
+        @override
         async def list_doc_icons(self) -> list[DocIconRead]:
             return []
 
+        @override
         async def list_folder_icons(self) -> list[FolderIconRead]:
             return []
 
+        @override
         async def list_sort_orders(self) -> list[SortOrderRead]:
             return []
 

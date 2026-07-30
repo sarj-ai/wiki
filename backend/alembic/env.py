@@ -1,6 +1,7 @@
 import asyncio
 
 from alembic import context
+from sqlalchemy import Connection
 
 from app.config import settings
 from app.database import Base, build_engine, close_connector
@@ -24,7 +25,7 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def do_run_migrations(connection):
+def do_run_migrations(connection: Connection) -> None:
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()

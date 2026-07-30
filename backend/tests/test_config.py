@@ -33,7 +33,7 @@ def _settings(monkeypatch: pytest.MonkeyPatch, **env: str | None) -> Settings:
             monkeypatch.delenv(key, raising=False)
         else:
             monkeypatch.setenv(key, value)
-    return Settings(_env_file=None)  # type: ignore[call-arg]  # ty: ignore[missing-argument]
+    return Settings(_env_file=None)  # type: ignore[call-arg]  # ty: ignore[missing-argument, unknown-argument]
 
 
 def test_baseline_parses_with_typed_defaults(monkeypatch: pytest.MonkeyPatch) -> None:

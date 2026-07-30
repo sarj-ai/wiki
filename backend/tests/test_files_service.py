@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Self
+from typing import Any, Self, override
 import uuid
 
 from googleapiclient.errors import HttpError
+import httplib2
 import pytest
 
 from app.drive.schemas import DriveNode, DriveSummary, DriveTree, SearchResult, SnippetResult
@@ -22,23 +23,29 @@ class _FakeDriveService(DriveService):
     def __init__(self, drives: list[DriveSummary]) -> None:
         self._drives = drives
 
+    @override
     async def list_drives(self) -> list[DriveSummary]:
         return list(self._drives)
 
+    @override
     async def walk_drive_folders(self, drive_id: str) -> DriveTree:
         raise NotImplementedError
 
+    @override
     async def list_folder_children(self, folder_id: str) -> list[DriveNode]:
         raise NotImplementedError
 
+    @override
     async def search_drive(
         self, drive_id: str, query: str, *, limit: int = 50
     ) -> list[SearchResult]:
         raise NotImplementedError
 
+    @override
     async def search(self, query: str, *, limit_per_drive: int = 20) -> list[SearchResult]:
         raise NotImplementedError
 
+    @override
     async def fetch_snippet(
         self, file_id: str, query: str, *, mime_type: str | None = None
     ) -> SnippetResult:
@@ -59,14 +66,10 @@ def _svc(member_drive_id: str | None = None) -> GoogleFilesService:
     return GoogleFilesService(user=_user(), drive=_FakeDriveService(drives))
 
 
-class _FakeResp:
-    def __init__(self, status: int) -> None:
-        self.status = status
-        self.reason = "test"
-
-
 def _make_http_error(status_code: int) -> HttpError:
-    return HttpError(_FakeResp(status_code), b'{"error": "test"}')  # type: ignore[arg-type]
+    resp = httplib2.Response({"status": str(status_code)})
+    resp.reason = "test"
+    return HttpError(resp, b'{"error": "test"}')
 
 
 def _patch_client(monkeypatch: pytest.MonkeyPatch, client: Any) -> None:
