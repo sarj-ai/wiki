@@ -2,8 +2,8 @@ GCP_PROJECT := sarj-docs
 STAMPS := .stamps
 SECRETS_TTL := 1440
 
-.PHONY: setup setup-hooks standards-sync standards-check standards-upgrade pull-local-secrets \
-	pull-local-secrets-force pull-tf-secrets pull-tf-secrets-force \
+.PHONY: setup setup-hooks check fix standards-sync standards-check standards-upgrade \
+	pull-local-secrets pull-local-secrets-force pull-tf-secrets pull-tf-secrets-force \
 	push-local-secrets push-tf-secrets
 
 setup-hooks:
@@ -25,9 +25,41 @@ standards-upgrade:
 	@$(MAKE) standards-sync
 	@$(MAKE) standards-check
 
-setup: setup-hooks standards-sync
+# Dependencies first so `npm exec -- lefthook` resolves locally on a pristine clone.
+setup:
 	@$(MAKE) -C backend setup-dependencies
 	@npm ci --prefix frontend
+	@$(MAKE) setup-hooks
+	@$(MAKE) standards-sync
+
+# EXACT mirror of the blocking CI gates; each line is tagged with its CI job/step.
+# Keep this list in lockstep with .github/workflows/ci-{backend,frontend,quality}.yml.
+check:
+	@$(MAKE) standards-check                # ci-quality pre-commit: Verify canonical Standards configs
+	@uv run --project backend --locked python scripts/check_standards.py --verify-python-baseline .  # ci-quality pre-commit: Verify exact Python Standards baseline
+	@cd backend && uv run ruff check .      # ci-backend lint-and-typecheck: Ruff check
+	@cd backend && uv run ruff format --check .  # ci-backend lint-and-typecheck: Ruff format check
+	@cd backend && uv run mypy app          # ci-backend lint-and-typecheck: Mypy strict
+	@cd backend && uv run basedpyright -p pyrightconfig.json  # ci-backend lint-and-typecheck: Basedpyright strict
+	@cd backend && uv run ty check app      # ci-backend lint-and-typecheck: ty check (app)
+	@cd backend && uv run vulture           # ci-backend lint-and-typecheck: Vulture dead-code check
+	@cd backend && uv run lint-imports      # ci-backend lint-and-typecheck: Import contracts
+	@cd backend && uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70  # ci-backend test: Run pytest
+	@npm run --prefix frontend format:check  # ci-frontend lint-and-typecheck: Prettier check
+	@npm run --prefix frontend typecheck    # ci-frontend lint-and-typecheck: TypeScript check (next typegen + tsc)
+	@npm run --prefix frontend lint         # ci-frontend lint-and-typecheck: ESLint (next typegen + eslint --max-warnings 0)
+	@npm run --prefix frontend knip         # ci-frontend lint-and-typecheck: Knip
+	@npm run --prefix frontend type-coverage  # ci-frontend lint-and-typecheck: Type coverage
+	@npm test --prefix frontend             # ci-frontend test: Run vitest
+	@uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure  # ci-quality pre-commit: Run pre-commit
+	@echo "● All CI-mirrored gates green"
+
+# Auto-fix everything that has an autofixer; rerun `make check` afterwards.
+fix:
+	@cd backend && uv run ruff check --fix . && uv run ruff format .
+	@npm run --prefix frontend format
+	@cd frontend && npm exec -- next typegen && npm exec -- eslint --fix .
+	@echo "● Auto-fixes applied — run 'make check' to verify"
 
 $(STAMPS):
 	@mkdir -p $(STAMPS)

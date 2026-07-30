@@ -1,0 +1,15 @@
+{
+  "recommendations": [
+    "editorconfig.editorconfig",
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "bradlc.vscode-tailwindcss",
+    "charliermarsh.ruff",
+    "ms-python.python",
+    "detachhead.basedpyright",
+    "tamasfe.even-better-toml",
+    "redhat.vscode-yaml",
+    "davidanson.vscode-markdownlint",
+    "hashicorp.terraform"
+  ]
+}

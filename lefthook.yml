@@ -6,16 +6,17 @@ pre-commit:
   commands:
     standards-config:
       run: make standards-check
-      fail_text: "Canonical Standards configs drifted. Run 'make standards-sync', stage the result, and retry."
+      fail_text: "AGENT: canonical Standards configs drifted from sarj-lint-configs. Fix: run 'make standards-sync', stage the regenerated files, and commit again. NEVER --no-verify."
     backend-ruff:
       root: backend/
       glob: "*.py"
       run: uv run ruff check {staged_files}
-      fail_text: "Ruff rejected staged Python. Run its suggested fix, stage, and retry."
+      fail_text: "AGENT: Ruff rejected staged Python. Fix: cd backend && uv run ruff check --fix ., resolve anything left by hand, restage, and commit again. NEVER --no-verify."
     backend-ruff-format:
       root: backend/
       glob: "*.py"
       run: uv run ruff format --check {staged_files}
+      fail_text: "AGENT: staged Python is not ruff-formatted. Fix: cd backend && uv run ruff format ., restage, and commit again. NEVER --no-verify."
     frontend-eslint:
       root: frontend/
       glob: "*.{js,mjs,cjs,ts,tsx}"
@@ -23,29 +24,31 @@ pre-commit:
         npm exec -- next typegen &&
         npm exec -- eslint --no-warn-ignored --max-warnings 0 {staged_files} &&
         npm exec -- tsc --noEmit --pretty false
-      fail_text: "ESLint or TypeScript rejected staged frontend code. Fix the reported issue, stage, and retry."
+      fail_text: "AGENT: ESLint or TypeScript rejected staged frontend code. Fix: cd frontend && npm exec -- eslint --fix on the files, resolve remaining errors by hand, restage, and commit again. NEVER --no-verify."
     frontend-prettier:
       root: frontend/
       glob: "*.{js,mjs,cjs,ts,tsx,json,css,md,yml,yaml}"
       run: npm exec -- prettier --check --ignore-unknown {staged_files}
+      fail_text: "AGENT: staged frontend files are not Prettier-formatted. Fix: cd frontend && npm run format, restage, and commit again. NEVER --no-verify."
     markdownlint:
       glob: "*.md"
       run: frontend/node_modules/.bin/markdownlint-cli2 --config .markdownlint.yaml {staged_files}
+      fail_text: "AGENT: markdownlint rejected staged Markdown. Fix: run 'frontend/node_modules/.bin/markdownlint-cli2 --fix --config .markdownlint.yaml' on the files, fix the rest by hand, restage, and commit again. NEVER --no-verify."
     taplo:
       glob: "*.toml"
       run: frontend/node_modules/.bin/taplo lint --config .taplo.toml {staged_files}
+      fail_text: "AGENT: taplo rejected staged TOML. Fix: correct the reported TOML issues, restage, and commit again. NEVER --no-verify."
     yamllint:
       glob: "*.{yml,yaml}"
       run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache uvx --python 3.14 yamllint --strict --config-file .yamllint.yaml {staged_files}
+      fail_text: "AGENT: yamllint rejected staged YAML. Fix: correct the reported YAML issues, restage, and commit again. NEVER --no-verify."
     standards:
       run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache uvx --python 3.14 pre-commit run
+      fail_text: "AGENT: the pre-commit chain (hygiene, gitleaks, actionlint, sarj rules) failed. Fix: read the hook output, fix the violation (hooks may have auto-fixed files — restage them), and commit again. NEVER --no-verify."
 
 pre-push:
-  parallel: true
+  parallel: false
   commands:
-    standards-all:
-      run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure
-    backend-quality:
-      run: cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run basedpyright -p pyrightconfig.json && uv run ty check app && uv run vulture && uv run lint-imports && uv run pytest -q
-    frontend-quality:
-      run: cd frontend && npm run format:check && npm run lint && npm run typecheck && npm run knip && npm run type-coverage && npm test
+    full-gates:
+      run: make check
+      fail_text: "AGENT: 'make check' (the exact CI mirror) failed, so the push was blocked. Fix: run 'make check', repair the first failing gate ('make fix' handles formatters/autofixables), commit the fixes, and push again. NEVER --no-verify."
