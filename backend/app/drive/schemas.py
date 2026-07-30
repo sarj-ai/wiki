@@ -52,7 +52,7 @@ class DriveSummary(BaseModel):
 class DriveNode(BaseModel):
     id: str
     name: str
-    mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
+    mime_type: str
     parent_id: str | None
     modified_time: str | None
     shortcut_target_id: str | None = None
@@ -72,7 +72,7 @@ class DriveTree(BaseModel):
 class SearchResult(BaseModel):
     id: str
     name: str
-    mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
+    mime_type: str
     drive_id: str | None
     drive_name: str | None
     parent_id: str | None
@@ -85,6 +85,6 @@ class SearchResult(BaseModel):
 
 class SnippetResult(BaseModel):
     file_id: str
-    mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
+    mime_type: str
     snippet: str | None
     match_term: str | None

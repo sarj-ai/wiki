@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+from collections.abc import Callable
 import threading
 from typing import Any, Self, override
 import uuid
@@ -107,7 +108,7 @@ class _FakeClient:
 
 
 @pytest.fixture
-def patch_drive_client(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+def patch_drive_client(monkeypatch: pytest.MonkeyPatch) -> Callable[[Any], None]:
 
     def _install(client: Any) -> None:
         monkeypatch.setattr(
@@ -746,15 +747,6 @@ async def test_snippet_with_non_exportable_mime_makes_no_drive_calls(
     result = await _svc().fetch_snippet("f1", "match", mime_type="application/pdf")
     assert result.snippet is None
     assert result.mime_type == "application/pdf"
-
-
-def test_discovery_document_parsed_once() -> None:
-    from app.drive.service import drive_discovery_document
-
-    drive_discovery_document.cache_clear()
-    first = drive_discovery_document()
-    second = drive_discovery_document()
-    assert first is second
 
 
 def test_extract_snippet_basic_match() -> None:

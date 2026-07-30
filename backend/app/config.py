@@ -1,5 +1,6 @@
+from collections.abc import Callable
 from datetime import timedelta
-from typing import Annotated, Literal, Self
+from typing import Annotated, Literal, Self, cast
 
 from cryptography.fernet import Fernet
 from pydantic import (
@@ -91,4 +92,19 @@ class Settings(BaseSettings):
         return v
 
 
-settings = Settings()  # type: ignore[call-arg]  # ty: ignore[missing-argument]
+def load_settings(**overrides: object) -> Settings:
+    """Construct Settings from the process environment and `.env`.
+
+    The required fields arrive through pydantic-settings' env sources, which
+    type checkers cannot see into; the cast acknowledges that boundary once
+    here instead of per-call suppressions.
+
+    Returns:
+        The validated settings; missing required env still raises at import.
+
+    """
+    from_env = cast("Callable[..., Settings]", Settings)
+    return from_env(**overrides)
+
+
+settings = load_settings()

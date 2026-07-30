@@ -114,7 +114,7 @@ async def find_cached_file_name(db: AsyncSession, file_id: str) -> str | None:
         if tree is None:
             if key in _undecodable_keys:
                 continue
-            tree = await _fetch_and_decode(db, key)  # sarj-noqa: SARJ001 — shared db session
+            tree = await _fetch_and_decode(db, key)
             if tree is None:
                 continue
         name = next((f.name for f in tree.files if file_id in {f.id, f.shortcut_target_id}), None)

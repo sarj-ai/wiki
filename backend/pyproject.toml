@@ -198,6 +198,11 @@ enable_error_code = [
   "unimported-reveal",
 ]
 exclude = ["^alembic/versions/"]
+# Callee-side allowance for constructors these ship without annotations
+# (google.oauth2 Credentials, slowapi Limiter.exempt); pyright types both, so
+# we defer to pyright there. The per-module disallow_untyped_calls flag is
+# caller-side and cannot express this.
+untyped_calls_exclude = ["google", "slowapi"]
 
 [[tool.mypy.overrides]]
 ignore_missing_imports = true
@@ -209,10 +214,9 @@ module = [
   "google_auth_httplib2",
 ]
 # Silence cascades from unstubbed Google API symbols. mypy strict otherwise
-# flags Credentials(...) etc. as untyped calls and treats every return value
-# as Any; pyright sees these as fully typed, so we defer to pyright here.
+# treats every return value as Any; pyright sees these as fully typed, so we
+# defer to pyright here.
 disallow_any_unimported = false
-disallow_untyped_calls = false
 
 [tool.ty.src]
 exclude = ["alembic/versions"]

@@ -1,7 +1,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -22,7 +22,7 @@ from app.files.errors import FilesError
 from app.files.router import router as files_router
 from app.linkmeta.router import router as linkmeta_router
 from app.logging_config import configure_logging
-from app.ratelimit import limiter
+from app.ratelimit import limiter, rate_limit_exempt
 from app.request_id import RequestIDMiddleware
 from app.sidebar.router import router as sidebar_router
 
@@ -38,7 +38,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 app = FastAPI(title="Sarj Wiki API", lifespan=lifespan)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
@@ -49,6 +48,11 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 app.add_middleware(RequestIDMiddleware)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Response:
+    return _rate_limit_exceeded_handler(request, exc)
 
 
 @app.exception_handler(Exception)
@@ -88,7 +92,7 @@ app.include_router(linkmeta_router)
 
 
 @app.get("/health")
-@limiter.exempt  # type: ignore[untyped-decorator]
+@rate_limit_exempt
 async def health_check(_request: Request) -> dict[str, str]:
     try:
         async with async_session() as db:

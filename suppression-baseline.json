@@ -3,20 +3,9 @@
   "packages_scanned": [
     "backend"
   ],
-  "codes": {
-    "noqa:F401": 1,
-    "pyright:reportUntypedFunctionDecorator": 3,
-    "sarj-noqa:SARJ001": 1,
-    "sarj-noqa:SARJ006": 7,
-    "type-ignore:arg-type": 1,
-    "type-ignore:attr-defined": 1,
-    "type-ignore:call-arg": 2,
-    "type-ignore:no-untyped-call": 2,
-    "type-ignore:no-untyped-def": 1,
-    "type-ignore:untyped-decorator": 1
-  },
+  "codes": {},
   "packages": {
-    "backend": 20
+    "backend": 0
   },
   "files": {
     "per_file_ceiling": 10,

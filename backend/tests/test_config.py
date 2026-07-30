@@ -6,7 +6,7 @@ from cryptography.fernet import Fernet
 from pydantic import ValidationError
 import pytest
 
-from app.config import Settings
+from app.config import Settings, load_settings
 
 
 _BASELINE = {
@@ -33,7 +33,7 @@ def _settings(monkeypatch: pytest.MonkeyPatch, **env: str | None) -> Settings:
             monkeypatch.delenv(key, raising=False)
         else:
             monkeypatch.setenv(key, value)
-    return Settings(_env_file=None)  # type: ignore[call-arg]  # ty: ignore[missing-argument, unknown-argument]
+    return load_settings(_env_file=None)
 
 
 def test_baseline_parses_with_typed_defaults(monkeypatch: pytest.MonkeyPatch) -> None:

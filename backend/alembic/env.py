@@ -5,7 +5,7 @@ from sqlalchemy import Connection
 
 from app.config import settings
 from app.database import Base, build_engine, close_connector
-from app.models import wiki, user  # noqa: F401 — side-effect: register models on Base
+from app.models import user as user, wiki as wiki
 
 config = context.config
 

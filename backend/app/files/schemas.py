@@ -11,7 +11,7 @@ FileName = Annotated[str, StringConstraints(min_length=1, max_length=255)]
 class FileCreate(BaseModel):
     parent_folder_id: str
     name: FileName
-    mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
+    mime_type: str
 
 
 class FileRename(BaseModel):
@@ -29,7 +29,7 @@ class FileCopy(BaseModel):
 class FileResponse(BaseModel):
     id: str
     name: str
-    mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
+    mime_type: str
     parent_folder_id: str | None
     drive_id: str | None
     modified_time: str | None

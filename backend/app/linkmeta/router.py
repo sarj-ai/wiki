@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.linkmeta.schemas import LinkMeta
-from app.ratelimit import limiter
+from app.ratelimit import rate_limit
 from app.sidebar.cache import find_cached_file_name
 
 
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/link-meta", tags=["link-meta"])
 
 
 @router.get("/{file_id}")
-@limiter.limit("60/minute")  # pyright: ignore[reportUntypedFunctionDecorator]
+@rate_limit("60/minute")
 async def get_link_meta(
     request: Request,  # ruff: ignore[unused-function-argument] — slowapi's limiter requires the request in the signature
     file_id: str,

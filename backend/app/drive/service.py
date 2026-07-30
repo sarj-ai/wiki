@@ -3,16 +3,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import Callable
-from functools import cache
 from itertools import batched
-import json
 import threading
 from typing import TYPE_CHECKING, Any, cast, override
 
 from google.oauth2.credentials import Credentials
 import google_auth_httplib2
 from googleapiclient import discovery
-from googleapiclient.discovery_cache import get_static_doc
 from googleapiclient.errors import HttpError
 import httplib2
 from loguru import logger
@@ -570,10 +567,15 @@ class GoogleDriveService(DriveService):
             GoogleDriveService._build_credentials(user),
             http=httplib2.Http(timeout=_DRIVE_HTTP_TIMEOUT_SECONDS),
         )
-        built = discovery.build_from_document(  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
-            drive_discovery_document(), http=authed_http
+        return discovery.build(
+            "drive",
+            "v3",
+            # AuthorizedHttp implements the Http request contract but does not
+            # subclass it; the stubs want the nominal type.
+            http=cast("httplib2.Http", authed_http),
+            cache_discovery=False,
+            static_discovery=True,
         )
-        return cast("DriveResource", built)
 
     @staticmethod
     def _build_credentials(user: User) -> Credentials:
@@ -584,7 +586,7 @@ class GoogleDriveService(DriveService):
         refresh_token = (
             decrypt_text(user.encrypted_refresh_token) if user.encrypted_refresh_token else None
         )
-        return Credentials(  # type: ignore[no-untyped-call]
+        return Credentials(
             token=access_token,
             refresh_token=refresh_token,
             token_uri="https://oauth2.googleapis.com/token",
@@ -600,15 +602,6 @@ def reuse_drive_client(user: User, clients: dict[int, DriveResource]) -> DriveRe
         client = GoogleDriveService.build_drive_client(user)
         clients[thread_id] = client
     return client
-
-
-@cache
-def drive_discovery_document() -> dict[str, Any]:
-    content = get_static_doc("drive", "v3")  # type: ignore[no-untyped-call]
-    if content is None:
-        msg = "Bundled Drive v3 discovery document not found"
-        raise RuntimeError(msg)
-    return cast("dict[str, Any]", json.loads(content))
 
 
 @drive_retry

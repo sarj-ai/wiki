@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from app.drive.dependencies import drive_service_dep
 from app.drive.schemas import SearchResult, SnippetResult
 from app.drive.service import DriveService
-from app.ratelimit import limiter
+from app.ratelimit import rate_limit
 
 
 router = APIRouter(prefix="/drive-search", tags=["drive-search"])
@@ -16,7 +16,7 @@ _SEARCH_LIMIT = "30/minute"
 
 
 @router.get("")
-@limiter.limit(_SEARCH_LIMIT)  # pyright: ignore[reportUntypedFunctionDecorator]
+@rate_limit(_SEARCH_LIMIT)
 async def search(
     request: Request,  # ruff: ignore[unused-function-argument] — slowapi reads the client IP off this
     q: Annotated[str, Query(min_length=1, max_length=2048)],
@@ -27,7 +27,7 @@ async def search(
 
 
 @router.get("/snippet")
-@limiter.limit(_SEARCH_LIMIT)  # pyright: ignore[reportUntypedFunctionDecorator]
+@rate_limit(_SEARCH_LIMIT)
 async def snippet(
     request: Request,  # ruff: ignore[unused-function-argument] — slowapi reads the client IP off this
     file_id: Annotated[str, Query(min_length=1)],
