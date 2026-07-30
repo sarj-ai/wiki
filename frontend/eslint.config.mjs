@@ -29,6 +29,15 @@ const configsAsErrors = (configs) =>
     rules: rulesAsErrors(config.rules),
   }));
 
+const strictNamingConvention = sarjStrict
+  .map((config) => config.rules?.["@typescript-eslint/naming-convention"])
+  .find(Array.isArray);
+const reactNamingConvention = strictNamingConvention?.map((setting) =>
+  typeof setting === "object" && setting?.selector === "function"
+    ? { ...setting, format: ["camelCase", "PascalCase"] }
+    : setting,
+);
+
 export default defineConfig([
   ...configsAsErrors(nextVitals),
   ...configsAsErrors(nextTs),
@@ -149,6 +158,12 @@ export default defineConfig([
     ...testingLibraryReact,
     rules: rulesAsErrors(testingLibraryReact.rules),
   },
+  {
+    files: ["**/*.tsx"],
+    rules: {
+      "@typescript-eslint/naming-convention": reactNamingConvention,
+    },
+  },
   // next.config.ts evaluates before src/ modules can load, and env.ts IS
   // the validated env module the rule points at.
   {
@@ -165,6 +180,10 @@ export default defineConfig([
   {
     extends: [tseslint.configs.disableTypeChecked],
     files: ["**/*.config.{ts,mjs,js}", "**/*.mjs"],
+    rules: {
+      "@sarj/no-implicit-attribute-access": "off",
+      "@sarj/primary-export-file-name": "off",
+    },
   },
   globalIgnores([
     // Default ignores of eslint-config-next:
