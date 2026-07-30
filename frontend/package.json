@@ -12,7 +12,7 @@
     "build:worker": "opennextjs-cloudflare build",
     "deploy": "wrangler deploy",
     "start": "next start",
-    "lint": "next typegen && eslint",
+    "lint": "next typegen && eslint --max-warnings 0 --suppressions-location eslint-suppressions.json",
     "lint:baseline-check": "node scripts/check-eslint-baseline.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
