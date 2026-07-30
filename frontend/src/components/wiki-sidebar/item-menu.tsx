@@ -143,14 +143,14 @@ export function ItemMenu({
               Duplicate
             </DropdownMenuItem>
           )}
-          {isFolder && (
+          {isFolder ? (
             <DropdownMenuItem asChild className="flex items-center gap-2 text-sm">
-              <a href={folderUrlFor(fileId)} target="_blank" rel="noopener noreferrer">
+              <a href={folderUrlFor(fileId)} rel="noopener noreferrer" target="_blank">
                 <ExternalLink className="size-4" />
                 Open in Google Drive
               </a>
             </DropdownMenuItem>
-          )}
+          ) : null}
           <DropdownMenuItem
             className="text-destructive focus:text-destructive flex items-center gap-2 text-sm"
             onClick={() => {

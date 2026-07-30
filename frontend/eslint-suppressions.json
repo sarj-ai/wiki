@@ -1,14 +1,4 @@
 {
-  "next.config.ts": {
-    "@sarj/primary-export-file-name": {
-      "count": 1
-    }
-  },
-  "postcss.config.mjs": {
-    "@sarj/primary-export-file-name": {
-      "count": 1
-    }
-  },
   "src/app/(app)/d/[driveId]/page.tsx": {
     "@typescript-eslint/naming-convention": {
       "count": 1
@@ -203,12 +193,6 @@
   },
   "src/components/wiki-sidebar/item-menu.tsx": {
     "@typescript-eslint/naming-convention": {
-      "count": 1
-    },
-    "perfectionist/sort-jsx-props": {
-      "count": 1
-    },
-    "react/jsx-no-leaked-render": {
       "count": 1
     }
   },
