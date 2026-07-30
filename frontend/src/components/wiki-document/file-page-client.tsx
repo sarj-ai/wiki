@@ -11,7 +11,7 @@ import { WikiToolbar } from "@/components/wiki-document/wiki-toolbar";
 import { WikiNotFound } from "@/components/wiki-not-found";
 import { useFile } from "@/hooks/use-wiki-tree";
 import { saveLastDoc } from "@/lib/last-doc";
-import { markNav, markPaint } from "@/lib/perf-marks";
+import { markNav, markPaint } from "@/lib/mark-nav";
 import { ApiError } from "@/lib/wiki-api";
 import { findCachedNodeMeta } from "@/lib/wiki-cache";
 import type { BreadcrumbItem } from "@/types/wiki";

@@ -1,5 +1,5 @@
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
-import { cookies } from "next/headers";
+import { cookies as requestCookies } from "next/headers";
 
 import { ErrorBoundary } from "@/components/error-boundary";
 import { RedirectAfterLogin } from "@/components/redirect-after-login";
@@ -14,8 +14,8 @@ import { ZSidebarStateCookie } from "@/lib/storage-schemas";
 import { authKeys, wikiKeys } from "@/lib/wiki-keys";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const cookieStore = await cookies();
-  const defaultOpen = ZSidebarStateCookie.parse(cookieStore.get("sidebar_state")?.value);
+  const cookies = await requestCookies();
+  const defaultOpen = ZSidebarStateCookie.parse(cookies.get("sidebar_state")?.value);
 
   const queryClient = new QueryClient();
   const bootstrap = await serverWikiApi.getBootstrap().catch((error: unknown) => {

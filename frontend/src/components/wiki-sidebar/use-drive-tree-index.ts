@@ -1,7 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
-
 import { useDocIcons, useDriveTree } from "@/hooks/use-wiki-tree";
 import { buildChildrenIndex } from "@/lib/wiki-tree";
 import type { DocIcon, DriveNode, FolderIcon, SortOrder } from "@/types/wiki";
@@ -34,40 +32,22 @@ export function useDriveTreeIndex(
   const treeQuery = useDriveTree(driveId);
   const docIconsQuery = useDocIcons();
 
-  const childrenByParent = useMemo(
-    () => buildChildrenIndex(treeQuery.data?.folders ?? []),
-    [treeQuery.data],
+  const childrenByParent = buildChildrenIndex(treeQuery.data?.folders ?? []);
+  const filesByParent = buildChildrenIndex(treeQuery.data?.files ?? []);
+  const iconOverrides = mapByKey(
+    folderIcons,
+    (i) => i.folderDriveId,
+    (i) => i.icon,
   );
-  const filesByParent = useMemo(
-    () => buildChildrenIndex(treeQuery.data?.files ?? []),
-    [treeQuery.data],
+  const docIconOverrides = mapByKey<DocIcon, string | undefined>(
+    docIconsQuery.data ?? [],
+    (d) => d.driveId,
+    (d) => d.icon,
   );
-  const iconOverrides = useMemo(
-    () =>
-      mapByKey(
-        folderIcons,
-        (i) => i.folderDriveId,
-        (i) => i.icon,
-      ),
-    [folderIcons],
-  );
-  const docIconOverrides = useMemo(
-    () =>
-      mapByKey<DocIcon, string | undefined>(
-        docIconsQuery.data ?? [],
-        (d) => d.driveId,
-        (d) => d.icon,
-      ),
-    [docIconsQuery.data],
-  );
-  const sortOrderMap = useMemo(
-    () =>
-      mapByKey(
-        sortOrders,
-        (s) => s.driveId,
-        (s) => s.sortOrder,
-      ),
-    [sortOrders],
+  const sortOrderMap = mapByKey(
+    sortOrders,
+    (s) => s.driveId,
+    (s) => s.sortOrder,
   );
 
   const filesComplete = treeQuery.data?.filesComplete ?? true;

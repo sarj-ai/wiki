@@ -45,17 +45,14 @@ jobs:
           set -euo pipefail
           changed_file="$RUNNER_TEMP/changed-files"
           git diff --name-only "$BASE_SHA"...HEAD > "$changed_file"
-          for baseline in python-standards-baseline.json frontend/eslint-suppressions.json; do
-            base_file="$RUNNER_TEMP/$(basename "$baseline")"
-            if git show "$BASE_SHA:$baseline" > "$base_file" 2>/dev/null; then
-              uv run --project backend --locked python scripts/check_baseline_growth.py "$base_file" "$baseline"
-            else
-              prefix=""
-              if [[ "$baseline" == frontend/* ]]; then prefix="frontend/"; fi
-              uv run --project backend --locked python scripts/check_baseline_growth.py \
-                --initial "$baseline" "$changed_file" "$prefix"
-            fi
-          done
+          baseline=python-standards-baseline.json
+          base_file="$RUNNER_TEMP/$(basename "$baseline")"
+          if git show "$BASE_SHA:$baseline" > "$base_file" 2>/dev/null; then
+            uv run --project backend --locked python scripts/check_baseline_growth.py "$base_file" "$baseline"
+          else
+            uv run --project backend --locked python scripts/check_baseline_growth.py \
+              --initial "$baseline" "$changed_file" ""
+          fi
 
       - name: Run pre-commit
         run: uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure

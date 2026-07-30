@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight, Folder, HardDrive, Loader2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -17,9 +17,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useMoveFile } from "@/hooks/use-wiki-mutations";
 import { useDrives, useDriveTree } from "@/hooks/use-wiki-tree";
 import { ApiError } from "@/lib/api-client";
-import { runWithErrorToast, toErrorMessage } from "@/lib/mutation-toast";
+import { cssVars } from "@/lib/css-vars";
+import { runWithErrorToast, toErrorMessage } from "@/lib/run-with-error-toast";
 import { cn } from "@/lib/utils";
-import { buildChildrenIndex } from "@/lib/wiki-tree";
+import { buildChildrenIndex, TREE_ROOT_ID } from "@/lib/wiki-tree";
 import type { DriveNode } from "@/types/wiki";
 import { MIME_SHORTCUT } from "@/types/wiki";
 
@@ -65,7 +66,10 @@ function FolderRow({
 
   return (
     <>
-      <div className="flex items-center gap-1" style={{ paddingLeft: `${rowIndent(depth)}px` }}>
+      <div
+        className="flex items-center gap-1 pl-(--row-pad)"
+        ref={cssVars({ "--row-pad": `${rowIndent(depth)}px` })}
+      >
         <Button
           aria-label={expanded ? "Collapse" : "Expand"}
           className="hover:bg-muted size-4 shrink-0 rounded-sm"
@@ -120,14 +124,10 @@ function DriveRow({ disabledId, driveId, driveName, onSelect, selectedId }: Driv
 
   const treeQuery = useDriveTree(expanded ? driveId : null);
 
-  const childrenByParent = useMemo(
-    () =>
-      buildChildrenIndex(
-        (treeQuery.data?.folders ?? []).filter((n) => n.mimeType !== MIME_SHORTCUT),
-      ),
-    [treeQuery.data],
+  const childrenByParent = buildChildrenIndex(
+    (treeQuery.data?.folders ?? []).filter((n) => n.mimeType !== MIME_SHORTCUT),
   );
-  const rootFolders = childrenByParent.get("__root__") ?? [];
+  const rootFolders = childrenByParent.get(TREE_ROOT_ID) ?? [];
   const isDriveDisabled = driveId === disabledId;
 
   return (

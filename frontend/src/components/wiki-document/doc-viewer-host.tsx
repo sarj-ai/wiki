@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 
+import type { ActiveDoc } from "@/components/wiki-document/active-doc";
 import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
-import { type ActiveDoc, useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
+import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
+import { cssVars } from "@/lib/css-vars";
 import { embedUrlFor } from "@/lib/file-urls";
-import { markNav } from "@/lib/perf-marks";
+import { markNav } from "@/lib/mark-nav";
 import { cn } from "@/lib/utils";
 
 interface SlotRect {
@@ -62,12 +64,21 @@ export function DocViewerHost() {
   }, [slot]);
 
   const visible = active !== null && slot !== null && rect !== null;
+  const geometry = visible ? rect : { height: 0, left: 0, top: 0, width: 0 };
 
   return (
     <div
       aria-hidden={!visible}
-      className={cn("fixed z-10", !visible && "pointer-events-none invisible")}
-      style={visible ? { ...rect } : { height: 0, left: 0, top: 0, width: 0 }}
+      className={cn(
+        "fixed top-(--doc-top) left-(--doc-left) z-10 h-(--doc-height) w-(--doc-width)",
+        !visible && "pointer-events-none invisible",
+      )}
+      ref={cssVars({
+        "--doc-height": `${geometry.height}px`,
+        "--doc-left": `${geometry.left}px`,
+        "--doc-top": `${geometry.top}px`,
+        "--doc-width": `${geometry.width}px`,
+      })}
     >
       {mounted.map((entry) => (
         <div
@@ -100,12 +111,12 @@ function PooledIframe({ fileId, mimeType, title }: PooledIframeProps) {
     markNav(fileId, "iframeMount");
   }, [fileId]);
 
+  const handleLoad = () => {
+    markNav(fileId, "iframeLoad");
+    setIsLoading(false);
+  };
   const attachLoadListener = (iframe: HTMLIFrameElement | null) => {
     if (!iframe) return;
-    const handleLoad = () => {
-      markNav(fileId, "iframeLoad");
-      setIsLoading(false);
-    };
     iframe.addEventListener("load", handleLoad);
     return () => {
       iframe.removeEventListener("load", handleLoad);

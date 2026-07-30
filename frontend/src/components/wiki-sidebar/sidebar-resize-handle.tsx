@@ -8,11 +8,13 @@ const STORAGE_KEY = "wiki-sidebar-width";
 const MIN_WIDTH_PX = 224;
 const MAX_WIDTH_PX = 576;
 
+const clampWidth = (px: number) => Math.max(MIN_WIDTH_PX, Math.min(MAX_WIDTH_PX, px));
+
 function useRestoreSidebarWidth() {
   useEffect(() => {
     const saved = ZSidebarWidthCss.parse(window.localStorage.getItem(STORAGE_KEY));
     if (saved === null) return;
-    const px = Math.min(MAX_WIDTH_PX, Math.max(MIN_WIDTH_PX, Number.parseInt(saved, 10)));
+    const px = clampWidth(Number.parseInt(saved, 10));
     const wrapper = document.querySelector<HTMLElement>('[data-slot="sidebar-wrapper"]');
     wrapper?.style.setProperty("--sidebar-width", `${px}px`);
   }, []);
@@ -30,7 +32,6 @@ export function SidebarResizeHandle() {
 
     const startX = event.clientX;
     const startWidth = sidebar.getBoundingClientRect().width;
-    const clamp = (px: number) => Math.max(MIN_WIDTH_PX, Math.min(MAX_WIDTH_PX, px));
 
     const widthElements = document.querySelectorAll<HTMLElement>(
       '[data-slot="sidebar-gap"], [data-slot="sidebar-container"]',
@@ -47,7 +48,7 @@ export function SidebarResizeHandle() {
     const apply = () => {
       rafId = null;
       if (pendingX === null) return;
-      const next = clamp(startWidth + (pendingX - startX));
+      const next = clampWidth(startWidth + (pendingX - startX));
       wrapper.style.setProperty("--sidebar-width", `${next}px`);
       pendingX = null;
     };

@@ -15,7 +15,7 @@ import {
 import { useCreateFile } from "@/hooks/use-wiki-mutations";
 import { isGoogleWorkspaceType, renderMimeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
-import { runWithErrorToast } from "@/lib/mutation-toast";
+import { runWithErrorToast } from "@/lib/run-with-error-toast";
 import {
   MIME_DOC,
   MIME_DRAWING,

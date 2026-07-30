@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { applyOptimisticOrder, buildChildrenIndex, compareNodeOrder } from "@/lib/wiki-tree";
+import {
+  applyOptimisticOrder,
+  buildChildrenIndex,
+  compareNodeOrder,
+  TREE_ROOT_ID,
+} from "@/lib/wiki-tree";
 import type { DriveNode } from "@/types/wiki";
 import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
 
@@ -42,9 +47,14 @@ describe("buildChildrenIndex", () => {
       folder("child2", "root1"),
       folder("child3", "root2"),
     ]);
-    expect(idx.get("__root__")?.map((n) => n.id)).toEqual(["root1", "root2"]);
-    expect(idx.get("root1")?.map((n) => n.id)).toEqual(["child1", "child2"]);
-    expect(idx.get("root2")?.map((n) => n.id)).toEqual(["child3"]);
+    const idsByParent = Object.fromEntries(
+      [...idx.entries()].map(([parentId, nodes]) => [parentId, nodes.map((n) => n.id)]),
+    );
+    expect(idsByParent).toEqual({
+      root1: ["child1", "child2"],
+      root2: ["child3"],
+      [TREE_ROOT_ID]: ["root1", "root2"],
+    });
   });
 
   it("returns an empty map for an empty input", () => {

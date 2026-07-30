@@ -1,10 +1,16 @@
 import { AlertCircle, ServerCrash, ShieldX } from "lucide-react";
+import { z } from "zod";
 
 import { SarjLogo } from "@/components/sarj-logo";
 import { StashRedirect } from "@/components/stash-redirect";
 import { Button } from "@/components/ui/button";
 import { getLoginUrl } from "@/lib/auth";
 import { ZAuthErrorParam } from "@/lib/storage-schemas";
+
+const ZLoginSearchParams = z.object({
+  error: ZAuthErrorParam.optional(),
+  redirect: z.string().optional(),
+});
 
 const ERROR_CONFIG: Record<
   string,
@@ -38,9 +44,10 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const params = await searchParams;
-  const errorType = ZAuthErrorParam.safeParse(params["error"]).data;
-  const redirect = typeof params["redirect"] === "string" ? params["redirect"] : undefined;
+  // Tampered or repeated params degrade to a plain sign-in page.
+  const parsed = ZLoginSearchParams.safeParse(await searchParams);
+  const errorType = parsed.success ? parsed.data.error : undefined;
+  const redirect = parsed.success ? parsed.data.redirect : undefined;
   const errorConfig = errorType ? ERROR_CONFIG[errorType] : undefined;
 
   return (

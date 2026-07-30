@@ -10,8 +10,9 @@ import { SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem } from "@/compone
 import { useExpandedFolder } from "@/hooks/use-expanded-folders";
 import { useSetFolderIcon } from "@/hooks/use-wiki-mutations";
 import { useFolderFiles } from "@/hooks/use-wiki-tree";
+import { cssVars } from "@/lib/css-vars";
 import { renderNodeIcon } from "@/lib/file-icons";
-import { runWithErrorToast } from "@/lib/mutation-toast";
+import { runWithErrorToast } from "@/lib/run-with-error-toast";
 import { resolveShortcutTarget } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
 import { wikiApi } from "@/lib/wiki-api";
@@ -27,14 +28,14 @@ import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
 
 import { CreateFileMenu } from "./create-file-menu";
 import { useDriveSectionContext } from "./drive-context";
-import { EmptyDropZone } from "./empty-droppable";
+import { EmptyDropZone } from "./empty-drop-zone";
 import { FileRow } from "./file-row";
 import { ItemMenu } from "./item-menu";
-import { CHEVRON_OFFSET, ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants";
+import { CHEVRON_OFFSET, rowIndent } from "./layout-constants";
 import { PickableIcon } from "./pickable-icon";
 import { SortableItem } from "./sortable-item";
 import { useIsDropIntoFolder } from "./use-drag-over-store";
-import { useIsMovingFile } from "./use-in-flight-moves";
+import { useIsMovingFile } from "./use-is-moving-file";
 
 interface TreeNodeProps {
   depth: number;
@@ -285,7 +286,7 @@ function FolderHeader({
       <SidebarMenuButton
         aria-expanded={meta.inaccessible || isEmpty ? undefined : expanded}
         className={cn(
-          "pr-14 transition-[background-color,box-shadow] duration-150",
+          "pr-14 pl-(--row-pad) transition-[background-color,box-shadow] duration-150",
 
           isDropIntoFolder && "ring-primary/60 bg-primary/10 ring-1",
           isMoving && "opacity-60",
@@ -297,7 +298,7 @@ function FolderHeader({
         onClick={onToggle}
         onPointerEnter={onHoverStart}
         onPointerLeave={onHoverEnd}
-        style={{ paddingLeft: chevronPadding }}
+        ref={cssVars({ "--row-pad": chevronPadding })}
         title={meta.tooltip ?? (isEmpty ? `${node.name} — empty` : node.name)}
       >
         <ChevronRight
@@ -308,7 +309,7 @@ function FolderHeader({
             isEmpty && "invisible",
           )}
         />
-        <span aria-hidden="true" className="shrink-0" style={{ width: ICON_COLUMN_WIDTH - 4 }} />
+        <span aria-hidden="true" className="w-5 shrink-0" />
         <span className="truncate">{node.name}</span>
         {itemCount !== undefined && itemCount > 0 && (
           <span className="text-muted-foreground/70 ml-auto shrink-0 pl-1 text-[10px] tabular-nums group-hover/navitem:opacity-0">
@@ -317,7 +318,10 @@ function FolderHeader({
         )}
       </SidebarMenuButton>
 
-      <div className="absolute top-1/2 z-10 -translate-y-1/2" style={{ left: iconLeft }}>
+      <div
+        className="absolute top-1/2 left-(--icon-left) z-10 -translate-y-1/2"
+        ref={cssVars({ "--icon-left": iconLeft })}
+      >
         <PickableIcon
           ariaLabel="Change folder icon"
           dimmed={meta.inaccessible}

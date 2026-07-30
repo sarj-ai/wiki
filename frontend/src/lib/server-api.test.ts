@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 
-import { ServerApiError, serverWikiApi } from "@/lib/server-api";
+import { serverWikiApi } from "@/lib/server-api";
+import { ServerApiError } from "@/lib/server-api-error";
 import { cookieState } from "@/test-stubs/cookie-state";
 
 afterEach(() => {

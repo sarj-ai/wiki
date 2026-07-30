@@ -2,7 +2,7 @@
 
 import { useIsFetching, useIsMutating } from "@tanstack/react-query";
 
-export function GlobalLoadingBar() {
+export function LoadingBar() {
   const foregroundFetching = useIsFetching({
     predicate: (query) => query.state.data === undefined,
   });

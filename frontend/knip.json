@@ -4,7 +4,7 @@
     "src/app/**/{page,layout,loading,not-found,error,template,default}.{ts,tsx}",
     "open-next.config.ts"
   ],
-  "ignore": ["src/components/ui/**", "src/test-stubs/**"],
+  "ignore": ["public/**", "src/components/ui/**", "src/test-stubs/**"],
   "ignoreDependencies": ["@taplo/cli", "markdownlint-cli2"],
   "lefthook": false
 }

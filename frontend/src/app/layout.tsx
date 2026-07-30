@@ -3,8 +3,9 @@ import "./globals.css";
 import { GeistMono } from "geist/font/mono";
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import Script from "next/script";
 
-import { GlobalLoadingBar } from "@/components/loading-bar";
+import { LoadingBar } from "@/components/loading-bar";
 import { QueryProvider } from "@/components/query-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
@@ -66,12 +67,7 @@ export default function RootLayout({
           <link href={origin} key={origin} rel="preconnect" />
         ))}
 
-        <script
-          dangerouslySetInnerHTML={{
-            __html:
-              'window.__name=function(t,n){try{Object.defineProperty(t,"name",{value:n,configurable:true})}catch(e){}return t;}',
-          }}
-        />
+        <Script src="/name-shim.js" strategy="beforeInteractive" />
       </head>
       <body className="antialiased">
         <ThemeProvider
@@ -82,7 +78,7 @@ export default function RootLayout({
         >
           <QueryProvider>
             {children}
-            <GlobalLoadingBar />
+            <LoadingBar />
           </QueryProvider>
           <Toaster position="bottom-right" />
         </ThemeProvider>

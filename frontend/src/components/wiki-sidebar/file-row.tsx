@@ -10,10 +10,11 @@ import { useDebouncedCallback } from "use-debounce";
 import { SidebarMenuButton } from "@/components/ui/sidebar";
 import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
 import { useSetDocIcon } from "@/hooks/use-wiki-mutations";
+import { cssVars } from "@/lib/css-vars";
 import { renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
-import { runWithErrorToast } from "@/lib/mutation-toast";
-import { markNav } from "@/lib/perf-marks";
+import { markNav } from "@/lib/mark-nav";
+import { runWithErrorToast } from "@/lib/run-with-error-toast";
 import { type ResolvedShortcut, resolveShortcutTarget } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
 import { wikiApi } from "@/lib/wiki-api";
@@ -24,7 +25,7 @@ import { MIME_DOC, MIME_FORM } from "@/types/wiki";
 import { ItemMenu } from "./item-menu";
 import { ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants";
 import { PickableIcon } from "./pickable-icon";
-import { useIsMovingFile } from "./use-in-flight-moves";
+import { useIsMovingFile } from "./use-is-moving-file";
 
 interface FileRowProps {
   activeDriveId: null | string;
@@ -133,11 +134,11 @@ function FileRowImpl({
 
       <div
         className={cn(
-          "absolute top-1/2 z-10 -translate-y-1/2",
+          "absolute top-1/2 left-(--icon-left) z-10 -translate-y-1/2",
           !isDoc && "pointer-events-none",
           route.inaccessible && "opacity-50",
         )}
-        style={{ left: iconLeft }}
+        ref={cssVars({ "--icon-left": iconLeft })}
       >
         <PickableIcon
           ariaLabel="Change icon"
@@ -185,9 +186,12 @@ function RowButton({
   if (route.inaccessible) {
     return (
       <SidebarMenuButton
-        className={cn("text-muted-foreground/60 cursor-not-allowed pr-8", isMoving && "opacity-60")}
+        className={cn(
+          "text-muted-foreground/60 cursor-not-allowed pr-8 pl-(--row-pad)",
+          isMoving && "opacity-60",
+        )}
         disabled
-        style={{ paddingLeft: linkPadding }}
+        ref={cssVars({ "--row-pad": linkPadding })}
         title={titleAttr}
       >
         <span className="truncate">{node.name}</span>
@@ -198,10 +202,10 @@ function RowButton({
     return (
       <SidebarMenuButton
         asChild
-        className={cn("pr-8 transition-opacity", isMoving && "opacity-60")}
+        className={cn("pr-8 pl-(--row-pad) transition-opacity", isMoving && "opacity-60")}
         data-file-id={node.id}
         isActive={isActive}
-        style={{ paddingLeft: linkPadding }}
+        ref={cssVars({ "--row-pad": linkPadding })}
       >
         <a
           draggable={false}
@@ -222,10 +226,10 @@ function RowButton({
   return (
     <SidebarMenuButton
       asChild
-      className={cn("pr-8 transition-opacity", isMoving && "opacity-60")}
+      className={cn("pr-8 pl-(--row-pad) transition-opacity", isMoving && "opacity-60")}
       data-file-id={node.id}
       isActive={isActive}
-      style={{ paddingLeft: linkPadding }}
+      ref={cssVars({ "--row-pad": linkPadding })}
     >
       <Link
         draggable={false}

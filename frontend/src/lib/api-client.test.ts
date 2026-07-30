@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 
-import { ApiError, wikiApi } from "@/lib/wiki-api";
+import { wikiApi } from "@/lib/wiki-api";
 
 const RAW_NODE = {
   id: "n1",
@@ -110,9 +110,11 @@ describe("error mapping", () => {
   it("falls back to the status code when the body has no detail", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("boom", { status: 502 })));
 
-    const failure = await wikiApi.getDrives().catch((e: unknown) => e);
-    expect(failure).toBeInstanceOf(ApiError);
-    expect((failure as ApiError).message).toBe("API error: 502");
+    await expect(wikiApi.getDrives()).rejects.toMatchObject({
+      message: "API error: 502",
+      name: "ApiError",
+      status: 502,
+    });
   });
 });
 

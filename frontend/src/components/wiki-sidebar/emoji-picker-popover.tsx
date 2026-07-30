@@ -7,6 +7,7 @@ import { useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useIsClient } from "@/hooks/use-is-client";
+import { cn } from "@/lib/utils";
 
 interface EmojiPickerPopoverProps {
   children: React.ReactElement;
@@ -20,6 +21,19 @@ interface EmojiPickerBodyProps {
   onSelect: (emoji: string) => void;
   theme: "dark" | "light";
 }
+
+// One static class per grid column so Tailwind can compile the stagger.
+const SKELETON_STAGGER = [
+  "[animation-delay:0ms]",
+  "[animation-delay:30ms]",
+  "[animation-delay:60ms]",
+  "[animation-delay:90ms]",
+  "[animation-delay:120ms]",
+  "[animation-delay:150ms]",
+  "[animation-delay:180ms]",
+  "[animation-delay:210ms]",
+  "[animation-delay:240ms]",
+];
 
 function EmojiPickerSkeleton() {
   return (
@@ -35,9 +49,11 @@ function EmojiPickerSkeleton() {
       <div className="grid flex-1 grid-cols-9 gap-1 overflow-hidden">
         {Array.from({ length: 54 }).map((_, i) => (
           <div
-            className="bg-muted/60 aspect-square animate-pulse rounded-sm"
+            className={cn(
+              "bg-muted/60 aspect-square animate-pulse rounded-sm",
+              SKELETON_STAGGER[i % SKELETON_STAGGER.length],
+            )}
             key={i}
-            style={{ animationDelay: `${(i % 9) * 30}ms` }}
           />
         ))}
       </div>

@@ -12,6 +12,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 
 import { expandPath } from "@/hooks/use-expanded-folders";
 import { useBulkSetSortOrders, useMoveFile } from "@/hooks/use-wiki-mutations";
@@ -22,7 +23,7 @@ import type { DriveNode, DriveTree, SortOrder } from "@/types/wiki";
 import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
 
 import { type DropIntent, useDragOverStore } from "./use-drag-over-store";
-import { useInFlightMovesStore } from "./use-in-flight-moves";
+import { useInFlightMovesStore } from "./use-is-moving-file";
 
 interface WikiReorder {
   activeNode: DriveNode | null;
@@ -46,13 +47,33 @@ function parentIdOf(containerId: string): null | string {
     : null;
 }
 
+const ZDragData = z.object({
+  isFolder: z.boolean().optional(),
+  sortable: z
+    .object({
+      containerId: z.string().optional(),
+      items: z.array(z.string()).optional(),
+    })
+    .optional(),
+});
+
+function parseDragData(
+  data: null | Record<string, unknown> | undefined,
+): z.output<typeof ZDragData> {
+  const parsed = ZDragData.safeParse(data ?? {});
+  return parsed.success ? parsed.data : {};
+}
+
 function sortableContainerId(data: null | Record<string, unknown> | undefined): null | string {
-  const sortable = data?.["sortable"] as { containerId?: string } | undefined;
-  return sortable?.containerId ?? null;
+  return parseDragData(data).sortable?.containerId ?? null;
+}
+
+function sortableItems(data: null | Record<string, unknown> | undefined): string[] {
+  return parseDragData(data).sortable?.items ?? [];
 }
 
 function isFolderTarget(data: null | Record<string, unknown> | undefined): boolean {
-  return data?.["isFolder"] === true;
+  return parseDragData(data).isFolder === true;
 }
 
 function computeDropIntent(
@@ -195,10 +216,9 @@ export function useWikiReorder(driveId: string): WikiReorder {
 
     let intent: DropIntent | null;
     if (sameContainer) {
-      const sortableItems =
-        (active.data.current?.["sortable"] as { items?: string[] } | undefined)?.items ?? [];
-      const oldIdx = sortableItems.indexOf(String(active.id));
-      const overIdx = sortableItems.indexOf(String(over.id));
+      const items = sortableItems(active.data.current);
+      const oldIdx = items.indexOf(String(active.id));
+      const overIdx = items.indexOf(String(over.id));
       intent = oldIdx === overIdx ? null : oldIdx < overIdx ? "below" : "above";
     } else {
       const overEligibleForInto = overIsFolder && !overIsOwnParent;
@@ -232,12 +252,8 @@ export function useWikiReorder(driveId: string): WikiReorder {
       return;
     }
 
-    const activeSortable = active.data.current?.["sortable"] as
-      | { containerId?: string; items?: string[] }
-      | undefined;
-    const overSortable = over.data.current?.["sortable"] as { containerId?: string } | undefined;
-    const activeContainerId = activeSortable?.containerId;
-    const overContainerId = overSortable?.containerId;
+    const activeContainerId = sortableContainerId(active.data.current);
+    const overContainerId = sortableContainerId(over.data.current);
     if (!activeContainerId || !overContainerId) return;
 
     const overIsFolder = isFolderTarget(over.data.current);
@@ -257,7 +273,7 @@ export function useWikiReorder(driveId: string): WikiReorder {
       return;
     }
 
-    const items = activeSortable.items ?? [];
+    const items = sortableItems(active.data.current);
     const oldIndex = items.indexOf(String(active.id));
     const overIndex = items.indexOf(String(over.id));
     if (oldIndex < 0 || overIndex < 0 || oldIndex === overIndex) return;

@@ -10,7 +10,6 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ChevronRight, HardDrive, Loader2, RefreshCw } from "lucide-react";
-import { useMemo } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -31,13 +30,14 @@ import {
   compareNodeOrder,
   isFolderLikeNode,
   type KindedNode,
+  TREE_ROOT_ID,
 } from "@/lib/wiki-tree";
 import type { DriveNode, DriveSummary, FolderIcon, SortOrder } from "@/types/wiki";
 import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
 
 import { CreateFileMenu } from "./create-file-menu";
 import { DriveSectionProvider, type DriveSectionValue } from "./drive-context";
-import { EmptyDropZone } from "./empty-droppable";
+import { EmptyDropZone } from "./empty-drop-zone";
 import { FileRow } from "./file-row";
 import { SortableItem } from "./sortable-item";
 import { TreeNode } from "./tree-node";
@@ -74,7 +74,7 @@ function buildRootItems({
   showNonDocFiles,
   sortOrderMap,
 }: BuildRootItemsArgs): KindedNode[] {
-  const folders: KindedNode[] = (childrenByParent.get("__root__") ?? []).map((node) => ({
+  const folders: KindedNode[] = (childrenByParent.get(TREE_ROOT_ID) ?? []).map((node) => ({
     node,
     type: "folder",
   }));
@@ -143,7 +143,7 @@ export function DriveSection({
   const isDropTarget = useIsCrossContainerDropTarget(rootContainerId);
   const rootItems = buildRootItems({
     childrenByParent,
-    rootFiles: filesComplete ? (filesByParent.get("__root__") ?? []) : (lazyRootFiles.data ?? []),
+    rootFiles: filesComplete ? (filesByParent.get(TREE_ROOT_ID) ?? []) : (lazyRootFiles.data ?? []),
     showNonDocFiles,
     sortOrderMap,
   });
@@ -151,32 +151,18 @@ export function DriveSection({
   const displayItems = applyOptimisticOrder(rootItems, optimisticOrder);
   const displayItemIds = displayItems.map((item) => item.node.id);
 
-  const contextValue: DriveSectionValue = useMemo(
-    () => ({
-      activeDriveId,
-      childrenByParent,
-      docIconOverrides,
-      driveId: drive.id,
-      filesByParent,
-      iconOverrides,
-      optimisticByContainer: reorder.optimisticByContainer,
-      showNonDocFiles,
-      sortOrderMap,
-      treeFilesComplete: filesComplete,
-    }),
-    [
-      drive.id,
-      activeDriveId,
-      showNonDocFiles,
-      childrenByParent,
-      filesByParent,
-      filesComplete,
-      iconOverrides,
-      docIconOverrides,
-      sortOrderMap,
-      reorder.optimisticByContainer,
-    ],
-  );
+  const contextValue: DriveSectionValue = {
+    activeDriveId,
+    childrenByParent,
+    docIconOverrides,
+    driveId: drive.id,
+    filesByParent,
+    iconOverrides,
+    optimisticByContainer: reorder.optimisticByContainer,
+    showNonDocFiles,
+    sortOrderMap,
+    treeFilesComplete: filesComplete,
+  };
 
   return (
     <DriveSectionProvider value={contextValue}>
@@ -190,20 +176,21 @@ export function DriveSection({
               isDropTarget && "ring-primary/60 bg-primary/10 ring-1",
             )}
           >
-            <button
+            <Button
               aria-expanded={expanded}
-              className="flex w-full items-center gap-1 pr-7"
+              className="w-full justify-start gap-1 pr-7"
               onClick={() => {
                 setExpanded(!expanded);
               }}
               type="button"
+              variant="ghost"
             >
               <ChevronRight
                 className={cn("size-3 transition-transform", expanded && "rotate-90")}
               />
               <HardDrive className="size-3.5" />
               <span className="truncate">{drive.name}</span>
-            </button>
+            </Button>
           </SidebarGroupLabel>
           <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover/driveheader:opacity-100 focus-within:opacity-100">
             <Button

@@ -2,12 +2,7 @@
 
 import { create } from "zustand";
 
-export interface ActiveDoc {
-  fileId: string;
-  mimeType: string;
-  reloadKey: number;
-  title: string;
-}
+import type { ActiveDoc } from "@/components/wiki-document/active-doc";
 
 interface DocViewerState {
   active: ActiveDoc | null;

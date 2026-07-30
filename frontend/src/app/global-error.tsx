@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+
 export default function GlobalError({ reset }: { reset: () => void }) {
   return (
     <html lang="en">
@@ -9,13 +11,14 @@ export default function GlobalError({ reset }: { reset: () => void }) {
           <p className="mb-6 opacity-70">
             Sarj Wiki hit an unexpected error. Reloading usually fixes it.
           </p>
-          <button
-            className="bg-background cursor-pointer rounded-lg border px-5 py-2 font-[inherit]"
+          <Button
+            className="rounded-lg px-5 py-2 font-[inherit]"
             onClick={reset}
             type="button"
+            variant="outline"
           >
             Try again
-          </button>
+          </Button>
         </div>
       </body>
     </html>

@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback } from "react";
 import { create } from "zustand";
 import { persist, type StorageValue } from "zustand/middleware";
 
@@ -111,24 +110,18 @@ function legacyAwareStorage<S>(
 export function useExpandedFolder(id: string): [boolean, (next: boolean) => void] {
   const expanded = useFolderStore((s) => s.expanded[id] === true);
   const setExpanded = useFolderStore((s) => s.setExpanded);
-  const setter = useCallback(
-    (next: boolean) => {
-      setExpanded(id, next);
-    },
-    [id, setExpanded],
-  );
+  const setter = (next: boolean): void => {
+    setExpanded(id, next);
+  };
   return [expanded, setter];
 }
 
 export function useExpandedDrive(id: string): [boolean, (next: boolean) => void] {
   const collapsed = useDriveCollapseStore((s) => s.collapsed[id] === true);
   const setCollapsed = useDriveCollapseStore((s) => s.setCollapsed);
-  const setter = useCallback(
-    (next: boolean) => {
-      setCollapsed(id, !next);
-    },
-    [id, setCollapsed],
-  );
+  const setter = (next: boolean): void => {
+    setCollapsed(id, !next);
+  };
   return [!collapsed, setter];
 }
 

@@ -3,6 +3,9 @@ import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
 
 type NodeKind = "file" | "folder";
 
+/** Children-index key for nodes whose parent is the drive root itself. */
+export const TREE_ROOT_ID = "__root__";
+
 export function isFolderLikeNode(node: DriveNode): boolean {
   return (
     node.mimeType === MIME_FOLDER ||
@@ -13,7 +16,7 @@ export function isFolderLikeNode(node: DriveNode): boolean {
 export function buildChildrenIndex(folders: DriveNode[]): Map<string, DriveNode[]> {
   const map = new Map<string, DriveNode[]>();
   for (const folder of folders) {
-    const key = folder.parentId ?? "__root__";
+    const key = folder.parentId ?? TREE_ROOT_ID;
     const bucket = map.get(key);
     if (bucket) bucket.push(folder);
     else map.set(key, [folder]);

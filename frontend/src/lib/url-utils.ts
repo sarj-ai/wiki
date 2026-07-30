@@ -14,5 +14,8 @@ export function sanitizeRedirectPath(path: string): Route {
   ) {
     return "/";
   }
+  // Next.js typed routes have no runtime validator; the guards above are the
+  // whole check for an internal relative path.
+  // eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-unsafe-type-assertion -- Route is a compile-time template union with no runtime representation
   return path as Route;
 }

@@ -38,6 +38,8 @@ const ZErrorDetail = z.object({
     .optional(),
 });
 
+const ZOperationResult = z.object({ data: z.unknown() });
+
 function sessionExpiresAt(): null | number {
   if (typeof document === "undefined") return null;
   const match = SESSION_EXP_COOKIE.exec(document.cookie);
@@ -79,9 +81,9 @@ async function readErrorMessage(response: Response): Promise<null | string> {
     if (!payload.success) return null;
     const { detail } = payload.data;
     if (typeof detail === "string" && detail.trim().length > 0) return detail;
-    if (Array.isArray(detail) && detail.length > 0) {
-      const first = detail[0] as { msg?: unknown };
-      if (typeof first.msg === "string") return first.msg;
+    if (Array.isArray(detail)) {
+      const msg = detail[0]?.msg;
+      if (typeof msg === "string") return msg;
     }
     return null;
   } catch {
@@ -134,14 +136,17 @@ export function makeCall(clientOverride?: Client) {
     options: OperationOptions<Op>,
     schema?: S,
   ): Promise<void | z.output<S>> {
+    // TS cannot prove Omit<T, K> plus the omitted keys reconstructs T for a
+    // generic Op, so this one merge point keeps the assertion.
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-unsafe-type-assertion -- irreducible generic round-trip; every field comes from OperationOptions<Op> plus the two omitted keys
     const merged = {
       ...options,
       ...(clientOverride === undefined ? {} : { client: clientOverride }),
       throwOnError: true,
     } as Parameters<Op>[0];
-    const result = (await operation(merged)) as { data?: unknown };
+    const raw: unknown = await operation(merged);
     if (schema === undefined) return;
-    return schema.parse(result.data);
+    return schema.parse(ZOperationResult.parse(raw).data);
   }
   return call;
 }

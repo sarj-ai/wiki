@@ -33,7 +33,7 @@ import {
 import { useCopyFile, useDeleteFile, useRenameFile } from "@/hooks/use-wiki-mutations";
 import { isGoogleWorkspaceType } from "@/lib/file-icons";
 import { folderUrlFor, openUrlFor } from "@/lib/file-urls";
-import { runWithErrorToast } from "@/lib/mutation-toast";
+import { runWithErrorToast } from "@/lib/run-with-error-toast";
 import { MIME_FORM } from "@/types/wiki";
 
 import { MoveFileDialog } from "./move-file-dialog";

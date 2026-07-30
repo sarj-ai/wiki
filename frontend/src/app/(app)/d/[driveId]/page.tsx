@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { FilePageClient } from "@/components/wiki-document/file-page-client";
-import { getPublicDocName } from "@/lib/public-api";
+import { getPublicDocName } from "@/lib/get-public-doc-name";
 import { serverWikiApi } from "@/lib/server-api";
 
 function docMetadata(name: string): Metadata {

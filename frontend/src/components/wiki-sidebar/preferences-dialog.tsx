@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { useSetPreferences } from "@/hooks/use-wiki-mutations";
 import { useDrives, usePreferences } from "@/hooks/use-wiki-tree";
-import { runWithErrorToast } from "@/lib/mutation-toast";
+import { runWithErrorToast } from "@/lib/run-with-error-toast";
 
 interface PreferencesDialogProps {
   onOpenChange: (open: boolean) => void;

@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 
 import { ErrorBoundary } from "@/components/error-boundary";
 import { SarjLogo } from "@/components/sarj-logo";
@@ -17,7 +17,7 @@ import {
 
 import { DriveSearchBox } from "./drive-search-box";
 import { DriveSection } from "./drive-section";
-import { SidebarResizeHandle } from "./resize-handle";
+import { SidebarResizeHandle } from "./sidebar-resize-handle";
 import { WikiFooter } from "./wiki-footer";
 
 export function WikiSidebar() {
@@ -37,15 +37,8 @@ export function WikiSidebar() {
   })();
 
   const showNonDocFiles = prefsQuery.data?.showNonDocFiles ?? true;
-  const hiddenWorkspaceIds = useMemo(
-    () => new Set(prefsQuery.data?.hiddenWorkspaceIds ?? []),
-    [prefsQuery.data],
-  );
-
-  const visibleDrives = useMemo(
-    () => (drivesQuery.data ?? []).filter((d) => !hiddenWorkspaceIds.has(d.id)),
-    [drivesQuery.data, hiddenWorkspaceIds],
-  );
+  const hiddenWorkspaceIds = new Set(prefsQuery.data?.hiddenWorkspaceIds ?? []);
+  const visibleDrives = (drivesQuery.data ?? []).filter((d) => !hiddenWorkspaceIds.has(d.id));
 
   const activeFileQuery = useFile(activeDriveId);
   const breadcrumb = activeFileQuery.data?.breadcrumb;

@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 type PerfExtra = Record<string, boolean | number | string>;
 
 interface PerfRecord {
@@ -15,10 +17,15 @@ declare global {
 
 const PERF_FLAG_KEY = "sarj-perf";
 
+const ZPerfSearchParams = z.object({ perf: z.string().optional() });
+
 function readPerfFlag(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    if (new URLSearchParams(window.location.search).get("perf") === "1") return true;
+    const { perf } = ZPerfSearchParams.parse(
+      Object.fromEntries(new URLSearchParams(window.location.search)),
+    );
+    if (perf === "1") return true;
     return window.localStorage.getItem(PERF_FLAG_KEY) === "1";
   } catch {
     return false;

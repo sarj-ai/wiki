@@ -32,11 +32,13 @@ const configsAsErrors = (configs) =>
 const strictNamingConvention = sarjStrict
   .map((config) => config.rules?.["@typescript-eslint/naming-convention"])
   .find(Array.isArray);
-const reactNamingConvention = strictNamingConvention?.map((setting) =>
-  typeof setting === "object" && setting?.selector === "function"
-    ? { ...setting, format: ["camelCase", "PascalCase"] }
-    : setting,
-);
+// The strict config has no `function` selector, so function names fall to its
+// camelCase `default`. React components are PascalCase functions; .tsx files
+// append the more-specific selector (specificity wins over entry order).
+const reactNamingConvention = strictNamingConvention && [
+  ...strictNamingConvention,
+  { format: ["camelCase", "PascalCase"], leadingUnderscore: "allow", selector: "function" },
+];
 
 export default defineConfig([
   ...configsAsErrors(nextVitals),
@@ -199,5 +201,7 @@ export default defineConfig([
     "src/lib/generated/**",
     // Copied shadcn primitives track upstream and are formatted, not linted.
     "src/components/ui/**",
+    // Static assets served verbatim; outside the typed project.
+    "public/**",
   ]),
 ]);
