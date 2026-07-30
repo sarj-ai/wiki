@@ -14,10 +14,25 @@ import sarjStrict from "./eslint.strict.mjs";
 const { dirname: tsconfigRootDir } = import.meta;
 const { "flat/react": testingLibraryReact } = testingLibrary.configs;
 
+const rulesAsErrors = (rules = {}) =>
+  Object.fromEntries(
+    Object.entries(rules).map(([name, setting]) => {
+      if (setting === "off" || setting === 0) return [name, setting];
+      if (Array.isArray(setting)) return [name, ["error", ...setting.slice(1)]];
+      return [name, "error"];
+    }),
+  );
+
+const configsAsErrors = (configs) =>
+  configs.map((config) => ({
+    ...config,
+    rules: rulesAsErrors(config.rules),
+  }));
+
 export default defineConfig([
-  ...nextVitals,
-  ...nextTs,
-  ...sarjStrict,
+  ...configsAsErrors(nextVitals),
+  ...configsAsErrors(nextTs),
+  ...configsAsErrors(sarjStrict),
   // Type-aware linting: turn on the typed rule sets across the project.
   {
     languageOptions: {
@@ -27,8 +42,8 @@ export default defineConfig([
       },
     },
   },
-  ...tseslint.configs.strictTypeChecked,
-  ...tseslint.configs.stylisticTypeChecked,
+  ...configsAsErrors(tseslint.configs.strictTypeChecked),
+  ...configsAsErrors(tseslint.configs.stylisticTypeChecked),
   // Disables ESLint rules that conflict with Prettier. Must come last among
   // the broad config sets — scoped overrides below it still win.
   prettier,
@@ -55,7 +70,7 @@ export default defineConfig([
       "array-callback-return": "error",
       eqeqeq: ["error", "always", { null: "ignore" }],
       "no-await-in-loop": "error",
-      "no-console": ["warn", { allow: ["warn", "error"] }],
+      "no-console": ["error", { allow: ["warn", "error"] }],
       // Five core rules called out in the rollout plan.
       "no-constant-binary-expression": "error",
       "no-promise-executor-return": "error",
@@ -116,22 +131,23 @@ export default defineConfig([
   },
   {
     rules: {
-      "jsx-a11y/click-events-have-key-events": "warn",
-      "jsx-a11y/label-has-associated-control": "warn",
-      "jsx-a11y/no-noninteractive-element-interactions": "warn",
-      "jsx-a11y/no-static-element-interactions": "warn",
+      "jsx-a11y/click-events-have-key-events": "error",
+      "jsx-a11y/label-has-associated-control": "error",
+      "jsx-a11y/no-noninteractive-element-interactions": "error",
+      "jsx-a11y/no-static-element-interactions": "error",
     },
   },
   // Test-file-only configs.
   {
     files: ["**/*.test.{ts,tsx}"],
     plugins: { vitest },
-    rules: vitest.configs.recommended.rules,
+    rules: rulesAsErrors(vitest.configs.recommended.rules),
     settings: { vitest: { typecheck: true } },
   },
   {
     files: ["**/*.test.tsx"],
     ...testingLibraryReact,
+    rules: rulesAsErrors(testingLibraryReact.rules),
   },
   // next.config.ts evaluates before src/ modules can load, and env.ts IS
   // the validated env module the rule points at.

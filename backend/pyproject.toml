@@ -220,7 +220,7 @@ include = ["app", "tests"]
 
 [tool.ty.rules]
 # ty (astral) is still pre-1.0; start at its default strict posture.
-unused-ignore-comment = "warn"
+unused-ignore-comment = "error"
 
 [tool.vulture]
 exclude = ["alembic/versions/", "app/__pycache__/"]
