@@ -23,6 +23,17 @@ if TYPE_CHECKING:
 
 _BASELINE = Path(__file__).resolve().parents[1] / "python-standards-baseline.json"
 
+# SARJ083 (sarj-python-lint 0.28.0) flags every `.get("literal")` call and
+# string-literal subscript regardless of receiver, so it misfires on FastAPI
+# route decorators (`@router.get("/path")`), loguru's typed `record["extra"]`,
+# and raw ASGI scope/message dicts — protocol boundaries with no schema to
+# declare. The genuine hits (Google API payload plucking) are fixed in code;
+# re-enable once upstream skips decorator calls and protocol receivers.
+_EXCLUDED_PYTHON_RULES = frozenset({"no-implicit-attribute-access"})
+_ACTIVE_PYTHON_RULES = {
+    name: rule for name, rule in PYTHON_RULES.items() if name not in _EXCLUDED_PYTHON_RULES
+}
+
 
 def main(paths: list[str]) -> int:
     """Dispatch paths to all current registries without a handwritten rule list.
@@ -53,7 +64,7 @@ def verify_python_baseline(paths: list[str]) -> int:
         status = python_main(
             [
                 "check",
-                *_rule_arguments(PYTHON_RULES),
+                *_rule_arguments(_ACTIVE_PYTHON_RULES),
                 "--update-baseline",
                 str(generated),
                 *python_paths,
@@ -78,7 +89,7 @@ def _run_python(paths: list[str]) -> int:
     return python_main(
         [
             "check",
-            *_rule_arguments(PYTHON_RULES),
+            *_rule_arguments(_ACTIVE_PYTHON_RULES),
             "--baseline",
             str(_BASELINE),
             *paths,

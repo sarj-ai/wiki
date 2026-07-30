@@ -78,8 +78,7 @@ describe("request bodies", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(out.parentFolderId).toBe("1kl4");
-    expect(out.modifiedTime).toBeUndefined();
+    expect(out).toMatchObject({ modifiedTime: undefined, parentFolderId: "1kl4" });
   });
 });
 

@@ -90,12 +90,9 @@ app.include_router(linkmeta_router)
 @app.get("/health")
 @limiter.exempt  # type: ignore[untyped-decorator]
 async def health_check(_request: Request) -> dict[str, str]:
-    result: dict[str, str] = {"status": "ok"}
     try:
         async with async_session() as db:
             await db.execute(text("SELECT 1"))
-        result["database"] = "ok"
     except Exception:  # ruff: ignore[blind-except] — /health must never 500; report degraded instead.
-        result["status"] = "degraded"
-        result["database"] = "unavailable"
-    return result
+        return {"status": "degraded", "database": "unavailable"}
+    return {"status": "ok", "database": "ok"}

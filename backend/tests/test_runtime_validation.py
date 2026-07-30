@@ -32,9 +32,9 @@ def test_google_file_rejects_missing_required_field() -> None:
         GoogleFile.model_validate({"id": "f1", "mimeType": "x"})
 
 
-def test_google_drive_rejects_missing_name() -> None:
-    with pytest.raises(ValidationError):
-        GoogleDrive.model_validate({"id": "d1"})
+def test_google_drive_tolerates_missing_name() -> None:
+    drive = GoogleDrive.model_validate({"id": "d1"})
+    assert drive.name is None
 
 
 def test_google_token_response_requires_access_token() -> None:

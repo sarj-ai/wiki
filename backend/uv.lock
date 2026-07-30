@@ -1769,7 +1769,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "ruff", specifier = ">=0.16.0" },
-    { name = "sarj-lint-configs", specifier = "==0.9.1" },
+    { name = "sarj-lint-configs", specifier = "==0.9.3" },
     { name = "ty", specifier = ">=0.0.47" },
     { name = "types-httplib2", specifier = ">=0.22.0" },
     { name = "types-requests", specifier = ">=2.33.0.20260518" },
@@ -1787,25 +1787,25 @@ wheels = [
 
 [[package]]
 name = "sarj-lint-configs"
-version = "0.9.1"
+version = "0.9.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "sarj-iac-lint" },
     { name = "sarj-python-lint" },
     { name = "sarj-sql-lint" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a0/e1/55e945eba372da43c18f9d3fbce0352dfbcce38303ae9fba9c6d8c9c35ff/sarj_lint_configs-0.9.1.tar.gz", hash = "sha256:9ef60094fbd7d04961382ed1e9f83d622669efc3b232176a682a382d977159ba", size = 20001, upload-time = "2026-07-29T23:20:35.999Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/df/be/102afc1a5bd3fadca85f86a2d1ede93939452f36bd7a8c490086a5f75da9/sarj_lint_configs-0.9.3.tar.gz", hash = "sha256:d8800f631101f1e04b76832307bfc4c96ff45d28eafc756d3dfd71607e3a57bd", size = 20057, upload-time = "2026-07-30T15:36:07.323Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/33/f5/51a02ab53b6e6781fb8ed3cd0feac784bdb3f307c6376581723c8e548e24/sarj_lint_configs-0.9.1-py3-none-any.whl", hash = "sha256:64677610fa833ea3ba0870ed745dc4a3af39ff34718f476141d9ea907a65e25c", size = 23974, upload-time = "2026-07-29T23:20:34.975Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/ba/63706a15a9a5f7c6cda89cceef7a77fbc04ac575376c94f73148d4047163/sarj_lint_configs-0.9.3-py3-none-any.whl", hash = "sha256:dfb5fc196fcb2ec455663f29f2452635097cba528ac763fe5772cf33354c09c0", size = 24030, upload-time = "2026-07-30T15:36:06.264Z" },
 ]
 
 [[package]]
 name = "sarj-python-lint"
-version = "0.26.0"
+version = "0.28.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/3d/04/306d0821d69b6ea5d2b8376d10729579423730eccdabcc762c37896c05cc/sarj_python_lint-0.26.0.tar.gz", hash = "sha256:30f8f603ea949f47ef46dad4ae2f8abc1aa151e3a279f4baba4ce2507ef88e79", size = 358715, upload-time = "2026-07-29T14:11:36.868Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5b/82/c11ed56df445f1d0d7870cfc5c7bd7aab2964e812b1ce15ea7d25b551860/sarj_python_lint-0.28.0.tar.gz", hash = "sha256:eb96da6555e98dd47372218317034ac0d80513bc13518d99abc3a15e58752e71", size = 363388, upload-time = "2026-07-30T15:35:40.112Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/42/92/1f7d00e9a8f49850b977a7e3cf19236c95670e7afdf32c16e850f4cb40da/sarj_python_lint-0.26.0-py3-none-any.whl", hash = "sha256:10b3d8bececc0d7058705558be7b6b9f9622b669c9fb218881671c038f693fdd", size = 435517, upload-time = "2026-07-29T14:11:35.399Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/a8/8c2f0af20c941abfb24aa4f67ba629c680c88298b2c4ffd201976adf04d2/sarj_python_lint-0.28.0-py3-none-any.whl", hash = "sha256:8370adf5f83793401c7d0d77b749fd31103e2af1c411c91b3f18473c693413ce", size = 439873, upload-time = "2026-07-30T15:35:38.78Z" },
 ]
 
 [[package]]

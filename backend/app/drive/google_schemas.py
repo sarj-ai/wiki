@@ -23,9 +23,24 @@ class GoogleFile(_GoogleModel):
 
 
 class GoogleDrive(_GoogleModel):
-    id: str
-    name: str
+    id: str | None = None
+    name: str | None = None
     hidden: bool = False
+
+
+class GoogleDriveListPage(_GoogleModel):
+    drives: list[GoogleDrive] = Field(default_factory=list)
+    next_page_token: str | None = Field(default=None, alias="nextPageToken")
+
+
+class GoogleFileListPage(_GoogleModel):
+    files: list[GoogleFile] = Field(default_factory=list)
+    next_page_token: str | None = Field(default=None, alias="nextPageToken")
+    incomplete_results: bool = Field(default=False, alias="incompleteResults")
+
+
+class GoogleFileParents(_GoogleModel):
+    parents: list[str] = Field(default_factory=list)
 
 
 class GoogleFileProbe(_GoogleModel):

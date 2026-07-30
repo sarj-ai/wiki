@@ -211,11 +211,19 @@ class PostgresExtrasService(ExtrasService):
             ),
             updated_at=now,
         )
-        set_: dict[str, object] = {"updated_at": stmt.excluded.updated_at}
-        if payload.show_non_doc_files is not None:
-            set_["show_non_doc_files"] = stmt.excluded.show_non_doc_files
-        if updates_hidden_workspaces:
-            set_["hidden_workspace_ids"] = stmt.excluded.hidden_workspace_ids
+        set_: dict[str, object] = {
+            "updated_at": stmt.excluded.updated_at,
+            **(
+                {"show_non_doc_files": stmt.excluded.show_non_doc_files}
+                if payload.show_non_doc_files is not None
+                else {}
+            ),
+            **(
+                {"hidden_workspace_ids": stmt.excluded.hidden_workspace_ids}
+                if updates_hidden_workspaces
+                else {}
+            ),
+        }
         upsert = stmt.on_conflict_do_update(index_elements=["user_id"], set_=set_).returning(
             UserPreferences
         )

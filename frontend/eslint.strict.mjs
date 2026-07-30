@@ -3,7 +3,6 @@ import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import unicorn from "eslint-plugin-unicorn";
 import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
-import zod from "eslint-plugin-zod";
 import perfectionist from "eslint-plugin-perfectionist";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
@@ -25,7 +24,6 @@ const config = [
       "react-hooks": reactHooks,
       unicorn,
       "@eslint-community/eslint-comments": eslintComments,
-      zod,
       perfectionist,
       "simple-import-sort": simpleImportSort,
       "@sarj": sarj,
@@ -252,7 +250,7 @@ const config = [
       "unicorn/relative-url-style": ["error", "never"],
       "unicorn/throw-new-error": "error",
 
-      "zod/prefer-enum-over-literal-union": "error",
+      "@sarj/prefer-zod-enum": "error",
 
       // Deterministic ordering (incorporated from bulbul). perfectionist sorts
       // structural members; simple-import-sort owns import/export ordering
@@ -451,6 +449,12 @@ const config = [
       // across 11 first-party repos (7,912 files, 229 exported classes): 82%
       // already carry a port, 29 fire, 28 hand-reviewed as true positives.
       "@sarj/require-interface-for-injected-service": "error",
+      "@sarj/ban-loose-type-guards-in-tests": "error",
+      "@sarj/no-conditional-in-test": "error",
+      "@sarj/no-unsafe-mock-casting": "error",
+      "@sarj/prefer-setup-file-mocks": "error",
+      "@sarj/strict-test-assertions": "error",
+      "@sarj/no-async-callback-in-waitfor": "error",
 
       // Deliberately NOT enabled here — these two are architectural rules that
       // are meaningless without per-repo paths, so a shared config cannot set

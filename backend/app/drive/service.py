@@ -16,14 +16,14 @@ from googleapiclient.discovery_cache import get_static_doc
 from googleapiclient.errors import HttpError
 import httplib2
 from loguru import logger
-from pydantic import ValidationError
 
 from app.auth.encryption import decrypt_text
 from app.config import settings
 from app.drive import drives_cache, probe_cache
 from app.drive.google_schemas import (
-    GoogleDrive,
+    GoogleDriveListPage,
     GoogleFile,
+    GoogleFileListPage,
     GoogleFileMetadata,
     GoogleFileProbe,
 )
@@ -296,21 +296,18 @@ class GoogleDriveService(DriveService):
                 "fields": "nextPageToken,drives(id,name,hidden)",
             }
             if page_token:
-                params["pageToken"] = page_token
+                params = {**params, "pageToken": page_token}
             try:
                 resp = execute_with_retry(client.drives().list(**params))
             except HttpError:
                 logger.exception("drives.list failed for user={user_id}", user_id=self._user.id)
                 return out
-            for d in resp.get("drives", []):
-                try:
-                    drive = GoogleDrive.model_validate(d)
-                except ValidationError:
-                    continue
+            page = GoogleDriveListPage.model_validate(resp)
+            for drive in page.drives:
                 if not drive.id or not drive.name or drive.hidden:
                     continue
                 out.append(DriveSummary(id=drive.id, name=drive.name))
-            page_token = resp.get("nextPageToken")
+            page_token = page.next_page_token
             if not page_token:
                 return out
 
@@ -333,7 +330,7 @@ class GoogleDriveService(DriveService):
                 ),
             }
             if page_token:
-                params["pageToken"] = page_token
+                params = {**params, "pageToken": page_token}
             try:
                 resp = execute_with_retry(client.files().list(**params))
             except HttpError:
@@ -343,14 +340,15 @@ class GoogleDriveService(DriveService):
                     drive_id=drive_id,
                 )
                 return out
-            for raw in resp.get("files", []):
-                node = _node_from_api(GoogleFile.model_validate(raw), drive_id)
+            page = GoogleFileListPage.model_validate(resp)
+            for file in page.files:
+                node = _node_from_api(file, drive_id)
                 if node.mime_type == MIME_SHORTCUT and (
                     node.shortcut_target_mime_type != MIME_FOLDER
                 ):
                     continue
                 out.folders.append(node)
-            page_token = resp.get("nextPageToken")
+            page_token = page.next_page_token
             if not page_token:
                 return out
 
@@ -372,7 +370,7 @@ class GoogleDriveService(DriveService):
                 ),
             }
             if page_token:
-                params["pageToken"] = page_token
+                params = {**params, "pageToken": page_token}
             try:
                 resp = execute_with_retry(client.files().list(**params))
             except HttpError:
@@ -382,8 +380,8 @@ class GoogleDriveService(DriveService):
                     folder_id=folder_id,
                 )
                 return out
-            for raw in resp.get("files", []):
-                file = GoogleFile.model_validate(raw)
+            page = GoogleFileListPage.model_validate(resp)
+            for file in page.files:
                 details = file.shortcut_details
                 target_mime = details.target_mime_type if details else None
                 if (
@@ -402,7 +400,7 @@ class GoogleDriveService(DriveService):
                         shortcut_target_mime_type=target_mime,
                     )
                 )
-            page_token = resp.get("nextPageToken")
+            page_token = page.next_page_token
             if not page_token:
                 return out
 
@@ -426,7 +424,7 @@ class GoogleDriveService(DriveService):
                 ),
             }
             if page_token:
-                params["pageToken"] = page_token
+                params = {**params, "pageToken": page_token}
             try:
                 resp = execute_with_retry(client.files().list(**params))
             except HttpError:
@@ -436,8 +434,8 @@ class GoogleDriveService(DriveService):
                     drive_id=drive_id,
                 )
                 return out, False
-            for raw in resp.get("files", []):
-                file = GoogleFile.model_validate(raw)
+            page = GoogleFileListPage.model_validate(resp)
+            for file in page.files:
                 if file.mime_type == MIME_FOLDER:
                     continue
                 details = file.shortcut_details
@@ -447,7 +445,7 @@ class GoogleDriveService(DriveService):
                 ):
                     continue
                 out.append(_node_from_api(file, drive_id))
-            page_token = resp.get("nextPageToken")
+            page_token = page.next_page_token
             if not page_token:
                 return out, True
             pages += 1
@@ -485,7 +483,8 @@ class GoogleDriveService(DriveService):
                 query=query,
             )
             return []
-        return [_search_result_from_api(raw, drive_id) for raw in resp.get("files", [])]
+        page = GoogleFileListPage.model_validate(resp)
+        return [_search_result_from_api(file, drive_id) for file in page.files]
 
     def _search_all_drives_sync(self, query: str, page_size: int) -> list[SearchResult] | None:
         escaped = escape_query_value(query)
@@ -511,9 +510,10 @@ class GoogleDriveService(DriveService):
                 query=query,
             )
             return None
-        if resp.get("incompleteResults"):
+        page = GoogleFileListPage.model_validate(resp)
+        if page.incomplete_results:
             return None
-        return [_search_result_from_api(raw) for raw in resp.get("files", [])]
+        return [_search_result_from_api(file) for file in page.files]
 
     def _fetch_snippet_sync(self, file_id: str, query: str, mime_type: str | None) -> SnippetResult:
         client = self._client()
@@ -623,8 +623,7 @@ def _build_mime_clause() -> str:
     return f"({quoted})"
 
 
-def _search_result_from_api(raw: Any, drive_id: str | None = None) -> SearchResult:
-    file = GoogleFile.model_validate(raw)
+def _search_result_from_api(file: GoogleFile, drive_id: str | None = None) -> SearchResult:
     home_drive_id = file.drive_id or drive_id
     parent_id: str | None = file.parents[0] if file.parents else None
     if parent_id == home_drive_id:

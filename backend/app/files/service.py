@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, override
 
 from googleapiclient.errors import HttpError
 
-from app.drive.google_schemas import GoogleFile
+from app.drive.google_schemas import GoogleFile, GoogleFileParents
 from app.drive.retry import execute_mutation, execute_with_retry
 from app.drive.schemas import MIME_FOLDER, NAVIGATOR_SUPPORTED_MIME_TYPES
 from app.drive.service import DriveService, reuse_drive_client
@@ -161,7 +161,7 @@ class GoogleFilesService(FilesService):
                 meta = execute_with_retry(
                     client.files().get(fileId=file_id, fields="parents", supportsAllDrives=True)
                 )
-                prev_parent_folder_id = ",".join(meta.get("parents", []))
+                prev_parent_folder_id = ",".join(GoogleFileParents.model_validate(meta).parents)
             raw = execute_with_retry(
                 client.files().update(
                     fileId=file_id,

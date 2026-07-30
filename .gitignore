@@ -8,3 +8,4 @@
 .mcp.json
 .playwright-mcp/
 .stamps/
+__pycache__/

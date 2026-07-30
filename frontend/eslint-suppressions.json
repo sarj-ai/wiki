@@ -330,11 +330,6 @@
       "count": 1
     }
   },
-  "src/lib/server-api.test.ts": {
-    "@typescript-eslint/consistent-type-assertions": {
-      "count": 1
-    }
-  },
   "src/lib/server-api.ts": {
     "@sarj/no-implicit-attribute-access": {
       "count": 1

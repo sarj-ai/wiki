@@ -2,21 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 
 import { ServerApiError, serverWikiApi } from "@/lib/server-api";
-
-const cookieValue = vi.hoisted(() => ({ token: undefined as string | undefined }));
-
-vi.mock("next/headers", () => ({
-  cookies: async () =>
-    Promise.resolve({
-      get: (name: string) =>
-        name === "access_token" && cookieValue.token !== undefined
-          ? { name, value: cookieValue.token }
-          : undefined,
-    }),
-}));
+import { cookieState } from "@/test-stubs/cookie-state";
 
 afterEach(() => {
-  cookieValue.token = undefined;
+  cookieState.token = undefined;
   vi.unstubAllGlobals();
 });
 
@@ -36,7 +25,7 @@ describe("serverWikiApi", () => {
   });
 
   it("forwards the cookie and parses through the endpoint transform", async () => {
-    cookieValue.token = "jwt-token";
+    cookieState.token = "jwt-token";
     const fetchMock = vi.fn(async (request: Request) => {
       expect(request.headers.get("cookie")).toBe("access_token=jwt-token");
       return Promise.resolve(jsonResponse([{ icon: null, id: "f1", name: "Doc" }]));
@@ -52,7 +41,7 @@ describe("serverWikiApi", () => {
   });
 
   it("throws ServerApiError with the upstream status on non-OK", async () => {
-    cookieValue.token = "jwt-token";
+    cookieState.token = "jwt-token";
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("nope", { status: 404 })));
 
     await expect(serverWikiApi.getFile("gone")).rejects.toBeInstanceOf(ServerApiError);
