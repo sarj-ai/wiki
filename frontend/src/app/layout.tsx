@@ -35,8 +35,22 @@ const nunito = localFont({
 
 export const metadata: Metadata = {
   description: "Internal knowledge base for Sarj",
+  metadataBase: new URL("https://wiki.sarj.ai"),
+  openGraph: {
+    description: "Internal knowledge base for Sarj",
+    images: ["/icon.png"],
+    siteName: "Sarj Wiki",
+    title: "Sarj Wiki",
+    type: "website",
+  },
   robots: { follow: false, index: false },
   title: { default: "Sarj Wiki", template: "%s · Sarj Wiki" },
+  twitter: {
+    card: "summary",
+    description: "Internal knowledge base for Sarj",
+    images: ["/icon.png"],
+    title: "Sarj Wiki",
+  },
 };
 
 export const viewport: Viewport = {
