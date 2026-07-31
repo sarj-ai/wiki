@@ -55,10 +55,10 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",
     "@hey-api/openapi-ts": "^0.99.0",
     "@opennextjs/cloudflare": "^1.20.2",
-    "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",
-    "@sarj/eslint-plugin": "2.16.0",
+    "@sarj/eslint-plugin": "4.0.0",
     "@sarj/tsconfig": "0.1.1",
     "@tailwindcss/postcss": "^4",
     "@taplo/cli": "^0.7.0",
@@ -83,7 +83,6 @@
     "eslint-plugin-sonarjs": "^4.0.3",
     "eslint-plugin-testing-library": "^7.16.2",
     "eslint-plugin-unicorn": "^72.0.0",
-    "eslint-plugin-zod": "^4.8.0",
     "happy-dom": "^20.10.2",
     "knip": "^6.16.1",
     "lefthook": "2.1.10",

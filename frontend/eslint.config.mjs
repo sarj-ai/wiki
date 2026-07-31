@@ -182,7 +182,6 @@ export default defineConfig([
     files: ["**/*.config.{ts,mjs,js}", "**/*.mjs"],
     rules: {
       "@sarj/no-implicit-attribute-access": "off",
-      "@sarj/primary-export-file-name": "off",
     },
   },
   globalIgnores([
