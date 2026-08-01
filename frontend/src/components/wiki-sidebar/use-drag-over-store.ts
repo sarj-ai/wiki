@@ -2,6 +2,8 @@
 
 import { create } from "zustand";
 
+export type DropIntent = "above" | "below" | "into";
+
 interface DragOverState {
   activeContainerId: null | string;
   activeId: null | string;
@@ -16,8 +18,6 @@ interface DragOverState {
     intent: DropIntent | null;
   }) => void;
 }
-
-export type DropIntent = "above" | "below" | "into";
 
 export const useDragOverStore = create<DragOverState>((set) => ({
   activeContainerId: null,

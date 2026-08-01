@@ -13,19 +13,6 @@ const WARMUP_DELAY_MS = 1500;
 
 const WARM_COUNT = 3;
 
-function firstWorkspaceDocs(queryClient: QueryClient, limit: number): LastDoc[] {
-  const trees = queryClient.getQueriesData<DriveTree>({ queryKey: wikiKeys.driveTreePrefix });
-  const docs: LastDoc[] = [];
-  for (const [, tree] of trees) {
-    for (const node of tree?.files ?? []) {
-      if (!isGoogleWorkspaceType(node.mimeType)) continue;
-      docs.push({ fileId: node.id, mimeType: node.mimeType, title: node.name });
-      if (docs.length >= limit) return docs;
-    }
-  }
-  return docs;
-}
-
 export function DocWarmup() {
   const queryClient = useQueryClient();
   const setWarm = useDocViewerStore((s) => s.setWarm);
@@ -51,4 +38,17 @@ export function DocWarmup() {
   }, [queryClient, setWarm]);
 
   return null;
+}
+
+function firstWorkspaceDocs(queryClient: QueryClient, limit: number): LastDoc[] {
+  const trees = queryClient.getQueriesData<DriveTree>({ queryKey: wikiKeys.driveTreePrefix });
+  const docs: LastDoc[] = [];
+  for (const [, tree] of trees) {
+    for (const node of tree?.files ?? []) {
+      if (!isGoogleWorkspaceType(node.mimeType)) continue;
+      docs.push({ fileId: node.id, mimeType: node.mimeType, title: node.name });
+      if (docs.length >= limit) return docs;
+    }
+  }
+  return docs;
 }

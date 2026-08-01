@@ -15,7 +15,7 @@ describe("sanitizeRedirectPath", () => {
 
   it("rejects absolute URLs with a scheme", () => {
     expect(sanitizeRedirectPath("https://evil.com")).toBe("/");
-    expect(sanitizeRedirectPath("http://evil.com/path")).toBe("/");
+    expect(sanitizeRedirectPath("https://evil.com/path")).toBe("/");
     expect(sanitizeRedirectPath("javascript://evil")).toBe("/");
   });
 
@@ -37,7 +37,7 @@ describe("sanitizeRedirectPath", () => {
 
 describe("sanitizeRedirectPath backslash hardening", () => {
   it("rejects backslash paths that URL parsers would normalize to //", () => {
-    expect(sanitizeRedirectPath("/\\evil.com")).toBe("/");
-    expect(sanitizeRedirectPath("/d\\..\\evil")).toBe("/");
+    expect(sanitizeRedirectPath(String.raw`/\evil.com`)).toBe("/");
+    expect(sanitizeRedirectPath(String.raw`/d\..\evil`)).toBe("/");
   });
 });

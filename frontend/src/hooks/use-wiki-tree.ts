@@ -15,8 +15,6 @@ import type {
   SortOrder,
 } from "@/types/wiki";
 
-export { wikiKeys };
-
 const TREE_STALE_MS = 5 * 60 * 1000;
 
 export function useDrives() {
@@ -84,3 +82,5 @@ export function useSortOrders() {
     staleTime: TREE_STALE_MS,
   });
 }
+
+export { wikiKeys } from "@/lib/wiki-keys";

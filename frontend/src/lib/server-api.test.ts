@@ -6,13 +6,12 @@ import { ServerApiError, serverWikiApi } from "@/lib/server-api";
 const cookieValue = vi.hoisted(() => ({ token: undefined as string | undefined }));
 
 vi.mock("next/headers", () => ({
-  cookies: async () =>
-    Promise.resolve({
-      get: (name: string) =>
-        name === "access_token" && cookieValue.token !== undefined
-          ? { name, value: cookieValue.token }
-          : undefined,
-    }),
+  cookies: () => ({
+    get: (name: string) =>
+      name === "access_token" && cookieValue.token !== undefined
+        ? { name, value: cookieValue.token }
+        : undefined,
+  }),
 }));
 
 afterEach(() => {
@@ -21,7 +20,7 @@ afterEach(() => {
 });
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
+  return Response.json(body, {
     headers: { "content-type": "application/json" },
     status,
   });
@@ -37,9 +36,9 @@ describe("serverWikiApi", () => {
 
   it("forwards the cookie and parses through the endpoint transform", async () => {
     cookieValue.token = "jwt-token";
-    const fetchMock = vi.fn(async (request: Request) => {
+    const fetchMock = vi.fn((request: Request) => {
       expect(request.headers.get("cookie")).toBe("access_token=jwt-token");
-      return Promise.resolve(jsonResponse([{ icon: null, id: "f1", name: "Doc" }]));
+      return jsonResponse([{ icon: null, id: "f1", name: "Doc" }]);
     });
     vi.stubGlobal("fetch", fetchMock);
 

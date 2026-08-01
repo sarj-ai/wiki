@@ -15,17 +15,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-interface NamePromptDialogProps {
-  confirmLabel?: string;
-  defaultValue?: string;
-  description?: string;
-  onConfirm: (value: string) => Promise<void> | void;
-
-  onOpenChange: (open: boolean) => void;
-  open: boolean;
-  title: string;
-}
-
 export function NamePromptDialog({
   confirmLabel = "Create",
   defaultValue = "",
@@ -112,4 +101,15 @@ export function NamePromptDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+interface NamePromptDialogProps {
+  confirmLabel?: string;
+  defaultValue?: string;
+  description?: string;
+  onConfirm: (value: string) => Promise<void> | void;
+
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  title: string;
 }

@@ -2,9 +2,6 @@
   "src/app/(app)/d/[driveId]/page.tsx": {
     "@typescript-eslint/naming-convention": {
       "count": 1
-    },
-    "perfectionist/sort-modules": {
-      "count": 1
     }
   },
   "src/app/(app)/layout.tsx": {
@@ -48,11 +45,6 @@
       "count": 1
     }
   },
-  "src/components/error-boundary.tsx": {
-    "perfectionist/sort-modules": {
-      "count": 1
-    }
-  },
   "src/components/loading-bar.tsx": {
     "@typescript-eslint/naming-convention": {
       "count": 1
@@ -61,9 +53,6 @@
   "src/components/query-provider.tsx": {
     "@typescript-eslint/naming-convention": {
       "count": 1
-    },
-    "unicorn/no-useless-promise-resolve-reject": {
-      "count": 3
     }
   },
   "src/components/redirect-after-login.tsx": {
@@ -110,9 +99,6 @@
   "src/components/wiki-document/doc-warmup.tsx": {
     "@typescript-eslint/naming-convention": {
       "count": 1
-    },
-    "perfectionist/sort-modules": {
-      "count": 1
     }
   },
   "src/components/wiki-document/file-page-client.tsx": {
@@ -128,9 +114,6 @@
   "src/components/wiki-not-found.tsx": {
     "@typescript-eslint/naming-convention": {
       "count": 1
-    },
-    "perfectionist/sort-modules": {
-      "count": 1
     }
   },
   "src/components/wiki-search/command-palette-mount.tsx": {
@@ -141,9 +124,6 @@
   "src/components/wiki-search/command-palette.tsx": {
     "@typescript-eslint/naming-convention": {
       "count": 4
-    },
-    "perfectionist/sort-modules": {
-      "count": 1
     }
   },
   "src/components/wiki-sidebar/create-file-menu.tsx": {
@@ -160,9 +140,6 @@
     "@typescript-eslint/naming-convention": {
       "count": 2
     },
-    "perfectionist/sort-modules": {
-      "count": 1
-    },
     "react/forbid-elements": {
       "count": 1
     },
@@ -174,9 +151,6 @@
     "@typescript-eslint/naming-convention": {
       "count": 3
     },
-    "perfectionist/sort-modules": {
-      "count": 1
-    },
     "react/forbid-dom-props": {
       "count": 1
     },
@@ -186,9 +160,6 @@
   },
   "src/components/wiki-sidebar/empty-droppable.tsx": {
     "@typescript-eslint/naming-convention": {
-      "count": 1
-    },
-    "perfectionist/sort-modules": {
       "count": 1
     }
   },
@@ -206,17 +177,11 @@
   "src/components/wiki-sidebar/item-menu.tsx": {
     "@typescript-eslint/naming-convention": {
       "count": 1
-    },
-    "perfectionist/sort-modules": {
-      "count": 1
     }
   },
   "src/components/wiki-sidebar/move-file-dialog.tsx": {
     "@typescript-eslint/naming-convention": {
       "count": 3
-    },
-    "perfectionist/sort-modules": {
-      "count": 1
     },
     "react/forbid-dom-props": {
       "count": 1
@@ -225,32 +190,20 @@
   "src/components/wiki-sidebar/name-prompt-dialog.tsx": {
     "@typescript-eslint/naming-convention": {
       "count": 1
-    },
-    "perfectionist/sort-modules": {
-      "count": 1
     }
   },
   "src/components/wiki-sidebar/pickable-icon.tsx": {
     "@typescript-eslint/naming-convention": {
-      "count": 1
-    },
-    "perfectionist/sort-modules": {
       "count": 1
     }
   },
   "src/components/wiki-sidebar/preferences-dialog.tsx": {
     "@typescript-eslint/naming-convention": {
       "count": 2
-    },
-    "perfectionist/sort-modules": {
-      "count": 1
     }
   },
   "src/components/wiki-sidebar/resize-handle.tsx": {
     "@typescript-eslint/naming-convention": {
-      "count": 1
-    },
-    "perfectionist/sort-modules": {
       "count": 1
     },
     "unicorn/consistent-function-scoping": {
@@ -276,25 +229,12 @@
       "count": 1
     }
   },
-  "src/components/wiki-sidebar/use-drag-over-store.ts": {
-    "perfectionist/sort-modules": {
-      "count": 1
-    }
-  },
-  "src/components/wiki-sidebar/use-drive-tree-index.ts": {
-    "perfectionist/sort-modules": {
-      "count": 1
-    }
-  },
   "src/components/wiki-sidebar/use-wiki-reorder.ts": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 4
     },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 4
-    },
-    "perfectionist/sort-modules": {
-      "count": 1
     },
     "unicorn/no-array-sort": {
       "count": 1
@@ -308,48 +248,10 @@
   "src/components/wiki-sidebar/wiki-sidebar.tsx": {
     "@typescript-eslint/naming-convention": {
       "count": 1
-    },
-    "unicorn/no-useless-collection-argument": {
-      "count": 1
-    },
-    "unicorn/prefer-split-limit": {
-      "count": 2
-    }
-  },
-  "src/hooks/use-expanded-folders.ts": {
-    "@sarj/no-fat-try-blocks": {
-      "count": 1
-    },
-    "perfectionist/sort-modules": {
-      "count": 1
-    }
-  },
-  "src/hooks/use-mobile.ts": {
-    "perfectionist/sort-modules": {
-      "count": 1
-    }
-  },
-  "src/hooks/use-wiki-mutations.ts": {
-    "perfectionist/sort-modules": {
-      "count": 1
-    },
-    "unicorn/prefer-spread": {
-      "count": 1
-    }
-  },
-  "src/hooks/use-wiki-tree.ts": {
-    "unicorn/prefer-export-from": {
-      "count": 1
     }
   },
   "src/lib/api-client.test.ts": {
     "@typescript-eslint/consistent-type-assertions": {
-      "count": 1
-    },
-    "unicorn/no-useless-promise-resolve-reject": {
-      "count": 4
-    },
-    "unicorn/prefer-response-static-json": {
       "count": 1
     }
   },
@@ -359,14 +261,6 @@
     },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 3
-    },
-    "perfectionist/sort-modules": {
-      "count": 2
-    }
-  },
-  "src/lib/file-urls.ts": {
-    "perfectionist/sort-modules": {
-      "count": 1
     }
   },
   "src/lib/perf-marks.ts": {
@@ -377,25 +271,6 @@
   "src/lib/server-api.test.ts": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 1
-    },
-    "unicorn/no-useless-promise-resolve-reject": {
-      "count": 2
-    },
-    "unicorn/prefer-response-static-json": {
-      "count": 1
-    }
-  },
-  "src/lib/shortcut-resolver.ts": {
-    "perfectionist/sort-modules": {
-      "count": 1
-    }
-  },
-  "src/lib/url-utils.test.ts": {
-    "unicorn/prefer-https": {
-      "count": 1
-    },
-    "unicorn/prefer-string-raw": {
-      "count": 2
     }
   },
   "src/lib/url-utils.ts": {
@@ -403,16 +278,6 @@
       "count": 1
     },
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/lib/wiki-api.ts": {
-    "unicorn/prefer-export-from": {
-      "count": 1
-    }
-  },
-  "src/lib/wiki-tree.ts": {
-    "perfectionist/sort-modules": {
       "count": 1
     }
   },

@@ -70,43 +70,11 @@ client.interceptors.response.use(async (response, request) => {
   return settled;
 });
 
-async function readErrorMessage(response: Response): Promise<null | string> {
-  try {
-    const text = await response.clone().text();
-    if (!text) return null;
-    const parsed: unknown = JSON.parse(text);
-    const payload = ZErrorDetail.safeParse(parsed);
-    if (!payload.success) return null;
-    const { detail } = payload.data;
-    if (typeof detail === "string" && detail.trim().length > 0) return detail;
-    if (Array.isArray(detail) && detail.length > 0) {
-      const first = detail[0] as { msg?: unknown };
-      if (typeof first.msg === "string") return first.msg;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 export async function deduplicatedRefresh(): Promise<boolean> {
   refreshPromise ??= rawRefresh().finally(() => {
     refreshPromise = null;
   });
   return refreshPromise;
-}
-
-async function rawRefresh(): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_URL}/auth/refresh`, {
-      credentials: "include",
-      method: "POST",
-      signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
 }
 
 export class ApiError extends Error {
@@ -144,4 +112,36 @@ export function makeCall(clientOverride?: Client) {
     return schema.parse(result.data);
   }
   return call;
+}
+
+async function readErrorMessage(response: Response): Promise<null | string> {
+  try {
+    const text = await response.clone().text();
+    if (!text) return null;
+    const parsed: unknown = JSON.parse(text);
+    const payload = ZErrorDetail.safeParse(parsed);
+    if (!payload.success) return null;
+    const { detail } = payload.data;
+    if (typeof detail === "string" && detail.trim().length > 0) return detail;
+    if (Array.isArray(detail) && detail.length > 0) {
+      const first = detail[0] as { msg?: unknown };
+      if (typeof first.msg === "string") return first.msg;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function rawRefresh(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_URL}/auth/refresh`, {
+      credentials: "include",
+      method: "POST",
+      signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }

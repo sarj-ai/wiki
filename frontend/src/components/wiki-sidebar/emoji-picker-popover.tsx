@@ -51,28 +51,6 @@ const Picker = dynamic(async () => import("@emoji-mart/react").then((m) => m.def
 });
 
 let cachedData: null | Promise<unknown> = null;
-async function loadEmojiData(): Promise<unknown> {
-  cachedData ??= import("@emoji-mart/data").then((m: { default: unknown }) => m.default);
-  return cachedData;
-}
-
-function EmojiPickerBody({ onSelect, theme }: EmojiPickerBodyProps) {
-  return (
-    <Picker
-      autoFocus
-      data={loadEmojiData}
-      maxFrequentRows={2}
-      onEmojiSelect={(picked: { native?: string; id?: string }) => {
-        const value = picked.native ?? picked.id ?? null;
-        if (value) onSelect(value);
-      }}
-      previewPosition="none"
-      skinTonePosition="none"
-      theme={theme}
-    />
-  );
-}
-
 export function EmojiPickerPopover({ children, onChange, value }: EmojiPickerPopoverProps) {
   const { resolvedTheme } = useTheme();
   const mounted = useIsClient();
@@ -121,5 +99,27 @@ export function EmojiPickerPopover({ children, onChange, value }: EmojiPickerPop
         ) : null}
       </PopoverContent>
     </Popover>
+  );
+}
+
+async function loadEmojiData(): Promise<unknown> {
+  cachedData ??= import("@emoji-mart/data").then((m: { default: unknown }) => m.default);
+  return cachedData;
+}
+
+function EmojiPickerBody({ onSelect, theme }: EmojiPickerBodyProps) {
+  return (
+    <Picker
+      autoFocus
+      data={loadEmojiData}
+      maxFrequentRows={2}
+      onEmojiSelect={(picked: { native?: string; id?: string }) => {
+        const value = picked.native ?? picked.id ?? null;
+        if (value) onSelect(value);
+      }}
+      previewPosition="none"
+      skinTonePosition="none"
+      theme={theme}
+    />
   );
 }

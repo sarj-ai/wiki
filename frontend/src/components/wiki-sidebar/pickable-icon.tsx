@@ -7,15 +7,6 @@ import { cn } from "@/lib/utils";
 
 import { EmojiPickerPopover } from "./emoji-picker-popover";
 
-interface PickableIconProps {
-  ariaLabel: string;
-  children: ReactNode;
-  dimmed?: boolean;
-  onChange: (next: null | string) => Promise<void>;
-  pickable: boolean;
-  value: string | undefined;
-}
-
 export function PickableIcon({
   ariaLabel,
   children,
@@ -45,4 +36,13 @@ export function PickableIcon({
       </Button>
     </EmojiPickerPopover>
   );
+}
+
+interface PickableIconProps {
+  ariaLabel: string;
+  children: ReactNode;
+  dimmed?: boolean;
+  onChange: (next: null | string) => Promise<void>;
+  pickable: boolean;
+  value: string | undefined;
 }

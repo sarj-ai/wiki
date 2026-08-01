@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback } from "react";
 import { create } from "zustand";
 import { persist, type StorageValue } from "zustand/middleware";
 
@@ -68,67 +67,21 @@ const useDriveCollapseStore = create<DriveCollapseState>()(
 
 let pendingReveal: null | string = null;
 
-function legacyAwareStorage<S>(
-  stateKey: "collapsed" | "expanded",
-  toValue: (map: Record<string, true>, version: number) => StorageValue<S>,
-): {
-  getItem: (name: string) => null | StorageValue<S>;
-  setItem: (name: string, value: StorageValue<S>) => void;
-  removeItem: (name: string) => void;
-} {
-  return {
-    getItem: (name: string) => {
-      if (typeof window === "undefined") return null;
-      const raw = window.localStorage.getItem(name);
-      if (!raw) return null;
-      try {
-        const parsed: unknown = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          const map: Record<string, true> = {};
-          for (const id of parsed) {
-            if (typeof id === "string") map[id] = true;
-          }
-          return toValue(map, 0);
-        }
-        const validated = ZPersistedExpansion.safeParse(parsed);
-        if (!validated.success) return null;
-        return toValue(validated.data.state[stateKey] ?? {}, validated.data.version);
-      } catch {
-        return null;
-      }
-    },
-    removeItem: (name: string) => {
-      if (typeof window === "undefined") return;
-      window.localStorage.removeItem(name);
-    },
-    setItem: (name: string, value: StorageValue<S>) => {
-      if (typeof window === "undefined") return;
-      window.localStorage.setItem(name, JSON.stringify(value));
-    },
-  };
-}
-
 export function useExpandedFolder(id: string): [boolean, (next: boolean) => void] {
   const expanded = useFolderStore((s) => s.expanded[id] === true);
   const setExpanded = useFolderStore((s) => s.setExpanded);
-  const setter = useCallback(
-    (next: boolean) => {
-      setExpanded(id, next);
-    },
-    [id, setExpanded],
-  );
+  const setter = (next: boolean) => {
+    setExpanded(id, next);
+  };
   return [expanded, setter];
 }
 
 export function useExpandedDrive(id: string): [boolean, (next: boolean) => void] {
   const collapsed = useDriveCollapseStore((s) => s.collapsed[id] === true);
   const setCollapsed = useDriveCollapseStore((s) => s.setCollapsed);
-  const setter = useCallback(
-    (next: boolean) => {
-      setCollapsed(id, !next);
-    },
-    [id, setCollapsed],
-  );
+  const setter = (next: boolean) => {
+    setCollapsed(id, !next);
+  };
   return [!collapsed, setter];
 }
 
@@ -148,4 +101,48 @@ export function consumeRevealFor(fileId: string): boolean {
   if (pendingReveal !== fileId) return false;
   pendingReveal = null;
   return true;
+}
+
+function legacyAwareStorage<S>(
+  stateKey: "collapsed" | "expanded",
+  toValue: (map: Record<string, true>, version: number) => StorageValue<S>,
+): {
+  getItem: (name: string) => null | StorageValue<S>;
+  setItem: (name: string, value: StorageValue<S>) => void;
+  removeItem: (name: string) => void;
+} {
+  return {
+    getItem: (name: string) => {
+      if (typeof window === "undefined") return null;
+      const raw = window.localStorage.getItem(name);
+      if (!raw) return null;
+      const parsed = parseJsonOrNull(raw);
+      if (Array.isArray(parsed)) {
+        const map: Record<string, true> = {};
+        for (const id of parsed) {
+          if (typeof id === "string") map[id] = true;
+        }
+        return toValue(map, 0);
+      }
+      const validated = ZPersistedExpansion.safeParse(parsed);
+      if (!validated.success) return null;
+      return toValue(validated.data.state[stateKey] ?? {}, validated.data.version);
+    },
+    removeItem: (name: string) => {
+      if (typeof window === "undefined") return;
+      window.localStorage.removeItem(name);
+    },
+    setItem: (name: string, value: StorageValue<S>) => {
+      if (typeof window === "undefined") return;
+      window.localStorage.setItem(name, JSON.stringify(value));
+    },
+  };
+}
+
+function parseJsonOrNull(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }

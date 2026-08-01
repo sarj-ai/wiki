@@ -8,16 +8,6 @@ const STORAGE_KEY = "wiki-sidebar-width";
 const MIN_WIDTH_PX = 224;
 const MAX_WIDTH_PX = 576;
 
-function useRestoreSidebarWidth() {
-  useEffect(() => {
-    const saved = ZSidebarWidthCss.parse(window.localStorage.getItem(STORAGE_KEY));
-    if (saved === null) return;
-    const px = Math.min(MAX_WIDTH_PX, Math.max(MIN_WIDTH_PX, Number.parseInt(saved, 10)));
-    const wrapper = document.querySelector<HTMLElement>('[data-slot="sidebar-wrapper"]');
-    wrapper?.style.setProperty("--sidebar-width", `${px}px`);
-  }, []);
-}
-
 export function SidebarResizeHandle() {
   useRestoreSidebarWidth();
   const [dragging, setDragging] = useState(false);
@@ -92,4 +82,14 @@ export function SidebarResizeHandle() {
       ) : null}
     </>
   );
+}
+
+function useRestoreSidebarWidth() {
+  useEffect(() => {
+    const saved = ZSidebarWidthCss.parse(window.localStorage.getItem(STORAGE_KEY));
+    if (saved === null) return;
+    const px = Math.min(MAX_WIDTH_PX, Math.max(MIN_WIDTH_PX, Number.parseInt(saved, 10)));
+    const wrapper = document.querySelector<HTMLElement>('[data-slot="sidebar-wrapper"]');
+    wrapper?.style.setProperty("--sidebar-width", `${px}px`);
+  }, []);
 }

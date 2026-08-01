@@ -105,12 +105,45 @@ export default defineConfig([
     },
   },
   {
+    rules: {
+      // Replaces (and must therefore restate) the canonical eslint.strict.mjs
+      // selectors, plus the useCallback/useMemo ban that config shipped before
+      // 9.5.0 dropped it without a replacement note. This repo compiles with
+      // the React Compiler (next.config.ts `reactCompiler: true`), which
+      // memoizes automatically — hand-written useCallback/useMemo is dead
+      // weight the compiler has to work around, so the ban stays local until
+      // the canonical config restores it.
+      "no-restricted-syntax": [
+        "error",
+        {
+          message: "Prefer a for-of loop over forEach.",
+          selector: "CallExpression[callee.property.name='forEach']",
+        },
+        {
+          message: "Use ES modules instead of namespaces.",
+          selector: "TSModuleDeclaration[kind='namespace']",
+        },
+        {
+          message: "Don't memoize by hand — the React Compiler handles it. Remove useCallback.",
+          selector: "CallExpression[callee.name='useCallback']",
+        },
+        {
+          message:
+            "Don't memoize by hand — the React Compiler handles it. Remove useMemo (extract a plain function or compute inline).",
+          selector: "CallExpression[callee.name='useMemo']",
+        },
+      ],
+    },
+  },
+  // sonarjs threshold rules (cognitive-complexity, no-duplicate-string) are
+  // deliberately absent: complexity/duplication thresholds are vetoed org-wide
+  // as code-smell heuristics, not correctness rules — same rationale as the
+  // C901/PLR091x block in backend/.ruff-strict.toml.
+  {
     plugins: { sonarjs },
     rules: {
-      "sonarjs/cognitive-complexity": ["error", 15],
       "sonarjs/no-all-duplicated-branches": "error",
       "sonarjs/no-collapsible-if": "error",
-      "sonarjs/no-duplicate-string": ["error", { threshold: 5 }],
       "sonarjs/no-element-overwrite": "error",
       "sonarjs/no-identical-expressions": "error",
       "sonarjs/no-identical-functions": "error",
@@ -170,6 +203,19 @@ export default defineConfig([
     ...testingLibraryReact,
     rules: rulesAsErrors(testingLibraryReact.rules),
   },
+  // The canonical eslint.strict.mjs test override justifies itself with type
+  // assertions (test doubles crossing type boundaries) but also switches off
+  // four async/scoping rules that justification does not cover. Re-enable
+  // those four for tests; the assertion rules stay relaxed as documented.
+  {
+    files: ["**/*.test.{ts,tsx}"],
+    rules: {
+      "@typescript-eslint/promise-function-async": "error",
+      "@typescript-eslint/require-await": "error",
+      "no-await-in-loop": "error",
+      "unicorn/consistent-function-scoping": "error",
+    },
+  },
   {
     files: ["**/*.tsx"],
     rules: {
@@ -195,10 +241,6 @@ export default defineConfig([
     rules: {
       "@sarj/no-raw-env": "off",
     },
-  },
-  {
-    files: ["src/components/wiki-sidebar/drive-section.tsx"],
-    rules: { "sonarjs/cognitive-complexity": "off" },
   },
   // Config files live outside the typed project — disable type-aware rules.
   {

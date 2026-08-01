@@ -47,9 +47,13 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     const storage =
       typeof window === "undefined"
         ? {
-            getItem: async () => Promise.resolve(null),
-            removeItem: async () => Promise.resolve(),
-            setItem: async () => Promise.resolve(),
+            getItem: () => null,
+            removeItem: () => {
+              // SSR no-op: nothing is persisted outside the browser.
+            },
+            setItem: () => {
+              // SSR no-op: nothing is persisted outside the browser.
+            },
           }
         : window.localStorage;
     return {

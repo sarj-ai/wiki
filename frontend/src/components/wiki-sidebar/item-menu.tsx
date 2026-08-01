@@ -39,14 +39,6 @@ import { MIME_FORM } from "@/types/wiki";
 import { MoveFileDialog } from "./move-file-dialog";
 import { NamePromptDialog } from "./name-prompt-dialog";
 
-interface ItemMenuProps {
-  currentName: string;
-  driveId: string | undefined;
-  fileId: string;
-  isFolder: boolean;
-  parentFolderId: string | undefined;
-}
-
 export function ItemMenu({
   currentName,
   driveId,
@@ -227,4 +219,12 @@ export function ItemMenu({
       />
     </>
   );
+}
+
+interface ItemMenuProps {
+  currentName: string;
+  driveId: string | undefined;
+  fileId: string;
+  isFolder: boolean;
+  parentFolderId: string | undefined;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 
 import { ErrorBoundary } from "@/components/error-boundary";
 import { SarjLogo } from "@/components/sarj-logo";
@@ -30,22 +30,15 @@ export function WikiSidebar() {
   const activeDriveId: null | string = (() => {
     if (!pathname.startsWith("/d/")) return null;
     try {
-      return decodeURIComponent(pathname.split("/")[2] ?? "") || null;
+      return decodeURIComponent(pathname.split("/", 3)[2] ?? "") || null;
     } catch {
-      return pathname.split("/")[2] ?? null;
+      return pathname.split("/", 3)[2] ?? null;
     }
   })();
 
   const showNonDocFiles = prefsQuery.data?.showNonDocFiles ?? true;
-  const hiddenWorkspaceIds = useMemo(
-    () => new Set(prefsQuery.data?.hiddenWorkspaceIds ?? []),
-    [prefsQuery.data],
-  );
-
-  const visibleDrives = useMemo(
-    () => (drivesQuery.data ?? []).filter((d) => !hiddenWorkspaceIds.has(d.id)),
-    [drivesQuery.data, hiddenWorkspaceIds],
-  );
+  const hiddenWorkspaceIds = new Set(prefsQuery.data?.hiddenWorkspaceIds);
+  const visibleDrives = (drivesQuery.data ?? []).filter((d) => !hiddenWorkspaceIds.has(d.id));
 
   const activeFileQuery = useFile(activeDriveId);
   const breadcrumb = activeFileQuery.data?.breadcrumb;
