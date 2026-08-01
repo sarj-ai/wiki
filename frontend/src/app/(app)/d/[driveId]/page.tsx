@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
 import { FilePageClient } from "@/components/wiki-document/file-page-client";
-import { getPublicDocName } from "@/lib/public-api";
 import { serverWikiApi } from "@/lib/server-api";
 
 function docMetadata(name: string): Metadata {
@@ -17,12 +16,11 @@ export async function generateMetadata({
   try {
     const file = await serverWikiApi.getFile(driveId);
     return docMetadata(file.name);
-  } catch {
-    // getFile throws on 401/404. No session usually means a link-preview
-    // crawler — fall back to the public cache-backed name so unfurls can
-    // show the doc title; if that misses too, the root default title wins.
-    const name = await getPublicDocName(driveId);
-    return name === null ? {} : docMetadata(name);
+  } catch (error) {
+    // The middleware gives unfurl crawlers a static generic card. Authenticated
+    // page failures inherit generic metadata and never infer a title from an ID.
+    console.error("Authenticated document metadata lookup failed", error);
+    return {};
   }
 }
 
