@@ -45,7 +45,7 @@ _HTML_CSP = "; ".join(
         "base-uri 'none'",
         "form-action 'none'",
         f"frame-ancestors {settings.frontend_origin}",
-        "sandbox allow-scripts",
+        "sandbox allow-popups allow-popups-to-escape-sandbox allow-scripts",
     )
 )
 

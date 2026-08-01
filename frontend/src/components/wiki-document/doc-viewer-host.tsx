@@ -21,7 +21,7 @@ const MAX_POOL = 3;
 
 const MAX_MOUNTED = 4;
 
-export const HTML_IFRAME_SANDBOX = "allow-scripts";
+export const HTML_IFRAME_SANDBOX = "allow-popups allow-popups-to-escape-sandbox allow-scripts";
 
 export function htmlContentUrl(fileId: string, version?: string): string {
   const query = new URLSearchParams({ version: version ?? "current" });
