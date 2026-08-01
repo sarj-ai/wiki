@@ -36,13 +36,6 @@
   "backend/app/files/service.py": {
     "SARJ110": 1
   },
-  "backend/app/linkmeta/router.py": {
-    "SARJ075": 1,
-    "SARJ110": 1
-  },
-  "backend/app/linkmeta/schemas.py": {
-    "SARJ075": 1
-  },
   "backend/app/logging_config.py": {
     "SARJ075": 1,
     "SARJ110": 7
