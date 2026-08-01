@@ -10,7 +10,7 @@ from googleapiclient.errors import HttpError
 
 from app.drive.google_schemas import GoogleFile
 from app.drive.retry import execute_mutation, execute_with_retry
-from app.drive.schemas import MIME_FOLDER, NAVIGATOR_SUPPORTED_MIME_TYPES
+from app.drive.schemas import MIME_FOLDER, MIME_HTML, NAVIGATOR_SUPPORTED_MIME_TYPES
 from app.drive.service import DriveService, reuse_drive_client
 from app.files.errors import (
     CrossDriveMoveNotSupportedError,
@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from googleapiclient._apis.drive.v3.schemas import File
 
 _FIELDS = "id,name,mimeType,parents,driveId,modifiedTime"
+_MAX_HTML_BYTES = 5 * 1024 * 1024
 
 
 class FilesService(ABC):
@@ -36,6 +37,9 @@ class FilesService(ABC):
 
     @abstractmethod
     async def get(self, file_id: str) -> FileResponse: ...
+
+    @abstractmethod
+    async def get_html_content(self, file_id: str) -> bytes: ...
 
     @abstractmethod
     async def rename(self, file_id: str, new_name: str) -> FileResponse: ...
@@ -70,6 +74,19 @@ class GoogleFilesService(FilesService):
         result = await asyncio.to_thread(self._get_sync, file_id)
         await self._ensure_in_member_drive(result.drive_id)
         return result
+
+    @override
+    async def get_html_content(self, file_id: str) -> bytes:
+        file = await self.get(file_id)
+        if file.mime_type != MIME_HTML:
+            msg = "Only HTML files can use the isolated HTML viewer"
+            raise UnsupportedMimeError(msg)
+        await asyncio.to_thread(self._ensure_current_drive_membership_sync, file.drive_id)
+        content = await asyncio.to_thread(self._download_sync, file_id)
+        if len(content) > _MAX_HTML_BYTES:
+            msg = "HTML file exceeds the 5 MiB viewer limit"
+            raise UnsupportedMimeError(msg)
+        return content
 
     @override
     async def rename(self, file_id: str, new_name: str) -> FileResponse:
@@ -191,6 +208,28 @@ class GoogleFilesService(FilesService):
             execute_with_retry(
                 client.files().update(fileId=file_id, body=body, supportsAllDrives=True)
             )
+
+    def _ensure_current_drive_membership_sync(self, drive_id: str | None) -> None:
+        if drive_id is None:
+            msg = "File not available in Sarj Wiki"
+            raise FileNotInScopeError(msg)
+        client = self._client()
+        with _translated_drive_errors():
+            raw = execute_with_retry(client.drives().get(driveId=drive_id, fields="id,hidden"))
+        if raw.get("id") != drive_id or raw.get("hidden") is True:
+            msg = "File not available in Sarj Wiki"
+            raise FileNotInScopeError(msg)
+
+    def _download_sync(self, file_id: str) -> bytes:
+        client = self._client()
+        with _translated_drive_errors():
+            raw = execute_with_retry(
+                client.files().get(fileId=file_id, alt="media", supportsAllDrives=True)
+            )
+        if not isinstance(raw, bytes):
+            msg = "Google Drive returned invalid HTML content"
+            raise DriveUpstreamError(502, msg)
+        return raw
 
     def _client(self) -> DriveResource:
         return reuse_drive_client(self._user, self._clients)

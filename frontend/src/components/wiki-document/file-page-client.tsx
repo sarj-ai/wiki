@@ -14,13 +14,28 @@ import { saveLastDoc } from "@/lib/last-doc";
 import { markNav, markPaint } from "@/lib/perf-marks";
 import { ApiError } from "@/lib/wiki-api";
 import { findCachedNodeMeta } from "@/lib/wiki-cache";
-import type { BreadcrumbItem } from "@/types/wiki";
+import { type BreadcrumbItem, MIME_HTML } from "@/types/wiki";
 
 export function FilePageClient({ driveId }: { driveId: string }) {
   const queryClient = useQueryClient();
   const fileQuery = useFile(driveId);
+  const htmlMimeType = fileQuery.data?.mimeType;
+  const refetchFile = fileQuery.refetch;
 
   const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (htmlMimeType !== MIME_HTML) return;
+    const interval = window.setInterval(
+      () => {
+        void refetchFile();
+      },
+      5 * 60 * 1000,
+    );
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [htmlMimeType, refetchFile]);
 
   const committed = useRef<null | string>(null);
   useEffect(() => {
@@ -74,6 +89,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
       }}
       reloadKey={reloadKey}
       title={file.name}
+      {...(file.modifiedTime === undefined ? {} : { version: file.modifiedTime })}
     />
   );
 }
@@ -85,6 +101,7 @@ interface FilePageBodyProps {
   onReload: () => void;
   reloadKey: number;
   title: string;
+  version?: string;
 }
 
 function FilePageBody({
@@ -94,6 +111,7 @@ function FilePageBody({
   onReload,
   reloadKey,
   title,
+  version,
 }: FilePageBodyProps) {
   const setActive = useDocViewerStore((s) => s.setActive);
   const setSlot = useDocViewerStore((s) => s.setSlot);
@@ -102,9 +120,15 @@ function FilePageBody({
     markPaint(fileId, "toolbarPaint");
   }, [fileId]);
   useEffect(() => {
-    setActive({ fileId, mimeType, reloadKey, title });
+    setActive({
+      fileId,
+      mimeType,
+      reloadKey,
+      title,
+      ...(version === undefined ? {} : { version }),
+    });
     saveLastDoc({ fileId, mimeType, title });
-  }, [fileId, mimeType, title, reloadKey, setActive]);
+  }, [fileId, mimeType, title, reloadKey, setActive, version]);
   useEffect(
     () => () => {
       setActive(null);

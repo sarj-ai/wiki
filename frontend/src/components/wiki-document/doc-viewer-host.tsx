@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 
 import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
 import { type ActiveDoc, useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
+import { API_URL } from "@/lib/env";
 import { embedUrlFor } from "@/lib/file-urls";
 import { markNav } from "@/lib/perf-marks";
 import { cn } from "@/lib/utils";
+import { MIME_HTML } from "@/types/wiki";
 
 interface SlotRect {
   height: number;
@@ -19,7 +21,14 @@ const MAX_POOL = 3;
 
 const MAX_MOUNTED = 4;
 
-export function DocViewerHost() {
+export const HTML_IFRAME_SANDBOX = "allow-scripts";
+
+export function htmlContentUrl(fileId: string, version?: string): string {
+  const query = new URLSearchParams({ version: version ?? "current" });
+  return `${API_URL}/files/${encodeURIComponent(fileId)}/content?${query.toString()}`;
+}
+
+export const DocViewerHost = () => {
   const active = useDocViewerStore((s) => s.active);
   const prewarm = useDocViewerStore((s) => s.prewarm);
   const warm = useDocViewerStore((s) => s.warm);
@@ -32,7 +41,8 @@ export function DocViewerHost() {
     active &&
     (head?.fileId !== active.fileId ||
       head.reloadKey !== active.reloadKey ||
-      head.mimeType !== active.mimeType)
+      head.mimeType !== active.mimeType ||
+      head.version !== active.version)
   ) {
     setPool([active, ...pool.filter((entry) => entry.fileId !== active.fileId)].slice(0, MAX_POOL));
   }
@@ -40,6 +50,7 @@ export function DocViewerHost() {
   const mounted: ActiveDoc[] = [];
   const seen = new Set<string>();
   for (const entry of [...pool, ...(prewarm ? [prewarm] : []), ...warm]) {
+    if (entry.mimeType === MIME_HTML && entry.fileId !== active?.fileId) continue;
     if (seen.has(entry.fileId)) continue;
     seen.add(entry.fileId);
     mounted.push(entry);
@@ -76,23 +87,32 @@ export function DocViewerHost() {
         >
           <PooledIframe
             fileId={entry.fileId}
-            key={`${entry.fileId}:${entry.reloadKey}`}
+            key={`${entry.fileId}:${entry.reloadKey}:${entry.version ?? "current"}`}
             mimeType={entry.mimeType}
             title={entry.title}
+            {...(entry.version === undefined ? {} : { version: entry.version })}
           />
         </div>
       ))}
     </div>
   );
-}
+};
 
 interface PooledIframeProps {
   fileId: string;
   mimeType: string;
   title: string;
+  version?: string;
 }
 
-function PooledIframe({ fileId, mimeType, title }: PooledIframeProps) {
+const PooledIframe = ({ fileId, mimeType, title, version }: PooledIframeProps) => {
+  if (mimeType === MIME_HTML) {
+    return isolatedHtmlIframe({ fileId, title, version });
+  }
+  return <DrivePreviewIframe fileId={fileId} mimeType={mimeType} title={title} />;
+};
+
+const DrivePreviewIframe = ({ fileId, mimeType, title }: PooledIframeProps) => {
   const src = embedUrlFor(mimeType, fileId);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -130,5 +150,25 @@ function PooledIframe({ fileId, mimeType, title }: PooledIframeProps) {
         title={title}
       />
     </div>
+  );
+};
+
+function isolatedHtmlIframe({
+  fileId,
+  title,
+  version,
+}: {
+  fileId: string;
+  title: string;
+  version: string | undefined;
+}) {
+  return (
+    <iframe
+      className="block h-full w-full border-0"
+      referrerPolicy="no-referrer"
+      sandbox={HTML_IFRAME_SANDBOX}
+      src={htmlContentUrl(fileId, version)}
+      title={title}
+    />
   );
 }

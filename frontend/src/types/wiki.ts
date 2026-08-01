@@ -22,6 +22,7 @@ export const MIME_DRAWING = "application/vnd.google-apps.drawing";
 export const MIME_FORM = "application/vnd.google-apps.form";
 export const MIME_PDF = "application/pdf";
 export const MIME_SHORTCUT = "application/vnd.google-apps.shortcut";
+export const MIME_HTML = "text/html";
 
 export type DriveSummary = z.output<typeof driveSummary>;
 export type DriveNode = z.output<typeof driveNode>;

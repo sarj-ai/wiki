@@ -33,7 +33,7 @@ import {
   type KindedNode,
 } from "@/lib/wiki-tree";
 import type { DriveNode, DriveSummary, FolderIcon, SortOrder } from "@/types/wiki";
-import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
+import { MIME_DOC, MIME_FOLDER, MIME_HTML } from "@/types/wiki";
 
 import { CreateFileMenu } from "./create-file-menu";
 import { DriveSectionProvider, type DriveSectionValue } from "./drive-context";
@@ -80,7 +80,9 @@ function buildRootItems({
   }));
 
   const rawFiles = rootFiles.filter((n) => !isFolderLikeNode(n));
-  const visibleFiles = showNonDocFiles ? rawFiles : rawFiles.filter((n) => n.mimeType === MIME_DOC);
+  const visibleFiles = showNonDocFiles
+    ? rawFiles
+    : rawFiles.filter((n) => n.mimeType === MIME_DOC || n.mimeType === MIME_HTML);
   const files: KindedNode[] = visibleFiles.map((node) => ({ node, type: "file" }));
   return [...folders, ...files].sort((a, b) => compareNodeOrder(a, b, sortOrderMap));
 }
