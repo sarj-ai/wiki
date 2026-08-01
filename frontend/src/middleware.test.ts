@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 
-import { proxy } from "./proxy";
+import middleware from "./middleware";
 
 const PRIVATE_TITLE = "Confidential Acquisition Plan";
 
 function preview(path: string, userAgent = "Slackbot-LinkExpanding 1.0") {
-  return proxy(
+  return middleware(
     new NextRequest(`https://wiki.sarj.ai${path}`, {
       headers: { "user-agent": userAgent },
     }),
