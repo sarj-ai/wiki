@@ -3,7 +3,7 @@ STAMPS := .stamps
 SECRETS_TTL := 1440
 
 .PHONY: setup setup-hooks standards-sync standards-check standards-upgrade \
-	check check-node check-quality check-backend check-frontend fix \
+	check check-node check-quality check-backend check-frontend fix audit doctor \
 	pull-local-secrets pull-local-secrets-force pull-tf-secrets pull-tf-secrets-force \
 	push-local-secrets push-tf-secrets
 
@@ -35,6 +35,9 @@ setup: setup-hooks standards-sync
 # workflow step it mirrors; when editing a step here or in .github/workflows/,
 # update its twin. CI-only steps with no faithful local equivalent:
 #   ci-backend.yml  "Image build + scan" (docker build + Trivy — needs Docker)
+#   ci-backend.yml  "pip-audit"  \ network-bound advisory lookups; run them
+#   ci-frontend.yml "npm audit"  / locally via `make audit`, not on every push
+#   ci-iac.yml      "Trivy IaC scan" (terraform/ config scan — needs Trivy)
 #   ci-quality.yml  "Reject lint baseline growth" (needs the PR base SHA)
 #   ci-quality.yml  "gitleaks (full history)" (pre-commit runs gitleaks on the
 #                   working tree; full-history scan stays CI-only)
@@ -75,8 +78,6 @@ check-backend:
 	@cd backend && uv run vulture
 	@# ci-backend.yml "Import contracts"
 	@cd backend && uv run lint-imports
-	@# ci-backend.yml "pip-audit"
-	@cd backend && uv run pip-audit
 	@# ci-backend.yml "Run pytest"
 	@cd backend && uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70
 
@@ -93,12 +94,28 @@ check-frontend:
 	@cd frontend && npm run knip
 	@# ci-frontend.yml "Type coverage"
 	@cd frontend && npm run type-coverage
-	@# ci-frontend.yml "npm audit"
-	@cd frontend && npm audit --omit=dev --audit-level=moderate
 	@# ci-frontend.yml "Run vitest"
 	@cd frontend && npm test
 	@# ci-frontend.yml "Build" (Next.js build smoke test)
 	@cd frontend && NEXT_PUBLIC_API_URL=http://localhost:8000 npm run build
+
+# Network-bound advisory scans, carved out of `make check` so pre-push stays
+# offline-safe and fast. CI runs the same commands on every PR.
+audit:
+	@# ci-backend.yml "pip-audit"
+	@cd backend && uv run pip-audit
+	@# ci-frontend.yml "npm audit"
+	@cd frontend && npm audit --omit=dev --audit-level=moderate
+
+# `sarj-lint-configs doctor` walks the whole tree looking for version pins and
+# does not know about Next.js build output (.next/, .open-next/), where stale
+# vendored copies of config text produce phantom drift. Run it over a clean
+# copy containing only git-tracked and unignored files instead.
+doctor:
+	@tmp=$$(mktemp -d) && tmp=$$(cd "$$tmp" && pwd -P) && trap 'rm -rf "$$tmp"' EXIT && \
+		git ls-files --cached --others --exclude-standard -z | \
+		tar --null -T - -cf - | tar -xf - -C "$$tmp" && \
+		uv run --project backend --locked sarj-lint-configs doctor --dest "$$tmp"
 
 # Apply every autofix the checkers know how to make; `make check` verifies.
 fix:

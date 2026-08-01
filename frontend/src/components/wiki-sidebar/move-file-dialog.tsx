@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight, Folder, HardDrive, Loader2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,103 @@ import type { DriveNode } from "@/types/wiki";
 import { MIME_SHORTCUT } from "@/types/wiki";
 
 import { rowIndent } from "./layout-constants";
+
+export function MoveFileDialog({
+  currentDriveId,
+  currentParentFolderId,
+  fileId,
+  fileName,
+  onOpenChange,
+  open,
+}: MoveFileDialogProps) {
+  const drivesQuery = useDrives();
+  const moveFile = useMoveFile();
+  const [selectedId, setSelectedId] = useState<null | string>(null);
+
+  const handleConfirm = async () => {
+    if (!selectedId) return;
+    await runWithErrorToast(
+      async () => {
+        await moveFile.mutateAsync({
+          fileId,
+          newParentFolderId: selectedId,
+          sourceDriveId: currentDriveId,
+          sourceParentFolderId: currentParentFolderId,
+        });
+        toast.success(`Moved "${fileName}"`);
+        onOpenChange(false);
+        setSelectedId(null);
+      },
+
+      (err) =>
+        err instanceof ApiError && err.status === 403
+          ? "Drive denied this move — you may not have edit permission on the destination."
+          : toErrorMessage(err, "Move failed"),
+    );
+  };
+
+  const disabledId = currentParentFolderId ?? currentDriveId ?? "";
+
+  return (
+    <Dialog
+      onOpenChange={(next) => {
+        if (moveFile.isPending) return;
+        onOpenChange(next);
+      }}
+      open={open}
+    >
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Move &ldquo;{fileName}&rdquo;</DialogTitle>
+          <DialogDescription>
+            Pick a destination folder or drive. Cross-drive moves may be blocked by Drive admin
+            settings — copy the file instead if that fails.
+          </DialogDescription>
+        </DialogHeader>
+        <ScrollArea className="h-72 rounded-sm border">
+          <div className="space-y-0.5 p-1">
+            {(drivesQuery.data ?? []).map((drive) => (
+              <DriveRow
+                disabledId={disabledId}
+                driveId={drive.id}
+                driveName={drive.name}
+                key={drive.id}
+                onSelect={setSelectedId}
+                selectedId={selectedId}
+              />
+            ))}
+          </div>
+        </ScrollArea>
+        <DialogFooter>
+          <Button
+            disabled={moveFile.isPending}
+            onClick={() => {
+              onOpenChange(false);
+            }}
+            variant="outline"
+          >
+            Cancel
+          </Button>
+          <Button
+            disabled={!selectedId || moveFile.isPending}
+            onClick={() => {
+              void handleConfirm();
+            }}
+          >
+            {moveFile.isPending ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Moving…
+              </>
+            ) : (
+              "Move"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 interface MoveFileDialogProps {
   currentDriveId: string | undefined;
@@ -120,12 +217,8 @@ function DriveRow({ disabledId, driveId, driveName, onSelect, selectedId }: Driv
 
   const treeQuery = useDriveTree(expanded ? driveId : null);
 
-  const childrenByParent = useMemo(
-    () =>
-      buildChildrenIndex(
-        (treeQuery.data?.folders ?? []).filter((n) => n.mimeType !== MIME_SHORTCUT),
-      ),
-    [treeQuery.data],
+  const childrenByParent = buildChildrenIndex(
+    (treeQuery.data?.folders ?? []).filter((n) => n.mimeType !== MIME_SHORTCUT),
   );
   const rootFolders = childrenByParent.get("__root__") ?? [];
   const isDriveDisabled = driveId === disabledId;
@@ -183,102 +276,5 @@ function DriveRow({ disabledId, driveId, driveName, onSelect, selectedId }: Driv
           ))
         : null}
     </>
-  );
-}
-
-export function MoveFileDialog({
-  currentDriveId,
-  currentParentFolderId,
-  fileId,
-  fileName,
-  onOpenChange,
-  open,
-}: MoveFileDialogProps) {
-  const drivesQuery = useDrives();
-  const moveFile = useMoveFile();
-  const [selectedId, setSelectedId] = useState<null | string>(null);
-
-  const handleConfirm = async () => {
-    if (!selectedId) return;
-    await runWithErrorToast(
-      async () => {
-        await moveFile.mutateAsync({
-          fileId,
-          newParentFolderId: selectedId,
-          sourceDriveId: currentDriveId,
-          sourceParentFolderId: currentParentFolderId,
-        });
-        toast.success(`Moved "${fileName}"`);
-        onOpenChange(false);
-        setSelectedId(null);
-      },
-
-      (err) =>
-        err instanceof ApiError && err.status === 403
-          ? "Drive denied this move — you may not have edit permission on the destination."
-          : toErrorMessage(err, "Move failed"),
-    );
-  };
-
-  const disabledId = currentParentFolderId ?? currentDriveId ?? "";
-
-  return (
-    <Dialog
-      onOpenChange={(next) => {
-        if (moveFile.isPending) return;
-        onOpenChange(next);
-      }}
-      open={open}
-    >
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Move &ldquo;{fileName}&rdquo;</DialogTitle>
-          <DialogDescription>
-            Pick a destination folder or drive. Cross-drive moves may be blocked by Drive admin
-            settings — copy the file instead if that fails.
-          </DialogDescription>
-        </DialogHeader>
-        <ScrollArea className="h-72 rounded-sm border">
-          <div className="space-y-0.5 p-1">
-            {(drivesQuery.data ?? []).map((drive) => (
-              <DriveRow
-                disabledId={disabledId}
-                driveId={drive.id}
-                driveName={drive.name}
-                key={drive.id}
-                onSelect={setSelectedId}
-                selectedId={selectedId}
-              />
-            ))}
-          </div>
-        </ScrollArea>
-        <DialogFooter>
-          <Button
-            disabled={moveFile.isPending}
-            onClick={() => {
-              onOpenChange(false);
-            }}
-            variant="outline"
-          >
-            Cancel
-          </Button>
-          <Button
-            disabled={!selectedId || moveFile.isPending}
-            onClick={() => {
-              void handleConfirm();
-            }}
-          >
-            {moveFile.isPending ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Moving…
-              </>
-            ) : (
-              "Move"
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

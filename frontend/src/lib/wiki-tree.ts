@@ -1,8 +1,6 @@
 import type { DriveNode } from "@/types/wiki";
 import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
 
-type NodeKind = "file" | "folder";
-
 export function isFolderLikeNode(node: DriveNode): boolean {
   return (
     node.mimeType === MIME_FOLDER ||
@@ -60,3 +58,5 @@ export function applyOptimisticOrder(
   }
   return ordered;
 }
+
+type NodeKind = "file" | "folder";

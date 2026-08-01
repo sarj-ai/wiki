@@ -10,7 +10,6 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ChevronRight, HardDrive, Loader2, RefreshCw } from "lucide-react";
-import { useMemo } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -68,48 +67,6 @@ const cursorFirstCollision: CollisionDetection = (args) => {
   return closestCorners(args);
 };
 
-function buildRootItems({
-  childrenByParent,
-  rootFiles,
-  showNonDocFiles,
-  sortOrderMap,
-}: BuildRootItemsArgs): KindedNode[] {
-  const folders: KindedNode[] = (childrenByParent.get("__root__") ?? []).map((node) => ({
-    node,
-    type: "folder",
-  }));
-
-  const rawFiles = rootFiles.filter((n) => !isFolderLikeNode(n));
-  const visibleFiles = showNonDocFiles
-    ? rawFiles
-    : rawFiles.filter((n) => n.mimeType === MIME_DOC || n.mimeType === MIME_HTML);
-  const files: KindedNode[] = visibleFiles.map((node) => ({ node, type: "file" }));
-  return [...folders, ...files].sort((a, b) => compareNodeOrder(a, b, sortOrderMap));
-}
-
-function DriveTreeSkeleton() {
-  return (
-    <SidebarMenuItem className="flex flex-col gap-1.5 px-2 py-1">
-      <div className="flex items-center gap-2 pl-1">
-        <Skeleton className="size-3.5 rounded-sm" />
-        <Skeleton className="h-3.5 w-32 rounded-sm" />
-      </div>
-      <div className="flex items-center gap-2 pl-5">
-        <Skeleton className="size-3.5 rounded-sm" />
-        <Skeleton className="h-3.5 w-40 rounded-sm" />
-      </div>
-      <div className="flex items-center gap-2 pl-5">
-        <Skeleton className="size-3.5 rounded-sm" />
-        <Skeleton className="h-3.5 w-24 rounded-sm" />
-      </div>
-      <div className="flex items-center gap-2 pl-1">
-        <Skeleton className="size-3.5 rounded-sm" />
-        <Skeleton className="h-3.5 w-36 rounded-sm" />
-      </div>
-    </SidebarMenuItem>
-  );
-}
-
 export function DriveSection({
   activeDriveId,
   drive,
@@ -153,32 +110,18 @@ export function DriveSection({
   const displayItems = applyOptimisticOrder(rootItems, optimisticOrder);
   const displayItemIds = displayItems.map((item) => item.node.id);
 
-  const contextValue: DriveSectionValue = useMemo(
-    () => ({
-      activeDriveId,
-      childrenByParent,
-      docIconOverrides,
-      driveId: drive.id,
-      filesByParent,
-      iconOverrides,
-      optimisticByContainer: reorder.optimisticByContainer,
-      showNonDocFiles,
-      sortOrderMap,
-      treeFilesComplete: filesComplete,
-    }),
-    [
-      drive.id,
-      activeDriveId,
-      showNonDocFiles,
-      childrenByParent,
-      filesByParent,
-      filesComplete,
-      iconOverrides,
-      docIconOverrides,
-      sortOrderMap,
-      reorder.optimisticByContainer,
-    ],
-  );
+  const contextValue: DriveSectionValue = {
+    activeDriveId,
+    childrenByParent,
+    docIconOverrides,
+    driveId: drive.id,
+    filesByParent,
+    iconOverrides,
+    optimisticByContainer: reorder.optimisticByContainer,
+    showNonDocFiles,
+    sortOrderMap,
+    treeFilesComplete: filesComplete,
+  };
 
   return (
     <DriveSectionProvider value={contextValue}>
@@ -301,5 +244,47 @@ export function DriveSection({
         ) : null}
       </SidebarGroup>
     </DriveSectionProvider>
+  );
+}
+
+function buildRootItems({
+  childrenByParent,
+  rootFiles,
+  showNonDocFiles,
+  sortOrderMap,
+}: BuildRootItemsArgs): KindedNode[] {
+  const folders: KindedNode[] = (childrenByParent.get("__root__") ?? []).map((node) => ({
+    node,
+    type: "folder",
+  }));
+
+  const rawFiles = rootFiles.filter((n) => !isFolderLikeNode(n));
+  const visibleFiles = showNonDocFiles
+    ? rawFiles
+    : rawFiles.filter((n) => n.mimeType === MIME_DOC || n.mimeType === MIME_HTML);
+  const files: KindedNode[] = visibleFiles.map((node) => ({ node, type: "file" }));
+  return [...folders, ...files].sort((a, b) => compareNodeOrder(a, b, sortOrderMap));
+}
+
+function DriveTreeSkeleton() {
+  return (
+    <SidebarMenuItem className="flex flex-col gap-1.5 px-2 py-1">
+      <div className="flex items-center gap-2 pl-1">
+        <Skeleton className="size-3.5 rounded-sm" />
+        <Skeleton className="h-3.5 w-32 rounded-sm" />
+      </div>
+      <div className="flex items-center gap-2 pl-5">
+        <Skeleton className="size-3.5 rounded-sm" />
+        <Skeleton className="h-3.5 w-40 rounded-sm" />
+      </div>
+      <div className="flex items-center gap-2 pl-5">
+        <Skeleton className="size-3.5 rounded-sm" />
+        <Skeleton className="h-3.5 w-24 rounded-sm" />
+      </div>
+      <div className="flex items-center gap-2 pl-1">
+        <Skeleton className="size-3.5 rounded-sm" />
+        <Skeleton className="h-3.5 w-36 rounded-sm" />
+      </div>
+    </SidebarMenuItem>
   );
 }

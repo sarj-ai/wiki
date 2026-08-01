@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
+  return Response.json(body, {
     headers: { "content-type": "application/json" },
     status,
   });
@@ -120,13 +120,12 @@ describe("error mapping", () => {
 describe("401 refresh-and-replay", () => {
   it("refreshes once, replays the original request, and resolves", async () => {
     const calls: string[] = [];
-    const fetchMock = vi.fn(async (input: Request | string | URL) => {
+    const fetchMock = vi.fn((input: Request | string | URL) => {
       const url = input instanceof Request ? input.url : String(input);
       calls.push(url);
-      if (calls.length === 1) return Promise.resolve(jsonResponse({ detail: "expired" }, 401));
-      if (url.endsWith("/auth/refresh"))
-        return Promise.resolve(new Response(null, { status: 200 }));
-      return Promise.resolve(jsonResponse([{ id: "d1", name: "Engineering" }]));
+      if (calls.length === 1) return jsonResponse({ detail: "expired" }, 401);
+      if (url.endsWith("/auth/refresh")) return new Response(null, { status: 200 });
+      return jsonResponse([{ id: "d1", name: "Engineering" }]);
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -164,10 +163,10 @@ describe("401 refresh-and-replay", () => {
   });
 
   it("does not refresh when /auth/refresh itself returns 401", async () => {
-    const fetchMock = vi.fn(async (input: Request | string | URL) => {
+    const fetchMock = vi.fn((input: Request | string | URL) => {
       const url = input instanceof Request ? input.url : String(input);
       expect(url.endsWith("/auth/refresh")).toBe(false);
-      return Promise.resolve(jsonResponse({ detail: "expired" }, 401));
+      return jsonResponse({ detail: "expired" }, 401);
     });
     fetchMock.mockResolvedValueOnce(jsonResponse({ detail: "expired" }, 401));
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));

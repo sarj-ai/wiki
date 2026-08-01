@@ -11,9 +11,11 @@ and CI reject config or lock drift. `scripts/check_standards.py` discovers every
 installed Python, SQL, and IaC registry rule, so never maintain a handwritten hook list.
 
 `make check` is the exact local mirror of CI (pre-push runs it; each step is tagged
-with the workflow step it mirrors — keep the twins in sync). `make fix` applies every
-available autofix. `sarj-lint-configs doctor` cross-checks every Standards version pin
-against `.sarj-standards.toml`, the one authoritative pin site.
+with the workflow step it mirrors — keep the twins in sync). Network-bound advisory
+scans (pip-audit, npm audit) live in `make audit`, which CI runs on every PR but
+pre-push skips. `make fix` applies every available autofix. `make doctor` (wraps
+`sarj-lint-configs doctor` over a build-artifact-free copy) cross-checks every
+Standards version pin against `.sarj-standards.toml`, the one authoritative pin site.
 
 ## Overview
 

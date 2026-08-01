@@ -4,17 +4,6 @@ import React from "react";
 
 import { Button } from "@/components/ui/button";
 
-interface Props {
-  children: React.ReactNode;
-
-  fallback?: React.ReactNode;
-  resetKey?: string;
-}
-
-interface State {
-  hasError: boolean;
-}
-
 export class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
@@ -59,4 +48,15 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
     return this.props.children;
   }
+}
+
+interface Props {
+  children: React.ReactNode;
+
+  fallback?: React.ReactNode;
+  resetKey?: string;
+}
+
+interface State {
+  hasError: boolean;
 }

@@ -1,14 +1,5 @@
 import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
 
-interface ShortcutFields {
-  id: string;
-  mimeType: string;
-  shortcutInaccessible: boolean;
-  shortcutTargetDriveName?: string | undefined;
-  shortcutTargetId?: string | undefined;
-  shortcutTargetMimeType?: string | undefined;
-}
-
 export interface ResolvedShortcut {
   inaccessible: boolean;
   isFolderShortcut: boolean;
@@ -16,6 +7,15 @@ export interface ResolvedShortcut {
   targetId: string;
   targetMimeType: string;
   tooltip: null | string;
+}
+
+interface ShortcutFields {
+  id: string;
+  mimeType: string;
+  shortcutInaccessible: boolean;
+  shortcutTargetDriveName?: string | undefined;
+  shortcutTargetId?: string | undefined;
+  shortcutTargetMimeType?: string | undefined;
 }
 
 export const SHORTCUT_INACCESSIBLE_TOOLTIP =

@@ -7,59 +7,6 @@ import { wikiApi } from "@/lib/wiki-api";
 import { injectNewFileIntoCaches, removeFileFromCaches } from "@/lib/wiki-cache";
 import type { DocIcon, DriveTree, FolderIcon, SortOrder } from "@/types/wiki";
 
-function dropSortOrderLocally(
-  qc: ReturnType<typeof useQueryClient>,
-  fileId: string,
-): SortOrder[] | undefined {
-  const previous = qc.getQueryData<SortOrder[]>(wikiKeys.sortOrders);
-  if (!previous) return undefined;
-  qc.setQueryData<SortOrder[]>(
-    wikiKeys.sortOrders,
-    previous.filter((s) => s.driveId !== fileId),
-  );
-  return previous;
-}
-
-function useInvalidateTrees() {
-  const qc = useQueryClient();
-  return (driveIds: (null | string | undefined)[]) => {
-    for (const id of driveIds) {
-      if (id) void qc.invalidateQueries({ queryKey: wikiKeys.driveTree(id) });
-    }
-
-    void qc.invalidateQueries({ queryKey: wikiKeys.folderFilesPrefix });
-  };
-}
-
-function useIconMutation<TItem, TVars>(config: {
-  queryKey: readonly unknown[];
-  mutationFn: (vars: TVars) => Promise<unknown>;
-  matches: (item: TItem, vars: TVars) => boolean;
-  buildItem: (vars: TVars, existing: TItem | undefined) => TItem;
-}) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: config.mutationFn,
-    onError: (_err, _vars, context: { previous?: TItem[] } | undefined) => {
-      if (context?.previous) qc.setQueryData(config.queryKey, context.previous);
-    },
-    onMutate: (vars: TVars) => {
-      const previous = qc.getQueryData<TItem[]>(config.queryKey);
-      if (previous) {
-        const existing = previous.find((item) => config.matches(item, vars));
-        qc.setQueryData<TItem[]>(config.queryKey, [
-          ...previous.filter((item) => !config.matches(item, vars)),
-          config.buildItem(vars, existing),
-        ]);
-      }
-      return previous === undefined ? {} : { previous };
-    },
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: config.queryKey });
-    },
-  });
-}
-
 export function useCreateFile() {
   const qc = useQueryClient();
   return useMutation({
@@ -174,7 +121,7 @@ export function useBulkSetSortOrders() {
       const previous = qc.getQueryData<SortOrder[]>(wikiKeys.sortOrders) ?? [];
       const byId = new Map(previous.map((s) => [s.driveId, s] as const));
       for (const item of items) byId.set(item.driveId, item);
-      qc.setQueryData<SortOrder[]>(wikiKeys.sortOrders, Array.from(byId.values()));
+      qc.setQueryData<SortOrder[]>(wikiKeys.sortOrders, byId.values().toArray());
       return { previous };
     },
     onSettled: () => {
@@ -213,5 +160,58 @@ export function useSetFolderIcon() {
     matches: (item, { folderDriveId }) => item.folderDriveId === folderDriveId,
     mutationFn: async ({ folderDriveId, icon }) => wikiApi.setFolderIcon(folderDriveId, icon),
     queryKey: wikiKeys.folderIcons,
+  });
+}
+
+function dropSortOrderLocally(
+  qc: ReturnType<typeof useQueryClient>,
+  fileId: string,
+): SortOrder[] | undefined {
+  const previous = qc.getQueryData<SortOrder[]>(wikiKeys.sortOrders);
+  if (!previous) return undefined;
+  qc.setQueryData<SortOrder[]>(
+    wikiKeys.sortOrders,
+    previous.filter((s) => s.driveId !== fileId),
+  );
+  return previous;
+}
+
+function useInvalidateTrees() {
+  const qc = useQueryClient();
+  return (driveIds: (null | string | undefined)[]) => {
+    for (const id of driveIds) {
+      if (id) void qc.invalidateQueries({ queryKey: wikiKeys.driveTree(id) });
+    }
+
+    void qc.invalidateQueries({ queryKey: wikiKeys.folderFilesPrefix });
+  };
+}
+
+function useIconMutation<TItem, TVars>(config: {
+  queryKey: readonly unknown[];
+  mutationFn: (vars: TVars) => Promise<unknown>;
+  matches: (item: TItem, vars: TVars) => boolean;
+  buildItem: (vars: TVars, existing: TItem | undefined) => TItem;
+}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: config.mutationFn,
+    onError: (_err, _vars, context: { previous?: TItem[] } | undefined) => {
+      if (context?.previous) qc.setQueryData(config.queryKey, context.previous);
+    },
+    onMutate: (vars: TVars) => {
+      const previous = qc.getQueryData<TItem[]>(config.queryKey);
+      if (previous) {
+        const existing = previous.find((item) => config.matches(item, vars));
+        qc.setQueryData<TItem[]>(config.queryKey, [
+          ...previous.filter((item) => !config.matches(item, vars)),
+          config.buildItem(vars, existing),
+        ]);
+      }
+      return previous === undefined ? {} : { previous };
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: config.queryKey });
+    },
   });
 }

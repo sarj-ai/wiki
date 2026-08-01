@@ -17,45 +17,6 @@ import { useSetPreferences } from "@/hooks/use-wiki-mutations";
 import { useDrives, usePreferences } from "@/hooks/use-wiki-tree";
 import { runWithErrorToast } from "@/lib/mutation-toast";
 
-interface PreferencesDialogProps {
-  onOpenChange: (open: boolean) => void;
-  open: boolean;
-}
-
-function CheckboxRow({
-  checked,
-  description,
-  id,
-  label,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  description?: string;
-  checked: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <label
-      className="hover:bg-accent/50 flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-sm"
-      htmlFor={id}
-    >
-      <Checkbox
-        checked={checked}
-        className="mt-0.5"
-        id={id}
-        onCheckedChange={(next) => {
-          onChange(next === true);
-        }}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="font-medium">{label}</div>
-        {description ? <div className="text-muted-foreground text-xs">{description}</div> : null}
-      </div>
-    </label>
-  );
-}
-
 export function PreferencesDialog({ onOpenChange, open }: PreferencesDialogProps) {
   const drivesQuery = useDrives();
   const prefsQuery = usePreferences();
@@ -136,5 +97,44 @@ export function PreferencesDialog({ onOpenChange, open }: PreferencesDialogProps
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface PreferencesDialogProps {
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}
+
+function CheckboxRow({
+  checked,
+  description,
+  id,
+  label,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label
+      className="hover:bg-accent/50 flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-sm"
+      htmlFor={id}
+    >
+      <Checkbox
+        checked={checked}
+        className="mt-0.5"
+        id={id}
+        onCheckedChange={(next) => {
+          onChange(next === true);
+        }}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="font-medium">{label}</div>
+        {description ? <div className="text-muted-foreground text-xs">{description}</div> : null}
+      </div>
+    </label>
   );
 }

@@ -4,27 +4,37 @@ assert_lefthook_installed: true
 pre-commit:
   parallel: false
   commands:
+    # priority: 1 runs this before every other command (lefthook otherwise
+    # orders alphabetically). It costs ~0s and stops hooks from running
+    # silently on the wrong node major.
+    node-version:
+      priority: 1
+      run: make check-node
+      fail_text: "AGENT: hooks require node >= 24. Fix: run 'mise install' (repo ships .mise.toml) or prefix with 'mise exec node@24 --', and retry. NEVER use --no-verify."
     standards-config:
       run: make standards-check
-      fail_text: "Canonical Standards configs drifted. Run 'make standards-sync', stage the result, and retry."
+      fail_text: "AGENT: canonical Standards configs drifted. Fix: run 'make standards-sync', stage the result, and retry. NEVER use --no-verify."
     backend-ruff:
       root: backend/
       glob: "*.py"
       run: uv run ruff check {staged_files}
-      fail_text: "Ruff rejected staged Python. Run its suggested fix, stage, and retry."
+      fail_text: "AGENT: Ruff rejected staged Python. Fix: run 'uv run ruff check --fix .' in backend/ (or 'make fix'), repair what remains by hand, stage, and retry. NEVER use --no-verify."
     backend-ruff-format:
       root: backend/
       glob: "*.py"
       run: uv run ruff format --check {staged_files}
       fail_text: "AGENT: staged Python is not ruff-formatted. Fix: run 'uv run ruff format <files>' in backend/, stage the result, and retry. NEVER use --no-verify."
+    # Staged-only by design: whole-project `tsc --noEmit` lived here once and
+    # blocked valid commits on OTHER files' type errors while costing ~10s per
+    # commit. Type checking still gates every push — pre-push runs `make
+    # check`, whose check-frontend step mirrors the CI "TypeScript check".
     frontend-eslint:
       root: frontend/
       glob: "*.{js,mjs,cjs,ts,tsx}"
       run: >-
         npm exec -- next typegen &&
-        npm exec -- eslint --no-warn-ignored --max-warnings 0 --suppressions-location eslint-suppressions.json {staged_files} &&
-        npm exec -- tsc --noEmit --pretty false
-      fail_text: "ESLint or TypeScript rejected staged frontend code. Fix the reported issue, stage, and retry."
+        npm exec -- eslint --no-warn-ignored --max-warnings 0 --suppressions-location eslint-suppressions.json {staged_files}
+      fail_text: "AGENT: ESLint rejected staged frontend code. Fix: run 'make fix' (applies eslint --fix), repair what remains by hand, stage, and retry. NEVER use --no-verify."
     frontend-prettier:
       root: frontend/
       glob: "*.{js,mjs,cjs,ts,tsx,json,css,md,yml,yaml}"
@@ -47,6 +57,7 @@ pre-commit:
       fail_text: "AGENT: a pre-commit hook (hygiene, gitleaks, actionlint, or a sarj-* rule) rejected staged files. Fix: repair the reported finding (sarj rules accept a narrow '# sarj-noqa: SARJ0XX — reason' only with justification), stage, and retry. NEVER use --no-verify."
 
 pre-push:
+  parallel: true
   commands:
     check:
       run: make check

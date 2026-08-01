@@ -3,10 +3,6 @@ import type { Metadata } from "next";
 import { FilePageClient } from "@/components/wiki-document/file-page-client";
 import { serverWikiApi } from "@/lib/server-api";
 
-function docMetadata(name: string): Metadata {
-  return { openGraph: { siteName: "Sarj Wiki", title: name }, title: name };
-}
-
 export async function generateMetadata({
   params,
 }: {
@@ -27,4 +23,8 @@ export async function generateMetadata({
 export default async function FilePage({ params }: { params: Promise<{ driveId: string }> }) {
   const { driveId } = await params;
   return <FilePageClient driveId={driveId} />;
+}
+
+function docMetadata(name: string): Metadata {
+  return { openGraph: { siteName: "Sarj Wiki", title: name }, title: name };
 }

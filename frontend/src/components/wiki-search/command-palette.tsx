@@ -33,185 +33,6 @@ const RELATIVE_TIME_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["second", 1],
 ];
 
-function ancestorChain(qc: QueryClient, driveId: string, nodeId: string): string[] {
-  const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
-  if (!tree) return [];
-  const byId = new Map(tree.folders.map((f) => [f.id, f]));
-  const chain: string[] = [];
-  let current = byId.get(nodeId);
-  while (current?.parentId) {
-    chain.unshift(current.parentId);
-    current = byId.get(current.parentId);
-  }
-  return chain;
-}
-
-function Highlighted({ term, text }: { text: string; term: null | string }) {
-  if (!term) return text;
-  const parts: React.ReactNode[] = [];
-  const lower = text.toLowerCase();
-  const needle = term.toLowerCase();
-  let cursor = 0;
-  while (cursor < text.length) {
-    const idx = lower.indexOf(needle, cursor);
-    if (idx < 0) {
-      parts.push(text.slice(cursor));
-      break;
-    }
-    if (idx > cursor) parts.push(text.slice(cursor, idx));
-    parts.push(
-      <mark className="bg-primary/20 text-foreground rounded-sm px-0.5 py-0.5" key={`m-${idx}`}>
-        {text.slice(idx, idx + needle.length)}
-      </mark>,
-    );
-    cursor = idx + needle.length;
-  }
-  return parts;
-}
-
-function relativeTime(iso: null | string): string {
-  if (!iso) return "";
-  const then = new Date(iso);
-  if (Number.isNaN(then.getTime())) return "";
-  const deltaSeconds = (then.getTime() - Date.now()) / 1000;
-  const abs = Math.abs(deltaSeconds);
-  for (const [unit, secondsPerUnit] of RELATIVE_TIME_UNITS) {
-    if (abs >= secondsPerUnit || unit === "second") {
-      return RELATIVE_TIME_FORMAT.format(Math.round(deltaSeconds / secondsPerUnit), unit);
-    }
-  }
-  return "";
-}
-
-function ResultRow({
-  driveName,
-  onPrefetch,
-  result,
-}: {
-  result: DriveSearchResult;
-  driveName: string | undefined;
-  onPrefetch: () => void;
-}) {
-  const inaccessible = result.shortcutInaccessible;
-  const tooltip = inaccessible ? SHORTCUT_INACCESSIBLE_TOOLTIP : undefined;
-  return (
-    <CommandItem
-      className={cn(
-        "flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left text-sm",
-        inaccessible && "text-muted-foreground/60",
-      )}
-      onPointerEnter={onPrefetch}
-      title={tooltip}
-      value={result.id}
-    >
-      <span className={cn("mt-0.5 shrink-0", inaccessible && "opacity-50")}>
-        {renderNodeIcon(result, "size-4")}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="text-foreground font-medium break-words">{result.name}</div>
-        {driveName ? (
-          <div className="text-muted-foreground text-xs break-words">{driveName}</div>
-        ) : null}
-      </div>
-      {result.modifiedTime ? (
-        <span className="text-muted-foreground mt-0.5 shrink-0 text-xs">
-          {relativeTime(result.modifiedTime)}
-        </span>
-      ) : null}
-    </CommandItem>
-  );
-}
-
-function PreviewPanel({
-  driveName,
-  onOpen,
-  query,
-  result,
-}: {
-  result: DriveSearchResult | null;
-  query: string;
-  driveName: string | undefined;
-  onOpen: (result: DriveSearchResult) => void;
-}) {
-  const target = result ? resolveShortcutTarget(result) : null;
-  const inaccessible = result?.shortcutInaccessible === true;
-  const snippetQuery = useDriveSearchSnippet(
-    target && !inaccessible ? target.targetId : null,
-    query,
-    target !== null && !inaccessible,
-    target !== null && target.targetMimeType !== "" ? target.targetMimeType : undefined,
-  );
-
-  if (!result || !target) {
-    return (
-      <div className="text-muted-foreground flex h-full items-center justify-center p-6 text-sm">
-        Select a result to preview the match.
-      </div>
-    );
-  }
-
-  const isForm = target.targetMimeType === MIME_FORM;
-  const snippet = snippetQuery.data;
-
-  return (
-    <div className="flex h-full min-h-0 flex-col p-5">
-      <div className="flex items-start gap-3">
-        <span className="mt-1 shrink-0">{renderNodeIcon(result, "size-6")}</span>
-        <div className="min-w-0 flex-1">
-          <div className="text-base font-semibold break-words">{result.name}</div>
-          {driveName ? <div className="text-muted-foreground text-xs">{driveName}</div> : null}
-        </div>
-      </div>
-
-      <div className="mt-4 min-h-0 flex-1 overflow-auto">
-        {inaccessible ? (
-          <div className="text-muted-foreground text-sm text-pretty">
-            This is a shortcut, but you don&apos;t have access to its target. Contact your admin if
-            you need access.
-          </div>
-        ) : null}
-        {!inaccessible && snippetQuery.isLoading ? (
-          <div className="text-muted-foreground flex items-center gap-2 text-sm">
-            <Loader2 className="size-4 animate-spin" />
-            Loading match preview…
-          </div>
-        ) : null}
-        {!inaccessible && !snippetQuery.isLoading && !snippet?.snippet && (
-          <div className="text-muted-foreground text-sm">
-            {isGoogleWorkspaceType(target.targetMimeType)
-              ? "Drive matched this file but we couldn't pinpoint the exact phrase in its text. Open it to see the match in context."
-              : "Inline text preview isn't available for this file type — open it to view the content."}
-          </div>
-        )}
-        {!inaccessible && snippet?.snippet ? (
-          <p className="text-foreground text-sm leading-relaxed">
-            <Highlighted term={snippet.matchTerm ?? query} text={snippet.snippet} />
-          </p>
-        ) : null}
-      </div>
-
-      <div className="mt-4 flex justify-end">
-        <Button
-          disabled={inaccessible}
-          onClick={() => {
-            onOpen(result);
-          }}
-          size="sm"
-        >
-          {isForm ? (
-            <>
-              <ExternalLink className="size-4" />
-              Open in new tab
-            </>
-          ) : (
-            "Open"
-          )}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 export function CommandPalette() {
   const { open, setOpen } = useCommandPaletteState();
   const router = useRouter();
@@ -410,5 +231,184 @@ export function CommandPalette() {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ancestorChain(qc: QueryClient, driveId: string, nodeId: string): string[] {
+  const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
+  if (!tree) return [];
+  const byId = new Map(tree.folders.map((f) => [f.id, f]));
+  const chain: string[] = [];
+  let current = byId.get(nodeId);
+  while (current?.parentId) {
+    chain.unshift(current.parentId);
+    current = byId.get(current.parentId);
+  }
+  return chain;
+}
+
+function Highlighted({ term, text }: { text: string; term: null | string }) {
+  if (!term) return text;
+  const parts: React.ReactNode[] = [];
+  const lower = text.toLowerCase();
+  const needle = term.toLowerCase();
+  let cursor = 0;
+  while (cursor < text.length) {
+    const idx = lower.indexOf(needle, cursor);
+    if (idx < 0) {
+      parts.push(text.slice(cursor));
+      break;
+    }
+    if (idx > cursor) parts.push(text.slice(cursor, idx));
+    parts.push(
+      <mark className="bg-primary/20 text-foreground rounded-sm px-0.5 py-0.5" key={`m-${idx}`}>
+        {text.slice(idx, idx + needle.length)}
+      </mark>,
+    );
+    cursor = idx + needle.length;
+  }
+  return parts;
+}
+
+function relativeTime(iso: null | string): string {
+  if (!iso) return "";
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return "";
+  const deltaSeconds = (then.getTime() - Date.now()) / 1000;
+  const abs = Math.abs(deltaSeconds);
+  for (const [unit, secondsPerUnit] of RELATIVE_TIME_UNITS) {
+    if (abs >= secondsPerUnit || unit === "second") {
+      return RELATIVE_TIME_FORMAT.format(Math.round(deltaSeconds / secondsPerUnit), unit);
+    }
+  }
+  return "";
+}
+
+function ResultRow({
+  driveName,
+  onPrefetch,
+  result,
+}: {
+  result: DriveSearchResult;
+  driveName: string | undefined;
+  onPrefetch: () => void;
+}) {
+  const inaccessible = result.shortcutInaccessible;
+  const tooltip = inaccessible ? SHORTCUT_INACCESSIBLE_TOOLTIP : undefined;
+  return (
+    <CommandItem
+      className={cn(
+        "flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left text-sm",
+        inaccessible && "text-muted-foreground/60",
+      )}
+      onPointerEnter={onPrefetch}
+      title={tooltip}
+      value={result.id}
+    >
+      <span className={cn("mt-0.5 shrink-0", inaccessible && "opacity-50")}>
+        {renderNodeIcon(result, "size-4")}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-foreground font-medium break-words">{result.name}</div>
+        {driveName ? (
+          <div className="text-muted-foreground text-xs break-words">{driveName}</div>
+        ) : null}
+      </div>
+      {result.modifiedTime ? (
+        <span className="text-muted-foreground mt-0.5 shrink-0 text-xs">
+          {relativeTime(result.modifiedTime)}
+        </span>
+      ) : null}
+    </CommandItem>
+  );
+}
+
+function PreviewPanel({
+  driveName,
+  onOpen,
+  query,
+  result,
+}: {
+  result: DriveSearchResult | null;
+  query: string;
+  driveName: string | undefined;
+  onOpen: (result: DriveSearchResult) => void;
+}) {
+  const target = result ? resolveShortcutTarget(result) : null;
+  const inaccessible = result?.shortcutInaccessible === true;
+  const snippetQuery = useDriveSearchSnippet(
+    target && !inaccessible ? target.targetId : null,
+    query,
+    target !== null && !inaccessible,
+    target !== null && target.targetMimeType !== "" ? target.targetMimeType : undefined,
+  );
+
+  if (!result || !target) {
+    return (
+      <div className="text-muted-foreground flex h-full items-center justify-center p-6 text-sm">
+        Select a result to preview the match.
+      </div>
+    );
+  }
+
+  const isForm = target.targetMimeType === MIME_FORM;
+  const snippet = snippetQuery.data;
+
+  return (
+    <div className="flex h-full min-h-0 flex-col p-5">
+      <div className="flex items-start gap-3">
+        <span className="mt-1 shrink-0">{renderNodeIcon(result, "size-6")}</span>
+        <div className="min-w-0 flex-1">
+          <div className="text-base font-semibold break-words">{result.name}</div>
+          {driveName ? <div className="text-muted-foreground text-xs">{driveName}</div> : null}
+        </div>
+      </div>
+
+      <div className="mt-4 min-h-0 flex-1 overflow-auto">
+        {inaccessible ? (
+          <div className="text-muted-foreground text-sm text-pretty">
+            This is a shortcut, but you don&apos;t have access to its target. Contact your admin if
+            you need access.
+          </div>
+        ) : null}
+        {!inaccessible && snippetQuery.isLoading ? (
+          <div className="text-muted-foreground flex items-center gap-2 text-sm">
+            <Loader2 className="size-4 animate-spin" />
+            Loading match preview…
+          </div>
+        ) : null}
+        {!inaccessible && !snippetQuery.isLoading && !snippet?.snippet && (
+          <div className="text-muted-foreground text-sm">
+            {isGoogleWorkspaceType(target.targetMimeType)
+              ? "Drive matched this file but we couldn't pinpoint the exact phrase in its text. Open it to see the match in context."
+              : "Inline text preview isn't available for this file type — open it to view the content."}
+          </div>
+        )}
+        {!inaccessible && snippet?.snippet ? (
+          <p className="text-foreground text-sm leading-relaxed">
+            <Highlighted term={snippet.matchTerm ?? query} text={snippet.snippet} />
+          </p>
+        ) : null}
+      </div>
+
+      <div className="mt-4 flex justify-end">
+        <Button
+          disabled={inaccessible}
+          onClick={() => {
+            onOpen(result);
+          }}
+          size="sm"
+        >
+          {isForm ? (
+            <>
+              <ExternalLink className="size-4" />
+              Open in new tab
+            </>
+          ) : (
+            "Open"
+          )}
+        </Button>
+      </div>
+    </div>
   );
 }

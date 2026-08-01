@@ -1,6 +1,6 @@
 import * as z from "zod";
 
-import { ApiError, makeCall } from "@/lib/api-client";
+import { makeCall } from "@/lib/api-client";
 import type { Client } from "@/lib/generated/client";
 import {
   bootstrapBootstrapGet,
@@ -57,8 +57,6 @@ import type {
   SnippetResult,
   SortOrder,
 } from "@/types/wiki";
-
-export { ApiError };
 
 export interface CreateFileInput {
   mimeType: string;
@@ -242,3 +240,5 @@ export function makeWikiApi(client?: Client) {
 }
 
 export const wikiApi = makeWikiApi();
+
+export { ApiError } from "@/lib/api-client";

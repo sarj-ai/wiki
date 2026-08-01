@@ -3,12 +3,6 @@ import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 
-interface WikiNotFoundProps {
-  description?: string;
-
-  title?: string;
-}
-
 export function WikiNotFound({
   description = "This file isn't available. It may have been moved, deleted, or it lives outside your shared drives.",
   title = "File not found",
@@ -31,4 +25,10 @@ export function WikiNotFound({
       </div>
     </div>
   );
+}
+
+interface WikiNotFoundProps {
+  description?: string;
+
+  title?: string;
 }

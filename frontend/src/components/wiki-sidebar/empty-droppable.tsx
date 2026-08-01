@@ -5,12 +5,6 @@ import { useDroppable } from "@dnd-kit/core";
 import { SidebarMenuItem, SidebarMenuSubItem } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
-interface EmptyDropZoneProps {
-  label: string;
-  parentId: string;
-  variant: "item" | "subitem";
-}
-
 export function EmptyDropZone({ label, parentId, variant }: EmptyDropZoneProps) {
   const containerId = `parent:${parentId}`;
   const { isOver, setNodeRef } = useDroppable({ id: containerId });
@@ -32,4 +26,10 @@ export function EmptyDropZone({ label, parentId, variant }: EmptyDropZoneProps) 
       <span className="text-muted-foreground px-2 py-1 text-xs">{label}</span>
     </SidebarMenuItem>
   );
+}
+
+interface EmptyDropZoneProps {
+  label: string;
+  parentId: string;
+  variant: "item" | "subitem";
 }

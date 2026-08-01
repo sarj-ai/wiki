@@ -40,104 +40,6 @@ const CONTAINER_PREFIX = "parent:";
 const FOLDER_ABOVE_BAND = 0.3;
 const FOLDER_BELOW_BAND = 0.7;
 
-function parentIdOf(containerId: string): null | string {
-  return containerId.startsWith(CONTAINER_PREFIX)
-    ? containerId.slice(CONTAINER_PREFIX.length)
-    : null;
-}
-
-function sortableContainerId(data: null | Record<string, unknown> | undefined): null | string {
-  const sortable = data?.["sortable"] as { containerId?: string } | undefined;
-  return sortable?.containerId ?? null;
-}
-
-function isFolderTarget(data: null | Record<string, unknown> | undefined): boolean {
-  return data?.["isFolder"] === true;
-}
-
-function computeDropIntent(
-  active: { rect: { current: { initial: { top: number; height: number } | null } } },
-  over: { rect: { top: number; height: number } },
-  delta: { x: number; y: number },
-  overIsFolder: boolean,
-): DropIntent {
-  const initial = active.rect.current.initial;
-  if (!initial) return overIsFolder ? "into" : "below";
-  const draggedCenter = initial.top + initial.height / 2 + delta.y;
-  const relativeY = (draggedCenter - over.rect.top) / over.rect.height;
-  if (overIsFolder) {
-    if (relativeY < FOLDER_ABOVE_BAND) return "above";
-    if (relativeY > FOLDER_BELOW_BAND) return "below";
-    return "into";
-  }
-  return relativeY < 0.5 ? "above" : "below";
-}
-
-function buildDestinationOrder(
-  qc: ReturnType<typeof useQueryClient>,
-  driveId: string,
-  newParentFolderId: string,
-  movedNode: DriveNode,
-  positionHint: { rowId: string; intent: "above" | "below" },
-): null | SortOrder[] {
-  const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
-  const isAtDriveRoot = newParentFolderId === driveId;
-  const folders = (tree?.folders ?? []).filter((f) =>
-    isAtDriveRoot ? f.parentId === undefined : f.parentId === newParentFolderId,
-  );
-  const filesCache =
-    isAtDriveRoot && (tree?.filesComplete ?? true)
-      ? tree?.files
-      : qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles(newParentFolderId));
-  const files = (filesCache ?? []).filter((f) => f.mimeType !== MIME_FOLDER);
-
-  const baseline = [...folders, ...files]
-    .filter((c) => c.id !== movedNode.id)
-    .sort((a, b) => {
-      const aIsFolder = a.mimeType === MIME_FOLDER;
-      const bIsFolder = b.mimeType === MIME_FOLDER;
-      if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-
-  const overIndex = baseline.findIndex((c) => c.id === positionHint.rowId);
-  if (overIndex < 0) return null;
-  const insertIdx = positionHint.intent === "below" ? overIndex + 1 : overIndex;
-  const finalOrder = [...baseline];
-  finalOrder.splice(insertIdx, 0, movedNode);
-  return finalOrder.map((node, i) => ({ driveId: node.id, sortOrder: i + 1 }));
-}
-
-function lookupFolderName(
-  qc: ReturnType<typeof useQueryClient>,
-  driveId: string,
-  folderId: string,
-): string {
-  const tree = qc.getQueryData<{ folders: { id: string; name: string }[] }>(
-    wikiKeys.driveTree(driveId),
-  );
-  return tree?.folders.find((f) => f.id === folderId)?.name ?? "folder";
-}
-
-function lookupNodeMimeType(
-  qc: ReturnType<typeof useQueryClient>,
-  driveId: string,
-  folderId: string,
-): null | string {
-  const tree = qc.getQueryData<{ folders: { id: string; mimeType: string }[] }>(
-    wikiKeys.driveTree(driveId),
-  );
-  return tree?.folders.find((f) => f.id === folderId)?.mimeType ?? null;
-}
-
-function translateMoveError(err: unknown): string {
-  if (err instanceof ApiError && err.status === 403) {
-    return "Drive denied this move — you may not have edit permission on the destination, or it's a shortcut.";
-  }
-  if (err instanceof Error) return err.message;
-  return "Move failed";
-}
-
 export function useWikiReorder(driveId: string): WikiReorder {
   const qc = useQueryClient();
   const bulkSetSortOrders = useBulkSetSortOrders();
@@ -350,4 +252,102 @@ export function useWikiReorder(driveId: string): WikiReorder {
     optimisticByContainer,
     sensors,
   };
+}
+
+function parentIdOf(containerId: string): null | string {
+  return containerId.startsWith(CONTAINER_PREFIX)
+    ? containerId.slice(CONTAINER_PREFIX.length)
+    : null;
+}
+
+function sortableContainerId(data: null | Record<string, unknown> | undefined): null | string {
+  const sortable = data?.["sortable"] as { containerId?: string } | undefined;
+  return sortable?.containerId ?? null;
+}
+
+function isFolderTarget(data: null | Record<string, unknown> | undefined): boolean {
+  return data?.["isFolder"] === true;
+}
+
+function computeDropIntent(
+  active: { rect: { current: { initial: { top: number; height: number } | null } } },
+  over: { rect: { top: number; height: number } },
+  delta: { x: number; y: number },
+  overIsFolder: boolean,
+): DropIntent {
+  const initial = active.rect.current.initial;
+  if (!initial) return overIsFolder ? "into" : "below";
+  const draggedCenter = initial.top + initial.height / 2 + delta.y;
+  const relativeY = (draggedCenter - over.rect.top) / over.rect.height;
+  if (overIsFolder) {
+    if (relativeY < FOLDER_ABOVE_BAND) return "above";
+    if (relativeY > FOLDER_BELOW_BAND) return "below";
+    return "into";
+  }
+  return relativeY < 0.5 ? "above" : "below";
+}
+
+function buildDestinationOrder(
+  qc: ReturnType<typeof useQueryClient>,
+  driveId: string,
+  newParentFolderId: string,
+  movedNode: DriveNode,
+  positionHint: { rowId: string; intent: "above" | "below" },
+): null | SortOrder[] {
+  const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
+  const isAtDriveRoot = newParentFolderId === driveId;
+  const folders = (tree?.folders ?? []).filter((f) =>
+    isAtDriveRoot ? f.parentId === undefined : f.parentId === newParentFolderId,
+  );
+  const filesCache =
+    isAtDriveRoot && (tree?.filesComplete ?? true)
+      ? tree?.files
+      : qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles(newParentFolderId));
+  const files = (filesCache ?? []).filter((f) => f.mimeType !== MIME_FOLDER);
+
+  const baseline = [...folders, ...files]
+    .filter((c) => c.id !== movedNode.id)
+    .sort((a, b) => {
+      const aIsFolder = a.mimeType === MIME_FOLDER;
+      const bIsFolder = b.mimeType === MIME_FOLDER;
+      if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+  const overIndex = baseline.findIndex((c) => c.id === positionHint.rowId);
+  if (overIndex < 0) return null;
+  const insertIdx = positionHint.intent === "below" ? overIndex + 1 : overIndex;
+  const finalOrder = [...baseline];
+  finalOrder.splice(insertIdx, 0, movedNode);
+  return finalOrder.map((node, i) => ({ driveId: node.id, sortOrder: i + 1 }));
+}
+
+function lookupFolderName(
+  qc: ReturnType<typeof useQueryClient>,
+  driveId: string,
+  folderId: string,
+): string {
+  const tree = qc.getQueryData<{ folders: { id: string; name: string }[] }>(
+    wikiKeys.driveTree(driveId),
+  );
+  return tree?.folders.find((f) => f.id === folderId)?.name ?? "folder";
+}
+
+function lookupNodeMimeType(
+  qc: ReturnType<typeof useQueryClient>,
+  driveId: string,
+  folderId: string,
+): null | string {
+  const tree = qc.getQueryData<{ folders: { id: string; mimeType: string }[] }>(
+    wikiKeys.driveTree(driveId),
+  );
+  return tree?.folders.find((f) => f.id === folderId)?.mimeType ?? null;
+}
+
+function translateMoveError(err: unknown): string {
+  if (err instanceof ApiError && err.status === 403) {
+    return "Drive denied this move — you may not have edit permission on the destination, or it's a shortcut.";
+  }
+  if (err instanceof Error) return err.message;
+  return "Move failed";
 }
