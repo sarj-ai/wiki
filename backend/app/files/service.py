@@ -224,7 +224,7 @@ class GoogleFilesService(FilesService):
         client = self._client()
         with _translated_drive_errors():
             raw = execute_with_retry(
-                client.files().get(fileId=file_id, alt="media", supportsAllDrives=True)
+                client.files().get_media(fileId=file_id, supportsAllDrives=True)
             )
         if not isinstance(raw, bytes):
             msg = "Google Drive returned invalid HTML content"
