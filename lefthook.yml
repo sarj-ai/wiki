@@ -61,4 +61,5 @@ pre-push:
   commands:
     check:
       run: make check
+      always_run: true  # empty push-file diffs must still run the full gate (red-team finding)
       fail_text: "AGENT: 'make check' (the exact CI mirror) failed. Fix: rerun 'make check', repair the first failing step ('make fix' applies the autofixable lint/format part), and push again. NEVER use --no-verify."
