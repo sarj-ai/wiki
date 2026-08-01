@@ -254,9 +254,7 @@ async def test_html_content_rechecks_drive_and_downloads_with_viewer_client(
 
     class _FakeFiles:
         def get(self, **kwargs: Any) -> _Request:
-            operations.append(f"file:{kwargs.get('alt', 'metadata')}")
-            if kwargs.get("alt") == "media":
-                return _Request(b"<!doctype html><p>safe</p>")
+            operations.append("file:metadata")
             return _Request(
                 {
                     "id": "chart",
@@ -266,6 +264,10 @@ async def test_html_content_rechecks_drive_and_downloads_with_viewer_client(
                     "driveId": "d1",
                 }
             )
+
+        def get_media(self, **_: Any) -> _Request:
+            operations.append("file:media")
+            return _Request(b"<!doctype html><p>safe</p>")
 
     class _FakeDrives:
         def get(self, **kwargs: Any) -> _Request:
