@@ -24,11 +24,12 @@ async def test_html_response_is_doubly_sandboxed_and_never_cached() -> None:
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["referrer-policy"] == "no-referrer"
     csp = response.headers["content-security-policy"]
-    assert "sandbox allow-scripts" in csp
+    assert "sandbox allow-popups allow-popups-to-escape-sandbox allow-scripts" in csp
     assert "connect-src 'none'" in csp
     assert "form-action 'none'" in csp
     assert "frame-ancestors" in csp
     assert "allow-same-origin" not in csp
+    assert "allow-top-navigation" not in csp
 
 
 def test_html_service_contract_stays_on_files_service() -> None:
