@@ -10,6 +10,11 @@ and regenerate all six canonical configs as one change. `make standards-check`, 
 and CI reject config or lock drift. `scripts/check_standards.py` discovers every
 installed Python, SQL, and IaC registry rule, so never maintain a handwritten hook list.
 
+`make check` is the exact local mirror of CI (pre-push runs it; each step is tagged
+with the workflow step it mirrors — keep the twins in sync). `make fix` applies every
+available autofix. `sarj-lint-configs doctor` cross-checks every Standards version pin
+against `.sarj-standards.toml`, the one authoritative pin site.
+
 ## Overview
 
 Notion-like sidebar layered on top of Google Drive for `@sarj.ai`. The user's real Drive hierarchy **is** the sidebar — we don't maintain a parallel tree. Postgres is an overlay for icons, per-user ordering, and UI prefs; nothing in our DB is authoritative and all of it can be dropped and rebuilt from Drive.
@@ -80,7 +85,7 @@ Routers never call Google APIs or the DB directly — they resolve a service via
 
 ## Code standards
 
-Audit commands at `/sarj-audit:*` (from the `sarj-agentic` plugin, enabled via `.claude/settings.json`) check these. Apply them when writing or reviewing code:
+Audit commands at `/sarj-audit:*` (from the `sarj-ai/standards` plugin marketplace, enabled via `.claude/settings.json`) check these. Apply them when writing or reviewing code:
 
 - **Stepdown rule** — Each file reads top-to-bottom. Exported/public functions sit at the top (below imports / types / constants); each function only calls helpers defined below it. Reader sees intent before implementation.
 - **Library-first** — Don't hand-roll what a well-maintained package already covers (date math, slugs, retries, debounce, CSV, UUIDs, etc.). Reach for the package; reserve hand-rolling for cases where the library would be heavier than what it replaces.

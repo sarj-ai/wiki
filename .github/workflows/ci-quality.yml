@@ -37,6 +37,9 @@ jobs:
       - name: Verify exact Python Standards baseline
         run: uv run --project backend --locked python scripts/check_standards.py --verify-python-baseline .
 
+      - name: Suppression ratchet
+        run: uv run --project backend --locked sarj-ratchet .
+
       - name: Reject lint baseline growth
         if: github.event_name == 'pull_request'
         env:

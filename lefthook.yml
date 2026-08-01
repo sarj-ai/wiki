@@ -16,6 +16,7 @@ pre-commit:
       root: backend/
       glob: "*.py"
       run: uv run ruff format --check {staged_files}
+      fail_text: "AGENT: staged Python is not ruff-formatted. Fix: run 'uv run ruff format <files>' in backend/, stage the result, and retry. NEVER use --no-verify."
     frontend-eslint:
       root: frontend/
       glob: "*.{js,mjs,cjs,ts,tsx}"
@@ -28,24 +29,25 @@ pre-commit:
       root: frontend/
       glob: "*.{js,mjs,cjs,ts,tsx,json,css,md,yml,yaml}"
       run: npm exec -- prettier --check --ignore-unknown {staged_files}
+      fail_text: "AGENT: staged frontend files are not Prettier-formatted. Fix: run 'npm run format' in frontend/ (or prettier --write on the listed files), stage, and retry. NEVER use --no-verify."
     markdownlint:
       glob: "*.md"
       run: frontend/node_modules/.bin/markdownlint-cli2 --config .markdownlint.yaml {staged_files}
+      fail_text: "AGENT: markdownlint rejected staged Markdown against the canonical .markdownlint.yaml. Fix: repair the reported lines (markdownlint-cli2 --fix handles most), stage, and retry. NEVER use --no-verify."
     taplo:
       glob: "*.toml"
       run: frontend/node_modules/.bin/taplo lint --config .taplo.toml {staged_files}
+      fail_text: "AGENT: taplo rejected staged TOML against the canonical .taplo.toml. Fix: repair the reported keys, stage, and retry. NEVER use --no-verify."
     yamllint:
       glob: "*.{yml,yaml}"
       run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache uvx --python 3.14 yamllint --strict --config-file .yamllint.yaml {staged_files}
+      fail_text: "AGENT: yamllint rejected staged YAML against the canonical .yamllint.yaml. Fix: repair the reported lines, stage, and retry. NEVER use --no-verify."
     standards:
       run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache uvx --python 3.14 pre-commit run
+      fail_text: "AGENT: a pre-commit hook (hygiene, gitleaks, actionlint, or a sarj-* rule) rejected staged files. Fix: repair the reported finding (sarj rules accept a narrow '# sarj-noqa: SARJ0XX — reason' only with justification), stage, and retry. NEVER use --no-verify."
 
 pre-push:
-  parallel: true
   commands:
-    standards-all:
-      run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure
-    backend-quality:
-      run: cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run basedpyright -p pyrightconfig.json && uv run ty check app && uv run vulture && uv run lint-imports && uv run pytest -q
-    frontend-quality:
-      run: cd frontend && npm run format:check && npm run lint && npm run typecheck && npm run knip && npm run type-coverage && npm test
+    check:
+      run: make check
+      fail_text: "AGENT: 'make check' (the exact CI mirror) failed. Fix: rerun 'make check', repair the first failing step ('make fix' applies the autofixable lint/format part), and push again. NEVER use --no-verify."
