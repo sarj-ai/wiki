@@ -7,6 +7,6 @@ describe("isolated Drive HTML viewer", () => {
     expect(HTML_IFRAME_SANDBOX).toBe("allow-popups allow-popups-to-escape-sandbox allow-scripts");
     expect(HTML_IFRAME_SANDBOX).not.toContain("allow-same-origin");
     expect(HTML_IFRAME_SANDBOX).not.toContain("allow-top-navigation");
-    expect(htmlContentUrl("file/id", "v1")).toContain("/files/file%2Fid/content?version=v1");
+    expect(htmlContentUrl("file/id", "v1")).toBe("/api/files/file%2Fid/content?version=v1");
   });
 });

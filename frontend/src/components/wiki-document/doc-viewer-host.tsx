@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 
 import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
 import { type ActiveDoc, useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
-import { API_URL } from "@/lib/env";
 import { embedUrlFor } from "@/lib/file-urls";
 import { markNav } from "@/lib/perf-marks";
 import { cn } from "@/lib/utils";
@@ -25,7 +24,7 @@ export const HTML_IFRAME_SANDBOX = "allow-popups allow-popups-to-escape-sandbox 
 
 export function htmlContentUrl(fileId: string, version?: string): string {
   const query = new URLSearchParams({ version: version ?? "current" });
-  return `${API_URL}/files/${encodeURIComponent(fileId)}/content?${query.toString()}`;
+  return `/api/files/${encodeURIComponent(fileId)}/content?${query.toString()}`;
 }
 
 export const DocViewerHost = () => {
