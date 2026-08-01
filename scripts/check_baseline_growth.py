@@ -22,8 +22,14 @@ class _Baseline(RootModel[dict[str, dict[str, _PositiveInt | _Count]]]):
     pass
 
 
-def main(*, base_path: str, current_path: str) -> int:
+def main(*, base_path: str, current_path: str, allow_new_rules: bool = False) -> int:
     """Compare a baseline to the version on the pull request.
+
+    With `allow_new_rules` (passed by CI only when the PR changes the
+    Standards pin in .sarj-standards.toml), entries for rule ids absent from
+    the entire base baseline are allowed: a toolchain upgrade adopts new rules
+    whose pre-existing findings are absorbed by regeneration, then ratcheted.
+    Without it, a rule at zero suppressions stays at zero.
 
     Returns:
         Nonzero when any current count exceeds its baseline count.
@@ -31,15 +37,24 @@ def main(*, base_path: str, current_path: str) -> int:
     """
     base = _load(base_path)
     current = _load(current_path)
+    base_rules = {rule for _, rule in base}
+    adopted = sorted({rule for _, rule in current if rule not in base_rules})
     growth: list[str] = []
-    for key, count in sorted(current.items()):
-        old_count = base.get(key, 0)
+    for (filename, rule), count in sorted(current.items()):
+        if allow_new_rules and rule not in base_rules:
+            continue
+        old_count = base.get((filename, rule), 0)
         if count > old_count:
-            growth.append(f"{key}: {old_count} -> {count}")
-    if not growth:
-        return 0
-    sys.stderr.write("Lint baselines may only shrink:\n" + "\n".join(growth) + "\n")
-    return 1
+            growth.append(f"{filename}/{rule}: {old_count} -> {count}")
+    if growth:
+        sys.stderr.write("Lint baselines may only shrink:\n" + "\n".join(growth) + "\n")
+        return 1
+    if allow_new_rules and adopted:
+        sys.stderr.write(
+            "Standards upgrade: absorbed findings for newly adopted rules "
+            "(shrink-only from here):\n" + "\n".join(adopted) + "\n"
+        )
+    return 0
 
 
 def check_initial(*, baseline_path: str, changed_path: str, prefix: str) -> int:
@@ -64,10 +79,10 @@ def check_initial(*, baseline_path: str, changed_path: str, prefix: str) -> int:
     return 1
 
 
-def _load(path: str) -> dict[str, int]:
+def _load(path: str) -> dict[tuple[str, str], int]:
     baseline = _parse(path)
     return {
-        f"{filename}/{rule}": value if isinstance(value, int) else value.count
+        (filename, rule): value if isinstance(value, int) else value.count
         for filename, rules in baseline.root.items()
         for rule, value in rules.items()
     }
@@ -78,18 +93,24 @@ def _parse(path: str) -> _Baseline:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == _GROWTH_ARG_COUNT:
-        raise SystemExit(main(base_path=sys.argv[1], current_path=sys.argv[2]))
-    if len(sys.argv) == _INITIAL_ARG_COUNT and sys.argv[1] == "--initial":
+    arguments = sys.argv[1:]
+    allow_new = "--allow-new-rules" in arguments
+    if allow_new:
+        arguments = [argument for argument in arguments if argument != "--allow-new-rules"]
+    if len(arguments) == _GROWTH_ARG_COUNT - 1:
+        raise SystemExit(
+            main(base_path=arguments[0], current_path=arguments[1], allow_new_rules=allow_new)
+        )
+    if len(arguments) == _INITIAL_ARG_COUNT - 1 and arguments[0] == "--initial":
         raise SystemExit(
             check_initial(
-                baseline_path=sys.argv[2],
-                changed_path=sys.argv[3],
-                prefix=sys.argv[4],
+                baseline_path=arguments[1],
+                changed_path=arguments[2],
+                prefix=arguments[3],
             )
         )
     sys.stderr.write(
-        "usage: check_baseline_growth.py BASE CURRENT\n"
+        "usage: check_baseline_growth.py [--allow-new-rules] BASE CURRENT\n"
         "   or: check_baseline_growth.py --initial BASELINE CHANGED_FILES PREFIX\n"
     )
     raise SystemExit(2)

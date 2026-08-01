@@ -58,7 +58,8 @@
     "@hey-api/openapi-ts": "^0.99.0",
     "@opennextjs/cloudflare": "^1.20.2",
     "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",
-    "@sarj/eslint-plugin": "2.16.0",
+    "@eslint/compat": "2.1.0",
+    "@sarj/eslint-plugin": "9.5.0",
     "@sarj/tsconfig": "0.1.1",
     "@tailwindcss/postcss": "^4",
     "@taplo/cli": "^0.7.0",
@@ -70,7 +71,7 @@
     "@vitest/eslint-plugin": "^1.6.20",
     "@vitest/ui": "^4.1.8",
     "babel-plugin-react-compiler": "^1.0.0",
-    "eslint": "^9.39.5",
+    "eslint": "10.8.0",
     "eslint-config-next": "^16.2.12",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.5",
@@ -83,7 +84,7 @@
     "eslint-plugin-sonarjs": "^4.0.3",
     "eslint-plugin-testing-library": "^7.16.2",
     "eslint-plugin-unicorn": "^72.0.0",
-    "eslint-plugin-zod": "^4.8.0",
+    "eslint-plugin-zod": "4.9.0",
     "happy-dom": "^20.10.2",
     "knip": "^6.16.1",
     "lefthook": "2.1.10",
@@ -102,6 +103,9 @@
   },
   "overrides": {
     "@hono/node-server": "^2.0.12",
+    "eslint-plugin-react": {
+      "eslint": "$eslint"
+    },
     "js-yaml": "^5.2.2",
     "minimatch@3.1.5": {
       "brace-expansion": "^1.1.16"

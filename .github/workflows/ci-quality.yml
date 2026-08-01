@@ -37,6 +37,9 @@ jobs:
       - name: Verify exact Python Standards baseline
         run: uv run --project backend --locked python scripts/check_standards.py --verify-python-baseline .
 
+      - name: Suppression ratchet
+        run: uv run --project backend --locked sarj-ratchet .
+
       - name: Reject lint baseline growth
         if: github.event_name == 'pull_request'
         env:
@@ -45,10 +48,18 @@ jobs:
           set -euo pipefail
           changed_file="$RUNNER_TEMP/changed-files"
           git diff --name-only "$BASE_SHA"...HEAD > "$changed_file"
+          # A PR that changes the Standards pin (.sarj-standards.toml is the
+          # authoritative version site) is a toolchain upgrade: findings from
+          # newly adopted rules are absorbed by regeneration, then ratcheted.
+          allow_new_rules=""
+          if grep -qx '\.sarj-standards\.toml' "$changed_file"; then
+            allow_new_rules="--allow-new-rules"
+          fi
           for baseline in python-standards-baseline.json frontend/eslint-suppressions.json; do
             base_file="$RUNNER_TEMP/$(basename "$baseline")"
             if git show "$BASE_SHA:$baseline" > "$base_file" 2>/dev/null; then
-              uv run --project backend --locked python scripts/check_baseline_growth.py "$base_file" "$baseline"
+              uv run --project backend --locked python scripts/check_baseline_growth.py \
+                $allow_new_rules "$base_file" "$baseline"
             else
               prefix=""
               if [[ "$baseline" == frontend/* ]]; then prefix="frontend/"; fi

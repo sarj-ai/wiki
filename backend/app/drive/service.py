@@ -587,7 +587,7 @@ class GoogleDriveService(DriveService):
         return Credentials(  # type: ignore[no-untyped-call]
             token=access_token,
             refresh_token=refresh_token,
-            token_uri="https://oauth2.googleapis.com/token",
+            token_uri="https://oauth2.googleapis.com/token",  # ruff: ignore[hardcoded-password-func-arg] — public OAuth endpoint URL, not a credential
             client_id=settings.GOOGLE_CLIENT_ID,
             client_secret=settings.GOOGLE_CLIENT_SECRET.get_secret_value(),
         )
