@@ -10,6 +10,7 @@ import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
 import { WikiToolbar } from "@/components/wiki-document/wiki-toolbar";
 import { WikiNotFound } from "@/components/wiki-not-found";
 import { useFile } from "@/hooks/use-wiki-tree";
+import { displayFileName } from "@/lib/file-icons";
 import { saveLastDoc } from "@/lib/last-doc";
 import { markNav, markPaint } from "@/lib/perf-marks";
 import { ApiError } from "@/lib/wiki-api";
@@ -115,6 +116,7 @@ function FilePageBody({
 }: FilePageBodyProps) {
   const setActive = useDocViewerStore((s) => s.setActive);
   const setSlot = useDocViewerStore((s) => s.setSlot);
+  const displayTitle = displayFileName(title, mimeType);
 
   useEffect(() => {
     markPaint(fileId, "toolbarPaint");
@@ -124,11 +126,11 @@ function FilePageBody({
       fileId,
       mimeType,
       reloadKey,
-      title,
+      title: displayTitle,
       ...(version === undefined ? {} : { version }),
     });
-    saveLastDoc({ fileId, mimeType, title });
-  }, [fileId, mimeType, title, reloadKey, setActive, version]);
+    saveLastDoc({ fileId, mimeType, title: displayTitle });
+  }, [displayTitle, fileId, mimeType, reloadKey, setActive, version]);
   useEffect(
     () => () => {
       setActive(null);
@@ -143,7 +145,7 @@ function FilePageBody({
         fileId={fileId}
         mimeType={mimeType}
         onReload={onReload}
-        title={title}
+        title={displayTitle}
       />
       <div className="flex-1 overflow-hidden" ref={setSlot} />
     </div>

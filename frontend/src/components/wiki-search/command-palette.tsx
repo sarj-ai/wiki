@@ -13,7 +13,7 @@ import { useCommandPaletteState } from "@/hooks/use-command-palette";
 import { useDriveSearch, useDriveSearchSnippet } from "@/hooks/use-drive-search";
 import { expandPath, requestReveal } from "@/hooks/use-expanded-folders";
 import { wikiKeys } from "@/hooks/use-wiki-tree";
-import { isGoogleWorkspaceType, renderNodeIcon } from "@/lib/file-icons";
+import { displayFileName, isGoogleWorkspaceType, renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import { resolveShortcutTarget, SHORTCUT_INACCESSIBLE_TOOLTIP } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
@@ -295,6 +295,10 @@ function ResultRow({
 }) {
   const inaccessible = result.shortcutInaccessible;
   const tooltip = inaccessible ? SHORTCUT_INACCESSIBLE_TOOLTIP : undefined;
+  const displayName = displayFileName(
+    result.name,
+    result.shortcutTargetMimeType ?? result.mimeType,
+  );
   return (
     <CommandItem
       className={cn(
@@ -309,7 +313,7 @@ function ResultRow({
         {renderNodeIcon(result, "size-4")}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-foreground font-medium break-words">{result.name}</div>
+        <div className="text-foreground font-medium break-words">{displayName}</div>
         {driveName ? (
           <div className="text-muted-foreground text-xs break-words">{driveName}</div>
         ) : null}
@@ -353,13 +357,14 @@ function PreviewPanel({
 
   const isForm = target.targetMimeType === MIME_FORM;
   const snippet = snippetQuery.data;
+  const displayName = displayFileName(result.name, target.targetMimeType);
 
   return (
     <div className="flex h-full min-h-0 flex-col p-5">
       <div className="flex items-start gap-3">
         <span className="mt-1 shrink-0">{renderNodeIcon(result, "size-6")}</span>
         <div className="min-w-0 flex-1">
-          <div className="text-base font-semibold break-words">{result.name}</div>
+          <div className="text-base font-semibold break-words">{displayName}</div>
           {driveName ? <div className="text-muted-foreground text-xs">{driveName}</div> : null}
         </div>
       </div>

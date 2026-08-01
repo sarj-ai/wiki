@@ -10,7 +10,7 @@ import { useDebouncedCallback } from "use-debounce";
 import { SidebarMenuButton } from "@/components/ui/sidebar";
 import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
 import { useSetDocIcon } from "@/hooks/use-wiki-mutations";
-import { renderNodeIcon } from "@/lib/file-icons";
+import { displayFileName, renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import { runWithErrorToast } from "@/lib/mutation-toast";
 import { markNav } from "@/lib/perf-marks";
@@ -36,6 +36,7 @@ interface FileRowProps {
 }
 
 interface RowButtonProps {
+  displayName: string;
   href: string;
   isActive: boolean;
   isForm: boolean;
@@ -67,6 +68,7 @@ function FileRowImpl({
     : `/d/${encodeURIComponent(route.targetId)}`;
   const isActive = !isForm && (activeDriveId === route.targetId || pathname === href);
   const isMoving = useIsMovingFile(node.id);
+  const displayName = displayFileName(node.name, route.targetMimeType);
 
   const queryClient = useQueryClient();
   const prefetchFile = (): void => {
@@ -83,7 +85,7 @@ function FileRowImpl({
       fileId: route.targetId,
       mimeType: route.isShortcut ? route.targetMimeType : node.mimeType,
       reloadKey: 0,
-      title: node.name,
+      title: displayName,
     });
   };
   const schedulePrewarm = useDebouncedCallback(prewarmNow, 120);
@@ -113,11 +115,12 @@ function FileRowImpl({
     ? ` — edited ${new Date(node.modifiedTime).toLocaleDateString()}`
     : "";
   const titleAttr =
-    route.tooltip ?? (isForm ? `${node.name} — opens in a new tab` : `${node.name}${edited}`);
+    route.tooltip ?? (isForm ? `${displayName} — opens in a new tab` : `${displayName}${edited}`);
 
   return (
     <>
       <RowButton
+        displayName={displayName}
         href={href}
         isActive={isActive}
         isForm={isForm}
@@ -170,6 +173,7 @@ function FileRowImpl({
 }
 
 function RowButton({
+  displayName,
   href,
   isActive,
   isForm,
@@ -190,7 +194,7 @@ function RowButton({
         style={{ paddingLeft: linkPadding }}
         title={titleAttr}
       >
-        <span className="truncate">{node.name}</span>
+        <span className="truncate">{displayName}</span>
       </SidebarMenuButton>
     );
   }
@@ -210,7 +214,7 @@ function RowButton({
           target="_blank"
           title={titleAttr}
         >
-          <span className="truncate">{node.name}</span>
+          <span className="truncate">{displayName}</span>
           <ExternalLink
             aria-label="Opens in a new tab"
             className="text-muted-foreground ml-auto size-3 shrink-0"
@@ -237,7 +241,7 @@ function RowButton({
         onPointerLeave={onPrewarmCancel}
         title={titleAttr}
       >
-        <span className="truncate">{node.name}</span>
+        <span className="truncate">{displayName}</span>
       </Link>
     </SidebarMenuButton>
   );

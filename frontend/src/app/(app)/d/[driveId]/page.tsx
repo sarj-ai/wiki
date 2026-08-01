@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { FilePageClient } from "@/components/wiki-document/file-page-client";
+import { displayFileName } from "@/lib/file-icons";
 import { serverWikiApi } from "@/lib/server-api";
 
 export async function generateMetadata({
@@ -11,7 +12,7 @@ export async function generateMetadata({
   const { driveId } = await params;
   try {
     const file = await serverWikiApi.getFile(driveId);
-    return docMetadata(file.name);
+    return docMetadata(displayFileName(file.name, file.mimeType));
   } catch (error) {
     // The middleware gives unfurl crawlers a static generic card. Authenticated
     // page failures inherit generic metadata and never infer a title from an ID.

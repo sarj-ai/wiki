@@ -5,7 +5,12 @@ import { Fragment, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { iframeShowsOwnTitle, openInGoogleLabel, renderMimeIcon } from "@/lib/file-icons";
+import {
+  displayFileName,
+  iframeShowsOwnTitle,
+  openInGoogleLabel,
+  renderMimeIcon,
+} from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import type { BreadcrumbItem } from "@/types/wiki";
 
@@ -24,10 +29,11 @@ export function WikiToolbar({ breadcrumb, fileId, mimeType, onReload, title }: W
   const openUrl = openUrlFor(mimeType, fileId);
   const openLabel = openInGoogleLabel(mimeType);
   const [copied, setCopied] = useState(false);
+  const displayTitle = displayFileName(title, mimeType);
 
   const trail: BreadcrumbItem[] = iframeShowsOwnTitle(mimeType)
     ? breadcrumb
-    : [...breadcrumb, { id: fileId, name: title }];
+    : [...breadcrumb, { id: fileId, name: displayTitle }];
 
   const handleCopy = (): void => {
     void navigator.clipboard
