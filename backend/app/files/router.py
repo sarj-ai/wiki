@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.drive.dependencies import drive_service_dep
 from app.drive.service import DriveService
@@ -27,6 +28,46 @@ from app.sidebar.dependencies import sidebar_cache_service_dep
 
 
 router = APIRouter(prefix="/files", tags=["files"])
+
+_HTML_CSP = "; ".join(
+    (
+        "default-src 'none'",
+        "script-src 'unsafe-inline'",
+        "style-src 'unsafe-inline'",
+        "img-src data:",
+        "font-src data:",
+        "connect-src 'none'",
+        "media-src 'none'",
+        "object-src 'none'",
+        "frame-src 'none'",
+        "worker-src 'none'",
+        "manifest-src 'none'",
+        "base-uri 'none'",
+        "form-action 'none'",
+        f"frame-ancestors {settings.frontend_origin}",
+        "sandbox allow-scripts",
+    )
+)
+
+
+@router.get("/{file_id}/content", response_class=Response)
+async def read_html_content(
+    file_id: str,
+    files: Annotated[FilesService, Depends(files_service_dep)],
+) -> Response:
+    content = await files.get_html_content(file_id)
+    return Response(
+        content=content,
+        media_type="text/html; charset=utf-8",
+        headers={
+            "Cache-Control": "private, no-store",
+            "Content-Security-Policy": _HTML_CSP,
+            "Cross-Origin-Resource-Policy": "same-site",
+            "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), clipboard-read=(), clipboard-write=()",
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

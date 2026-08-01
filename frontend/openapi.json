@@ -1549,6 +1549,39 @@
         "tags": ["files"]
       }
     },
+    "/files/{file_id}/content": {
+      "get": {
+        "operationId": "read_html_content_files__file_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Html Content",
+        "tags": ["files"]
+      }
+    },
     "/files/{file_id}/copy": {
       "post": {
         "operationId": "copy_file_files__file_id__copy_post",

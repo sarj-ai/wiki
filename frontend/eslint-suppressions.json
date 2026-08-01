@@ -97,9 +97,6 @@
     }
   },
   "src/components/wiki-document/doc-viewer-host.tsx": {
-    "@typescript-eslint/naming-convention": {
-      "count": 2
-    },
     "react/forbid-dom-props": {
       "count": 1
     },

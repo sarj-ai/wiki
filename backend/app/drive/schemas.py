@@ -12,6 +12,7 @@ MIME_SLIDE = "application/vnd.google-apps.presentation"
 MIME_DRAWING = "application/vnd.google-apps.drawing"
 MIME_FORM = "application/vnd.google-apps.form"
 MIME_SHORTCUT = "application/vnd.google-apps.shortcut"
+MIME_HTML = "text/html"
 
 NAVIGATOR_SUPPORTED_MIME_TYPES: tuple[str, ...] = (
     MIME_FOLDER,
@@ -20,6 +21,7 @@ NAVIGATOR_SUPPORTED_MIME_TYPES: tuple[str, ...] = (
     MIME_SLIDE,
     MIME_DRAWING,
     MIME_FORM,
+    MIME_HTML,
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",

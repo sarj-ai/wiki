@@ -7,6 +7,7 @@ export interface ActiveDoc {
   mimeType: string;
   reloadKey: number;
   title: string;
+  version?: string;
 }
 
 interface DocViewerState {

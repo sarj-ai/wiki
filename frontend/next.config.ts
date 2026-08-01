@@ -55,7 +55,7 @@ const CSP_DIRECTIVES = [
   "img-src 'self' data: blob: https://*.google.com https://*.gstatic.com https://*.googleusercontent.com",
   "font-src 'self' data: https://*.gstatic.com",
   `connect-src 'self' ${BACKEND_API_ORIGIN} ${GOOGLE_CONNECT_SRC}`,
-  `frame-src 'self' ${GOOGLE_FRAME_SRC}`,
+  `frame-src 'self' ${BACKEND_API_ORIGIN} ${GOOGLE_FRAME_SRC}`,
   "frame-ancestors 'self'",
   "base-uri 'self'",
   "form-action 'self' https://accounts.google.com",

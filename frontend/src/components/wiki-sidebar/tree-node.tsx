@@ -23,7 +23,7 @@ import {
   type KindedNode,
 } from "@/lib/wiki-tree";
 import type { DriveNode } from "@/types/wiki";
-import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
+import { MIME_DOC, MIME_FOLDER, MIME_HTML } from "@/types/wiki";
 
 import { CreateFileMenu } from "./create-file-menu";
 import { useDriveSectionContext } from "./drive-context";
@@ -238,7 +238,7 @@ function buildChildItems(
       : (ctx.filesByParent.get(node.id) ?? []);
   const filteredFiles = ctx.showNonDocFiles
     ? rawFiles
-    : rawFiles.filter((n) => n.mimeType === MIME_DOC);
+    : rawFiles.filter((n) => n.mimeType === MIME_DOC || n.mimeType === MIME_HTML);
   const folderChildren = meta.isFolderShortcut
     ? lazyAll.filter(isFolderLikeNode)
     : (ctx.childrenByParent.get(node.id) ?? []);

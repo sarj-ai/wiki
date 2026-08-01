@@ -240,6 +240,77 @@ async def test_get_rejects_my_drive(monkeypatch: pytest.MonkeyPatch) -> None:
         await _svc("irrelevant").get("my-drive-file")
 
 
+async def test_html_content_rechecks_drive_and_downloads_with_viewer_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operations: list[str] = []
+
+    class _Request:
+        def __init__(self, result: Any) -> None:
+            self._result = result
+
+        def execute(self) -> Any:
+            return self._result
+
+    class _FakeFiles:
+        def get(self, **kwargs: Any) -> _Request:
+            operations.append(f"file:{kwargs.get('alt', 'metadata')}")
+            if kwargs.get("alt") == "media":
+                return _Request(b"<!doctype html><p>safe</p>")
+            return _Request(
+                {
+                    "id": "chart",
+                    "name": "Chart.html",
+                    "mimeType": "text/html",
+                    "parents": ["d1"],
+                    "driveId": "d1",
+                }
+            )
+
+    class _FakeDrives:
+        def get(self, **kwargs: Any) -> _Request:
+            operations.append(f"drive:{kwargs['driveId']}")
+            return _Request({"id": "d1", "hidden": False})
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+        def drives(self) -> _FakeDrives:
+            return _FakeDrives()
+
+    _patch_client(monkeypatch, _FakeClient())
+    content = await _svc("d1").get_html_content("chart")
+
+    assert content == b"<!doctype html><p>safe</p>"
+    assert operations == ["file:metadata", "drive:d1", "file:media"]
+
+
+async def test_html_content_rejects_non_html_before_download(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeFiles:
+        def get(self, **_: Any) -> Self:
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            return {
+                "id": "pdf",
+                "name": "File.pdf",
+                "mimeType": "application/pdf",
+                "parents": ["d1"],
+                "driveId": "d1",
+            }
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    _patch_client(monkeypatch, _FakeClient())
+    with pytest.raises(UnsupportedMimeError):
+        await _svc("d1").get_html_content("pdf")
+
+
 async def test_copy_rejects_folder(monkeypatch: pytest.MonkeyPatch) -> None:
     class _FakeFiles:
         def get(self, **_: Any) -> Self:
