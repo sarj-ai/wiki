@@ -1,7 +1,12 @@
 import {
+  Archive,
+  Braces,
   ClipboardList,
+  FileAudio,
+  FileCode2,
   FileText,
   FileType2,
+  FileVideo,
   Folder,
   Image as LucideImage,
   Link2,
@@ -17,6 +22,7 @@ import {
   MIME_DRAWING,
   MIME_FOLDER,
   MIME_FORM,
+  MIME_HTML,
   MIME_PDF,
   MIME_SHEET,
   MIME_SHORTCUT,
@@ -29,23 +35,46 @@ interface NodeIconShape {
 }
 
 const MIME_ICONS: Record<string, { icon: typeof FileText; tint: string }> = {
+  "application/json": { icon: Braces, tint: "text-icon-generic" },
+  "application/msword": { icon: FileText, tint: "text-icon-doc" },
+  "application/vnd.ms-excel": { icon: Table, tint: "text-icon-sheet" },
+  "application/vnd.ms-powerpoint": { icon: Presentation, tint: "text-icon-slide" },
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": {
+    icon: Presentation,
+    tint: "text-icon-slide",
+  },
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+    icon: Table,
+    tint: "text-icon-sheet",
+  },
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
+    icon: FileText,
+    tint: "text-icon-doc",
+  },
+  "application/x-zip-compressed": { icon: Archive, tint: "text-icon-generic" },
+  "application/zip": { icon: Archive, tint: "text-icon-generic" },
   [MIME_DOC]: { icon: FileText, tint: "text-icon-doc" },
   [MIME_DRAWING]: { icon: Palette, tint: "text-icon-drawing" },
   [MIME_FOLDER]: { icon: Folder, tint: "text-icon-folder" },
   [MIME_FORM]: { icon: ClipboardList, tint: "text-icon-form" },
+  [MIME_HTML]: { icon: FileCode2, tint: "text-icon-form" },
   [MIME_PDF]: { icon: FileType2, tint: "text-icon-pdf" },
   [MIME_SHEET]: { icon: Table, tint: "text-icon-sheet" },
   [MIME_SLIDE]: { icon: Presentation, tint: "text-icon-slide" },
+  "text/csv": { icon: Table, tint: "text-icon-sheet" },
+  "text/plain": { icon: FileText, tint: "text-icon-generic" },
 };
 
 export function renderMimeIcon(mimeType: string, className?: string): ReactElement {
-  const entry =
-    MIME_ICONS[mimeType] ??
-    (mimeType.startsWith("image/")
-      ? { icon: LucideImage, tint: "text-icon-image" }
-      : { icon: FileText, tint: "text-icon-generic" });
+  const entry = MIME_ICONS[mimeType] ?? fallbackIcon(mimeType);
   const Icon = entry.icon;
   return <Icon className={cn(entry.tint, className)} />;
+}
+
+/** Keeps storage names intact while removing redundant format suffixes in UI labels. */
+export function displayFileName(name: string, mimeType: string): string {
+  if (mimeType !== MIME_HTML) return name;
+  return name.replace(/\.html?$/iu, "");
 }
 
 export function renderNodeIcon(node: NodeIconShape, className?: string): ReactElement {
@@ -91,4 +120,11 @@ export function iframeShowsOwnTitle(mimeType: string): boolean {
     mimeType === MIME_SLIDE ||
     mimeType === MIME_DRAWING
   );
+}
+
+function fallbackIcon(mimeType: string): { icon: typeof FileText; tint: string } {
+  if (mimeType.startsWith("image/")) return { icon: LucideImage, tint: "text-icon-image" };
+  if (mimeType.startsWith("audio/")) return { icon: FileAudio, tint: "text-icon-generic" };
+  if (mimeType.startsWith("video/")) return { icon: FileVideo, tint: "text-icon-slide" };
+  return { icon: FileText, tint: "text-icon-generic" };
 }
