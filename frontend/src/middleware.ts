@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 // Link-preview crawlers receive only this constant card. User-agent checks are
-// spoofable, so the proxy never mounts the authenticated app or reflects a URL.
+// spoofable, so the middleware never mounts the authenticated app or reflects a URL.
 const UNFURL_CRAWLERS =
   /slackbot|discordbot|twitterbot|facebookexternalhit|telegrambot|whatsapp|linkedinbot|skypeuripreview|google-pagerenderer/i;
 
@@ -24,7 +24,7 @@ const PREVIEW_HTML = `<!doctype html>
 <body>Sarj Wiki</body>
 </html>`;
 
-export function proxy(request: NextRequest) {
+export default function middleware(request: NextRequest) {
   if (request.cookies.has("access_token") || request.cookies.has("refresh_token")) {
     return NextResponse.next();
   }
