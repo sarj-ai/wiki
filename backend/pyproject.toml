@@ -38,7 +38,7 @@ dev = [
     "basedpyright>=1.39.0",
     "ty>=0.0.47",
     "google-api-python-client-stubs>=1.37.0",
-    "sarj-lint-configs==0.9.1",
+    "sarj-lint-configs==0.37.1",
     "import-linter>=2.11",
     "pip-audit>=2.10.0",
 ]
@@ -87,6 +87,9 @@ target-version = "py314"
 "app/main.py" = ["unused-async"]
 "app/sidebar/cache.py" = ["docstring-missing-returns", "no-self-use"]
 "scripts/**" = [
+  # This key shadows the canonical `.ruff-strict.toml` entry for the same glob,
+  # so the exemptions that file grants `scripts/**` have to be restated here.
+  "implicit-namespace-package",
   "print",
   "hardcoded-password-string",
   "raise-vanilla-class",

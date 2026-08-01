@@ -29,6 +29,18 @@ const configsAsErrors = (configs) =>
     rules: rulesAsErrors(config.rules),
   }));
 
+// eslint.strict.mjs registers `react` wrapped in @eslint/compat's
+// fixupPluginRules (eslint-plugin-react 7.37.5 still uses rule-context APIs
+// ESLint 10 removed). eslint-config-next registers the same package unwrapped;
+// two different objects for one namespace is a hard ConfigError. Drop next's
+// definition so every react/* rule resolves against the fixed-up instance.
+const withoutReactPlugin = (configs) =>
+  configs.map((config) => {
+    if (!config.plugins || !("react" in config.plugins)) return config;
+    const { react: _react, ...plugins } = config.plugins;
+    return { ...config, plugins };
+  });
+
 const strictNamingConvention = sarjStrict
   .map((config) => config.rules?.["@typescript-eslint/naming-convention"])
   .find(Array.isArray);
@@ -39,7 +51,7 @@ const reactNamingConvention = strictNamingConvention?.map((setting) =>
 );
 
 export default defineConfig([
-  ...configsAsErrors(nextVitals),
+  ...withoutReactPlugin(configsAsErrors(nextVitals)),
   ...configsAsErrors(nextTs),
   ...configsAsErrors(sarjStrict),
   // Type-aware linting: turn on the typed rule sets across the project.
@@ -164,6 +176,18 @@ export default defineConfig([
       "@typescript-eslint/naming-convention": reactNamingConvention,
     },
   },
+  // Config-dependent Standards rule, inert unless wired per-repo: outbound
+  // HTTP goes through src/lib/api-client.ts (matched by the rule's default
+  // `*-client.ts` allow pattern). Its sibling
+  // `@sarj/no-storage-in-stateless-modules` stays unwired on purpose: it is a
+  // no-op without a declared stateless-module list, and this repo has none —
+  // the backend owns all storage, and the Postgres overlay there is
+  // droppable-by-design rather than stateless.
+  {
+    rules: {
+      "@sarj/no-raw-fetch-outside-clients": "error",
+    },
+  },
   // next.config.ts evaluates before src/ modules can load, and env.ts IS
   // the validated env module the rule points at.
   {
@@ -180,10 +204,6 @@ export default defineConfig([
   {
     extends: [tseslint.configs.disableTypeChecked],
     files: ["**/*.config.{ts,mjs,js}", "**/*.mjs"],
-    rules: {
-      "@sarj/no-implicit-attribute-access": "off",
-      "@sarj/primary-export-file-name": "off",
-    },
   },
   globalIgnores([
     // Default ignores of eslint-config-next:

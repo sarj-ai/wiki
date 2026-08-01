@@ -5,8 +5,7 @@
   ],
   "codes": {
     "noqa:F401": 1,
-    "pyright:reportUntypedFunctionDecorator": 3,
-    "sarj-noqa:SARJ001": 1,
+    "pyright:reportUntypedFunctionDecorator": 2,
     "sarj-noqa:SARJ006": 7,
     "type-ignore:arg-type": 11,
     "type-ignore:attr-defined": 1,
@@ -17,7 +16,7 @@
     "type-ignore:untyped-decorator": 1
   },
   "packages": {
-    "backend": 33
+    "backend": 31
   },
   "files": {
     "per_file_ceiling": 10,

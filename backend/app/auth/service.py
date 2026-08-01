@@ -27,7 +27,7 @@ from app.drive import drives_cache
 from app.models.user import User
 
 
-GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"  # ruff: ignore[hardcoded-password-string] — public OAuth endpoint URL, not a credential
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 

@@ -19,7 +19,7 @@ standards-check:
 
 # Upgrade every Standards package, both locks, and all generated configs in one command.
 standards-upgrade:
-	@uv add --project backend --group dev --exact --upgrade-package sarj-lint-configs sarj-lint-configs
+	@uv add --project backend --group dev --bounds exact --upgrade-package sarj-lint-configs sarj-lint-configs
 	@npm install --prefix frontend --save-dev --save-exact \
 		@sarj/eslint-plugin@latest @sarj/tsconfig@latest
 	@$(MAKE) standards-sync
