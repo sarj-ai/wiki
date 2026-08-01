@@ -325,11 +325,6 @@
       "count": 1
     }
   },
-  "src/lib/public-api.ts": {
-    "@sarj/primary-export-file-name": {
-      "count": 1
-    }
-  },
   "src/lib/server-api.test.ts": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 1
