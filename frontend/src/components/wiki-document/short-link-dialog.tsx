@@ -30,10 +30,13 @@ import {
   useRetireDocumentAlias,
   useSaveDocumentAlias,
 } from "@/hooks/use-document-alias";
+import {
+  documentShortLink,
+  SHORT_LINK_COPY_FEEDBACK_MS,
+  SHORT_LINK_DISPLAY_PREFIX,
+} from "@/lib/document-short-link";
 import { zDocumentAliasWrite } from "@/lib/generated/zod.gen";
 import { ApiError } from "@/lib/wiki-api";
-
-const SHORT_LINK_PREFIX = "wiki.sarj.ai/go/";
 
 export function ShortLinkDialog({ fileId }: ShortLinkDialogProps) {
   const [open, setOpen] = useState(false);
@@ -63,11 +66,11 @@ export function ShortLinkDialog({ fileId }: ShortLinkDialogProps) {
   const handleCopy = async () => {
     if (!savedAlias) return;
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/go/${savedAlias}`);
+      await navigator.clipboard.writeText(documentShortLink(window.location.origin, savedAlias));
       setCopied(true);
       window.setTimeout(() => {
         setCopied(false);
-      }, 2000);
+      }, SHORT_LINK_COPY_FEEDBACK_MS);
     } catch {
       toast.error("Couldn't copy short link");
     }
@@ -126,7 +129,7 @@ export function ShortLinkDialog({ fileId }: ShortLinkDialogProps) {
               <Label htmlFor="document-alias">Wiki address</Label>
               <div className="border-input focus-within:border-ring focus-within:ring-ring/50 flex items-center rounded-md border shadow-xs focus-within:ring-[3px]">
                 <span className="bg-muted text-muted-foreground border-input h-9 shrink-0 rounded-l-md border-r px-3 font-mono text-xs leading-9 select-none">
-                  {SHORT_LINK_PREFIX}
+                  {SHORT_LINK_DISPLAY_PREFIX}
                 </span>
                 <Input
                   aria-invalid={value.length > 0 && !validation.success}
