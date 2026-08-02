@@ -44,41 +44,7 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          set -euo pipefail
-          changed_file="$RUNNER_TEMP/changed-files"
-          git diff --name-only "$BASE_SHA"...HEAD > "$changed_file"
-          # New-rule exemptions are decided by the checker, not here: it opens
-          # them only when the `version` key inside .sarj-standards.toml (the
-          # authoritative pin site) differs between base and HEAD — a genuine
-          # toolchain upgrade whose newly adopted rules are absorbed by
-          # regeneration, then ratcheted. A comment or dest edit to that file
-          # earns nothing. The base strict ESLint config further scopes the
-          # exemption: rules it already enforced can never absorb new findings.
-          git show "$BASE_SHA:.sarj-standards.toml" > "$RUNNER_TEMP/base-standards.toml"
-          {
-            git show "$BASE_SHA:frontend/eslint.strict.mjs"
-            git show "$BASE_SHA:frontend/eslint.config.mjs"
-          } > "$RUNNER_TEMP/base-eslint-configs.mjs"
-          for baseline in python-standards-baseline.json frontend/eslint-suppressions.json; do
-            base_file="$RUNNER_TEMP/$(basename "$baseline")"
-            scope_args=()
-            if [[ "$baseline" == frontend/* ]]; then
-              scope_args=(--base-config "$RUNNER_TEMP/base-eslint-configs.mjs")
-            fi
-            if git show "$BASE_SHA:$baseline" > "$base_file" 2>/dev/null; then
-              uv run --project backend --locked python scripts/check_baseline_growth.py \
-                --standards-base "$RUNNER_TEMP/base-standards.toml" \
-                --standards-current .sarj-standards.toml \
-                "${scope_args[@]}" \
-                "$base_file" "$baseline"
-            else
-              prefix=""
-              if [[ "$baseline" == frontend/* ]]; then prefix="frontend/"; fi
-              uv run --project backend --locked python scripts/check_baseline_growth.py \
-                --initial "$baseline" "$changed_file" "$prefix"
-            fi
-          done
+        run: scripts/check-baseline-growth.sh "$BASE_SHA"
 
       - name: Run pre-commit
         env:
