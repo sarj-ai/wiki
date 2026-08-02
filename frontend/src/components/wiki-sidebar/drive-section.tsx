@@ -263,7 +263,7 @@ function buildRootItems({
     ? rawFiles
     : rawFiles.filter((n) => n.mimeType === MIME_DOC || n.mimeType === MIME_HTML);
   const files: KindedNode[] = visibleFiles.map((node) => ({ node, type: "file" }));
-  return [...folders, ...files].sort((a, b) => compareNodeOrder(a, b, sortOrderMap));
+  return [...folders, ...files].toSorted((a, b) => compareNodeOrder(a, b, sortOrderMap));
 }
 
 function DriveTreeSkeleton() {

@@ -251,7 +251,7 @@ function buildChildItems(
   const optimisticOrder = ctx.optimisticByContainer.get(`parent:${node.id}`) ?? null;
   const sorted = optimisticOrder
     ? raw
-    : [...raw].sort((a, b) => compareNodeOrder(a, b, ctx.sortOrderMap));
+    : [...raw].toSorted((a, b) => compareNodeOrder(a, b, ctx.sortOrderMap));
   return applyOptimisticOrder(sorted, optimisticOrder);
 }
 
