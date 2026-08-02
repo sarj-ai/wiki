@@ -70,19 +70,17 @@ class GoogleFilesService(FilesService):
             msg = f"Unsupported mimeType: {mime_type}"
             raise UnsupportedMimeError(msg)
         result = await asyncio.to_thread(self._create_sync, parent_folder_id, name, mime_type)
-        await self._ensure_in_member_drive(result.drive_id)
-        return result
+        return await self._normalize_member_drive(result)
 
     @override
     async def get(self, file_id: FileId) -> FileResponse:
         result = await asyncio.to_thread(self._get_sync, file_id)
-        await self._ensure_in_member_drive(result.drive_id)
-        return result
+        return await self._normalize_member_drive(result)
 
     @override
     async def can_edit(self, file_id: FileId) -> bool:
         result = await asyncio.to_thread(self._get_sync, file_id)
-        await self._ensure_in_member_drive(result.drive_id)
+        await self._normalize_member_drive(result)
         return result.can_edit
 
     @override
@@ -91,7 +89,10 @@ class GoogleFilesService(FilesService):
         if file.mime_type != MIME_HTML:
             msg = "Only HTML files can use the isolated HTML viewer"
             raise UnsupportedMimeError(msg)
-        await asyncio.to_thread(self._ensure_current_drive_membership_sync, file.drive_id)
+        drives = await self._drive.list_drives()
+        is_personal = any(d.id == file.drive_id and d.is_personal for d in drives)
+        if not is_personal:
+            await asyncio.to_thread(self._ensure_current_drive_membership_sync, file.drive_id)
         content = await asyncio.to_thread(self._download_sync, file_id)
         if len(content) > _MAX_HTML_BYTES:
             msg = "HTML file exceeds the 5 MiB viewer limit"
@@ -101,7 +102,8 @@ class GoogleFilesService(FilesService):
     @override
     async def rename(self, file_id: FileId, new_name: str) -> FileResponse:
         await self.get(file_id)
-        return await asyncio.to_thread(self._rename_sync, file_id=file_id, new_name=new_name)
+        result = await asyncio.to_thread(self._rename_sync, file_id=file_id, new_name=new_name)
+        return await self._normalize_member_drive(result)
 
     @override
     async def move(self, file_id: FileId, new_parent_folder_id: FileId) -> MoveResult:
@@ -123,7 +125,7 @@ class GoogleFilesService(FilesService):
                     msg = "Drive blocked this cross-drive move — copy the file instead."
                     raise CrossDriveMoveNotSupportedError(msg) from exc
             raise
-        await self._ensure_in_member_drive(moved.drive_id)
+        moved = await self._normalize_member_drive(moved)
         return MoveResult(source=source, moved=moved)
 
     @override
@@ -133,8 +135,7 @@ class GoogleFilesService(FilesService):
             msg = "Folders can't be duplicated — copy individual files instead"
             raise FolderCopyNotSupportedError(msg)
         result = await asyncio.to_thread(self._copy_sync, file_id=file_id, new_name=new_name)
-        await self._ensure_in_member_drive(result.drive_id)
-        return result
+        return await self._normalize_member_drive(result)
 
     @override
     async def delete(self, file_id: FileId) -> DeleteResult:
@@ -142,14 +143,14 @@ class GoogleFilesService(FilesService):
         await asyncio.to_thread(self._trash_sync, file_id)
         return DeleteResult(source=source)
 
-    async def _ensure_in_member_drive(self, drive_id: DriveId | None) -> None:
-        if drive_id is None:
+    async def _normalize_member_drive(self, file: FileResponse) -> FileResponse:
+        resolved_drive_id = await self._drive.resolve_member_drive(file.id, file.drive_id)
+        if resolved_drive_id is None:
             msg = "File not available in Sarj Wiki"
             raise FileNotInScopeError(msg)
-        drives = await self._drive.list_drives()
-        if not any(d.id == drive_id for d in drives):
-            msg = "File not available in Sarj Wiki"
-            raise FileNotInScopeError(msg)
+        if resolved_drive_id == file.drive_id:
+            return file
+        return file.model_copy(update={"drive_id": resolved_drive_id})
 
     def _create_sync(self, parent_folder_id: FileId, name: str, mime_type: str) -> FileResponse:
         client = self._client()

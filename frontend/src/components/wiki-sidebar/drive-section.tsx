@@ -9,7 +9,7 @@ import {
   rectIntersection,
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { ChevronRight, HardDrive, Loader2, RefreshCw } from "lucide-react";
+import { ChevronRight, HardDrive, Home, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -146,7 +146,11 @@ export function DriveSection({
               <ChevronRight
                 className={cn("size-3 transition-transform", expanded && "rotate-90")}
               />
-              <HardDrive className="size-3.5" />
+              {drive.isPersonal ? (
+                <Home className="size-3.5" />
+              ) : (
+                <HardDrive className="size-3.5" />
+              )}
               <span className="truncate">{drive.name}</span>
             </button>
           </SidebarGroupLabel>

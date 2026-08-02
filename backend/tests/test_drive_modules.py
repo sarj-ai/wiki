@@ -9,7 +9,7 @@ from httplib2 import Response
 import pytest
 
 from app.drive import probe_cache
-from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT, ShortcutProbe
+from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT, SearchResult, ShortcutProbe
 from app.drive.service import GoogleDriveService
 from app.drive.snippets import extract_snippet
 from app.identifiers import DriveId, FileId, GoogleUserId
@@ -62,9 +62,11 @@ class _FakeFilesListable(_FakeListable):
         pages: list[dict[str, Any]],
         children_pages: list[dict[str, Any]],
         captured: list[dict[str, Any]],
+        root_page: dict[str, Any],
     ) -> None:
         super().__init__(pages, captured)
         self._children = _FakeListable(children_pages, captured)
+        self._root_page = root_page
 
     def list(self, **kwargs: Any) -> _FakePendingCall:
         q = str(kwargs.get("q", ""))
@@ -73,6 +75,9 @@ class _FakeFilesListable(_FakeListable):
         return super().list(**kwargs)
 
     def get(self, **kwargs: Any) -> _FakePendingCall:
+        if kwargs.get("fileId") == "root":
+            self._captured.append({"_op": "get", **kwargs})
+            return _FakePendingCall(self._root_page)
         return self._record({"_op": "get", **kwargs})
 
     def update(self, **kwargs: Any) -> _FakePendingCall:
@@ -89,12 +94,16 @@ class _FakeClient:
         drives_pages: list[dict[str, Any]] | None = None,
         files_pages: list[dict[str, Any]] | None = None,
         children_pages: list[dict[str, Any]] | None = None,
+        root_page: dict[str, Any] | None = None,
     ) -> None:
         self.drives_captured: list[dict[str, Any]] = []
         self.files_captured: list[dict[str, Any]] = []
         self._drives = _FakeListable(drives_pages or [{}], self.drives_captured)
         self._files = _FakeFilesListable(
-            files_pages or [{}], children_pages or [{}], self.files_captured
+            files_pages or [{}],
+            children_pages or [{}],
+            self.files_captured,
+            root_page or {"id": "my-drive-root"},
         )
 
     def drives(self) -> _FakeListable:
@@ -136,8 +145,9 @@ async def test_list_drives_paginates_until_empty_token(patch_drive_client: Any) 
     patch_drive_client(client)
     result = await _svc().list_drives()
 
-    assert [d.id for d in result] == ["d1", "d2"]
-    assert [d.name for d in result] == ["Engineering", "Marketing"]
+    assert [d.id for d in result] == ["my-drive-root", "d1", "d2"]
+    assert [d.name for d in result] == ["My Drive", "Engineering", "Marketing"]
+    assert [d.is_personal for d in result] == [True, False, False]
     assert len(client.drives_captured) == 2
     assert client.drives_captured[0]["fields"] == "nextPageToken,drives(id,name,hidden)"
     assert all(call["q"] == "hidden = false" for call in client.drives_captured)
@@ -161,7 +171,7 @@ async def test_list_drives_skips_hidden_entries(patch_drive_client: Any) -> None
 
     result = await _svc().list_drives()
 
-    assert [d.id for d in result] == ["d1", "d3"]
+    assert [d.id for d in result] == ["my-drive-root", "d1", "d3"]
 
 
 async def test_list_drives_skips_entries_missing_fields(patch_drive_client: Any) -> None:
@@ -179,7 +189,143 @@ async def test_list_drives_skips_entries_missing_fields(patch_drive_client: Any)
     )
     patch_drive_client(client)
     result = await _svc().list_drives()
-    assert [d.id for d in result] == ["d1"]
+    assert [d.id for d in result] == ["my-drive-root", "d1"]
+
+
+@pytest.mark.parametrize(
+    ("file_id", "locations"),
+    [
+        (
+            "personal-doc",
+            [
+                {"id": "personal-doc", "parents": ["personal-folder"]},
+                {"id": "personal-folder", "parents": ["personal-root"]},
+                {"id": "personal-root"},
+            ],
+        ),
+        ("personal-root", [{"id": "personal-root"}]),
+    ],
+    ids=["descendant", "root"],
+)
+async def test_resolve_member_drive_accepts_only_my_drive_ancestry(
+    patch_drive_client: Any,
+    file_id: str,
+    locations: list[dict[str, Any]],
+) -> None:
+    client = _FakeClient(
+        files_pages=locations,
+        root_page={"id": "personal-root"},
+    )
+    patch_drive_client(client)
+
+    resolved = await _svc().resolve_member_drive(FileId(file_id), None)
+
+    assert resolved == "personal-root"
+
+
+@pytest.mark.parametrize(
+    "locations",
+    [
+        [{"id": "shared-with-me", "parents": ["owner-root"]}, {"id": "owner-root"}],
+        [{"id": "rootless"}],
+    ],
+    ids=["shared-with-me", "rootless"],
+)
+async def test_resolve_member_drive_rejects_non_my_drive_files(
+    patch_drive_client: Any,
+    locations: list[dict[str, Any]],
+) -> None:
+    client = _FakeClient(
+        files_pages=locations,
+        root_page={"id": "personal-root"},
+    )
+    patch_drive_client(client)
+
+    resolved = await _svc().resolve_member_drive(FileId(str(locations[0]["id"])), None)
+
+    assert resolved is None
+
+
+@pytest.mark.parametrize(
+    ("reported_drive_id", "expected"),
+    [("engineering", "engineering"), ("foreign", None)],
+    ids=["listed-shared-drive", "unlisted-shared-drive"],
+)
+async def test_resolve_member_drive_preserves_exact_shared_drive_membership(
+    patch_drive_client: Any,
+    reported_drive_id: str,
+    expected: str | None,
+) -> None:
+    client = _FakeClient(drives_pages=[{"drives": [{"id": "engineering", "name": "Engineering"}]}])
+    patch_drive_client(client)
+
+    resolved = await _svc().resolve_member_drive(FileId("doc"), DriveId(reported_drive_id))
+
+    assert resolved == expected
+    ancestry_calls = [
+        call
+        for call in client.files_captured
+        if call.get("_op") == "get" and call.get("fileId") != "root"
+    ]
+    assert ancestry_calls == []
+
+
+async def test_walk_my_drive_uses_user_corpus_and_excludes_shared_drive_items(
+    patch_drive_client: Any,
+) -> None:
+    client = _FakeClient(
+        root_page={"id": "personal-root"},
+        files_pages=[
+            {
+                "files": [
+                    {
+                        "id": "mine-folder",
+                        "name": "Mine",
+                        "mimeType": MIME_FOLDER,
+                        "parents": ["personal-root"],
+                    },
+                    {
+                        "driveId": "shared-drive",
+                        "id": "shared-folder",
+                        "name": "Shared",
+                        "mimeType": MIME_FOLDER,
+                        "parents": ["shared-drive"],
+                    },
+                ]
+            }
+        ],
+        children_pages=[
+            {
+                "files": [
+                    {
+                        "id": "mine-doc",
+                        "name": "Personal notes",
+                        "mimeType": "application/vnd.google-apps.document",
+                        "parents": ["personal-root"],
+                    },
+                    {
+                        "driveId": "shared-drive",
+                        "id": "shared-doc",
+                        "name": "Shared notes",
+                        "mimeType": "application/vnd.google-apps.document",
+                        "parents": ["shared-drive"],
+                    },
+                ]
+            }
+        ],
+    )
+    patch_drive_client(client)
+
+    tree = await _svc().walk_drive_folders(DriveId("personal-root"))
+
+    assert [folder.id for folder in tree.folders] == ["mine-folder"]
+    assert [file.id for file in tree.files] == ["mine-doc"]
+    assert tree.folders[0].parent_id is None
+    assert tree.files[0].parent_id is None
+    list_calls = [call for call in client.files_captured if "q" in call]
+    assert all(call["corpora"] == "user" for call in list_calls)
+    assert all("driveId" not in call for call in list_calls)
+    assert all("'me' in owners" in call["q"] for call in list_calls)
 
 
 async def test_walk_drive_folders_uses_corpora_drive_and_folder_query(
@@ -240,7 +386,11 @@ async def test_walk_drive_folders_paginates(patch_drive_client: Any) -> None:
     patch_drive_client(client)
     tree = await _svc().walk_drive_folders(DriveId("d"))
     assert [f.id for f in tree.folders] == ["f1", "f2"]
-    walk_calls = [c for c in client.files_captured if c.get("corpora") == "drive"]
+    walk_calls = [
+        c
+        for c in client.files_captured
+        if c.get("corpora") == "drive" and str(c.get("q", "")).startswith("(")
+    ]
     assert walk_calls[1].get("pageToken") == "NEXT"
 
 
@@ -415,10 +565,11 @@ async def test_walk_surfaces_folder_shortcuts_and_drops_file_shortcuts(
     assert sc.shortcut_target_drive_name == "Engineering"
     assert sc.shortcut_inaccessible is False
 
-    q = client.files_captured[0]["q"]
+    walk_call = next(call for call in client.files_captured if "q" in call)
+    q = walk_call["q"]
     assert f"mimeType='{MIME_FOLDER}'" in q
     assert f"mimeType='{MIME_SHORTCUT}'" in q
-    assert "shortcutDetails(targetId,targetMimeType)" in client.files_captured[0]["fields"]
+    assert "shortcutDetails(targetId,targetMimeType)" in walk_call["fields"]
 
 
 async def test_list_children_surfaces_file_shortcuts_with_target_mime(
@@ -570,7 +721,7 @@ async def test_search_drive_escapes_quotes_and_passes_scoping(
     patch_drive_client(client)
     results = await _svc().search_drive(DriveId("d1"), "O'Brien")
     assert [r.id for r in results] == ["s1"]
-    call = client.files_captured[0]
+    call = next(call for call in client.files_captured if "q" in call)
     assert r"O\'Brien" in call["q"]
     assert call["corpora"] == "drive"
     assert call["driveId"] == "d1"
@@ -583,7 +734,9 @@ async def test_search_drive_empty_query_returns_empty(patch_drive_client: Any) -
     assert client.files_captured == []
 
 
-async def test_search_uses_single_all_drives_query(patch_drive_client: Any) -> None:
+async def test_search_combines_shared_drives_with_owned_my_drive_results(
+    patch_drive_client: Any,
+) -> None:
     client = _FakeClient(
         drives_pages=[
             {"drives": [{"id": "d1", "name": "D1"}, {"id": "d2", "name": "D2"}]},
@@ -596,46 +749,66 @@ async def test_search_uses_single_all_drives_query(patch_drive_client: Any) -> N
                     {"id": "personal", "name": "P", "mimeType": "x", "parents": ["root"]},
                 ]
             },
+            {
+                "files": [
+                    {
+                        "id": "personal",
+                        "name": "P",
+                        "mimeType": "x",
+                        "parents": ["my-drive-root"],
+                    }
+                ]
+            },
         ],
     )
     patch_drive_client(client)
     results = await _svc().search("q")
-    assert {r.id for r in results} == {"a", "b"}
-    assert {r.drive_name for r in results} == {"D1", "D2"}
-    assert len(client.files_captured) == 1
-    call = client.files_captured[0]
-    assert call["corpora"] == "allDrives"
-    assert "driveId" not in call
-    assert "incompleteResults" in call["fields"]
+    assert {r.id for r in results} == {"a", "b", "personal"}
+    personal = next(result for result in results if result.id == "personal")
+    assert personal.drive_id == "my-drive-root"
+    assert personal.drive_name == "My Drive"
+    assert {r.drive_name for r in results} == {"D1", "D2", "My Drive"}
+    search_calls = [call for call in client.files_captured if "q" in call]
+    assert len(search_calls) == 2
+    assert search_calls[0]["corpora"] == "allDrives"
+    assert "driveId" not in search_calls[0]
+    assert "incompleteResults" in search_calls[0]["fields"]
+    assert search_calls[1]["corpora"] == "user"
+    assert "'me' in owners" in search_calls[1]["q"]
 
 
 async def test_search_falls_back_to_per_drive_on_incomplete_results(
-    patch_drive_client: Any,
+    patch_drive_client: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = _FakeClient(
         drives_pages=[
             {"drives": [{"id": "d1", "name": "D1"}, {"id": "d2", "name": "D2"}]},
         ],
-        files_pages=[
-            {"incompleteResults": True, "files": []},
-            {
-                "files": [
-                    {"id": "a", "name": "A", "mimeType": "x", "parents": ["d1"], "driveId": "d1"}
-                ]
-            },
-            {
-                "files": [
-                    {"id": "b", "name": "B", "mimeType": "x", "parents": ["d2"], "driveId": "d2"}
-                ]
-            },
-        ],
+        files_pages=[{"incompleteResults": True, "files": []}],
     )
     patch_drive_client(client)
-    results = await _svc().search("q")
-    assert {r.id for r in results} == {"a", "b"}
-    assert len(client.files_captured) == 3
-    fan_out_corpora = {c["corpora"] for c in client.files_captured[1:]}
-    assert fan_out_corpora == {"drive"}
+    svc = _svc()
+
+    def _search_one(
+        drive_id: DriveId, _query: str, _limit: int, *, is_personal: bool = False
+    ) -> list[SearchResult]:
+        result_id = "personal" if is_personal else drive_id
+        return [
+            SearchResult(
+                id=FileId(result_id),
+                name=result_id,
+                mime_type="x",
+                drive_id=drive_id,
+                drive_name=None,
+                parent_id=None,
+                modified_time=None,
+            )
+        ]
+
+    monkeypatch.setattr(svc, "_search_drive_sync", _search_one)
+    results = await svc.search("q")
+    assert {r.id for r in results} == {"d1", "d2", "personal"}
+    assert len([call for call in client.files_captured if "q" in call]) == 1
 
 
 async def test_search_short_circuits_on_empty_query(patch_drive_client: Any) -> None:

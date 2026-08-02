@@ -24,6 +24,7 @@ from app.drive import drives_cache, probe_cache
 from app.drive.google_schemas import (
     GoogleDrive,
     GoogleFile,
+    GoogleFileLocation,
     GoogleFileMetadata,
     GoogleFileProbe,
 )
@@ -56,6 +57,14 @@ _SEARCH_PAGE_SIZE = 50
 
 _MAX_DRIVE_FILE_PAGES = 3
 
+_MAX_PERSONAL_ANCESTRY_NODES = 64
+
+_MY_DRIVE_ALIAS = FileId("root")
+
+_MY_DRIVE_NAME = "My Drive"
+
+_OWNED_BY_ME_CLAUSE = " and 'me' in owners"
+
 _TEXT_EXPORTABLE_MIME_TYPES = frozenset(
     {
         "application/vnd.google-apps.document",
@@ -70,6 +79,14 @@ _MAX_EXPORT_BYTES = 2 * 1024 * 1024
 class DriveService(ABC):
     @abstractmethod
     async def list_drives(self) -> list[DriveSummary]: ...
+
+    async def resolve_member_drive(
+        self, file_id: FileId, drive_id: DriveId | None
+    ) -> DriveId | None:
+        if not file_id or drive_id is None:
+            return None
+        drives = await self.list_drives()
+        return drive_id if any(d.id == drive_id and not d.is_personal for d in drives) else None
 
     @abstractmethod
     async def walk_drive_folders(self, drive_id: DriveId) -> DriveTree: ...
@@ -95,19 +112,40 @@ class GoogleDriveService(DriveService):
     def __init__(self, user: User) -> None:
         self._user = user
         self._clients: dict[int, DriveResource] = {}
+        self._my_drive_id: DriveId | None = None
 
     @override
     async def list_drives(self) -> list[DriveSummary]:
-        return await drives_cache.get_drives(
+        drives = await drives_cache.get_drives(
             str(self._user.id),
             lambda: asyncio.to_thread(self._list_drives_sync),
         )
+        self._my_drive_id = next((d.id for d in drives if d.is_personal), None)
+        return drives
+
+    @override
+    async def resolve_member_drive(
+        self, file_id: FileId, drive_id: DriveId | None
+    ) -> DriveId | None:
+        if drive_id is not None:
+            return await super().resolve_member_drive(file_id, drive_id)
+        drives = await self.list_drives()
+        personal = next((d for d in drives if d.is_personal), None)
+        if personal is None:
+            return None
+        is_descendant = await asyncio.to_thread(
+            self._is_personal_descendant_sync,
+            file_id=file_id,
+            root_id=FileId(personal.id),
+        )
+        return personal.id if is_descendant else None
 
     @override
     async def walk_drive_folders(self, drive_id: DriveId) -> DriveTree:
+        is_personal = await self._is_personal_drive(drive_id)
         tree, (files, files_complete) = await asyncio.gather(
-            asyncio.to_thread(self._walk_folders_sync, drive_id),
-            asyncio.to_thread(self._list_drive_files_sync, drive_id),
+            asyncio.to_thread(self._walk_folders_sync, drive_id, is_personal=is_personal),
+            asyncio.to_thread(self._list_drive_files_sync, drive_id, is_personal=is_personal),
         )
         tree.files_complete = files_complete
         tree.folders, tree.files = await asyncio.gather(
@@ -127,7 +165,14 @@ class GoogleDriveService(DriveService):
     ) -> list[SearchResult]:
         if not query.strip():
             return []
-        return await asyncio.to_thread(self._search_drive_sync, drive_id, query.strip(), limit)
+        is_personal = await self._is_personal_drive(drive_id)
+        return await asyncio.to_thread(
+            self._search_drive_sync,
+            drive_id,
+            query.strip(),
+            limit,
+            is_personal=is_personal,
+        )
 
     @override
     async def search(self, query: str, *, limit_per_drive: int = 20) -> list[SearchResult]:
@@ -146,11 +191,17 @@ class GoogleDriveService(DriveService):
             merged = await self._search_per_drive(drives, stripped, limit_per_drive)
         else:
             names = {d.id: d.name for d in drives}
+            my_drive = next((d for d in drives if d.is_personal), None)
             merged = [
                 hit.model_copy(update={"drive_name": names[drive_id]})
                 for hit in hits
                 if (drive_id := hit.drive_id) is not None and drive_id in names
             ]
+            if my_drive is not None:
+                personal = await self.search_drive(my_drive.id, stripped, limit=limit_per_drive)
+                merged.extend(
+                    hit.model_copy(update={"drive_name": my_drive.name}) for hit in personal
+                )
         return await self._resolve_shortcut_search_results(merged)
 
     async def _search_per_drive(
@@ -226,6 +277,11 @@ class GoogleDriveService(DriveService):
     async def _drive_names(self) -> dict[DriveId, str]:
         return {d.id: d.name for d in await self.list_drives()}
 
+    async def _is_personal_drive(self, drive_id: DriveId) -> bool:
+        if self._my_drive_id is None:
+            await self.list_drives()
+        return drive_id == self._my_drive_id
+
     async def _probe_targets(self, target_ids: list[FileId | None]) -> list[ShortcutProbe | None]:
         unique_ids = sorted({tid for tid in target_ids if tid})
         if not unique_ids:
@@ -291,6 +347,16 @@ class GoogleDriveService(DriveService):
     def _list_drives_sync(self) -> list[DriveSummary]:
         client = self._client()
         out: list[DriveSummary] = []
+        try:
+            raw = execute_with_retry(
+                client.files().get(fileId=_MY_DRIVE_ALIAS, fields="id", supportsAllDrives=True)
+            )
+            root = GoogleFileLocation.model_validate(raw)
+            out.append(DriveSummary(id=DriveId(root.id), name=_MY_DRIVE_NAME, is_personal=True))
+        except HttpError, ValidationError:
+            logger.exception(
+                "My Drive root lookup failed for user={user_id}", user_id=self._user.id
+            )
         page_token: str | None = None
         while True:
             params: dict[str, Any] = {
@@ -318,24 +384,58 @@ class GoogleDriveService(DriveService):
             if not page_token:
                 return out
 
-    def _walk_folders_sync(self, drive_id: DriveId) -> DriveTree:
+    def _is_personal_descendant_sync(self, *, file_id: FileId, root_id: FileId) -> bool:
+        client = self._client()
+        pending = [file_id]
+        visited: set[FileId] = set()
+        while pending and len(visited) < _MAX_PERSONAL_ANCESTRY_NODES:
+            current = pending.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            try:
+                raw = execute_with_retry(
+                    client.files().get(
+                        fileId=current,
+                        fields="id,driveId,parents",
+                        supportsAllDrives=True,
+                    )
+                )
+                location = GoogleFileLocation.model_validate(raw)
+            except HttpError, ValidationError:
+                logger.warning(
+                    "My Drive ancestry verification failed for user={user_id}",
+                    user_id=self._user.id,
+                )
+                return False
+            if location.drive_id is not None:
+                return False
+            if location.id == root_id:
+                return True
+            pending.extend(parent for parent in location.parents if parent not in visited)
+        return False
+
+    def _walk_folders_sync(self, drive_id: DriveId, *, is_personal: bool = False) -> DriveTree:
         client = self._client()
         out = DriveTree(drive_id=drive_id, folders=[], files=[], files_complete=True)
         page_token: str | None = None
         query = f"(mimeType='{MIME_FOLDER}' or mimeType='{MIME_SHORTCUT}') and trashed=false"
+        if is_personal:
+            query += _OWNED_BY_ME_CLAUSE
         while True:
             params: dict[str, Any] = {
                 "q": query,
-                "corpora": "drive",
-                "driveId": drive_id,
+                "corpora": "user" if is_personal else "drive",
                 "includeItemsFromAllDrives": True,
                 "supportsAllDrives": True,
                 "pageSize": 1000,
                 "fields": (
-                    "nextPageToken,files(id,name,mimeType,parents,modifiedTime,"
+                    "nextPageToken,files(id,name,mimeType,parents,modifiedTime,driveId,"
                     "shortcutDetails(targetId,targetMimeType))"
                 ),
             }
+            if not is_personal:
+                params["driveId"] = drive_id
             if page_token:
                 params["pageToken"] = page_token
             try:
@@ -348,7 +448,10 @@ class GoogleDriveService(DriveService):
                 )
                 return out
             for raw in resp.get("files", []):
-                node = _node_from_api(GoogleFile.model_validate(raw), drive_id)
+                file = GoogleFile.model_validate(raw)
+                if is_personal and file.drive_id is not None:
+                    continue
+                node = _node_from_api(file, drive_id)
                 if node.mime_type == MIME_SHORTCUT and (
                     node.shortcut_target_mime_type != MIME_FOLDER
                 ):
@@ -410,25 +513,30 @@ class GoogleDriveService(DriveService):
             if not page_token:
                 return out
 
-    def _list_drive_files_sync(self, drive_id: DriveId) -> tuple[list[DriveNode], bool]:
+    def _list_drive_files_sync(
+        self, drive_id: DriveId, *, is_personal: bool = False
+    ) -> tuple[list[DriveNode], bool]:
         client = self._client()
         out: list[DriveNode] = []
         page_token: str | None = None
         pages = 0
         query = f"trashed=false and {_build_mime_clause()}"
+        if is_personal:
+            query += _OWNED_BY_ME_CLAUSE
         while True:
             params: dict[str, Any] = {
                 "q": query,
-                "corpora": "drive",
-                "driveId": drive_id,
+                "corpora": "user" if is_personal else "drive",
                 "includeItemsFromAllDrives": True,
                 "supportsAllDrives": True,
                 "pageSize": 1000,
                 "fields": (
-                    "nextPageToken,files(id,name,mimeType,parents,modifiedTime,"
+                    "nextPageToken,files(id,name,mimeType,parents,modifiedTime,driveId,"
                     "shortcutDetails(targetId,targetMimeType))"
                 ),
             }
+            if not is_personal:
+                params["driveId"] = drive_id
             if page_token:
                 params["pageToken"] = page_token
             try:
@@ -442,6 +550,8 @@ class GoogleDriveService(DriveService):
                 return out, False
             for raw in resp.get("files", []):
                 file = GoogleFile.model_validate(raw)
+                if is_personal and file.drive_id is not None:
+                    continue
                 if file.mime_type == MIME_FOLDER:
                     continue
                 details = file.shortcut_details
@@ -463,14 +573,17 @@ class GoogleDriveService(DriveService):
                 )
                 return out, False
 
-    def _search_drive_sync(self, drive_id: DriveId, query: str, limit: int) -> list[SearchResult]:
+    def _search_drive_sync(
+        self, drive_id: DriveId, query: str, limit: int, *, is_personal: bool = False
+    ) -> list[SearchResult]:
         escaped = escape_query_value(query)
         q = f"(name contains '{escaped}' or fullText contains '{escaped}') and trashed=false"
+        if is_personal:
+            q += _OWNED_BY_ME_CLAUSE
         client = self._client()
         params: dict[str, Any] = {
             "q": q,
-            "corpora": "drive",
-            "driveId": drive_id,
+            "corpora": "user" if is_personal else "drive",
             "includeItemsFromAllDrives": True,
             "supportsAllDrives": True,
             "pageSize": limit,
@@ -479,6 +592,8 @@ class GoogleDriveService(DriveService):
                 "shortcutDetails(targetId,targetMimeType))"
             ),
         }
+        if not is_personal:
+            params["driveId"] = drive_id
         try:
             resp = execute_with_retry(client.files().list(**params))
         except HttpError:
@@ -489,7 +604,15 @@ class GoogleDriveService(DriveService):
                 query=query,
             )
             return []
-        return [_search_result_from_api(raw, drive_id) for raw in resp.get("files", [])]
+        results: list[SearchResult] = []
+        for raw in resp.get("files", []):
+            result = _search_result_from_api(raw, drive_id)
+            if is_personal and result.drive_id is not None:
+                continue
+            if is_personal:
+                result = result.model_copy(update={"drive_id": drive_id})
+            results.append(result)
+        return results
 
     def _search_all_drives_sync(self, query: str, page_size: int) -> list[SearchResult] | None:
         escaped = escape_query_value(query)

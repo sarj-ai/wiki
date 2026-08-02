@@ -57,6 +57,7 @@ export const documentAliasForFile = zDocumentAliasForFile.transform((a) => ({
 
 export const driveSummary = zDriveSummary.transform((d) => ({
   id: d.id,
+  isPersonal: d.is_personal,
   name: d.name,
 }));
 
