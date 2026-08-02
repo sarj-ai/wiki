@@ -12,6 +12,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 
 import { expandPath } from "@/hooks/use-expanded-folders";
 import { useBulkSetSortOrders, useMoveFile } from "@/hooks/use-wiki-mutations";
@@ -39,6 +40,11 @@ const CONTAINER_PREFIX = "parent:";
 
 const FOLDER_ABOVE_BAND = 0.3;
 const FOLDER_BELOW_BAND = 0.7;
+
+const ZSortableData = z.object({
+  containerId: z.string().optional(),
+  items: z.array(z.string()).optional(),
+});
 
 export function useWikiReorder(driveId: string): WikiReorder {
   const qc = useQueryClient();
@@ -97,8 +103,7 @@ export function useWikiReorder(driveId: string): WikiReorder {
 
     let intent: DropIntent | null;
     if (sameContainer) {
-      const sortableItems =
-        (active.data.current?.["sortable"] as { items?: string[] } | undefined)?.items ?? [];
+      const sortableItems = sortableData(active.data.current)?.items ?? [];
       const oldIdx = sortableItems.indexOf(String(active.id));
       const overIdx = sortableItems.indexOf(String(over.id));
       intent = oldIdx === overIdx ? null : oldIdx < overIdx ? "below" : "above";
@@ -134,10 +139,8 @@ export function useWikiReorder(driveId: string): WikiReorder {
       return;
     }
 
-    const activeSortable = active.data.current?.["sortable"] as
-      | { containerId?: string; items?: string[] }
-      | undefined;
-    const overSortable = over.data.current?.["sortable"] as { containerId?: string } | undefined;
+    const activeSortable = sortableData(active.data.current);
+    const overSortable = sortableData(over.data.current);
     const activeContainerId = activeSortable?.containerId;
     const overContainerId = overSortable?.containerId;
     if (!activeContainerId || !overContainerId) return;
@@ -261,8 +264,12 @@ function parentIdOf(containerId: string): null | string {
 }
 
 function sortableContainerId(data: null | Record<string, unknown> | undefined): null | string {
-  const sortable = data?.["sortable"] as { containerId?: string } | undefined;
-  return sortable?.containerId ?? null;
+  return sortableData(data)?.containerId ?? null;
+}
+
+function sortableData(data: null | Record<string, unknown> | undefined) {
+  const parsed = ZSortableData.safeParse(data?.["sortable"]);
+  return parsed.success ? parsed.data : null;
 }
 
 function isFolderTarget(data: null | Record<string, unknown> | undefined): boolean {
