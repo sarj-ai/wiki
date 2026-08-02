@@ -4,6 +4,7 @@ from typing import Any, Self
 import uuid
 
 from googleapiclient.errors import HttpError
+from httplib2 import Response
 import pytest
 
 from app.drive.schemas import DriveNode, DriveSummary, DriveTree, SearchResult, SnippetResult
@@ -59,14 +60,9 @@ def _svc(member_drive_id: str | None = None) -> GoogleFilesService:
     return GoogleFilesService(user=_user(), drive=_FakeDriveService(drives))
 
 
-class _FakeResp:
-    def __init__(self, status: int) -> None:
-        self.status = status
-        self.reason = "test"
-
-
 def _make_http_error(status_code: int) -> HttpError:
-    return HttpError(_FakeResp(status_code), b'{"error": "test"}')  # type: ignore[arg-type]
+    response = Response({"reason": "test", "status": str(status_code)})
+    return HttpError(response, b'{"error": "test"}')
 
 
 def _patch_client(monkeypatch: pytest.MonkeyPatch, client: Any) -> None:

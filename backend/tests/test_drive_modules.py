@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import threading
 from typing import Any, Self
 import uuid
 
+from httplib2 import Response
 import pytest
 
 from app.drive import probe_cache
@@ -102,7 +104,7 @@ class _FakeClient:
 
 
 @pytest.fixture
-def patch_drive_client(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+def patch_drive_client(monkeypatch: pytest.MonkeyPatch) -> Callable[[Any], None]:
 
     def _install(client: Any) -> None:
         monkeypatch.setattr(
@@ -339,16 +341,21 @@ async def test_list_folder_children_queries_by_parent(patch_drive_client: Any) -
     assert call["corpora"] == "allDrives"
 
 
-def _stub_probes(svc: GoogleDriveService, mapping: dict[str, ShortcutProbe | None]) -> None:
+def _stub_probes(
+    monkeypatch: pytest.MonkeyPatch,
+    svc: GoogleDriveService,
+    mapping: dict[str, ShortcutProbe | None],
+) -> None:
 
     def _fake(target_ids: list[str]) -> dict[str, ShortcutProbe | None]:
         return {tid: mapping.get(tid) for tid in target_ids}
 
-    svc._probe_targets_sync = _fake  # type: ignore[method-assign]
+    monkeypatch.setattr(svc, "_probe_targets_sync", _fake)
 
 
 async def test_walk_surfaces_folder_shortcuts_and_drops_file_shortcuts(
     patch_drive_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = _FakeClient(
         drives_pages=[
@@ -390,6 +397,7 @@ async def test_walk_surfaces_folder_shortcuts_and_drops_file_shortcuts(
     patch_drive_client(client)
     svc = _svc()
     _stub_probes(
+        monkeypatch,
         svc,
         {"eng-api-folder": ShortcutProbe(accessible=True, target_drive_id="engineering")},
     )
@@ -414,6 +422,7 @@ async def test_walk_surfaces_folder_shortcuts_and_drops_file_shortcuts(
 
 async def test_list_children_surfaces_file_shortcuts_with_target_mime(
     patch_drive_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = _FakeClient(
         drives_pages=[
@@ -455,6 +464,7 @@ async def test_list_children_surfaces_file_shortcuts_with_target_mime(
     patch_drive_client(client)
     svc = _svc()
     _stub_probes(
+        monkeypatch,
         svc,
         {"eng-doc": ShortcutProbe(accessible=True, target_drive_id="engineering")},
     )
@@ -469,6 +479,7 @@ async def test_list_children_surfaces_file_shortcuts_with_target_mime(
 
 async def test_resolver_marks_forbidden_target_inaccessible(
     patch_drive_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = _FakeClient(
         drives_pages=[{"drives": [{"id": "engineering", "name": "Engineering"}]}],
@@ -491,7 +502,7 @@ async def test_resolver_marks_forbidden_target_inaccessible(
     )
     patch_drive_client(client)
     svc = _svc()
-    _stub_probes(svc, {"eng-locked": ShortcutProbe(accessible=False)})
+    _stub_probes(monkeypatch, svc, {"eng-locked": ShortcutProbe(accessible=False)})
 
     tree = await svc.walk_drive_folders("sales")
     assert len(tree.folders) == 1
@@ -502,6 +513,7 @@ async def test_resolver_marks_forbidden_target_inaccessible(
 
 async def test_resolver_prunes_deleted_or_trashed_targets(
     patch_drive_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = _FakeClient(
         drives_pages=[{"drives": [{"id": "engineering", "name": "Engineering"}]}],
@@ -530,7 +542,7 @@ async def test_resolver_prunes_deleted_or_trashed_targets(
     )
     patch_drive_client(client)
     svc = _svc()
-    _stub_probes(svc, {"deleted-target": None})
+    _stub_probes(monkeypatch, svc, {"deleted-target": None})
 
     tree = await svc.walk_drive_folders("sales")
     assert [n.id for n in tree.folders] == ["f1"]
@@ -632,7 +644,9 @@ async def test_search_short_circuits_on_empty_query(patch_drive_client: Any) -> 
     assert client.drives_captured == []
 
 
-async def test_probe_targets_dedupes_and_preserves_order() -> None:
+async def test_probe_targets_dedupes_and_preserves_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     svc = _svc()
     seen: list[list[str]] = []
 
@@ -640,7 +654,7 @@ async def test_probe_targets_dedupes_and_preserves_order() -> None:
         seen.append(list(target_ids))
         return {tid: ShortcutProbe(accessible=True, target_drive_id="d") for tid in target_ids}
 
-    svc._probe_targets_sync = _fake  # type: ignore[method-assign]
+    monkeypatch.setattr(svc, "_probe_targets_sync", _fake)
     out = await svc._probe_targets(["t1", None, "t2", "t1"])
 
     assert seen == [["t1", "t2"]]
@@ -649,7 +663,9 @@ async def test_probe_targets_dedupes_and_preserves_order() -> None:
     assert out[3] == out[0]
 
 
-async def test_probe_targets_serves_repeat_walks_from_the_cache() -> None:
+async def test_probe_targets_serves_repeat_walks_from_the_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     svc = _svc()
     seen: list[list[str]] = []
 
@@ -657,7 +673,7 @@ async def test_probe_targets_serves_repeat_walks_from_the_cache() -> None:
         seen.append(list(target_ids))
         return {tid: ShortcutProbe(accessible=True, target_drive_id="d") for tid in target_ids}
 
-    svc._probe_targets_sync = _fake  # type: ignore[method-assign]
+    monkeypatch.setattr(svc, "_probe_targets_sync", _fake)
     first = await svc._probe_targets(["t1", "t2"])
     second = await svc._probe_targets(["t1", "t2"])
     third = await svc._probe_targets(["t1", "t3"])
@@ -670,15 +686,10 @@ async def test_probe_targets_serves_repeat_walks_from_the_cache() -> None:
 def test_classify_probe_maps_statuses_like_the_old_per_call_path() -> None:
     svc = _svc()
 
-    class _Resp:
-        def __init__(self, status: int) -> None:
-            self.status = status
-            self.reason = "test"
-
     def _err(status: int) -> Exception:
         from googleapiclient.errors import HttpError
 
-        return HttpError(_Resp(status), b"{}")  # type: ignore[arg-type]
+        return HttpError(Response({"reason": "test", "status": str(status)}), b"{}")
 
     assert svc._classify_probe("t", None, _err(404)) is None
     assert svc._classify_probe("t", None, _err(403)) == ShortcutProbe(accessible=False)
