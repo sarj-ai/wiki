@@ -4,6 +4,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Expose Wiki's explicit theme to isolated HTML documents. Embedded pages can
+   stay portable and use prefers-color-scheme without importing Wiki code. */
+.html-theme-frame {
+  color-scheme: light;
+}
+
+.dark .html-theme-frame {
+  color-scheme: dark;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

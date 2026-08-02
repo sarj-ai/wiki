@@ -21,6 +21,7 @@ const MAX_POOL = 3;
 const MAX_MOUNTED = 4;
 
 export const HTML_IFRAME_SANDBOX = "allow-popups allow-popups-to-escape-sandbox allow-scripts";
+export const HTML_IFRAME_CLASS_NAME = "html-theme-frame block h-full w-full border-0";
 
 export function htmlContentUrl(fileId: string, version?: string): string {
   const query = new URLSearchParams({ version: version ?? "current" });
@@ -163,7 +164,7 @@ function isolatedHtmlIframe({
 }) {
   return (
     <iframe
-      className="block h-full w-full border-0"
+      className={HTML_IFRAME_CLASS_NAME}
       referrerPolicy="no-referrer"
       sandbox={HTML_IFRAME_SANDBOX}
       src={htmlContentUrl(fileId, version)}
