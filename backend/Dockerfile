@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 
-FROM python:3.14-alpine AS builder
+FROM python:3.14.6-alpine AS builder
 
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:0.11.20 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.1 /uv /uvx /usr/local/bin/
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
@@ -19,7 +19,7 @@ COPY alembic.ini .
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
 
-FROM python:3.14-alpine AS runtime
+FROM python:3.14.6-alpine AS runtime
 
 WORKDIR /app
 
