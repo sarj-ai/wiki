@@ -4,19 +4,8 @@
       "count": 1
     }
   },
-  "src/app/layout.tsx": {
-    "react/no-danger": {
-      "count": 1
-    }
-  },
   "src/components/wiki-document/doc-viewer-host.tsx": {
     "react/forbid-dom-props": {
-      "count": 1
-    },
-    "unicorn/consistent-function-scoping": {
-      "count": 1
-    },
-    "unicorn/prefer-iterator-concat": {
       "count": 1
     }
   },
@@ -48,16 +37,6 @@
       "count": 1
     },
     "react/forbid-dom-props": {
-      "count": 2
-    }
-  },
-  "src/lib/perf-marks.ts": {
-    "unicorn/no-global-object-property-assignment": {
-      "count": 1
-    }
-  },
-  "vitest.config.ts": {
-    "unicorn/prefer-module": {
       "count": 2
     }
   }

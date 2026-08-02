@@ -49,7 +49,7 @@ export const DocViewerHost = () => {
 
   const mounted: ActiveDoc[] = [];
   const seen = new Set<string>();
-  for (const entry of [...pool, ...(prewarm ? [prewarm] : []), ...warm]) {
+  for (const entry of docCandidates(pool, prewarm, warm)) {
     if (entry.mimeType === MIME_HTML && entry.fileId !== active?.fileId) continue;
     if (seen.has(entry.fileId)) continue;
     seen.add(entry.fileId);
@@ -120,18 +120,6 @@ const DrivePreviewIframe = ({ fileId, mimeType, title }: PooledIframeProps) => {
     markNav(fileId, "iframeMount");
   }, [fileId]);
 
-  const attachLoadListener = (iframe: HTMLIFrameElement | null) => {
-    if (!iframe) return;
-    const handleLoad = () => {
-      markNav(fileId, "iframeLoad");
-      setIsLoading(false);
-    };
-    iframe.addEventListener("load", handleLoad);
-    return () => {
-      iframe.removeEventListener("load", handleLoad);
-    };
-  };
-
   return (
     <div className="relative h-full w-full">
       {isLoading ? (
@@ -145,13 +133,41 @@ const DrivePreviewIframe = ({ fileId, mimeType, title }: PooledIframeProps) => {
       <iframe
         allow="clipboard-read; clipboard-write"
         className="block h-full w-full border-0"
-        ref={attachLoadListener}
+        ref={attachIframeLoadListener.bind(undefined, fileId, setIsLoading)}
         src={src}
         title={title}
       />
     </div>
   );
 };
+
+function attachIframeLoadListener(
+  fileId: string,
+  setIsLoading: (isLoading: boolean) => void,
+  iframe: HTMLIFrameElement | null,
+) {
+  if (!iframe) return;
+  const handleLoad = markIframeLoaded.bind(undefined, fileId, setIsLoading);
+  iframe.addEventListener("load", handleLoad);
+  return () => {
+    iframe.removeEventListener("load", handleLoad);
+  };
+}
+
+function markIframeLoaded(fileId: string, setIsLoading: (isLoading: boolean) => void): void {
+  markNav(fileId, "iframeLoad");
+  setIsLoading(false);
+}
+
+function* docCandidates(
+  pool: ActiveDoc[],
+  prewarm: ActiveDoc | null,
+  warm: ActiveDoc[],
+): Generator<ActiveDoc> {
+  yield* pool;
+  if (prewarm) yield prewarm;
+  yield* warm;
+}
 
 function isolatedHtmlIframe({
   fileId,

@@ -5,9 +5,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(import.meta.dirname, "./src"),
       // server-only throws outside an RSC render.
-      "server-only": path.resolve(__dirname, "./src/test-stubs/empty.ts"),
+      "server-only": path.resolve(import.meta.dirname, "./src/test-stubs/empty.ts"),
     },
   },
   test: {
