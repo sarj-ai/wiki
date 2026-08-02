@@ -14,6 +14,7 @@ from app.auth.encryption import decrypt_cache, encrypt_cache
 from app.config import settings
 from app.drive.schemas import DriveNode, DriveTree, SearchResult, SnippetResult
 from app.drive.service import DriveService
+from app.identifiers import DriveId, FileId, GoogleUserId
 from app.models.user import User
 from app.models.wiki import DriveTreeCache
 from app.sidebar.cache import CACHE_MAX_AGE, PostgresSidebarCacheService
@@ -24,20 +25,20 @@ def _user() -> User:
     u = User()
     u.id = uuid.uuid4()
     u.email = "test@sarj.ai"
-    u.google_id = "gid"
+    u.google_id = GoogleUserId("gid")
     u.token_version = 0
     return u
 
 
 def _tree() -> DriveTree:
     return DriveTree(
-        drive_id="drive-1",
+        drive_id=DriveId("drive-1"),
         folders=[
             DriveNode(
-                id="folder-1",
+                id=FileId("folder-1"),
                 name="Quarterly Plans",
                 mime_type="application/vnd.google-apps.folder",
-                parent_id="drive-1",
+                parent_id=FileId("drive-1"),
                 modified_time=None,
             )
         ],
@@ -116,14 +117,14 @@ def _service(drive: FakeDrive, save_session: FakeSession) -> PostgresSidebarCach
 def test_warm_row_round_trips_through_encryption() -> None:
     tree = _tree()
     row = DriveTreeCache(
-        drive_id="drive-1",
+        drive_id=DriveId("drive-1"),
         tree=encrypt_cache(tree.model_dump_json()),
         refreshed_at=datetime.now(UTC),
     )
     db = FakeSession(row=row)
     service = _service(FakeDrive(tree), FakeSession())
 
-    cached = asyncio.run(service.get_drive_tree(_db(db), "drive-1"))
+    cached = asyncio.run(service.get_drive_tree(_db(db), DriveId("drive-1")))
 
     assert cached.tree == tree
     assert cached.refreshed_at == row.refreshed_at
@@ -133,7 +134,7 @@ def test_warm_row_round_trips_through_encryption() -> None:
 def test_undecryptable_row_is_treated_as_cache_miss() -> None:
     tree = _tree()
     row = DriveTreeCache(
-        drive_id="drive-1",
+        drive_id=DriveId("drive-1"),
         tree="not-fernet-ciphertext",
         refreshed_at=datetime.now(UTC),
     )
@@ -141,7 +142,7 @@ def test_undecryptable_row_is_treated_as_cache_miss() -> None:
     drive = FakeDrive(tree)
     service = _service(drive, FakeSession())
 
-    cached = asyncio.run(service.get_drive_tree(_db(db), "drive-1"))
+    cached = asyncio.run(service.get_drive_tree(_db(db), DriveId("drive-1")))
 
     assert db.deleted == [row]
     assert drive.walks == 1
@@ -154,7 +155,7 @@ def test_save_tree_stores_ciphertext_and_purges_stale_rows() -> None:
     save_session = FakeSession()
     service = _service(FakeDrive(tree), save_session)
 
-    asyncio.run(service.refresh_drive(_db(FakeSession()), "drive-1"))
+    asyncio.run(service.refresh_drive(_db(FakeSession()), DriveId("drive-1")))
 
     upsert, purge = save_session.executed
     stored = upsert.compile(dialect=postgresql.dialect()).params["tree"]
@@ -169,7 +170,7 @@ def test_save_tree_stores_ciphertext_and_purges_stale_rows() -> None:
 def test_unparseable_row_is_treated_as_cache_miss() -> None:
     tree = _tree()
     row = DriveTreeCache(
-        drive_id="drive-1",
+        drive_id=DriveId("drive-1"),
         tree=encrypt_cache('{"drive_id": "drive-1"}'),
         refreshed_at=datetime.now(UTC),
     )
@@ -177,7 +178,7 @@ def test_unparseable_row_is_treated_as_cache_miss() -> None:
     drive = FakeDrive(tree)
     service = _service(drive, FakeSession())
 
-    cached = asyncio.run(service.get_drive_tree(_db(db), "drive-1"))
+    cached = asyncio.run(service.get_drive_tree(_db(db), DriveId("drive-1")))
 
     assert db.deleted == [row]
     assert drive.walks == 1
@@ -188,7 +189,7 @@ def test_unparseable_row_is_treated_as_cache_miss() -> None:
 def test_pre_files_complete_row_is_treated_as_cache_miss() -> None:
     tree = _tree()
     row = DriveTreeCache(
-        drive_id="drive-1",
+        drive_id=DriveId("drive-1"),
         tree=encrypt_cache('{"drive_id": "drive-1", "folders": [], "files": []}'),
         refreshed_at=datetime.now(UTC),
     )
@@ -196,7 +197,7 @@ def test_pre_files_complete_row_is_treated_as_cache_miss() -> None:
     drive = FakeDrive(tree)
     service = _service(drive, FakeSession())
 
-    cached = asyncio.run(service.get_drive_tree(_db(db), "drive-1"))
+    cached = asyncio.run(service.get_drive_tree(_db(db), DriveId("drive-1")))
 
     assert db.deleted == [row]
     assert drive.walks == 1
@@ -211,14 +212,14 @@ def test_cache_max_age_is_long_enough_to_matter() -> None:
 def test_peek_returns_warm_row_without_walking() -> None:
     tree = _tree()
     row = DriveTreeCache(
-        drive_id="drive-1",
+        drive_id=DriveId("drive-1"),
         tree=encrypt_cache(tree.model_dump_json()),
         refreshed_at=datetime.now(UTC),
     )
     drive = FakeDrive(tree)
     service = _service(drive, FakeSession())
 
-    cached = asyncio.run(service.peek_drive_tree(_db(FakeSession(row=row)), "drive-1"))
+    cached = asyncio.run(service.peek_drive_tree(_db(FakeSession(row=row)), DriveId("drive-1")))
 
     assert cached is not None
     assert cached.tree == tree
@@ -229,7 +230,7 @@ def test_peek_cold_cache_returns_none_and_never_walks() -> None:
     drive = FakeDrive(_tree())
     service = _service(drive, FakeSession())
 
-    cached = asyncio.run(service.peek_drive_tree(_db(FakeSession(row=None)), "drive-1"))
+    cached = asyncio.run(service.peek_drive_tree(_db(FakeSession(row=None)), DriveId("drive-1")))
 
     assert cached is None
     assert drive.walks == 0

@@ -8,12 +8,13 @@ from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.identifiers import DriveId, FileId
 
 
 class DriveTreeCache(Base):
     __tablename__ = "drive_tree_cache"
 
-    drive_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    drive_id: Mapped[DriveId] = mapped_column(Text, primary_key=True)
     tree: Mapped[str] = mapped_column(Text, nullable=False)
     refreshed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -30,7 +31,7 @@ class DriveTreeCache(Base):
 class DocIcon(Base):
     __tablename__ = "doc_icons"
 
-    drive_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    drive_id: Mapped[FileId] = mapped_column(Text, primary_key=True)
     icon: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
@@ -71,7 +72,7 @@ class DocumentAlias(Base):
     )
 
     alias: Mapped[str] = mapped_column(Text, primary_key=True)
-    file_id: Mapped[str] = mapped_column(Text, nullable=False)
+    file_id: Mapped[FileId] = mapped_column(Text, nullable=False)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -98,7 +99,7 @@ class UserFolderIcon(Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    folder_drive_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    folder_drive_id: Mapped[FileId] = mapped_column(Text, primary_key=True)
     icon: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -115,7 +116,7 @@ class UserSortOrder(Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    drive_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    drive_id: Mapped[DriveId] = mapped_column(Text, primary_key=True)
     sort_order: Mapped[float] = mapped_column(Double, nullable=False)
 
 
@@ -132,7 +133,7 @@ class UserPreferences(Base):
         nullable=False,
         server_default=text("true"),
     )
-    hidden_workspace_ids: Mapped[list[str]] = mapped_column(
+    hidden_workspace_ids: Mapped[list[DriveId]] = mapped_column(
         ARRAY(Text),
         nullable=False,
         server_default=text("'{}'::text[]"),

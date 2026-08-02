@@ -4,6 +4,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, HttpUrl, StringConstraints
 
+from app.identifiers import DriveId, FileId
+
 
 IconStr = Annotated[str, StringConstraints(min_length=1, max_length=8)]
 FiniteFloat = Annotated[float, Field(allow_inf_nan=False)]
@@ -15,7 +17,7 @@ class DocIconWrite(BaseModel):
 
 
 class DocIconRead(BaseModel):
-    drive_id: str
+    drive_id: FileId
     icon: str | None
     cover_url: str | None
 
@@ -25,12 +27,12 @@ class FolderIconWrite(BaseModel):
 
 
 class FolderIconRead(BaseModel):
-    folder_drive_id: str
+    folder_drive_id: FileId
     icon: str | None
 
 
 class SortOrderWrite(BaseModel):
-    drive_id: str
+    drive_id: DriveId
     sort_order: FiniteFloat
 
 
@@ -39,7 +41,7 @@ class SortOrderBulkWrite(BaseModel):
 
 
 class SortOrderRead(BaseModel):
-    drive_id: str
+    drive_id: DriveId
     sort_order: FiniteFloat
 
 
@@ -49,9 +51,9 @@ class SortOrderBulkResult(BaseModel):
 
 class PreferencesWrite(BaseModel):
     show_non_doc_files: bool | None = None
-    hidden_workspace_ids: list[str] = Field(default_factory=list)
+    hidden_workspace_ids: list[DriveId] = Field(default_factory=list)
 
 
 class PreferencesRead(BaseModel):
     show_non_doc_files: bool
-    hidden_workspace_ids: list[str]
+    hidden_workspace_ids: list[DriveId]

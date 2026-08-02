@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import time
 
 from app.drive.schemas import ShortcutProbe
+from app.identifiers import FileId
 
 
 _TTL_SECONDS = 300.0
@@ -17,12 +18,12 @@ class _Entry:
     fetched_at: float
 
 
-_entries: dict[tuple[str, str], _Entry] = {}
+_entries: dict[tuple[str, FileId], _Entry] = {}
 
 
-def get_fresh(user_id: str, target_ids: list[str]) -> dict[str, ShortcutProbe | None]:
+def get_fresh(user_id: str, target_ids: list[FileId]) -> dict[FileId, ShortcutProbe | None]:
     now = time.monotonic()
-    out: dict[str, ShortcutProbe | None] = {}
+    out: dict[FileId, ShortcutProbe | None] = {}
     for target_id in target_ids:
         entry = _entries.get((user_id, target_id))
         if entry is not None and now - entry.fetched_at < _TTL_SECONDS:
@@ -30,7 +31,7 @@ def get_fresh(user_id: str, target_ids: list[str]) -> dict[str, ShortcutProbe | 
     return out
 
 
-def store(user_id: str, probes: dict[str, ShortcutProbe | None]) -> None:
+def store(user_id: str, probes: dict[FileId, ShortcutProbe | None]) -> None:
     if len(_entries) >= _MAX_ENTRIES:
         _prune_expired()
     now = time.monotonic()

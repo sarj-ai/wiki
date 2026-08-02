@@ -18,22 +18,23 @@ from app.aliases.schemas import DocumentAliasForFile, DocumentAliasRead, Documen
 from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT, NAVIGATOR_SUPPORTED_MIME_TYPES
 from app.files.errors import FilesError
 from app.files.service import FilesService
+from app.identifiers import FileId
 from app.models.user import User
 from app.models.wiki import DocumentAlias
 
 
 class AliasService(ABC):
     @abstractmethod
-    async def get_for_file(self, file_id: str) -> DocumentAliasForFile: ...
+    async def get_for_file(self, file_id: FileId) -> DocumentAliasForFile: ...
 
     @abstractmethod
     async def resolve(self, alias: DocumentAliasValue) -> DocumentAliasRead: ...
 
     @abstractmethod
-    async def save(self, file_id: str, alias: DocumentAliasValue) -> DocumentAliasRead: ...
+    async def save(self, file_id: FileId, alias: DocumentAliasValue) -> DocumentAliasRead: ...
 
     @abstractmethod
-    async def retire(self, file_id: str) -> None: ...
+    async def retire(self, file_id: FileId) -> None: ...
 
 
 class PostgresAliasService(AliasService):
@@ -43,7 +44,7 @@ class PostgresAliasService(AliasService):
         self._user = user
 
     @override
-    async def get_for_file(self, file_id: str) -> DocumentAliasForFile:
+    async def get_for_file(self, file_id: FileId) -> DocumentAliasForFile:
         await self._files.get(file_id)
         row = await self._active_for_file(file_id)
         return DocumentAliasForFile(alias=row.alias if row else None)
@@ -62,7 +63,7 @@ class PostgresAliasService(AliasService):
         return _to_read(row)
 
     @override
-    async def save(self, file_id: str, alias: DocumentAliasValue) -> DocumentAliasRead:
+    async def save(self, file_id: FileId, alias: DocumentAliasValue) -> DocumentAliasRead:
         file = await self._files.get(file_id)
         if file.mime_type not in NAVIGATOR_SUPPORTED_MIME_TYPES or file.mime_type in {
             MIME_FOLDER,
@@ -95,7 +96,7 @@ class PostgresAliasService(AliasService):
         return _to_read(row)
 
     @override
-    async def retire(self, file_id: str) -> None:
+    async def retire(self, file_id: FileId) -> None:
         await self._files.get(file_id)
         if not await self._files.can_edit(file_id):
             raise AliasEditForbiddenError
@@ -106,7 +107,7 @@ class PostgresAliasService(AliasService):
         row.retired_by = self._user.id
         await self._db.commit()
 
-    async def _active_for_file(self, file_id: str) -> DocumentAlias | None:
+    async def _active_for_file(self, file_id: FileId) -> DocumentAlias | None:
         result = await self._db.execute(
             select(DocumentAlias).where(
                 DocumentAlias.file_id == file_id,

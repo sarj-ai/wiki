@@ -14,6 +14,7 @@ from app.aliases.schemas import (
 )
 from app.aliases.service import AliasService
 from app.auth.dependencies import get_current_user
+from app.identifiers import FileId
 from app.models.user import User
 
 
@@ -26,7 +27,7 @@ router = APIRouter(
 
 @router.get("/files/{file_id}")
 async def get_file_alias(
-    file_id: str,
+    file_id: FileId,
     svc: Annotated[AliasService, Depends(alias_service_dep)],
 ) -> DocumentAliasForFile:
     return await svc.get_for_file(file_id)
@@ -34,7 +35,7 @@ async def get_file_alias(
 
 @router.put("/files/{file_id}")
 async def save_file_alias(
-    file_id: str,
+    file_id: FileId,
     payload: DocumentAliasWrite,
     svc: Annotated[AliasService, Depends(alias_service_dep)],
     user: Annotated[User, Depends(get_current_user)],
@@ -48,7 +49,7 @@ async def save_file_alias(
 
 @router.delete("/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def retire_file_alias(
-    file_id: str,
+    file_id: FileId,
     svc: Annotated[AliasService, Depends(alias_service_dep)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> None:

@@ -19,6 +19,7 @@ from app.extras.schemas import (
 )
 from app.extras.service import ExtrasService
 from app.files.dependencies import require_accessible_doc
+from app.identifiers import DriveId, FileId
 
 
 router = APIRouter(prefix="/extras", tags=["extras"])
@@ -33,7 +34,7 @@ async def list_doc_icons(
 
 @router.get("/doc-icons/{drive_id}", dependencies=[Depends(require_accessible_doc)])
 async def read_doc_icon(
-    drive_id: str,
+    drive_id: FileId,
     svc: Annotated[ExtrasService, Depends(extras_service_dep)],
 ) -> DocIconRead:
     try:
@@ -44,7 +45,7 @@ async def read_doc_icon(
 
 @router.put("/doc-icons/{drive_id}", dependencies=[Depends(require_accessible_doc)])
 async def set_doc_icon(
-    drive_id: str,
+    drive_id: FileId,
     payload: DocIconWrite,
     svc: Annotated[ExtrasService, Depends(extras_service_dep)],
 ) -> DocIconRead:
@@ -60,7 +61,7 @@ async def list_my_folder_icons(
 
 @router.put("/folder-icons/{folder_drive_id}")
 async def set_folder_icon(
-    folder_drive_id: str,
+    folder_drive_id: FileId,
     payload: FolderIconWrite,
     svc: Annotated[ExtrasService, Depends(extras_service_dep)],
 ) -> FolderIconRead:
@@ -85,7 +86,7 @@ async def bulk_set_sort_orders(
 
 @router.delete("/sort-order/{drive_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_sort_order(
-    drive_id: str,
+    drive_id: DriveId,
     svc: Annotated[ExtrasService, Depends(extras_service_dep)],
 ) -> None:
     await svc.clear_sort_order(drive_id)

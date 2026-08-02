@@ -18,6 +18,7 @@ from app.auth.encryption import decrypt_cache, encrypt_cache
 from app.config import settings
 from app.drive.schemas import DriveNode, DriveTree
 from app.drive.service import DriveService
+from app.identifiers import DriveId, FileId
 from app.models.user import User
 from app.models.wiki import DriveTreeCache
 from app.sidebar.singleflight import Singleflight
@@ -31,21 +32,21 @@ BG_TASKS: set[asyncio.Task[None]] = set()
 
 DECODE_CACHE_MAX = 32
 
-_decoded_trees: OrderedDict[tuple[str, str], DriveTree] = OrderedDict()
+_decoded_trees: OrderedDict[tuple[DriveId, str], DriveTree] = OrderedDict()
 
 
 def _decrypt_and_parse(blob: str) -> DriveTree:
     return DriveTree.model_validate_json(decrypt_cache(blob))
 
 
-def _decoded_get(key: tuple[str, str]) -> DriveTree | None:
+def _decoded_get(key: tuple[DriveId, str]) -> DriveTree | None:
     tree = _decoded_trees.get(key)
     if tree is not None:
         _decoded_trees.move_to_end(key)
     return tree
 
 
-def _decoded_put(key: tuple[str, str], tree: DriveTree) -> None:
+def _decoded_put(key: tuple[DriveId, str], tree: DriveTree) -> None:
     _decoded_trees[key] = tree
     _decoded_trees.move_to_end(key)
     while len(_decoded_trees) > DECODE_CACHE_MAX:
@@ -58,11 +59,11 @@ class CachedDriveTree:
     refreshed_at: datetime | None
 
 
-def get_cached_decoded_tree(key: tuple[str, str]) -> DriveTree | None:
+def get_cached_decoded_tree(key: tuple[DriveId, str]) -> DriveTree | None:
     return _decoded_get(key)
 
 
-def put_cached_decoded_tree(key: tuple[str, str], tree: DriveTree) -> None:
+def put_cached_decoded_tree(key: tuple[DriveId, str], tree: DriveTree) -> None:
     _decoded_put(key, tree)
 
 
@@ -76,19 +77,21 @@ def clear_decoded_tree_cache() -> None:
 
 class SidebarCacheService(ABC):
     @abstractmethod
-    async def get_drive_tree(self, db: AsyncSession, drive_id: str) -> CachedDriveTree: ...
+    async def get_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree: ...
 
     @abstractmethod
-    async def peek_drive_tree(self, db: AsyncSession, drive_id: str) -> CachedDriveTree | None: ...
+    async def peek_drive_tree(
+        self, db: AsyncSession, drive_id: DriveId
+    ) -> CachedDriveTree | None: ...
 
     @abstractmethod
-    async def get_folder_children(self, folder_id: str) -> list[DriveNode]: ...
+    async def get_folder_children(self, folder_id: FileId) -> list[DriveNode]: ...
 
     @abstractmethod
-    async def invalidate_drive(self, db: AsyncSession, drive_id: str) -> None: ...
+    async def invalidate_drive(self, db: AsyncSession, drive_id: DriveId) -> None: ...
 
     @abstractmethod
-    async def refresh_drive(self, db: AsyncSession, drive_id: str) -> DriveTree: ...
+    async def refresh_drive(self, db: AsyncSession, drive_id: DriveId) -> DriveTree: ...
 
 
 class PostgresSidebarCacheService(SidebarCacheService):
@@ -108,7 +111,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
         self._sessionmaker = sessionmaker
 
     @override
-    async def get_drive_tree(self, db: AsyncSession, drive_id: str) -> CachedDriveTree:
+    async def get_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree:
         cached = await self.peek_drive_tree(db, drive_id)
         if cached is not None:
             return cached
@@ -119,7 +122,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
         return CachedDriveTree(tree=tree, refreshed_at=None)
 
     @override
-    async def peek_drive_tree(self, db: AsyncSession, drive_id: str) -> CachedDriveTree | None:
+    async def peek_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree | None:
         row = await self._load_row(db, drive_id)
         if row is None:
             return None
@@ -131,14 +134,14 @@ class PostgresSidebarCacheService(SidebarCacheService):
         return CachedDriveTree(tree=tree, refreshed_at=row.refreshed_at)
 
     @override
-    async def get_folder_children(self, folder_id: str) -> list[DriveNode]:
+    async def get_folder_children(self, folder_id: FileId) -> list[DriveNode]:
         return await self._sf.do(
             f"folder:{folder_id}",
             lambda: self._drive.list_folder_children(folder_id),
         )
 
     @override
-    async def invalidate_drive(self, db: AsyncSession, drive_id: str) -> None:
+    async def invalidate_drive(self, db: AsyncSession, drive_id: DriveId) -> None:
         row = await self._load_row(db, drive_id)
         if row is None:
             return
@@ -146,19 +149,19 @@ class PostgresSidebarCacheService(SidebarCacheService):
         await db.commit()
 
     @override
-    async def refresh_drive(self, db: AsyncSession, drive_id: str) -> DriveTree:
+    async def refresh_drive(self, db: AsyncSession, drive_id: DriveId) -> DriveTree:
         await self.invalidate_drive(db, drive_id)
         return await self._sf.do(
             f"drive:{drive_id}",
             lambda: self._walk_and_save(drive_id),
         )
 
-    def _schedule_refresh(self, drive_id: str) -> None:
+    def _schedule_refresh(self, drive_id: DriveId) -> None:
         task = asyncio.create_task(self._refresh_in_background(drive_id))
         self._bg_tasks.add(task)
         task.add_done_callback(self._bg_tasks.discard)
 
-    async def _refresh_in_background(self, drive_id: str) -> None:
+    async def _refresh_in_background(self, drive_id: DriveId) -> None:
         try:
             await self._sf.do(
                 f"drive:{drive_id}",
@@ -167,7 +170,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
         except Exception:
             logger.exception("background drive refresh failed drive={drive_id}", drive_id=drive_id)
 
-    async def _walk_and_save(self, drive_id: str) -> DriveTree:
+    async def _walk_and_save(self, drive_id: DriveId) -> DriveTree:
         tree = await self._drive.walk_drive_folders(drive_id)
         async with self._sessionmaker() as db:
             await self._save_tree(db, tree)
@@ -216,5 +219,5 @@ class PostgresSidebarCacheService(SidebarCacheService):
         )
         await db.commit()
 
-    async def _load_row(self, db: AsyncSession, drive_id: str) -> DriveTreeCache | None:
+    async def _load_row(self, db: AsyncSession, drive_id: DriveId) -> DriveTreeCache | None:
         return await db.get(DriveTreeCache, drive_id)

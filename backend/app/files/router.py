@@ -10,8 +10,6 @@ from app.config import settings
 from app.database import get_db
 from app.drive.dependencies import drive_service_dep
 from app.drive.service import DriveService
-from app.extras.dependencies import extras_service_dep
-from app.extras.service import ExtrasService
 from app.files.breadcrumb import build_breadcrumb
 from app.files.dependencies import files_service_dep
 from app.files.schemas import (
@@ -23,6 +21,7 @@ from app.files.schemas import (
     FileResponse,
 )
 from app.files.service import FilesService
+from app.identifiers import FileId
 from app.sidebar.cache import SidebarCacheService
 from app.sidebar.dependencies import sidebar_cache_service_dep
 
@@ -52,7 +51,7 @@ _HTML_CSP = "; ".join(
 
 @router.get("/{file_id}/content", response_class=Response)
 async def read_html_content(
-    file_id: str,
+    file_id: FileId,
     files: Annotated[FilesService, Depends(files_service_dep)],
 ) -> Response:
     content = await files.get_html_content(file_id)
@@ -84,7 +83,7 @@ async def create_file(
 
 @router.get("/{file_id}")
 async def read_file(
-    file_id: str,
+    file_id: FileId,
     db: Annotated[AsyncSession, Depends(get_db)],
     files: Annotated[FilesService, Depends(files_service_dep)],
     drive: Annotated[DriveService, Depends(drive_service_dep)],
@@ -104,7 +103,7 @@ async def read_file(
 
 @router.patch("/{file_id}/rename")
 async def rename_file(
-    file_id: str,
+    file_id: FileId,
     payload: FileRename,
     db: Annotated[AsyncSession, Depends(get_db)],
     files: Annotated[FilesService, Depends(files_service_dep)],
@@ -117,24 +116,21 @@ async def rename_file(
 
 @router.patch("/{file_id}/move")
 async def move_file(
-    file_id: str,
+    file_id: FileId,
     payload: FileMove,
     db: Annotated[AsyncSession, Depends(get_db)],
     files: Annotated[FilesService, Depends(files_service_dep)],
-    extras: Annotated[ExtrasService, Depends(extras_service_dep)],
     cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
 ) -> FileResponse:
     result = await files.move(file_id, payload.new_parent_folder_id)
     await _invalidate_drive_of(db, cache, result.source)
     await _invalidate_drive_of(db, cache, result.moved)
-    if result.source.parent_folder_id != result.moved.parent_folder_id:
-        await extras.clear_sort_order(file_id)
     return result.moved
 
 
 @router.post("/{file_id}/copy", status_code=status.HTTP_201_CREATED)
 async def copy_file(
-    file_id: str,
+    file_id: FileId,
     payload: FileCopy,
     db: Annotated[AsyncSession, Depends(get_db)],
     files: Annotated[FilesService, Depends(files_service_dep)],
@@ -147,7 +143,7 @@ async def copy_file(
 
 @router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_file(
-    file_id: str,
+    file_id: FileId,
     db: Annotated[AsyncSession, Depends(get_db)],
     files: Annotated[FilesService, Depends(files_service_dep)],
     cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],

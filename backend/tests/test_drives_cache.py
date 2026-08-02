@@ -6,6 +6,7 @@ import pytest
 
 from app.drive import drives_cache
 from app.drive.schemas import DriveSummary
+from app.identifiers import DriveId
 
 
 @pytest.fixture(autouse=True)
@@ -14,8 +15,8 @@ def _reset_cache() -> None:
 
 
 def _drives(*names: str) -> list[DriveSummary]:
-    return [DriveSummary(id=f"d-{n}", name=n) for n in names] or [
-        DriveSummary(id="d1", name="One"),
+    return [DriveSummary(id=DriveId(f"d-{n}"), name=n) for n in names] or [
+        DriveSummary(id=DriveId("d1"), name="One"),
     ]
 
 

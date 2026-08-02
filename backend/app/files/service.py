@@ -20,6 +20,7 @@ from app.files.errors import (
     UnsupportedMimeError,
 )
 from app.files.schemas import DeleteResult, FileResponse, MoveResult
+from app.identifiers import DriveId, FileId
 from app.models.user import User
 
 
@@ -33,28 +34,28 @@ _MAX_HTML_BYTES = 5 * 1024 * 1024
 
 class FilesService(ABC):
     @abstractmethod
-    async def create(self, parent_folder_id: str, name: str, mime_type: str) -> FileResponse: ...
+    async def create(self, parent_folder_id: FileId, name: str, mime_type: str) -> FileResponse: ...
 
     @abstractmethod
-    async def get(self, file_id: str) -> FileResponse: ...
+    async def get(self, file_id: FileId) -> FileResponse: ...
 
     @abstractmethod
-    async def can_edit(self, file_id: str) -> bool: ...
+    async def can_edit(self, file_id: FileId) -> bool: ...
 
     @abstractmethod
-    async def get_html_content(self, file_id: str) -> bytes: ...
+    async def get_html_content(self, file_id: FileId) -> bytes: ...
 
     @abstractmethod
-    async def rename(self, file_id: str, new_name: str) -> FileResponse: ...
+    async def rename(self, file_id: FileId, new_name: str) -> FileResponse: ...
 
     @abstractmethod
-    async def move(self, file_id: str, new_parent_folder_id: str) -> MoveResult: ...
+    async def move(self, file_id: FileId, new_parent_folder_id: FileId) -> MoveResult: ...
 
     @abstractmethod
-    async def copy(self, file_id: str, new_name: str) -> FileResponse: ...
+    async def copy(self, file_id: FileId, new_name: str) -> FileResponse: ...
 
     @abstractmethod
-    async def delete(self, file_id: str) -> DeleteResult: ...
+    async def delete(self, file_id: FileId) -> DeleteResult: ...
 
 
 class GoogleFilesService(FilesService):
@@ -64,7 +65,7 @@ class GoogleFilesService(FilesService):
         self._clients: dict[int, DriveResource] = {}
 
     @override
-    async def create(self, parent_folder_id: str, name: str, mime_type: str) -> FileResponse:
+    async def create(self, parent_folder_id: FileId, name: str, mime_type: str) -> FileResponse:
         if mime_type not in NAVIGATOR_SUPPORTED_MIME_TYPES:
             msg = f"Unsupported mimeType: {mime_type}"
             raise UnsupportedMimeError(msg)
@@ -73,19 +74,19 @@ class GoogleFilesService(FilesService):
         return result
 
     @override
-    async def get(self, file_id: str) -> FileResponse:
+    async def get(self, file_id: FileId) -> FileResponse:
         result = await asyncio.to_thread(self._get_sync, file_id)
         await self._ensure_in_member_drive(result.drive_id)
         return result
 
     @override
-    async def can_edit(self, file_id: str) -> bool:
+    async def can_edit(self, file_id: FileId) -> bool:
         result = await asyncio.to_thread(self._get_sync, file_id)
         await self._ensure_in_member_drive(result.drive_id)
         return result.can_edit
 
     @override
-    async def get_html_content(self, file_id: str) -> bytes:
+    async def get_html_content(self, file_id: FileId) -> bytes:
         file = await self.get(file_id)
         if file.mime_type != MIME_HTML:
             msg = "Only HTML files can use the isolated HTML viewer"
@@ -98,12 +99,12 @@ class GoogleFilesService(FilesService):
         return content
 
     @override
-    async def rename(self, file_id: str, new_name: str) -> FileResponse:
+    async def rename(self, file_id: FileId, new_name: str) -> FileResponse:
         await self.get(file_id)
         return await asyncio.to_thread(self._rename_sync, file_id=file_id, new_name=new_name)
 
     @override
-    async def move(self, file_id: str, new_parent_folder_id: str) -> MoveResult:
+    async def move(self, file_id: FileId, new_parent_folder_id: FileId) -> MoveResult:
         source = await self.get(file_id)
         try:
             moved = await asyncio.to_thread(
@@ -126,7 +127,7 @@ class GoogleFilesService(FilesService):
         return MoveResult(source=source, moved=moved)
 
     @override
-    async def copy(self, file_id: str, new_name: str) -> FileResponse:
+    async def copy(self, file_id: FileId, new_name: str) -> FileResponse:
         source = await self.get(file_id)
         if source.mime_type == MIME_FOLDER:
             msg = "Folders can't be duplicated — copy individual files instead"
@@ -136,12 +137,12 @@ class GoogleFilesService(FilesService):
         return result
 
     @override
-    async def delete(self, file_id: str) -> DeleteResult:
+    async def delete(self, file_id: FileId) -> DeleteResult:
         source = await self.get(file_id)
         await asyncio.to_thread(self._trash_sync, file_id)
         return DeleteResult(source=source)
 
-    async def _ensure_in_member_drive(self, drive_id: str | None) -> None:
+    async def _ensure_in_member_drive(self, drive_id: DriveId | None) -> None:
         if drive_id is None:
             msg = "File not available in Sarj Wiki"
             raise FileNotInScopeError(msg)
@@ -150,7 +151,7 @@ class GoogleFilesService(FilesService):
             msg = "File not available in Sarj Wiki"
             raise FileNotInScopeError(msg)
 
-    def _create_sync(self, parent_folder_id: str, name: str, mime_type: str) -> FileResponse:
+    def _create_sync(self, parent_folder_id: FileId, name: str, mime_type: str) -> FileResponse:
         client = self._client()
         body: File = {"name": name, "mimeType": mime_type, "parents": [parent_folder_id]}
         with _translated_drive_errors():
@@ -159,7 +160,7 @@ class GoogleFilesService(FilesService):
             )
         return _to_response(raw)
 
-    def _get_sync(self, file_id: str) -> FileResponse:
+    def _get_sync(self, file_id: FileId) -> FileResponse:
         client = self._client()
         with _translated_drive_errors():
             raw = execute_with_retry(
@@ -167,7 +168,7 @@ class GoogleFilesService(FilesService):
             )
         return _to_response(raw)
 
-    def _rename_sync(self, *, file_id: str, new_name: str) -> FileResponse:
+    def _rename_sync(self, *, file_id: FileId, new_name: str) -> FileResponse:
         client = self._client()
         body: File = {"name": new_name}
         with _translated_drive_errors():
@@ -179,7 +180,11 @@ class GoogleFilesService(FilesService):
         return _to_response(raw)
 
     def _move_sync(
-        self, *, file_id: str, new_parent_folder_id: str, prev_parent_folder_id: str | None
+        self,
+        *,
+        file_id: FileId,
+        new_parent_folder_id: FileId,
+        prev_parent_folder_id: FileId | None,
     ) -> FileResponse:
         client = self._client()
         with _translated_drive_errors():
@@ -187,19 +192,21 @@ class GoogleFilesService(FilesService):
                 meta = execute_with_retry(
                     client.files().get(fileId=file_id, fields="parents", supportsAllDrives=True)
                 )
-                prev_parent_folder_id = ",".join(meta.get("parents", []))
+                remove_parents = ",".join(meta.get("parents", []))
+            else:
+                remove_parents = prev_parent_folder_id
             raw = execute_with_retry(
                 client.files().update(
                     fileId=file_id,
                     addParents=new_parent_folder_id,
-                    removeParents=prev_parent_folder_id,
+                    removeParents=remove_parents,
                     fields=_FIELDS,
                     supportsAllDrives=True,
                 )
             )
         return _to_response(raw)
 
-    def _copy_sync(self, *, file_id: str, new_name: str) -> FileResponse:
+    def _copy_sync(self, *, file_id: FileId, new_name: str) -> FileResponse:
         client = self._client()
         body: File = {"name": new_name}
         with _translated_drive_errors():
@@ -210,7 +217,7 @@ class GoogleFilesService(FilesService):
             )
         return _to_response(raw)
 
-    def _trash_sync(self, file_id: str) -> None:
+    def _trash_sync(self, file_id: FileId) -> None:
         client = self._client()
         body: File = {"trashed": True}
         with _translated_drive_errors():
@@ -218,7 +225,7 @@ class GoogleFilesService(FilesService):
                 client.files().update(fileId=file_id, body=body, supportsAllDrives=True)
             )
 
-    def _ensure_current_drive_membership_sync(self, drive_id: str | None) -> None:
+    def _ensure_current_drive_membership_sync(self, drive_id: DriveId | None) -> None:
         if drive_id is None:
             msg = "File not available in Sarj Wiki"
             raise FileNotInScopeError(msg)
@@ -229,7 +236,7 @@ class GoogleFilesService(FilesService):
             msg = "File not available in Sarj Wiki"
             raise FileNotInScopeError(msg)
 
-    def _download_sync(self, file_id: str) -> bytes:
+    def _download_sync(self, file_id: FileId) -> bytes:
         client = self._client()
         with _translated_drive_errors():
             raw = execute_with_retry(

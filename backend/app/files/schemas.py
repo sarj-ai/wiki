@@ -4,12 +4,14 @@ from typing import Annotated
 
 from pydantic import BaseModel, StringConstraints
 
+from app.identifiers import DriveId, FileId
+
 
 FileName = Annotated[str, StringConstraints(min_length=1, max_length=255)]
 
 
 class FileCreate(BaseModel):
-    parent_folder_id: str
+    parent_folder_id: FileId
     name: FileName
     mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
 
@@ -19,7 +21,7 @@ class FileRename(BaseModel):
 
 
 class FileMove(BaseModel):
-    new_parent_folder_id: str
+    new_parent_folder_id: FileId
 
 
 class FileCopy(BaseModel):
@@ -27,11 +29,11 @@ class FileCopy(BaseModel):
 
 
 class FileResponse(BaseModel):
-    id: str
+    id: FileId
     name: str
     mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
-    parent_folder_id: str | None
-    drive_id: str | None
+    parent_folder_id: FileId | None
+    drive_id: DriveId | None
     modified_time: str | None
     can_edit: bool = False
 
@@ -46,7 +48,7 @@ class DeleteResult(BaseModel):
 
 
 class BreadcrumbItem(BaseModel):
-    id: str
+    id: FileId
     name: str
 
 

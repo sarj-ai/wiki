@@ -11,6 +11,7 @@ from app.aliases.errors import AliasConflictError, AliasNotFoundError
 from app.aliases.schemas import DocumentAliasForFile, DocumentAliasRead, DocumentAliasValue
 from app.aliases.service import AliasService
 from app.auth.dependencies import get_current_user
+from app.identifiers import FileId
 from app.main import app
 from tests.test_files_service import _user
 
@@ -26,13 +27,13 @@ class _Aliases(AliasService):
     async def resolve(self, alias: DocumentAliasValue) -> DocumentAliasRead:
         if alias != self.current:
             raise AliasNotFoundError
-        return DocumentAliasRead(alias=alias, file_id="google-file-id")
+        return DocumentAliasRead(alias=alias, file_id=FileId("google-file-id"))
 
     async def save(self, file_id: str, alias: DocumentAliasValue) -> DocumentAliasRead:
         if alias == "taken-short-link":
             raise AliasConflictError
         self.current = alias
-        return DocumentAliasRead(alias=alias, file_id=file_id)
+        return DocumentAliasRead(alias=alias, file_id=FileId(file_id))
 
     async def retire(self, file_id: str) -> None:
         del file_id

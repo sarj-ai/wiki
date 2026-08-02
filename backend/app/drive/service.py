@@ -40,6 +40,7 @@ from app.drive.schemas import (
     SnippetResult,
 )
 from app.drive.snippets import escape_query_value, extract_snippet
+from app.identifiers import DriveId, FileId
 from app.models.user import User
 
 
@@ -71,14 +72,14 @@ class DriveService(ABC):
     async def list_drives(self) -> list[DriveSummary]: ...
 
     @abstractmethod
-    async def walk_drive_folders(self, drive_id: str) -> DriveTree: ...
+    async def walk_drive_folders(self, drive_id: DriveId) -> DriveTree: ...
 
     @abstractmethod
-    async def list_folder_children(self, folder_id: str) -> list[DriveNode]: ...
+    async def list_folder_children(self, folder_id: FileId) -> list[DriveNode]: ...
 
     @abstractmethod
     async def search_drive(
-        self, drive_id: str, query: str, *, limit: int = 50
+        self, drive_id: DriveId, query: str, *, limit: int = 50
     ) -> list[SearchResult]: ...
 
     @abstractmethod
@@ -86,7 +87,7 @@ class DriveService(ABC):
 
     @abstractmethod
     async def fetch_snippet(
-        self, file_id: str, query: str, *, mime_type: str | None = None
+        self, file_id: FileId, query: str, *, mime_type: str | None = None
     ) -> SnippetResult: ...
 
 
@@ -103,7 +104,7 @@ class GoogleDriveService(DriveService):
         )
 
     @override
-    async def walk_drive_folders(self, drive_id: str) -> DriveTree:
+    async def walk_drive_folders(self, drive_id: DriveId) -> DriveTree:
         tree, (files, files_complete) = await asyncio.gather(
             asyncio.to_thread(self._walk_folders_sync, drive_id),
             asyncio.to_thread(self._list_drive_files_sync, drive_id),
@@ -116,13 +117,13 @@ class GoogleDriveService(DriveService):
         return tree
 
     @override
-    async def list_folder_children(self, folder_id: str) -> list[DriveNode]:
+    async def list_folder_children(self, folder_id: FileId) -> list[DriveNode]:
         nodes = await asyncio.to_thread(self._list_children_sync, folder_id)
         return await self._resolve_shortcut_nodes(nodes)
 
     @override
     async def search_drive(
-        self, drive_id: str, query: str, *, limit: int = 50
+        self, drive_id: DriveId, query: str, *, limit: int = 50
     ) -> list[SearchResult]:
         if not query.strip():
             return []
@@ -148,7 +149,7 @@ class GoogleDriveService(DriveService):
             merged = [
                 hit.model_copy(update={"drive_name": names[drive_id]})
                 for hit in hits
-                if (drive_id := hit.drive_id) in names
+                if (drive_id := hit.drive_id) is not None and drive_id in names
             ]
         return await self._resolve_shortcut_search_results(merged)
 
@@ -164,7 +165,7 @@ class GoogleDriveService(DriveService):
 
     @override
     async def fetch_snippet(
-        self, file_id: str, query: str, *, mime_type: str | None = None
+        self, file_id: FileId, query: str, *, mime_type: str | None = None
     ) -> SnippetResult:
         return await asyncio.to_thread(self._fetch_snippet_sync, file_id, query, mime_type)
 
@@ -194,7 +195,9 @@ class GoogleDriveService(DriveService):
     async def _resolve_shortcuts[T: (DriveNode, SearchResult)](
         self,
         items: list[T],
-        accessible_update: Callable[[str | None, dict[str, str]], dict[str, str | None]],
+        accessible_update: Callable[
+            [DriveId | None, dict[DriveId, str]], dict[str, DriveId | str | None]
+        ],
     ) -> list[T]:
         shortcuts = [i for i in items if i.mime_type == MIME_SHORTCUT]
         if not shortcuts:
@@ -220,10 +223,10 @@ class GoogleDriveService(DriveService):
             )
         return out
 
-    async def _drive_names(self) -> dict[str, str]:
+    async def _drive_names(self) -> dict[DriveId, str]:
         return {d.id: d.name for d in await self.list_drives()}
 
-    async def _probe_targets(self, target_ids: list[str | None]) -> list[ShortcutProbe | None]:
+    async def _probe_targets(self, target_ids: list[FileId | None]) -> list[ShortcutProbe | None]:
         unique_ids = sorted({tid for tid in target_ids if tid})
         if not unique_ids:
             return [None] * len(target_ids)
@@ -236,12 +239,13 @@ class GoogleDriveService(DriveService):
             probes.update(fetched)
         return [probes.get(tid) if tid else None for tid in target_ids]
 
-    def _probe_targets_sync(self, target_ids: list[str]) -> dict[str, ShortcutProbe | None]:
+    def _probe_targets_sync(self, target_ids: list[FileId]) -> dict[FileId, ShortcutProbe | None]:
         client = self._client()
-        probes: dict[str, ShortcutProbe | None] = {}
+        probes: dict[FileId, ShortcutProbe | None] = {}
 
         def _collect(request_id: str, response: Any, exception: BaseException | None) -> None:
-            probes[request_id] = self._classify_probe(request_id, response, exception)
+            target_id = FileId(request_id)
+            probes[target_id] = self._classify_probe(target_id, response, exception)
 
         for chunk in batched(target_ids, _PROBE_BATCH_SIZE, strict=False):
             batch = client.new_batch_http_request(callback=_collect)
@@ -265,7 +269,7 @@ class GoogleDriveService(DriveService):
         return probes
 
     def _classify_probe(
-        self, target_id: str, response: Any, exception: BaseException | None
+        self, target_id: FileId, response: Any, exception: BaseException | None
     ) -> ShortcutProbe | None:
         if exception is not None:
             status = getattr(getattr(exception, "resp", None), "status", None)
@@ -314,7 +318,7 @@ class GoogleDriveService(DriveService):
             if not page_token:
                 return out
 
-    def _walk_folders_sync(self, drive_id: str) -> DriveTree:
+    def _walk_folders_sync(self, drive_id: DriveId) -> DriveTree:
         client = self._client()
         out = DriveTree(drive_id=drive_id, folders=[], files=[], files_complete=True)
         page_token: str | None = None
@@ -354,7 +358,7 @@ class GoogleDriveService(DriveService):
             if not page_token:
                 return out
 
-    def _list_children_sync(self, folder_id: str) -> list[DriveNode]:
+    def _list_children_sync(self, folder_id: FileId) -> list[DriveNode]:
         client = self._client()
         out: list[DriveNode] = []
         page_token: str | None = None
@@ -406,7 +410,7 @@ class GoogleDriveService(DriveService):
             if not page_token:
                 return out
 
-    def _list_drive_files_sync(self, drive_id: str) -> tuple[list[DriveNode], bool]:
+    def _list_drive_files_sync(self, drive_id: DriveId) -> tuple[list[DriveNode], bool]:
         client = self._client()
         out: list[DriveNode] = []
         page_token: str | None = None
@@ -459,7 +463,7 @@ class GoogleDriveService(DriveService):
                 )
                 return out, False
 
-    def _search_drive_sync(self, drive_id: str, query: str, limit: int) -> list[SearchResult]:
+    def _search_drive_sync(self, drive_id: DriveId, query: str, limit: int) -> list[SearchResult]:
         escaped = escape_query_value(query)
         q = f"(name contains '{escaped}' or fullText contains '{escaped}') and trashed=false"
         client = self._client()
@@ -515,7 +519,9 @@ class GoogleDriveService(DriveService):
             return None
         return [_search_result_from_api(raw) for raw in resp.get("files", [])]
 
-    def _fetch_snippet_sync(self, file_id: str, query: str, mime_type: str | None) -> SnippetResult:
+    def _fetch_snippet_sync(
+        self, file_id: FileId, query: str, mime_type: str | None
+    ) -> SnippetResult:
         client = self._client()
         if mime_type is None:
             try:
@@ -623,11 +629,11 @@ def _build_mime_clause() -> str:
     return f"({quoted})"
 
 
-def _search_result_from_api(raw: Any, drive_id: str | None = None) -> SearchResult:
+def _search_result_from_api(raw: Any, drive_id: DriveId | None = None) -> SearchResult:
     file = GoogleFile.model_validate(raw)
     home_drive_id = file.drive_id or drive_id
-    parent_id: str | None = file.parents[0] if file.parents else None
-    if parent_id == home_drive_id:
+    parent_id: FileId | None = file.parents[0] if file.parents else None
+    if home_drive_id is not None and parent_id == FileId(home_drive_id):
         parent_id = None
     details = file.shortcut_details
     return SearchResult(
@@ -643,9 +649,9 @@ def _search_result_from_api(raw: Any, drive_id: str | None = None) -> SearchResu
     )
 
 
-def _node_from_api(file: GoogleFile, drive_id: str) -> DriveNode:
-    parent_id: str | None = file.parents[0] if file.parents else None
-    if parent_id == drive_id:
+def _node_from_api(file: GoogleFile, drive_id: DriveId) -> DriveNode:
+    parent_id: FileId | None = file.parents[0] if file.parents else None
+    if parent_id == FileId(drive_id):
         parent_id = None
     details = file.shortcut_details
     return DriveNode(
