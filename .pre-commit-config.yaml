@@ -44,7 +44,7 @@ repos:
         additional_dependencies: [yamllint==1.38.0]
         types: [yaml]
       - id: sarj-current-registries
-        name: "sarj-config: every current Python, SQL, and IaC rule"
-        entry: uv run --project backend --locked python scripts/check_standards.py
+        name: "sarj-standards: every code, config, text, and artifact rule"
+        entry: uvx --from sarj-lint-configs==0.38.0 sarj-standards check
         language: system
-        types_or: [python, sql, terraform, yaml]
+        files: '(?i)(\.py|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|Dockerfile|Makefile)$'
