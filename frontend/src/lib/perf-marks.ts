@@ -29,6 +29,7 @@ const enabled = readPerfFlag();
 
 export function markNav(id: string, phase: string, extra: null | PerfExtra = null): void {
   if (!enabled || typeof window === "undefined") return;
+  // eslint-disable-next-line unicorn/no-global-object-property-assignment -- This opt-in probe intentionally records navigation timings on window.
   (window.__sarjPerf ??= []).push({ extra, id, phase, t: performance.now() });
 }
 

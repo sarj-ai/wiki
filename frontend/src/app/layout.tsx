@@ -80,12 +80,14 @@ export default function RootLayout({
           <link href={origin} key={origin} rel="preconnect" />
         ))}
 
+        {/* eslint-disable react/no-danger -- The SWC name helper must exist before hydration. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
               'window.__name=function(t,n){try{Object.defineProperty(t,"name",{value:n,configurable:true})}catch(e){}return t;}',
           }}
         />
+        {/* eslint-enable react/no-danger -- The exception is limited to the bootstrap script. */}
       </head>
       <body className="antialiased">
         <ThemeProvider
