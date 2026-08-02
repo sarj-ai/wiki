@@ -47,7 +47,7 @@ check: check-node check-quality check-backend check-frontend
 	@echo "make check: all CI-mirror steps passed"
 
 check-node:
-	@node -e 'const v = Number(process.versions.node.split(".")[0]); if (v < 24) { console.error("node >= 24 required (found " + process.versions.node + "). Run \"mise install\" (repo ships .mise.toml) or \"mise exec node@24 -- make check\"."); process.exit(1); }'
+	@node -e 'const required = "26.5.1"; if (process.versions.node.localeCompare(required, undefined, { numeric: true }) < 0) { console.error("node >= " + required + " required (found " + process.versions.node + "). Run \"mise install\" (repo ships .mise.toml) or \"mise exec node@26.5.1 -- make check\"."); process.exit(1); }'
 
 check-quality:
 	@$(MAKE) standards-check
@@ -61,7 +61,7 @@ check-quality:
 	@# CI prettier-formats the exported spec via npm ci's postinstall
 	@# (generate:api); mirror that formatting before diffing.
 	@cd backend && uv run --locked python scripts/export_openapi.py ../frontend/openapi.json
-	@cd frontend && npm exec -- prettier --log-level warn --write openapi.json
+	@cd frontend && npm exec --call 'prettier --log-level warn --write openapi.json'
 	@git diff --exit-code -- frontend/openapi.json
 
 check-backend:

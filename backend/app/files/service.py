@@ -187,6 +187,7 @@ class GoogleFilesService(FilesService):
         prev_parent_folder_id: FileId | None,
     ) -> FileResponse:
         client = self._client()
+        body: File = {}
         with _translated_drive_errors():
             if prev_parent_folder_id is None:
                 meta = execute_with_retry(
@@ -198,6 +199,7 @@ class GoogleFilesService(FilesService):
             raw = execute_with_retry(
                 client.files().update(
                     fileId=file_id,
+                    body=body,
                     addParents=new_parent_folder_id,
                     removeParents=remove_parents,
                     fields=_FIELDS,
