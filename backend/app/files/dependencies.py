@@ -8,6 +8,7 @@ from app.auth.dependencies import get_current_user
 from app.drive.dependencies import drive_service_dep
 from app.drive.service import DriveService
 from app.files.service import FilesService, GoogleFilesService
+from app.identifiers import FileId
 from app.models.user import User
 
 
@@ -19,9 +20,9 @@ def files_service_dep(
 
 
 async def require_accessible_doc(
-    drive_id: str,
+    drive_id: FileId,
     files: Annotated[FilesService, Depends(files_service_dep)],
-) -> str:
+) -> FileId:
     """IDOR guard for the global ``doc_icons`` table, keyed by document id.
 
     The ``{drive_id}`` path param is historically named but holds a Google

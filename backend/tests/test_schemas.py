@@ -8,11 +8,12 @@ from app.drive.schemas import (
     SearchResult,
 )
 from app.extras.schemas import PreferencesRead, PreferencesWrite
+from app.identifiers import DriveId, FileId
 
 
 def test_drive_node_shortcut_defaults() -> None:
     node = DriveNode(
-        id="x",
+        id=FileId("x"),
         name="X",
         mime_type="application/vnd.google-apps.folder",
         parent_id=None,
@@ -23,7 +24,7 @@ def test_drive_node_shortcut_defaults() -> None:
 
 
 def test_drive_tree_empty() -> None:
-    tree = DriveTree(drive_id="d1", folders=[], files=[], files_complete=True)
+    tree = DriveTree(drive_id=DriveId("d1"), folders=[], files=[], files_complete=True)
     assert tree.folders == []
     assert tree.files == []
     restored = DriveTree.model_validate(tree.model_dump(mode="json"))
@@ -44,7 +45,7 @@ def test_supported_mime_types_include_all_workspace_apps() -> None:
 
 def test_search_result_defaults_shortcut_accessible() -> None:
     r = SearchResult(
-        id="x",
+        id=FileId("x"),
         name="X",
         mime_type="t",
         drive_id=None,
@@ -57,7 +58,7 @@ def test_search_result_defaults_shortcut_accessible() -> None:
 
 
 def test_drive_summary_is_minimal() -> None:
-    d = DriveSummary(id="d1", name="Engineering")
+    d = DriveSummary(id=DriveId("d1"), name="Engineering")
     assert d.model_dump() == {"id": "d1", "name": "Engineering"}
 
 

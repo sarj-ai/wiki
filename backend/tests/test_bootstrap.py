@@ -19,6 +19,7 @@ from app.extras.schemas import (
     SortOrderWrite,
 )
 from app.extras.service import ExtrasService
+from app.identifiers import DriveId, FileId, GoogleUserId
 from app.models.user import User
 from app.sidebar.cache import CachedDriveTree, SidebarCacheService
 
@@ -52,7 +53,7 @@ class _FakeDriveService(DriveService):
 
 class _FakeExtrasService(ExtrasService):
     async def list_doc_icons(self) -> list[DocIconRead]:
-        return [DocIconRead(drive_id="doc-1", icon="📚", cover_url=None)]
+        return [DocIconRead(drive_id=FileId("doc-1"), icon="📚", cover_url=None)]
 
     async def get_doc_icon(self, drive_id: str) -> DocIconRead:
         raise NotImplementedError
@@ -61,7 +62,7 @@ class _FakeExtrasService(ExtrasService):
         raise NotImplementedError
 
     async def list_folder_icons(self) -> list[FolderIconRead]:
-        return [FolderIconRead(folder_drive_id="folder-1", icon="🚀")]
+        return [FolderIconRead(folder_drive_id=FileId("folder-1"), icon="🚀")]
 
     async def upsert_folder_icon(
         self, folder_drive_id: str, payload: FolderIconWrite
@@ -69,7 +70,7 @@ class _FakeExtrasService(ExtrasService):
         raise NotImplementedError
 
     async def list_sort_orders(self) -> list[SortOrderRead]:
-        return [SortOrderRead(drive_id="doc-1", sort_order=1.5)]
+        return [SortOrderRead(drive_id=DriveId("doc-1"), sort_order=1.5)]
 
     async def upsert_sort_orders(self, items: list[SortOrderWrite]) -> None:
         raise NotImplementedError
@@ -78,7 +79,7 @@ class _FakeExtrasService(ExtrasService):
         raise NotImplementedError
 
     async def get_preferences(self) -> PreferencesRead:
-        return PreferencesRead(show_non_doc_files=False, hidden_workspace_ids=["hidden-1"])
+        return PreferencesRead(show_non_doc_files=False, hidden_workspace_ids=[DriveId("hidden-1")])
 
     async def upsert_preferences(self, payload: PreferencesWrite) -> PreferencesRead:
         raise NotImplementedError
@@ -115,21 +116,21 @@ def _user() -> User:
     u = User()
     u.id = uuid.uuid4()
     u.email = "test@sarj.ai"
-    u.google_id = "gid"
+    u.google_id = GoogleUserId("gid")
     u.display_name = "Test User"
     u.token_version = 0
     return u
 
 
 def _tree(drive_id: str) -> DriveTree:
-    return DriveTree(drive_id=drive_id, folders=[], files=[], files_complete=True)
+    return DriveTree(drive_id=DriveId(drive_id), folders=[], files=[], files_complete=True)
 
 
 async def test_load_aggregates_all_six_reads() -> None:
     user = _user()
     cache = _FakeCacheService(_tree("d1"))
     svc = AggregatingBootstrapService(
-        drive=_FakeDriveService([DriveSummary(id="d1", name="Eng")]),
+        drive=_FakeDriveService([DriveSummary(id=DriveId("d1"), name="Eng")]),
         extras=_FakeExtrasService(),
         cache=cache,
         db=_NO_DB,
@@ -155,7 +156,7 @@ async def test_load_aggregates_all_six_reads() -> None:
 async def test_load_omits_first_tree_on_cache_miss() -> None:
     cache = _FakeCacheService(None)
     out = await AggregatingBootstrapService(
-        drive=_FakeDriveService([DriveSummary(id="d1", name="Eng")]),
+        drive=_FakeDriveService([DriveSummary(id=DriveId("d1"), name="Eng")]),
         extras=_FakeExtrasService(),
         cache=cache,
         db=_NO_DB,

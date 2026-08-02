@@ -24,6 +24,7 @@ from app.auth.jwt import create_access_token, create_refresh_token, decode_token
 from app.auth.schemas import GoogleTokenResponse, GoogleUserInfo
 from app.config import settings
 from app.drive import drives_cache
+from app.identifiers import GoogleUserId
 from app.models.user import User
 
 
@@ -229,7 +230,7 @@ class GoogleAuthService(AuthService):
         await self._db.refresh(user)
         return user
 
-    async def _find_existing_user(self, *, google_id: str, email: str) -> User | None:
+    async def _find_existing_user(self, *, google_id: GoogleUserId, email: str) -> User | None:
         stmt = (
             select(User)
             .where(or_(User.google_id == google_id, User.email == email))
@@ -259,6 +260,6 @@ class _GoogleTokens:
 @dataclass(frozen=True, slots=True)
 class _Userinfo:
     email: str
-    google_id: str
+    google_id: GoogleUserId
     display_name: str | None
     avatar_url: str | None

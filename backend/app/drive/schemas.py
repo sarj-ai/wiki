@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel
 
+from app.identifiers import DriveId, FileId
+
 
 MIME_FOLDER = "application/vnd.google-apps.folder"
 MIME_DOC = "application/vnd.google-apps.document"
@@ -43,50 +45,50 @@ NAVIGATOR_SUPPORTED_MIME_TYPES: tuple[str, ...] = (
 @dataclass(frozen=True)
 class ShortcutProbe:
     accessible: bool
-    target_drive_id: str | None = None
+    target_drive_id: DriveId | None = None
 
 
 class DriveSummary(BaseModel):
-    id: str
+    id: DriveId
     name: str
 
 
 class DriveNode(BaseModel):
-    id: str
+    id: FileId
     name: str
     mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
-    parent_id: str | None
+    parent_id: FileId | None
     modified_time: str | None
-    shortcut_target_id: str | None = None
+    shortcut_target_id: FileId | None = None
     shortcut_target_mime_type: str | None = None
-    shortcut_target_drive_id: str | None = None
+    shortcut_target_drive_id: DriveId | None = None
     shortcut_target_drive_name: str | None = None
     shortcut_inaccessible: bool = False
 
 
 class DriveTree(BaseModel):
-    drive_id: str
+    drive_id: DriveId
     folders: list[DriveNode]
     files: list[DriveNode]
     files_complete: bool
 
 
 class SearchResult(BaseModel):
-    id: str
+    id: FileId
     name: str
     mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
-    drive_id: str | None
+    drive_id: DriveId | None
     drive_name: str | None
-    parent_id: str | None
+    parent_id: FileId | None
     modified_time: str | None
-    shortcut_target_id: str | None = None
+    shortcut_target_id: FileId | None = None
     shortcut_target_mime_type: str | None = None
     shortcut_target_drive_name: str | None = None
     shortcut_inaccessible: bool = False
 
 
 class SnippetResult(BaseModel):
-    file_id: str
+    file_id: FileId
     mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
     snippet: str | None
     match_term: str | None

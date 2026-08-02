@@ -1,8 +1,9 @@
 import asyncio
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, ClassVar
 
 from google.cloud.sql.connector import Connector, IPTypes, RefreshStrategy
+from sqlalchemy import Text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
+from app.identifiers import DriveId, FileId, GoogleUserId
 
 
 _STATEMENT_TIMEOUT_MS = "120000"
@@ -82,7 +84,11 @@ async_session = async_sessionmaker(engine, expire_on_commit=False)
 
 
 class Base(DeclarativeBase):
-    pass
+    type_annotation_map: ClassVar[dict[Any, Any]] = {
+        FileId: Text(),
+        DriveId: Text(),
+        GoogleUserId: Text(),
+    }
 
 
 async def get_db() -> AsyncGenerator[AsyncSession]:

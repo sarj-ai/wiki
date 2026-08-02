@@ -18,6 +18,7 @@ from app.aliases.service import PostgresAliasService
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
 from app.files.service import FilesService
+from app.identifiers import DriveId, FileId, GoogleUserId
 from app.models.user import User
 from app.models.wiki import DocumentAlias
 
@@ -70,8 +71,8 @@ class _Files:
             raise FileNotInScopeError(msg)
         return FileResponse(
             can_edit=self.editable,
-            drive_id="drive-1",
-            id=file_id,
+            drive_id=DriveId("drive-1"),
+            id=FileId(file_id),
             mime_type=self.mime_type,
             modified_time=None,
             name="Document",
@@ -129,7 +130,7 @@ def _user() -> User:
     user = User()
     user.id = uuid.uuid4()
     user.email = "editor@sarj.ai"
-    user.google_id = "google-user"
+    user.google_id = GoogleUserId("google-user")
     user.token_version = 0
     return user
 
@@ -156,7 +157,7 @@ async def test_rename_retires_old_alias_and_creates_new_claim_atomically() -> No
     session = _Session(active=old, inserted=new)
     service = _service(session, _Files())
 
-    result = await service.save("file-1", "people-org-chart")
+    result = await service.save(FileId("file-1"), "people-org-chart")
 
     assert result.alias == "people-org-chart"
     assert old.retired_at is not None
@@ -171,7 +172,7 @@ async def test_unique_constraint_conflict_rolls_back_without_losing_old_alias() 
     service = _service(session, _Files())
 
     with pytest.raises(AliasConflictError):
-        await service.save("file-1", "people-org-chart")
+        await service.save(FileId("file-1"), "people-org-chart")
 
     assert session.rollbacks == 1
 
@@ -180,7 +181,7 @@ async def test_saving_same_alias_is_idempotent() -> None:
     old = DocumentAlias(alias="eng-onboarding", file_id="file-1", created_by=_user().id)
     session = _Session(active=old)
 
-    result = await _service(session, _Files()).save("file-1", "eng-onboarding")
+    result = await _service(session, _Files()).save(FileId("file-1"), "eng-onboarding")
 
     assert result.alias == "eng-onboarding"
     assert session.commits == 0
@@ -190,7 +191,7 @@ async def test_read_only_user_cannot_claim_an_alias() -> None:
     service = _service(_Session(), _Files(editable=False))
 
     with pytest.raises(AliasEditForbiddenError):
-        await service.save("file-1", "eng-onboarding")
+        await service.save(FileId("file-1"), "eng-onboarding")
 
 
 async def test_folder_cannot_receive_a_document_alias() -> None:
@@ -200,7 +201,7 @@ async def test_folder_cannot_receive_a_document_alias() -> None:
     )
 
     with pytest.raises(AliasTargetUnsupportedError):
-        await service.save("folder-1", "eng-onboarding")
+        await service.save(FileId("folder-1"), "eng-onboarding")
 
 
 async def test_retire_is_idempotent_and_preserves_tombstone() -> None:
@@ -208,12 +209,12 @@ async def test_retire_is_idempotent_and_preserves_tombstone() -> None:
     session = _Session(active=row)
     service = _service(session, _Files())
 
-    await service.retire("file-1")
+    await service.retire(FileId("file-1"))
 
     assert row.retired_at is not None
     assert row.retired_by is not None
     assert session.commits == 1
 
     empty_session = _Session()
-    await _service(empty_session, _Files()).retire("file-1")
+    await _service(empty_session, _Files()).retire(FileId("file-1"))
     assert empty_session.commits == 0

@@ -16,6 +16,7 @@ from app.files.errors import (
     UnsupportedMimeError,
 )
 from app.files.service import GoogleFilesService
+from app.identifiers import DriveId, FileId, GoogleUserId
 from app.models.user import User
 
 
@@ -50,13 +51,15 @@ def _user() -> User:
     u = User()
     u.id = uuid.uuid4()
     u.email = "test@sarj.ai"
-    u.google_id = "gid"
+    u.google_id = GoogleUserId("gid")
     u.token_version = 0
     return u
 
 
 def _svc(member_drive_id: str | None = None) -> GoogleFilesService:
-    drives = [DriveSummary(id=member_drive_id, name="Stub Drive")] if member_drive_id else []
+    drives = (
+        [DriveSummary(id=DriveId(member_drive_id), name="Stub Drive")] if member_drive_id else []
+    )
     return GoogleFilesService(user=_user(), drive=_FakeDriveService(drives))
 
 
@@ -76,7 +79,7 @@ def _patch_client(monkeypatch: pytest.MonkeyPatch, client: Any) -> None:
 async def test_create_rejects_unsupported_mime_type() -> None:
     with pytest.raises(UnsupportedMimeError):
         await _svc("d1").create(
-            parent_folder_id="p",
+            parent_folder_id=FileId("p"),
             name="x",
             mime_type="application/x-evil",
         )
@@ -106,7 +109,7 @@ async def test_http_errors_map_to_drive_upstream(
 
     _patch_client(monkeypatch, _FakeClient())
     with pytest.raises(DriveUpstreamError) as excinfo:
-        await _svc("d1").get(file_id)
+        await _svc("d1").get(FileId(file_id))
     assert excinfo.value.http_status == expected_status
 
 
@@ -131,7 +134,7 @@ async def test_create_success_returns_file_response(monkeypatch: pytest.MonkeyPa
 
     _patch_client(monkeypatch, _FakeClient())
     result = await _svc("d1").create(
-        parent_folder_id="p",
+        parent_folder_id=FileId("p"),
         name="Doc",
         mime_type="application/vnd.google-apps.document",
     )
@@ -159,7 +162,7 @@ async def test_can_edit_uses_drive_capability(monkeypatch: pytest.MonkeyPatch) -
             return _FakeFiles()
 
     _patch_client(monkeypatch, _FakeClient())
-    assert await _svc("d1").can_edit("editable") is True
+    assert await _svc("d1").can_edit(FileId("editable")) is True
 
 
 async def test_create_does_not_retry_ambiguous_5xx(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -180,7 +183,7 @@ async def test_create_does_not_retry_ambiguous_5xx(monkeypatch: pytest.MonkeyPat
     _patch_client(monkeypatch, _FakeClient())
     with pytest.raises(DriveUpstreamError):
         await _svc("d1").create(
-            parent_folder_id="p",
+            parent_folder_id=FileId("p"),
             name="Doc",
             mime_type="application/vnd.google-apps.document",
         )
@@ -224,7 +227,7 @@ async def test_move_reuses_prefetched_parent(monkeypatch: pytest.MonkeyPatch) ->
             return _FakeFiles()
 
     _patch_client(monkeypatch, _FakeClient())
-    result = await _svc("d1").move("f", "new-parent")
+    result = await _svc("d1").move(FileId("f"), FileId("new-parent"))
     assert result.moved.parent_folder_id == "new-parent"
 
     gets = [o for o in ops if o["_op"] == "get"]
@@ -255,7 +258,7 @@ async def test_get_rejects_my_drive(monkeypatch: pytest.MonkeyPatch) -> None:
 
     _patch_client(monkeypatch, _FakeClient())
     with pytest.raises(FileNotInScopeError):
-        await _svc("irrelevant").get("my-drive-file")
+        await _svc("irrelevant").get(FileId("my-drive-file"))
 
 
 async def test_html_content_rechecks_drive_and_downloads_with_viewer_client(
@@ -300,7 +303,7 @@ async def test_html_content_rechecks_drive_and_downloads_with_viewer_client(
             return _FakeDrives()
 
     _patch_client(monkeypatch, _FakeClient())
-    content = await _svc("d1").get_html_content("chart")
+    content = await _svc("d1").get_html_content(FileId("chart"))
 
     assert content == b"<!doctype html><p>safe</p>"
     assert operations == ["file:metadata", "drive:d1", "file:media"]
@@ -328,7 +331,7 @@ async def test_html_content_rejects_non_html_before_download(
 
     _patch_client(monkeypatch, _FakeClient())
     with pytest.raises(UnsupportedMimeError):
-        await _svc("d1").get_html_content("pdf")
+        await _svc("d1").get_html_content(FileId("pdf"))
 
 
 async def test_copy_rejects_folder(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -351,7 +354,7 @@ async def test_copy_rejects_folder(monkeypatch: pytest.MonkeyPatch) -> None:
 
     _patch_client(monkeypatch, _FakeClient())
     with pytest.raises(FolderCopyNotSupportedError):
-        await _svc("d1").copy("folder-id", "Copy of Some Folder")
+        await _svc("d1").copy(FileId("folder-id"), "Copy of Some Folder")
 
 
 async def test_copy_success(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -390,7 +393,7 @@ async def test_copy_success(monkeypatch: pytest.MonkeyPatch) -> None:
             return _FakeFiles()
 
     _patch_client(monkeypatch, _FakeClient())
-    result = await _svc("d1").copy("src-id", "Copy of Architecture Notes")
+    result = await _svc("d1").copy(FileId("src-id"), "Copy of Architecture Notes")
     assert result.id == "copy-id"
     assert result.name == "Copy of Architecture Notes"
     assert result.drive_id == "d1"
@@ -421,4 +424,4 @@ async def test_get_rejects_non_member_shared_drive(
 
     _patch_client(monkeypatch, _FakeClient())
     with pytest.raises(FileNotInScopeError):
-        await _svc("other-drive").get("foreign-file")
+        await _svc("other-drive").get(FileId("foreign-file"))

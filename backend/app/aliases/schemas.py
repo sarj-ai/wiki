@@ -4,6 +4,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, StringConstraints
 
+from app.identifiers import FileId
+
 
 DocumentAliasValue = Annotated[
     str,
@@ -21,7 +23,7 @@ class DocumentAliasWrite(BaseModel):
 
 class DocumentAliasRead(BaseModel):
     alias: DocumentAliasValue
-    file_id: str
+    file_id: FileId
 
 
 class DocumentAliasForFile(BaseModel):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.drive.schemas import DriveTree
 from app.files.schemas import BreadcrumbItem
+from app.identifiers import DriveId, FileId
 
 
 _MAX_DEPTH = 64
@@ -9,9 +10,9 @@ _MAX_DEPTH = 64
 
 def build_breadcrumb(
     tree: DriveTree | None,
-    drive_id: str | None,
+    drive_id: DriveId | None,
     drive_name: str | None,
-    parent_folder_id: str | None,
+    parent_folder_id: FileId | None,
 ) -> list[BreadcrumbItem]:
     chain: list[BreadcrumbItem] = []
     if tree is not None:
@@ -26,5 +27,5 @@ def build_breadcrumb(
             current = node.parent_id
             depth += 1
     if drive_id and drive_name:
-        chain.insert(0, BreadcrumbItem(id=drive_id, name=drive_name))
+        chain.insert(0, BreadcrumbItem(id=FileId(drive_id), name=drive_name))
     return chain

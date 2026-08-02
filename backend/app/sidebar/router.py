@@ -10,6 +10,7 @@ from app.database import get_db
 from app.drive.dependencies import drive_service_dep, require_member_drive
 from app.drive.schemas import DriveNode, DriveSummary, DriveTree
 from app.drive.service import DriveService
+from app.identifiers import DriveId, FileId
 from app.sidebar.cache import SidebarCacheService
 from app.sidebar.dependencies import sidebar_cache_service_dep
 
@@ -34,7 +35,7 @@ async def get_drives(
     dependencies=[Depends(require_member_drive)],
 )
 async def get_drive_folders(
-    drive_id: str,
+    drive_id: DriveId,
     request: Request,
     response: Response,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -57,7 +58,7 @@ async def get_drive_folders(
 
 @router.post("/drives/{drive_id}/refresh", dependencies=[Depends(require_member_drive)])
 async def refresh_drive_folders(
-    drive_id: str,
+    drive_id: DriveId,
     db: Annotated[AsyncSession, Depends(get_db)],
     cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
 ) -> DriveTree:
@@ -66,7 +67,7 @@ async def refresh_drive_folders(
 
 @router.get("/folders/{folder_id}/files")
 async def get_folder_files(
-    folder_id: str,
+    folder_id: FileId,
     response: Response,
     cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
 ) -> list[DriveNode]:
@@ -74,7 +75,7 @@ async def get_folder_files(
     return await cache.get_folder_children(folder_id)
 
 
-def _tree_etag(drive_id: str, refreshed_at: datetime | None) -> str | None:
+def _tree_etag(drive_id: DriveId, refreshed_at: datetime | None) -> str | None:
     if refreshed_at is None:
         return None
     return f'W/"{drive_id}:{refreshed_at.isoformat()}"'

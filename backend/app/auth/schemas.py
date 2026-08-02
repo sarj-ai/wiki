@@ -5,6 +5,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 
+from app.identifiers import GoogleUserId
 from app.models.user import User
 
 
@@ -35,7 +36,7 @@ class GoogleTokenResponse(BaseModel):
 class GoogleUserInfo(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    id: str
+    id: GoogleUserId
     email: EmailStr
     name: str | None = None
     picture: str | None = None

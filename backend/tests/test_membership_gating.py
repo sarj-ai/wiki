@@ -15,6 +15,7 @@ from app.extras.schemas import DocIconRead
 from app.files.dependencies import files_service_dep
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
+from app.identifiers import DriveId, FileId
 from app.main import app
 from app.models.user import User
 from app.sidebar.cache import CachedDriveTree, SidebarCacheService
@@ -22,10 +23,10 @@ from app.sidebar.dependencies import sidebar_cache_service_dep
 from tests.test_files_service import _FakeDriveService, _user
 
 
-MEMBER_DRIVE = "member-drive"
-OTHER_DRIVE = "someone-elses-drive"
-ACCESSIBLE_DOC = "accessible-doc"
-INACCESSIBLE_DOC = "inaccessible-doc"
+MEMBER_DRIVE = DriveId("member-drive")
+OTHER_DRIVE = DriveId("someone-elses-drive")
+ACCESSIBLE_DOC = FileId("accessible-doc")
+INACCESSIBLE_DOC = FileId("inaccessible-doc")
 
 
 class _FakeCache(SidebarCacheService):
@@ -47,10 +48,10 @@ class _FakeCache(SidebarCacheService):
 
 class _FakeExtras:
     async def get_doc_icon(self, drive_id: str) -> DocIconRead:
-        return DocIconRead(drive_id=drive_id, icon="📄", cover_url=None)
+        return DocIconRead(drive_id=FileId(drive_id), icon="📄", cover_url=None)
 
     async def upsert_doc_icon(self, drive_id: str, payload: object) -> DocIconRead:
-        return DocIconRead(drive_id=drive_id, icon="📄", cover_url=None)
+        return DocIconRead(drive_id=FileId(drive_id), icon="📄", cover_url=None)
 
 
 class _FakeFiles:
@@ -63,7 +64,7 @@ class _FakeFiles:
     async def get(self, file_id: str) -> FileResponse:
         if file_id == ACCESSIBLE_DOC:
             return FileResponse(
-                id=file_id,
+                id=FileId(file_id),
                 name="Doc",
                 mime_type="application/vnd.google-apps.document",
                 parent_folder_id=None,
@@ -75,7 +76,7 @@ class _FakeFiles:
 
 
 def _tree(drive_id: str) -> DriveTree:
-    return DriveTree(drive_id=drive_id, folders=[], files=[], files_complete=True)
+    return DriveTree(drive_id=DriveId(drive_id), folders=[], files=[], files_complete=True)
 
 
 def _member_user() -> User:

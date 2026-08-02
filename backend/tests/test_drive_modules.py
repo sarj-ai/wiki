@@ -12,6 +12,7 @@ from app.drive import probe_cache
 from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT, ShortcutProbe
 from app.drive.service import GoogleDriveService
 from app.drive.snippets import extract_snippet
+from app.identifiers import DriveId, FileId, GoogleUserId
 from app.models.user import User
 
 
@@ -24,7 +25,7 @@ def _user() -> User:
     u = User()
     u.id = uuid.uuid4()
     u.email = "test@sarj.ai"
-    u.google_id = "google-test-id"
+    u.google_id = GoogleUserId("google-test-id")
     u.token_version = 0
     return u
 
@@ -206,7 +207,7 @@ async def test_walk_drive_folders_uses_corpora_drive_and_folder_query(
     )
     patch_drive_client(client)
 
-    tree = await _svc().walk_drive_folders("the-drive")
+    tree = await _svc().walk_drive_folders(DriveId("the-drive"))
     assert tree.drive_id == "the-drive"
     assert [f.id for f in tree.folders] == ["f1", "f2"]
     assert tree.folders[0].parent_id is None
@@ -237,7 +238,7 @@ async def test_walk_drive_folders_paginates(patch_drive_client: Any) -> None:
         ]
     )
     patch_drive_client(client)
-    tree = await _svc().walk_drive_folders("d")
+    tree = await _svc().walk_drive_folders(DriveId("d"))
     assert [f.id for f in tree.folders] == ["f1", "f2"]
     walk_calls = [c for c in client.files_captured if c.get("corpora") == "drive"]
     assert walk_calls[1].get("pageToken") == "NEXT"
@@ -276,7 +277,7 @@ async def test_walk_populates_files_from_parallel_drive_listing(
     )
     patch_drive_client(client)
 
-    tree = await _svc().walk_drive_folders("d")
+    tree = await _svc().walk_drive_folders(DriveId("d"))
 
     assert [f.id for f in tree.folders] == ["f1"]
     assert [f.id for f in tree.files] == ["doc1", "doc2"]
@@ -311,7 +312,7 @@ async def test_walk_truncates_oversized_drive_file_listings(
     )
     patch_drive_client(client)
 
-    tree = await _svc().walk_drive_folders("d")
+    tree = await _svc().walk_drive_folders(DriveId("d"))
 
     assert tree.files_complete is False
     assert tree.files == []
@@ -333,7 +334,7 @@ async def test_list_folder_children_queries_by_parent(patch_drive_client: Any) -
         ]
     )
     patch_drive_client(client)
-    children = await _svc().list_folder_children("folder-x")
+    children = await _svc().list_folder_children(FileId("folder-x"))
     assert [c.id for c in children] == ["doc1"]
     assert children[0].parent_id == "folder-x"
     call = client.files_captured[0]
@@ -347,7 +348,7 @@ def _stub_probes(
     mapping: dict[str, ShortcutProbe | None],
 ) -> None:
 
-    def _fake(target_ids: list[str]) -> dict[str, ShortcutProbe | None]:
+    def _fake(target_ids: list[FileId]) -> dict[FileId, ShortcutProbe | None]:
         return {tid: mapping.get(tid) for tid in target_ids}
 
     monkeypatch.setattr(svc, "_probe_targets_sync", _fake)
@@ -399,10 +400,10 @@ async def test_walk_surfaces_folder_shortcuts_and_drops_file_shortcuts(
     _stub_probes(
         monkeypatch,
         svc,
-        {"eng-api-folder": ShortcutProbe(accessible=True, target_drive_id="engineering")},
+        {"eng-api-folder": ShortcutProbe(accessible=True, target_drive_id=DriveId("engineering"))},
     )
 
-    tree = await svc.walk_drive_folders("sales")
+    tree = await svc.walk_drive_folders(DriveId("sales"))
     ids = [n.id for n in tree.folders]
     assert ids == ["f1", "sc-folder"]
 
@@ -466,10 +467,10 @@ async def test_list_children_surfaces_file_shortcuts_with_target_mime(
     _stub_probes(
         monkeypatch,
         svc,
-        {"eng-doc": ShortcutProbe(accessible=True, target_drive_id="engineering")},
+        {"eng-doc": ShortcutProbe(accessible=True, target_drive_id=DriveId("engineering"))},
     )
 
-    children = await svc.list_folder_children("folder-x")
+    children = await svc.list_folder_children(FileId("folder-x"))
     ids = [c.id for c in children]
     assert ids == ["doc1", "sc-doc"]
     sc = next(c for c in children if c.id == "sc-doc")
@@ -504,7 +505,7 @@ async def test_resolver_marks_forbidden_target_inaccessible(
     svc = _svc()
     _stub_probes(monkeypatch, svc, {"eng-locked": ShortcutProbe(accessible=False)})
 
-    tree = await svc.walk_drive_folders("sales")
+    tree = await svc.walk_drive_folders(DriveId("sales"))
     assert len(tree.folders) == 1
     assert tree.folders[0].shortcut_inaccessible is True
     assert tree.folders[0].shortcut_target_drive_id is None
@@ -544,7 +545,7 @@ async def test_resolver_prunes_deleted_or_trashed_targets(
     svc = _svc()
     _stub_probes(monkeypatch, svc, {"deleted-target": None})
 
-    tree = await svc.walk_drive_folders("sales")
+    tree = await svc.walk_drive_folders(DriveId("sales"))
     assert [n.id for n in tree.folders] == ["f1"]
 
 
@@ -567,7 +568,7 @@ async def test_search_drive_escapes_quotes_and_passes_scoping(
         ]
     )
     patch_drive_client(client)
-    results = await _svc().search_drive("d1", "O'Brien")
+    results = await _svc().search_drive(DriveId("d1"), "O'Brien")
     assert [r.id for r in results] == ["s1"]
     call = client.files_captured[0]
     assert r"O\'Brien" in call["q"]
@@ -578,7 +579,7 @@ async def test_search_drive_escapes_quotes_and_passes_scoping(
 async def test_search_drive_empty_query_returns_empty(patch_drive_client: Any) -> None:
     client = _FakeClient()
     patch_drive_client(client)
-    assert await _svc().search_drive("d1", "   ") == []
+    assert await _svc().search_drive(DriveId("d1"), "   ") == []
     assert client.files_captured == []
 
 
@@ -648,17 +649,19 @@ async def test_probe_targets_dedupes_and_preserves_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     svc = _svc()
-    seen: list[list[str]] = []
+    seen: list[list[FileId]] = []
 
-    def _fake(target_ids: list[str]) -> dict[str, ShortcutProbe | None]:
+    def _fake(target_ids: list[FileId]) -> dict[FileId, ShortcutProbe | None]:
         seen.append(list(target_ids))
-        return {tid: ShortcutProbe(accessible=True, target_drive_id="d") for tid in target_ids}
+        return {
+            tid: ShortcutProbe(accessible=True, target_drive_id=DriveId("d")) for tid in target_ids
+        }
 
     monkeypatch.setattr(svc, "_probe_targets_sync", _fake)
-    out = await svc._probe_targets(["t1", None, "t2", "t1"])
+    out = await svc._probe_targets([FileId("t1"), None, FileId("t2"), FileId("t1")])
 
     assert seen == [["t1", "t2"]]
-    assert out[0] == ShortcutProbe(accessible=True, target_drive_id="d")
+    assert out[0] == ShortcutProbe(accessible=True, target_drive_id=DriveId("d"))
     assert out[1] is None
     assert out[3] == out[0]
 
@@ -667,16 +670,18 @@ async def test_probe_targets_serves_repeat_walks_from_the_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     svc = _svc()
-    seen: list[list[str]] = []
+    seen: list[list[FileId]] = []
 
-    def _fake(target_ids: list[str]) -> dict[str, ShortcutProbe | None]:
+    def _fake(target_ids: list[FileId]) -> dict[FileId, ShortcutProbe | None]:
         seen.append(list(target_ids))
-        return {tid: ShortcutProbe(accessible=True, target_drive_id="d") for tid in target_ids}
+        return {
+            tid: ShortcutProbe(accessible=True, target_drive_id=DriveId("d")) for tid in target_ids
+        }
 
     monkeypatch.setattr(svc, "_probe_targets_sync", _fake)
-    first = await svc._probe_targets(["t1", "t2"])
-    second = await svc._probe_targets(["t1", "t2"])
-    third = await svc._probe_targets(["t1", "t3"])
+    first = await svc._probe_targets([FileId("t1"), FileId("t2")])
+    second = await svc._probe_targets([FileId("t1"), FileId("t2")])
+    third = await svc._probe_targets([FileId("t1"), FileId("t3")])
 
     assert seen == [["t1", "t2"], ["t3"]]
     assert second == first
@@ -691,12 +696,13 @@ def test_classify_probe_maps_statuses_like_the_old_per_call_path() -> None:
 
         return HttpError(Response({"reason": "test", "status": str(status)}), b"{}")
 
-    assert svc._classify_probe("t", None, _err(404)) is None
-    assert svc._classify_probe("t", None, _err(403)) == ShortcutProbe(accessible=False)
-    assert svc._classify_probe("t", None, _err(500)) is None
-    assert svc._classify_probe("t", {"trashed": True}, None) is None
-    assert svc._classify_probe("t", {"id": "t", "driveId": "eng"}, None) == ShortcutProbe(
-        accessible=True, target_drive_id="eng"
+    target_id = FileId("t")
+    assert svc._classify_probe(target_id, None, _err(404)) is None
+    assert svc._classify_probe(target_id, None, _err(403)) == ShortcutProbe(accessible=False)
+    assert svc._classify_probe(target_id, None, _err(500)) is None
+    assert svc._classify_probe(target_id, {"trashed": True}, None) is None
+    assert svc._classify_probe(target_id, {"id": "t", "driveId": "eng"}, None) == ShortcutProbe(
+        accessible=True, target_drive_id=DriveId("eng")
     )
 
 
@@ -723,7 +729,7 @@ async def test_snippet_with_known_mime_skips_metadata_get(
 
     patch_drive_client(_FakeSnippetClient())
     result = await _svc().fetch_snippet(
-        "f1", "match", mime_type="application/vnd.google-apps.document"
+        FileId("f1"), "match", mime_type="application/vnd.google-apps.document"
     )
     assert result.snippet is not None
     assert len(captured) == 1
@@ -738,7 +744,7 @@ async def test_snippet_with_non_exportable_mime_makes_no_drive_calls(
             raise AssertionError(msg)
 
     patch_drive_client(_ExplodingClient())
-    result = await _svc().fetch_snippet("f1", "match", mime_type="application/pdf")
+    result = await _svc().fetch_snippet(FileId("f1"), "match", mime_type="application/pdf")
     assert result.snippet is None
     assert result.mime_type == "application/pdf"
 

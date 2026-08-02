@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from app.drive.dependencies import drive_service_dep
 from app.drive.schemas import SearchResult, SnippetResult
 from app.drive.service import DriveService
+from app.identifiers import FileId
 from app.ratelimit import limiter
 
 
@@ -30,7 +31,7 @@ async def search(
 @limiter.limit(_SEARCH_LIMIT)  # pyright: ignore[reportUntypedFunctionDecorator]
 async def snippet(
     request: Request,  # ruff: ignore[unused-function-argument] — slowapi reads the client IP off this
-    file_id: Annotated[str, Query(min_length=1)],
+    file_id: Annotated[FileId, Query(min_length=1)],
     q: Annotated[str, Query(min_length=1, max_length=2048)],
     svc: Annotated[DriveService, Depends(drive_service_dep)],
     mime_type: Annotated[str | None, Query(max_length=256)] = None,
