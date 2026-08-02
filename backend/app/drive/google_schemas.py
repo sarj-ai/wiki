@@ -43,3 +43,9 @@ class GoogleFileProbe(_GoogleModel):
 class GoogleFileMetadata(_GoogleModel):
     id: FileId
     mime_type: str = Field(alias="mimeType")  # sarj-noqa: SARJ006 — raw Google API MIME type
+
+
+class GoogleFileLocation(_GoogleModel):
+    id: FileId
+    drive_id: DriveId | None = Field(default=None, alias="driveId")
+    parents: list[FileId] = Field(default_factory=list)

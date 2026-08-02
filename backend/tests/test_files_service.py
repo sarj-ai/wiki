@@ -309,6 +309,58 @@ async def test_html_content_rechecks_drive_and_downloads_with_viewer_client(
     assert operations == ["file:metadata", "drive:d1", "file:media"]
 
 
+async def test_personal_html_skips_shared_drive_membership_recheck(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operations: list[str] = []
+
+    class _PersonalDriveService(_FakeDriveService):
+        async def resolve_member_drive(
+            self, file_id: FileId, drive_id: DriveId | None
+        ) -> DriveId | None:
+            if file_id == "chart" and drive_id is None:
+                return DriveId("personal-root")
+            return await super().resolve_member_drive(file_id, drive_id)
+
+    class _Request:
+        def __init__(self, result: Any) -> None:
+            self._result = result
+
+        def execute(self) -> Any:
+            return self._result
+
+    class _FakeFiles:
+        def get(self, **_: Any) -> _Request:
+            operations.append("file:metadata")
+            return _Request(
+                {
+                    "id": "chart",
+                    "name": "Chart.html",
+                    "mimeType": "text/html",
+                    "parents": ["personal-root"],
+                }
+            )
+
+        def get_media(self, **_: Any) -> _Request:
+            operations.append("file:media")
+            return _Request(b"<!doctype html><p>personal</p>")
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    _patch_client(monkeypatch, _FakeClient())
+    drive = _PersonalDriveService(
+        [DriveSummary(id=DriveId("personal-root"), name="My Drive", is_personal=True)]
+    )
+    service = GoogleFilesService(user=_user(), drive=drive)
+
+    content = await service.get_html_content(FileId("chart"))
+
+    assert content == b"<!doctype html><p>personal</p>"
+    assert operations == ["file:metadata", "file:media"]
+
+
 async def test_html_content_rejects_non_html_before_download(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

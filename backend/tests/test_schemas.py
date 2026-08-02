@@ -57,9 +57,9 @@ def test_search_result_defaults_shortcut_accessible() -> None:
     assert r.shortcut_target_id is None
 
 
-def test_drive_summary_is_minimal() -> None:
+def test_drive_summary_defaults_to_shared_drive() -> None:
     d = DriveSummary(id=DriveId("d1"), name="Engineering")
-    assert d.model_dump() == {"id": "d1", "name": "Engineering"}
+    assert d.model_dump() == {"id": "d1", "is_personal": False, "name": "Engineering"}
 
 
 def test_preferences_write_tracks_omitted_collection() -> None:

@@ -51,6 +51,7 @@ class ShortcutProbe:
 class DriveSummary(BaseModel):
     id: DriveId
     name: str
+    is_personal: bool = False
 
 
 class DriveNode(BaseModel):

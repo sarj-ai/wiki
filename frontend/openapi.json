@@ -290,6 +290,11 @@
             "title": "Id",
             "type": "string"
           },
+          "is_personal": {
+            "default": false,
+            "title": "Is Personal",
+            "type": "boolean"
+          },
           "name": {
             "title": "Name",
             "type": "string"

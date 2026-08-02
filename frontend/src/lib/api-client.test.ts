@@ -24,6 +24,25 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe("response parsing through the transform schemas", () => {
+  it("identifies the personal drive without changing shared-drive defaults", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse([
+          { id: "personal-root", is_personal: true, name: "My Drive" },
+          { id: "engineering", name: "Engineering" },
+        ]),
+      ),
+    );
+
+    const out = await wikiApi.getDrives();
+
+    expect(out).toEqual([
+      { id: "personal-root", isPersonal: true, name: "My Drive" },
+      { id: "engineering", isPersonal: false, name: "Engineering" },
+    ]);
+  });
+
   it("camelizes and collapses null to undefined", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([RAW_NODE])));
 
@@ -132,7 +151,7 @@ describe("401 refresh-and-replay", () => {
 
     const out = await wikiApi.getDrives();
 
-    expect(out).toEqual([{ id: "d1", name: "Engineering" }]);
+    expect(out).toEqual([{ id: "d1", isPersonal: false, name: "Engineering" }]);
     expect(calls).toHaveLength(3);
     expect(calls[1]).toMatch(/\/auth\/refresh$/);
   });
