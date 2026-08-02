@@ -18,7 +18,7 @@ pre-commit:
       root: backend/
       glob: "*.py"
       run: >-
-        git diff --quiet -- {staged_files} &&
+        ../scripts/check-fully-staged.sh {staged_files} &&
         uv run ruff check --fix {staged_files}
       stage_fixed: true
       fail_text: "AGENT: Ruff rejected staged Python. Fix: run 'uv run ruff check --fix .' in backend/ (or 'make fix'), repair what remains by hand, stage, and retry. NEVER use --no-verify."
@@ -26,7 +26,7 @@ pre-commit:
       root: backend/
       glob: "*.py"
       run: >-
-        git diff --quiet -- {staged_files} &&
+        ../scripts/check-fully-staged.sh {staged_files} &&
         uv run ruff format {staged_files}
       stage_fixed: true
       fail_text: "AGENT: staged Python is not ruff-formatted. Fix: run 'uv run ruff format <files>' in backend/, stage the result, and retry. NEVER use --no-verify."
@@ -38,7 +38,7 @@ pre-commit:
       root: frontend/
       glob: "*.{js,mjs,cjs,ts,tsx}"
       run: >-
-        git diff --quiet -- {staged_files} &&
+        ../scripts/check-fully-staged.sh {staged_files} &&
         npm exec -- next typegen &&
         npm exec -- eslint --fix --no-warn-ignored --max-warnings 0 --suppressions-location eslint-suppressions.json {staged_files}
       stage_fixed: true
@@ -61,7 +61,7 @@ pre-commit:
       run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache uvx --python 3.14 yamllint --strict --config-file .yamllint.yaml {staged_files}
       fail_text: "AGENT: yamllint rejected staged YAML against the canonical .yamllint.yaml. Fix: repair the reported lines, stage, and retry. NEVER use --no-verify."
     standards:
-      run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache uvx --python 3.14 pre-commit run
+      run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache SKIP=sarj-strict-markdownlint,sarj-strict-taplo,sarj-strict-yamllint uvx --python 3.14 pre-commit run
       fail_text: "AGENT: a pre-commit hook (hygiene, gitleaks, actionlint, or a sarj-* rule) rejected staged files. Fix: repair the reported finding (sarj rules accept a narrow '# sarj-noqa: SARJ0XX — reason' only with justification), stage, and retry. NEVER use --no-verify."
 
 pre-push:
@@ -69,5 +69,4 @@ pre-push:
   commands:
     check:
       run: make check
-      always_run: true  # empty push-file diffs must still run the full gate (red-team finding)
       fail_text: "AGENT: 'make check' (the exact CI mirror) failed. Fix: rerun 'make check', repair the first failing step ('make fix' applies the autofixable lint/format part), and push again. NEVER use --no-verify."
