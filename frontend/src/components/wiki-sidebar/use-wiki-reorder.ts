@@ -307,7 +307,7 @@ function buildDestinationOrder(
 
   const baseline = [...folders, ...files]
     .filter((c) => c.id !== movedNode.id)
-    .sort((a, b) => {
+    .toSorted((a, b) => {
       const aIsFolder = a.mimeType === MIME_FOLDER;
       const bIsFolder = b.mimeType === MIME_FOLDER;
       if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;

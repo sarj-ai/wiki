@@ -44,11 +44,11 @@ const withoutReactPlugin = (configs) =>
 const strictNamingConvention = sarjStrict
   .map((config) => config.rules?.["@typescript-eslint/naming-convention"])
   .find(Array.isArray);
-const reactNamingConvention = strictNamingConvention?.map((setting) =>
-  typeof setting === "object" && setting?.selector === "function"
-    ? { ...setting, format: ["camelCase", "PascalCase"] }
-    : setting,
-);
+const reactNamingConvention = strictNamingConvention && [
+  strictNamingConvention[0],
+  { format: ["camelCase", "PascalCase"], selector: "function" },
+  ...strictNamingConvention.slice(1),
+];
 
 export default defineConfig([
   ...withoutReactPlugin(configsAsErrors(nextVitals)),

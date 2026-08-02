@@ -8,6 +8,8 @@ const STORAGE_KEY = "wiki-sidebar-width";
 const MIN_WIDTH_PX = 224;
 const MAX_WIDTH_PX = 576;
 
+const clampSidebarWidth = (px: number) => Math.max(MIN_WIDTH_PX, Math.min(MAX_WIDTH_PX, px));
+
 export function SidebarResizeHandle() {
   useRestoreSidebarWidth();
   const [dragging, setDragging] = useState(false);
@@ -20,8 +22,6 @@ export function SidebarResizeHandle() {
 
     const startX = event.clientX;
     const startWidth = sidebar.getBoundingClientRect().width;
-    const clamp = (px: number) => Math.max(MIN_WIDTH_PX, Math.min(MAX_WIDTH_PX, px));
-
     const widthElements = document.querySelectorAll<HTMLElement>(
       '[data-slot="sidebar-gap"], [data-slot="sidebar-container"]',
     );
@@ -37,7 +37,7 @@ export function SidebarResizeHandle() {
     const apply = () => {
       rafId = null;
       if (pendingX === null) return;
-      const next = clamp(startWidth + (pendingX - startX));
+      const next = clampSidebarWidth(startWidth + (pendingX - startX));
       wrapper.style.setProperty("--sidebar-width", `${next}px`);
       pendingX = null;
     };

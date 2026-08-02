@@ -27,13 +27,13 @@ function EmojiPickerSkeleton() {
       <div className="bg-muted h-8 w-full animate-pulse rounded-md" />
 
       <div className="flex items-center gap-1">
-        {Array.from({ length: 9 }).map((_, i) => (
+        {Array.from({ length: 9 }, (_, i) => (
           <div className="bg-muted size-6 animate-pulse rounded-sm" key={i} />
         ))}
       </div>
 
       <div className="grid flex-1 grid-cols-9 gap-1 overflow-hidden">
-        {Array.from({ length: 54 }).map((_, i) => (
+        {Array.from({ length: 54 }, (_, i) => (
           <div
             className="bg-muted/60 aspect-square animate-pulse rounded-sm"
             key={i}
