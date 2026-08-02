@@ -144,6 +144,28 @@ async def test_create_success_returns_file_response(monkeypatch: pytest.MonkeyPa
     assert result.drive_id == "d1"
 
 
+async def test_can_edit_uses_drive_capability(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeFiles:
+        def get(self, **_: Any) -> Self:
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            return {
+                "capabilities": {"canEdit": True},
+                "driveId": "d1",
+                "id": "editable",
+                "mimeType": "application/vnd.google-apps.document",
+                "name": "Editable",
+            }
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    _patch_client(monkeypatch, _FakeClient())
+    assert await _svc("d1").can_edit("editable") is True
+
+
 async def test_create_does_not_retry_ambiguous_5xx(monkeypatch: pytest.MonkeyPatch) -> None:
     attempts = {"create": 0}
 

@@ -2,6 +2,8 @@ import type { z } from "zod";
 
 import type {
   docIcon,
+  documentAlias,
+  documentAliasForFile,
   driveNode,
   driveSummary,
   driveTree,
@@ -36,3 +38,5 @@ export type DocIcon = z.output<typeof docIcon>;
 export type FolderIcon = z.output<typeof folderIcon>;
 export type SortOrder = z.output<typeof sortOrder>;
 export type Preferences = z.output<typeof preferences>;
+export type DocumentAlias = z.output<typeof documentAlias>;
+export type DocumentAliasForFile = z.output<typeof documentAliasForFile>;

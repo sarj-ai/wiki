@@ -33,6 +33,7 @@ class FileResponse(BaseModel):
     parent_folder_id: str | None
     drive_id: str | None
     modified_time: str | None
+    can_edit: bool = False
 
 
 class MoveResult(BaseModel):

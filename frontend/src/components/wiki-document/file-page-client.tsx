@@ -54,6 +54,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
     return (
       <FilePageBody
         breadcrumb={[]}
+        canEdit={false}
         fileId={driveId}
         mimeType={hint.mimeType}
         onReload={() => {
@@ -83,6 +84,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
   return (
     <FilePageBody
       breadcrumb={file.breadcrumb}
+      canEdit={file.canEdit}
       fileId={file.id}
       mimeType={file.mimeType}
       onReload={() => {
@@ -97,6 +99,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
 
 interface FilePageBodyProps {
   breadcrumb: BreadcrumbItem[];
+  canEdit: boolean;
   fileId: string;
   mimeType: string;
   onReload: () => void;
@@ -107,6 +110,7 @@ interface FilePageBodyProps {
 
 function FilePageBody({
   breadcrumb,
+  canEdit,
   fileId,
   mimeType,
   onReload,
@@ -142,6 +146,7 @@ function FilePageBody({
     <div className="flex h-[100dvh] flex-col">
       <WikiToolbar
         breadcrumb={breadcrumb}
+        canEdit={canEdit}
         fileId={fileId}
         mimeType={mimeType}
         onReload={onReload}

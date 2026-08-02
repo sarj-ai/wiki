@@ -12,6 +12,8 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
 
+from app.aliases.errors import AliasError
+from app.aliases.router import router as aliases_router
 from app.auth.router import router as auth_router
 from app.bootstrap.router import router as bootstrap_router
 from app.config import settings
@@ -77,12 +79,24 @@ async def files_error_handler(
     )
 
 
+@app.exception_handler(AliasError)
+async def alias_error_handler(
+    _request: Request,
+    exc: AliasError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.http_status,
+        content={"code": exc.code, "detail": str(exc)},
+    )
+
+
 app.include_router(auth_router)
 app.include_router(bootstrap_router)
 app.include_router(sidebar_router)
 app.include_router(files_router)
 app.include_router(extras_router)
 app.include_router(drive_search_router)
+app.include_router(aliases_router)
 
 
 @app.get("/health")

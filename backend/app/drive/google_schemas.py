@@ -12,6 +12,10 @@ class GoogleShortcutDetails(_GoogleModel):
     target_mime_type: str | None = Field(default=None, alias="targetMimeType")
 
 
+class GoogleFileCapabilities(_GoogleModel):
+    can_edit: bool = Field(default=False, alias="canEdit")
+
+
 class GoogleFile(_GoogleModel):
     id: str
     name: str
@@ -20,6 +24,7 @@ class GoogleFile(_GoogleModel):
     parents: list[str] = Field(default_factory=list)
     modified_time: str | None = Field(default=None, alias="modifiedTime")
     shortcut_details: GoogleShortcutDetails | None = Field(default=None, alias="shortcutDetails")
+    capabilities: GoogleFileCapabilities = Field(default_factory=GoogleFileCapabilities)
 
 
 class GoogleDrive(_GoogleModel):
