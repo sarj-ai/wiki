@@ -106,7 +106,7 @@ export function WikiToolbar({
         {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         {copied ? "Copied" : "Copy link"}
       </Button>
-      <ShortLinkDialog canEdit={canEdit} fileId={fileId} />
+      {canEdit ? <ShortLinkDialog fileId={fileId} /> : null}
       <Button asChild size="xs" variant="outline">
         <a href={openUrl} rel="noopener noreferrer" target="_blank">
           <ExternalLink className="size-3.5" />

@@ -35,7 +35,7 @@ import { ApiError } from "@/lib/wiki-api";
 
 const SHORT_LINK_PREFIX = "wiki.sarj.ai/go/";
 
-export function ShortLinkDialog({ canEdit, fileId }: ShortLinkDialogProps) {
+export function ShortLinkDialog({ fileId }: ShortLinkDialogProps) {
   const [open, setOpen] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [draft, setDraft] = useState<null | string>(null);
@@ -133,7 +133,7 @@ export function ShortLinkDialog({ canEdit, fileId }: ShortLinkDialogProps) {
                   autoCapitalize="none"
                   autoComplete="off"
                   className="border-0 font-mono shadow-none focus-visible:ring-0"
-                  disabled={!canEdit || isSaving}
+                  disabled={isSaving}
                   id="document-alias"
                   onChange={(event) => {
                     setDraft(event.target.value);
@@ -161,11 +161,7 @@ export function ShortLinkDialog({ canEdit, fileId }: ShortLinkDialogProps) {
                 Use two or three lowercase words, with 2–12 letters per word. Names are never
                 recycled after removal.
               </p>
-              {!canEdit ? (
-                <p className="text-muted-foreground text-sm">
-                  You can copy this link. Editor access is required to change it.
-                </p>
-              ) : value.length > 0 && !validation.success ? (
+              {value.length > 0 && !validation.success ? (
                 <p className="text-destructive text-sm">
                   Try a format like <span className="font-mono">eng-onboarding</span> or{" "}
                   <span className="font-mono">people-org-chart</span>.
@@ -176,7 +172,7 @@ export function ShortLinkDialog({ canEdit, fileId }: ShortLinkDialogProps) {
 
           <DialogFooter className="sm:justify-between">
             <div>
-              {savedAlias && canEdit ? (
+              {savedAlias ? (
                 <Button
                   disabled={isSaving}
                   onClick={() => {
@@ -201,24 +197,22 @@ export function ShortLinkDialog({ canEdit, fileId }: ShortLinkDialogProps) {
               >
                 Close
               </Button>
-              {canEdit ? (
-                <Button
-                  disabled={
-                    isSaving ||
-                    !validation.success ||
-                    value === savedAlias ||
-                    aliasQuery.isPending ||
-                    aliasQuery.isError
-                  }
-                  onClick={() => {
-                    void handleSave();
-                  }}
-                  type="button"
-                >
-                  {saveAlias.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
-                  {savedAlias ? "Save changes" : "Create link"}
-                </Button>
-              ) : null}
+              <Button
+                disabled={
+                  isSaving ||
+                  !validation.success ||
+                  value === savedAlias ||
+                  aliasQuery.isPending ||
+                  aliasQuery.isError
+                }
+                onClick={() => {
+                  void handleSave();
+                }}
+                type="button"
+              >
+                {saveAlias.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
+                {savedAlias ? "Save changes" : "Create link"}
+              </Button>
             </div>
           </DialogFooter>
         </DialogContent>
@@ -252,7 +246,6 @@ export function ShortLinkDialog({ canEdit, fileId }: ShortLinkDialogProps) {
 }
 
 interface ShortLinkDialogProps {
-  canEdit: boolean;
   fileId: string;
 }
 
