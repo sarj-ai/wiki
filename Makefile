@@ -15,6 +15,7 @@ standards-sync:
 		--python-dest backend --typescript-dest frontend --dest . --force
 
 standards-check:
+	@uv run --project backend --locked sarj-standards doctor --dest .
 	@uv run --project backend --locked sarj-lint-configs sync \
 		--python-dest backend --typescript-dest frontend --dest . --check
 
@@ -82,6 +83,7 @@ check-backend:
 	@cd backend && uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70
 
 check-frontend:
+	@cd frontend && npm run generate:api
 	@# ci-frontend.yml "Prettier check"
 	@cd frontend && npm run format:check
 	@# ci-frontend.yml "TypeScript check"

@@ -6,6 +6,9 @@ configs = ["ruff", "pyright", "eslint", "yamllint"]
 [artifacts]
 durable = ["**/README.md", "docs/**", "**/docs/**", "architecture/**", "**/adr/**", ".github/**", "**/AGENTS.md", "**/CLAUDE.md"]
 
+[text]
+exclude = ["**/.env.example"]
+
 [dest]
 python = "backend"
 typescript = "frontend"
