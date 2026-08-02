@@ -14,8 +14,11 @@ import {
 import { openUrlFor } from "@/lib/file-urls";
 import type { BreadcrumbItem } from "@/types/wiki";
 
+import { ShortLinkDialog } from "./short-link-dialog";
+
 interface WikiToolbarProps {
   breadcrumb: BreadcrumbItem[];
+  canEdit: boolean;
   fileId: string;
   mimeType: string;
   onReload: () => void;
@@ -25,7 +28,14 @@ interface WikiToolbarProps {
 
 const COPY_FEEDBACK_MS = 2000;
 
-export function WikiToolbar({ breadcrumb, fileId, mimeType, onReload, title }: WikiToolbarProps) {
+export function WikiToolbar({
+  breadcrumb,
+  canEdit,
+  fileId,
+  mimeType,
+  onReload,
+  title,
+}: WikiToolbarProps) {
   const openUrl = openUrlFor(mimeType, fileId);
   const openLabel = openInGoogleLabel(mimeType);
   const [copied, setCopied] = useState(false);
@@ -96,6 +106,7 @@ export function WikiToolbar({ breadcrumb, fileId, mimeType, onReload, title }: W
         {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         {copied ? "Copied" : "Copy link"}
       </Button>
+      <ShortLinkDialog canEdit={canEdit} fileId={fileId} />
       <Button asChild size="xs" variant="outline">
         <a href={openUrl} rel="noopener noreferrer" target="_blank">
           <ExternalLink className="size-3.5" />

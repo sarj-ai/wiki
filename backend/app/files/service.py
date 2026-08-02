@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from googleapiclient._apis.drive.v3.resources import DriveResource
     from googleapiclient._apis.drive.v3.schemas import File
 
-_FIELDS = "id,name,mimeType,parents,driveId,modifiedTime"
+_FIELDS = "id,name,mimeType,parents,driveId,modifiedTime,capabilities(canEdit)"
 _MAX_HTML_BYTES = 5 * 1024 * 1024
 
 
@@ -37,6 +37,9 @@ class FilesService(ABC):
 
     @abstractmethod
     async def get(self, file_id: str) -> FileResponse: ...
+
+    @abstractmethod
+    async def can_edit(self, file_id: str) -> bool: ...
 
     @abstractmethod
     async def get_html_content(self, file_id: str) -> bytes: ...
@@ -74,6 +77,12 @@ class GoogleFilesService(FilesService):
         result = await asyncio.to_thread(self._get_sync, file_id)
         await self._ensure_in_member_drive(result.drive_id)
         return result
+
+    @override
+    async def can_edit(self, file_id: str) -> bool:
+        result = await asyncio.to_thread(self._get_sync, file_id)
+        await self._ensure_in_member_drive(result.drive_id)
+        return result.can_edit
 
     @override
     async def get_html_content(self, file_id: str) -> bytes:
@@ -244,6 +253,7 @@ def _to_response(raw: File) -> FileResponse:
         parent_folder_id=file.parents[0] if file.parents else None,
         drive_id=file.drive_id,
         modified_time=file.modified_time,
+        can_edit=file.capabilities.can_edit,
     )
 
 

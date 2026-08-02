@@ -141,6 +141,59 @@
         "title": "DocIconWrite",
         "type": "object"
       },
+      "DocumentAliasForFile": {
+        "properties": {
+          "alias": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 5,
+                "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alias"
+          }
+        },
+        "required": ["alias"],
+        "title": "DocumentAliasForFile",
+        "type": "object"
+      },
+      "DocumentAliasRead": {
+        "properties": {
+          "alias": {
+            "maxLength": 32,
+            "minLength": 5,
+            "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+            "title": "Alias",
+            "type": "string"
+          },
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          }
+        },
+        "required": ["alias", "file_id"],
+        "title": "DocumentAliasRead",
+        "type": "object"
+      },
+      "DocumentAliasWrite": {
+        "properties": {
+          "alias": {
+            "maxLength": 32,
+            "minLength": 5,
+            "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+            "title": "Alias",
+            "type": "string"
+          }
+        },
+        "required": ["alias"],
+        "title": "DocumentAliasWrite",
+        "type": "object"
+      },
       "DriveNode": {
         "properties": {
           "id": {
@@ -318,6 +371,11 @@
             "title": "Breadcrumb",
             "type": "array"
           },
+          "can_edit": {
+            "default": false,
+            "title": "Can Edit",
+            "type": "boolean"
+          },
           "drive_id": {
             "anyOf": [
               {
@@ -414,6 +472,11 @@
       },
       "FileResponse": {
         "properties": {
+          "can_edit": {
+            "default": false,
+            "title": "Can Edit",
+            "type": "boolean"
+          },
           "drive_id": {
             "anyOf": [
               {
@@ -843,6 +906,168 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/aliases/files/{file_id}": {
+      "delete": {
+        "operationId": "retire_file_alias_aliases_files__file_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire File Alias",
+        "tags": ["aliases"]
+      },
+      "get": {
+        "operationId": "get_file_alias_aliases_files__file_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentAliasForFile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get File Alias",
+        "tags": ["aliases"]
+      },
+      "put": {
+        "operationId": "save_file_alias_aliases_files__file_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentAliasWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentAliasRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save File Alias",
+        "tags": ["aliases"]
+      }
+    },
+    "/aliases/{alias}": {
+      "get": {
+        "operationId": "resolve_alias_aliases__alias__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alias",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 5,
+              "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+              "title": "Alias",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentAliasRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Alias",
+        "tags": ["aliases"]
+      }
+    },
     "/auth/callback": {
       "get": {
         "operationId": "callback_auth_callback_get",

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 import uuid
 
-from sqlalchemy import Boolean, DateTime, Double, ForeignKey, Text, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Double, ForeignKey, Index, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -43,6 +43,51 @@ class DocIcon(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+
+
+class DocumentAlias(Base):
+    __tablename__ = "document_aliases"
+    __table_args__ = (
+        CheckConstraint(
+            "char_length(alias) <= 32 AND alias ~ '^[a-z]{2,12}(-[a-z]{2,12}){1,2}$'",
+            name="ck_document_aliases_format",
+        ),
+        Index(
+            "uq_document_aliases_active_file",
+            "file_id",
+            unique=True,
+            postgresql_where=text("retired_at IS NULL"),
+        ),
+        Index(
+            "ix_document_aliases_created_by",
+            "created_by",
+            postgresql_where=text("created_by IS NOT NULL"),
+        ),
+        Index(
+            "ix_document_aliases_retired_by",
+            "retired_by",
+            postgresql_where=text("retired_by IS NOT NULL"),
+        ),
+    )
+
+    alias: Mapped[str] = mapped_column(Text, primary_key=True)
+    file_id: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+    retired_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class UserFolderIcon(Base):

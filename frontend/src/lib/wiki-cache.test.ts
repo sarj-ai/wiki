@@ -13,6 +13,7 @@ import { MIME_DOC, MIME_FOLDER, MIME_SHEET, MIME_SHORTCUT } from "@/types/wiki";
 
 function makeFile(overrides: Partial<FileResponse> = {}): FileResponse {
   return {
+    canEdit: true,
     driveId: "drive-1",
     id: "file-1",
     mimeType: MIME_DOC,

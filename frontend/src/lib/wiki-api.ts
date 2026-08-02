@@ -11,6 +11,7 @@ import {
   deleteSortOrderExtrasSortOrderDriveIdDelete,
   getDriveFoldersSidebarDrivesDriveIdFoldersGet,
   getDrivesSidebarDrivesGet,
+  getFileAliasAliasesFilesFileIdGet,
   getFolderFilesSidebarFoldersFolderIdFilesGet,
   listDocIconsExtrasDocIconsGet,
   listMyFolderIconsExtrasFolderIconsGet,
@@ -22,6 +23,8 @@ import {
   readPreferencesExtrasPreferencesGet,
   refreshDriveFoldersSidebarDrivesDriveIdRefreshPost,
   renameFileFilesFileIdRenamePatch,
+  retireFileAliasAliasesFilesFileIdDelete,
+  saveFileAliasAliasesFilesFileIdPut,
   searchDriveSearchGet,
   setDocIconExtrasDocIconsDriveIdPut,
   setFolderIconExtrasFolderIconsFolderDriveIdPut,
@@ -31,6 +34,8 @@ import {
 import {
   bootstrapRead,
   docIcon,
+  documentAlias,
+  documentAliasForFile,
   driveNode,
   driveSummary,
   driveTree,
@@ -46,6 +51,8 @@ import {
 } from "@/lib/wiki-schemas";
 import type {
   DocIcon,
+  DocumentAlias,
+  DocumentAliasForFile,
   DriveNode,
   DriveSearchResult,
   DriveSummary,
@@ -151,6 +158,9 @@ export function makeWikiApi(client?: Client) {
     getDocIcon: async (driveId: string): Promise<DocIcon> =>
       call(readDocIconExtrasDocIconsDriveIdGet, { path: { drive_id: driveId } }, docIcon),
 
+    getDocumentAlias: async (fileId: string): Promise<DocumentAliasForFile> =>
+      call(getFileAliasAliasesFilesFileIdGet, { path: { file_id: fileId } }, documentAliasForFile),
+
     getDriveFolders: async (driveId: string): Promise<DriveTree> =>
       call(
         getDriveFoldersSidebarDrivesDriveIdFoldersGet,
@@ -204,6 +214,16 @@ export function makeWikiApi(client?: Client) {
         renameFileFilesFileIdRenamePatch,
         { body: { name }, path: { file_id: fileId } },
         fileResponse,
+      ),
+
+    retireDocumentAlias: async (fileId: string): Promise<void> =>
+      call(retireFileAliasAliasesFilesFileIdDelete, { path: { file_id: fileId } }),
+
+    saveDocumentAlias: async (fileId: string, alias: string): Promise<DocumentAlias> =>
+      call(
+        saveFileAliasAliasesFilesFileIdPut,
+        { body: { alias }, path: { file_id: fileId } },
+        documentAlias,
       ),
 
     setDocIcon: async (driveId: string, payload: DocIconInput): Promise<DocIcon> =>

@@ -3,6 +3,8 @@ import type { z } from "zod";
 import {
   zBootstrapRead,
   zDocIconRead,
+  zDocumentAliasForFile,
+  zDocumentAliasRead,
   zDriveNode,
   zDriveSummary,
   zDriveTree,
@@ -34,6 +36,7 @@ function toDriveNode(n: z.infer<typeof zDriveNode>) {
 
 function toFileResponse(f: z.infer<typeof zFileResponse>) {
   return {
+    canEdit: f.can_edit,
     driveId: f.drive_id ?? undefined,
     id: f.id,
     mimeType: f.mime_type,
@@ -42,6 +45,15 @@ function toFileResponse(f: z.infer<typeof zFileResponse>) {
     parentFolderId: f.parent_folder_id ?? undefined,
   };
 }
+
+export const documentAlias = zDocumentAliasRead.transform((a) => ({
+  alias: a.alias,
+  fileId: a.file_id,
+}));
+
+export const documentAliasForFile = zDocumentAliasForFile.transform((a) => ({
+  alias: a.alias ?? undefined,
+}));
 
 export const driveSummary = zDriveSummary.transform((d) => ({
   id: d.id,

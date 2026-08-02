@@ -77,6 +77,7 @@ export function optimisticMoveFile(
 ): () => void {
   removeFileFromCaches(qc, node.id, source.parentFolderId, source.driveId);
   injectNewFileIntoCaches(qc, {
+    canEdit: false,
     driveId: destination.driveId,
     id: node.id,
     mimeType: node.mimeType,
@@ -87,6 +88,7 @@ export function optimisticMoveFile(
   return () => {
     removeFileFromCaches(qc, node.id, destination.parentFolderId, destination.driveId);
     injectNewFileIntoCaches(qc, {
+      canEdit: false,
       driveId: source.driveId,
       id: node.id,
       mimeType: node.mimeType,

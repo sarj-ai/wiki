@@ -48,5 +48,5 @@ export default function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/d/:path*"],
+  matcher: ["/", "/d/:path*", "/go/:path*"],
 };

@@ -37,4 +37,12 @@ describe("private Wiki link previews", () => {
       "https://wiki.sarj.ai/login?redirect=%2Fd%2Fprivate",
     );
   });
+
+  it("preserves a short link through login", () => {
+    const response = preview("/go/eng-onboarding", "Mozilla/5.0");
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://wiki.sarj.ai/login?redirect=%2Fgo%2Feng-onboarding",
+    );
+  });
 });
