@@ -113,7 +113,8 @@ describe("error mapping", () => {
 
     const failure = await wikiApi.getDrives().catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(ApiError);
-    expect((failure as ApiError).message).toBe("API error: 502");
+    if (!(failure instanceof ApiError)) throw new Error("Expected ApiError");
+    expect(failure.message).toBe("API error: 502");
   });
 });
 

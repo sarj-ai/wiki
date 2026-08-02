@@ -37,6 +37,7 @@ const ZErrorDetail = z.object({
     ])
     .optional(),
 });
+const ZOperationResult = z.object({ data: z.unknown().optional() });
 
 function sessionExpiresAt(): null | number {
   if (typeof document === "undefined") return null;
@@ -106,10 +107,10 @@ export function makeCall(clientOverride?: Client) {
       ...options,
       ...(clientOverride === undefined ? {} : { client: clientOverride }),
       throwOnError: true,
-    } as Parameters<Op>[0];
-    const result = (await operation(merged)) as { data?: unknown };
+    };
+    const result: unknown = await Reflect.apply(operation, undefined, [merged]);
     if (schema === undefined) return;
-    return schema.parse(result.data);
+    return schema.parse(ZOperationResult.parse(result).data);
   }
   return call;
 }
@@ -124,8 +125,8 @@ async function readErrorMessage(response: Response): Promise<null | string> {
     const { detail } = payload.data;
     if (typeof detail === "string" && detail.trim().length > 0) return detail;
     if (Array.isArray(detail) && detail.length > 0) {
-      const first = detail[0] as { msg?: unknown };
-      if (typeof first.msg === "string") return first.msg;
+      const first = detail[0];
+      if (first && typeof first.msg === "string") return first.msg;
     }
     return null;
   } catch {

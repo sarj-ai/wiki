@@ -3,7 +3,7 @@ import { ZodError } from "zod";
 
 import { ServerApiError, serverWikiApi } from "@/lib/server-api";
 
-const cookieValue = vi.hoisted(() => ({ token: undefined as string | undefined }));
+const cookieValue = vi.hoisted<{ token: string | undefined }>(() => ({ token: undefined }));
 
 vi.mock("next/headers", () => ({
   cookies: () => ({
