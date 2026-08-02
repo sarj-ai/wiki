@@ -38,7 +38,10 @@ dev = [
     "basedpyright>=1.39.0",
     "ty>=0.0.47",
     "google-api-python-client-stubs>=1.37.0",
-    "sarj-lint-configs==0.37.1",
+    "sarj-iac-lint==0.5.0",
+    "sarj-lint-configs==0.38.0",
+    "sarj-python-lint==0.41.0",
+    "sarj-sql-lint==0.6.1",
     "import-linter>=2.11",
     "pip-audit>=2.10.0",
 ]
