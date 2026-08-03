@@ -9,7 +9,7 @@ from typing import cast, override
 from pydantic import JsonValue, TypeAdapter
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.wiki import CacheEntry
 
@@ -58,8 +58,8 @@ class CacheService(ABC):
 
 
 class CachePSqlService(CacheService):
-    def __init__(self, db: AsyncSession) -> None:
-        self._db = db
+    def __init__(self, sessionmaker: async_sessionmaker[AsyncSession]) -> None:
+        self._sessionmaker = sessionmaker
 
     @override
     async def get(self, namespace: CacheNamespace, key: str) -> JsonValue | None:
@@ -68,7 +68,8 @@ class CachePSqlService(CacheService):
             CacheEntry.key == key,
             CacheEntry.expires_at > func.now(),
         )
-        value = (await self._db.execute(statement)).scalar_one_or_none()
+        async with self._sessionmaker() as db:
+            value = (await db.execute(statement)).scalar_one_or_none()
         return None if value is None else _JSON_VALUE.validate_python(value)
 
     @override
@@ -84,7 +85,8 @@ class CachePSqlService(CacheService):
             CacheEntry.key.in_(keys),
             CacheEntry.expires_at > func.now(),
         )
-        rows = (await self._db.execute(statement)).all()
+        async with self._sessionmaker() as db:
+            rows = (await db.execute(statement)).all()
         return {
             key: _JSON_VALUE.validate_python(value)
             for key, value in cast("list[tuple[str, object]]", rows)
@@ -137,15 +139,15 @@ class CachePSqlService(CacheService):
                 "expires_at": insert.excluded.expires_at,
             },
         ).add_cte(expired)
-        await self._db.execute(statement)
-        await self._db.commit()
+        async with self._sessionmaker() as db, db.begin():
+            await db.execute(statement)
 
     @override
     async def delete(self, namespace: CacheNamespace, key: str) -> None:
-        await self._db.execute(
-            delete(CacheEntry).where(
-                CacheEntry.namespace == namespace,
-                CacheEntry.key == key,
+        async with self._sessionmaker() as db, db.begin():
+            await db.execute(
+                delete(CacheEntry).where(
+                    CacheEntry.namespace == namespace,
+                    CacheEntry.key == key,
+                )
             )
-        )
-        await self._db.commit()

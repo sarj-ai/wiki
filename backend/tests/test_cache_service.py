@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
-from typing import cast
+from types import TracebackType
+from typing import Self, cast
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.cache.service import CacheNamespace, CachePSqlService
 
@@ -33,12 +35,51 @@ class _Session:
         self.statements.append(statement)
         return next(self._results, _Result())
 
-    async def commit(self) -> None:
-        self.commits += 1
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        return None
+
+    def begin(self) -> _Transaction:
+        return _Transaction(self)
+
+
+class _Transaction:
+    def __init__(self, session: _Session) -> None:
+        self._session = session
+
+    async def __aenter__(self) -> None:
+        return None
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        if exc_type is None:
+            self._session.commits += 1
+
+
+class _SessionMaker:
+    def __init__(self, *sessions: _Session) -> None:
+        self._sessions = iter(sessions)
+        self.calls = 0
+
+    def __call__(self) -> _Session:
+        self.calls += 1
+        return next(self._sessions)
 
 
 def _service(session: _Session) -> CachePSqlService:
-    return CachePSqlService(cast("AsyncSession", session))
+    factory = _SessionMaker(session)
+    return CachePSqlService(cast("async_sessionmaker[AsyncSession]", factory))
 
 
 async def test_put_many_is_one_atomic_expiring_upsert() -> None:
@@ -100,3 +141,20 @@ async def test_non_positive_ttl_is_rejected() -> None:
         )
 
     assert session.statements == []
+
+
+async def test_concurrent_reads_use_independent_sessions() -> None:
+    first = _Session(_Result(scalar={"name": "First"}))
+    second = _Session(_Result(scalar={"name": "Second"}))
+    factory = _SessionMaker(first, second)
+    service = CachePSqlService(
+        cast("async_sessionmaker[AsyncSession]", factory),
+    )
+
+    values = await asyncio.gather(
+        service.get(CacheNamespace.DRIVE_LIST, "user-1"),
+        service.get(CacheNamespace.DRIVE_LIST, "user-2"),
+    )
+
+    assert values == [{"name": "First"}, {"name": "Second"}]
+    assert factory.calls == 2
