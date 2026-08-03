@@ -34,6 +34,7 @@ const SCRIPT_SRC = IS_DEV
 const CSP_DIRECTIVES = [
   "default-src 'self'",
   SCRIPT_SRC,
+  // Tailwind's injected styles require 'unsafe-inline' on style-src.
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://*.google.com https://*.gstatic.com https://*.googleusercontent.com",
   "font-src 'self' data: https://*.gstatic.com",

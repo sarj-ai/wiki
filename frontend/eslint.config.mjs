@@ -204,6 +204,7 @@ export default defineConfig([
   // Require outbound HTTP to use the repository's *-client.ts modules.
   {
     rules: {
+      // Its sibling @sarj/no-storage-in-stateless-modules stays unwired on purpose: this repo declares no stateless-module list, so the rule would be a no-op.
       "@sarj/no-raw-fetch-outside-clients": "error",
     },
   },
