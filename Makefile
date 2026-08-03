@@ -4,6 +4,7 @@ SECRETS_TTL := 1440
 
 .PHONY: setup setup-hooks standards-sync standards-check standards-upgrade \
 	check check-node check-quality check-backend check-frontend fix audit doctor \
+	test-integration \
 	pull-local-secrets pull-local-secrets-force pull-tf-secrets pull-tf-secrets-force \
 	push-local-secrets push-tf-secrets
 
@@ -42,6 +43,10 @@ setup: setup-hooks standards-sync
 #   ci-quality.yml  "Reject lint baseline growth" (needs the PR base SHA)
 #   ci-quality.yml  "gitleaks (full history)" (pre-commit runs gitleaks on the
 #                   working tree; full-history scan stays CI-only)
+#   ci-backend.yml  "Run pytest" additionally sets TEST_DATABASE_URL so the
+#                   backend/tests/integration suite runs against the job's
+#                   Postgres service; locally those tests skip unless you run
+#                   `make test-integration` against a real Postgres
 # ---------------------------------------------------------------------------
 check: check-node check-quality check-backend check-frontend
 	@echo "make check: all CI-mirror steps passed"
@@ -81,6 +86,15 @@ check-backend:
 	@cd backend && uv run lint-imports
 	@# ci-backend.yml "Run pytest"
 	@cd backend && uv run pytest --cov --cov-report=term-missing
+
+# Postgres integration tests (backend/tests/integration). CI runs them inside
+# the ci-backend "Unit tests" job via its Postgres service container. Locally,
+# start one first, e.g.:
+#   docker run -d --name wiki-test-pg -p 5432:5432 \
+#     -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wiki_test postgres:17-alpine
+test-integration:
+	@cd backend && TEST_DATABASE_URL=$${TEST_DATABASE_URL:-postgresql+asyncpg://postgres:postgres@localhost:5432/wiki_test} \
+		uv run pytest tests/integration -m integration
 
 check-frontend:
 	@cd frontend && npm run generate:api
