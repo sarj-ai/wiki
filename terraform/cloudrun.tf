@@ -13,7 +13,8 @@
 #     drives.list() at runtime, no static root folder
 #   * ADMIN_IMPERSONATE_EMAIL — no more Admin SDK group sync
 #   * SERVICE_ACCOUNT_KEY_PATH — no service account in the read path
-#   * CLOUD_SCHEDULER_SA_EMAIL — no /internal endpoints
+#   * CLOUD_SCHEDULER_SA_EMAIL — the only /internal endpoint now uses a
+#     dedicated, Google-signed Cloud Tasks OIDC identity
 #   * WEBHOOK_BASE_URL — no webhook registrations
 #   * /secrets/service-account-key volume mount — removed
 
@@ -135,6 +136,22 @@ resource "google_cloud_run_v2_service" "backend" {
         name  = "GEMINI_MODEL"
         value = "gemini-3.5-flash-lite"
       }
+      env {
+        name  = "CLOUD_TASKS_QUEUE"
+        value = google_cloud_tasks_queue.smart_create.name
+      }
+      env {
+        name  = "CLOUD_TASKS_LOCATION"
+        value = google_cloud_tasks_queue.smart_create.location
+      }
+      env {
+        name  = "CLOUD_TASKS_TARGET_URL"
+        value = "https://${var.backend_domain}/internal/tasks/smart-create"
+      }
+      env {
+        name  = "CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT"
+        value = google_service_account.cloud_tasks_invoker.email
+      }
 
       # Sensitive env vars from Secret Manager
       env {
@@ -181,5 +198,7 @@ resource "google_cloud_run_v2_service" "backend" {
     google_secret_manager_secret_version.secrets,
     google_secret_manager_secret_iam_member.backend_access,
     google_project_iam_member.backend_vertex_ai,
+    google_cloud_tasks_queue_iam_member.backend_enqueuer,
+    google_service_account_iam_member.backend_acts_as_task_invoker,
   ]
 }

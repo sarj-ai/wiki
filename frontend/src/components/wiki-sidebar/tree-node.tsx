@@ -14,8 +14,8 @@ import { renderNodeIcon } from "@/lib/file-icons";
 import { runWithErrorToast } from "@/lib/mutation-toast";
 import { resolveShortcutTarget } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
-import { wikiApi } from "@/lib/wiki-api";
 import { wikiKeys } from "@/lib/wiki-keys";
+import { wikiReadApi } from "@/lib/wiki-read-client";
 import {
   applyOptimisticOrder,
   compareNodeOrder,
@@ -113,7 +113,7 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
     const folderId = meta.expandFolderId;
     if (!needsLazyFiles || expanded || meta.inaccessible || !folderId) return;
     void queryClient.prefetchQuery({
-      queryFn: async () => wikiApi.getFolderFiles(folderId),
+      queryFn: async () => await wikiReadApi.getFolderFiles(folderId),
       queryKey: wikiKeys.folderFiles(folderId),
     });
   }, HOVER_PREFETCH_DELAY_MS);

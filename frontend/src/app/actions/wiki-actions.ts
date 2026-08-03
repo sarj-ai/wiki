@@ -1,17 +1,98 @@
 "use server";
 
+import { cookies } from "next/headers";
+
 import type { ActionResult } from "@/lib/action-result";
 import { ServerApiError, serverWikiApi } from "@/lib/server-api";
-import type { CreateFileInput, DocIconInput, PreferencesInput } from "@/lib/wiki-api";
+import type { CreateFileInput, DocIconInput, PreferencesInput, UserProfile } from "@/lib/wiki-api";
 import type {
   DocIcon,
   DocumentAlias,
+  DocumentAliasForFile,
+  DriveNode,
+  DriveSearchResult,
+  DriveSummary,
   DriveTree,
+  FileDetail,
   FileResponse,
   FolderIcon,
   Preferences,
+  SnippetResult,
   SortOrder,
 } from "@/types/wiki";
+
+export async function getCurrentUserAction(): Promise<ActionResult<UserProfile>> {
+  return await resultOf(async () => await serverWikiApi.getMe());
+}
+
+export async function getDrivesAction(): Promise<ActionResult<DriveSummary[]>> {
+  return await resultOf(async () => await serverWikiApi.getDrives());
+}
+
+export async function getDriveFoldersAction(driveId: string): Promise<ActionResult<DriveTree>> {
+  return await resultOf(async () => await serverWikiApi.getDriveFolders(driveId));
+}
+
+export async function getFileAction(fileId: string): Promise<ActionResult<FileDetail>> {
+  return await resultOf(async () => await serverWikiApi.getFile(fileId));
+}
+
+export async function getFolderFilesAction(folderId: string): Promise<ActionResult<DriveNode[]>> {
+  return await resultOf(async () => await serverWikiApi.getFolderFiles(folderId));
+}
+
+export async function getPreferencesAction(): Promise<ActionResult<Preferences>> {
+  return await resultOf(async () => await serverWikiApi.getPreferences());
+}
+
+export async function listFolderIconsAction(): Promise<ActionResult<FolderIcon[]>> {
+  return await resultOf(async () => await serverWikiApi.listFolderIcons());
+}
+
+export async function listDocIconsAction(): Promise<ActionResult<DocIcon[]>> {
+  return await resultOf(async () => await serverWikiApi.listDocIcons());
+}
+
+export async function listSortOrdersAction(): Promise<ActionResult<SortOrder[]>> {
+  return await resultOf(async () => await serverWikiApi.listSortOrders());
+}
+
+export async function searchDriveAction(
+  query: string,
+  limitPerDrive?: number,
+): Promise<ActionResult<DriveSearchResult[]>> {
+  return await resultOf(async () => await serverWikiApi.driveSearch(query, limitPerDrive));
+}
+
+export async function getDriveSearchSnippetAction(
+  fileId: string,
+  query: string,
+  mimeType?: string,
+): Promise<ActionResult<SnippetResult>> {
+  return await resultOf(
+    async () => await serverWikiApi.driveSearchSnippet(fileId, query, mimeType),
+  );
+}
+
+export async function getDocumentAliasAction(
+  fileId: string,
+): Promise<ActionResult<DocumentAliasForFile>> {
+  return await resultOf(async () => await serverWikiApi.getDocumentAlias(fileId));
+}
+
+export async function logoutAction(): Promise<ActionResult<null>> {
+  return resultOf(async () => {
+    try {
+      await serverWikiApi.logout();
+    } finally {
+      const cookieStore = await cookies();
+      for (const name of ["access_token", "refresh_token", "session_exp"]) {
+        cookieStore.delete(name);
+      }
+    }
+    return null;
+  });
+}
 
 export async function createFileAction(
   input: CreateFileInput,

@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.aliases.dependencies import alias_service_dep
 from app.aliases.service import AliasService
-from app.database import get_db
+from app.cache.dependencies import cache_service_dep
+from app.cache.service import CacheService
+from app.database import async_session, get_db
 from app.drive.dependencies import drive_service_dep
 from app.drive.service import DriveService
 from app.extras.dependencies import extras_service_dep
@@ -18,6 +20,7 @@ from app.files.service import FilesService
 from app.sidebar.cache import SidebarCacheService
 from app.sidebar.dependencies import sidebar_cache_service_dep
 from app.smart_create.creation import DriveSmartFileCreationService, SmartFileCreationService
+from app.smart_create.executor import DriveSmartCreateTaskExecutor, SmartCreateTaskExecutor
 from app.smart_create.service import (
     GeminiSmartProposalService,
     ProposalGenerator,
@@ -67,4 +70,17 @@ def smart_file_creation_service_dep(
         tasks=tasks,
         templates=templates,
         db=db,
+    )
+
+
+def smart_create_task_executor_dep(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tasks: Annotated[TaskService, Depends(task_service_dep)],
+    cache: Annotated[CacheService, Depends(cache_service_dep)],
+) -> SmartCreateTaskExecutor:
+    return DriveSmartCreateTaskExecutor(
+        db=db,
+        tasks=tasks,
+        cache=cache,
+        sessionmaker=async_session,
     )

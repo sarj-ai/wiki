@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
-import { wikiApi } from "@/lib/wiki-api";
+import { wikiReadApi } from "@/lib/wiki-read-client";
 
 import { ReadOnlyShortLink } from "./read-only-short-link";
 
@@ -25,7 +25,7 @@ describe("ReadOnlyShortLink", () => {
   });
 
   it("shows and copies an existing alias without mutation controls", async () => {
-    vi.spyOn(wikiApi, "getDocumentAlias").mockResolvedValue({ alias: "people-org-chart" });
+    vi.spyOn(wikiReadApi, "getDocumentAlias").mockResolvedValue({ alias: "people-org-chart" });
     const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
 
     renderReader(root);
@@ -44,7 +44,7 @@ describe("ReadOnlyShortLink", () => {
   });
 
   it("renders nothing when the document has no alias", async () => {
-    vi.spyOn(wikiApi, "getDocumentAlias").mockResolvedValue({ alias: undefined });
+    vi.spyOn(wikiReadApi, "getDocumentAlias").mockResolvedValue({ alias: undefined });
 
     const { queryClient } = renderReader(root);
 
@@ -53,7 +53,7 @@ describe("ReadOnlyShortLink", () => {
         "success",
       );
     });
-    expect(wikiApi.getDocumentAlias).toHaveBeenCalledWith("read-only-file");
+    expect(wikiReadApi.getDocumentAlias).toHaveBeenCalledWith("read-only-file");
     expect(container).toBeEmptyDOMElement();
   });
 });

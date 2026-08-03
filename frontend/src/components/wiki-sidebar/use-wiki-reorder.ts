@@ -17,7 +17,7 @@ import { z } from "zod";
 import { expandPath } from "@/hooks/use-expanded-folders";
 import { useBulkSetSortOrders, useMoveFile } from "@/hooks/use-wiki-mutations";
 import { wikiKeys } from "@/hooks/use-wiki-tree";
-import { ApiError } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-error";
 import { optimisticMoveFile } from "@/lib/wiki-cache";
 import type { DriveNode, DriveTree, SortOrder } from "@/types/wiki";
 import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";

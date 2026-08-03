@@ -28,6 +28,7 @@ from app.request_id import RequestIDMiddleware
 from app.sidebar.router import router as sidebar_router
 from app.smart_create.router import router as smart_create_router
 from app.tasks.errors import TaskError
+from app.tasks.internal_router import router as internal_tasks_router
 from app.tasks.router import router as tasks_router
 from app.templates.router import router as templates_router
 
@@ -116,6 +117,7 @@ app.include_router(aliases_router)
 app.include_router(templates_router)
 app.include_router(smart_create_router)
 app.include_router(tasks_router)
+app.include_router(internal_tasks_router)
 
 
 @app.get("/health")

@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-import { deduplicatedRefresh } from "@/lib/api-client";
+import { deduplicatedRefresh } from "@/lib/session-client";
 import { ZLastRefreshMs } from "@/lib/storage-schemas";
 
 const REFRESH_INTERVAL_MS = 20 * 60 * 1000;

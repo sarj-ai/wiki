@@ -1450,6 +1450,19 @@
         "title": "SucceededTaskRead",
         "type": "object"
       },
+      "TaskDispatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": ["task_id"],
+        "title": "TaskDispatchRequest",
+        "type": "object"
+      },
       "TemplateCatalogRead": {
         "properties": {
           "templates": {
@@ -2470,11 +2483,38 @@
           "required": true
         },
         "responses": {
-          "201": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SmartCreateResult"
+                  "discriminator": {
+                    "mapping": {
+                      "cancelled": "#/components/schemas/CancelledTaskRead",
+                      "failed": "#/components/schemas/FailedTaskRead",
+                      "pending": "#/components/schemas/PendingTaskRead",
+                      "running": "#/components/schemas/RunningTaskRead",
+                      "succeeded": "#/components/schemas/SucceededTaskRead"
+                    },
+                    "propertyName": "status"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PendingTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RunningTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SucceededTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FailedTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CancelledTaskRead"
+                    }
+                  ],
+                  "title": "Response Create Smart File Files Smart Post"
                 }
               }
             },
@@ -2808,6 +2848,90 @@
           }
         },
         "summary": "Health Check"
+      }
+    },
+    "/internal/tasks/smart-create": {
+      "post": {
+        "operationId": "execute_smart_create_task_internal_tasks_smart_create_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskDispatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "cancelled": "#/components/schemas/CancelledTaskRead",
+                      "failed": "#/components/schemas/FailedTaskRead",
+                      "pending": "#/components/schemas/PendingTaskRead",
+                      "running": "#/components/schemas/RunningTaskRead",
+                      "succeeded": "#/components/schemas/SucceededTaskRead"
+                    },
+                    "propertyName": "status"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PendingTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RunningTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SucceededTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FailedTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CancelledTaskRead"
+                    }
+                  ],
+                  "title": "Response Execute Smart Create Task Internal Tasks Smart Create Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute Smart Create Task",
+        "tags": ["internal-tasks"]
       }
     },
     "/sidebar/drives": {

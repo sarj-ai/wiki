@@ -8,7 +8,7 @@ from typing import override
 import uuid
 
 from pydantic import BaseModel, JsonValue, TypeAdapter
-from sqlalchemy import and_, delete, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,7 @@ from app.tasks.errors import (
 )
 from app.tasks.schemas import (
     RunningTaskRead,
+    SmartCreateTaskRecord,
     TaskClaim,
     TaskKind,
     TaskRead,
@@ -48,6 +49,9 @@ class TaskService(ABC):
 
     @abstractmethod
     async def claim(self, task_id: TaskId, *, lease_duration: timedelta) -> TaskClaim: ...
+
+    @abstractmethod
+    async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead: ...
 
     @abstractmethod
     async def record_resource(
@@ -85,6 +89,9 @@ class TaskService(ABC):
 
     @abstractmethod
     async def get_for_owner(self, task_id: TaskId, owner_user_id: uuid.UUID) -> TaskRead: ...
+
+    @abstractmethod
+    async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord: ...
 
 
 class PostgresTaskService(TaskService):
@@ -143,7 +150,7 @@ class PostgresTaskService(TaskService):
                     Task.status == TaskStatus.PENDING,
                     and_(
                         Task.status == TaskStatus.RUNNING,
-                        Task.lease_expires_at < now,
+                        Task.lease_expires_at <= func.now(),
                     ),
                 ),
             )
@@ -167,6 +174,17 @@ class PostgresTaskService(TaskService):
             msg = "Claim did not return a running task"
             raise TypeError(msg)
         return TaskClaim(task=claimed, lease_token=lease_token)
+
+    @override
+    async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
+        return await self._owned_lease_update(
+            task_id,
+            lease_token,
+            values={
+                "lease_expires_at": func.now(),
+                "updated_at": func.now(),
+            },
+        )
 
     @override
     async def record_resource(
@@ -279,6 +297,19 @@ class PostgresTaskService(TaskService):
         if task is None:
             raise TaskNotFoundError
         return _to_read(task)
+
+    @override
+    async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord:
+        task = await self._db.get(Task, task_id)
+        if task is None or task.kind != TaskKind.FILE_SMART_CREATE:
+            raise TaskNotFoundError
+        return SmartCreateTaskRecord.model_validate(
+            {
+                "owner_user_id": task.owner_user_id,
+                "task": _to_read(task),
+                "payload": task.payload,
+            }
+        )
 
     async def _existing(
         self,

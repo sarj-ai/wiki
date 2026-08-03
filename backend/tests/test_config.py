@@ -24,6 +24,10 @@ _BASELINE = {
     "LOG_JSON": None,
     "LOG_LEVEL": None,
     "SIDEBAR_CACHE_TTL": None,
+    "CLOUD_TASKS_QUEUE": None,
+    "CLOUD_TASKS_LOCATION": None,
+    "CLOUD_TASKS_TARGET_URL": None,
+    "CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT": None,
 }
 
 
@@ -33,7 +37,7 @@ def _settings(monkeypatch: pytest.MonkeyPatch, **env: str | None) -> Settings:
             monkeypatch.delenv(key, raising=False)
         else:
             monkeypatch.setenv(key, value)
-    return Settings(_env_file=None)  # type: ignore[call-arg]  # ty: ignore[missing-argument]
+    return Settings(_env_file=None)  # type: ignore[call-arg]
 
 
 def test_baseline_parses_with_typed_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -119,3 +123,18 @@ def test_instance_connection_name_shape(monkeypatch: pytest.MonkeyPatch) -> None
             DB_INSTANCE_CONNECTION_NAME="missing-the-colons",
             DB_IAM_USER="svc@sarj-docs.iam",
         )
+
+
+def test_cloud_tasks_settings_are_all_or_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValidationError, match="must be configured together"):
+        _settings(monkeypatch, CLOUD_TASKS_QUEUE="smart-create")
+
+    settings = _settings(
+        monkeypatch,
+        CLOUD_TASKS_QUEUE="smart-create",
+        CLOUD_TASKS_LOCATION="us-central1",
+        CLOUD_TASKS_TARGET_URL="https://wiki-api.sarj.ai/internal/tasks/smart-create",
+        CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT=("wiki-task-invoker@sarj-docs.iam.gserviceaccount.com"),
+    )
+
+    assert settings.CLOUD_TASKS_QUEUE == "smart-create"

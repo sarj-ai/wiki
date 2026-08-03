@@ -8,7 +8,7 @@ import uuid
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt
 
 from app.identifiers import FileId, TaskId
-from app.smart_create.schemas import SmartCreateResult
+from app.smart_create.schemas import SmartCreateResult, SmartFileCreate
 
 
 class TaskKind(StrEnum):
@@ -100,3 +100,15 @@ class TaskReservation(BaseModel):
 class TaskClaim(BaseModel):
     task: RunningTaskRead
     lease_token: uuid.UUID
+
+
+class SmartCreateTaskRecord(BaseModel):
+    owner_user_id: uuid.UUID
+    task: TaskRead
+    payload: SmartFileCreate
+
+
+class TaskDispatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: TaskId

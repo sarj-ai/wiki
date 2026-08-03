@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   createLimit: vi.fn(),
   headers: vi.fn(),
   proposalLimit: vi.fn(),
+  readApi: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({
@@ -24,9 +25,15 @@ vi.mock("@opennextjs/cloudflare", () => ({
 
 vi.mock("@/lib/smart-create-server-client", () => ({
   callSmartCreateApi: mocks.callApi,
+  readSmartCreateApi: mocks.readApi,
 }));
 
-import { createSmartFileAction, proposeSmartFileAction } from "./smart-create-actions";
+import {
+  createSmartFileAction,
+  getSmartCreateTaskAction,
+  listSmartTemplatesAction,
+  proposeSmartFileAction,
+} from "./smart-create-actions";
 
 describe("Smart Create edge actions", () => {
   beforeEach(() => {
@@ -36,6 +43,7 @@ describe("Smart Create edge actions", () => {
     mocks.createLimit.mockResolvedValue({ success: true });
     mocks.proposalLimit.mockResolvedValue({ success: true });
     mocks.callApi.mockResolvedValue({ body: "{}", ok: true, status: 200 });
+    mocks.readApi.mockResolvedValue({ body: "{}", ok: true, status: 200 });
   });
 
   it("limits proposals by the Cloudflare client address", async () => {
@@ -74,5 +82,19 @@ describe("Smart Create edge actions", () => {
       "access-token",
       "55555555-5555-4555-8555-555555555555",
     );
+  });
+
+  it("polls tasks and lists templates through authenticated server reads", async () => {
+    await expect(getSmartCreateTaskAction("55555555-5555-4555-8555-555555555555")).resolves.toEqual(
+      { data: "{}", ok: true },
+    );
+    await expect(listSmartTemplatesAction(true)).resolves.toEqual({ data: "{}", ok: true });
+
+    expect(mocks.readApi).toHaveBeenNthCalledWith(
+      1,
+      "/tasks/55555555-5555-4555-8555-555555555555",
+      "access-token",
+    );
+    expect(mocks.readApi).toHaveBeenNthCalledWith(2, "/templates?refresh=true", "access-token");
   });
 });

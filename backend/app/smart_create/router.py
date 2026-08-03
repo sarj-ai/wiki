@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-from datetime import timedelta
 from time import monotonic
 from typing import Annotated
 import uuid
@@ -10,44 +8,19 @@ from fastapi import APIRouter, Depends, Header, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
-from app.database import get_db
-from app.files.dependencies import files_service_dep
-from app.files.errors import DriveUpstreamError, FilesError
-from app.files.service import FilesService
-from app.identifiers import IdempotencyKey, TaskId
+from app.identifiers import IdempotencyKey
 from app.models.user import User
 from app.sidebar.cache import SidebarCacheService
-from app.sidebar.dependencies import sidebar_cache_service_dep
-from app.smart_create.creation import SmartFileCreationService
-from app.smart_create.dependencies import (
-    smart_file_creation_service_dep,
-    smart_proposal_service_dep,
-)
-from app.smart_create.errors import (
-    SmartCreateTaskCancelledError,
-    SmartCreateTaskFailedError,
-    SmartCreateTaskInProgressError,
-    SmartCreateTaskNotAdmittedError,
-)
+from app.smart_create.dependencies import smart_proposal_service_dep
 from app.smart_create.schemas import AIMode, SmartCreateResult, SmartFileCreate, SmartProposalRead
 from app.smart_create.service import SmartProposalService
-from app.tasks.dependencies import task_service_dep
-from app.tasks.errors import TaskNotFoundError
-from app.tasks.schemas import (
-    CancelledTaskRead,
-    FailedTaskRead,
-    SucceededTaskRead,
-    TaskKind,
-    TaskRead,
-)
+from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
+from app.tasks.queue import TaskEnqueuer
+from app.tasks.schemas import PendingTaskRead, RunningTaskRead, TaskKind, TaskRead
 from app.tasks.service import TaskService
 
 
 router = APIRouter(prefix="/files", tags=["files"])
-
-_SMART_CREATE_LEASE = timedelta(minutes=6)
-_REPLAY_WAIT_SECONDS = 20.0
-_REPLAY_POLL_SECONDS = 0.1
 
 
 async def invalidate_smart_create_result(
@@ -72,18 +45,15 @@ async def create_smart_proposal(
     return result
 
 
-@router.post("/smart", status_code=status.HTTP_201_CREATED)
+@router.post("/smart", status_code=status.HTTP_202_ACCEPTED)
 async def create_smart_file(
     payload: SmartFileCreate,
     idempotency_key: Annotated[uuid.UUID, Header(alias="Idempotency-Key")],
     response: Response,
     user: Annotated[User, Depends(get_current_user)],
     tasks: Annotated[TaskService, Depends(task_service_dep)],
-    creation: Annotated[SmartFileCreationService, Depends(smart_file_creation_service_dep)],
-    files: Annotated[FilesService, Depends(files_service_dep)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-    sidebar_cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
-) -> SmartCreateResult:
+    enqueuer: Annotated[TaskEnqueuer, Depends(task_enqueuer_dep)],
+) -> TaskRead:
     started = monotonic()
     reservation = await tasks.create_or_replay(
         kind=TaskKind.FILE_SMART_CREATE,
@@ -91,75 +61,9 @@ async def create_smart_file(
         idempotency_key=IdempotencyKey(idempotency_key),
         payload=payload,
     )
-    task = reservation.task
-    terminal = _terminal_result(task)
-    if terminal is not None:
-        result = terminal
-        await invalidate_smart_create_result(db, sidebar_cache, result)
-        _set_timing_headers(response, started=started, replayed=True)
-        return result
-    if not reservation.created:
-        result = await _wait_for_replay(tasks, task.id, user.id)
-        await invalidate_smart_create_result(db, sidebar_cache, result)
-        _set_timing_headers(response, started=started, replayed=True)
-        return result
-
-    claim = await tasks.claim(task.id, lease_duration=_SMART_CREATE_LEASE)
-    existing = await files.get(task.resource_id) if task.resource_id is not None else None
-    try:
-        result = await creation.execute(
-            task_id=task.id,
-            lease_token=claim.lease_token,
-            payload=payload,
-            existing_resource=existing,
-        )
-    except DriveUpstreamError:
-        # Leave the lease in place. A retry after expiry reconciles by the
-        # Drive appProperty before it is allowed to create anything again.
-        raise
-    except FilesError as exc:
-        await tasks.fail(
-            task.id,
-            lease_token=claim.lease_token,
-            error_code=exc.code,
-            error_detail=str(exc),
-        )
-        raise
-    await invalidate_smart_create_result(db, sidebar_cache, result)
-    _set_timing_headers(response, started=started, replayed=False)
-    return result
-
-
-async def _wait_for_replay(
-    tasks: TaskService,
-    task_id: TaskId,
-    owner_user_id: uuid.UUID,
-) -> SmartCreateResult:
-    deadline = monotonic() + _REPLAY_WAIT_SECONDS
-    while True:
-        try:
-            task = await tasks.get_for_owner(task_id, owner_user_id)
-        except TaskNotFoundError as exc:
-            raise SmartCreateTaskNotAdmittedError from exc
-        result = _terminal_result(task)
-        if result is not None:
-            return result
-        remaining = deadline - monotonic()
-        if remaining <= 0:
-            raise SmartCreateTaskInProgressError
-        await asyncio.sleep(min(_REPLAY_POLL_SECONDS, remaining))
-
-
-def _terminal_result(task: TaskRead) -> SmartCreateResult | None:
-    if isinstance(task, SucceededTaskRead):
-        return task.result
-    if isinstance(task, FailedTaskRead):
-        raise SmartCreateTaskFailedError(detail=task.error_detail)
-    if isinstance(task, CancelledTaskRead):
-        raise SmartCreateTaskCancelledError
-    return None
-
-
-def _set_timing_headers(response: Response, *, started: float, replayed: bool) -> None:
-    response.headers["Idempotency-Replayed"] = str(replayed).lower()
+    if isinstance(reservation.task, PendingTaskRead | RunningTaskRead):
+        await enqueuer.enqueue_smart_create(reservation.task.id)
+    response.headers["Idempotency-Replayed"] = str(not reservation.created).lower()
+    response.headers["Retry-After"] = "1"
     response.headers["Server-Timing"] = f"total;dur={(monotonic() - started) * 1000:.1f}"
+    return reservation.task

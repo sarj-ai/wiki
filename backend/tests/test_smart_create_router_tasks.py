@@ -1,24 +1,21 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import cast, override
+from typing import override
 import uuid
 
 from fastapi import Response
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.files.schemas import FileResponse
-from app.files.service import FilesService
 from app.identifiers import FileId, IdempotencyKey, TaskId
 from app.models.user import User
-from app.sidebar.cache import SidebarCacheService
-from app.smart_create.creation import SmartFileCreationService
 from app.smart_create.router import create_smart_file
 from app.smart_create.schemas import BlankSource, SmartCreateResult, SmartFileCreate
+from app.tasks.queue import TaskEnqueuer
 from app.tasks.schemas import (
     PendingTaskRead,
-    RunningTaskRead,
+    SmartCreateTaskRecord,
     SucceededTaskRead,
     TaskClaim,
     TaskKind,
@@ -70,27 +67,28 @@ def _pending(task_id: TaskId) -> PendingTaskRead:
     )
 
 
-def _running(task_id: TaskId) -> RunningTaskRead:
-    return RunningTaskRead(
+def _succeeded(task_id: TaskId) -> SucceededTaskRead:
+    result = _result(task_id)
+    return SucceededTaskRead(
         id=task_id,
         kind=TaskKind.FILE_SMART_CREATE,
-        status=TaskStatus.RUNNING,
-        result=None,
-        resource_id=None,
+        status=TaskStatus.SUCCEEDED,
+        result=result,
+        resource_id=result.file.id,
         error_code=None,
         error_detail=None,
         attempt_count=1,
         created_at=datetime.now(UTC),
         started_at=datetime.now(UTC),
-        finished_at=None,
+        finished_at=datetime.now(UTC),
     )
 
 
 class _Tasks(TaskService):
-    def __init__(self, *, created: bool) -> None:
+    def __init__(self, *, created: bool, terminal: bool = False) -> None:
         self.task_id = TaskId(uuid.uuid4())
         self.created = created
-        self.lease_duration: timedelta | None = None
+        self.terminal = terminal
 
     @override
     async def create_or_replay(
@@ -101,13 +99,16 @@ class _Tasks(TaskService):
         idempotency_key: IdempotencyKey,
         payload: BaseModel,
     ) -> TaskReservation:
-        task = _pending(self.task_id) if self.created else _running(self.task_id)
+        task = _succeeded(self.task_id) if self.terminal else _pending(self.task_id)
         return TaskReservation(task=task, created=self.created)
 
     @override
     async def claim(self, task_id: TaskId, *, lease_duration: timedelta) -> TaskClaim:
-        self.lease_duration = lease_duration
-        return TaskClaim(task=_running(task_id), lease_token=uuid.uuid4())
+        raise NotImplementedError
+
+    @override
+    async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
+        raise NotImplementedError
 
     @override
     async def record_resource(
@@ -134,7 +135,7 @@ class _Tasks(TaskService):
 
     @override
     async def discard_pending(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> bool:
-        return True
+        raise NotImplementedError
 
     @override
     async def cancel(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> TaskRead:
@@ -142,37 +143,20 @@ class _Tasks(TaskService):
 
     @override
     async def get_for_owner(self, task_id: TaskId, owner_user_id: uuid.UUID) -> TaskRead:
-        result = _result(task_id)
-        return SucceededTaskRead(
-            id=task_id,
-            kind=TaskKind.FILE_SMART_CREATE,
-            status=TaskStatus.SUCCEEDED,
-            result=result,
-            resource_id=result.file.id,
-            error_code=None,
-            error_detail=None,
-            attempt_count=1,
-            created_at=datetime.now(UTC),
-            started_at=datetime.now(UTC),
-            finished_at=datetime.now(UTC),
-        )
-
-
-class _Creation(SmartFileCreationService):
-    def __init__(self) -> None:
-        self.calls = 0
+        raise NotImplementedError
 
     @override
-    async def execute(
-        self,
-        *,
-        task_id: TaskId,
-        lease_token: uuid.UUID,
-        payload: SmartFileCreate,
-        existing_resource: FileResponse | None,
-    ) -> SmartCreateResult:
-        self.calls += 1
-        return _result(task_id)
+    async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord:
+        raise NotImplementedError
+
+
+class _Enqueuer(TaskEnqueuer):
+    def __init__(self) -> None:
+        self.task_ids: list[TaskId] = []
+
+    @override
+    async def enqueue_smart_create(self, task_id: TaskId) -> None:
+        self.task_ids.append(task_id)
 
 
 def _user() -> User:
@@ -181,49 +165,55 @@ def _user() -> User:
     return user
 
 
-async def _create(
-    *,
-    tasks: _Tasks,
-    creation: _Creation,
-    response: Response | None = None,
-) -> SmartCreateResult:
-    return await create_smart_file(
-        payload=_payload(),
-        idempotency_key=uuid.uuid4(),
-        response=response or Response(),
-        user=_user(),
-        tasks=tasks,
-        creation=creation,
-        files=cast("FilesService", object()),
-        db=cast("AsyncSession", None),
-        sidebar_cache=cast("SidebarCacheService", None),
-    )
-
-
-async def test_concurrent_replay_waits_for_result_without_executing() -> None:
-    tasks = _Tasks(created=False)
-    creation = _Creation()
+async def test_new_task_returns_pending_immediately_and_enqueues() -> None:
+    tasks = _Tasks(created=True)
+    enqueuer = _Enqueuer()
     response = Response()
 
-    result = await _create(
-        tasks=tasks,
-        creation=creation,
+    task = await create_smart_file(
+        payload=_payload(),
+        idempotency_key=uuid.uuid4(),
         response=response,
-    )
-
-    assert result.file.id == FileId("created")
-    assert creation.calls == 0
-    assert response.headers["Idempotency-Replayed"] == "true"
-
-
-async def test_new_task_uses_lease_longer_than_request_timeout() -> None:
-    tasks = _Tasks(created=True)
-    creation = _Creation()
-
-    result = await _create(
+        user=_user(),
         tasks=tasks,
-        creation=creation,
+        enqueuer=enqueuer,
     )
 
-    assert result.file.id == FileId("created")
-    assert tasks.lease_duration == timedelta(minutes=6)
+    assert isinstance(task, PendingTaskRead)
+    assert enqueuer.task_ids == [task.id]
+    assert response.headers["Idempotency-Replayed"] == "false"
+    assert response.headers["Retry-After"] == "1"
+
+
+async def test_pending_replay_reenqueues_deterministically() -> None:
+    tasks = _Tasks(created=False)
+    enqueuer = _Enqueuer()
+
+    task = await create_smart_file(
+        payload=_payload(),
+        idempotency_key=uuid.uuid4(),
+        response=Response(),
+        user=_user(),
+        tasks=tasks,
+        enqueuer=enqueuer,
+    )
+
+    assert enqueuer.task_ids == [task.id]
+
+
+async def test_succeeded_replay_returns_typed_result_without_enqueue() -> None:
+    tasks = _Tasks(created=False, terminal=True)
+    enqueuer = _Enqueuer()
+
+    task = await create_smart_file(
+        payload=_payload(),
+        idempotency_key=uuid.uuid4(),
+        response=Response(),
+        user=_user(),
+        tasks=tasks,
+        enqueuer=enqueuer,
+    )
+
+    assert isinstance(task, SucceededTaskRead)
+    assert task.result.file.id == FileId("created")
+    assert enqueuer.task_ids == []

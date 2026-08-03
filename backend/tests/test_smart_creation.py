@@ -37,7 +37,13 @@ from app.smart_create.schemas import (
     SmartFileCreate,
     TemplateSource,
 )
-from app.tasks.schemas import TaskClaim, TaskKind, TaskRead, TaskReservation
+from app.tasks.schemas import (
+    SmartCreateTaskRecord,
+    TaskClaim,
+    TaskKind,
+    TaskRead,
+    TaskReservation,
+)
 from app.tasks.service import TaskService
 from app.templates.schemas import TemplateCatalogRead, TemplateMimeType, TemplateRead
 from app.templates.service import TemplateCatalogService
@@ -225,6 +231,10 @@ class _Tasks(TaskService):
         raise NotImplementedError
 
     @override
+    async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
+        raise NotImplementedError
+
+    @override
     async def record_resource(
         self, task_id: TaskId, *, lease_token: uuid.UUID, resource_id: FileId
     ) -> None:
@@ -260,6 +270,10 @@ class _Tasks(TaskService):
 
     @override
     async def get_for_owner(self, task_id: TaskId, owner_user_id: uuid.UUID) -> TaskRead:
+        raise NotImplementedError
+
+    @override
+    async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord:
         raise NotImplementedError
 
 

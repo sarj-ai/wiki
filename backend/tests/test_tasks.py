@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import Table
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.identifiers import IdempotencyKey, TaskId
+from app.identifiers import FileId, IdempotencyKey, TaskId
 from app.models.task import Task
 from app.tasks.errors import TaskIdempotencyConflictError, TaskLeaseLostError
 from app.tasks.schemas import TaskKind, TaskStatus
@@ -156,6 +156,27 @@ async def test_stale_executor_cannot_complete_a_reclaimed_task() -> None:
         )
 
     assert session.rollbacks == 1
+
+
+async def test_defer_atomically_releases_retryable_running_lease() -> None:
+    row = _task(request_hash="0" * 64, status=TaskStatus.RUNNING)
+    row.attempt_count = 1
+    row.started_at = datetime.now(UTC)
+    row.lease_token = uuid.uuid4()
+    row.lease_expires_at = datetime.now(UTC) + timedelta(minutes=1)
+    row.resource_id = FileId("already-created")
+    session = _Session(row, row)
+
+    deferred = await _service(session).defer(row.id, lease_token=uuid.uuid4())
+    reclaimed = await _service(session).claim(row.id, lease_duration=timedelta(minutes=6))
+
+    assert deferred.status == TaskStatus.RUNNING
+    assert deferred.resource_id == FileId("already-created")
+    assert reclaimed.task.status == TaskStatus.RUNNING
+    assert session.commits == 2
+    sql = str(session.statements[0])
+    assert "tasks.lease_token IS NOT DISTINCT FROM" in sql
+    assert "RETURNING" in sql
 
 
 async def test_pending_task_can_be_discarded_before_execution() -> None:

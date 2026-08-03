@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiError } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-error";
 import { smartCreateApi } from "@/lib/smart-create-client";
 import {
   defaultAlias,
@@ -54,10 +54,12 @@ export function SmartCreateDialog({
   >([]);
   const [catalogStatus, setCatalogStatus] = useState<"error" | "loading" | "ready">("loading");
   const [submitting, setSubmitting] = useState(false);
+  const [creationStage, setCreationStage] = useState<"enqueuing" | "idle" | "waiting">("idle");
   const [destinationOpen, setDestinationOpen] = useState(false);
   const catalogSequence = useRef(0);
   const proposalSequence = useRef(0);
   const submitLatch = useRef(false);
+  const createAbort = useRef<AbortController | null>(null);
   const idempotencyKey = useRef<null | string>(null);
 
   useEffect(() => {
@@ -85,9 +87,12 @@ export function SmartCreateDialog({
   const close = () => {
     catalogSequence.current += 1;
     proposalSequence.current += 1;
+    createAbort.current?.abort();
+    createAbort.current = null;
     submitLatch.current = false;
     idempotencyKey.current = null;
     setSubmitting(false);
+    setCreationStage("idle");
     setState(initialSmartCreateState());
     onOpenChange(false);
   };
@@ -177,9 +182,16 @@ export function SmartCreateDialog({
     if (state.phase !== "review" || submitLatch.current || !isValidPlan(state.plan)) return;
     submitLatch.current = true;
     setSubmitting(true);
+    setCreationStage("enqueuing");
     idempotencyKey.current ??= crypto.randomUUID();
+    const controller = new AbortController();
+    createAbort.current?.abort();
+    createAbort.current = controller;
     try {
-      const result = await smartCreateApi.create(state.plan, idempotencyKey.current);
+      const task = await smartCreateApi.create(state.plan, idempotencyKey.current);
+      controller.signal.throwIfAborted();
+      setCreationStage("waiting");
+      const result = await smartCreateApi.waitForCompletion(task, controller.signal);
       injectNewFileIntoCaches(queryClient, result.file);
       for (const warning of result.warnings) toast.warning(warning.detail);
       toast.success(`Created “${result.file.name}”`);
@@ -188,9 +200,13 @@ export function SmartCreateDialog({
     } catch (error: unknown) {
       toast.error(errorMessage(error, "Couldn’t create file"));
     } finally {
-      // eslint-disable-next-line require-atomic-updates -- The latch is released after this submission settles.
-      submitLatch.current = false;
-      setSubmitting(false);
+      if (createAbort.current === controller) {
+        createAbort.current = null;
+        // eslint-disable-next-line require-atomic-updates -- Controller identity ensures this request still owns the latch.
+        submitLatch.current = false;
+        setSubmitting(false);
+        setCreationStage("idle");
+      }
     }
   };
 
@@ -228,14 +244,29 @@ export function SmartCreateDialog({
                 templates={templates}
               />
             ) : (
-              <ReviewStep
-                onChange={updatePlan}
-                onChooseDestination={() => {
-                  setDestinationOpen(true);
-                }}
-                plan={state.plan}
-                templates={templates}
-              />
+              <div className="space-y-4">
+                {creationStage !== "idle" ? (
+                  <div
+                    aria-live="polite"
+                    className="bg-primary/5 border-primary/20 flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm"
+                  >
+                    <Loader2 className="text-primary size-4 shrink-0 animate-spin" />
+                    <span>
+                      {creationStage === "enqueuing"
+                        ? "Starting file creation…"
+                        : "Creating in Drive… You can keep this window open."}
+                    </span>
+                  </div>
+                ) : null}
+                <ReviewStep
+                  onChange={updatePlan}
+                  onChooseDestination={() => {
+                    setDestinationOpen(true);
+                  }}
+                  plan={state.plan}
+                  templates={templates}
+                />
+              </div>
             )}
           </div>
 
@@ -272,7 +303,9 @@ export function SmartCreateDialog({
               {submitting
                 ? state.phase === "compose"
                   ? "Thinking…"
-                  : "Creating…"
+                  : creationStage === "enqueuing"
+                    ? "Starting…"
+                    : "Creating…"
                 : state.phase === "compose"
                   ? state.mode.kind === "ai"
                     ? "Suggest details"

@@ -1,3 +1,5 @@
+import "server-only";
+
 import { API_URL } from "@/lib/env";
 import { zDocumentAliasRead } from "@/lib/generated/zod.gen";
 

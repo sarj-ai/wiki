@@ -16,6 +16,15 @@ resource "google_service_account" "backend" {
   depends_on = [google_project_service.apis["iam.googleapis.com"]]
 }
 
+# Carries only the Google-signed OIDC identity used on queue deliveries. It has
+# no database, Drive, or project permissions of its own.
+resource "google_service_account" "cloud_tasks_invoker" {
+  account_id   = "sarj-wiki-task-invoker"
+  display_name = "Sarj Wiki Cloud Tasks Invoker"
+
+  depends_on = [google_project_service.apis["iam.googleapis.com"]]
+}
+
 # Backend SA can connect to Cloud SQL
 resource "google_project_iam_member" "backend_cloudsql" {
   project = var.project_id
@@ -39,6 +48,24 @@ resource "google_project_iam_member" "backend_vertex_ai" {
   member  = "serviceAccount:${google_service_account.backend.email}"
 }
 
+# The backend may enqueue into this queue, without receiving project-wide task
+# administration permissions.
+resource "google_cloud_tasks_queue_iam_member" "backend_enqueuer" {
+  project  = var.project_id
+  location = google_cloud_tasks_queue.smart_create.location
+  name     = google_cloud_tasks_queue.smart_create.name
+  role     = "roles/cloudtasks.enqueuer"
+  member   = "serviceAccount:${google_service_account.backend.email}"
+}
+
+# Creating an OIDC-authenticated task requires the enqueueing backend to select
+# (act as) the dedicated token identity.
+resource "google_service_account_iam_member" "backend_acts_as_task_invoker" {
+  service_account_id = google_service_account.cloud_tasks_invoker.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.backend.email}"
+}
+
 # Allow public access to the backend — JWT + @sarj.ai domain
 # enforcement at the app layer is the real auth boundary. The GCLB
 # + Cloudflare layer on top (see loadbalancer.tf / cloudflare.tf)
@@ -50,4 +77,12 @@ resource "google_cloud_run_v2_service_iam_member" "backend_public" {
   location = var.region
   role     = "roles/run.invoker"
   member   = "allUsers"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "cloud_tasks_backend_invoker" {
+  project  = var.project_id
+  name     = google_cloud_run_v2_service.backend.name
+  location = var.region
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.cloud_tasks_invoker.email}"
 }

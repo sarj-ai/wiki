@@ -18,6 +18,7 @@ env:
   REPOSITORY: sarj-docs
   SERVICE: sarj-docs-backend
   IMAGE: backend
+  CLOUD_TASKS_QUEUE: smart-create
 
 jobs:
   deploy:
@@ -92,6 +93,13 @@ jobs:
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Verify Smart Create queue exists
+        run: |
+          gcloud tasks queues describe "${{ env.CLOUD_TASKS_QUEUE }}" \
+            --location "${{ env.REGION }}" \
+            --project "${{ env.PROJECT_ID }}" \
+            --format="value(name)"
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet

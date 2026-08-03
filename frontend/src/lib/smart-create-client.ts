@@ -1,13 +1,17 @@
 import * as z from "zod";
 
-import { createSmartFileAction, proposeSmartFileAction } from "@/app/actions/smart-create-actions";
+import {
+  createSmartFileAction,
+  getSmartCreateTaskAction,
+  listSmartTemplatesAction,
+  proposeSmartFileAction,
+} from "@/app/actions/smart-create-actions";
 import { runAction } from "@/lib/action-client";
-import { makeCall } from "@/lib/api-client";
-import { listTemplatesTemplatesGet } from "@/lib/generated/sdk.gen";
 import type {
   CreationSource,
   DriveTemplate,
   SmartCreateResult,
+  SmartCreateTask,
   SmartCreationPlan,
   SmartFileType,
 } from "@/lib/smart-create-types";
@@ -72,12 +76,89 @@ const ZFileResponse = z
 const ZCreateResult = z
   .object({
     file: ZFileResponse,
-    task_id: z.string(),
+    task_id: z.uuid(),
     warnings: z.array(z.object({ code: z.string(), detail: z.string() }).strict()),
   })
   .strict();
 
 const ZTemplateCatalog = z.object({ templates: z.array(ZTemplate) }).strict();
+
+const ZTaskBase = {
+  attempt_count: z.number().int().nonnegative(),
+  created_at: z.iso.datetime(),
+  id: z.uuid(),
+  kind: z.literal("file.smart_create"),
+};
+
+const ZTask = z.discriminatedUnion("status", [
+  z
+    .object({
+      ...ZTaskBase,
+      attempt_count: z.literal(0),
+      error_code: z.null(),
+      error_detail: z.null(),
+      finished_at: z.null(),
+      resource_id: z.null(),
+      result: z.null(),
+      started_at: z.null(),
+      status: z.literal("pending"),
+    })
+    .strict(),
+  z
+    .object({
+      ...ZTaskBase,
+      attempt_count: z.number().int().positive(),
+      error_code: z.null(),
+      error_detail: z.null(),
+      finished_at: z.null(),
+      resource_id: z.string().nullable(),
+      result: z.null(),
+      started_at: z.iso.datetime(),
+      status: z.literal("running"),
+    })
+    .strict(),
+  z
+    .object({
+      ...ZTaskBase,
+      attempt_count: z.number().int().positive(),
+      error_code: z.null(),
+      error_detail: z.null(),
+      finished_at: z.iso.datetime(),
+      resource_id: z.string().nullable(),
+      result: ZCreateResult,
+      started_at: z.iso.datetime(),
+      status: z.literal("succeeded"),
+    })
+    .strict(),
+  z
+    .object({
+      ...ZTaskBase,
+      attempt_count: z.number().int().positive(),
+      error_code: z.string(),
+      error_detail: z.string().nullable(),
+      finished_at: z.iso.datetime(),
+      resource_id: z.string().nullable(),
+      result: z.null(),
+      started_at: z.iso.datetime(),
+      status: z.literal("failed"),
+    })
+    .strict(),
+  z
+    .object({
+      ...ZTaskBase,
+      attempt_count: z.literal(0),
+      error_code: z.null(),
+      error_detail: z.null(),
+      finished_at: z.iso.datetime(),
+      resource_id: z.null(),
+      result: z.null(),
+      started_at: z.null(),
+      status: z.literal("cancelled"),
+    })
+    .strict(),
+]);
+
+const DEFAULT_TASK_POLL_MS = 1_000;
 
 export interface SmartProposalInput {
   description: string;
@@ -87,7 +168,7 @@ export interface SmartProposalInput {
 }
 
 export const smartCreateApi = {
-  create: async (plan: SmartCreationPlan, idempotencyKey: string): Promise<SmartCreateResult> => {
+  create: async (plan: SmartCreationPlan, idempotencyKey: string): Promise<SmartCreateTask> => {
     const body = JSON.stringify({
       alias: plan.alias,
       emoji: plan.emoji,
@@ -98,28 +179,19 @@ export const smartCreateApi = {
     const responseBody = await runAction(
       async () => await createSmartFileAction(body, idempotencyKey),
     );
-    const result = ZCreateResult.parse(JSON.parse(responseBody));
-    return {
-      file: {
-        canEdit: result.file.can_edit,
-        driveId: result.file.drive_id ?? undefined,
-        id: result.file.id,
-        mimeType: result.file.mime_type,
-        modifiedTime: result.file.modified_time ?? undefined,
-        name: result.file.name,
-        parentFolderId: result.file.parent_folder_id ?? undefined,
-      },
-      taskId: result.task_id,
-      warnings: result.warnings,
-    };
+    return parseTask(ZTask.parse(JSON.parse(responseBody)));
+  },
+
+  getTask: async (taskId: string, signal?: AbortSignal): Promise<SmartCreateTask> => {
+    signal?.throwIfAborted();
+    const responseBody = await runAction(async () => await getSmartCreateTaskAction(taskId));
+    signal?.throwIfAborted();
+    return parseTask(ZTask.parse(JSON.parse(responseBody)));
   },
 
   listTemplates: async (refresh = false): Promise<DriveTemplate[]> => {
-    const result = await makeCall()(
-      listTemplatesTemplatesGet,
-      { query: { refresh } },
-      ZTemplateCatalog,
-    );
+    const responseBody = await runAction(async () => await listSmartTemplatesAction(refresh));
+    const result = ZTemplateCatalog.parse(JSON.parse(responseBody));
     return result.templates.map((template) => ({
       categoryPath: template.category_path,
       ...(template.description === null ? {} : { description: template.description }),
@@ -155,7 +227,87 @@ export const smartCreateApi = {
       source: parseSource(result.source),
     };
   },
+
+  waitForCompletion: async (
+    initialTask: SmartCreateTask,
+    signal?: AbortSignal,
+    pollIntervalMs = DEFAULT_TASK_POLL_MS,
+  ): Promise<SmartCreateResult> => await waitForTask(initialTask, signal, pollIntervalMs),
 };
+
+async function waitForTask(
+  task: SmartCreateTask,
+  signal: AbortSignal | undefined,
+  pollIntervalMs: number,
+): Promise<SmartCreateResult> {
+  switch (task.status) {
+    case "cancelled":
+      throw new Error("File creation was cancelled");
+    case "failed":
+      throw new Error(task.errorDetail ?? `File creation failed (${task.errorCode})`);
+    case "succeeded":
+      return task.result;
+    case "pending":
+    case "running": {
+      await abortableDelay(pollIntervalMs, signal);
+      const nextTask = await smartCreateApi.getTask(task.id, signal);
+      return await waitForTask(nextTask, signal, pollIntervalMs);
+    }
+  }
+}
+
+function parseCreateResult(result: z.infer<typeof ZCreateResult>): SmartCreateResult {
+  return {
+    file: {
+      canEdit: result.file.can_edit,
+      driveId: result.file.drive_id ?? undefined,
+      id: result.file.id,
+      mimeType: result.file.mime_type,
+      modifiedTime: result.file.modified_time ?? undefined,
+      name: result.file.name,
+      parentFolderId: result.file.parent_folder_id ?? undefined,
+    },
+    taskId: result.task_id,
+    warnings: result.warnings,
+  };
+}
+
+function parseTask(task: z.infer<typeof ZTask>): SmartCreateTask {
+  switch (task.status) {
+    case "cancelled":
+      return { id: task.id, status: "cancelled" };
+    case "failed":
+      return {
+        errorCode: task.error_code,
+        ...(task.error_detail === null ? {} : { errorDetail: task.error_detail }),
+        id: task.id,
+        status: "failed",
+      };
+    case "pending":
+    case "running":
+      return { id: task.id, status: task.status };
+    case "succeeded":
+      return { id: task.id, result: parseCreateResult(task.result), status: "succeeded" };
+  }
+}
+
+async function abortableDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(resolve, milliseconds);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        window.clearTimeout(timeout);
+        reject(
+          signal.reason instanceof Error
+            ? signal.reason
+            : new DOMException("The operation was aborted", "AbortError"),
+        );
+      },
+      { once: true },
+    );
+  });
+}
 
 function parseSource(source: z.infer<typeof ZSource>): CreationSource {
   return source.kind === "blank"

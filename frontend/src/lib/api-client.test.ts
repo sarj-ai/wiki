@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 
-import { ApiError, wikiApi } from "@/lib/wiki-api";
+import { ApiError, makeWikiApi } from "@/lib/wiki-api";
+
+const wikiApi = makeWikiApi();
 
 const RAW_NODE = {
   id: "n1",

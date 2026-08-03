@@ -1,8 +1,10 @@
 import { z } from "zod";
 
+import { ApiError } from "@/lib/api-error";
 import { API_URL } from "@/lib/env";
 import type { Client } from "@/lib/generated/client";
 import { client } from "@/lib/generated/client.gen";
+import { deduplicatedRefresh } from "@/lib/session-client";
 
 type AnyOperation = (options: never) => Promise<unknown>;
 
@@ -13,8 +15,6 @@ type OperationOptions<Op extends AnyOperation> = Omit<
 
 const replayCache = new WeakMap<Request, Request>();
 
-let refreshPromise: null | Promise<boolean> = null;
-
 client.setConfig({
   baseUrl: API_URL,
   credentials: "include",
@@ -22,8 +22,6 @@ client.setConfig({
 });
 
 const SESSION_EXP_SKEW_MS = 30_000;
-const REFRESH_TIMEOUT_MS = 10_000;
-
 const SESSION_EXP_COOKIE = /(?:^|;\s*)session_exp=(\d+)/;
 const ZErrorDetail = z.object({
   detail: z
@@ -71,23 +69,6 @@ client.interceptors.response.use(async (response, request) => {
   return settled;
 });
 
-export async function deduplicatedRefresh(): Promise<boolean> {
-  refreshPromise ??= rawRefresh().finally(() => {
-    refreshPromise = null;
-  });
-  return refreshPromise;
-}
-
-export class ApiError extends Error {
-  readonly status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-    this.name = "ApiError";
-  }
-}
-
 export function makeCall(clientOverride?: Client) {
   function call<Op extends AnyOperation, S extends z.ZodType>(
     operation: Op,
@@ -115,6 +96,8 @@ export function makeCall(clientOverride?: Client) {
   return call;
 }
 
+export { ApiError } from "@/lib/api-error";
+
 async function readErrorMessage(response: Response): Promise<null | string> {
   try {
     const text = await response.clone().text();
@@ -131,18 +114,5 @@ async function readErrorMessage(response: Response): Promise<null | string> {
     return null;
   } catch {
     return null;
-  }
-}
-
-async function rawRefresh(): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_URL}/auth/refresh`, {
-      credentials: "include",
-      method: "POST",
-      signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),
-    });
-    return res.ok;
-  } catch {
-    return false;
   }
 }

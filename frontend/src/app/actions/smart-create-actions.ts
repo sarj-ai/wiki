@@ -4,7 +4,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { cookies, headers } from "next/headers";
 
 import type { ActionResult } from "@/lib/action-result";
-import { callSmartCreateApi } from "@/lib/smart-create-server-client";
+import { callSmartCreateApi, readSmartCreateApi } from "@/lib/smart-create-server-client";
 
 type SmartOperation = "create" | "proposal";
 
@@ -28,6 +28,28 @@ export async function createSmartFileAction(
 
 export async function proposeSmartFileAction(body: string): Promise<ActionResult<string>> {
   return runSmartOperation("proposal", body);
+}
+
+export async function getSmartCreateTaskAction(taskId: string): Promise<ActionResult<string>> {
+  return runSmartRead(`/tasks/${encodeURIComponent(taskId)}`);
+}
+
+export async function listSmartTemplatesAction(refresh: boolean): Promise<ActionResult<string>> {
+  return runSmartRead(`/templates?refresh=${String(refresh)}`);
+}
+
+async function runSmartRead(path: string): Promise<ActionResult<string>> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("access_token")?.value;
+  if (token === undefined) return failure(401, "Unauthorized");
+  const response = await readSmartCreateApi(path, token);
+  if (!response.ok) {
+    return failure(
+      response.status,
+      response.error ?? "Smart Create could not complete the request",
+    );
+  }
+  return { data: response.body, ok: true };
 }
 
 async function runSmartOperation(

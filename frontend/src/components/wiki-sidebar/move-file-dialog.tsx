@@ -16,7 +16,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useMoveFile } from "@/hooks/use-wiki-mutations";
 import { useDrives, useDriveTree } from "@/hooks/use-wiki-tree";
-import { ApiError } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-error";
 import { runWithErrorToast, toErrorMessage } from "@/lib/mutation-toast";
 import { cn } from "@/lib/utils";
 import { buildChildrenIndex } from "@/lib/wiki-tree";

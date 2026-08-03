@@ -10,10 +10,10 @@ import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
 import { WikiToolbar } from "@/components/wiki-document/wiki-toolbar";
 import { WikiNotFound } from "@/components/wiki-not-found";
 import { useFile } from "@/hooks/use-wiki-tree";
+import { ApiError } from "@/lib/api-error";
 import { displayFileName } from "@/lib/file-icons";
 import { saveLastDoc } from "@/lib/last-doc";
 import { markNav, markPaint } from "@/lib/perf-marks";
-import { ApiError } from "@/lib/wiki-api";
 import { findCachedNodeMeta } from "@/lib/wiki-cache";
 import { type BreadcrumbItem, MIME_HTML } from "@/types/wiki";
 

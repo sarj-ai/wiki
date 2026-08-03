@@ -128,6 +128,48 @@ describe("SmartCreateDialog", () => {
       expect(document.body).toHaveTextContent("No templates available");
     });
   });
+
+  it("enqueues once and shows progress while polling the typed task", async () => {
+    vi.spyOn(smartCreateApi, "listTemplates").mockResolvedValue([template]);
+    const taskId = "55555555-5555-4555-8555-555555555555";
+    vi.spyOn(smartCreateApi, "create").mockResolvedValue({ id: taskId, status: "pending" });
+    const completion = deferred<Awaited<ReturnType<typeof smartCreateApi.waitForCompletion>>>();
+    const waitForCompletion = vi
+      .spyOn(smartCreateApi, "waitForCompletion")
+      .mockReturnValue(completion.promise);
+
+    renderDialog(root);
+    clickButton(await findButton("Template"));
+    clickButton(await findButton("PRD Template"));
+    clickButton(await findButton("Review"));
+    clickButton(await findButton("Create file"));
+
+    await vi.waitFor(() => {
+      expect(document.body).toHaveTextContent("Creating in Drive");
+      expect(findButtonNow("Creating…")).toBeDisabled();
+    });
+    expect(waitForCompletion).toHaveBeenCalledWith(
+      { id: taskId, status: "pending" },
+      expect.any(AbortSignal),
+    );
+
+    completion.resolve({
+      file: {
+        canEdit: true,
+        driveId: "drive-1",
+        id: "file-1",
+        mimeType: MIME_DOC,
+        modifiedTime: undefined,
+        name: "PRD Template",
+        parentFolderId: "folder-1",
+      },
+      taskId,
+      warnings: [],
+    });
+    await vi.waitFor(() => {
+      expect(document.body).not.toHaveTextContent("Creating in Drive");
+    });
+  });
 });
 
 function renderDialog(root: Root) {

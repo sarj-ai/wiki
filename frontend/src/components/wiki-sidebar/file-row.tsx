@@ -16,8 +16,8 @@ import { runWithErrorToast } from "@/lib/mutation-toast";
 import { markNav } from "@/lib/perf-marks";
 import { type ResolvedShortcut, resolveShortcutTarget } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
-import { wikiApi } from "@/lib/wiki-api";
 import { wikiKeys } from "@/lib/wiki-keys";
+import { wikiReadApi } from "@/lib/wiki-read-client";
 import type { DriveNode } from "@/types/wiki";
 import { MIME_DOC, MIME_FORM } from "@/types/wiki";
 
@@ -73,7 +73,7 @@ function FileRowImpl({
   const queryClient = useQueryClient();
   const prefetchFile = (): void => {
     void queryClient.prefetchQuery({
-      queryFn: async () => wikiApi.getFile(route.targetId),
+      queryFn: async () => await wikiReadApi.getFile(route.targetId),
       queryKey: wikiKeys.file(route.targetId),
     });
   };

@@ -1,7 +1,8 @@
 "use client";
 
 import type { ActionResult } from "@/lib/action-result";
-import { ApiError, deduplicatedRefresh } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-error";
+import { deduplicatedRefresh } from "@/lib/session-client";
 
 export async function runAction<T>(action: () => Promise<ActionResult<T>>): Promise<T> {
   let settled = await action();

@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     GOOGLE_CLOUD_PROJECT: NonEmptyStr | None = None
     GEMINI_LOCATION: NonEmptyStr = "global"
     GEMINI_MODEL: NonEmptyStr = "gemini-3.5-flash-lite"
+    CLOUD_TASKS_QUEUE: NonEmptyStr | None = None
+    CLOUD_TASKS_LOCATION: NonEmptyStr | None = None
+    CLOUD_TASKS_TARGET_URL: NonEmptyStr | None = None
+    CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT: NonEmptyStr | None = None
 
     @property
     def frontend_origin(self) -> str:
@@ -81,6 +85,21 @@ class Settings(BaseSettings):
         if connector and (self.DB_INSTANCE_CONNECTION_NAME is None or self.DB_IAM_USER is None):
             msg_0 = "DB_INSTANCE_CONNECTION_NAME and DB_IAM_USER must be set together"
             raise ValueError(msg_0)
+        return self
+
+    @model_validator(mode="after")
+    def cloud_tasks_config_is_complete(self) -> Self:
+        task_config = (
+            self.CLOUD_TASKS_QUEUE,
+            self.CLOUD_TASKS_LOCATION,
+            self.CLOUD_TASKS_TARGET_URL,
+            self.CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT,
+        )
+        if any(value is not None for value in task_config) and not all(
+            value is not None for value in task_config
+        ):
+            msg = "Cloud Tasks settings must be configured together"
+            raise ValueError(msg)
         return self
 
     @field_validator("FERNET_KEY", "CACHE_FERNET_KEY")

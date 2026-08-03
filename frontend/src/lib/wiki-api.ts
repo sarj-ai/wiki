@@ -16,6 +16,7 @@ import {
   listDocIconsExtrasDocIconsGet,
   listMyFolderIconsExtrasFolderIconsGet,
   listMySortOrdersExtrasSortOrderGet,
+  logoutAuthLogoutPost,
   meAuthMeGet,
   moveFileFilesFileIdMovePatch,
   readDocIconExtrasDocIconsDriveIdGet,
@@ -195,6 +196,8 @@ export function makeWikiApi(client?: Client) {
     listSortOrders: async (): Promise<SortOrder[]> =>
       call(listMySortOrdersExtrasSortOrderGet, {}, z.array(sortOrder)),
 
+    logout: async (): Promise<void> => call(logoutAuthLogoutPost, {}),
+
     moveFile: async (fileId: string, newParentFolderId: string): Promise<FileResponse> =>
       call(
         moveFileFilesFileIdMovePatch,
@@ -258,7 +261,5 @@ export function makeWikiApi(client?: Client) {
       ),
   };
 }
-
-export const wikiApi = makeWikiApi();
 
 export { ApiError } from "@/lib/api-client";

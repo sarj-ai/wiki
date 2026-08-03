@@ -3,6 +3,16 @@ output "backend_url" {
   value       = google_cloud_run_v2_service.backend.uri
 }
 
+output "smart_create_queue" {
+  description = "Cloud Tasks queue resource name used for asynchronous Smart Create"
+  value       = google_cloud_tasks_queue.smart_create.id
+}
+
+output "cloud_tasks_invoker_service_account" {
+  description = "OIDC identity allowed to invoke the internal Smart Create task endpoint"
+  value       = google_service_account.cloud_tasks_invoker.email
+}
+
 output "artifact_registry" {
   description = "Docker image registry path"
   value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.sarj_docs.repository_id}"

@@ -2,8 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { wikiApi } from "@/lib/wiki-api";
 import { wikiKeys } from "@/lib/wiki-keys";
+import { wikiReadApi } from "@/lib/wiki-read-client";
 import type {
   DocIcon,
   DriveNode,
@@ -19,7 +19,7 @@ const TREE_STALE_MS = 5 * 60 * 1000;
 
 export function useDrives() {
   return useQuery<DriveSummary[]>({
-    queryFn: wikiApi.getDrives,
+    queryFn: wikiReadApi.getDrives,
     queryKey: wikiKeys.drives,
     staleTime: TREE_STALE_MS,
   });
@@ -28,7 +28,7 @@ export function useDrives() {
 export function useDriveTree(driveId: null | string) {
   return useQuery<DriveTree>({
     enabled: !!driveId,
-    queryFn: async () => wikiApi.getDriveFolders(driveId ?? ""),
+    queryFn: async () => await wikiReadApi.getDriveFolders(driveId ?? ""),
     queryKey: wikiKeys.driveTree(driveId ?? "disabled"),
     staleTime: TREE_STALE_MS,
   });
@@ -37,7 +37,7 @@ export function useDriveTree(driveId: null | string) {
 export function useFile(fileId: null | string) {
   return useQuery<FileDetail>({
     enabled: !!fileId,
-    queryFn: async () => wikiApi.getFile(fileId ?? ""),
+    queryFn: async () => await wikiReadApi.getFile(fileId ?? ""),
     queryKey: wikiKeys.file(fileId ?? "disabled"),
   });
 }
@@ -45,7 +45,7 @@ export function useFile(fileId: null | string) {
 export function useFolderFiles(folderId: null | string, enabled: boolean) {
   return useQuery<DriveNode[]>({
     enabled: enabled && !!folderId,
-    queryFn: async () => wikiApi.getFolderFiles(folderId ?? ""),
+    queryFn: async () => await wikiReadApi.getFolderFiles(folderId ?? ""),
     queryKey: wikiKeys.folderFiles(folderId ?? "disabled"),
     staleTime: TREE_STALE_MS,
   });
@@ -53,7 +53,7 @@ export function useFolderFiles(folderId: null | string, enabled: boolean) {
 
 export function usePreferences() {
   return useQuery<Preferences>({
-    queryFn: wikiApi.getPreferences,
+    queryFn: wikiReadApi.getPreferences,
     queryKey: wikiKeys.preferences,
     staleTime: TREE_STALE_MS,
   });
@@ -61,7 +61,7 @@ export function usePreferences() {
 
 export function useFolderIcons() {
   return useQuery<FolderIcon[]>({
-    queryFn: wikiApi.listFolderIcons,
+    queryFn: wikiReadApi.listFolderIcons,
     queryKey: wikiKeys.folderIcons,
     staleTime: TREE_STALE_MS,
   });
@@ -69,7 +69,7 @@ export function useFolderIcons() {
 
 export function useDocIcons() {
   return useQuery<DocIcon[]>({
-    queryFn: wikiApi.listDocIcons,
+    queryFn: wikiReadApi.listDocIcons,
     queryKey: wikiKeys.docIcons,
     staleTime: TREE_STALE_MS,
   });
@@ -77,7 +77,7 @@ export function useDocIcons() {
 
 export function useSortOrders() {
   return useQuery<SortOrder[]>({
-    queryFn: wikiApi.listSortOrders,
+    queryFn: wikiReadApi.listSortOrders,
     queryKey: wikiKeys.sortOrders,
     staleTime: TREE_STALE_MS,
   });

@@ -4,14 +4,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { retireDocumentAliasAction, saveDocumentAliasAction } from "@/app/actions/wiki-actions";
 import { runAction } from "@/lib/action-client";
-import { wikiApi } from "@/lib/wiki-api";
+import { wikiReadApi } from "@/lib/wiki-read-client";
 
 const aliasKey = (fileId: string) => ["document-alias", fileId] as const;
 
 export function useDocumentAlias(fileId: string, enabled: boolean) {
   return useQuery({
     enabled,
-    queryFn: async () => wikiApi.getDocumentAlias(fileId),
+    queryFn: async () => await wikiReadApi.getDocumentAlias(fileId),
     queryKey: aliasKey(fileId),
   });
 }

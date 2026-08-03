@@ -18,6 +18,7 @@ resource "google_project_service" "apis" {
     "certificatemanager.googleapis.com",
     "securitycenter.googleapis.com",
     "aiplatform.googleapis.com",
+    "cloudtasks.googleapis.com",
   ])
 
   service            = each.value

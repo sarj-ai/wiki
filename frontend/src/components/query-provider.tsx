@@ -6,7 +6,7 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { ApiError } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-error";
 import { QUERY_CACHE_KEY, REDIRECT_KEY, sanitizeRedirectPath } from "@/lib/url-utils";
 
 const CACHE_BUSTER = "v2";

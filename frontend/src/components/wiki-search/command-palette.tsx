@@ -17,7 +17,7 @@ import { displayFileName, isGoogleWorkspaceType, renderNodeIcon } from "@/lib/fi
 import { openUrlFor } from "@/lib/file-urls";
 import { resolveShortcutTarget, SHORTCUT_INACCESSIBLE_TOOLTIP } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
-import { wikiApi } from "@/lib/wiki-api";
+import { wikiReadApi } from "@/lib/wiki-read-client";
 import type { DriveSearchResult, DriveTree } from "@/types/wiki";
 import { MIME_FOLDER, MIME_FORM } from "@/types/wiki";
 
@@ -110,14 +110,14 @@ export function CommandPalette() {
     const target = resolveShortcutTarget(result);
     if (target.targetMimeType === MIME_FORM || target.targetMimeType === MIME_FOLDER) return;
     void qc.prefetchQuery({
-      queryFn: async () => wikiApi.getFile(target.targetId),
+      queryFn: async () => await wikiReadApi.getFile(target.targetId),
       queryKey: wikiKeys.file(target.targetId),
     });
     const trimmed = query.trim();
     if (trimmed.length >= 2) {
       void qc.prefetchQuery({
         queryFn: async () =>
-          wikiApi.driveSearchSnippet(
+          wikiReadApi.driveSearchSnippet(
             target.targetId,
             trimmed,
             target.targetMimeType !== "" ? target.targetMimeType : undefined,

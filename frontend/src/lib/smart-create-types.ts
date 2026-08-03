@@ -54,6 +54,27 @@ export interface SmartCreateResult {
   warnings: { code: string; detail: string }[];
 }
 
+export type SmartCreateTask =
+  | {
+      errorCode: string;
+      errorDetail?: string;
+      id: string;
+      status: "failed";
+    }
+  | {
+      id: string;
+      result: SmartCreateResult;
+      status: "succeeded";
+    }
+  | {
+      id: string;
+      status: "cancelled";
+    }
+  | {
+      id: string;
+      status: "pending" | "running";
+    };
+
 export function initialSmartCreateState(): SmartCreateState {
   return {
     mode: { description: "", fileType: "document", kind: "ai" },

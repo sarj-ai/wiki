@@ -30,13 +30,13 @@ import {
   useRetireDocumentAlias,
   useSaveDocumentAlias,
 } from "@/hooks/use-document-alias";
+import { ApiError } from "@/lib/api-error";
 import {
   documentShortLink,
   SHORT_LINK_COPY_FEEDBACK_MS,
   SHORT_LINK_DISPLAY_PREFIX,
 } from "@/lib/document-short-link";
 import { zDocumentAliasWrite } from "@/lib/generated/zod.gen";
-import { ApiError } from "@/lib/wiki-api";
 
 export function ShortLinkDialog({ fileId }: ShortLinkDialogProps) {
   const [open, setOpen] = useState(false);

@@ -33,3 +33,19 @@ class TaskLeaseLostError(TaskError):
 
     def __init__(self) -> None:
         super().__init__("Task execution lease is no longer owned by this executor")
+
+
+class TaskEnqueueError(TaskError):
+    code = "task_enqueue_failed"
+    http_status = 503
+
+    def __init__(self) -> None:
+        super().__init__("Task could not be queued; retry with the same idempotency key")
+
+
+class TaskExecutionDeferredError(TaskError):
+    code = "task_execution_deferred"
+    http_status = 503
+
+    def __init__(self) -> None:
+        super().__init__("Task execution will be retried")

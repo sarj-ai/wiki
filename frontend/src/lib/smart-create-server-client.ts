@@ -49,6 +49,31 @@ export async function callSmartCreateApi(
   }
 }
 
+export async function readSmartCreateApi(
+  path: string,
+  token: string,
+): Promise<SmartUpstreamResponse> {
+  try {
+    const response = await fetch(`${API_URL}${path}`, {
+      cache: "no-store",
+      headers: { cookie: `access_token=${token}` },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    const responseBody = await response.text();
+    if (response.ok) return { body: responseBody, ok: true, status: response.status };
+    const parsed = ZErrorResponse.safeParse(safeJson(responseBody));
+    const error = parsed.success ? parsed.data.detail : undefined;
+    return {
+      body: responseBody,
+      ...(error === undefined ? {} : { error }),
+      ok: false,
+      status: response.status,
+    };
+  } catch {
+    return { body: "", error: "Smart Create could not reach the API", ok: false, status: 502 };
+  }
+}
+
 function safeJson(value: string): unknown {
   try {
     return JSON.parse(value);

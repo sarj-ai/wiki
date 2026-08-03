@@ -1,9 +1,8 @@
-import "@/lib/api-client";
-
 import type { z } from "zod";
 
+import { logoutAction } from "@/app/actions/wiki-actions";
+import { runAction } from "@/lib/action-client";
 import { API_URL } from "@/lib/env";
-import { logoutAuthLogoutPost } from "@/lib/generated/sdk.gen";
 import type { userProfile } from "@/lib/wiki-schemas";
 
 export type User = z.output<typeof userProfile>;
@@ -14,7 +13,7 @@ export function getLoginUrl(): string {
 
 export async function logout(): Promise<void> {
   try {
-    await logoutAuthLogoutPost({ throwOnError: true });
+    await runAction(logoutAction);
   } catch {
     return;
   }

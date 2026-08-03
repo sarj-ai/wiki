@@ -15,6 +15,7 @@ on GCP + Cloudflare.
 | `secrets.tf`      | Secret Manager entries for DB URL, Fernet, OAuth secrets                      |
 | `iam.tf`          | Service accounts and IAM bindings                                             |
 | `cloudrun.tf`     | Cloud Run backend service definition                                          |
+| `cloudtasks.tf`   | Smart Create HTTP queue and Google-managed delivery identity                  |
 | `loadbalancer.tf` | Global HTTPS LB + Cloud Armor WAF + managed TLS cert _(Sub-PR B, new)_        |
 | `cloudflare.tf`   | ~~removed~~ — Cloudflare WAF rules and DNS managed manually in the dashboard  |
 | `security.tf`     | Security Command Center enablement + branch protection docs _(Sub-PR B, new)_ |
@@ -36,7 +37,7 @@ make push-tf-secrets   # publish local edits back
 ## What was removed from the legacy (pre-pivot Sarj Docs) stack
 
 - `scheduler.tf` — Cloud Scheduler jobs for webhook renewal and
-  group sync are deleted along with the `/internal` endpoints.
+  group sync are deleted along with their legacy `/internal` endpoints.
 - `sarj-docs-scheduler` service account — no longer needed.
 - Secret Manager entries `webhook-token` and `service-account-key`
   — no Drive push notifications, no domain-wide-delegation SA.
@@ -75,6 +76,11 @@ terraform plan
 # token is needed for this step.
 terraform apply
 ```
+
+The backend deploy workflow deliberately checks that the `smart-create` queue
+exists before updating Cloud Run. Apply Terraform before deploying a backend
+revision that enables asynchronous creation; this prevents a partial rollout
+that accepts tasks but cannot enqueue them.
 
 ## Sub-PR B additions explained
 
@@ -145,6 +151,7 @@ gcloud secrets versions disable OLD_VERSION --secret=sarj-docs-secret-key
 | Global LB + forwarding rule + Cloud Armor         | ~$25                        |
 | Certificate Manager                               | free for the first cert     |
 | Secret Manager                                    | <$1 for active secret count |
+| Cloud Tasks (low Smart Create volume)             | <$1                         |
 | Cloudflare Free tier                              | $0                          |
 | Security Command Center Standard                  | $0                          |
 | **Total**                                         | **~$60/month**              |
