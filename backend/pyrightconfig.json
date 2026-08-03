@@ -3,7 +3,7 @@
   "include": ["app", "tests"],
   "exclude": ["alembic/versions", "**/__pycache__"],
   "reportAny": false,
-  "reportDeprecated": false,
+  "reportDeprecated": "error",
   "reportExplicitAny": false,
   "reportInvalidCast": false,
   "reportMissingSuperCall": false,
