@@ -123,6 +123,18 @@ resource "google_cloud_run_v2_service" "backend" {
         name  = "DB_IAM_USER"
         value = google_sql_user.wiki_app_iam.name
       }
+      env {
+        name  = "GOOGLE_CLOUD_PROJECT"
+        value = var.project_id
+      }
+      env {
+        name  = "GEMINI_LOCATION"
+        value = "global"
+      }
+      env {
+        name  = "GEMINI_MODEL"
+        value = "gemini-3.5-flash-lite"
+      }
 
       # Sensitive env vars from Secret Manager
       env {
@@ -168,5 +180,6 @@ resource "google_cloud_run_v2_service" "backend" {
     google_project_service.apis["run.googleapis.com"],
     google_secret_manager_secret_version.secrets,
     google_secret_manager_secret_iam_member.backend_access,
+    google_project_iam_member.backend_vertex_ai,
   ]
 }

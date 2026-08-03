@@ -31,6 +31,14 @@ resource "google_project_iam_member" "backend_cloudsql_instance_user" {
   member  = "serviceAccount:${google_service_account.backend.email}"
 }
 
+# Smart Create uses Vertex AI with the backend's workload identity. No API key
+# or long-lived Google credential is present in the application environment.
+resource "google_project_iam_member" "backend_vertex_ai" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.backend.email}"
+}
+
 # Allow public access to the backend — JWT + @sarj.ai domain
 # enforcement at the app layer is the real auth boundary. The GCLB
 # + Cloudflare layer on top (see loadbalancer.tf / cloudflare.tf)

@@ -32,3 +32,11 @@ class DriveUpstreamError(FilesError):
     def __init__(self, status: int, message: str) -> None:
         super().__init__(message)
         self.http_status = status if 400 <= status < 500 else 502
+
+
+class FileVersionChangedError(FilesError):
+    http_status = 409
+    code = "file_version_changed"
+
+    def __init__(self) -> None:
+        super().__init__("The source file changed; refresh and review again")

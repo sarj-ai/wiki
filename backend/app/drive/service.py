@@ -474,7 +474,7 @@ class GoogleDriveService(DriveService):
                 "supportsAllDrives": True,
                 "pageSize": 1000,
                 "fields": (
-                    "nextPageToken,files(id,name,mimeType,parents,modifiedTime,"
+                    "nextPageToken,files(id,name,mimeType,parents,modifiedTime,description,"
                     "shortcutDetails(targetId,targetMimeType))"
                 ),
             }
@@ -505,6 +505,7 @@ class GoogleDriveService(DriveService):
                         mime_type=file.mime_type,
                         parent_id=folder_id,
                         modified_time=file.modified_time,
+                        description=file.description,
                         shortcut_target_id=details.target_id if details else None,
                         shortcut_target_mime_type=target_mime,
                     )

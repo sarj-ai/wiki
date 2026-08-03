@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     LOG_JSON: bool = False
     LOG_LEVEL: LogLevel = "INFO"
     SIDEBAR_CACHE_TTL: Annotated[timedelta, Field(gt=timedelta(0))] = timedelta(minutes=10)
+    GOOGLE_CLOUD_PROJECT: NonEmptyStr | None = None
+    GEMINI_LOCATION: NonEmptyStr = "global"
+    GEMINI_MODEL: NonEmptyStr = "gemini-3.5-flash-lite"
 
     @property
     def frontend_origin(self) -> str:

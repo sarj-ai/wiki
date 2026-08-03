@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Plus, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -10,6 +10,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useCreateFile } from "@/hooks/use-wiki-mutations";
@@ -26,10 +27,11 @@ import {
 } from "@/types/wiki";
 
 import { NamePromptDialog } from "./name-prompt-dialog";
+import { SmartCreateDialog } from "./smart-create-dialog";
 
 interface CreateFileMenuProps {
   compact?: boolean;
-
+  driveId: string;
   parentFolderId: string;
 }
 
@@ -48,10 +50,11 @@ const CREATE_TYPES: CreateType[] = [
   { defaultName: "New Folder", label: "Folder", mimeType: MIME_FOLDER },
 ];
 
-export function CreateFileMenu({ compact = true, parentFolderId }: CreateFileMenuProps) {
+export function CreateFileMenu({ compact = true, driveId, parentFolderId }: CreateFileMenuProps) {
   const router = useRouter();
   const createFile = useCreateFile();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [smartOpen, setSmartOpen] = useState(false);
 
   const [pendingType, setPendingType] = useState<CreateType | null>(null);
 
@@ -95,6 +98,17 @@ export function CreateFileMenu({ compact = true, parentFolderId }: CreateFileMen
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-44">
+          <DropdownMenuItem
+            className="flex items-center gap-2 text-sm"
+            onClick={() => {
+              setMenuOpen(false);
+              setSmartOpen(true);
+            }}
+          >
+            <Sparkles className="size-4" />
+            Smart create…
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           {CREATE_TYPES.map((type) => (
             <DropdownMenuItem
               className="flex items-center gap-2 text-sm"
@@ -109,6 +123,12 @@ export function CreateFileMenu({ compact = true, parentFolderId }: CreateFileMen
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+      <SmartCreateDialog
+        invokingDriveId={driveId}
+        invokingFolderId={parentFolderId}
+        onOpenChange={setSmartOpen}
+        open={smartOpen}
+      />
       <NamePromptDialog
         confirmLabel="Create"
         defaultValue={pendingType?.defaultName ?? ""}

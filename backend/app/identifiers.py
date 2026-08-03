@@ -1,4 +1,5 @@
 from typing import NewType
+import uuid
 
 
 # Nominal IDs catch accidental cross-resource calls during static analysis while
@@ -9,3 +10,5 @@ from typing import NewType
 FileId = NewType("FileId", str)
 DriveId = NewType("DriveId", str)
 GoogleUserId = NewType("GoogleUserId", str)
+TaskId = NewType("TaskId", uuid.UUID)
+IdempotencyKey = NewType("IdempotencyKey", uuid.UUID)

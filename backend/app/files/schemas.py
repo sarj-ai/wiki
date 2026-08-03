@@ -36,6 +36,7 @@ class FileResponse(BaseModel):
     drive_id: DriveId | None
     modified_time: str | None
     can_edit: bool = False
+    can_add_children: bool = False
 
 
 class MoveResult(BaseModel):

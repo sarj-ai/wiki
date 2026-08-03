@@ -17,6 +17,7 @@ resource "google_project_service" "apis" {
     "servicenetworking.googleapis.com",
     "certificatemanager.googleapis.com",
     "securitycenter.googleapis.com",
+    "aiplatform.googleapis.com",
   ])
 
   service            = each.value
