@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
@@ -102,7 +102,7 @@ def _db(session: FakeSession) -> AsyncSession:
 
 def _service(drive: FakeDrive, save_session: FakeSession) -> PostgresSidebarCacheService:
     @asynccontextmanager
-    async def fake_sessionmaker() -> AsyncIterator[FakeSession]:
+    async def fake_sessionmaker() -> AsyncGenerator[FakeSession]:
         yield save_session
 
     return PostgresSidebarCacheService(
