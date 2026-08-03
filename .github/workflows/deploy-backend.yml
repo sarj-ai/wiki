@@ -18,7 +18,7 @@ env:
   REPOSITORY: sarj-docs
   SERVICE: sarj-docs-backend
   IMAGE: backend
-  CLOUD_TASKS_QUEUE: smart-create
+  SMART_CREATE_QUEUE_NAME: smart-create
 
 jobs:
   deploy:
@@ -96,7 +96,7 @@ jobs:
 
       - name: Verify Smart Create queue exists
         run: |
-          gcloud tasks queues describe "${{ env.CLOUD_TASKS_QUEUE }}" \
+          gcloud tasks queues describe "${{ env.SMART_CREATE_QUEUE_NAME }}" \
             --location "${{ env.REGION }}" \
             --project "${{ env.PROJECT_ID }}" \
             --format="value(name)"
