@@ -4,7 +4,7 @@ from alembic import context
 
 from app.config import settings
 from app.database import Base, build_engine, close_connector
-from app.models import wiki, user  # noqa: F401 — side-effect: register models on Base
+from app.models import task, wiki, user  # noqa: F401 — side-effect: register models on Base
 
 config = context.config
 

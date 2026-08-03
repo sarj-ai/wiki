@@ -23,9 +23,14 @@ from app.extras.router import router as extras_router
 from app.files.errors import FilesError
 from app.files.router import router as files_router
 from app.logging_config import configure_logging
+from app.rate_limits.service import DatabaseRateLimitExceededError
 from app.ratelimit import limiter
 from app.request_id import RequestIDMiddleware
 from app.sidebar.router import router as sidebar_router
+from app.smart_create.router import router as smart_create_router
+from app.tasks.errors import TaskError
+from app.tasks.router import router as tasks_router
+from app.templates.router import router as templates_router
 
 
 @asynccontextmanager
@@ -47,7 +52,8 @@ app.add_middleware(
     allow_origins=[settings.frontend_origin],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
+    expose_headers=["Retry-After", "Server-Timing", "Idempotency-Replayed"],
 )
 app.add_middleware(RequestIDMiddleware)
 
@@ -90,6 +96,29 @@ async def alias_error_handler(
     )
 
 
+@app.exception_handler(TaskError)
+async def task_error_handler(
+    _request: Request,
+    exc: TaskError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.http_status,
+        content={"code": exc.code, "detail": str(exc)},
+    )
+
+
+@app.exception_handler(DatabaseRateLimitExceededError)
+async def database_rate_limit_error_handler(
+    _request: Request,
+    exc: DatabaseRateLimitExceededError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={"code": "rate_limit_exceeded", "detail": str(exc)},
+        headers={"Retry-After": str(exc.retry_after)},
+    )
+
+
 app.include_router(auth_router)
 app.include_router(bootstrap_router)
 app.include_router(sidebar_router)
@@ -97,6 +126,9 @@ app.include_router(files_router)
 app.include_router(extras_router)
 app.include_router(drive_search_router)
 app.include_router(aliases_router)
+app.include_router(templates_router)
+app.include_router(smart_create_router)
+app.include_router(tasks_router)
 
 
 @app.get("/health")

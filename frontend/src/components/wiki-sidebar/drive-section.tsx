@@ -171,7 +171,7 @@ export function DriveSection({
                 <RefreshCw className="size-3.5" />
               )}
             </Button>
-            <CreateFileMenu parentFolderId={drive.id} />
+            <CreateFileMenu driveId={drive.id} parentFolderId={drive.id} />
           </div>
         </div>
         {expanded ? (

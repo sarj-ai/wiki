@@ -60,6 +60,7 @@ class DriveNode(BaseModel):
     mime_type: str  # sarj-noqa: SARJ006 — open-ended Google Drive MIME type, not a fixed choice set
     parent_id: FileId | None
     modified_time: str | None
+    description: str | None = None
     shortcut_target_id: FileId | None = None
     shortcut_target_mime_type: str | None = None
     shortcut_target_drive_id: DriveId | None = None

@@ -11,6 +11,7 @@ dependencies = [
   "google-auth>=2.56.2",
   "google-auth-httplib2>=0.2.0",
   "google-auth-oauthlib>=1.4.0",
+  "google-genai>=1.65.0",
   "httplib2>=0.32.0",
   "pydantic-settings>=2.14.2",
   "pyjwt>=2.13.0",
@@ -84,6 +85,7 @@ target-version = "py314"
 "app/drive/snippets.py" = ["magic-value-comparison"]
 "app/files/errors.py" = ["magic-value-comparison"]
 "app/files/router.py" = ["too-many-positional-arguments"]
+"app/smart_create/router.py" = ["too-many-positional-arguments"]
 "app/files/service.py" = ["any-type", "magic-value-comparison"]
 "app/logging_config.py" = ["global-statement"]
 "app/main.py" = ["unused-async"]
@@ -158,6 +160,8 @@ source_modules = [
   "app.files.router",
   "app.sidebar.router",
   "app.drive.search_router",
+  "app.smart_create.router",
+  "app.templates.router",
 ]
 type = "forbidden"
 
@@ -169,6 +173,8 @@ forbidden_modules = [
   "app.files.router",
   "app.sidebar.router",
   "app.drive.search_router",
+  "app.smart_create.router",
+  "app.templates.router",
 ]
 name = "Services never import routers (no upward dependencies)"
 source_modules = [
@@ -178,6 +184,8 @@ source_modules = [
   "app.extras.service",
   "app.files.service",
   "app.sidebar.cache",
+  "app.smart_create.service",
+  "app.templates.service",
 ]
 type = "forbidden"
 

@@ -1,6 +1,70 @@
 {
   "components": {
     "schemas": {
+      "AIMode": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "maxLength": 2000,
+            "minLength": 3,
+            "title": "Description",
+            "type": "string"
+          },
+          "file_type": {
+            "enum": ["document", "presentation"],
+            "title": "File Type",
+            "type": "string"
+          },
+          "invoking_drive_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoking Drive Id"
+          },
+          "invoking_folder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoking Folder Id"
+          },
+          "kind": {
+            "const": "ai",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": ["kind", "description", "file_type"],
+        "title": "AIMode",
+        "type": "object"
+      },
+      "BlankSource": {
+        "additionalProperties": false,
+        "properties": {
+          "file_type": {
+            "enum": ["document", "presentation"],
+            "title": "File Type",
+            "type": "string"
+          },
+          "kind": {
+            "const": "blank",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": ["kind", "file_type"],
+        "title": "BlankSource",
+        "type": "object"
+      },
       "BootstrapRead": {
         "properties": {
           "doc_icons": {
@@ -73,6 +137,75 @@
         },
         "required": ["id", "name"],
         "title": "BreadcrumbItem",
+        "type": "object"
+      },
+      "CancelledTaskRead": {
+        "properties": {
+          "attempt_count": {
+            "const": 0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "null"
+          },
+          "error_detail": {
+            "title": "Error Detail",
+            "type": "null"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "file.smart_create",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "null"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "null"
+          },
+          "status": {
+            "const": "cancelled",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "created_at",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "CancelledTaskRead",
         "type": "object"
       },
       "DocIconRead": {
@@ -196,6 +329,17 @@
       },
       "DriveNode": {
         "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -333,6 +477,90 @@
         "title": "DriveTree",
         "type": "object"
       },
+      "FailedTaskRead": {
+        "properties": {
+          "attempt_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Detail"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "file.smart_create",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "const": "failed",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "created_at",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "FailedTaskRead",
+        "type": "object"
+      },
       "FileCopy": {
         "properties": {
           "name": {
@@ -375,6 +603,11 @@
             },
             "title": "Breadcrumb",
             "type": "array"
+          },
+          "can_add_children": {
+            "default": false,
+            "title": "Can Add Children",
+            "type": "boolean"
           },
           "can_edit": {
             "default": false,
@@ -477,6 +710,11 @@
       },
       "FileResponse": {
         "properties": {
+          "can_add_children": {
+            "default": false,
+            "title": "Can Add Children",
+            "type": "boolean"
+          },
           "can_edit": {
             "default": false,
             "title": "Can Edit",
@@ -586,6 +824,74 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "PendingTaskRead": {
+        "properties": {
+          "attempt_count": {
+            "const": 0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "null"
+          },
+          "error_detail": {
+            "title": "Error Detail",
+            "type": "null"
+          },
+          "finished_at": {
+            "title": "Finished At",
+            "type": "null"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "file.smart_create",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "null"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "null"
+          },
+          "status": {
+            "const": "pending",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "created_at",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "PendingTaskRead",
+        "type": "object"
+      },
       "PreferencesRead": {
         "properties": {
           "hidden_workspace_ids": {
@@ -626,6 +932,109 @@
           }
         },
         "title": "PreferencesWrite",
+        "type": "object"
+      },
+      "ProposalDestination": {
+        "additionalProperties": false,
+        "properties": {
+          "drive_id": {
+            "title": "Drive Id",
+            "type": "string"
+          },
+          "drive_name": {
+            "title": "Drive Name",
+            "type": "string"
+          },
+          "folder_id": {
+            "title": "Folder Id",
+            "type": "string"
+          },
+          "folder_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Folder Path",
+            "type": "array"
+          }
+        },
+        "required": ["folder_id", "drive_id", "drive_name", "folder_path"],
+        "title": "ProposalDestination",
+        "type": "object"
+      },
+      "RunningTaskRead": {
+        "properties": {
+          "attempt_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "null"
+          },
+          "error_detail": {
+            "title": "Error Detail",
+            "type": "null"
+          },
+          "finished_at": {
+            "title": "Finished At",
+            "type": "null"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "file.smart_create",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "const": "running",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "created_at",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "RunningTaskRead",
         "type": "object"
       },
       "SearchResult": {
@@ -737,6 +1146,142 @@
         "title": "SearchResult",
         "type": "object"
       },
+      "SmartCreateResult": {
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/FileResponse"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SmartCreateWarning"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": ["task_id", "file", "warnings"],
+        "title": "SmartCreateResult",
+        "type": "object"
+      },
+      "SmartCreateWarning": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": ["code", "detail"],
+        "title": "SmartCreateWarning",
+        "type": "object"
+      },
+      "SmartFileCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "maxLength": 32,
+            "minLength": 5,
+            "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+            "title": "Alias",
+            "type": "string"
+          },
+          "emoji": {
+            "maxLength": 8,
+            "minLength": 1,
+            "title": "Emoji",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_folder_id": {
+            "title": "Parent Folder Id",
+            "type": "string"
+          },
+          "source": {
+            "discriminator": {
+              "mapping": {
+                "blank": "#/components/schemas/BlankSource",
+                "template": "#/components/schemas/TemplateSource"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BlankSource"
+              },
+              {
+                "$ref": "#/components/schemas/TemplateSource"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "required": ["source", "parent_folder_id", "name", "emoji", "alias"],
+        "title": "SmartFileCreate",
+        "type": "object"
+      },
+      "SmartProposalRead": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "maxLength": 32,
+            "minLength": 5,
+            "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+            "title": "Alias",
+            "type": "string"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/ProposalDestination"
+          },
+          "emoji": {
+            "maxLength": 8,
+            "minLength": 1,
+            "title": "Emoji",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "discriminator": {
+              "mapping": {
+                "blank": "#/components/schemas/BlankSource",
+                "template": "#/components/schemas/TemplateSource"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BlankSource"
+              },
+              {
+                "$ref": "#/components/schemas/TemplateSource"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "required": ["name", "emoji", "alias", "destination", "source"],
+        "title": "SmartProposalRead",
+        "type": "object"
+      },
       "SnippetResult": {
         "properties": {
           "file_id": {
@@ -827,6 +1372,197 @@
         },
         "required": ["drive_id", "sort_order"],
         "title": "SortOrderWrite",
+        "type": "object"
+      },
+      "SucceededTaskRead": {
+        "properties": {
+          "attempt_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "null"
+          },
+          "error_detail": {
+            "title": "Error Detail",
+            "type": "null"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "file.smart_create",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "result": {
+            "$ref": "#/components/schemas/SmartCreateResult"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "const": "succeeded",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "created_at",
+          "status",
+          "result",
+          "resource_id",
+          "error_code",
+          "error_detail",
+          "attempt_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "SucceededTaskRead",
+        "type": "object"
+      },
+      "TemplateCatalogRead": {
+        "properties": {
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateRead"
+            },
+            "title": "Templates",
+            "type": "array"
+          }
+        },
+        "required": ["templates"],
+        "title": "TemplateCatalogRead",
+        "type": "object"
+      },
+      "TemplateRead": {
+        "properties": {
+          "category_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Category Path",
+            "type": "array"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "drive_id": {
+            "title": "Drive Id",
+            "type": "string"
+          },
+          "drive_name": {
+            "title": "Drive Name",
+            "type": "string"
+          },
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "enum": [
+              "application/vnd.google-apps.document",
+              "application/vnd.google-apps.presentation"
+            ],
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "modified_time": {
+            "title": "Modified Time",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "drive_id",
+          "drive_name",
+          "name",
+          "description",
+          "mime_type",
+          "modified_time",
+          "category_path"
+        ],
+        "title": "TemplateRead",
+        "type": "object"
+      },
+      "TemplateSource": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "template",
+            "title": "Kind",
+            "type": "string"
+          },
+          "mime_type": {
+            "enum": [
+              "application/vnd.google-apps.document",
+              "application/vnd.google-apps.presentation"
+            ],
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "template_drive_id": {
+            "title": "Template Drive Id",
+            "type": "string"
+          },
+          "template_file_id": {
+            "title": "Template File Id",
+            "type": "string"
+          },
+          "template_modified_time": {
+            "title": "Template Modified Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "template_file_id",
+          "template_drive_id",
+          "template_modified_time",
+          "mime_type"
+        ],
+        "title": "TemplateSource",
         "type": "object"
       },
       "UserProfile": {
@@ -1708,6 +2444,96 @@
         "tags": ["files"]
       }
     },
+    "/files/smart": {
+      "post": {
+        "operationId": "create_smart_file_files_smart_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SmartFileCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SmartCreateResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Smart File",
+        "tags": ["files"]
+      }
+    },
+    "/files/smart-proposal": {
+      "post": {
+        "operationId": "create_smart_proposal_files_smart_proposal_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIMode"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SmartProposalRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Smart Proposal",
+        "tags": ["files"]
+      }
+    },
     "/files/{file_id}": {
       "delete": {
         "operationId": "delete_file_files__file_id__delete",
@@ -2129,6 +2955,115 @@
         },
         "summary": "Get Folder Files",
         "tags": ["sidebar"]
+      }
+    },
+    "/tasks/{task_id}": {
+      "get": {
+        "operationId": "get_task_tasks__task_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "cancelled": "#/components/schemas/CancelledTaskRead",
+                      "failed": "#/components/schemas/FailedTaskRead",
+                      "pending": "#/components/schemas/PendingTaskRead",
+                      "running": "#/components/schemas/RunningTaskRead",
+                      "succeeded": "#/components/schemas/SucceededTaskRead"
+                    },
+                    "propertyName": "status"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PendingTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RunningTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SucceededTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FailedTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CancelledTaskRead"
+                    }
+                  ],
+                  "title": "Response Get Task Tasks  Task Id  Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Task",
+        "tags": ["tasks"]
+      }
+    },
+    "/templates": {
+      "get": {
+        "operationId": "list_templates_templates_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateCatalogRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Templates",
+        "tags": ["templates"]
       }
     }
   }

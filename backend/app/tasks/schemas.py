@@ -1,0 +1,102 @@
+from __future__ import annotations
+
+from datetime import datetime
+from enum import StrEnum
+from typing import Annotated, Literal
+import uuid
+
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt
+
+from app.identifiers import FileId, TaskId
+from app.smart_create.schemas import SmartCreateResult
+
+
+class TaskKind(StrEnum):
+    FILE_SMART_CREATE = "file.smart_create"
+
+
+class TaskStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class _TaskReadBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: TaskId
+    kind: Literal[TaskKind.FILE_SMART_CREATE]
+    created_at: datetime
+
+
+class PendingTaskRead(_TaskReadBase):
+    status: Literal[TaskStatus.PENDING]
+    result: None
+    resource_id: None
+    error_code: None
+    error_detail: None
+    attempt_count: Literal[0]
+    started_at: None
+    finished_at: None
+
+
+class RunningTaskRead(_TaskReadBase):
+    status: Literal[TaskStatus.RUNNING]
+    result: None
+    resource_id: FileId | None
+    error_code: None
+    error_detail: None
+    attempt_count: PositiveInt
+    started_at: datetime
+    finished_at: None
+
+
+class SucceededTaskRead(_TaskReadBase):
+    status: Literal[TaskStatus.SUCCEEDED]
+    result: SmartCreateResult
+    resource_id: FileId | None
+    error_code: None
+    error_detail: None
+    attempt_count: PositiveInt
+    started_at: datetime
+    finished_at: datetime
+
+
+class FailedTaskRead(_TaskReadBase):
+    status: Literal[TaskStatus.FAILED]
+    result: None
+    resource_id: FileId | None
+    error_code: str
+    error_detail: str | None
+    attempt_count: PositiveInt
+    started_at: datetime
+    finished_at: datetime
+
+
+class CancelledTaskRead(_TaskReadBase):
+    status: Literal[TaskStatus.CANCELLED]
+    result: None
+    resource_id: None
+    error_code: None
+    error_detail: None
+    attempt_count: Literal[0]
+    started_at: None
+    finished_at: datetime
+
+
+TaskRead = Annotated[
+    PendingTaskRead | RunningTaskRead | SucceededTaskRead | FailedTaskRead | CancelledTaskRead,
+    Field(discriminator="status"),
+]
+
+
+class TaskReservation(BaseModel):
+    task: TaskRead
+    created: bool
+
+
+class TaskClaim(BaseModel):
+    task: RunningTaskRead
+    lease_token: uuid.UUID

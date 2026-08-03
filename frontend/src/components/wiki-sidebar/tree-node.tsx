@@ -154,7 +154,7 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
       <FolderHeader
         actions={
           <RowActions>
-            <CreateFileMenu parentFolderId={node.id} />
+            <CreateFileMenu driveId={ctx.driveId} parentFolderId={node.id} />
             <ItemMenu
               currentName={node.name}
               driveId={ctx.driveId}

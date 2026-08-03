@@ -190,6 +190,61 @@ async def test_create_does_not_retry_ambiguous_5xx(monkeypatch: pytest.MonkeyPat
     assert attempts["create"] == 1
 
 
+async def test_task_recovery_uses_user_corpus_for_my_drive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    list_params: list[dict[str, Any]] = []
+
+    class _PersonalDriveService(_FakeDriveService):
+        async def resolve_member_drive(
+            self, file_id: FileId, drive_id: DriveId | None
+        ) -> DriveId | None:
+            if file_id == FileId("recovered") and drive_id is None:
+                return DriveId("personal-root")
+            return await super().resolve_member_drive(file_id, drive_id)
+
+    class _FakeFiles:
+        def list(self, **kwargs: Any) -> Self:
+            list_params.append(kwargs)
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            return {
+                "files": [
+                    {
+                        "id": "shared-duplicate",
+                        "name": "Wrong workspace",
+                        "mimeType": "application/vnd.google-apps.document",
+                        "parents": ["shared-root"],
+                        "driveId": "shared-drive",
+                    },
+                    {
+                        "id": "recovered",
+                        "name": "Recovered",
+                        "mimeType": "application/vnd.google-apps.document",
+                        "parents": ["personal-root"],
+                    },
+                ]
+            }
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    _patch_client(monkeypatch, _FakeClient())
+    drive = _PersonalDriveService(
+        [DriveSummary(id=DriveId("personal-root"), name="My Drive", is_personal=True)]
+    )
+    service = GoogleFilesService(user=_user(), drive=drive)
+
+    result = await service.find_by_task(DriveId("personal-root"), "task-id")
+
+    assert result is not None
+    assert result.drive_id == DriveId("personal-root")
+    assert list_params[0]["corpora"] == "user"
+    assert "driveId" not in list_params[0]
+
+
 async def test_move_reuses_prefetched_parent(monkeypatch: pytest.MonkeyPatch) -> None:
     ops: list[dict[str, Any]] = []
 
