@@ -253,6 +253,14 @@ ignore_names = [
 min_confidence = 80
 paths = ["app"]
 
+[tool.coverage.run]
+source = ["app"]
+
+[tool.coverage.report]
+# The one authoritative coverage floor (a ratchet — raise, never lower).
+# pytest-cov adopts this when no --cov-fail-under flag is passed.
+fail_under = 80
+
 [tool.pytest.ini_options]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 asyncio_mode = "auto"

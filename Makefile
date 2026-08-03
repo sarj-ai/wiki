@@ -80,7 +80,7 @@ check-backend:
 	@# ci-backend.yml "Import contracts"
 	@cd backend && uv run lint-imports
 	@# ci-backend.yml "Run pytest"
-	@cd backend && uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70
+	@cd backend && uv run pytest --cov --cov-report=term-missing
 
 check-frontend:
 	@cd frontend && npm run generate:api

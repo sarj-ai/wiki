@@ -10,8 +10,10 @@ import pytest
 from app.drive.schemas import DriveNode, DriveSummary, DriveTree, SearchResult, SnippetResult
 from app.drive.service import DriveService, GoogleDriveService
 from app.files.errors import (
+    CrossDriveMoveNotSupportedError,
     DriveUpstreamError,
     FileNotInScopeError,
+    FileVersionChangedError,
     FolderCopyNotSupportedError,
     UnsupportedMimeError,
 )
@@ -532,3 +534,299 @@ async def test_get_rejects_non_member_shared_drive(
     _patch_client(monkeypatch, _FakeClient())
     with pytest.raises(FileNotInScopeError):
         await _svc("other-drive").get(FileId("foreign-file"))
+
+
+def _file_meta(
+    file_id: str,
+    *,
+    mime: str = "application/vnd.google-apps.document",
+    drive_id: str = "d1",
+    modified: str = "2026-08-01T00:00:00Z",
+    can_add_children: bool = True,
+) -> dict[str, Any]:
+    return {
+        "id": file_id,
+        "name": file_id,
+        "mimeType": mime,
+        "parents": ["root"],
+        "driveId": drive_id,
+        "modifiedTime": modified,
+        "capabilities": {"canEdit": True, "canAddChildren": can_add_children},
+    }
+
+
+class _RoutedRequest:
+    def __init__(self, result: Any) -> None:
+        self._result = result
+
+    def execute(self) -> Any:
+        if isinstance(self._result, Exception):
+            raise self._result
+        return self._result
+
+
+class _RoutedClient:
+    """files() client that answers get() per fileId and records mutations."""
+
+    def __init__(
+        self,
+        metas: dict[str, dict[str, Any]],
+        *,
+        update_error: Exception | None = None,
+    ) -> None:
+        self._metas = metas
+        self._update_error = update_error
+        self.copies: list[dict[str, Any]] = []
+        self.updates: list[dict[str, Any]] = []
+
+    def files(self) -> Self:
+        return self
+
+    def get(self, **kwargs: Any) -> _RoutedRequest:
+        return _RoutedRequest(self._metas[kwargs["fileId"]])
+
+    def copy(self, **kwargs: Any) -> _RoutedRequest:
+        self.copies.append(kwargs)
+        return _RoutedRequest(_file_meta("copy-result"))
+
+    def update(self, **kwargs: Any) -> _RoutedRequest:
+        self.updates.append(kwargs)
+        if self._update_error is not None:
+            return _RoutedRequest(self._update_error)
+        return _RoutedRequest(self._metas[kwargs["fileId"]])
+
+
+def _two_drive_service(
+    client: _RoutedClient, monkeypatch: pytest.MonkeyPatch
+) -> GoogleFilesService:
+    _patch_client(monkeypatch, client)
+    drives = [
+        DriveSummary(id=DriveId("d1"), name="Drive One"),
+        DriveSummary(id=DriveId("d2"), name="Drive Two"),
+    ]
+    return GoogleFilesService(user=_user(), drive=_FakeDriveService(drives))
+
+
+async def test_copy_template_rejects_folder_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _RoutedClient(
+        {
+            "tpl": _file_meta("tpl", mime="application/vnd.google-apps.folder"),
+            "dest": _file_meta("dest", mime="application/vnd.google-apps.folder"),
+        }
+    )
+    _patch_client(monkeypatch, client)
+
+    with pytest.raises(FolderCopyNotSupportedError):
+        await _svc("d1").copy_template(
+            template_file_id=FileId("tpl"),
+            parent_folder_id=FileId("dest"),
+            name="Copy",
+            task_id="t1",
+            expected_modified_time="2026-08-01T00:00:00Z",
+        )
+
+
+async def test_copy_template_rejects_stale_template_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _RoutedClient(
+        {
+            "tpl": _file_meta("tpl", modified="2026-08-02T09:00:00Z"),
+            "dest": _file_meta("dest", mime="application/vnd.google-apps.folder"),
+        }
+    )
+    _patch_client(monkeypatch, client)
+
+    with pytest.raises(FileVersionChangedError):
+        await _svc("d1").copy_template(
+            template_file_id=FileId("tpl"),
+            parent_folder_id=FileId("dest"),
+            name="Copy",
+            task_id="t1",
+            expected_modified_time="2026-08-01T00:00:00Z",  # reviewed version is older
+        )
+
+    assert client.copies == []
+
+
+async def test_copy_template_rejects_readonly_destination(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _RoutedClient(
+        {
+            "tpl": _file_meta("tpl"),
+            "dest": _file_meta(
+                "dest", mime="application/vnd.google-apps.folder", can_add_children=False
+            ),
+        }
+    )
+    _patch_client(monkeypatch, client)
+
+    with pytest.raises(FileNotInScopeError):
+        await _svc("d1").copy_template(
+            template_file_id=FileId("tpl"),
+            parent_folder_id=FileId("dest"),
+            name="Copy",
+            task_id="t1",
+            expected_modified_time="2026-08-01T00:00:00Z",
+        )
+
+
+async def test_copy_template_rejects_cross_drive_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _RoutedClient(
+        {
+            "tpl": _file_meta("tpl", drive_id="d1"),
+            "dest": _file_meta("dest", mime="application/vnd.google-apps.folder", drive_id="d2"),
+        }
+    )
+    service = _two_drive_service(client, monkeypatch)
+
+    with pytest.raises(FileNotInScopeError):
+        await service.copy_template(
+            template_file_id=FileId("tpl"),
+            parent_folder_id=FileId("dest"),
+            name="Copy",
+            task_id="t1",
+            expected_modified_time="2026-08-01T00:00:00Z",
+        )
+
+
+async def test_copy_template_tags_the_copy_with_the_task_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _RoutedClient(
+        {
+            "tpl": _file_meta("tpl"),
+            "dest": _file_meta("dest", mime="application/vnd.google-apps.folder"),
+        }
+    )
+    _patch_client(monkeypatch, client)
+
+    result = await _svc("d1").copy_template(
+        template_file_id=FileId("tpl"),
+        parent_folder_id=FileId("dest"),
+        name="Copy of Template",
+        task_id="task-9",
+        expected_modified_time="2026-08-01T00:00:00Z",
+    )
+
+    assert result.id == "copy-result"
+    assert len(client.copies) == 1
+    body = client.copies[0]["body"]
+    assert body["appProperties"] == {"sarjWikiTaskId": "task-9"}
+    assert body["parents"] == ["dest"]
+
+
+async def test_create_tracked_rejects_non_folder_destination(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _RoutedClient({"dest": _file_meta("dest")})  # a document, not a folder
+    _patch_client(monkeypatch, client)
+
+    with pytest.raises(FileNotInScopeError):
+        await _svc("d1").create_tracked(
+            FileId("dest"),
+            "Doc",
+            "application/vnd.google-apps.document",
+            "task-1",
+        )
+
+
+async def test_move_403_to_another_drive_maps_to_cross_drive_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _RoutedClient(
+        {
+            "f": _file_meta("f", drive_id="d1"),
+            "new-parent": _file_meta(
+                "new-parent", mime="application/vnd.google-apps.folder", drive_id="d2"
+            ),
+        },
+        update_error=_make_http_error(403),
+    )
+    service = _two_drive_service(client, monkeypatch)
+
+    with pytest.raises(CrossDriveMoveNotSupportedError):
+        await service.move(FileId("f"), FileId("new-parent"))
+
+
+async def test_move_403_within_the_same_drive_reraises_upstream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _RoutedClient(
+        {
+            "f": _file_meta("f"),
+            "new-parent": _file_meta("new-parent", mime="application/vnd.google-apps.folder"),
+        },
+        update_error=_make_http_error(403),
+    )
+    _patch_client(monkeypatch, client)
+
+    with pytest.raises(DriveUpstreamError) as excinfo:
+        await _svc("d1").move(FileId("f"), FileId("new-parent"))
+    assert excinfo.value.http_status == 403
+
+
+async def test_move_403_to_out_of_scope_destination_reraises_upstream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _RoutedClient(
+        {
+            "f": _file_meta("f"),
+            "new-parent": _file_meta(
+                "new-parent", mime="application/vnd.google-apps.folder", drive_id="foreign"
+            ),
+        },
+        update_error=_make_http_error(403),
+    )
+    _patch_client(monkeypatch, client)
+
+    with pytest.raises(DriveUpstreamError) as excinfo:
+        await _svc("d1").move(FileId("f"), FileId("new-parent"))
+    assert excinfo.value.http_status == 403
+
+
+async def test_delete_trashes_the_file_and_returns_its_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _RoutedClient({"doomed": _file_meta("doomed")})
+    _patch_client(monkeypatch, client)
+
+    result = await _svc("d1").delete(FileId("doomed"))
+
+    assert result.source.id == "doomed"
+    assert len(client.updates) == 1
+    assert client.updates[0]["body"] == {"trashed": True}
+
+
+async def test_html_content_rejects_oversized_files(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Request:
+        def __init__(self, result: Any) -> None:
+            self._result = result
+
+        def execute(self) -> Any:
+            return self._result
+
+    class _FakeFiles:
+        def get(self, **_: Any) -> _Request:
+            return _Request(_file_meta("big", mime="text/html"))
+
+        def get_media(self, **_: Any) -> _Request:
+            return _Request(b"x" * (5 * 1024 * 1024 + 1))
+
+    class _FakeDrives:
+        def get(self, **_: Any) -> _Request:
+            return _Request({"id": "d1", "hidden": False})
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+        def drives(self) -> _FakeDrives:
+            return _FakeDrives()
+
+    _patch_client(monkeypatch, _FakeClient())
+    with pytest.raises(UnsupportedMimeError):
+        await _svc("d1").get_html_content(FileId("big"))

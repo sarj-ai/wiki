@@ -84,7 +84,7 @@ jobs:
 
       - name: Unit tests
         working-directory: backend
-        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70
+        run: uv run pytest --cov --cov-report=term-missing
 
       - id: auth
         uses: google-github-actions/auth@v3

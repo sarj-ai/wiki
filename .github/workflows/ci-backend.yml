@@ -94,7 +94,7 @@ jobs:
         run: uv sync --group dev --locked
 
       - name: Run pytest
-        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70
+        run: uv run pytest --cov --cov-report=term-missing
 
   image:
     name: Image build + scan
