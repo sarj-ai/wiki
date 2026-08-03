@@ -22,8 +22,8 @@ from app.auth.errors import (
 )
 from app.auth.jwt import create_access_token, create_refresh_token, decode_token
 from app.auth.schemas import GoogleTokenResponse, GoogleUserInfo
+from app.cache.service import CacheNamespace, CacheService
 from app.config import settings
-from app.drive import drives_cache
 from app.identifiers import GoogleUserId
 from app.models.user import User
 
@@ -63,9 +63,15 @@ class AuthService(ABC):
 
 
 class GoogleAuthService(AuthService):
-    def __init__(self, db: AsyncSession, http_client: httpx.AsyncClient) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        http_client: httpx.AsyncClient,
+        cache: CacheService | None = None,
+    ) -> None:
         self._db = db
         self._http = http_client
+        self._cache = cache
 
     @override
     async def exchange_code_for_session(
@@ -115,8 +121,8 @@ class GoogleAuthService(AuthService):
             logger.opt(exception=True).warning(
                 "logout: failed to bump token_version; proceeding to clear cookies"
             )
-        if user is not None:
-            drives_cache.invalidate(str(user.id))
+        if user is not None and self._cache is not None:
+            await self._cache.delete(CacheNamespace.DRIVE_LIST, str(user.id))
 
     @override
     async def resolve_current_user(self, jwt_token: str) -> User:

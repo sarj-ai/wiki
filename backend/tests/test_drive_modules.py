@@ -1,24 +1,21 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from datetime import timedelta
 import threading
-from typing import Any, Self
+from typing import Any, Self, override
 import uuid
 
 from httplib2 import Response
+from pydantic import JsonValue
 import pytest
 
-from app.drive import probe_cache
+from app.cache.service import CacheNamespace, CacheService
 from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT, SearchResult, ShortcutProbe
 from app.drive.service import GoogleDriveService
 from app.drive.snippets import extract_snippet
 from app.identifiers import DriveId, FileId, GoogleUserId
 from app.models.user import User
-
-
-@pytest.fixture(autouse=True)
-def _reset_probe_cache() -> None:
-    probe_cache.clear()
 
 
 def _user() -> User:
@@ -126,8 +123,52 @@ def patch_drive_client(monkeypatch: pytest.MonkeyPatch) -> Callable[[Any], None]
     return _install
 
 
+class _Cache(CacheService):
+    def __init__(self) -> None:
+        self.values: dict[tuple[CacheNamespace, str], JsonValue] = {}
+
+    @override
+    async def get(self, namespace: CacheNamespace, key: str) -> JsonValue | None:
+        return self.values.get((namespace, key))
+
+    @override
+    async def get_many(self, namespace: CacheNamespace, keys: list[str]) -> dict[str, JsonValue]:
+        return {
+            key: self.values[cache_key]
+            for key in keys
+            if (cache_key := (namespace, key)) in self.values
+        }
+
+    @override
+    async def put(
+        self,
+        namespace: CacheNamespace,
+        key: str,
+        value: JsonValue,
+        *,
+        ttl: timedelta,
+    ) -> None:
+        del ttl
+        self.values[namespace, key] = value
+
+    @override
+    async def put_many(
+        self,
+        namespace: CacheNamespace,
+        values: Mapping[str, JsonValue],
+        *,
+        ttl: timedelta,
+    ) -> None:
+        del ttl
+        self.values.update({(namespace, key): value for key, value in values.items()})
+
+    @override
+    async def delete(self, namespace: CacheNamespace, key: str) -> None:
+        self.values.pop((namespace, key), None)
+
+
 def _svc() -> GoogleDriveService:
-    return GoogleDriveService(_user())
+    return GoogleDriveService(_user(), _Cache())
 
 
 async def test_list_drives_paginates_until_empty_token(patch_drive_client: Any) -> None:

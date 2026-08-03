@@ -5,13 +5,18 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, status
 
 from app.auth.dependencies import get_current_user
+from app.cache.dependencies import cache_service_dep
+from app.cache.service import CacheService
 from app.drive.service import DriveService, GoogleDriveService
 from app.identifiers import DriveId
 from app.models.user import User
 
 
-def drive_service_dep(user: Annotated[User, Depends(get_current_user)]) -> DriveService:
-    return GoogleDriveService(user)
+def drive_service_dep(
+    user: Annotated[User, Depends(get_current_user)],
+    cache: Annotated[CacheService, Depends(cache_service_dep)],
+) -> DriveService:
+    return GoogleDriveService(user, cache)
 
 
 async def require_member_drive(

@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import Callable
+from datetime import timedelta
 from functools import cache
 from itertools import batched
 import json
@@ -16,11 +17,11 @@ from googleapiclient.discovery_cache import get_static_doc
 from googleapiclient.errors import HttpError
 import httplib2
 from loguru import logger
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from app.auth.encryption import decrypt_text
+from app.cache.service import CacheNamespace, CacheService
 from app.config import settings
-from app.drive import drives_cache, probe_cache
 from app.drive.google_schemas import (
     GoogleDrive,
     GoogleFile,
@@ -75,6 +76,14 @@ _TEXT_EXPORTABLE_MIME_TYPES = frozenset(
 
 _MAX_EXPORT_BYTES = 2 * 1024 * 1024
 
+_DRIVE_LIST_CACHE_TTL = timedelta(seconds=30)
+
+_PROBE_CACHE_TTL = timedelta(minutes=5)
+
+_DRIVE_LIST = TypeAdapter(list[DriveSummary])
+
+_SHORTCUT_PROBE: TypeAdapter[ShortcutProbe | None] = TypeAdapter(ShortcutProbe | None)
+
 
 class DriveService(ABC):
     @abstractmethod
@@ -109,17 +118,33 @@ class DriveService(ABC):
 
 
 class GoogleDriveService(DriveService):
-    def __init__(self, user: User) -> None:
+    def __init__(self, user: User, cache_service: CacheService | None = None) -> None:
         self._user = user
+        self._cache = cache_service
         self._clients: dict[int, DriveResource] = {}
         self._my_drive_id: DriveId | None = None
 
     @override
     async def list_drives(self) -> list[DriveSummary]:
-        drives = await drives_cache.get_drives(
-            str(self._user.id),
-            lambda: asyncio.to_thread(self._list_drives_sync),
-        )
+        cache_key = str(self._user.id)
+        if self._cache is not None:
+            cached = await self._cache.get(CacheNamespace.DRIVE_LIST, cache_key)
+            if cached is not None:
+                try:
+                    drives = _DRIVE_LIST.validate_python(cached)
+                except ValidationError:
+                    await self._cache.delete(CacheNamespace.DRIVE_LIST, cache_key)
+                else:
+                    self._my_drive_id = next((d.id for d in drives if d.is_personal), None)
+                    return drives
+        drives = await asyncio.to_thread(self._list_drives_sync)
+        if self._cache is not None:
+            await self._cache.put(
+                CacheNamespace.DRIVE_LIST,
+                cache_key,
+                [drive.model_dump(mode="json") for drive in drives],
+                ttl=_DRIVE_LIST_CACHE_TTL,
+            )
         self._my_drive_id = next((d.id for d in drives if d.is_personal), None)
         return drives
 
@@ -286,14 +311,41 @@ class GoogleDriveService(DriveService):
         unique_ids = sorted({tid for tid in target_ids if tid})
         if not unique_ids:
             return [None] * len(target_ids)
-        user_id = str(self._user.id)
-        probes = probe_cache.get_fresh(user_id, unique_ids)
+        probes: dict[FileId, ShortcutProbe | None] = {}
+        if self._cache is not None:
+            cache_keys = [self._probe_cache_key(target_id) for target_id in unique_ids]
+            cached = await self._cache.get_many(CacheNamespace.SHORTCUT_PROBE, cache_keys)
+            for target_id in unique_ids:
+                cache_key = self._probe_cache_key(target_id)
+                if cache_key in cached:
+                    try:
+                        probes[target_id] = _SHORTCUT_PROBE.validate_python(cached[cache_key])
+                    except ValidationError:
+                        await self._cache.delete(CacheNamespace.SHORTCUT_PROBE, cache_key)
         missing = [tid for tid in unique_ids if tid not in probes]
         if missing:
             fetched = await asyncio.to_thread(self._probe_targets_sync, missing)
-            probe_cache.store(user_id, fetched)
+            if self._cache is not None:
+                await self._cache.put_many(
+                    CacheNamespace.SHORTCUT_PROBE,
+                    {
+                        self._probe_cache_key(target_id): (
+                            None
+                            if probe is None
+                            else {
+                                "accessible": probe.accessible,
+                                "target_drive_id": probe.target_drive_id,
+                            }
+                        )
+                        for target_id, probe in fetched.items()
+                    },
+                    ttl=_PROBE_CACHE_TTL,
+                )
             probes.update(fetched)
         return [probes.get(tid) if tid else None for tid in target_ids]
+
+    def _probe_cache_key(self, target_id: FileId) -> str:
+        return f"{self._user.id}:{target_id}"
 
     def _probe_targets_sync(self, target_ids: list[FileId]) -> dict[FileId, ShortcutProbe | None]:
         client = self._client()

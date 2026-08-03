@@ -325,7 +325,7 @@ def _fallback_proposal(
         (folder for folder in folders if folder.folder_id == request.invoking_folder_id),
         folders[0],
     )
-    words = _alias_words(request.description)
+    alias = _fallback_alias(request.description)
     title_words = request.description.split()[:8]
     title = " ".join(title_words).strip().rstrip(".,:;!?")
     if not title:
@@ -333,13 +333,13 @@ def _fallback_proposal(
     return SmartProposalRead(
         name=title[:255],
         emoji="📝" if request.file_type == "document" else "📊",
-        alias="-".join(words),
+        alias=alias,
         destination=destination,
         source=BlankSource(kind="blank", file_type=request.file_type),
     )
 
 
-def _alias_words(description: str) -> tuple[str, str] | tuple[str, str, str]:
+def _fallback_alias(description: str) -> str:
     words = [
         word[:12]
         for word in _WORD_PATTERN.findall(description.casefold())
@@ -347,9 +347,11 @@ def _alias_words(description: str) -> tuple[str, str] | tuple[str, str, str]:
     ]
     unique_words = list(dict.fromkeys(words))
     if len(unique_words) >= _MAX_ALIAS_WORD_COUNT:
-        return unique_words[0], unique_words[1], unique_words[2]
+        selected = unique_words[:_MAX_ALIAS_WORD_COUNT]
+        return "-".join(selected)
     if len(unique_words) >= _MIN_ALIAS_WORD_LENGTH:
-        return unique_words[0], unique_words[1]
+        selected = unique_words[:_MIN_ALIAS_WORD_LENGTH]
+        return "-".join(selected)
     if unique_words:
-        return unique_words[0], "doc"
-    return "new", "doc"
+        return f"{unique_words[0]}-doc"
+    return "new-doc"

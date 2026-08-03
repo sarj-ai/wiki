@@ -65,7 +65,7 @@ describe("SmartCreateDialog", () => {
     clickButton(await findButton("PRD Template"));
     expect(await findButton("Review")).toBeEnabled();
 
-    clickButton(await findButton("Describe with AI"));
+    clickButton(await findButton("Describe"));
 
     expect(await findButton("Suggest details")).toBeDisabled();
     expect(document.body).not.toHaveTextContent("Product requirements");
@@ -148,6 +148,7 @@ function renderDialog(root: Root) {
 
 function clickButton(button: HTMLButtonElement) {
   flushSync(() => {
+    button.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     button.click();
   });
 }

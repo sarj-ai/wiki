@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import override
@@ -30,49 +29,15 @@ SINGLEFLIGHT = Singleflight()
 
 BG_TASKS: set[asyncio.Task[None]] = set()
 
-DECODE_CACHE_MAX = 32
-
-_decoded_trees: OrderedDict[tuple[DriveId, str], DriveTree] = OrderedDict()
-
 
 def _decrypt_and_parse(blob: str) -> DriveTree:
     return DriveTree.model_validate_json(decrypt_cache(blob))
-
-
-def _decoded_get(key: tuple[DriveId, str]) -> DriveTree | None:
-    tree = _decoded_trees.get(key)
-    if tree is not None:
-        _decoded_trees.move_to_end(key)
-    return tree
-
-
-def _decoded_put(key: tuple[DriveId, str], tree: DriveTree) -> None:
-    _decoded_trees[key] = tree
-    _decoded_trees.move_to_end(key)
-    while len(_decoded_trees) > DECODE_CACHE_MAX:
-        _decoded_trees.popitem(last=False)
 
 
 @dataclass(frozen=True)
 class CachedDriveTree:
     tree: DriveTree
     refreshed_at: datetime | None
-
-
-def get_cached_decoded_tree(key: tuple[DriveId, str]) -> DriveTree | None:
-    return _decoded_get(key)
-
-
-def put_cached_decoded_tree(key: tuple[DriveId, str], tree: DriveTree) -> None:
-    _decoded_put(key, tree)
-
-
-def decoded_tree_cache_size() -> int:
-    return len(_decoded_trees)
-
-
-def clear_decoded_tree_cache() -> None:
-    _decoded_trees.clear()
 
 
 class SidebarCacheService(ABC):
@@ -177,17 +142,12 @@ class PostgresSidebarCacheService(SidebarCacheService):
         return tree
 
     async def _decode_row(self, db: AsyncSession, row: DriveTreeCache) -> DriveTree | None:
-        key = (row.drive_id, row.refreshed_at.isoformat())
-        cached = _decoded_get(key)
-        if cached is not None:
-            return cached
         try:
             tree = await asyncio.to_thread(_decrypt_and_parse, row.tree)
         except InvalidToken, ValidationError:
             await db.delete(row)
             await db.commit()
             return None
-        _decoded_put(key, tree)
         return tree
 
     async def _save_tree(self, db: AsyncSession, tree: DriveTree) -> None:

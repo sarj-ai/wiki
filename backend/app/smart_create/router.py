@@ -16,13 +16,6 @@ from app.files.errors import DriveUpstreamError, FilesError
 from app.files.service import FilesService
 from app.identifiers import IdempotencyKey, TaskId
 from app.models.user import User
-from app.rate_limits.dependencies import rate_limit_service_dep
-from app.rate_limits.service import (
-    DatabaseRateLimitExceededError,
-    RateLimitOperation,
-    RateLimitPolicy,
-    RateLimitService,
-)
 from app.sidebar.cache import SidebarCacheService
 from app.sidebar.dependencies import sidebar_cache_service_dep
 from app.smart_create.creation import SmartFileCreationService
@@ -70,19 +63,10 @@ async def invalidate_smart_create_result(
 async def create_smart_proposal(
     payload: AIMode,
     service: Annotated[SmartProposalService, Depends(smart_proposal_service_dep)],
-    rate_limits: Annotated[RateLimitService, Depends(rate_limit_service_dep)],
-    user: Annotated[User, Depends(get_current_user)],
+    _user: Annotated[User, Depends(get_current_user)],
     response: Response,
 ) -> SmartProposalRead:
     started = monotonic()
-    await rate_limits.consume(
-        user.id,
-        RateLimitPolicy(
-            operation=RateLimitOperation.SMART_PROPOSAL,
-            limit=10,
-            window=timedelta(minutes=1),
-        ),
-    )
     result = await service.propose(payload)
     response.headers["Server-Timing"] = f"total;dur={(monotonic() - started) * 1000:.1f}"
     return result
@@ -95,7 +79,6 @@ async def create_smart_file(
     response: Response,
     user: Annotated[User, Depends(get_current_user)],
     tasks: Annotated[TaskService, Depends(task_service_dep)],
-    rate_limits: Annotated[RateLimitService, Depends(rate_limit_service_dep)],
     creation: Annotated[SmartFileCreationService, Depends(smart_file_creation_service_dep)],
     files: Annotated[FilesService, Depends(files_service_dep)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -121,18 +104,6 @@ async def create_smart_file(
         _set_timing_headers(response, started=started, replayed=True)
         return result
 
-    try:
-        await rate_limits.consume(
-            user.id,
-            RateLimitPolicy(
-                operation=RateLimitOperation.SMART_CREATE,
-                limit=5,
-                window=timedelta(minutes=1),
-            ),
-        )
-    except DatabaseRateLimitExceededError:
-        await tasks.discard_pending(task.id, owner_user_id=user.id)
-        raise
     claim = await tasks.claim(task.id, lease_duration=_SMART_CREATE_LEASE)
     existing = await files.get(task.resource_id) if task.resource_id is not None else None
     try:

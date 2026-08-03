@@ -23,7 +23,6 @@ from app.extras.router import router as extras_router
 from app.files.errors import FilesError
 from app.files.router import router as files_router
 from app.logging_config import configure_logging
-from app.rate_limits.service import DatabaseRateLimitExceededError
 from app.ratelimit import limiter
 from app.request_id import RequestIDMiddleware
 from app.sidebar.router import router as sidebar_router
@@ -104,18 +103,6 @@ async def task_error_handler(
     return JSONResponse(
         status_code=exc.http_status,
         content={"code": exc.code, "detail": str(exc)},
-    )
-
-
-@app.exception_handler(DatabaseRateLimitExceededError)
-async def database_rate_limit_error_handler(
-    _request: Request,
-    exc: DatabaseRateLimitExceededError,
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=429,
-        content={"code": "rate_limit_exceeded", "detail": str(exc)},
-        headers={"Retry-After": str(exc.retry_after)},
     )
 
 

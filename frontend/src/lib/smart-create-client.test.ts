@@ -3,6 +3,16 @@ import { z } from "zod";
 
 import { smartCreateApi } from "@/lib/smart-create-client";
 
+const actionMocks = vi.hoisted(() => ({
+  create: vi.fn(),
+  propose: vi.fn(),
+}));
+
+vi.mock("@/app/actions/smart-create-actions", () => ({
+  createSmartFileAction: actionMocks.create,
+  proposeSmartFileAction: actionMocks.propose,
+}));
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -47,8 +57,8 @@ describe("smartCreateApi", () => {
   });
 
   it("sends the idempotency key with the normalized creation plan", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      Response.json({
+    actionMocks.create.mockResolvedValue({
+      data: JSON.stringify({
         file: {
           can_edit: true,
           drive_id: "drive-1",
@@ -61,7 +71,8 @@ describe("smartCreateApi", () => {
         task_id: "task-1",
         warnings: [],
       }),
-    );
+      ok: true,
+    });
 
     await smartCreateApi.create(
       {
@@ -79,20 +90,21 @@ describe("smartCreateApi", () => {
       "55555555-5555-4555-8555-555555555555",
     );
 
-    const request = z.instanceof(Request).parse(fetchMock.mock.calls[0]?.[0]);
-    expect(request.headers.get("Idempotency-Key")).toBe("55555555-5555-4555-8555-555555555555");
-    await expect(request.clone().json()).resolves.toEqual({
-      alias: "launch-brief",
-      emoji: "🚀",
-      name: "Launch brief",
-      parent_folder_id: "folder-1",
-      source: { file_type: "document", kind: "blank" },
-    });
+    expect(actionMocks.create).toHaveBeenCalledWith(
+      JSON.stringify({
+        alias: "launch-brief",
+        emoji: "🚀",
+        name: "Launch brief",
+        parent_folder_id: "folder-1",
+        source: { file_type: "document", kind: "blank" },
+      }),
+      "55555555-5555-4555-8555-555555555555",
+    );
   });
 
   it("rejects crossed fields in a discriminated source", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      Response.json({
+    actionMocks.propose.mockResolvedValue({
+      data: JSON.stringify({
         alias: "launch-brief",
         destination: {
           drive_id: "drive-1",
@@ -108,7 +120,8 @@ describe("smartCreateApi", () => {
           template_file_id: "illegal-template-field",
         },
       }),
-    );
+      ok: true,
+    });
 
     await expect(
       smartCreateApi.propose({ description: "A launch brief", fileType: "document" }),

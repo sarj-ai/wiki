@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.errors import AuthError
 from app.auth.service import AuthService, GoogleAuthService
+from app.cache.dependencies import cache_service_dep
+from app.cache.service import CacheService
 from app.database import get_db
 from app.models.user import User
 
@@ -20,8 +22,9 @@ def http_client_dep(request: Request) -> httpx.AsyncClient:
 def auth_service_dep(
     db: Annotated[AsyncSession, Depends(get_db)],
     http: Annotated[httpx.AsyncClient, Depends(http_client_dep)],
+    cache: Annotated[CacheService, Depends(cache_service_dep)],
 ) -> AuthService:
-    return GoogleAuthService(db=db, http_client=http)
+    return GoogleAuthService(db=db, http_client=http, cache=cache)
 
 
 async def get_current_user(

@@ -2,15 +2,29 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import {
+  bulkSetSortOrdersAction,
+  copyFileAction,
+  createFileAction,
+  deleteFileAction,
+  moveFileAction,
+  refreshDriveAction,
+  renameFileAction,
+  setDocIconAction,
+  setFolderIconAction,
+  setPreferencesAction,
+} from "@/app/actions/wiki-actions";
 import { wikiKeys } from "@/hooks/use-wiki-tree";
-import { wikiApi } from "@/lib/wiki-api";
+import { runAction } from "@/lib/action-client";
+import type { CreateFileInput, PreferencesInput } from "@/lib/wiki-api";
 import { injectNewFileIntoCaches, removeFileFromCaches } from "@/lib/wiki-cache";
 import type { DocIcon, DriveTree, FolderIcon, SortOrder } from "@/types/wiki";
 
 export function useCreateFile() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: wikiApi.createFile,
+    mutationFn: async (input: CreateFileInput) =>
+      await runAction(async () => await createFileAction(input)),
     onSuccess: (file) => {
       injectNewFileIntoCaches(qc, file);
     },
@@ -22,7 +36,7 @@ export function useRenameFile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ fileId, name }: { fileId: string; name: string }) =>
-      wikiApi.renameFile(fileId, name),
+      runAction(async () => await renameFileAction(fileId, name)),
     onSuccess: (file) => {
       invalidate([file.driveId]);
       void qc.invalidateQueries({ queryKey: wikiKeys.file(file.id) });
@@ -45,7 +59,7 @@ export function useMoveFile() {
       sourceDriveId: string | undefined;
       sourceParentFolderId: string | undefined;
     }) => {
-      const result = await wikiApi.moveFile(fileId, newParentFolderId);
+      const result = await runAction(async () => await moveFileAction(fileId, newParentFolderId));
       return { result, sourceDriveId, sourceParentFolderId };
     },
     onError: (_err, _vars, context: { previousSortOrders?: SortOrder[] } | undefined) => {
@@ -71,7 +85,7 @@ export function useCopyFile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ fileId, name }: { fileId: string; name: string }) =>
-      wikiApi.copyFile(fileId, name),
+      runAction(async () => await copyFileAction(fileId, name)),
     onSuccess: (file) => {
       injectNewFileIntoCaches(qc, file);
     },
@@ -81,7 +95,8 @@ export function useCopyFile() {
 export function useRefreshDrive() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: wikiApi.refreshDriveFolders,
+    mutationFn: async (driveId: string) =>
+      await runAction(async () => await refreshDriveAction(driveId)),
     onSuccess: (tree: DriveTree) => {
       qc.setQueryData<DriveTree>(wikiKeys.driveTree(tree.driveId), tree);
       void qc.invalidateQueries({ queryKey: wikiKeys.folderFilesPrefix });
@@ -100,7 +115,7 @@ export function useDeleteFile() {
       fileId: string;
       driveId: string | undefined;
       parentFolderId: string | undefined;
-    }) => wikiApi.deleteFile(fileId),
+    }) => runAction(async () => await deleteFileAction(fileId)),
     onSuccess: (_void, { driveId, fileId, parentFolderId }) => {
       removeFileFromCaches(qc, fileId, parentFolderId, driveId);
     },
@@ -110,7 +125,8 @@ export function useDeleteFile() {
 export function useBulkSetSortOrders() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: wikiApi.bulkSetSortOrders,
+    mutationFn: async (items: SortOrder[]) =>
+      await runAction(async () => await bulkSetSortOrdersAction(items)),
 
     onError: (_err, _items, context: { previous: SortOrder[] } | undefined) => {
       if (context) {
@@ -133,7 +149,8 @@ export function useBulkSetSortOrders() {
 export function useSetPreferences() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: wikiApi.setPreferences,
+    mutationFn: async (input: PreferencesInput) =>
+      await runAction(async () => await setPreferencesAction(input)),
     onSuccess: (prefs) => {
       qc.setQueryData(wikiKeys.preferences, prefs);
     },
@@ -148,7 +165,8 @@ export function useSetDocIcon() {
       icon: icon ?? undefined,
     }),
     matches: (item, { driveId }) => item.driveId === driveId,
-    mutationFn: async ({ driveId, icon }) => wikiApi.setDocIcon(driveId, { icon }),
+    mutationFn: async ({ driveId, icon }) =>
+      await runAction(async () => await setDocIconAction(driveId, { icon })),
 
     queryKey: wikiKeys.docIcons,
   });
@@ -158,7 +176,8 @@ export function useSetFolderIcon() {
   return useIconMutation<FolderIcon, { folderDriveId: string; icon: null | string }>({
     buildItem: ({ folderDriveId, icon }) => ({ folderDriveId, icon: icon ?? undefined }),
     matches: (item, { folderDriveId }) => item.folderDriveId === folderDriveId,
-    mutationFn: async ({ folderDriveId, icon }) => wikiApi.setFolderIcon(folderDriveId, icon),
+    mutationFn: async ({ folderDriveId, icon }) =>
+      await runAction(async () => await setFolderIconAction(folderDriveId, icon)),
     queryKey: wikiKeys.folderIcons,
   });
 }

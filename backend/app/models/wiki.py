@@ -4,11 +4,21 @@ from datetime import datetime
 import uuid
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, Double, ForeignKey, Index, Text, text
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 from app.identifiers import DriveId, FileId
+
+
+class CacheEntry(Base):
+    __tablename__ = "cache_entries"
+    __table_args__ = (Index("ix_cache_entries_expires_at", "expires_at"),)
+
+    namespace: Mapped[str] = mapped_column(Text, primary_key=True)
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[object] = mapped_column(JSONB, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class DriveTreeCache(Base):

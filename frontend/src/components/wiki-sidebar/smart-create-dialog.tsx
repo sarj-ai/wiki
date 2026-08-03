@@ -1,15 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  Bot,
-  ChevronLeft,
-  FileStack,
-  FolderOpen,
-  Loader2,
-  RefreshCw,
-  Sparkles,
-} from "lucide-react";
+import { Bot, ChevronLeft, FileStack, FolderOpen, Loader2, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -27,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api-client";
 import { smartCreateApi } from "@/lib/smart-create-client";
@@ -64,7 +57,6 @@ export function SmartCreateDialog({
   const [destinationOpen, setDestinationOpen] = useState(false);
   const catalogSequence = useRef(0);
   const proposalSequence = useRef(0);
-  const proposalAbort = useRef<AbortController | null>(null);
   const submitLatch = useRef(false);
   const idempotencyKey = useRef<null | string>(null);
 
@@ -93,8 +85,6 @@ export function SmartCreateDialog({
   const close = () => {
     catalogSequence.current += 1;
     proposalSequence.current += 1;
-    proposalAbort.current?.abort();
-    proposalAbort.current = null;
     submitLatch.current = false;
     idempotencyKey.current = null;
     setSubmitting(false);
@@ -120,8 +110,6 @@ export function SmartCreateDialog({
 
   const updateMode = (next: SmartCreateState["mode"]) => {
     proposalSequence.current += 1;
-    proposalAbort.current?.abort();
-    proposalAbort.current = null;
     submitLatch.current = false;
     setSubmitting(false);
     idempotencyKey.current = null;
@@ -155,30 +143,23 @@ export function SmartCreateDialog({
     const description = state.mode.description.trim();
     if (!description) return;
     const sequence = ++proposalSequence.current;
-    const controller = new AbortController();
-    proposalAbort.current?.abort();
-    proposalAbort.current = controller;
     submitLatch.current = true;
     setSubmitting(true);
     try {
-      const plan = await smartCreateApi.propose(
-        {
-          description,
-          fileType: state.mode.fileType,
-          invokingDriveId,
-          invokingFolderId,
-        },
-        controller.signal,
-      );
+      const plan = await smartCreateApi.propose({
+        description,
+        fileType: state.mode.fileType,
+        invokingDriveId,
+        invokingFolderId,
+      });
       if (sequence !== proposalSequence.current) return;
       setState({ mode: state.mode, phase: "review", plan });
     } catch (error: unknown) {
-      if (sequence !== proposalSequence.current || controller.signal.aborted) return;
+      if (sequence !== proposalSequence.current) return;
       toast.error(errorMessage(error, "Couldn’t suggest file details"));
     } finally {
-      if (proposalAbort.current === controller) {
-        proposalAbort.current = null;
-        // eslint-disable-next-line require-atomic-updates -- Controller identity ensures this request still owns the latch.
+      if (sequence === proposalSequence.current) {
+        // eslint-disable-next-line require-atomic-updates -- Sequence identity ensures this request still owns the latch.
         submitLatch.current = false;
         setSubmitting(false);
       }
@@ -221,24 +202,19 @@ export function SmartCreateDialog({
         }}
         open={open}
       >
-        <DialogContent className="overflow-hidden p-0 sm:max-w-2xl">
-          <div className="border-b px-6 pt-6 pb-4">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-2xl">
+          <div className="border-b px-4 pt-5 pb-4 sm:px-6 sm:pt-6">
             <DialogHeader>
-              <div className="text-muted-foreground flex items-center gap-2 text-xs font-medium tracking-wide uppercase">
-                <Sparkles className="text-primary size-3.5" /> New in Wiki
-              </div>
-              <DialogTitle>
-                {state.phase === "compose" ? "Choose a starting point" : "Review file"}
-              </DialogTitle>
-              <DialogDescription>
+              <DialogTitle>{state.phase === "compose" ? "Create file" : "Review file"}</DialogTitle>
+              <DialogDescription className="sr-only">
                 {state.phase === "compose"
-                  ? "Start from a Drive template or describe what you need."
-                  : "Everything is editable before the file is created."}
+                  ? "Choose how to create the file"
+                  : "Review file details"}
               </DialogDescription>
             </DialogHeader>
           </div>
 
-          <div className="px-6 py-5">
+          <div className="overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
             {state.phase === "compose" ? (
               <ComposeStep
                 catalogStatus={catalogStatus}
@@ -263,8 +239,9 @@ export function SmartCreateDialog({
             )}
           </div>
 
-          <DialogFooter className="bg-muted/40 border-t px-6 py-4 sm:justify-between">
+          <DialogFooter className="bg-background grid grid-cols-2 border-t px-4 py-3 sm:flex sm:justify-between sm:px-6 sm:py-4">
             <Button
+              className="w-full sm:w-auto"
               disabled={submitting}
               onClick={() => {
                 if (state.phase === "review") {
@@ -281,6 +258,7 @@ export function SmartCreateDialog({
               {state.phase === "review" ? "Back" : "Cancel"}
             </Button>
             <Button
+              className="w-full sm:w-auto"
               disabled={
                 submitting ||
                 (state.phase === "compose" ? !canContinue(state) : !isValidPlan(state.plan))
@@ -370,28 +348,24 @@ function ComposeStep({
 }: ComposeStepProps) {
   return (
     <div className="space-y-5">
-      <div aria-label="Starting point" className="grid grid-cols-2 gap-2" role="radiogroup">
-        <ModeButton
-          active={mode.kind === "template"}
-          description="Use a PRD, plan, or deck from Drive"
-          disabled={disabled || (catalogStatus === "ready" && templates.length === 0)}
-          icon={<FileStack className="size-4" />}
-          label="Template"
-          onClick={() => {
-            onSwitch("template");
-          }}
-        />
-        <ModeButton
-          active={mode.kind === "ai"}
-          description="Describe it and get a smart starting point"
-          disabled={disabled}
-          icon={<Bot className="size-4" />}
-          label="Describe with AI"
-          onClick={() => {
-            onSwitch("ai");
-          }}
-        />
-      </div>
+      <Tabs
+        onValueChange={(value) => {
+          onSwitch(value === "template" ? "template" : "ai");
+        }}
+        value={mode.kind}
+      >
+        <TabsList aria-label="Starting point" className="grid w-full grid-cols-2">
+          <TabsTrigger
+            disabled={disabled || (catalogStatus === "ready" && templates.length === 0)}
+            value="template"
+          >
+            <FileStack className="size-4" /> Template
+          </TabsTrigger>
+          <TabsTrigger disabled={disabled} value="ai">
+            <Bot className="size-4" /> Describe
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {mode.kind === "ai" ? (
         <div className="space-y-4">
@@ -411,23 +385,21 @@ function ComposeStep({
           </div>
           <div className="space-y-1.5">
             <Label>File type</Label>
-            <div className="flex gap-2">
-              {(["document", "presentation"] as const).map((fileType) => (
-                <Button
-                  aria-pressed={mode.fileType === fileType}
-                  disabled={disabled}
-                  key={fileType}
-                  onClick={() => {
-                    onModeChange({ ...mode, fileType });
-                  }}
-                  size="sm"
-                  type="button"
-                  variant={mode.fileType === fileType ? "secondary" : "outline"}
-                >
-                  {fileType === "document" ? "Document" : "Presentation"}
-                </Button>
-              ))}
-            </div>
+            <Tabs
+              onValueChange={(value) => {
+                onModeChange({ ...mode, fileType: value === "presentation" ? value : "document" });
+              }}
+              value={mode.fileType}
+            >
+              <TabsList className="grid w-full grid-cols-2 sm:w-72">
+                <TabsTrigger disabled={disabled} value="document">
+                  Document
+                </TabsTrigger>
+                <TabsTrigger disabled={disabled} value="presentation">
+                  Presentation
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
         </div>
       ) : (
@@ -448,37 +420,6 @@ function ComposeStep({
         />
       )}
     </div>
-  );
-}
-
-interface ModeButtonProps {
-  active: boolean;
-  description: string;
-  disabled: boolean;
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-}
-
-function ModeButton({ active, description, disabled, icon, label, onClick }: ModeButtonProps) {
-  return (
-    <Button
-      aria-checked={active}
-      className={cn(
-        "h-auto min-w-0 items-start justify-start rounded-lg p-3 text-left whitespace-normal",
-        active ? "border-primary bg-primary/5" : "hover:bg-muted/60",
-      )}
-      disabled={disabled}
-      onClick={onClick}
-      role="radio"
-      type="button"
-      variant="outline"
-    >
-      <span className="flex items-center gap-2 text-sm font-medium">
-        {icon} {label}
-      </span>
-      <span className="text-muted-foreground mt-1 block text-xs">{description}</span>
-    </Button>
   );
 }
 
@@ -514,7 +455,7 @@ function TemplateCatalog({
           Refresh
         </Button>
       </div>
-      <ScrollArea className="h-64 rounded-md border">
+      <ScrollArea className="h-[min(16rem,40dvh)] rounded-md border">
         <div className="space-y-1 p-1.5">
           {catalogStatus === "loading" ? (
             <div className="text-muted-foreground flex h-24 items-center justify-center gap-2 text-sm">

@@ -158,7 +158,7 @@ async def test_stale_executor_cannot_complete_a_reclaimed_task() -> None:
     assert session.rollbacks == 1
 
 
-async def test_pending_task_can_be_discarded_after_rate_limit_rejection() -> None:
+async def test_pending_task_can_be_discarded_before_execution() -> None:
     row = _task(request_hash="0" * 64)
     session = _Session(row)
 

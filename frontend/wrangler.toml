@@ -32,3 +32,21 @@ head_sampling_rate = 1
 enabled = true
 head_sampling_rate = 1
 invocation_logs = true
+
+# Smart Create limits are isolated Worker bindings. They do not modify the
+# zone's shared WAF/rate-limit rules or any other service.
+[[ratelimits]]
+name = "SMART_PROPOSAL_RATE_LIMITER"
+namespace_id = "26080201"
+
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
+[[ratelimits]]
+name = "SMART_CREATE_RATE_LIMITER"
+namespace_id = "26080202"
+
+  [ratelimits.simple]
+  limit = 5
+  period = 60

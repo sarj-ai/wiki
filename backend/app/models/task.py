@@ -124,25 +124,3 @@ class Task(Base):
         server_default=text("now()"),
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
-class RateLimitBucket(Base):
-    __tablename__ = "rate_limit_buckets"
-    __table_args__ = (
-        CheckConstraint("count > 0", name="ck_rate_limit_buckets_count_positive"),
-        Index("ix_rate_limit_buckets_expires_at", "expires_at"),
-    )
-
-    principal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
-    operation: Mapped[str] = mapped_column(Text, primary_key=True)
-    window_start: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        primary_key=True,
-    )
-    count: Mapped[int] = mapped_column(Integer, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=text("now()"),
-    )

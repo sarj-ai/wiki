@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
+from datetime import timedelta
 from typing import override
 from uuid import uuid4
 
-import pytest
+from pydantic import JsonValue
 
+from app.cache.service import CacheNamespace, CacheService
 from app.drive.schemas import (
     MIME_DOC,
     MIME_FOLDER,
@@ -18,7 +21,7 @@ from app.drive.schemas import (
 )
 from app.drive.service import DriveService
 from app.identifiers import DriveId, FileId
-from app.templates.service import DriveTemplateCatalogService, clear_template_catalog_cache
+from app.templates.service import DriveTemplateCatalogService
 
 
 class _TemplateDrive(DriveService):
@@ -70,9 +73,45 @@ class _TemplateDrive(DriveService):
         raise NotImplementedError
 
 
-@pytest.fixture(autouse=True)
-def _clear_cache() -> None:
-    clear_template_catalog_cache()
+class _Cache(CacheService):
+    def __init__(self) -> None:
+        self.values: dict[tuple[CacheNamespace, str], JsonValue] = {}
+
+    @override
+    async def get(self, namespace: CacheNamespace, key: str) -> JsonValue | None:
+        return self.values.get((namespace, key))
+
+    @override
+    async def get_many(self, namespace: CacheNamespace, keys: list[str]) -> dict[str, JsonValue]:
+        return {
+            key: value for key in keys if (value := self.values.get((namespace, key))) is not None
+        }
+
+    @override
+    async def put(
+        self,
+        namespace: CacheNamespace,
+        key: str,
+        value: JsonValue,
+        *,
+        ttl: timedelta,
+    ) -> None:
+        self.values[namespace, key] = value
+
+    @override
+    async def put_many(
+        self,
+        namespace: CacheNamespace,
+        values: Mapping[str, JsonValue],
+        *,
+        ttl: timedelta,
+    ) -> None:
+        for key, value in values.items():
+            self.values[namespace, key] = value
+
+    @override
+    async def delete(self, namespace: CacheNamespace, key: str) -> None:
+        self.values.pop((namespace, key), None)
 
 
 async def test_discovers_only_native_templates_under_exact_root_folder() -> None:
@@ -91,7 +130,7 @@ async def test_discovers_only_native_templates_under_exact_root_folder() -> None
 
 async def test_caches_catalog_until_explicit_refresh() -> None:
     drive = _TemplateDrive()
-    service = DriveTemplateCatalogService(drive=drive, user_id=uuid4())
+    service = DriveTemplateCatalogService(drive=drive, user_id=uuid4(), cache=_Cache())
 
     first = await service.list_templates()
     drive._children[FileId("templates")].append(_node("memo", "Memo", MIME_DOC, "templates"))

@@ -1,11 +1,9 @@
 import * as z from "zod";
 
+import { createSmartFileAction, proposeSmartFileAction } from "@/app/actions/smart-create-actions";
+import { runAction } from "@/lib/action-client";
 import { makeCall } from "@/lib/api-client";
-import {
-  createSmartFileFilesSmartPost,
-  createSmartProposalFilesSmartProposalPost,
-  listTemplatesTemplatesGet,
-} from "@/lib/generated/sdk.gen";
+import { listTemplatesTemplatesGet } from "@/lib/generated/sdk.gen";
 import type {
   CreationSource,
   DriveTemplate,
@@ -90,20 +88,17 @@ export interface SmartProposalInput {
 
 export const smartCreateApi = {
   create: async (plan: SmartCreationPlan, idempotencyKey: string): Promise<SmartCreateResult> => {
-    const result = await makeCall()(
-      createSmartFileFilesSmartPost,
-      {
-        body: {
-          alias: plan.alias,
-          emoji: plan.emoji,
-          name: plan.name,
-          parent_folder_id: plan.destination.folderId,
-          source: serializeSource(plan.source),
-        },
-        headers: { "Idempotency-Key": idempotencyKey },
-      },
-      ZCreateResult,
+    const body = JSON.stringify({
+      alias: plan.alias,
+      emoji: plan.emoji,
+      name: plan.name,
+      parent_folder_id: plan.destination.folderId,
+      source: serializeSource(plan.source),
+    });
+    const responseBody = await runAction(
+      async () => await createSmartFileAction(body, idempotencyKey),
     );
+    const result = ZCreateResult.parse(JSON.parse(responseBody));
     return {
       file: {
         canEdit: result.file.can_edit,
@@ -137,21 +132,16 @@ export const smartCreateApi = {
     }));
   },
 
-  propose: async (input: SmartProposalInput, signal?: AbortSignal): Promise<SmartCreationPlan> => {
-    const result = await makeCall()(
-      createSmartProposalFilesSmartProposalPost,
-      {
-        body: {
-          description: input.description,
-          file_type: input.fileType,
-          invoking_drive_id: input.invokingDriveId ?? null,
-          invoking_folder_id: input.invokingFolderId ?? null,
-          kind: "ai",
-        },
-        ...(signal === undefined ? {} : { signal }),
-      },
-      ZProposal,
-    );
+  propose: async (input: SmartProposalInput): Promise<SmartCreationPlan> => {
+    const body = JSON.stringify({
+      description: input.description,
+      file_type: input.fileType,
+      invoking_drive_id: input.invokingDriveId ?? null,
+      invoking_folder_id: input.invokingFolderId ?? null,
+      kind: "ai",
+    });
+    const responseBody = await runAction(async () => await proposeSmartFileAction(body));
+    const result = ZProposal.parse(JSON.parse(responseBody));
     return {
       alias: result.alias,
       destination: {

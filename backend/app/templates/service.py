@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
-from dataclasses import dataclass
-from time import monotonic
+from datetime import timedelta
 from typing import cast, override
 from uuid import UUID
 
 from loguru import logger
+from pydantic import ValidationError
 
+from app.cache.service import CacheNamespace, CacheService
 from app.drive.schemas import MIME_DOC, MIME_FOLDER, MIME_SLIDE, DriveSummary
 from app.drive.service import DriveService
 from app.identifiers import FileId
@@ -17,18 +18,11 @@ from app.templates.schemas import TemplateCatalogRead, TemplateMimeType, Templat
 
 
 _TEMPLATES_FOLDER_NAME = "Templates"
-_CACHE_TTL_SECONDS = 30.0
+_CACHE_TTL = timedelta(seconds=30)
 _MAX_VISITED_FOLDERS_PER_DRIVE = 500
 _SUPPORTED_MIME_TYPES = frozenset({MIME_DOC, MIME_SLIDE})
 
 
-@dataclass(frozen=True)
-class _CacheEntry:
-    catalog: TemplateCatalogRead
-    expires_at: float
-
-
-_cache: dict[UUID, _CacheEntry] = {}
 _singleflight = Singleflight()
 
 
@@ -38,15 +32,26 @@ class TemplateCatalogService(ABC):
 
 
 class DriveTemplateCatalogService(TemplateCatalogService):
-    def __init__(self, *, drive: DriveService, user_id: UUID) -> None:
+    def __init__(
+        self,
+        *,
+        drive: DriveService,
+        user_id: UUID,
+        cache: CacheService | None = None,
+    ) -> None:
         self._drive = drive
         self._user_id = user_id
+        self._cache = cache
 
     @override
     async def list_templates(self, *, refresh: bool = False) -> TemplateCatalogRead:
-        cached = _cache.get(self._user_id)
-        if not refresh and cached is not None and cached.expires_at > monotonic():
-            return cached.catalog
+        if not refresh and self._cache is not None:
+            cached = await self._cache.get(CacheNamespace.TEMPLATE_CATALOG, str(self._user_id))
+            if cached is not None:
+                try:
+                    return TemplateCatalogRead.model_validate(cached)
+                except ValidationError:
+                    await self._cache.delete(CacheNamespace.TEMPLATE_CATALOG, str(self._user_id))
         return await _singleflight.do(str(self._user_id), self._discover_and_cache)
 
     async def _discover_and_cache(self) -> TemplateCatalogRead:
@@ -74,11 +79,13 @@ class DriveTemplateCatalogService(TemplateCatalogService):
             )
         )
         catalog = TemplateCatalogRead(templates=templates)
-        _cache[self._user_id] = _CacheEntry(
-            catalog=catalog,
-            expires_at=monotonic() + _CACHE_TTL_SECONDS,
-        )
-        self._prune_expired_entries()
+        if self._cache is not None:
+            await self._cache.put(
+                CacheNamespace.TEMPLATE_CATALOG,
+                str(self._user_id),
+                catalog.model_dump(mode="json"),
+                ttl=_CACHE_TTL,
+            )
         return catalog
 
     async def _discover_drive(self, drive: DriveSummary) -> list[TemplateRead]:
@@ -133,14 +140,3 @@ class DriveTemplateCatalogService(TemplateCatalogService):
                 drive_id=drive.id,
             )
         return templates
-
-    @staticmethod
-    def _prune_expired_entries() -> None:
-        now = monotonic()
-        for user_id, entry in list(_cache.items()):
-            if entry.expires_at <= now:
-                _cache.pop(user_id, None)
-
-
-def clear_template_catalog_cache() -> None:
-    _cache.clear()

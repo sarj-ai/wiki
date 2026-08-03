@@ -6,18 +6,12 @@ import uuid
 
 from fastapi import Response
 from pydantic import BaseModel
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.files.schemas import FileResponse
 from app.files.service import FilesService
 from app.identifiers import FileId, IdempotencyKey, TaskId
 from app.models.user import User
-from app.rate_limits.service import (
-    DatabaseRateLimitExceededError,
-    RateLimitPolicy,
-    RateLimitService,
-)
 from app.sidebar.cache import SidebarCacheService
 from app.smart_create.creation import SmartFileCreationService
 from app.smart_create.router import create_smart_file
@@ -97,7 +91,6 @@ class _Tasks(TaskService):
         self.task_id = TaskId(uuid.uuid4())
         self.created = created
         self.lease_duration: timedelta | None = None
-        self.discarded = False
 
     @override
     async def create_or_replay(
@@ -141,7 +134,6 @@ class _Tasks(TaskService):
 
     @override
     async def discard_pending(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> bool:
-        self.discarded = True
         return True
 
     @override
@@ -164,18 +156,6 @@ class _Tasks(TaskService):
             started_at=datetime.now(UTC),
             finished_at=datetime.now(UTC),
         )
-
-
-class _RateLimits(RateLimitService):
-    def __init__(self, *, reject: bool = False) -> None:
-        self.calls = 0
-        self.reject = reject
-
-    @override
-    async def consume(self, principal_id: uuid.UUID, policy: RateLimitPolicy) -> None:
-        self.calls += 1
-        if self.reject:
-            raise DatabaseRateLimitExceededError(retry_after=60)
 
 
 class _Creation(SmartFileCreationService):
@@ -204,7 +184,6 @@ def _user() -> User:
 async def _create(
     *,
     tasks: _Tasks,
-    rate_limits: _RateLimits,
     creation: _Creation,
     response: Response | None = None,
 ) -> SmartCreateResult:
@@ -214,7 +193,6 @@ async def _create(
         response=response or Response(),
         user=_user(),
         tasks=tasks,
-        rate_limits=rate_limits,
         creation=creation,
         files=cast("FilesService", object()),
         db=cast("AsyncSession", None),
@@ -222,52 +200,30 @@ async def _create(
     )
 
 
-async def test_concurrent_replay_waits_for_result_without_charging_or_executing() -> None:
+async def test_concurrent_replay_waits_for_result_without_executing() -> None:
     tasks = _Tasks(created=False)
-    rate_limits = _RateLimits()
     creation = _Creation()
     response = Response()
 
     result = await _create(
         tasks=tasks,
-        rate_limits=rate_limits,
         creation=creation,
         response=response,
     )
 
     assert result.file.id == FileId("created")
-    assert rate_limits.calls == 0
     assert creation.calls == 0
     assert response.headers["Idempotency-Replayed"] == "true"
 
 
 async def test_new_task_uses_lease_longer_than_request_timeout() -> None:
     tasks = _Tasks(created=True)
-    rate_limits = _RateLimits()
     creation = _Creation()
 
     result = await _create(
         tasks=tasks,
-        rate_limits=rate_limits,
         creation=creation,
     )
 
     assert result.file.id == FileId("created")
-    assert rate_limits.calls == 1
     assert tasks.lease_duration == timedelta(minutes=6)
-
-
-async def test_rate_limit_rejection_discards_unstarted_task_for_safe_retry() -> None:
-    tasks = _Tasks(created=True)
-    creation = _Creation()
-
-    with pytest.raises(DatabaseRateLimitExceededError):
-        await _create(
-            tasks=tasks,
-            rate_limits=_RateLimits(reject=True),
-            creation=creation,
-        )
-
-    assert tasks.discarded is True
-    assert tasks.lease_duration is None
-    assert creation.calls == 0
