@@ -32,22 +32,6 @@ def main(
     standards_current: str | None = None,
     base_config: str | None = None,
 ) -> int:
-    """Compare a baseline to the version on the pull request.
-
-    New-rule exemptions are earned, never asserted: they open only when the
-    `version` key parsed out of the base and current `.sarj-standards.toml`
-    (passed via --standards-base/--standards-current) actually differs — a
-    comment-only or dest-only edit to that file changes nothing. Even then the
-    exemption is scoped to rules adopted at that bump: with --base-config (the
-    canonical strict config as of the base commit), a rule id that already
-    appears there was already enforced, so its findings are real growth, not
-    upgrade absorption. Without a version delta, a rule at zero suppressions
-    stays at zero.
-
-    Returns:
-        Nonzero when any current count exceeds its baseline count.
-
-    """
     base = _load(base_path)
     current = _load(current_path)
     allow_new_rules = _versions_differ(standards_base, standards_current)
@@ -76,12 +60,6 @@ def main(
 
 
 def check_initial(*, baseline_path: str, changed_path: str, prefix: str) -> int:
-    """Reject initial exemptions for files changed by the introducing PR.
-
-    Returns:
-        Nonzero when a changed file receives an initial exemption.
-
-    """
     baseline = _parse(baseline_path)
     changed = set(Path(changed_path).read_text(encoding="utf-8").splitlines())
     exempted_changed = sorted(

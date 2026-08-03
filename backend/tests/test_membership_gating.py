@@ -55,12 +55,6 @@ class _FakeExtras:
 
 
 class _FakeFiles:
-    """Stands in for ``FilesService.get`` — the doc-icon access guard.
-
-    Resolves ``ACCESSIBLE_DOC`` and rejects everything else the way the
-    real service rejects out-of-scope files (404 ``FileNotInScopeError``).
-    """
-
     async def get(self, file_id: str) -> FileResponse:
         if file_id == ACCESSIBLE_DOC:
             return FileResponse(

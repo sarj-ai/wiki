@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-// Link-preview crawlers receive only this constant card. User-agent checks are
-// spoofable, so the middleware never mounts the authenticated app or reflects a URL.
+// Return only static content to spoofable link-preview user agents.
 const UNFURL_CRAWLERS =
   /slackbot|discordbot|twitterbot|facebookexternalhit|telegrambot|whatsapp|linkedinbot|skypeuripreview|google-pagerenderer/i;
 

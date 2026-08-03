@@ -25,12 +25,6 @@ _BASELINE = Path(__file__).resolve().parents[1] / "python-standards-baseline.jso
 
 
 def main(paths: list[str]) -> int:
-    """Dispatch paths to all current registries without a handwritten rule list.
-
-    Returns:
-        The highest exit status returned by an applicable registry.
-
-    """
     grouped = group_paths(paths)
     statuses = [
         _run_python(grouped.python),
@@ -41,12 +35,6 @@ def main(paths: list[str]) -> int:
 
 
 def verify_python_baseline(paths: list[str]) -> int:
-    """Compare the Python baseline with independently generated diagnostics.
-
-    Returns:
-        Nonzero when the committed baseline is stale or inflated.
-
-    """
     python_paths = group_paths(paths).python
     with TemporaryDirectory(prefix="wiki-python-baseline-") as directory:
         generated = Path(directory) / "baseline.json"

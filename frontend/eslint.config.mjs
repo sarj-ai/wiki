@@ -29,11 +29,7 @@ const configsAsErrors = (configs) =>
     rules: rulesAsErrors(config.rules),
   }));
 
-// eslint.strict.mjs registers `react` wrapped in @eslint/compat's
-// fixupPluginRules (eslint-plugin-react 7.37.5 still uses rule-context APIs
-// ESLint 10 removed). eslint-config-next registers the same package unwrapped;
-// two different objects for one namespace is a hard ConfigError. Drop next's
-// definition so every react/* rule resolves against the fixed-up instance.
+// Use the strict config's compatibility-wrapped React plugin to avoid duplicate namespaces.
 const withoutReactPlugin = (configs) =>
   configs.map((config) => {
     if (!config.plugins || !("react" in config.plugins)) return config;
@@ -65,8 +61,7 @@ export default defineConfig([
   },
   ...configsAsErrors(tseslint.configs.strictTypeChecked),
   ...configsAsErrors(tseslint.configs.stylisticTypeChecked),
-  // Disables ESLint rules that conflict with Prettier. Must come last among
-  // the broad config sets — scoped overrides below it still win.
+  // Keep Prettier last among broad configs while allowing scoped overrides below.
   prettier,
   {
     rules: {
@@ -80,9 +75,7 @@ export default defineConfig([
           varsIgnorePattern: "^_",
         },
       ],
-      // strict-type-checked sets allowNumber:false, which fires on every
-      // dimension/percent we interpolate into a className or inline style.
-      // Numbers and booleans coerce predictably; nullish/any are still bad.
+      // Permit predictable number and boolean interpolation while rejecting nullish and any values.
       "@typescript-eslint/restrict-template-expressions": [
         "error",
         { allowBoolean: true, allowNumber: true },
@@ -106,13 +99,7 @@ export default defineConfig([
   },
   {
     rules: {
-      // Replaces (and must therefore restate) the canonical eslint.strict.mjs
-      // selectors, plus the useCallback/useMemo ban that config shipped before
-      // 9.5.0 dropped it without a replacement note. This repo compiles with
-      // the React Compiler (next.config.ts `reactCompiler: true`), which
-      // memoizes automatically — hand-written useCallback/useMemo is dead
-      // weight the compiler has to work around, so the ban stays local until
-      // the canonical config restores it.
+      // Preserve canonical restrictions and let the React Compiler own memoization.
       "no-restricted-syntax": [
         "error",
         {
@@ -135,10 +122,7 @@ export default defineConfig([
       ],
     },
   },
-  // sonarjs threshold rules (cognitive-complexity, no-duplicate-string) are
-  // deliberately absent: complexity/duplication thresholds are vetoed org-wide
-  // as code-smell heuristics, not correctness rules — same rationale as the
-  // C901/PLR091x block in backend/.ruff-strict.toml.
+  // Exclude heuristic complexity and duplication thresholds while retaining correctness rules.
   {
     plugins: { sonarjs },
     rules: {
@@ -156,9 +140,7 @@ export default defineConfig([
     plugins: { unicorn },
     rules: {
       "unicorn/error-message": "error",
-      // eslint-plugin-unicorn 65 extended filename-case to lint directory
-      // segments; exempt Next.js dynamic route dirs (e.g. `[driveId]`), whose
-      // bracketed camelCase names are a framework convention, not a style choice.
+      // Exempt Next.js bracketed dynamic route directories from filename casing.
       "unicorn/filename-case": [
         "error",
         { cases: { kebabCase: true, pascalCase: true }, ignore: [String.raw`^\[.*\]$`] },
@@ -203,10 +185,7 @@ export default defineConfig([
     ...testingLibraryReact,
     rules: rulesAsErrors(testingLibraryReact.rules),
   },
-  // The canonical eslint.strict.mjs test override justifies itself with type
-  // assertions (test doubles crossing type boundaries) but also switches off
-  // four async/scoping rules that justification does not cover. Re-enable
-  // those four for tests; the assertion rules stay relaxed as documented.
+  // Restore async and scoping rules that test-double type assertions do not require disabling.
   {
     files: ["**/*.test.{ts,tsx}"],
     rules: {
@@ -222,20 +201,13 @@ export default defineConfig([
       "@typescript-eslint/naming-convention": reactNamingConvention,
     },
   },
-  // Config-dependent Standards rule, inert unless wired per-repo: outbound
-  // HTTP goes through src/lib/api-client.ts (matched by the rule's default
-  // `*-client.ts` allow pattern). Its sibling
-  // `@sarj/no-storage-in-stateless-modules` stays unwired on purpose: it is a
-  // no-op without a declared stateless-module list, and this repo has none —
-  // the backend owns all storage, and the Postgres overlay there is
-  // droppable-by-design rather than stateless.
+  // Require outbound HTTP to use the repository's *-client.ts modules.
   {
     rules: {
       "@sarj/no-raw-fetch-outside-clients": "error",
     },
   },
-  // next.config.ts evaluates before src/ modules can load, and env.ts IS
-  // the validated env module the rule points at.
+  // Allow environment access in startup configuration and the validated environment module.
   {
     files: ["next.config.ts", "src/lib/env.ts"],
     rules: {
