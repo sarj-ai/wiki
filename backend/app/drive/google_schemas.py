@@ -22,7 +22,7 @@ class GoogleFileCapabilities(_GoogleModel):
 class GoogleFile(_GoogleModel):
     id: FileId
     name: str
-    mime_type: str = Field(alias="mimeType")  # sarj-noqa: SARJ006 — raw Google API MIME type
+    mime_type: str = Field(alias="mimeType")
     drive_id: DriveId | None = Field(default=None, alias="driveId")
     parents: list[FileId] = Field(default_factory=list)
     modified_time: str | None = Field(default=None, alias="modifiedTime")
@@ -44,7 +44,7 @@ class GoogleFileProbe(_GoogleModel):
 
 class GoogleFileMetadata(_GoogleModel):
     id: FileId
-    mime_type: str = Field(alias="mimeType")  # sarj-noqa: SARJ006 — raw Google API MIME type
+    mime_type: str = Field(alias="mimeType")
 
 
 class GoogleFileLocation(_GoogleModel):
