@@ -2,11 +2,7 @@ from typing import NewType
 import uuid
 
 
-# Nominal IDs catch accidental cross-resource calls during static analysis while
-# remaining exactly ``str`` at runtime.  Keep validation at API/provider
-# boundaries: Google IDs are opaque and have no documented format to reimplement.
-# Folders deliberately use FileId because Drive models folders as files.  The
-# app's sole UUID identity domain is User.id, so UUID already brands it strongly.
+# NewType prevents cross-resource swaps without changing runtime values; opaque Google IDs remain validated at boundaries.
 FileId = NewType("FileId", str)
 DriveId = NewType("DriveId", str)
 GoogleUserId = NewType("GoogleUserId", str)

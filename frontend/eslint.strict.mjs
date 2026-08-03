@@ -610,6 +610,13 @@ const config = [
       "react/no-unstable-nested-components": "error",
       "react-hooks/exhaustive-deps": "error",
       "react-hooks/rules-of-hooks": "error",
+      // Runtime correctness rules that do not require enabling React Compiler.
+      "react-hooks/error-boundaries": "error",
+      "react-hooks/globals": "error",
+      "react-hooks/immutability": "error",
+      "react-hooks/purity": "error",
+      "react-hooks/refs": "error",
+      "react-hooks/set-state-in-render": "error",
       "react/forbid-elements": [
         "error",
         {
@@ -673,6 +680,8 @@ const config = [
       "react/jsx-no-duplicate-props": "error",
       "react/jsx-no-target-blank": "error",
       "react/jsx-no-undef": "error",
+      "react/no-object-type-as-default-prop": "error",
+      "react/no-unknown-property": "error",
       "react/void-dom-elements-no-children": "error",
       "react/jsx-fragments": "error",
       "react/jsx-no-script-url": "error",
@@ -901,7 +910,7 @@ const config = [
       "no-shadow": "off",
       "@typescript-eslint/no-shadow": "error",
 
-      // The COMPLETE @sarj/eslint-plugin strict ruleset, every rule at `error`.
+      // The COMPLETE @sarj/eslint-plugin strict ruleset at each rule's declared strict severity.
       //
       // No version pin and no per-rule notes: a hand-written "@2.7.0" claim went
       // stale twice, and a declared list of tier deviations outlived the last
@@ -909,7 +918,7 @@ const config = [
       // packages/typescript/tests/strict-config-sync.test.ts fails if this block
       // omits a shipped rule, names one that does not exist, or sets a tier the
       // plugin's own `configs.strict` does not. Each rule's measurements live in
-      // docs/rules/<rule>.md, which its `meta.docs.url` points at.
+      // the paired tests, which its `meta.docs.url` points at.
       //
       // A `files:`-scoped block further down turns no-raw-env off for env
       // source-of-truth files; that is an override, not a tier change.
@@ -919,11 +928,13 @@ const config = [
       "@sarj/prefer-schema-for-api-payload": "error",
       "@sarj/no-client-side-data-fetching": "error",
       "@sarj/prefer-server-actions": "error",
+      "@sarj/prefer-single-sentence-comment": "warn",
       "@sarj/no-unnecessary-use-client": "error",
       "@sarj/no-enum": "error",
       "@sarj/no-raw-env": "error",
       "@sarj/no-sentinel-return-on-catch": "error",
       "@sarj/no-log-only-catch": "error",
+      "@sarj/no-long-comment": "error",
       "@sarj/no-insecure-random-id": "error",
       "@sarj/no-json-stringify-error": "error",
       "@sarj/no-string-concat-in-loop": "error",
@@ -960,6 +971,7 @@ const config = [
       "@sarj/no-type-member-comment-wall": "error",
       "@sarj/no-repeated-string-literal": "error",
       "@sarj/no-tautological-expect": "error",
+      "@sarj/no-typed-doc-sections": "error",
       "@sarj/require-interface-for-injected-service": "error",
       "@sarj/no-conditional-in-test": "error",
       "@sarj/no-unsafe-mock-casting": "error",
@@ -1005,6 +1017,8 @@ const config = [
     files: ["**/components/ui/**", "**/components/design-system/**"],
     rules: {
       "react/forbid-elements": "off",
+      // Prevent design-system primitives from becoming implicit submit buttons.
+      "react/button-has-type": "error",
     },
   },
 

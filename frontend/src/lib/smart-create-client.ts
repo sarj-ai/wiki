@@ -24,7 +24,7 @@ const ZTemplate = z
     drive_id: z.string(),
     drive_name: z.string(),
     file_id: z.string(),
-    mime_type: z.union([z.literal(MIME_DOC), z.literal(MIME_SLIDE)]),
+    mime_type: z.enum([MIME_DOC, MIME_SLIDE]),
     modified_time: z.string(),
     name: z.string(),
   })
@@ -35,7 +35,7 @@ const ZSource = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("template"),
-      mime_type: z.union([z.literal(MIME_DOC), z.literal(MIME_SLIDE)]),
+      mime_type: z.enum([MIME_DOC, MIME_SLIDE]),
       template_drive_id: z.string(),
       template_file_id: z.string(),
       template_modified_time: z.string(),

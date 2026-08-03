@@ -14,8 +14,7 @@ export async function generateMetadata({
     const file = await serverWikiApi.getFile(driveId);
     return docMetadata(displayFileName(file.name, file.mimeType));
   } catch (error) {
-    // The middleware gives unfurl crawlers a static generic card. Authenticated
-    // page failures inherit generic metadata and never infer a title from an ID.
+    // Keep generic metadata when authenticated title lookup fails.
     console.error("Authenticated document metadata lookup failed", error);
     return {};
   }

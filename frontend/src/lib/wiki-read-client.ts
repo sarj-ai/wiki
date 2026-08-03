@@ -16,7 +16,7 @@ import {
 } from "@/app/actions/wiki-actions";
 import { runAction } from "@/lib/action-client";
 
-/** Browser-safe read facade. Every request crosses the authenticated Server Action boundary. */
+/** Browser-safe reads through authenticated Server Actions. */
 export const wikiReadApi = {
   driveSearch: async (query: string, limitPerDrive?: number) =>
     await runAction(async () => await searchDriveAction(query, limitPerDrive)),
