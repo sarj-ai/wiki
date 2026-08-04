@@ -113,7 +113,7 @@ export function WikiToolbar({
         {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         {copied ? "Copied" : "Copy link"}
       </Button>
-      {canEdit && mimeType === MIME_DOC ? (
+      {mimeType === MIME_DOC ? (
         <ReorganizeDocument
           driveId={driveId}
           fileId={fileId}

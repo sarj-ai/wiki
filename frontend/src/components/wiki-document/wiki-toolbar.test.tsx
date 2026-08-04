@@ -34,7 +34,7 @@ describe("WikiToolbar", () => {
 
     expect(view).toContain("reader:read-only-file");
     expect(view).not.toContain("editor:read-only-file");
-    expect(view).not.toContain("reorganize:read-only-file");
+    expect(view).toContain("reorganize:read-only-file");
   });
 
   it("routes editors to short-link management", () => {
