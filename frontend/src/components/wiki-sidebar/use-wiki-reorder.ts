@@ -18,6 +18,7 @@ import { expandPath } from "@/hooks/use-expanded-folders";
 import { useBulkSetSortOrders, useMoveFile } from "@/hooks/use-wiki-mutations";
 import { wikiKeys } from "@/hooks/use-wiki-tree";
 import { ApiError } from "@/lib/api-error";
+import { validateCrossDriveMove } from "@/lib/drive-move-validation";
 import { optimisticMoveFile } from "@/lib/wiki-cache";
 import type { DriveNode, DriveTree, SortOrder } from "@/types/wiki";
 import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
@@ -236,6 +237,16 @@ export function useWikiReorder(): WikiReorder {
       destinationDriveId === sourceDriveId &&
       newParentFolderId === (sourceParentFolderId ?? sourceDriveId)
     ) {
+      return;
+    }
+
+    const crossDriveError = validateCrossDriveMove({
+      destinationDriveId,
+      mimeType: node.mimeType,
+      sourceDriveId,
+    });
+    if (crossDriveError !== null) {
+      toast.error(crossDriveError);
       return;
     }
 

@@ -99,7 +99,14 @@ class _Cache(SidebarCacheService):
                         mime_type=MIME_FOLDER,
                         parent_id=FileId("product"),
                         modified_time=None,
-                    )
+                    ),
+                    DriveNode(
+                        id=FileId("health-relationships"),
+                        name="Health & Relationships",
+                        mime_type=MIME_FOLDER,
+                        parent_id=FileId("product"),
+                        modified_time=None,
+                    ),
                 ],
                 files=[],
                 files_complete=True,
@@ -230,6 +237,55 @@ async def test_vertex_failure_uses_deterministic_fallback() -> None:
     assert proposal.name == "Quarterly product roadmap"
     assert proposal.emoji == "📝"
     assert proposal.destination.folder_id == "roadmaps"
+
+
+@pytest.mark.parametrize(
+    ("name", "emoji", "alias", "description", "expected_destination"),
+    [
+        (
+            "Lunar greenhouse maintenance checklist",
+            "🌱",
+            "lunar-greenhouse",
+            "Plant health reviews, irrigation sensors, and soil moisture calibration",
+            "roadmaps",
+        ),
+        (
+            "Annual medical checkup plan",
+            "🩺",
+            "medical-checkup",
+            "Annual medical checkup plan with doctor appointments",
+            "health-relationships",
+        ),
+    ],
+    ids=["rejects-ambiguous-overlap", "accepts-explicit-category-evidence"],
+)
+async def test_sensitive_destination_requires_explicit_category_evidence(
+    name: str,
+    emoji: str,
+    alias: str,
+    description: str,
+    expected_destination: str,
+) -> None:
+    service = _service(
+        GeneratedProposal(
+            name=name,
+            emoji=emoji,
+            alias=alias,
+            destination_folder_id=FileId("health-relationships"),
+        )
+    )
+
+    proposal = await service.propose(
+        AIMode(
+            kind="ai",
+            description=description,
+            file_type="document",
+            invoking_folder_id=FileId("roadmaps"),
+            invoking_drive_id=DriveId("product"),
+        )
+    )
+
+    assert proposal.destination.folder_id == expected_destination
 
 
 async def test_reorganization_proposes_folder_only_within_current_drive() -> None:
