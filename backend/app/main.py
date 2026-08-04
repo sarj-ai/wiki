@@ -18,6 +18,7 @@ from app.auth.router import router as auth_router
 from app.bootstrap.router import router as bootstrap_router
 from app.config import settings
 from app.database import async_session, close_connector
+from app.drive.errors import DrivePermissionsError
 from app.drive.search_router import router as drive_search_router
 from app.extras.router import router as extras_router
 from app.files.errors import FilesError
@@ -78,6 +79,17 @@ async def global_exception_handler(
 async def files_error_handler(
     _request: Request,
     exc: FilesError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.http_status,
+        content={"code": exc.code, "detail": str(exc)},
+    )
+
+
+@app.exception_handler(DrivePermissionsError)
+async def drive_permissions_error_handler(
+    _request: Request,
+    exc: DrivePermissionsError,
 ) -> JSONResponse:
     return JSONResponse(
         status_code=exc.http_status,

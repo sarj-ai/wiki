@@ -28,6 +28,7 @@ from app.smart_create.service import (
     GeneratedProposal,
     GeneratedReorganization,
     ProposalGenerator,
+    ReorganizationEvidence,
     ReorganizationGenerator,
 )
 from app.templates.schemas import TemplateCatalogRead, TemplateMimeType, TemplateRead
@@ -35,6 +36,11 @@ from app.templates.service import TemplateCatalogService
 
 
 class _Drive(DriveService):
+    def __init__(
+        self, document_text: str | None = "Product roadmap priorities and milestones"
+    ) -> None:
+        self.document_text = document_text
+
     @override
     async def list_drives(self) -> list[DriveSummary]:
         return [
@@ -65,6 +71,10 @@ class _Drive(DriveService):
         self, file_id: FileId, query: str, *, mime_type: str | None = None
     ) -> SnippetResult:
         raise NotImplementedError
+
+    @override
+    async def fetch_document_text(self, file_id: FileId) -> str | None:
+        return self.document_text
 
 
 class _Cache(SidebarCacheService):
@@ -149,14 +159,18 @@ class _Generator(ProposalGenerator):
 class _ReorganizationGenerator(ReorganizationGenerator):
     def __init__(self, proposal: GeneratedReorganization | Exception) -> None:
         self.proposal = proposal
+        self.evidence: ReorganizationEvidence | None = None
 
     @override
     async def generate(
         self,
         *,
-        file_name: str,
+        current: ProposalDestination,
+        evidence: ReorganizationEvidence,
         folders: list[ProposalDestination],
     ) -> GeneratedReorganization:
+        del current, folders
+        self.evidence = evidence
         if isinstance(self.proposal, Exception):
             raise self.proposal
         return self.proposal
@@ -234,6 +248,21 @@ async def test_reorganization_proposes_folder_only_within_current_drive() -> Non
     assert proposal.suggested_destination.drive_id == "product"
 
 
+async def test_reorganization_truncates_verbose_model_reason() -> None:
+    service = _reorganization_service(
+        GeneratedReorganization(
+            destination_folder_id=FileId("roadmaps"),
+            reason="explanation " * 40,
+        )
+    )
+
+    proposal = await service.propose(FileId("document"))
+
+    assert proposal.reason is not None
+    assert len(proposal.reason) <= 200
+    assert not proposal.reason.endswith(" ")
+
+
 async def test_reorganization_returns_no_suggestion_when_current_folder_is_best() -> None:
     proposal = await _reorganization_service(
         GeneratedReorganization(
@@ -249,6 +278,39 @@ async def test_reorganization_returns_no_suggestion_when_current_folder_is_best(
 async def test_reorganization_reports_generator_failure_instead_of_claiming_best_location() -> None:
     with pytest.raises(ReorganizationUnavailableError):
         await _reorganization_service(RuntimeError("offline")).propose(FileId("document"))
+
+
+async def test_reorganization_requires_exported_document_content() -> None:
+    with pytest.raises(ReorganizationUnavailableError):
+        await _reorganization_service(
+            GeneratedReorganization(
+                destination_folder_id=FileId("product"),
+                reason="Current folder is best.",
+            ),
+            document_text=None,
+        ).propose(FileId("document"))
+
+
+async def test_reorganization_passes_content_and_metadata_to_generator() -> None:
+    generator = _ReorganizationGenerator(
+        GeneratedReorganization(
+            destination_folder_id=FileId("product"),
+            reason="Current folder is best.",
+        )
+    )
+    service = GeminiReorganizationService(
+        db=cast("AsyncSession", object()),
+        drive=_Drive("Customer interview findings and roadmap tradeoffs"),
+        files=cast("FilesService", _Files()),
+        sidebar_cache=_Cache(),
+        generator=generator,
+    )
+
+    await service.propose(FileId("document"))
+
+    assert generator.evidence is not None
+    assert generator.evidence.content == "Customer interview findings and roadmap tradeoffs"
+    assert generator.evidence.file_name == "Quarterly product roadmap"
 
 
 @pytest.mark.parametrize(
@@ -304,10 +366,12 @@ def _service(proposal: GeneratedProposal | Exception) -> GeminiSmartProposalServ
 
 def _reorganization_service(
     proposal: GeneratedReorganization | Exception,
+    *,
+    document_text: str | None = "Product roadmap priorities and milestones",
 ) -> GeminiReorganizationService:
     return GeminiReorganizationService(
         db=cast("AsyncSession", object()),
-        drive=_Drive(),
+        drive=_Drive(document_text),
         files=cast("FilesService", _Files()),
         sidebar_cache=_Cache(),
         generator=_ReorganizationGenerator(proposal),

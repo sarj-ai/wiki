@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.drive.dependencies import drive_service_dep, require_member_drive
-from app.drive.schemas import DriveNode, DriveSummary, DriveTree
+from app.drive.schemas import DriveNode, DrivePermissionsPage, DriveSummary, DriveTree
 from app.drive.service import DriveService
 from app.identifiers import DriveId, FileId
 from app.sidebar.cache import SidebarCacheService
@@ -27,6 +27,20 @@ async def get_drives(
 ) -> list[DriveSummary]:
     response.headers["Cache-Control"] = _CACHE_CONTROL
     return await drive.list_drives()
+
+
+@router.get(
+    "/drives/{drive_id}/permissions",
+    dependencies=[Depends(require_member_drive)],
+)
+async def get_drive_permissions(
+    drive_id: DriveId,
+    response: Response,
+    drive: Annotated[DriveService, Depends(drive_service_dep)],
+    page_token: str | None = None,
+) -> DrivePermissionsPage:
+    response.headers["Cache-Control"] = "private, no-store"
+    return await drive.list_drive_permissions(drive_id, page_token=page_token)
 
 
 @router.get(

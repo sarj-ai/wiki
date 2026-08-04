@@ -106,6 +106,7 @@ def _clear_overrides() -> Iterator[None]:
     ("method", "path"),
     [
         ("GET", f"/sidebar/drives/{MEMBER_DRIVE}/folders"),
+        ("GET", f"/sidebar/drives/{MEMBER_DRIVE}/permissions"),
         ("POST", f"/sidebar/drives/{MEMBER_DRIVE}/refresh"),
     ],
 )
@@ -119,6 +120,7 @@ async def test_member_drive_is_allowed(client: AsyncClient, method: str, path: s
     ("method", "path"),
     [
         ("GET", f"/sidebar/drives/{OTHER_DRIVE}/folders"),
+        ("GET", f"/sidebar/drives/{OTHER_DRIVE}/permissions"),
         ("POST", f"/sidebar/drives/{OTHER_DRIVE}/refresh"),
     ],
 )
@@ -167,3 +169,9 @@ async def test_non_member_never_reaches_the_cache(client: AsyncClient) -> None:
     async with client:
         resp = await client.request("GET", f"/sidebar/drives/{uuid.uuid4()}/folders")
     assert resp.status_code == 404
+
+
+async def test_permissions_response_is_not_cached(client: AsyncClient) -> None:
+    async with client:
+        resp = await client.get(f"/sidebar/drives/{MEMBER_DRIVE}/permissions")
+    assert resp.headers["cache-control"] == "private, no-store"

@@ -10,6 +10,7 @@ import {
   deleteFileFilesFileIdDelete,
   deleteSortOrderExtrasSortOrderDriveIdDelete,
   getDriveFoldersSidebarDrivesDriveIdFoldersGet,
+  getDrivePermissionsSidebarDrivesDriveIdPermissionsGet,
   getDrivesSidebarDrivesGet,
   getFileAliasAliasesFilesFileIdGet,
   getFolderFilesSidebarFoldersFolderIdFilesGet,
@@ -38,6 +39,7 @@ import {
   documentAlias,
   documentAliasForFile,
   driveNode,
+  drivePermissionsPage,
   driveSummary,
   driveTree,
   fileDetail,
@@ -55,6 +57,7 @@ import type {
   DocumentAlias,
   DocumentAliasForFile,
   DriveNode,
+  DrivePermissionsPage,
   DriveSearchResult,
   DriveSummary,
   DriveTree,
@@ -167,6 +170,19 @@ export function makeWikiApi(client?: Client) {
         getDriveFoldersSidebarDrivesDriveIdFoldersGet,
         { path: { drive_id: driveId } },
         driveTree,
+      ),
+
+    getDrivePermissions: async (
+      driveId: string,
+      pageToken?: string,
+    ): Promise<DrivePermissionsPage> =>
+      call(
+        getDrivePermissionsSidebarDrivesDriveIdPermissionsGet,
+        {
+          path: { drive_id: driveId },
+          query: pageToken === undefined ? {} : { page_token: pageToken },
+        },
+        drivePermissionsPage,
       ),
 
     getDrives: async (): Promise<DriveSummary[]> =>

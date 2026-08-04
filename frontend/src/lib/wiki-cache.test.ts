@@ -6,6 +6,7 @@ import {
   fileToNode,
   findCachedNodeMeta,
   injectNewFileIntoCaches,
+  optimisticMoveFile,
   removeFileFromCaches,
 } from "@/lib/wiki-cache";
 import type { DriveNode, DriveTree, FileResponse } from "@/types/wiki";
@@ -111,7 +112,23 @@ describe("injectNewFileIntoCaches", () => {
     expect(after?.files.map((f) => f.parentId)).toEqual(["folder-a"]);
 
     injectNewFileIntoCaches(qc, makeFile({ id: "newfolder", mimeType: MIME_FOLDER }));
-    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.folders).toHaveLength(1);
+    const folder = qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.folders[0];
+    expect(folder?.parentId).toBe("folder-a");
+  });
+
+  it("normalizes a newly-created root folder into the tree root", () => {
+    const qc = new QueryClient();
+    const tree: DriveTree = { driveId: "drive-1", files: [], filesComplete: true, folders: [] };
+    qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
+
+    injectNewFileIntoCaches(
+      qc,
+      makeFile({ id: "root-folder", mimeType: MIME_FOLDER, parentFolderId: "drive-1" }),
+    );
+
+    const folder = qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.folders[0];
+    expect(folder?.id).toBe("root-folder");
+    expect(folder?.parentId).toBeUndefined();
   });
 
   it("splices root-level files into the drive tree's files list", () => {
@@ -230,5 +247,45 @@ describe("removeFileFromCaches", () => {
     removeFileFromCaches(qc, "x", "folder-a", "drive-1", { removeFileQuery: false });
 
     expect(qc.getQueryData(wikiKeys.file("x"))).toEqual(detail);
+  });
+});
+
+describe("optimisticMoveFile", () => {
+  it("moves across drive caches and rolls both sides back", () => {
+    const qc = new QueryClient();
+    const node = makeNode({ id: "moving", name: "Moving" });
+    qc.setQueryData<DriveTree>(wikiKeys.driveTree("drive-1"), {
+      driveId: "drive-1",
+      files: [node],
+      filesComplete: true,
+      folders: [],
+    });
+    qc.setQueryData<DriveTree>(wikiKeys.driveTree("drive-2"), {
+      driveId: "drive-2",
+      files: [],
+      filesComplete: true,
+      folders: [makeNode({ id: "folder-b", mimeType: MIME_FOLDER, name: "Folder B" })],
+    });
+
+    const rollback = optimisticMoveFile(
+      qc,
+      node,
+      { driveId: "drive-2", parentFolderId: "folder-b" },
+      { driveId: "drive-1", parentFolderId: undefined },
+    );
+
+    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files).toHaveLength(0);
+    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-2"))?.files[0]).toMatchObject({
+      id: "moving",
+      parentId: "folder-b",
+    });
+
+    rollback();
+
+    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-2"))?.files).toHaveLength(0);
+    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files[0]).toMatchObject({
+      id: "moving",
+      parentId: undefined,
+    });
   });
 });

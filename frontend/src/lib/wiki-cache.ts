@@ -51,20 +51,17 @@ export function injectNewFileIntoCaches(qc: QueryClient, file: FileResponse): vo
     });
   }
 
-  if (file.driveId && file.mimeType === MIME_FOLDER) {
-    qc.setQueryData<DriveTree | undefined>(wikiKeys.driveTree(file.driveId), (prev) => {
-      if (!prev) return prev;
-      if (prev.folders.some((f) => f.id === node.id)) return prev;
-      return { ...prev, folders: [...prev.folders, node] };
-    });
-  }
-  if (file.driveId && file.mimeType !== MIME_FOLDER) {
+  if (file.driveId) {
     const treeNode: DriveNode =
       node.parentId === file.driveId ? { ...node, parentId: undefined } : node;
     qc.setQueryData<DriveTree | undefined>(wikiKeys.driveTree(file.driveId), (prev) => {
       if (!prev) return prev;
-      const others = prev.files.filter((f) => f.id !== treeNode.id);
-      return { ...prev, files: [...others, treeNode] };
+      if (file.mimeType === MIME_FOLDER) {
+        if (prev.folders.some((folder) => folder.id === treeNode.id)) return prev;
+        return { ...prev, folders: [...prev.folders, treeNode] };
+      }
+      const otherFiles = prev.files.filter((existing) => existing.id !== treeNode.id);
+      return { ...prev, files: [...otherFiles, treeNode] };
     });
   }
 }

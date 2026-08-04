@@ -37,6 +37,7 @@ class FileResponse(BaseModel):
     modified_time: str | None
     can_edit: bool = False
     can_add_children: bool = False
+    description: str | None = None
 
 
 class MoveResult(BaseModel):

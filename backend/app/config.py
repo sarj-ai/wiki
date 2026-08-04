@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     GOOGLE_CLOUD_PROJECT: NonEmptyStr | None = None
     GEMINI_LOCATION: NonEmptyStr = "global"
     GEMINI_MODEL: NonEmptyStr = "gemini-3.5-flash-lite"
+    GEMINI_REORGANIZATION_MODEL: NonEmptyStr = "gemini-3.5-flash"
     CLOUD_TASKS_QUEUE: NonEmptyStr | None = None
     CLOUD_TASKS_LOCATION: NonEmptyStr | None = None
     CLOUD_TASKS_TARGET_URL: NonEmptyStr | None = None

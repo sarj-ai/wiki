@@ -10,7 +10,7 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -36,6 +36,12 @@ interface WikiReorder {
   sensors: ReturnType<typeof useSensors>;
 }
 
+interface ActiveDrag {
+  driveId: string;
+  node: DriveNode;
+  parentFolderId: string | undefined;
+}
+
 const CONTAINER_PREFIX = "parent:";
 
 const FOLDER_ABOVE_BAND = 0.3;
@@ -46,7 +52,12 @@ const ZSortableData = z.object({
   items: z.array(z.string()).optional(),
 });
 
-export function useWikiReorder(driveId: string): WikiReorder {
+const ZDragScopeData = z.object({
+  driveId: z.string(),
+  parentFolderId: z.string().optional(),
+});
+
+export function useWikiReorder(): WikiReorder {
   const qc = useQueryClient();
   const bulkSetSortOrders = useBulkSetSortOrders();
   const moveFile = useMoveFile();
@@ -56,8 +67,9 @@ export function useWikiReorder(driveId: string): WikiReorder {
     () => new Map(),
   );
   const [activeNode, setActiveNode] = useState<DriveNode | null>(null);
+  const activeDrag = useRef<ActiveDrag | null>(null);
 
-  const findNodeById = (id: string): DriveNode | null => {
+  const findNodeById = (driveId: string, id: string): DriveNode | null => {
     const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
     const treeHit = tree?.folders.find((n) => n.id === id) ?? tree?.files.find((n) => n.id === id);
     if (treeHit) return treeHit;
@@ -72,7 +84,16 @@ export function useWikiReorder(driveId: string): WikiReorder {
   };
 
   const onDragStart = (event: DragStartEvent) => {
-    setActiveNode(findNodeById(String(event.active.id)));
+    const scope = dragScopeData(event.active.data.current);
+    if (!scope) return;
+    const node = findNodeById(scope.driveId, String(event.active.id));
+    if (!node) return;
+    activeDrag.current = {
+      driveId: scope.driveId,
+      node,
+      parentFolderId: scope.parentFolderId,
+    };
+    setActiveNode(node);
     useDragOverStore.getState().setActive({
       containerId: sortableContainerId(event.active.data.current),
       id: String(event.active.id),
@@ -81,6 +102,8 @@ export function useWikiReorder(driveId: string): WikiReorder {
 
   const onDragOver = (event: DragOverEvent) => {
     const { active, delta, over } = event;
+    const dragged = activeDrag.current;
+    if (!dragged) return;
     if (!over) {
       useDragOverStore.getState().setOver({ containerId: null, id: null, intent: null });
       return;
@@ -96,7 +119,7 @@ export function useWikiReorder(driveId: string): WikiReorder {
       return;
     }
     const overIsFolder = isFolderTarget(over.data.current);
-    const overIsOwnParent = activeNode?.parentId === String(over.id);
+    const overIsOwnParent = dragged.parentFolderId === String(over.id);
     const activeContainer = sortableContainerId(active.data.current);
     const overContainer = sortableContainerId(over.data.current);
     const sameContainer = activeContainer !== null && activeContainer === overContainer;
@@ -119,23 +142,30 @@ export function useWikiReorder(driveId: string): WikiReorder {
   };
 
   const onDragCancel = () => {
+    activeDrag.current = null;
     setActiveNode(null);
     useDragOverStore.getState().reset();
   };
 
   const onDragEnd = (event: DragEndEvent) => {
-    const node = activeNode;
+    const dragged = activeDrag.current;
     const intent = useDragOverStore.getState().intent;
+    activeDrag.current = null;
     setActiveNode(null);
     useDragOverStore.getState().reset();
 
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
+    if (!dragged || !over || active.id === over.id) return;
+
+    const destinationScope = dragScopeData(over.data.current);
+    if (!destinationScope) return;
 
     const overIdStr = String(over.id);
     if (overIdStr.startsWith(CONTAINER_PREFIX)) {
       const newParentFolderId = parentIdOf(overIdStr);
-      if (newParentFolderId) handleMoveInto(node, newParentFolderId);
+      if (newParentFolderId) {
+        handleMoveInto(dragged, destinationScope.driveId, newParentFolderId);
+      }
       return;
     }
 
@@ -148,7 +178,7 @@ export function useWikiReorder(driveId: string): WikiReorder {
     const overIsFolder = isFolderTarget(over.data.current);
 
     if (intent === "into" && overIsFolder) {
-      handleMoveInto(node, String(over.id));
+      handleMoveInto(dragged, destinationScope.driveId, String(over.id));
       return;
     }
 
@@ -158,7 +188,9 @@ export function useWikiReorder(driveId: string): WikiReorder {
         (intent === "above" || intent === "below") && newParentFolderId
           ? { intent, rowId: String(over.id) }
           : null;
-      if (newParentFolderId) handleMoveInto(node, newParentFolderId, positionHint);
+      if (newParentFolderId) {
+        handleMoveInto(dragged, destinationScope.driveId, newParentFolderId, positionHint);
+      }
       return;
     }
 
@@ -192,16 +224,22 @@ export function useWikiReorder(driveId: string): WikiReorder {
   };
 
   const handleMoveInto = (
-    node: DriveNode | null,
+    dragged: ActiveDrag,
+    destinationDriveId: string,
     newParentFolderId: string,
     positionHint: { rowId: string; intent: "above" | "below" } | null = null,
   ): void => {
-    if (!node) return;
+    const { driveId: sourceDriveId, node, parentFolderId: sourceParentFolderId } = dragged;
 
     if (newParentFolderId === node.id) return;
-    if (newParentFolderId === (node.parentId ?? driveId)) return;
+    if (
+      destinationDriveId === sourceDriveId &&
+      newParentFolderId === (sourceParentFolderId ?? sourceDriveId)
+    ) {
+      return;
+    }
 
-    if (lookupNodeMimeType(qc, driveId, newParentFolderId) === MIME_SHORTCUT) {
+    if (lookupNodeMimeType(qc, destinationDriveId, newParentFolderId) === MIME_SHORTCUT) {
       toast.error("Can't drop into a shortcut. Open it and drop into the target's folder instead.");
       return;
     }
@@ -212,28 +250,34 @@ export function useWikiReorder(driveId: string): WikiReorder {
     const rollback = optimisticMoveFile(
       qc,
       node,
-      { driveId, parentFolderId: newParentFolderId },
-      { driveId, parentFolderId: node.parentId },
+      { driveId: destinationDriveId, parentFolderId: newParentFolderId },
+      { driveId: sourceDriveId, parentFolderId: sourceParentFolderId },
     );
 
-    if (newParentFolderId !== driveId) {
-      expandPath(driveId, [newParentFolderId]);
+    if (newParentFolderId !== destinationDriveId) {
+      expandPath(destinationDriveId, [newParentFolderId]);
     }
 
-    const destinationName = lookupFolderName(qc, driveId, newParentFolderId);
+    const destinationName = lookupFolderName(qc, destinationDriveId, newParentFolderId);
 
     void moveFile
       .mutateAsync({
         fileId: node.id,
         newParentFolderId,
-        sourceDriveId: driveId,
-        sourceParentFolderId: node.parentId,
+        sourceDriveId,
+        sourceParentFolderId,
       })
       .then(() => {
         toast.success(`Moved “${node.name}” to “${destinationName}”`);
 
         if (positionHint) {
-          const order = buildDestinationOrder(qc, driveId, newParentFolderId, node, positionHint);
+          const order = buildDestinationOrder(
+            qc,
+            destinationDriveId,
+            newParentFolderId,
+            node,
+            positionHint,
+          );
           if (order) bulkSetSortOrders.mutate(order);
         }
       })
@@ -265,6 +309,13 @@ function parentIdOf(containerId: string): null | string {
 
 function sortableContainerId(data: null | Record<string, unknown> | undefined): null | string {
   return sortableData(data)?.containerId ?? null;
+}
+
+function dragScopeData(
+  data: null | Record<string, unknown> | undefined,
+): null | z.output<typeof ZDragScopeData> {
+  const parsed = ZDragScopeData.safeParse(data);
+  return parsed.success ? parsed.data : null;
 }
 
 function sortableData(data: null | Record<string, unknown> | undefined) {

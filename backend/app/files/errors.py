@@ -29,9 +29,10 @@ class CrossDriveMoveNotSupportedError(FilesError):
 class DriveUpstreamError(FilesError):
     code = "drive_upstream"
 
-    def __init__(self, status: int, message: str) -> None:
+    def __init__(self, status: int, message: str, *, reason: str | None = None) -> None:
         super().__init__(message)
         self.http_status = status if 400 <= status < 500 else 502
+        self.reason = reason
 
 
 class FileVersionChangedError(FilesError):

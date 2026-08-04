@@ -31,35 +31,38 @@ import {
   useSaveDocumentAlias,
 } from "@/hooks/use-document-alias";
 import { ApiError } from "@/lib/api-error";
+import { documentAliasError } from "@/lib/document-alias-validation";
 import {
   documentShortLink,
   SHORT_LINK_COPY_FEEDBACK_MS,
   SHORT_LINK_DISPLAY_PREFIX,
 } from "@/lib/document-short-link";
-import { zDocumentAliasWrite } from "@/lib/generated/zod.gen";
 
 export function ShortLinkDialog({ fileId }: ShortLinkDialogProps) {
   const [open, setOpen] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [draft, setDraft] = useState<null | string>(null);
   const [copied, setCopied] = useState(false);
+  const [saveError, setSaveError] = useState<null | string>(null);
   const aliasQuery = useDocumentAlias(fileId, open);
   const saveAlias = useSaveDocumentAlias(fileId);
   const retireAlias = useRetireDocumentAlias(fileId);
   const savedAlias = aliasQuery.data?.alias;
 
   const value = draft ?? aliasQuery.data?.alias ?? "";
-  const validation = zDocumentAliasWrite.safeParse({ alias: value });
+  const validationError = documentAliasError(value);
+  const showValidationError = draft !== null && validationError !== null;
   const isSaving = saveAlias.isPending || retireAlias.isPending;
 
   const handleSave = async () => {
-    if (!validation.success) return;
+    if (validationError !== null) return;
     try {
       const result = await saveAlias.mutateAsync(value);
       setDraft(result.alias);
+      setSaveError(null);
       toast.success(savedAlias ? "Short link renamed" : "Short link created");
     } catch (error: unknown) {
-      toast.error(aliasErrorMessage(error, "Couldn't save short link"));
+      setSaveError(aliasErrorMessage(error, "Couldn't save short link"));
     }
   };
 
@@ -103,7 +106,10 @@ export function ShortLinkDialog({ fileId }: ShortLinkDialogProps) {
       <Dialog
         onOpenChange={(nextOpen) => {
           setOpen(nextOpen);
-          if (!nextOpen) setDraft(null);
+          if (!nextOpen) {
+            setDraft(null);
+            setSaveError(null);
+          }
         }}
         open={open}
       >
@@ -132,7 +138,8 @@ export function ShortLinkDialog({ fileId }: ShortLinkDialogProps) {
                   {SHORT_LINK_DISPLAY_PREFIX}
                 </span>
                 <Input
-                  aria-invalid={value.length > 0 && !validation.success}
+                  aria-describedby="document-alias-help document-alias-error"
+                  aria-invalid={showValidationError || saveError !== null}
                   autoCapitalize="none"
                   autoComplete="off"
                   className="border-0 font-mono shadow-none focus-visible:ring-0"
@@ -140,6 +147,7 @@ export function ShortLinkDialog({ fileId }: ShortLinkDialogProps) {
                   id="document-alias"
                   onChange={(event) => {
                     setDraft(event.target.value);
+                    setSaveError(null);
                   }}
                   placeholder="eng-onboarding"
                   spellCheck={false}
@@ -160,14 +168,13 @@ export function ShortLinkDialog({ fileId }: ShortLinkDialogProps) {
                   </Button>
                 ) : null}
               </div>
-              <p className="text-muted-foreground text-xs">
+              <p className="text-muted-foreground text-xs" id="document-alias-help">
                 Use two or three lowercase words, with 2–12 letters per word. Names are never
                 recycled after removal.
               </p>
-              {value.length > 0 && !validation.success ? (
-                <p className="text-destructive text-sm">
-                  Try a format like <span className="font-mono">eng-onboarding</span> or{" "}
-                  <span className="font-mono">people-org-chart</span>.
+              {showValidationError || saveError !== null ? (
+                <p className="text-destructive text-sm" id="document-alias-error" role="alert">
+                  {saveError ?? validationError}
                 </p>
               ) : null}
             </div>
@@ -203,7 +210,7 @@ export function ShortLinkDialog({ fileId }: ShortLinkDialogProps) {
               <Button
                 disabled={
                   isSaving ||
-                  !validation.success ||
+                  validationError !== null ||
                   value === savedAlias ||
                   aliasQuery.isPending ||
                   aliasQuery.isError

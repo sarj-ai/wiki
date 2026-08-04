@@ -22,7 +22,7 @@ import type { DriveNode } from "@/types/wiki";
 import { MIME_DOC, MIME_FORM } from "@/types/wiki";
 
 import { ItemMenu } from "./item-menu";
-import { ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants";
+import { CHEVRON_OFFSET, ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants";
 import { PickableIcon } from "./pickable-icon";
 import { useIsMovingFile } from "./use-in-flight-moves";
 
@@ -109,8 +109,8 @@ function FileRowImpl({
       renderNodeIcon(node, "size-4 shrink-0")
     );
 
-  const iconLeft = `${rowIndent(depth)}px`;
-  const linkPadding = `${rowIndent(depth) + ICON_COLUMN_WIDTH}px`;
+  const iconLeft = `${rowIndent(depth) + CHEVRON_OFFSET}px`;
+  const linkPadding = `${rowIndent(depth) + CHEVRON_OFFSET + ICON_COLUMN_WIDTH}px`;
   const edited = node.modifiedTime
     ? ` — edited ${new Date(node.modifiedTime).toLocaleDateString()}`
     : "";

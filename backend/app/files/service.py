@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import Generator
 from contextlib import contextmanager
+import json
 from typing import TYPE_CHECKING, override
 
 from googleapiclient.errors import HttpError
@@ -30,7 +31,7 @@ if TYPE_CHECKING:
     from googleapiclient._apis.drive.v3.schemas import File
 
 _FIELDS = (
-    "id,name,mimeType,parents,driveId,modifiedTime,"
+    "id,name,mimeType,parents,driveId,modifiedTime,description,"
     "capabilities(canEdit,canAddChildren),appProperties"
 )
 _SMART_TASK_PROPERTY = "sarjWikiTaskId"
@@ -205,7 +206,16 @@ class GoogleFilesService(FilesService):
 
     @override
     async def move(self, file_id: FileId, new_parent_folder_id: FileId) -> MoveResult:
-        source = await self.get(file_id)
+        source, destination = await asyncio.gather(
+            self.get(file_id),
+            self.get(new_parent_folder_id),
+        )
+        if destination.mime_type != MIME_FOLDER:
+            msg = "Move destination must be a folder"
+            raise UnsupportedMimeError(msg)
+        if not destination.can_add_children:
+            msg = "Drive denied this move because you cannot add items to the destination"
+            raise DriveUpstreamError(403, msg)
         try:
             moved = await asyncio.to_thread(
                 self._move_sync,
@@ -214,14 +224,13 @@ class GoogleFilesService(FilesService):
                 prev_parent_folder_id=source.parent_folder_id,
             )
         except DriveUpstreamError as exc:
-            if exc.http_status == 403:
-                try:
-                    destination = await self.get(new_parent_folder_id)
-                except FileNotInScopeError:
-                    raise exc from None
-                if destination.drive_id != source.drive_id:
-                    msg = "Drive blocked this cross-drive move — copy the file instead."
-                    raise CrossDriveMoveNotSupportedError(msg) from exc
+            if (
+                destination.drive_id != source.drive_id
+                and source.mime_type == MIME_FOLDER
+                and exc.reason == "teamDrivesFolderMoveInNotSupported"
+            ):
+                msg = "Google Drive cannot move this folder between these drives"
+                raise CrossDriveMoveNotSupportedError(msg) from exc
             raise
         moved = await self._normalize_member_drive(moved)
         return MoveResult(source=source, moved=moved)
@@ -435,6 +444,7 @@ def _to_response(raw: File) -> FileResponse:
         modified_time=file.modified_time,
         can_edit=file.capabilities.can_edit,
         can_add_children=file.capabilities.can_add_children,
+        description=file.description,
     )
 
 
@@ -449,4 +459,17 @@ def _translated_drive_errors() -> Generator[None]:
 def _drive_upstream(exc: HttpError) -> DriveUpstreamError:
     code = exc.resp.status if exc.resp else 502
     detail = str(exc) or "Drive request failed"
-    return DriveUpstreamError(code, detail)
+    try:
+        payload = json.loads(exc.content)
+        errors = payload.get("error", {}).get("errors", [])
+        reason = next(
+            (
+                item_reason
+                for item in errors
+                if isinstance(item, dict) and isinstance(item_reason := item.get("reason"), str)
+            ),
+            None,
+        )
+    except AttributeError, TypeError, ValueError:
+        reason = None
+    return DriveUpstreamError(code, detail, reason=reason)
