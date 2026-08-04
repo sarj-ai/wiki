@@ -12,6 +12,10 @@ vi.mock("./short-link-dialog", () => ({
   // eslint-disable-next-line @typescript-eslint/naming-convention -- matches the component export
   ShortLinkDialog: ({ fileId }: { fileId: string }) => `editor:${fileId}`,
 }));
+vi.mock("./reorganize-document", () => ({
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches the component export
+  ReorganizeDocument: ({ fileId }: { fileId: string }) => `reorganize:${fileId}`,
+}));
 
 describe("WikiToolbar", () => {
   it("routes readers to the read-only short-link view", () => {
@@ -19,15 +23,18 @@ describe("WikiToolbar", () => {
       <WikiToolbar
         breadcrumb={[]}
         canEdit={false}
+        driveId="drive"
         fileId="read-only-file"
         mimeType={MIME_DOC}
         onReload={vi.fn()}
+        parentFolderId="folder"
         title="Read-only document"
       />,
     );
 
     expect(view).toContain("reader:read-only-file");
     expect(view).not.toContain("editor:read-only-file");
+    expect(view).not.toContain("reorganize:read-only-file");
   });
 
   it("routes editors to short-link management", () => {
@@ -35,14 +42,17 @@ describe("WikiToolbar", () => {
       <WikiToolbar
         breadcrumb={[]}
         canEdit
+        driveId="drive"
         fileId="editable-file"
         mimeType={MIME_DOC}
         onReload={vi.fn()}
+        parentFolderId="folder"
         title="Editable document"
       />,
     );
 
     expect(view).toContain("editor:editable-file");
     expect(view).not.toContain("reader:editable-file");
+    expect(view).toContain("reorganize:editable-file");
   });
 });

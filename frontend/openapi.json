@@ -961,6 +961,38 @@
         "title": "ProposalDestination",
         "type": "object"
       },
+      "ReorganizationProposalRead": {
+        "additionalProperties": false,
+        "properties": {
+          "current_destination": {
+            "$ref": "#/components/schemas/ProposalDestination"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "suggested_destination": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProposalDestination"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["current_destination", "suggested_destination", "reason"],
+        "title": "ReorganizationProposalRead",
+        "type": "object"
+      },
       "RunningTaskRead": {
         "properties": {
           "attempt_count": {
@@ -2825,6 +2857,46 @@
           }
         },
         "summary": "Rename File",
+        "tags": ["files"]
+      }
+    },
+    "/files/{file_id}/reorganize-proposal": {
+      "post": {
+        "operationId": "propose_file_reorganization_files__file_id__reorganize_proposal_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReorganizationProposalRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Propose File Reorganization",
         "tags": ["files"]
       }
     },

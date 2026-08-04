@@ -32,6 +32,7 @@ import {
   createSmartFileAction,
   getSmartCreateTaskAction,
   listSmartTemplatesAction,
+  proposeFileReorganizationAction,
   proposeSmartFileAction,
 } from "./smart-create-actions";
 
@@ -70,6 +71,21 @@ describe("Smart Create edge actions", () => {
       status: 429,
     });
     expect(mocks.callApi).not.toHaveBeenCalled();
+  });
+
+  it("uses the proposal limit for document reorganization", async () => {
+    await expect(proposeFileReorganizationAction("file/with spaces")).resolves.toEqual({
+      data: "{}",
+      ok: true,
+    });
+
+    expect(mocks.proposalLimit).toHaveBeenCalledWith({ key: "203.0.113.10" });
+    expect(mocks.callApi).toHaveBeenCalledWith(
+      "/files/file%2Fwith%20spaces/reorganize-proposal",
+      "{}",
+      "access-token",
+      undefined,
+    );
   });
 
   it("forwards creation idempotency keys after the independent create limit", async () => {

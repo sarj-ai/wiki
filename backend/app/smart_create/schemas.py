@@ -60,6 +60,12 @@ class SmartProposalRead(StrictSmartModel):
     source: CreationSource
 
 
+class ReorganizationProposalRead(StrictSmartModel):
+    current_destination: ProposalDestination
+    suggested_destination: ProposalDestination | None
+    reason: str | None
+
+
 class SmartFileCreate(StrictSmartModel):
     source: CreationSource
     parent_folder_id: FileId

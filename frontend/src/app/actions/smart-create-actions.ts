@@ -30,6 +30,17 @@ export async function proposeSmartFileAction(body: string): Promise<ActionResult
   return runSmartOperation("proposal", body);
 }
 
+export async function proposeFileReorganizationAction(
+  fileId: string,
+): Promise<ActionResult<string>> {
+  return runSmartOperation(
+    "proposal",
+    "{}",
+    undefined,
+    `/files/${encodeURIComponent(fileId)}/reorganize-proposal`,
+  );
+}
+
 export async function getSmartCreateTaskAction(taskId: string): Promise<ActionResult<string>> {
   return runSmartRead(`/tasks/${encodeURIComponent(taskId)}`);
 }
@@ -56,6 +67,7 @@ async function runSmartOperation(
   operation: SmartOperation,
   body: string,
   idempotencyKey?: string,
+  upstreamPath?: string,
 ): Promise<ActionResult<string>> {
   const cookieStore = await cookies();
   const token = cookieStore.get("access_token")?.value;
@@ -75,7 +87,12 @@ async function runSmartOperation(
     if (!limit.success) return failure(429, "Too many requests. Try again in a minute.");
   }
 
-  const response = await callSmartCreateApi(config.upstreamPath, body, token, idempotencyKey);
+  const response = await callSmartCreateApi(
+    upstreamPath ?? config.upstreamPath,
+    body,
+    token,
+    idempotencyKey,
+  );
   if (!response.ok) {
     return failure(
       response.status,

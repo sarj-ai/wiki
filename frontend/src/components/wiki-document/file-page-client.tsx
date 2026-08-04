@@ -55,11 +55,13 @@ export function FilePageClient({ driveId }: { driveId: string }) {
       <FilePageBody
         breadcrumb={[]}
         canEdit={false}
+        driveId={undefined}
         fileId={driveId}
         mimeType={hint.mimeType}
         onReload={() => {
           setReloadKey((n) => n + 1);
         }}
+        parentFolderId={undefined}
         reloadKey={reloadKey}
         title={hint.name}
       />
@@ -85,11 +87,13 @@ export function FilePageClient({ driveId }: { driveId: string }) {
     <FilePageBody
       breadcrumb={file.breadcrumb}
       canEdit={file.canEdit}
+      driveId={file.driveId}
       fileId={file.id}
       mimeType={file.mimeType}
       onReload={() => {
         setReloadKey((n) => n + 1);
       }}
+      parentFolderId={file.parentFolderId}
       reloadKey={reloadKey}
       title={file.name}
       {...(file.modifiedTime === undefined ? {} : { version: file.modifiedTime })}
@@ -100,9 +104,11 @@ export function FilePageClient({ driveId }: { driveId: string }) {
 interface FilePageBodyProps {
   breadcrumb: BreadcrumbItem[];
   canEdit: boolean;
+  driveId: string | undefined;
   fileId: string;
   mimeType: string;
   onReload: () => void;
+  parentFolderId: string | undefined;
   reloadKey: number;
   title: string;
   version?: string;
@@ -111,9 +117,11 @@ interface FilePageBodyProps {
 function FilePageBody({
   breadcrumb,
   canEdit,
+  driveId,
   fileId,
   mimeType,
   onReload,
+  parentFolderId,
   reloadKey,
   title,
   version,
@@ -147,9 +155,11 @@ function FilePageBody({
       <WikiToolbar
         breadcrumb={breadcrumb}
         canEdit={canEdit}
+        driveId={driveId}
         fileId={fileId}
         mimeType={mimeType}
         onReload={onReload}
+        parentFolderId={parentFolderId}
         title={displayTitle}
       />
       <div className="flex-1 overflow-hidden" ref={setSlot} />
