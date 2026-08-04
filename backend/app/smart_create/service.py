@@ -45,6 +45,35 @@ _MAX_ALIAS_WORD_COUNT = 3
 _MIN_REORGANIZATION_TERM_LENGTH = 4
 _MAX_GENERATED_REORGANIZATION_REASON_CHARS = 1_000
 _MAX_REORGANIZATION_REASON_CHARS = 200
+_SENSITIVE_DESTINATION_INTENT_TERMS = {
+    "banking": frozenset({"account", "bank", "banking", "deposit", "loan", "statement"}),
+    "finance": frozenset(
+        {"budget", "expense", "finance", "financial", "invoice", "investment", "payroll", "tax"}
+    ),
+    "health": frozenset(
+        {
+            "appointment",
+            "checkup",
+            "clinic",
+            "diagnosis",
+            "doctor",
+            "healthcare",
+            "hospital",
+            "medical",
+            "prescription",
+            "therapy",
+            "wellness",
+        }
+    ),
+    "identity": frozenset(
+        {"birth", "certificate", "identity", "license", "passport", "social", "ssn"}
+    ),
+    "immigration": frozenset({"citizenship", "immigration", "passport", "residency", "visa"}),
+    "legal": frozenset({"attorney", "compliance", "contract", "court", "law", "legal", "lawsuit"}),
+    "relationships": frozenset(
+        {"family", "marriage", "partner", "relationship", "spouse", "wedding"}
+    ),
+}
 _REORGANIZATION_STOP_WORDS = frozenset(
     {
         "about",
@@ -462,6 +491,11 @@ def _build_prompt(
     serialized_context = json.dumps(context, ensure_ascii=False, separators=(",", ":"))
     instructions = (
         "Recommend concise metadata and placement for a Sarj Wiki file. "
+        "Use the description's complete meaning and phrases, not an isolated overlapping word. "
+        "Folders about health, relationships, identity, immigration, finance, banking, or legal "
+        "matters require explicit evidence that the file is actually about that sensitive category; "
+        "for example, plant health is not personal health. When placement is uncertain, keep the "
+        "invoking folder. "
         "Choose destination_folder_id only from folders. Choose template_file_id only from "
         "templates, or null for a blank file. The alias must be two or three lowercase words "
         "of 2-12 ASCII letters separated by hyphens. Return one fitting emoji and no prose."
@@ -563,6 +597,9 @@ def _validated_proposal(
     if folder is None:
         msg = "Gemini selected an unknown destination"
         raise ValueError(msg)
+    if not _has_explicit_sensitive_destination_intent(request.description, folder):
+        msg = "Gemini selected a sensitive destination without explicit evidence"
+        raise ValueError(msg)
     template = next(
         (item for item in templates if item.file_id == generated.template_file_id),
         None,
@@ -590,6 +627,19 @@ def _validated_proposal(
         alias=generated.alias,
         destination=folder,
         source=source,
+    )
+
+
+def _has_explicit_sensitive_destination_intent(
+    description: str,
+    destination: ProposalDestination,
+) -> bool:
+    description_terms = frozenset(_WORD_PATTERN.findall(description.casefold()))
+    path_terms = frozenset(_WORD_PATTERN.findall(" ".join(destination.folder_path).casefold()))
+    sensitive_categories = path_terms & _SENSITIVE_DESTINATION_INTENT_TERMS.keys()
+    return not sensitive_categories or any(
+        description_terms & _SENSITIVE_DESTINATION_INTENT_TERMS[category]
+        for category in sensitive_categories
     )
 
 
