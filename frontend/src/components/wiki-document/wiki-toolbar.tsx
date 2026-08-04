@@ -13,7 +13,6 @@ import {
 } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import type { BreadcrumbItem } from "@/types/wiki";
-import { MIME_DOC } from "@/types/wiki";
 
 import { ReadOnlyShortLink } from "./read-only-short-link";
 import { ReorganizeDocument } from "./reorganize-document";
@@ -113,14 +112,12 @@ export function WikiToolbar({
         {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         {copied ? "Copied" : "Copy link"}
       </Button>
-      {mimeType === MIME_DOC ? (
-        <ReorganizeDocument
-          driveId={driveId}
-          fileId={fileId}
-          fileName={displayTitle}
-          parentFolderId={parentFolderId}
-        />
-      ) : null}
+      <ReorganizeDocument
+        driveId={driveId}
+        fileId={fileId}
+        fileName={displayTitle}
+        parentFolderId={parentFolderId}
+      />
       {canEdit ? <ShortLinkDialog fileId={fileId} /> : <ReadOnlyShortLink fileId={fileId} />}
       <Button asChild size="xs" variant="outline">
         <a href={openUrl} rel="noopener noreferrer" target="_blank">

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { MIME_DOC } from "@/types/wiki";
+import { MIME_DOC, MIME_PDF } from "@/types/wiki";
 
 import { WikiToolbar } from "./wiki-toolbar";
 
@@ -54,5 +54,22 @@ describe("WikiToolbar", () => {
     expect(view).toContain("editor:editable-file");
     expect(view).not.toContain("reader:editable-file");
     expect(view).toContain("reorganize:editable-file");
+  });
+
+  it("offers filename-based organization for non-Google Docs", () => {
+    const view = renderToStaticMarkup(
+      <WikiToolbar
+        breadcrumb={[]}
+        canEdit
+        driveId="drive"
+        fileId="pdf-file"
+        mimeType={MIME_PDF}
+        onReload={vi.fn()}
+        parentFolderId="folder"
+        title="Quarterly Report.pdf"
+      />,
+    );
+
+    expect(view).toContain("reorganize:pdf-file");
   });
 });
