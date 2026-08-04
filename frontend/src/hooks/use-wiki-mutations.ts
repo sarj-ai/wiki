@@ -72,7 +72,9 @@ export function useMoveFile() {
       return previousSortOrders === undefined ? {} : { previousSortOrders };
     },
     onSuccess: ({ result, sourceDriveId, sourceParentFolderId }) => {
-      removeFileFromCaches(qc, result.id, sourceParentFolderId, sourceDriveId);
+      removeFileFromCaches(qc, result.id, sourceParentFolderId, sourceDriveId, {
+        removeFileQuery: false,
+      });
       injectNewFileIntoCaches(qc, result);
 
       void qc.invalidateQueries({ queryKey: wikiKeys.file(result.id) });
