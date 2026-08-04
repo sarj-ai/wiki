@@ -3,6 +3,14 @@ from __future__ import annotations
 from app.files.errors import FilesError
 
 
+class ReorganizationUnavailableError(FilesError):
+    http_status = 503
+    code = "reorganization_unavailable"
+
+    def __init__(self) -> None:
+        super().__init__("Re-organize could not evaluate this document; try again shortly")
+
+
 class SmartCreateTaskFailedError(FilesError):
     http_status = 409
     code = "smart_create_task_failed"

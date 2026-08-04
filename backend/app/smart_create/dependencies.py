@@ -22,10 +22,14 @@ from app.sidebar.dependencies import sidebar_cache_service_dep
 from app.smart_create.creation import DriveSmartFileCreationService, SmartFileCreationService
 from app.smart_create.executor import DriveSmartCreateTaskExecutor, SmartCreateTaskExecutor
 from app.smart_create.service import (
+    GeminiReorganizationService,
     GeminiSmartProposalService,
     ProposalGenerator,
+    ReorganizationGenerator,
+    ReorganizationService,
     SmartProposalService,
     VertexProposalGenerator,
+    VertexReorganizationGenerator,
 )
 from app.tasks.dependencies import task_service_dep
 from app.tasks.service import TaskService
@@ -36,6 +40,27 @@ from app.templates.service import TemplateCatalogService
 @cache
 def proposal_generator_dep() -> ProposalGenerator:
     return VertexProposalGenerator()
+
+
+@cache
+def reorganization_generator_dep() -> ReorganizationGenerator:
+    return VertexReorganizationGenerator()
+
+
+def reorganization_service_dep(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    drive: Annotated[DriveService, Depends(drive_service_dep)],
+    files: Annotated[FilesService, Depends(files_service_dep)],
+    sidebar_cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
+    generator: Annotated[ReorganizationGenerator, Depends(reorganization_generator_dep)],
+) -> ReorganizationService:
+    return GeminiReorganizationService(
+        db=db,
+        drive=drive,
+        files=files,
+        sidebar_cache=sidebar_cache,
+        generator=generator,
+    )
 
 
 def smart_proposal_service_dep(

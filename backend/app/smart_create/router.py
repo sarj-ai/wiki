@@ -8,12 +8,18 @@ from fastapi import APIRouter, Depends, Header, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
-from app.identifiers import IdempotencyKey
+from app.identifiers import FileId, IdempotencyKey
 from app.models.user import User
 from app.sidebar.cache import SidebarCacheService
-from app.smart_create.dependencies import smart_proposal_service_dep
-from app.smart_create.schemas import AIMode, SmartCreateResult, SmartFileCreate, SmartProposalRead
-from app.smart_create.service import SmartProposalService
+from app.smart_create.dependencies import reorganization_service_dep, smart_proposal_service_dep
+from app.smart_create.schemas import (
+    AIMode,
+    ReorganizationProposalRead,
+    SmartCreateResult,
+    SmartFileCreate,
+    SmartProposalRead,
+)
+from app.smart_create.service import ReorganizationService, SmartProposalService
 from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
 from app.tasks.queue import TaskEnqueuer
 from app.tasks.schemas import PendingTaskRead, RunningTaskRead, TaskKind, TaskRead
@@ -21,6 +27,14 @@ from app.tasks.service import TaskService
 
 
 router = APIRouter(prefix="/files", tags=["files"])
+
+
+@router.post("/{file_id}/reorganize-proposal")
+async def propose_file_reorganization(
+    file_id: FileId,
+    service: Annotated[ReorganizationService, Depends(reorganization_service_dep)],
+) -> ReorganizationProposalRead:
+    return await service.propose(file_id)
 
 
 async def invalidate_smart_create_result(

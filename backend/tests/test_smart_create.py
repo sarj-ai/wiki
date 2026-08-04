@@ -16,13 +16,19 @@ from app.drive.schemas import (
     SnippetResult,
 )
 from app.drive.service import DriveService
+from app.files.schemas import FileResponse
+from app.files.service import FilesService
 from app.identifiers import DriveId, FileId
 from app.sidebar.cache import CachedDriveTree, SidebarCacheService
+from app.smart_create.errors import ReorganizationUnavailableError
 from app.smart_create.schemas import AIMode, ProposalDestination, SmartFileCreate
 from app.smart_create.service import (
+    GeminiReorganizationService,
     GeminiSmartProposalService,
     GeneratedProposal,
+    GeneratedReorganization,
     ProposalGenerator,
+    ReorganizationGenerator,
 )
 from app.templates.schemas import TemplateCatalogRead, TemplateMimeType, TemplateRead
 from app.templates.service import TemplateCatalogService
@@ -64,7 +70,10 @@ class _Drive(DriveService):
 class _Cache(SidebarCacheService):
     @override
     async def get_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree:
-        raise NotImplementedError
+        cached = await self.peek_drive_tree(db, drive_id)
+        if cached is None:
+            raise NotImplementedError
+        return cached
 
     @override
     async def peek_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree | None:
@@ -98,7 +107,8 @@ class _Cache(SidebarCacheService):
 
     @override
     async def refresh_drive(self, db: AsyncSession, drive_id: DriveId) -> DriveTree:
-        raise NotImplementedError
+        cached = await self.get_drive_tree(db, drive_id)
+        return cached.tree
 
 
 class _Templates(TemplateCatalogService):
@@ -134,6 +144,35 @@ class _Generator(ProposalGenerator):
         if isinstance(self.proposal, Exception):
             raise self.proposal
         return self.proposal
+
+
+class _ReorganizationGenerator(ReorganizationGenerator):
+    def __init__(self, proposal: GeneratedReorganization | Exception) -> None:
+        self.proposal = proposal
+
+    @override
+    async def generate(
+        self,
+        *,
+        file_name: str,
+        folders: list[ProposalDestination],
+    ) -> GeneratedReorganization:
+        if isinstance(self.proposal, Exception):
+            raise self.proposal
+        return self.proposal
+
+
+class _Files:
+    async def get(self, file_id: FileId) -> FileResponse:
+        return FileResponse(
+            id=file_id,
+            name="Quarterly product roadmap",
+            mime_type=MIME_DOC,
+            parent_folder_id=FileId("product"),
+            drive_id=DriveId("product"),
+            modified_time=None,
+            can_edit=True,
+        )
 
 
 async def test_accepts_enumerated_same_workspace_template() -> None:
@@ -177,6 +216,39 @@ async def test_vertex_failure_uses_deterministic_fallback() -> None:
     assert proposal.name == "Quarterly product roadmap"
     assert proposal.emoji == "📝"
     assert proposal.destination.folder_id == "roadmaps"
+
+
+async def test_reorganization_proposes_folder_only_within_current_drive() -> None:
+    service = _reorganization_service(
+        GeneratedReorganization(
+            destination_folder_id=FileId("roadmaps"),
+            reason="Roadmaps belong with the product planning documents.",
+        )
+    )
+
+    proposal = await service.propose(FileId("document"))
+
+    assert proposal.current_destination.folder_id == "product"
+    assert proposal.suggested_destination is not None
+    assert proposal.suggested_destination.folder_id == "roadmaps"
+    assert proposal.suggested_destination.drive_id == "product"
+
+
+async def test_reorganization_returns_no_suggestion_when_current_folder_is_best() -> None:
+    proposal = await _reorganization_service(
+        GeneratedReorganization(
+            destination_folder_id=FileId("product"),
+            reason="The workspace root is the best fit.",
+        )
+    ).propose(FileId("document"))
+
+    assert proposal.suggested_destination is None
+    assert proposal.reason is None
+
+
+async def test_reorganization_reports_generator_failure_instead_of_claiming_best_location() -> None:
+    with pytest.raises(ReorganizationUnavailableError):
+        await _reorganization_service(RuntimeError("offline")).propose(FileId("document"))
 
 
 @pytest.mark.parametrize(
@@ -227,4 +299,16 @@ def _service(proposal: GeneratedProposal | Exception) -> GeminiSmartProposalServ
         sidebar_cache=_Cache(),
         templates=_Templates(),
         generator=_Generator(proposal),
+    )
+
+
+def _reorganization_service(
+    proposal: GeneratedReorganization | Exception,
+) -> GeminiReorganizationService:
+    return GeminiReorganizationService(
+        db=cast("AsyncSession", object()),
+        drive=_Drive(),
+        files=cast("FilesService", _Files()),
+        sidebar_cache=_Cache(),
+        generator=_ReorganizationGenerator(proposal),
     )

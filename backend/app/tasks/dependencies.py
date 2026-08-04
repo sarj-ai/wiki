@@ -16,8 +16,12 @@ def task_service_dep(db: Annotated[AsyncSession, Depends(get_db)]) -> TaskServic
     return PostgresTaskService(db=db)
 
 
+async def task_enqueuer_dep() -> TaskEnqueuer:  # ruff: ignore[unused-async] — construction requires the request event loop.
+    return _cached_task_enqueuer()
+
+
 @cache
-def task_enqueuer_dep() -> TaskEnqueuer:
+def _cached_task_enqueuer() -> TaskEnqueuer:
     project = _required(settings.GOOGLE_CLOUD_PROJECT, "GOOGLE_CLOUD_PROJECT")
     location = _required(settings.CLOUD_TASKS_LOCATION, "CLOUD_TASKS_LOCATION")
     queue = _required(settings.CLOUD_TASKS_QUEUE, "CLOUD_TASKS_QUEUE")

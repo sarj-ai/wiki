@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 import json
 from typing import cast
@@ -7,9 +8,11 @@ import uuid
 
 from google.api_core.exceptions import AlreadyExists
 from google.cloud import tasks_v2
+import pytest
 
 from app.identifiers import TaskId
-from app.tasks.queue import CloudTasksEnqueuer
+from app.tasks import dependencies
+from app.tasks.queue import CloudTasksEnqueuer, TaskEnqueuer
 
 
 class _Client:
@@ -58,3 +61,17 @@ async def test_duplicate_cloud_task_name_is_idempotent_success() -> None:
     result = await _enqueuer(_Client(duplicate=True)).enqueue_smart_create(TaskId(uuid.uuid4()))
 
     assert result is None
+
+
+async def test_dependency_constructs_async_client_on_request_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = cast("TaskEnqueuer", object())
+
+    def construct() -> TaskEnqueuer:
+        asyncio.get_running_loop()
+        return expected
+
+    monkeypatch.setattr(dependencies, "_cached_task_enqueuer", construct)
+
+    assert await dependencies.task_enqueuer_dep() is expected

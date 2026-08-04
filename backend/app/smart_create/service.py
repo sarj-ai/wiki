@@ -17,12 +17,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.drive.schemas import MIME_DOC, MIME_SLIDE, DriveNode, DriveSummary, DriveTree
 from app.drive.service import DriveService
+from app.files.errors import FileNotInScopeError, UnsupportedMimeError
+from app.files.service import FilesService
 from app.identifiers import FileId
 from app.sidebar.cache import SidebarCacheService
+from app.smart_create.errors import ReorganizationUnavailableError
 from app.smart_create.schemas import (
     AIMode,
     BlankSource,
     ProposalDestination,
+    ReorganizationProposalRead,
     SmartFileType,
     SmartProposalRead,
     TemplateSource,
@@ -37,6 +41,123 @@ _MODEL_TIMEOUT_SECONDS = 4.0
 _WORD_PATTERN = re.compile(r"[a-z]+")
 _MIN_ALIAS_WORD_LENGTH = 2
 _MAX_ALIAS_WORD_COUNT = 3
+
+
+class GeneratedReorganization(BaseModel):
+    destination_folder_id: FileId
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+
+
+class ReorganizationGenerator(ABC):
+    @abstractmethod
+    async def generate(
+        self,
+        *,
+        file_name: str,
+        folders: list[ProposalDestination],
+    ) -> GeneratedReorganization: ...
+
+
+class VertexReorganizationGenerator(ReorganizationGenerator):
+    def __init__(self) -> None:
+        self._client = (
+            genai.Client(
+                vertexai=True,
+                project=settings.GOOGLE_CLOUD_PROJECT,
+                location=settings.GEMINI_LOCATION,
+            )
+            if settings.GOOGLE_CLOUD_PROJECT is not None
+            else None
+        )
+
+    @override
+    async def generate(
+        self,
+        *,
+        file_name: str,
+        folders: list[ProposalDestination],
+    ) -> GeneratedReorganization:
+        if self._client is None:
+            msg = "GOOGLE_CLOUD_PROJECT is not configured"
+            raise RuntimeError(msg)
+        prompt = _build_reorganization_prompt(file_name, folders)
+        async with asyncio.timeout(_MODEL_TIMEOUT_SECONDS):
+            response = await self._client.aio.models.generate_content(
+                model=settings.GEMINI_MODEL,
+                contents=prompt,
+                config=genai_types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=GeneratedReorganization,
+                    thinking_config=genai_types.ThinkingConfig(
+                        thinking_level=genai_types.ThinkingLevel.MINIMAL
+                    ),
+                    http_options=genai_types.HttpOptions(
+                        timeout=int(_MODEL_TIMEOUT_SECONDS * 1000)
+                    ),
+                ),
+            )
+        if isinstance(response.parsed, GeneratedReorganization):
+            return response.parsed
+        if not response.text:
+            msg = "Gemini returned an empty Re-organize proposal"
+            raise ValueError(msg)
+        return GeneratedReorganization.model_validate_json(response.text)
+
+
+class ReorganizationService(ABC):
+    @abstractmethod
+    async def propose(self, file_id: FileId) -> ReorganizationProposalRead: ...
+
+
+class GeminiReorganizationService(ReorganizationService):
+    def __init__(
+        self,
+        *,
+        db: AsyncSession,
+        drive: DriveService,
+        files: FilesService,
+        sidebar_cache: SidebarCacheService,
+        generator: ReorganizationGenerator,
+    ) -> None:
+        self._db = db
+        self._drive = drive
+        self._files = files
+        self._sidebar_cache = sidebar_cache
+        self._generator = generator
+
+    @override
+    async def propose(self, file_id: FileId) -> ReorganizationProposalRead:
+        file, drives = await asyncio.gather(self._files.get(file_id), self._drive.list_drives())
+        if file.mime_type != MIME_DOC:
+            msg = "Re-organize is available for Google Docs"
+            raise UnsupportedMimeError(msg)
+        drive = next((item for item in drives if item.id == file.drive_id), None)
+        if drive is None:
+            msg = "File not available in a Drive workspace"
+            raise FileNotInScopeError(msg)
+        cached = await self._sidebar_cache.get_drive_tree(self._db, drive.id)
+        folders = _organization_candidates(file.name, file.parent_folder_id, drive, cached.tree)
+        current_id = file.parent_folder_id or FileId(drive.id)
+        current = next((item for item in folders if item.folder_id == current_id), None)
+        if current is None:
+            tree = await self._sidebar_cache.refresh_drive(self._db, drive.id)
+            folders = _organization_candidates(file.name, file.parent_folder_id, drive, tree)
+            current = next((item for item in folders if item.folder_id == current_id), None)
+        if current is None:
+            msg = "The file's current folder is not available in this workspace"
+            raise FileNotInScopeError(msg)
+        try:
+            generated = await self._generator.generate(file_name=file.name, folders=folders)
+            return _validated_reorganization(generated, folders, current)
+        except (
+            TimeoutError,
+            RuntimeError,
+            ValueError,
+            ValidationError,
+            genai_errors.APIError,
+        ) as exc:
+            logger.warning("Re-organize proposal failed file={file_id}", file_id=file_id)
+            raise ReorganizationUnavailableError from exc
 
 
 class GeneratedProposal(BaseModel):
@@ -167,6 +288,78 @@ class GeminiSmartProposalService(SmartProposalService):
             if cached is not None:
                 trees.append(cached.tree)
         return trees
+
+
+def _build_reorganization_prompt(
+    file_name: str,
+    folders: list[ProposalDestination],
+) -> str:
+    context = {
+        "file_name": file_name,
+        "folders": [folder.model_dump(mode="json") for folder in folders],
+    }
+    serialized_context = json.dumps(context, ensure_ascii=False, separators=(",", ":"))
+    instructions = (
+        "Choose the best folder for this existing Sarj Wiki document. "
+        "Choose destination_folder_id only from folders, including the current folder when it is "
+        "already the best fit. Give one short, specific reason and return no prose."
+    )
+    return "\n".join(  # ruff: ignore[static-join-to-f-string]
+        (instructions, serialized_context)
+    )
+
+
+def _organization_candidates(
+    file_name: str,
+    current_parent_id: FileId | None,
+    drive: DriveSummary,
+    tree: DriveTree,
+) -> list[ProposalDestination]:
+    current_id = current_parent_id or FileId(drive.id)
+    destinations = [
+        ProposalDestination(
+            folder_id=FileId(drive.id),
+            drive_id=drive.id,
+            drive_name=drive.name,
+            folder_path=[drive.name],
+        ),
+        *_tree_destinations(drive, tree),
+    ]
+    terms = frozenset(_WORD_PATTERN.findall(file_name.casefold()))
+    destinations.sort(
+        key=lambda destination: (
+            destination.folder_id != current_id,
+            -len(terms & set(_WORD_PATTERN.findall(" ".join(destination.folder_path).casefold()))),
+            tuple(part.casefold() for part in destination.folder_path),
+            destination.folder_id,
+        )
+    )
+    return destinations[:_MAX_FOLDER_CANDIDATES]
+
+
+def _validated_reorganization(
+    generated: GeneratedReorganization,
+    folders: list[ProposalDestination],
+    current: ProposalDestination,
+) -> ReorganizationProposalRead:
+    suggested = next(
+        (item for item in folders if item.folder_id == generated.destination_folder_id),
+        None,
+    )
+    if suggested is None:
+        msg = "Gemini selected an unknown destination"
+        raise ValueError(msg)
+    if suggested.folder_id == current.folder_id:
+        return ReorganizationProposalRead(
+            current_destination=current,
+            suggested_destination=None,
+            reason=None,
+        )
+    return ReorganizationProposalRead(
+        current_destination=current,
+        suggested_destination=suggested,
+        reason=generated.reason,
+    )
 
 
 def _build_prompt(

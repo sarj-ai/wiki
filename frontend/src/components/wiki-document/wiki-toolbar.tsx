@@ -13,16 +13,20 @@ import {
 } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import type { BreadcrumbItem } from "@/types/wiki";
+import { MIME_DOC } from "@/types/wiki";
 
 import { ReadOnlyShortLink } from "./read-only-short-link";
+import { ReorganizeDocument } from "./reorganize-document";
 import { ShortLinkDialog } from "./short-link-dialog";
 
 interface WikiToolbarProps {
   breadcrumb: BreadcrumbItem[];
   canEdit: boolean;
+  driveId: string | undefined;
   fileId: string;
   mimeType: string;
   onReload: () => void;
+  parentFolderId: string | undefined;
 
   title: string;
 }
@@ -32,9 +36,11 @@ const COPY_FEEDBACK_MS = 2000;
 export function WikiToolbar({
   breadcrumb,
   canEdit,
+  driveId,
   fileId,
   mimeType,
   onReload,
+  parentFolderId,
   title,
 }: WikiToolbarProps) {
   const openUrl = openUrlFor(mimeType, fileId);
@@ -107,6 +113,14 @@ export function WikiToolbar({
         {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         {copied ? "Copied" : "Copy link"}
       </Button>
+      {canEdit && mimeType === MIME_DOC ? (
+        <ReorganizeDocument
+          driveId={driveId}
+          fileId={fileId}
+          fileName={displayTitle}
+          parentFolderId={parentFolderId}
+        />
+      ) : null}
       {canEdit ? <ShortLinkDialog fileId={fileId} /> : <ReadOnlyShortLink fileId={fileId} />}
       <Button asChild size="xs" variant="outline">
         <a href={openUrl} rel="noopener noreferrer" target="_blank">
