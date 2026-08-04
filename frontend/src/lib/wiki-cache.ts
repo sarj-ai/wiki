@@ -75,7 +75,9 @@ export function optimisticMoveFile(
   destination: { parentFolderId: string; driveId: string },
   source: { parentFolderId: string | undefined; driveId: string | undefined },
 ): () => void {
-  removeFileFromCaches(qc, node.id, source.parentFolderId, source.driveId);
+  removeFileFromCaches(qc, node.id, source.parentFolderId, source.driveId, {
+    removeFileQuery: false,
+  });
   injectNewFileIntoCaches(qc, {
     canEdit: false,
     driveId: destination.driveId,
@@ -86,7 +88,9 @@ export function optimisticMoveFile(
     parentFolderId: destination.parentFolderId,
   });
   return () => {
-    removeFileFromCaches(qc, node.id, destination.parentFolderId, destination.driveId);
+    removeFileFromCaches(qc, node.id, destination.parentFolderId, destination.driveId, {
+      removeFileQuery: false,
+    });
     injectNewFileIntoCaches(qc, {
       canEdit: false,
       driveId: source.driveId,
@@ -104,6 +108,7 @@ export function removeFileFromCaches(
   fileId: string,
   parentFolderId?: string,
   driveId?: string,
+  options: { removeFileQuery?: boolean } = {},
 ): void {
   const parentKey = parentFolderId ?? driveId;
   if (parentKey) {
@@ -123,7 +128,9 @@ export function removeFileFromCaches(
     });
   }
 
-  qc.removeQueries({ queryKey: wikiKeys.file(fileId) });
+  if (options.removeFileQuery !== false) {
+    qc.removeQueries({ queryKey: wikiKeys.file(fileId) });
+  }
 }
 
 function metaFromNodes(nodes: DriveNode[], fileId: string): CachedNodeMeta | null {

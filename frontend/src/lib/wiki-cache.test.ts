@@ -221,4 +221,14 @@ describe("removeFileFromCaches", () => {
 
     expect(qc.getQueryData(["wiki", "file", "x"])).toBeUndefined();
   });
+
+  it("can preserve active file metadata while moving between tree caches", () => {
+    const qc = new QueryClient();
+    const detail = { breadcrumb: [{ id: "drive-1", name: "My Drive" }], id: "x" };
+    qc.setQueryData(wikiKeys.file("x"), detail);
+
+    removeFileFromCaches(qc, "x", "folder-a", "drive-1", { removeFileQuery: false });
+
+    expect(qc.getQueryData(wikiKeys.file("x"))).toEqual(detail);
+  });
 });
