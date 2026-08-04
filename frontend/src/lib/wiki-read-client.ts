@@ -4,6 +4,7 @@ import {
   getCurrentUserAction,
   getDocumentAliasAction,
   getDriveFoldersAction,
+  getDrivePermissionsAction,
   getDrivesAction,
   getDriveSearchSnippetAction,
   getFileAction,
@@ -26,6 +27,8 @@ export const wikiReadApi = {
     await runAction(async () => await getDocumentAliasAction(fileId)),
   getDriveFolders: async (driveId: string) =>
     await runAction(async () => await getDriveFoldersAction(driveId)),
+  getDrivePermissions: async (driveId: string, pageToken?: string) =>
+    await runAction(async () => await getDrivePermissionsAction(driveId, pageToken)),
   getDrives: async () => await runAction(getDrivesAction),
   getFile: async (fileId: string) => await runAction(async () => await getFileAction(fileId)),
   getFolderFiles: async (folderId: string) =>

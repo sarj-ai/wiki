@@ -90,6 +90,7 @@ class _FakeClient:
         *,
         drives_pages: list[dict[str, Any]] | None = None,
         files_pages: list[dict[str, Any]] | None = None,
+        permissions_pages: list[dict[str, Any]] | None = None,
         children_pages: list[dict[str, Any]] | None = None,
         root_page: dict[str, Any] | None = None,
     ) -> None:
@@ -102,12 +103,20 @@ class _FakeClient:
             self.files_captured,
             root_page or {"id": "my-drive-root"},
         )
+        self.permissions_captured: list[dict[str, Any]] = []
+        self._permissions = _FakeListable(
+            permissions_pages or [{"permissions": []}],
+            self.permissions_captured,
+        )
 
     def drives(self) -> _FakeListable:
         return self._drives
 
     def files(self) -> _FakeFilesListable:
         return self._files
+
+    def permissions(self) -> _FakeListable:
+        return self._permissions
 
 
 @pytest.fixture
@@ -213,6 +222,58 @@ async def test_list_drives_skips_hidden_entries(patch_drive_client: Any) -> None
     result = await _svc().list_drives()
 
     assert [d.id for d in result] == ["my-drive-root", "d1", "d3"]
+
+
+async def test_list_drive_permissions_maps_page_and_requests_private_fields(
+    patch_drive_client: Any,
+) -> None:
+    client = _FakeClient(
+        drives_pages=[{"drives": [{"id": "d1", "name": "Engineering"}]}],
+        permissions_pages=[
+            {
+                "nextPageToken": "next",
+                "permissions": [
+                    {
+                        "displayName": "Engineering",
+                        "emailAddress": "engineering@example.com",
+                        "id": "permission-1",
+                        "role": "fileOrganizer",
+                        "type": "group",
+                    }
+                ],
+            }
+        ],
+    )
+    patch_drive_client(client)
+
+    incoming_page_token = "incoming"  # ruff: ignore[hardcoded-password-string]
+    next_page_token = "next"  # ruff: ignore[hardcoded-password-string]
+    page = await _svc().list_drive_permissions(DriveId("d1"), page_token=incoming_page_token)
+
+    assert page.access_model == "shared_drive_membership"
+    assert page.next_page_token == next_page_token
+    assert page.permissions[0].principal_type == "group"
+    assert page.permissions[0].role == "fileOrganizer"
+    call = client.permissions_captured[0]
+    assert call["fileId"] == "d1"
+    assert call["pageToken"] == "incoming"
+    assert call["pageSize"] == 100
+    assert call["supportsAllDrives"] is True
+    assert call["useDomainAdminAccess"] is False
+    assert "emailAddress" in call["fields"]
+
+
+async def test_my_drive_permissions_are_item_specific_without_google_acl_call(
+    patch_drive_client: Any,
+) -> None:
+    client = _FakeClient()
+    patch_drive_client(client)
+
+    page = await _svc().list_drive_permissions(DriveId("my-drive-root"))
+
+    assert page.access_model == "item_specific"
+    assert page.permissions == []
+    assert client.permissions_captured == []
 
 
 async def test_list_drives_skips_entries_missing_fields(patch_drive_client: Any) -> None:
@@ -961,6 +1022,31 @@ async def test_snippet_with_non_exportable_mime_makes_no_drive_calls(
     result = await _svc().fetch_snippet(FileId("f1"), "match", mime_type="application/pdf")
     assert result.snippet is None
     assert result.mime_type == "application/pdf"
+
+
+async def test_document_text_export_is_collapsed_and_bounded(
+    patch_drive_client: Any,
+) -> None:
+    class _FakeFiles:
+        def export(self, **_: Any) -> Self:
+            return self
+
+        def execute(self) -> bytes:
+            return ("opening\n\n" + "private topic " * 2_000 + "closing").encode()
+
+    class _FakeTextClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    patch_drive_client(_FakeTextClient())
+
+    text = await _svc().fetch_document_text(FileId("f1"))
+
+    assert text is not None
+    assert text.startswith("opening private topic")
+    assert text.endswith("closing")
+    assert "[middle omitted]" in text
+    assert len(text) < 12_100
 
 
 def test_discovery_document_parsed_once() -> None:

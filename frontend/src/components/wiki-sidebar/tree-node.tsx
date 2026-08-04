@@ -68,7 +68,6 @@ interface FolderHeaderProps {
   expanded: boolean;
   iconEmoji: string | undefined;
   isDropIntoFolder: boolean;
-  isEmpty: boolean;
   isMoving: boolean;
   itemCount: number | undefined;
   meta: ShortcutMeta;
@@ -141,7 +140,6 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
   const sortableItems = childItems.map((c) => c.node.id);
   const iconEmoji = ctx.iconOverrides.get(node.id);
   const itemCount = meta.isFolderShortcut || !ctx.treeFilesComplete ? undefined : childItems.length;
-  const isEmpty = itemCount === 0;
 
   const handleFolderIconChange = async (next: null | string) => {
     await runWithErrorToast(async () => {
@@ -168,7 +166,6 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
         expanded={expanded}
         iconEmoji={iconEmoji}
         isDropIntoFolder={isDropIntoFolder}
-        isEmpty={isEmpty}
         isMoving={isMoving}
         itemCount={itemCount}
         meta={meta}
@@ -179,7 +176,7 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
         onHoverStart={prefetchChildren}
         onIconChange={handleFolderIconChange}
         onToggle={() => {
-          if (meta.inaccessible || isEmpty) return;
+          if (meta.inaccessible) return;
           setExpanded(!expanded);
         }}
       />
@@ -192,7 +189,11 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
           >
             {childItems.map(({ node: child, type }) => (
               <SortableItem
-                data={{ isFolder: type === "folder" }}
+                data={{
+                  driveId: ctx.driveId,
+                  isFolder: type === "folder",
+                  parentFolderId: node.id,
+                }}
                 id={child.id}
                 key={child.id}
                 variant="subitem"
@@ -218,7 +219,12 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
             </SidebarMenuSubItem>
           ) : null}
           {!filesLoading && childItems.length === 0 && (
-            <EmptyDropZone label="Empty" parentId={node.id} variant="subitem" />
+            <EmptyDropZone
+              driveId={ctx.driveId}
+              label="Empty"
+              parentId={node.id}
+              variant="subitem"
+            />
           )}
         </SidebarMenuSub>
       ) : null}
@@ -261,7 +267,6 @@ function FolderHeader({
   expanded,
   iconEmoji,
   isDropIntoFolder,
-  isEmpty,
   isMoving,
   itemCount,
   meta,
@@ -283,29 +288,27 @@ function FolderHeader({
   return (
     <div className="relative">
       <SidebarMenuButton
-        aria-expanded={meta.inaccessible || isEmpty ? undefined : expanded}
+        aria-expanded={meta.inaccessible ? undefined : expanded}
         className={cn(
           "pr-14 transition-[background-color,box-shadow] duration-150",
 
           isDropIntoFolder && "ring-primary/60 bg-primary/10 ring-1",
           isMoving && "opacity-60",
           meta.inaccessible && "text-muted-foreground/60 cursor-not-allowed",
-          isEmpty && "text-muted-foreground/60 cursor-default",
         )}
         data-file-id={node.id}
-        disabled={meta.inaccessible || isEmpty}
+        disabled={meta.inaccessible}
         onClick={onToggle}
         onPointerEnter={onHoverStart}
         onPointerLeave={onHoverEnd}
         style={{ paddingLeft: chevronPadding }}
-        title={meta.tooltip ?? (isEmpty ? `${node.name} — empty` : node.name)}
+        title={meta.tooltip ?? node.name}
       >
         <ChevronRight
           className={cn(
             "size-3.5 shrink-0 transition-transform",
             expanded && "rotate-90",
             meta.inaccessible && "opacity-30",
-            isEmpty && "invisible",
           )}
         />
         <span aria-hidden="true" className="shrink-0" style={{ width: ICON_COLUMN_WIDTH - 4 }} />

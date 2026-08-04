@@ -37,6 +37,19 @@ class GoogleDrive(_GoogleModel):
     hidden: bool = False
 
 
+class GooglePermission(_GoogleModel):
+    id: str
+    type: str
+    role: str
+    display_name: str | None = Field(default=None, alias="displayName")
+    email_address: str | None = Field(default=None, alias="emailAddress")
+    domain: str | None = None
+    allow_file_discovery: bool | None = Field(default=None, alias="allowFileDiscovery")
+    expiration_time: str | None = Field(default=None, alias="expirationTime")
+    deleted: bool = False
+    pending_owner: bool = Field(default=False, alias="pendingOwner")
+
+
 class GoogleFileProbe(_GoogleModel):
     trashed: bool = False
     drive_id: DriveId | None = Field(default=None, alias="driveId")

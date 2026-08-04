@@ -1,5 +1,13 @@
 "use client";
 
+import {
+  closestCorners,
+  type CollisionDetection,
+  DndContext,
+  DragOverlay,
+  pointerWithin,
+  rectIntersection,
+} from "@dnd-kit/core";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
@@ -14,11 +22,21 @@ import {
   usePreferences,
   useSortOrders,
 } from "@/hooks/use-wiki-tree";
+import { renderNodeIcon } from "@/lib/file-icons";
 
 import { DriveSearchBox } from "./drive-search-box";
 import { DriveSection } from "./drive-section";
 import { SidebarResizeHandle } from "./resize-handle";
+import { useWikiReorder } from "./use-wiki-reorder";
 import { WikiFooter } from "./wiki-footer";
+
+const cursorFirstCollision: CollisionDetection = (args) => {
+  const pointer = pointerWithin(args);
+  if (pointer.length > 0) return pointer;
+  const intersect = rectIntersection(args);
+  if (intersect.length > 0) return intersect;
+  return closestCorners(args);
+};
 
 export function WikiSidebar() {
   const pathname = usePathname();
@@ -26,6 +44,7 @@ export function WikiSidebar() {
   const prefsQuery = usePreferences();
   const folderIconsQuery = useFolderIcons();
   const sortOrdersQuery = useSortOrders();
+  const reorder = useWikiReorder();
 
   const activeDriveId: null | string = (() => {
     if (!pathname.startsWith("/d/")) return null;
@@ -77,31 +96,49 @@ export function WikiSidebar() {
           <DriveSearchBox />
         </div>
       </SidebarHeader>
-      <SidebarContent>
-        <ErrorBoundary>
-          {drivesQuery.isLoading ? (
-            <div className="text-muted-foreground px-3 py-2 text-xs">Loading drives…</div>
-          ) : null}
-          {drivesQuery.isError ? (
-            <div className="text-destructive px-3 py-2 text-xs">Failed to load drives</div>
-          ) : null}
-          {visibleDrives.map((drive, index) => (
-            <div key={drive.id}>
-              <DriveSection
-                activeDriveId={activeDriveId}
-                drive={drive}
-                folderIcons={folderIconsQuery.data ?? []}
-                showNonDocFiles={showNonDocFiles}
-                sortOrders={sortOrdersQuery.data ?? []}
-              />
-              {index < visibleDrives.length - 1 && <SidebarSeparator />}
+      <DndContext
+        collisionDetection={cursorFirstCollision}
+        onDragCancel={reorder.onDragCancel}
+        onDragEnd={reorder.onDragEnd}
+        onDragOver={reorder.onDragOver}
+        onDragStart={reorder.onDragStart}
+        sensors={reorder.sensors}
+      >
+        <SidebarContent>
+          <ErrorBoundary>
+            {drivesQuery.isLoading ? (
+              <div className="text-muted-foreground px-3 py-2 text-xs">Loading drives…</div>
+            ) : null}
+            {drivesQuery.isError ? (
+              <div className="text-destructive px-3 py-2 text-xs">Failed to load drives</div>
+            ) : null}
+            {visibleDrives.map((drive, index) => (
+              <div key={drive.id}>
+                <DriveSection
+                  activeDriveId={activeDriveId}
+                  drive={drive}
+                  folderIcons={folderIconsQuery.data ?? []}
+                  optimisticByContainer={reorder.optimisticByContainer}
+                  showNonDocFiles={showNonDocFiles}
+                  sortOrders={sortOrdersQuery.data ?? []}
+                />
+                {index < visibleDrives.length - 1 && <SidebarSeparator />}
+              </div>
+            ))}
+            {!drivesQuery.isLoading && visibleDrives.length === 0 && (
+              <div className="text-muted-foreground px-3 py-2 text-xs">No accessible drives</div>
+            )}
+          </ErrorBoundary>
+        </SidebarContent>
+        <DragOverlay dropAnimation={null}>
+          {reorder.activeNode ? (
+            <div className="bg-sidebar text-sidebar-foreground flex max-w-64 items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm shadow-lg">
+              {renderNodeIcon(reorder.activeNode, "size-4 shrink-0")}
+              <span className="truncate">{reorder.activeNode.name}</span>
             </div>
-          ))}
-          {!drivesQuery.isLoading && visibleDrives.length === 0 && (
-            <div className="text-muted-foreground px-3 py-2 text-xs">No accessible drives</div>
-          )}
-        </ErrorBoundary>
-      </SidebarContent>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
       <WikiFooter />
       <SidebarResizeHandle />
     </Sidebar>

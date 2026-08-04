@@ -22,12 +22,18 @@ from pydantic import TypeAdapter, ValidationError
 from app.auth.encryption import decrypt_text
 from app.cache.service import CacheNamespace, CacheService
 from app.config import settings
+from app.drive.errors import (
+    DrivePermissionsForbiddenError,
+    DrivePermissionsNotFoundError,
+    DrivePermissionsUpstreamError,
+)
 from app.drive.google_schemas import (
     GoogleDrive,
     GoogleFile,
     GoogleFileLocation,
     GoogleFileMetadata,
     GoogleFileProbe,
+    GooglePermission,
 )
 from app.drive.retry import drive_retry, execute_with_retry
 from app.drive.schemas import (
@@ -35,6 +41,8 @@ from app.drive.schemas import (
     MIME_SHORTCUT,
     NAVIGATOR_SUPPORTED_MIME_TYPES,
     DriveNode,
+    DrivePermission,
+    DrivePermissionsPage,
     DriveSummary,
     DriveTree,
     SearchResult,
@@ -76,6 +84,8 @@ _TEXT_EXPORTABLE_MIME_TYPES = frozenset(
 
 _MAX_EXPORT_BYTES = 2 * 1024 * 1024
 
+_MAX_REORGANIZATION_TEXT_CHARS = 12_000
+
 _DRIVE_LIST_CACHE_TTL = timedelta(seconds=30)
 
 _PROBE_CACHE_TTL = timedelta(minutes=5)
@@ -115,6 +125,17 @@ class DriveService(ABC):
     async def fetch_snippet(
         self, file_id: FileId, query: str, *, mime_type: str | None = None
     ) -> SnippetResult: ...
+
+    async def fetch_document_text(self, file_id: FileId) -> str | None:
+        raise NotImplementedError
+
+    async def list_drive_permissions(
+        self,
+        drive_id: DriveId,
+        *,
+        page_token: str | None = None,
+    ) -> DrivePermissionsPage:
+        raise NotImplementedError
 
 
 class GoogleDriveService(DriveService):
@@ -244,6 +265,29 @@ class GoogleDriveService(DriveService):
         self, file_id: FileId, query: str, *, mime_type: str | None = None
     ) -> SnippetResult:
         return await asyncio.to_thread(self._fetch_snippet_sync, file_id, query, mime_type)
+
+    @override
+    async def fetch_document_text(self, file_id: FileId) -> str | None:
+        return await asyncio.to_thread(self._fetch_document_text_sync, file_id)
+
+    @override
+    async def list_drive_permissions(
+        self,
+        drive_id: DriveId,
+        *,
+        page_token: str | None = None,
+    ) -> DrivePermissionsPage:
+        if await self._is_personal_drive(drive_id):
+            return DrivePermissionsPage(
+                access_model="item_specific",
+                drive_id=drive_id,
+                permissions=[],
+            )
+        return await asyncio.to_thread(
+            self._list_drive_permissions_sync,
+            drive_id,
+            page_token,
+        )
 
     async def _resolve_shortcut_nodes(self, nodes: list[DriveNode]) -> list[DriveNode]:
         return await self._resolve_shortcuts(
@@ -716,19 +760,11 @@ class GoogleDriveService(DriveService):
                 file_id=file_id, mime_type=mime_type, snippet=None, match_term=None
             )
 
-        try:
-            raw = execute_with_retry(client.files().export(fileId=file_id, mimeType="text/plain"))
-        except HttpError:
-            logger.exception("snippet export failed file={file_id}", file_id=file_id)
+        text = self._export_text_sync(file_id)
+        if text is None:
             return SnippetResult(
                 file_id=file_id, mime_type=mime_type, snippet=None, match_term=None
             )
-
-        if isinstance(raw, bytes):
-            raw = raw[:_MAX_EXPORT_BYTES]
-            text = raw.decode("utf-8", errors="replace")
-        else:
-            text = str(raw)[: _MAX_EXPORT_BYTES // 2]
 
         match = extract_snippet(text, query)
         if match is None:
@@ -742,6 +778,88 @@ class GoogleDriveService(DriveService):
             snippet=snippet,
             match_term=word,
         )
+
+    def _fetch_document_text_sync(self, file_id: FileId) -> str | None:
+        text = self._export_text_sync(file_id)
+        if text is None:
+            return None
+        collapsed = " ".join(text.split())
+        if not collapsed:
+            return None
+        if len(collapsed) <= _MAX_REORGANIZATION_TEXT_CHARS:
+            return collapsed
+        head_chars = _MAX_REORGANIZATION_TEXT_CHARS * 2 // 3
+        tail_chars = _MAX_REORGANIZATION_TEXT_CHARS - head_chars
+        return f"{collapsed[:head_chars]} … [middle omitted] … {collapsed[-tail_chars:]}"
+
+    def _list_drive_permissions_sync(
+        self,
+        drive_id: DriveId,
+        page_token: str | None,
+    ) -> DrivePermissionsPage:
+        params: dict[str, Any] = {
+            "fields": (
+                "nextPageToken,permissions(id,type,role,displayName,emailAddress,domain,"
+                "allowFileDiscovery,expirationTime,deleted,pendingOwner)"
+            ),
+            "fileId": drive_id,
+            "pageSize": 100,
+            "supportsAllDrives": True,
+            "useDomainAdminAccess": False,
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        try:
+            raw = execute_with_retry(self._client().permissions().list(**params))
+        except HttpError as exc:
+            status = getattr(exc.resp, "status", None)
+            if status == 403:
+                raise DrivePermissionsForbiddenError from exc
+            if status == 404:
+                raise DrivePermissionsNotFoundError from exc
+            raise DrivePermissionsUpstreamError from exc
+
+        permissions: list[DrivePermission] = []
+        for item in raw.get("permissions", []):
+            try:
+                permission = GooglePermission.model_validate(item)
+            except ValidationError:
+                logger.warning(
+                    "Drive permission payload validation failed drive={drive_id}",
+                    drive_id=drive_id,
+                )
+                continue
+            permissions.append(
+                DrivePermission(
+                    allow_file_discovery=permission.allow_file_discovery,
+                    deleted=permission.deleted,
+                    display_name=permission.display_name,
+                    domain=permission.domain,
+                    email_address=permission.email_address,
+                    expiration_time=permission.expiration_time,
+                    id=permission.id,
+                    pending_owner=permission.pending_owner,
+                    principal_type=permission.type,
+                    role=permission.role,
+                )
+            )
+        return DrivePermissionsPage(
+            access_model="shared_drive_membership",
+            drive_id=drive_id,
+            next_page_token=raw.get("nextPageToken"),
+            permissions=permissions,
+        )
+
+    def _export_text_sync(self, file_id: FileId) -> str | None:
+        client = self._client()
+        try:
+            raw = execute_with_retry(client.files().export(fileId=file_id, mimeType="text/plain"))
+        except HttpError:
+            logger.warning("document text export failed file={file_id}", file_id=file_id)
+            return None
+        if isinstance(raw, bytes):
+            return raw[:_MAX_EXPORT_BYTES].decode("utf-8", errors="replace")
+        return str(raw)[: _MAX_EXPORT_BYTES // 2]
 
     def _client(self) -> DriveResource:
         return reuse_drive_client(self._user, self._clients)

@@ -137,6 +137,10 @@ resource "google_cloud_run_v2_service" "backend" {
         value = "gemini-3.5-flash-lite"
       }
       env {
+        name  = "GEMINI_REORGANIZATION_MODEL"
+        value = "gemini-3.5-flash"
+      }
+      env {
         name  = "CLOUD_TASKS_QUEUE"
         value = google_cloud_tasks_queue.smart_create.name
       }

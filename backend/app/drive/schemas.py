@@ -54,6 +54,26 @@ class DriveSummary(BaseModel):
     is_personal: bool = False
 
 
+class DrivePermission(BaseModel):
+    id: str
+    principal_type: str
+    role: str
+    display_name: str | None = None
+    email_address: str | None = None
+    domain: str | None = None
+    allow_file_discovery: bool | None = None
+    expiration_time: str | None = None
+    deleted: bool = False
+    pending_owner: bool = False
+
+
+class DrivePermissionsPage(BaseModel):
+    drive_id: DriveId
+    access_model: str
+    permissions: list[DrivePermission]
+    next_page_token: str | None = None
+
+
 class DriveNode(BaseModel):
     id: FileId
     name: str

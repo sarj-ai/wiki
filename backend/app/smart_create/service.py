@@ -37,15 +37,48 @@ from app.templates.service import TemplateCatalogService
 
 _MAX_FOLDER_CANDIDATES = 80
 _MAX_TEMPLATE_CANDIDATES = 80
-_MODEL_TIMEOUT_SECONDS = 4.0
+_MODEL_TIMEOUT_SECONDS = 8.0
+_REORGANIZATION_MODEL_TIMEOUT_SECONDS = 30.0
 _WORD_PATTERN = re.compile(r"[a-z]+")
 _MIN_ALIAS_WORD_LENGTH = 2
 _MAX_ALIAS_WORD_COUNT = 3
+_MIN_REORGANIZATION_TERM_LENGTH = 4
+_MAX_GENERATED_REORGANIZATION_REASON_CHARS = 1_000
+_MAX_REORGANIZATION_REASON_CHARS = 200
+_REORGANIZATION_STOP_WORDS = frozenset(
+    {
+        "about",
+        "also",
+        "been",
+        "from",
+        "have",
+        "into",
+        "that",
+        "their",
+        "this",
+        "with",
+        "would",
+    }
+)
+
+
+class ReorganizationEvidence(BaseModel):
+    content: str
+    description: str | None
+    file_name: str
+    modified_time: str | None
 
 
 class GeneratedReorganization(BaseModel):
     destination_folder_id: FileId
-    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+    reason: Annotated[
+        str,
+        StringConstraints(
+            strip_whitespace=True,
+            min_length=1,
+            max_length=_MAX_GENERATED_REORGANIZATION_REASON_CHARS,
+        ),
+    ]
 
 
 class ReorganizationGenerator(ABC):
@@ -53,20 +86,23 @@ class ReorganizationGenerator(ABC):
     async def generate(
         self,
         *,
-        file_name: str,
+        current: ProposalDestination,
+        evidence: ReorganizationEvidence,
         folders: list[ProposalDestination],
     ) -> GeneratedReorganization: ...
 
 
 class VertexReorganizationGenerator(ReorganizationGenerator):
-    def __init__(self) -> None:
+    def __init__(self, *, project: str | None = None, model: str | None = None) -> None:
+        resolved_project = project or settings.GOOGLE_CLOUD_PROJECT
+        self._model = model or settings.GEMINI_REORGANIZATION_MODEL
         self._client = (
             genai.Client(
                 vertexai=True,
-                project=settings.GOOGLE_CLOUD_PROJECT,
+                project=resolved_project,
                 location=settings.GEMINI_LOCATION,
             )
-            if settings.GOOGLE_CLOUD_PROJECT is not None
+            if resolved_project is not None
             else None
         )
 
@@ -74,25 +110,26 @@ class VertexReorganizationGenerator(ReorganizationGenerator):
     async def generate(
         self,
         *,
-        file_name: str,
+        current: ProposalDestination,
+        evidence: ReorganizationEvidence,
         folders: list[ProposalDestination],
     ) -> GeneratedReorganization:
         if self._client is None:
             msg = "GOOGLE_CLOUD_PROJECT is not configured"
             raise RuntimeError(msg)
-        prompt = _build_reorganization_prompt(file_name, folders)
-        async with asyncio.timeout(_MODEL_TIMEOUT_SECONDS):
+        prompt = _build_reorganization_prompt(evidence, current, folders)
+        async with asyncio.timeout(_REORGANIZATION_MODEL_TIMEOUT_SECONDS):
             response = await self._client.aio.models.generate_content(
-                model=settings.GEMINI_MODEL,
+                model=self._model,
                 contents=prompt,
                 config=genai_types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=GeneratedReorganization,
                     thinking_config=genai_types.ThinkingConfig(
-                        thinking_level=genai_types.ThinkingLevel.MINIMAL
+                        thinking_level=genai_types.ThinkingLevel.LOW
                     ),
                     http_options=genai_types.HttpOptions(
-                        timeout=int(_MODEL_TIMEOUT_SECONDS * 1000)
+                        timeout=int(_REORGANIZATION_MODEL_TIMEOUT_SECONDS * 1000)
                     ),
                 ),
             )
@@ -135,19 +172,33 @@ class GeminiReorganizationService(ReorganizationService):
         if drive is None:
             msg = "File not available in a Drive workspace"
             raise FileNotInScopeError(msg)
+        content = await self._drive.fetch_document_text(file_id)
+        if content is None:
+            logger.warning("Re-organize content unavailable file={file_id}", file_id=file_id)
+            raise ReorganizationUnavailableError
+        evidence = ReorganizationEvidence(
+            content=content,
+            description=file.description,
+            file_name=file.name,
+            modified_time=file.modified_time,
+        )
         cached = await self._sidebar_cache.get_drive_tree(self._db, drive.id)
-        folders = _organization_candidates(file.name, file.parent_folder_id, drive, cached.tree)
+        folders = organization_candidates(evidence, file.parent_folder_id, drive, cached.tree)
         current_id = file.parent_folder_id or FileId(drive.id)
         current = next((item for item in folders if item.folder_id == current_id), None)
         if current is None:
             tree = await self._sidebar_cache.refresh_drive(self._db, drive.id)
-            folders = _organization_candidates(file.name, file.parent_folder_id, drive, tree)
+            folders = organization_candidates(evidence, file.parent_folder_id, drive, tree)
             current = next((item for item in folders if item.folder_id == current_id), None)
         if current is None:
             msg = "The file's current folder is not available in this workspace"
             raise FileNotInScopeError(msg)
         try:
-            generated = await self._generator.generate(file_name=file.name, folders=folders)
+            generated = await self._generator.generate(
+                current=current,
+                evidence=evidence,
+                folders=folders,
+            )
             return _validated_reorganization(generated, folders, current)
         except (
             TimeoutError,
@@ -291,26 +342,31 @@ class GeminiSmartProposalService(SmartProposalService):
 
 
 def _build_reorganization_prompt(
-    file_name: str,
+    evidence: ReorganizationEvidence,
+    current: ProposalDestination,
     folders: list[ProposalDestination],
 ) -> str:
     context = {
-        "file_name": file_name,
+        "current_destination": current.model_dump(mode="json"),
+        "document": evidence.model_dump(mode="json"),
         "folders": [folder.model_dump(mode="json") for folder in folders],
     }
     serialized_context = json.dumps(context, ensure_ascii=False, separators=(",", ":"))
     instructions = (
-        "Choose the best folder for this existing Sarj Wiki document. "
-        "Choose destination_folder_id only from folders, including the current folder when it is "
-        "already the best fit. Give one short, specific reason and return no prose."
+        "Choose the best folder for this existing Sarj Wiki document using its content, title, "
+        "description, modified time, and the meaning of each complete folder path. Do not infer a "
+        "sensitive category from a person's name or a weak keyword match. Keep the current folder "
+        "when the evidence does not clearly support a better destination. Choose "
+        "destination_folder_id only from folders. Give one short reason grounded in the document's "
+        "topic without quoting private content, and return no prose outside the JSON response."
     )
     return "\n".join(  # ruff: ignore[static-join-to-f-string]
         (instructions, serialized_context)
     )
 
 
-def _organization_candidates(
-    file_name: str,
+def organization_candidates(
+    evidence: ReorganizationEvidence,
     current_parent_id: FileId | None,
     drive: DriveSummary,
     tree: DriveTree,
@@ -325,16 +381,46 @@ def _organization_candidates(
         ),
         *_tree_destinations(drive, tree),
     ]
-    terms = frozenset(_WORD_PATTERN.findall(file_name.casefold()))
+    title_terms = _significant_terms(evidence.file_name)
+    description_terms = _significant_terms(evidence.description or "")
+    content_terms = _significant_terms(evidence.content)
     destinations.sort(
         key=lambda destination: (
             destination.folder_id != current_id,
-            -len(terms & set(_WORD_PATTERN.findall(" ".join(destination.folder_path).casefold()))),
+            -_destination_evidence_score(
+                destination,
+                title_terms=title_terms,
+                description_terms=description_terms,
+                content_terms=content_terms,
+            ),
             tuple(part.casefold() for part in destination.folder_path),
             destination.folder_id,
         )
     )
     return destinations[:_MAX_FOLDER_CANDIDATES]
+
+
+def _significant_terms(value: str) -> frozenset[str]:
+    return frozenset(
+        word
+        for word in _WORD_PATTERN.findall(value.casefold())
+        if len(word) >= _MIN_REORGANIZATION_TERM_LENGTH and word not in _REORGANIZATION_STOP_WORDS
+    )
+
+
+def _destination_evidence_score(
+    destination: ProposalDestination,
+    *,
+    title_terms: frozenset[str],
+    description_terms: frozenset[str],
+    content_terms: frozenset[str],
+) -> int:
+    path_terms = _significant_terms(" ".join(destination.folder_path))
+    return (
+        4 * len(title_terms & path_terms)
+        + 2 * len(description_terms & path_terms)
+        + len(content_terms & path_terms)
+    )
 
 
 def _validated_reorganization(
@@ -358,7 +444,7 @@ def _validated_reorganization(
     return ReorganizationProposalRead(
         current_destination=current,
         suggested_destination=suggested,
-        reason=generated.reason,
+        reason=generated.reason[:_MAX_REORGANIZATION_REASON_CHARS].rstrip(),
     )
 
 

@@ -1,12 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { type InfiniteData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import { wikiKeys } from "@/lib/wiki-keys";
 import { wikiReadApi } from "@/lib/wiki-read-client";
 import type {
   DocIcon,
   DriveNode,
+  DrivePermissionsPage,
   DriveSummary,
   DriveTree,
   FileDetail,
@@ -31,6 +32,24 @@ export function useDriveTree(driveId: null | string) {
     queryFn: async () => await wikiReadApi.getDriveFolders(driveId ?? ""),
     queryKey: wikiKeys.driveTree(driveId ?? "disabled"),
     staleTime: TREE_STALE_MS,
+  });
+}
+
+export function useDrivePermissions(driveId: null | string, enabled: boolean) {
+  return useInfiniteQuery<
+    DrivePermissionsPage,
+    Error,
+    InfiniteData<DrivePermissionsPage>,
+    readonly ["drive-permissions", string],
+    string | undefined
+  >({
+    enabled: enabled && !!driveId,
+    getNextPageParam: (lastPage) => lastPage.nextPageToken,
+    initialPageParam: undefined,
+    queryFn: async ({ pageParam }) =>
+      await wikiReadApi.getDrivePermissions(driveId ?? "", pageParam),
+    queryKey: ["drive-permissions", driveId ?? "disabled"] as const,
+    staleTime: 0,
   });
 }
 

@@ -5,6 +5,8 @@ import type {
   documentAlias,
   documentAliasForFile,
   driveNode,
+  drivePermissionsPage,
+  drivePrincipalTypeSchema,
   driveSummary,
   driveTree,
   fileDetail,
@@ -28,6 +30,9 @@ export const MIME_HTML = "text/html";
 
 export type DriveSummary = z.output<typeof driveSummary>;
 export type DriveNode = z.output<typeof driveNode>;
+export type DrivePermissionsPage = z.output<typeof drivePermissionsPage>;
+export type DrivePermission = DrivePermissionsPage["permissions"][number];
+export type DrivePrincipalType = z.output<typeof drivePrincipalTypeSchema>;
 export type DriveTree = z.output<typeof driveTree>;
 export type DriveSearchResult = z.output<typeof searchResult>;
 export type SnippetResult = z.output<typeof snippetResult>;

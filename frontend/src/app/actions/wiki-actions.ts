@@ -10,6 +10,7 @@ import type {
   DocumentAlias,
   DocumentAliasForFile,
   DriveNode,
+  DrivePermissionsPage,
   DriveSearchResult,
   DriveSummary,
   DriveTree,
@@ -31,6 +32,13 @@ export async function getDrivesAction(): Promise<ActionResult<DriveSummary[]>> {
 
 export async function getDriveFoldersAction(driveId: string): Promise<ActionResult<DriveTree>> {
   return await resultOf(async () => await serverWikiApi.getDriveFolders(driveId));
+}
+
+export async function getDrivePermissionsAction(
+  driveId: string,
+  pageToken?: string,
+): Promise<ActionResult<DrivePermissionsPage>> {
+  return await resultOf(async () => await serverWikiApi.getDrivePermissions(driveId, pageToken));
 }
 
 export async function getFileAction(fileId: string): Promise<ActionResult<FileDetail>> {

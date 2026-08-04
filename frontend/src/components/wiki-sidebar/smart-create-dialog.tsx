@@ -22,6 +22,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api-error";
+import { documentAliasError } from "@/lib/document-alias-validation";
 import { smartCreateApi } from "@/lib/smart-create-client";
 import {
   defaultAlias,
@@ -37,8 +38,6 @@ import { injectNewFileIntoCaches } from "@/lib/wiki-cache";
 import { MIME_DOC } from "@/types/wiki";
 
 import { FolderPickerDialog } from "./folder-picker-dialog";
-
-const ALIAS_PATTERN = /^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$/;
 
 export function SmartCreateDialog({
   invokingDriveId,
@@ -598,7 +597,8 @@ function ReviewStep({ onChange, onChooseDestination, plan, templates }: ReviewSt
             go/
           </span>
           <Input
-            aria-invalid={!ALIAS_PATTERN.test(plan.alias)}
+            aria-describedby="smart-alias-error"
+            aria-invalid={documentAliasError(plan.alias) !== null}
             autoCapitalize="none"
             autoComplete="off"
             className="border-0 font-mono shadow-none focus-visible:ring-0"
@@ -610,9 +610,9 @@ function ReviewStep({ onChange, onChooseDestination, plan, templates }: ReviewSt
             value={plan.alias}
           />
         </div>
-        {!ALIAS_PATTERN.test(plan.alias) ? (
-          <p className="text-destructive text-xs">
-            Use two or three lowercase words, like product-brief.
+        {documentAliasError(plan.alias) !== null ? (
+          <p className="text-destructive text-xs" id="smart-alias-error" role="alert">
+            {documentAliasError(plan.alias)}
           </p>
         ) : null}
       </div>
@@ -647,7 +647,9 @@ function canContinue(state: Extract<SmartCreateState, { phase: "compose" }>): bo
 
 function isValidPlan(plan: SmartCreationPlan): boolean {
   return (
-    plan.name.trim().length > 0 && plan.emoji.trim().length > 0 && ALIAS_PATTERN.test(plan.alias)
+    plan.name.trim().length > 0 &&
+    plan.emoji.trim().length > 0 &&
+    documentAliasError(plan.alias) === null
   );
 }
 

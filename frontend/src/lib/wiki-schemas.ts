@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import { z } from "zod";
 
 import {
   zBootstrapRead,
@@ -6,6 +6,7 @@ import {
   zDocumentAliasForFile,
   zDocumentAliasRead,
   zDriveNode,
+  zDrivePermissionsPage,
   zDriveSummary,
   zDriveTree,
   zFileDetail,
@@ -46,6 +47,8 @@ function toFileResponse(f: z.infer<typeof zFileResponse>) {
   };
 }
 
+export const drivePrincipalTypeSchema = z.enum(["anyone", "domain", "group", "user"]);
+
 export const documentAlias = zDocumentAliasRead.transform((a) => ({
   alias: a.alias,
   fileId: a.file_id,
@@ -62,6 +65,24 @@ export const driveSummary = zDriveSummary.transform((d) => ({
 }));
 
 export const driveNode = zDriveNode.transform(toDriveNode);
+
+export const drivePermissionsPage = zDrivePermissionsPage.transform((page) => ({
+  accessModel: page.access_model,
+  driveId: page.drive_id,
+  nextPageToken: page.next_page_token ?? undefined,
+  permissions: page.permissions.map((permission) => ({
+    allowFileDiscovery: permission.allow_file_discovery ?? undefined,
+    deleted: permission.deleted,
+    displayName: permission.display_name ?? undefined,
+    domain: permission.domain ?? undefined,
+    emailAddress: permission.email_address ?? undefined,
+    expirationTime: permission.expiration_time ?? undefined,
+    id: permission.id,
+    pendingOwner: permission.pending_owner,
+    principalType: drivePrincipalTypeSchema.parse(permission.principal_type),
+    role: permission.role,
+  })),
+}));
 
 export const driveTree = zDriveTree.transform((t) => ({
   driveId: t.drive_id,

@@ -7,9 +7,17 @@ from googleapiclient.errors import HttpError
 from httplib2 import Response
 import pytest
 
-from app.drive.schemas import DriveNode, DriveSummary, DriveTree, SearchResult, SnippetResult
+from app.drive.schemas import (
+    DriveNode,
+    DrivePermissionsPage,
+    DriveSummary,
+    DriveTree,
+    SearchResult,
+    SnippetResult,
+)
 from app.drive.service import DriveService, GoogleDriveService
 from app.files.errors import (
+    CrossDriveMoveNotSupportedError,
     DriveUpstreamError,
     FileNotInScopeError,
     FolderCopyNotSupportedError,
@@ -45,6 +53,19 @@ class _FakeDriveService(DriveService):
         self, file_id: str, query: str, *, mime_type: str | None = None
     ) -> SnippetResult:
         raise NotImplementedError
+
+    async def list_drive_permissions(
+        self,
+        drive_id: DriveId,
+        *,
+        page_token: str | None = None,
+    ) -> DrivePermissionsPage:
+        return DrivePermissionsPage(
+            access_model="shared_drive_membership",
+            drive_id=drive_id,
+            next_page_token=page_token,
+            permissions=[],
+        )
 
 
 def _user() -> User:
@@ -254,13 +275,23 @@ async def test_move_reuses_prefetched_parent(monkeypatch: pytest.MonkeyPatch) ->
 
         def get(self, **kwargs: Any) -> Self:
             ops.append({"_op": "get", **kwargs})
-            self._result = {
-                "id": "f",
-                "name": "Doc",
-                "mimeType": "application/vnd.google-apps.document",
-                "parents": ["old-parent"],
-                "driveId": "d1",
-            }
+            if kwargs["fileId"] == "new-parent":
+                self._result = {
+                    "capabilities": {"canAddChildren": True},
+                    "id": "new-parent",
+                    "name": "Destination",
+                    "mimeType": "application/vnd.google-apps.folder",
+                    "parents": ["d1"],
+                    "driveId": "d1",
+                }
+            else:
+                self._result = {
+                    "id": "f",
+                    "name": "Doc",
+                    "mimeType": "application/vnd.google-apps.document",
+                    "parents": ["old-parent"],
+                    "driveId": "d1",
+                }
             return self
 
         def update(self, **kwargs: Any) -> Self:
@@ -287,10 +318,127 @@ async def test_move_reuses_prefetched_parent(monkeypatch: pytest.MonkeyPatch) ->
 
     gets = [o for o in ops if o["_op"] == "get"]
     updates = [o for o in ops if o["_op"] == "update"]
-    assert len(gets) == 1
+    assert len(gets) == 2
     assert len(updates) == 1
     assert updates[0]["removeParents"] == "old-parent"
     assert updates[0]["addParents"] == "new-parent"
+
+
+async def test_cross_drive_file_move_preflights_destination(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operations: list[str] = []
+
+    class _Request:
+        def __init__(self, result: dict[str, Any]) -> None:
+            self.result = result
+
+        def execute(self) -> dict[str, Any]:
+            return self.result
+
+    class _FakeFiles:
+        def get(self, **kwargs: Any) -> _Request:
+            file_id = kwargs["fileId"]
+            operations.append(f"get:{file_id}")
+            if file_id == "destination":
+                return _Request(
+                    {
+                        "capabilities": {"canAddChildren": True},
+                        "driveId": "d2",
+                        "id": "destination",
+                        "mimeType": "application/vnd.google-apps.folder",
+                        "name": "Destination",
+                        "parents": ["d2"],
+                    }
+                )
+            return _Request(
+                {
+                    "driveId": "d1",
+                    "id": "file",
+                    "mimeType": "application/vnd.google-apps.document",
+                    "name": "Document",
+                    "parents": ["d1"],
+                }
+            )
+
+        def update(self, **_: Any) -> _Request:
+            operations.append("update")
+            return _Request(
+                {
+                    "driveId": "d2",
+                    "id": "file",
+                    "mimeType": "application/vnd.google-apps.document",
+                    "name": "Document",
+                    "parents": ["destination"],
+                }
+            )
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    _patch_client(monkeypatch, _FakeClient())
+    drive = _FakeDriveService(
+        [
+            DriveSummary(id=DriveId("d1"), name="Source"),
+            DriveSummary(id=DriveId("d2"), name="Destination"),
+        ]
+    )
+    service = GoogleFilesService(user=_user(), drive=drive)
+
+    result = await service.move(FileId("file"), FileId("destination"))
+
+    assert result.source.drive_id == "d1"
+    assert result.moved.drive_id == "d2"
+    assert set(operations[:2]) == {"get:file", "get:destination"}
+    assert operations[-1] == "update"
+
+
+async def test_known_unsupported_cross_drive_folder_move_is_explicit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Request:
+        def __init__(self, result: dict[str, Any] | None = None, *, fails: bool = False) -> None:
+            self.result = result or {}
+            self.fails = fails
+
+        def execute(self) -> dict[str, Any]:
+            if self.fails:
+                response = Response({"reason": "bad request", "status": "403"})
+                content = b'{"error":{"errors":[{"reason":"teamDrivesFolderMoveInNotSupported"}]}}'
+                raise HttpError(response, content)
+            return self.result
+
+    class _FakeFiles:
+        def get(self, **kwargs: Any) -> _Request:
+            file_id = kwargs["fileId"]
+            drive_id = "d2" if file_id == "destination" else "d1"
+            return _Request(
+                {
+                    "capabilities": {"canAddChildren": file_id == "destination"},
+                    "driveId": drive_id,
+                    "id": file_id,
+                    "mimeType": "application/vnd.google-apps.folder",
+                    "name": file_id,
+                    "parents": [drive_id],
+                }
+            )
+
+        def update(self, **_: Any) -> _Request:
+            return _Request(fails=True)
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    _patch_client(monkeypatch, _FakeClient())
+    drive = _FakeDriveService(
+        [DriveSummary(id=DriveId("d1"), name="Source"), DriveSummary(id=DriveId("d2"), name="Dest")]
+    )
+    service = GoogleFilesService(user=_user(), drive=drive)
+
+    with pytest.raises(CrossDriveMoveNotSupportedError, match="cannot move this folder"):
+        await service.move(FileId("folder"), FileId("destination"))
 
 
 async def test_get_rejects_my_drive(monkeypatch: pytest.MonkeyPatch) -> None:

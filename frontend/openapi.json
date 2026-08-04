@@ -428,6 +428,123 @@
         "title": "DriveNode",
         "type": "object"
       },
+      "DrivePermission": {
+        "properties": {
+          "allow_file_discovery": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allow File Discovery"
+          },
+          "deleted": {
+            "default": false,
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "email_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Address"
+          },
+          "expiration_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiration Time"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "pending_owner": {
+            "default": false,
+            "title": "Pending Owner",
+            "type": "boolean"
+          },
+          "principal_type": {
+            "title": "Principal Type",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": ["id", "principal_type", "role"],
+        "title": "DrivePermission",
+        "type": "object"
+      },
+      "DrivePermissionsPage": {
+        "properties": {
+          "access_model": {
+            "title": "Access Model",
+            "type": "string"
+          },
+          "drive_id": {
+            "title": "Drive Id",
+            "type": "string"
+          },
+          "next_page_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Page Token"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/DrivePermission"
+            },
+            "title": "Permissions",
+            "type": "array"
+          }
+        },
+        "required": ["drive_id", "access_model", "permissions"],
+        "title": "DrivePermissionsPage",
+        "type": "object"
+      },
       "DriveSummary": {
         "properties": {
           "id": {
@@ -614,6 +731,17 @@
             "title": "Can Edit",
             "type": "boolean"
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "drive_id": {
             "anyOf": [
               {
@@ -719,6 +847,17 @@
             "default": false,
             "title": "Can Edit",
             "type": "boolean"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
           },
           "drive_id": {
             "anyOf": [
@@ -3066,6 +3205,62 @@
           }
         },
         "summary": "Get Drive Folders",
+        "tags": ["sidebar"]
+      }
+    },
+    "/sidebar/drives/{drive_id}/permissions": {
+      "get": {
+        "operationId": "get_drive_permissions_sidebar_drives__drive_id__permissions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "drive_id",
+            "required": true,
+            "schema": {
+              "title": "Drive Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrivePermissionsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Drive Permissions",
         "tags": ["sidebar"]
       }
     },
