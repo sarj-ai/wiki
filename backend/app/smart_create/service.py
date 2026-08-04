@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.drive.schemas import MIME_DOC, MIME_SLIDE, DriveNode, DriveSummary, DriveTree
 from app.drive.service import DriveService
-from app.files.errors import FileNotInScopeError, UnsupportedMimeError
+from app.files.errors import FileNotInScopeError
 from app.files.service import FilesService
 from app.identifiers import FileId
 from app.sidebar.cache import SidebarCacheService
@@ -194,17 +194,17 @@ class GeminiReorganizationService(ReorganizationService):
     @override
     async def propose(self, file_id: FileId) -> ReorganizationProposalRead:
         file, drives = await asyncio.gather(self._files.get(file_id), self._drive.list_drives())
-        if file.mime_type != MIME_DOC:
-            msg = "Re-organize is available for Google Docs"
-            raise UnsupportedMimeError(msg)
         drive = next((item for item in drives if item.id == file.drive_id), None)
         if drive is None:
             msg = "File not available in a Drive workspace"
             raise FileNotInScopeError(msg)
-        content = await self._drive.fetch_document_text(file_id)
-        if content is None:
-            logger.warning("Re-organize content unavailable file={file_id}", file_id=file_id)
-            raise ReorganizationUnavailableError
+        content = ""
+        if file.mime_type == MIME_DOC:
+            exported_content = await self._drive.fetch_document_text(file_id)
+            if exported_content is None:
+                logger.warning("Re-organize content unavailable file={file_id}", file_id=file_id)
+                raise ReorganizationUnavailableError
+            content = exported_content
         evidence = ReorganizationEvidence(
             content=content,
             description=file.description,
@@ -339,9 +339,11 @@ class GeminiSmartProposalService(SmartProposalService):
         trees = await self._load_cached_trees(drives)
         catalog = await template_task
         folders = _shortlist_folders(request, drives, trees)
-        compatible_templates = _compatible_templates(request.file_type, catalog.templates)[
-            :_MAX_TEMPLATE_CANDIDATES
-        ]
+        compatible_templates = [
+            template
+            for template in _compatible_templates(request.file_type, catalog.templates)
+            if template.drive_id == request.invoking_drive_id
+        ][:_MAX_TEMPLATE_CANDIDATES]
         fallback = _fallback_proposal(request, folders)
         try:
             generated = await self._generator.generate(request, folders, compatible_templates)
@@ -382,8 +384,9 @@ def _build_reorganization_prompt(
     }
     serialized_context = json.dumps(context, ensure_ascii=False, separators=(",", ":"))
     instructions = (
-        "Choose the best folder for this existing Sarj Wiki document using its content, title, "
-        "description, modified time, and the meaning of each complete folder path. Do not infer a "
+        "Choose the best folder for this existing Sarj Wiki file using its available content, title, "
+        "description, modified time, and the meaning of each complete folder path. Empty content "
+        "means this is not a Google Doc, so rely on its title and metadata. Do not infer a "
         "sensitive category from a person's name or a weak keyword match. Keep the current folder "
         "when the evidence does not clearly support a better destination. Choose "
         "destination_folder_id only from folders. Give one short reason grounded in the document's "
@@ -510,21 +513,23 @@ def _shortlist_folders(
     drives: list[DriveSummary],
     trees: list[DriveTree],
 ) -> list[ProposalDestination]:
-    drive_by_id = {drive.id: drive for drive in drives}
+    invoking_drive = next(
+        (drive for drive in drives if drive.id == request.invoking_drive_id), None
+    )
+    if invoking_drive is None:
+        return []
     destinations: list[ProposalDestination] = [
         ProposalDestination(
-            folder_id=FileId(drive.id),
-            drive_id=drive.id,
-            drive_name=drive.name,
-            folder_path=[drive.name],
+            folder_id=FileId(invoking_drive.id),
+            drive_id=invoking_drive.id,
+            drive_name=invoking_drive.name,
+            folder_path=[invoking_drive.name],
         )
-        for drive in drives
     ]
     for tree in trees:
-        drive = drive_by_id.get(tree.drive_id)
-        if drive is None:
+        if tree.drive_id != invoking_drive.id:
             continue
-        destinations.extend(_tree_destinations(drive, tree))
+        destinations.extend(_tree_destinations(invoking_drive, tree))
     terms = frozenset(_WORD_PATTERN.findall(request.description.casefold()))
     destinations.sort(
         key=lambda destination: (

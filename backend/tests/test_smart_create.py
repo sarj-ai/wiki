@@ -40,6 +40,7 @@ class _Drive(DriveService):
         self, document_text: str | None = "Product roadmap priorities and milestones"
     ) -> None:
         self.document_text = document_text
+        self.document_fetches = 0
 
     @override
     async def list_drives(self) -> list[DriveSummary]:
@@ -74,6 +75,7 @@ class _Drive(DriveService):
 
     @override
     async def fetch_document_text(self, file_id: FileId) -> str | None:
+        self.document_fetches += 1
         return self.document_text
 
 
@@ -142,7 +144,17 @@ class _Templates(TemplateCatalogService):
                     mime_type=cast("TemplateMimeType", MIME_DOC),
                     modified_time="2026-08-02T00:00:00Z",
                     category_path=["Product"],
-                )
+                ),
+                TemplateRead(
+                    file_id=FileId("people-template"),
+                    drive_id=DriveId("people"),
+                    drive_name="People",
+                    name="People template",
+                    description="People operations",
+                    mime_type=cast("TemplateMimeType", MIME_DOC),
+                    modified_time="2026-08-02T00:00:00Z",
+                    category_path=["People"],
+                ),
             ]
         )
 
@@ -150,6 +162,8 @@ class _Templates(TemplateCatalogService):
 class _Generator(ProposalGenerator):
     def __init__(self, proposal: GeneratedProposal | Exception) -> None:
         self.proposal = proposal
+        self.folders: list[ProposalDestination] = []
+        self.templates: list[TemplateRead] = []
 
     @override
     async def generate(
@@ -158,6 +172,8 @@ class _Generator(ProposalGenerator):
         folders: list[ProposalDestination],
         templates: list[TemplateRead],
     ) -> GeneratedProposal:
+        self.folders = folders
+        self.templates = templates
         if isinstance(self.proposal, Exception):
             raise self.proposal
         return self.proposal
@@ -184,11 +200,17 @@ class _ReorganizationGenerator(ReorganizationGenerator):
 
 
 class _Files:
+    def __init__(
+        self, *, mime_type: str = MIME_DOC, name: str = "Quarterly product roadmap"
+    ) -> None:
+        self.mime_type = mime_type
+        self.name = name
+
     async def get(self, file_id: FileId) -> FileResponse:
         return FileResponse(
             id=file_id,
-            name="Quarterly product roadmap",
-            mime_type=MIME_DOC,
+            name=self.name,
+            mime_type=self.mime_type,
             parent_folder_id=FileId("product"),
             drive_id=DriveId("product"),
             modified_time=None,
@@ -237,6 +259,30 @@ async def test_vertex_failure_uses_deterministic_fallback() -> None:
     assert proposal.name == "Quarterly product roadmap"
     assert proposal.emoji == "📝"
     assert proposal.destination.folder_id == "roadmaps"
+
+
+async def test_smart_create_only_exposes_the_invoking_drive() -> None:
+    generator = _Generator(
+        GeneratedProposal(
+            name="Quarterly roadmap",
+            emoji="🗺️",
+            alias="quarterly-roadmap",
+            destination_folder_id=FileId("roadmaps"),
+            template_file_id=FileId("prd"),
+        )
+    )
+    service = GeminiSmartProposalService(
+        db=cast("AsyncSession", object()),
+        drive=_Drive(),
+        sidebar_cache=_Cache(),
+        templates=_Templates(),
+        generator=generator,
+    )
+
+    await service.propose(_request())
+
+    assert {folder.drive_id for folder in generator.folders} == {"product"}
+    assert {template.drive_id for template in generator.templates} == {"product"}
 
 
 @pytest.mark.parametrize(
@@ -367,6 +413,33 @@ async def test_reorganization_passes_content_and_metadata_to_generator() -> None
     assert generator.evidence is not None
     assert generator.evidence.content == "Customer interview findings and roadmap tradeoffs"
     assert generator.evidence.file_name == "Quarterly product roadmap"
+
+
+async def test_reorganization_uses_name_and_metadata_for_non_google_docs() -> None:
+    generator = _ReorganizationGenerator(
+        GeneratedReorganization(
+            destination_folder_id=FileId("product"),
+            reason="Current folder is best.",
+        )
+    )
+    drive = _Drive("This content must not be fetched")
+    service = GeminiReorganizationService(
+        db=cast("AsyncSession", object()),
+        drive=drive,
+        files=cast(
+            "FilesService",
+            _Files(mime_type="application/pdf", name="Quarterly investor report.pdf"),
+        ),
+        sidebar_cache=_Cache(),
+        generator=generator,
+    )
+
+    await service.propose(FileId("report"))
+
+    assert generator.evidence is not None
+    assert not generator.evidence.content
+    assert generator.evidence.file_name == "Quarterly investor report.pdf"
+    assert drive.document_fetches == 0
 
 
 @pytest.mark.parametrize(
