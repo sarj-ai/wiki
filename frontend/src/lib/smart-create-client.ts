@@ -7,6 +7,7 @@ import {
   proposeSmartFileAction,
 } from "@/app/actions/smart-create-actions";
 import { runAction } from "@/lib/action-client";
+import { zFileResponse } from "@/lib/generated/zod.gen";
 import type {
   CreationSource,
   DriveTemplate,
@@ -60,18 +61,7 @@ const ZProposal = z
   })
   .strict();
 
-const ZFileResponse = z
-  .object({
-    can_add_children: z.boolean().optional(),
-    can_edit: z.boolean(),
-    drive_id: z.string().nullable(),
-    id: z.string(),
-    mime_type: z.string(),
-    modified_time: z.string().nullable(),
-    name: z.string(),
-    parent_folder_id: z.string().nullable(),
-  })
-  .strict();
+const ZFileResponse = zFileResponse.strict();
 
 const ZCreateResult = z
   .object({

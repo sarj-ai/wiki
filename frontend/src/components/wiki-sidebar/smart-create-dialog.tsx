@@ -27,6 +27,7 @@ import { smartCreateApi } from "@/lib/smart-create-client";
 import {
   defaultAlias,
   defaultEmoji,
+  type DriveTemplate,
   initialSmartCreateState,
   type SmartCreateState,
   type SmartCreationPlan,
@@ -70,8 +71,9 @@ export function SmartCreateDialog({
       .listTemplates()
       .then((result) => {
         if (sequence !== catalogSequence.current) return;
-        setTemplates(result);
-        setState((current) => reconcileTemplateSelection(current, result));
+        const scopedTemplates = templatesInDrive(result, invokingDriveId);
+        setTemplates(scopedTemplates);
+        setState((current) => reconcileTemplateSelection(current, scopedTemplates));
         setCatalogStatus("ready");
       })
       .catch(() => {
@@ -81,7 +83,7 @@ export function SmartCreateDialog({
     return () => {
       catalogSequence.current += 1;
     };
-  }, [open]);
+  }, [invokingDriveId, open]);
 
   const close = () => {
     catalogSequence.current += 1;
@@ -102,8 +104,9 @@ export function SmartCreateDialog({
     try {
       const result = await smartCreateApi.listTemplates(true);
       if (sequence !== catalogSequence.current) return;
-      setTemplates(result);
-      setState((current) => reconcileTemplateSelection(current, result));
+      const scopedTemplates = templatesInDrive(result, invokingDriveId);
+      setTemplates(scopedTemplates);
+      setState((current) => reconcileTemplateSelection(current, scopedTemplates));
       setCatalogStatus("ready");
     } catch {
       if (sequence !== catalogSequence.current) return;
@@ -125,16 +128,20 @@ export function SmartCreateDialog({
     if (state.mode.kind === "template") {
       if (state.mode.selection.kind !== "selected") return;
       const template = state.mode.selection.template;
+      if (template.driveId !== invokingDriveId) {
+        toast.error("Choose a template from the current drive");
+        return;
+      }
       setState({
         mode: { kind: "template", selection: state.mode.selection },
         phase: "review",
         plan: {
           alias: defaultAlias(template.name),
           destination: {
-            driveId: template.driveId,
+            driveId: invokingDriveId,
             driveName: template.driveName,
-            folderId: template.driveId === invokingDriveId ? invokingFolderId : template.driveId,
-            folderPath: template.driveId === invokingDriveId ? ["Selected folder"] : [],
+            folderId: invokingFolderId,
+            folderPath: ["Selected folder"],
           },
           emoji: defaultEmoji(template.mimeType),
           name: template.name,
@@ -682,4 +689,8 @@ function reconcileTemplateSelection(
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError || error instanceof Error ? error.message : fallback;
+}
+
+function templatesInDrive(templates: DriveTemplate[], driveId: string): DriveTemplate[] {
+  return templates.filter((template) => template.driveId === driveId);
 }

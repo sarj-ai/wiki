@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock3, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Input } from "@/components/ui/input";
@@ -80,17 +80,7 @@ export function QuickLinks({ aliases, error = false, loading = false }: QuickLin
 
   return (
     <section className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-4 py-16 sm:px-8 md:py-24">
-      <header>
-        <div className="bg-secondary text-secondary-foreground mb-5 flex size-11 items-center justify-center rounded-xl">
-          <Clock3 aria-hidden className="size-5" />
-        </div>
-        <h1 className="text-foreground text-2xl font-semibold tracking-tight">Quick links</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Reopen short links you recently visited.
-        </p>
-      </header>
-
-      <div className="relative mt-7">
+      <div className="relative">
         <Search
           aria-hidden
           className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
