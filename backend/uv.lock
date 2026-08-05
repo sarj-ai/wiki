@@ -6,6 +6,27 @@ resolution-markers = [
     "python_full_version < '3.15'",
 ]
 
+[options]
+exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
+exclude-newer-span = "P7D"
+
+[options.exclude-newer-package]
+sarj-sql-lint = "2100-01-01T00:00:00Z"
+cryptography = "2026-08-04T00:00:00Z"
+sarj-python-lint = "2100-01-01T00:00:00Z"
+pip = "2026-08-04T00:00:00Z"
+ty = "2026-08-04T00:00:00Z"
+fastapi = "2026-08-04T00:00:00Z"
+ruff = "2026-08-04T00:00:00Z"
+uvicorn = "2026-08-04T00:00:00Z"
+virtualenv = "2026-08-04T00:00:00Z"
+google-genai = "2026-08-04T00:00:00Z"
+python-discovery = "2026-08-04T00:00:00Z"
+filelock = "2026-08-04T00:00:00Z"
+sarj-iac-lint = "2100-01-01T00:00:00Z"
+sarj-lint-configs = "2100-01-01T00:00:00Z"
+coverage = "2026-08-04T00:00:00Z"
+
 [[package]]
 name = "aiohappyeyeballs"
 version = "2.7.1"
