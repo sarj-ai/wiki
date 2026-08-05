@@ -3,6 +3,8 @@
 import { cookies } from "next/headers";
 
 import type { ActionResult } from "@/lib/action-result";
+import { getRecentDocumentAliases, type RecentDocumentAlias } from "@/lib/alias-client";
+import { zRecentDocumentAliasesRequest } from "@/lib/generated/zod.gen";
 import { ServerApiError, serverWikiApi } from "@/lib/server-api";
 import type { CreateFileInput, DocIconInput, PreferencesInput, UserProfile } from "@/lib/wiki-api";
 import type {
@@ -86,6 +88,22 @@ export async function getDocumentAliasAction(
   fileId: string,
 ): Promise<ActionResult<DocumentAliasForFile>> {
   return await resultOf(async () => await serverWikiApi.getDocumentAlias(fileId));
+}
+
+export async function getRecentDocumentAliasesAction(
+  aliases: string[],
+): Promise<ActionResult<RecentDocumentAlias[]>> {
+  const payload = zRecentDocumentAliasesRequest.safeParse({ aliases });
+  if (!payload.success) return { error: "Invalid recent aliases", ok: false, status: 400 };
+  const cookieStore = await cookies();
+  const token = cookieStore.get("access_token")?.value;
+  if (token === undefined) return { error: "Your session has expired", ok: false, status: 401 };
+  const result = await getRecentDocumentAliases(token, payload.data.aliases);
+  if (result.status === "found") return { data: result.aliases, ok: true };
+  if (result.status === "unauthorized") {
+    return { error: "Your session has expired", ok: false, status: 401 };
+  }
+  return { error: "Quick links could not be validated", ok: false, status: 502 };
 }
 
 export async function logoutAction(): Promise<ActionResult<null>> {

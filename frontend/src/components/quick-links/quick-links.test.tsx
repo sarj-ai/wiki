@@ -1,15 +1,12 @@
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
-import type { RecentDocumentAlias } from "@/lib/alias-client";
+import { type QuickLinkItem, QuickLinks } from "./quick-links";
 
-import { QuickLinks } from "./quick-links";
-
-const RECENT_ALIASES: RecentDocumentAlias[] = [
+const RECENT_ALIASES: QuickLinkItem[] = [
   {
     alias: "team-handbook",
     driveName: "People",
-    fileId: "file-1",
     lastVisitedAt: "2026-08-04T15:00:00Z",
     mimeType: "application/vnd.google-apps.document",
     name: "Team Handbook",
@@ -17,7 +14,6 @@ const RECENT_ALIASES: RecentDocumentAlias[] = [
   {
     alias: "launch-plan",
     driveName: "Product",
-    fileId: "file-2",
     lastVisitedAt: "2026-08-03T12:00:00Z",
     mimeType: "application/vnd.google-apps.spreadsheet",
     name: "Launch Plan",

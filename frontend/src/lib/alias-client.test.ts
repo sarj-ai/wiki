@@ -7,7 +7,7 @@ afterEach(() => {
 });
 
 describe("alias server client", () => {
-  it("records and resolves an alias through the access-checking visit endpoint", async () => {
+  it("resolves an alias through the access-checking endpoint", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValue(Response.json({ alias: "team-handbook", file_id: "file-1" }));
@@ -18,8 +18,8 @@ describe("alias server client", () => {
       status: "found",
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/aliases/visits/team-handbook"),
-      expect.objectContaining({ method: "POST" }),
+      expect.stringContaining("/aliases/team-handbook"),
+      expect.not.objectContaining({ method: "POST" }),
     );
   });
 
@@ -31,8 +31,6 @@ describe("alias server client", () => {
           {
             alias: "team-handbook",
             drive_name: null,
-            file_id: "file-1",
-            last_visited_at: "2026-08-04T15:00:00Z",
             mime_type: "application/vnd.google-apps.document",
             name: "Team Handbook",
           },
@@ -40,19 +38,24 @@ describe("alias server client", () => {
       ),
     );
 
-    await expect(getRecentDocumentAliases("token")).resolves.toEqual({
+    await expect(getRecentDocumentAliases("token", ["team-handbook"])).resolves.toEqual({
       aliases: [
         {
           alias: "team-handbook",
           driveName: null,
-          fileId: "file-1",
-          lastVisitedAt: "2026-08-04T15:00:00Z",
           mimeType: "application/vnd.google-apps.document",
           name: "Team Handbook",
         },
       ],
       status: "found",
     });
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/aliases/recent"),
+      expect.objectContaining({
+        body: JSON.stringify({ aliases: ["team-handbook"] }),
+        method: "POST",
+      }),
+    );
   });
 
   it("fails closed when a recent-alias response is malformed", async () => {
@@ -61,6 +64,8 @@ describe("alias server client", () => {
       vi.fn<typeof fetch>().mockResolvedValue(Response.json([{ alias: "private-document" }])),
     );
 
-    await expect(getRecentDocumentAliases("token")).resolves.toEqual({ status: "unavailable" });
+    await expect(getRecentDocumentAliases("token", ["private-document"])).resolves.toEqual({
+      status: "unavailable",
+    });
   });
 });

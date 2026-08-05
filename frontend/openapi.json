@@ -1120,15 +1120,6 @@
             ],
             "title": "Drive Name"
           },
-          "file_id": {
-            "title": "File Id",
-            "type": "string"
-          },
-          "last_visited_at": {
-            "format": "date-time",
-            "title": "Last Visited At",
-            "type": "string"
-          },
           "mime_type": {
             "title": "Mime Type",
             "type": "string"
@@ -1138,8 +1129,26 @@
             "type": "string"
           }
         },
-        "required": ["alias", "file_id", "name", "mime_type", "drive_name", "last_visited_at"],
+        "required": ["alias", "name", "mime_type", "drive_name"],
         "title": "RecentDocumentAlias",
+        "type": "object"
+      },
+      "RecentDocumentAliasesRequest": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "maxLength": 32,
+              "minLength": 5,
+              "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Aliases",
+            "type": "array"
+          }
+        },
+        "required": ["aliases"],
+        "title": "RecentDocumentAliasesRequest",
         "type": "object"
       },
       "ReorganizationProposalRead": {
@@ -1993,8 +2002,18 @@
       }
     },
     "/aliases/recent": {
-      "get": {
-        "operationId": "get_recent_aliases_aliases_recent_get",
+      "post": {
+        "operationId": "get_recent_aliases_aliases_recent_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecentDocumentAliasesRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -2003,41 +2022,8 @@
                   "items": {
                     "$ref": "#/components/schemas/RecentDocumentAlias"
                   },
-                  "title": "Response Get Recent Aliases Aliases Recent Get",
+                  "title": "Response Get Recent Aliases Aliases Recent Post",
                   "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get Recent Aliases",
-        "tags": ["aliases"]
-      }
-    },
-    "/aliases/visits/{alias}": {
-      "post": {
-        "operationId": "record_alias_visit_aliases_visits__alias__post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "alias",
-            "required": true,
-            "schema": {
-              "maxLength": 32,
-              "minLength": 5,
-              "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
-              "title": "Alias",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DocumentAliasRead"
                 }
               }
             },
@@ -2054,7 +2040,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Record Alias Visit",
+        "summary": "Get Recent Aliases",
         "tags": ["aliases"]
       }
     },

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Annotated
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.identifiers import FileId
 
@@ -31,10 +30,12 @@ class DocumentAliasForFile(BaseModel):
     alias: DocumentAliasValue | None
 
 
+class RecentDocumentAliasesRequest(BaseModel):
+    aliases: list[DocumentAliasValue] = Field(max_length=50)
+
+
 class RecentDocumentAlias(BaseModel):
     alias: DocumentAliasValue
-    file_id: FileId
     name: str
     mime_type: str
     drive_name: str | None
-    last_visited_at: datetime

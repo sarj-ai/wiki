@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Self
+from typing import Any, NamedTuple, Self
 import uuid
 
 from googleapiclient.errors import HttpError
@@ -184,6 +184,61 @@ async def test_can_edit_uses_drive_capability(monkeypatch: pytest.MonkeyPatch) -
 
     _patch_client(monkeypatch, _FakeClient())
     assert await _svc("d1").can_edit(FileId("editable")) is True
+
+
+async def test_get_accessible_many_uses_one_google_batch_and_omits_denied_files(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    batch_executions = 0
+
+    class _Request(NamedTuple):
+        file_id: str
+
+    class _FakeFiles:
+        def get(self, **kwargs: Any) -> _Request:
+            return _Request(kwargs["fileId"])
+
+    class _Batch:
+        def __init__(self, callback: Any) -> None:
+            self.callback = callback
+            self.requests: list[tuple[str, _Request]] = []
+
+        def add(self, request: _Request, *, request_id: str) -> None:
+            self.requests.append((request_id, request))
+
+        def execute(self) -> None:
+            nonlocal batch_executions
+            batch_executions += 1
+            for request_id, request in self.requests:
+                if request.file_id == "denied":
+                    self.callback(request_id, None, _make_http_error(403))
+                    continue
+                self.callback(
+                    request_id,
+                    {
+                        "driveId": "d1",
+                        "id": request.file_id,
+                        "mimeType": "application/vnd.google-apps.document",
+                        "name": f"Document {request.file_id}",
+                    },
+                    None,
+                )
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+        def new_batch_http_request(self, *, callback: Any) -> _Batch:
+            return _Batch(callback)
+
+    _patch_client(monkeypatch, _FakeClient())
+
+    result = await _svc("d1").get_accessible_many(
+        [FileId("first"), FileId("denied"), FileId("second")]
+    )
+
+    assert list(result) == ["first", "second"]
+    assert batch_executions == 1
 
 
 async def test_create_does_not_retry_ambiguous_5xx(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -35,7 +35,7 @@ from app.drive.google_schemas import (
     GoogleFileProbe,
     GooglePermission,
 )
-from app.drive.retry import drive_retry, execute_with_retry
+from app.drive.retry import execute_batch_with_retry, execute_with_retry
 from app.drive.schemas import (
     MIME_FOLDER,
     MIME_SHORTCUT,
@@ -56,7 +56,6 @@ from app.models.user import User
 
 if TYPE_CHECKING:
     from googleapiclient._apis.drive.v3.resources import DriveResource
-    from googleapiclient.http import BatchHttpRequest
 
 _DRIVE_HTTP_TIMEOUT_SECONDS = 30
 
@@ -411,7 +410,7 @@ class GoogleDriveService(DriveService):
                     request_id=tid,
                 )
             try:
-                _execute_batch_with_retry(batch)
+                execute_batch_with_retry(batch)
             except HttpError:
                 logger.exception(
                     "shortcut probe batch failed user={user_id}", user_id=self._user.id
@@ -909,11 +908,6 @@ def drive_discovery_document() -> dict[str, Any]:
         msg = "Bundled Drive v3 discovery document not found"
         raise RuntimeError(msg)
     return cast("dict[str, Any]", json.loads(content))
-
-
-@drive_retry
-def _execute_batch_with_retry(batch: BatchHttpRequest) -> None:
-    batch.execute()
 
 
 def _build_mime_clause() -> str:

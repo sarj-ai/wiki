@@ -11,7 +11,7 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 from loguru import logger
-from pydantic import BaseModel, Field, StringConstraints, ValidationError
+from pydantic import BaseModel, StringConstraints, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -253,7 +253,6 @@ class GeneratedProposal(BaseModel):
     ]
     destination_folder_id: FileId
     template_file_id: FileId | None = None
-    confidence: Annotated[float, Field(ge=0, le=1)]
 
 
 class ProposalGenerator(ABC):
@@ -267,16 +266,14 @@ class ProposalGenerator(ABC):
 
 
 class VertexProposalGenerator(ProposalGenerator):
-    def __init__(self, *, project: str | None = None, model: str | None = None) -> None:
-        resolved_project = project or settings.GOOGLE_CLOUD_PROJECT
-        self._model = model or settings.GEMINI_MODEL
+    def __init__(self) -> None:
         self._client = (
             genai.Client(
                 vertexai=True,
-                project=resolved_project,
+                project=settings.GOOGLE_CLOUD_PROJECT,
                 location=settings.GEMINI_LOCATION,
             )
-            if resolved_project is not None
+            if settings.GOOGLE_CLOUD_PROJECT is not None
             else None
         )
 
@@ -293,7 +290,7 @@ class VertexProposalGenerator(ProposalGenerator):
         prompt = _build_prompt(request, folders, templates)
         async with asyncio.timeout(_MODEL_TIMEOUT_SECONDS):
             response = await self._client.aio.models.generate_content(
-                model=self._model,
+                model=settings.GEMINI_MODEL,
                 contents=prompt,
                 config=genai_types.GenerateContentConfig(
                     response_mime_type="application/json",
@@ -350,7 +347,7 @@ class GeminiSmartProposalService(SmartProposalService):
         fallback = _fallback_proposal(request, folders)
         try:
             generated = await self._generator.generate(request, folders, compatible_templates)
-            return validate_generated_proposal(
+            return _validated_proposal(
                 request,
                 generated,
                 folders,
@@ -505,9 +502,7 @@ def _build_prompt(
         "for example, plant health is not personal health. When placement is uncertain, keep the "
         "invoking folder. "
         "Choose destination_folder_id only from folders. Choose template_file_id only from "
-        "templates, or null for a blank file. confidence must be 0 to 1 and reflect confidence in "
-        "the destination choice, not confidence in the other metadata. The alias must be two or "
-        "three lowercase words "
+        "templates, or null for a blank file. The alias must be two or three lowercase words "
         "of 2-12 ASCII letters separated by hyphens. Return one fitting emoji and no prose."
     )
     return "\n".join(  # ruff: ignore[static-join-to-f-string]
@@ -530,7 +525,7 @@ def smart_create_candidates(
     )
     if invoking_drive is None:
         return []
-    destinations = smart_create_destinations(invoking_drive, trees)
+    destinations = _smart_create_destinations(invoking_drive, trees)
 
     destinations = _destinations_within_candidate_depth(
         destinations,
@@ -548,7 +543,7 @@ def smart_create_candidates(
     return destinations[:_MAX_FOLDER_CANDIDATES]
 
 
-def smart_create_destinations(
+def _smart_create_destinations(
     drive: DriveSummary,
     trees: list[DriveTree],
 ) -> list[ProposalDestination]:
@@ -649,7 +644,7 @@ def _compatible_templates(
     return [template for template in templates if template.mime_type == mime_type]
 
 
-def validate_generated_proposal(
+def _validated_proposal(
     request: AIMode,
     generated: GeneratedProposal,
     folders: list[ProposalDestination],

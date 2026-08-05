@@ -241,7 +241,6 @@ async def test_accepts_enumerated_same_workspace_template() -> None:
             alias="quarterly-roadmap",
             destination_folder_id=FileId("roadmaps"),
             template_file_id=FileId("prd"),
-            confidence=0.9,
         )
     )
 
@@ -259,7 +258,6 @@ async def test_invalid_model_identifier_uses_deterministic_fallback() -> None:
             emoji="🧪",
             alias="invented-folder",
             destination_folder_id=FileId("not-visible"),
-            confidence=0.2,
         )
     )
 
@@ -286,7 +284,6 @@ async def test_smart_create_only_exposes_the_invoking_drive() -> None:
             alias="quarterly-roadmap",
             destination_folder_id=FileId("roadmaps"),
             template_file_id=FileId("prd"),
-            confidence=0.9,
         )
     )
     service = GeminiSmartProposalService(
@@ -411,7 +408,6 @@ async def test_sensitive_destination_requires_explicit_category_evidence(
             emoji=emoji,
             alias=alias,
             destination_folder_id=FileId("health-relationships"),
-            confidence=0.8,
         )
     )
 

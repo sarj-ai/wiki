@@ -14,7 +14,7 @@ from tenacity.wait import wait_base
 
 
 if TYPE_CHECKING:
-    from googleapiclient.http import HttpRequest
+    from googleapiclient.http import BatchHttpRequest, HttpRequest
 
 _RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
 
@@ -83,3 +83,8 @@ def execute_with_retry(req: HttpRequest) -> Any:
 @drive_mutation_retry
 def execute_mutation(req: HttpRequest) -> Any:
     return req.execute()
+
+
+@drive_retry
+def execute_batch_with_retry(batch: BatchHttpRequest) -> None:
+    batch.execute()

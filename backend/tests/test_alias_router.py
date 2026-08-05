@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
-from datetime import UTC, datetime
 
 from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
@@ -45,18 +44,15 @@ class _Aliases(AliasService):
         del file_id
         self.current = None
 
-    async def record_visit(self, alias: DocumentAliasValue) -> DocumentAliasRead:
-        return await self.resolve(alias)
-
-    async def recent(self) -> list[RecentDocumentAlias]:
+    async def resolve_recent(self, aliases: list[DocumentAliasValue]) -> list[RecentDocumentAlias]:
+        if "eng-onboarding" not in aliases:
+            return []
         return [
             RecentDocumentAlias(
                 alias="eng-onboarding",
-                file_id=FileId("google-file-id"),
                 name="Engineering onboarding",
                 mime_type="application/vnd.google-apps.document",
                 drive_name="Engineering",
-                last_visited_at=datetime(2026, 8, 4, tzinfo=UTC),
             )
         ]
 
@@ -119,22 +115,28 @@ async def test_alias_api_maps_conflicts_and_validates_format(client: AsyncClient
     assert malformed.status_code == 422
 
 
-async def test_alias_visit_and_recent_api(client: AsyncClient) -> None:
+async def test_recent_alias_api_bulk_resolves_requested_aliases(client: AsyncClient) -> None:
     async with client:
-        visit = await client.post("/aliases/visits/eng-onboarding")
-        recent = await client.get("/aliases/recent")
+        recent = await client.post("/aliases/recent", json={"aliases": ["eng-onboarding"]})
 
-    assert visit.json() == {"alias": "eng-onboarding", "file_id": "google-file-id"}
     assert recent.json() == [
         {
             "alias": "eng-onboarding",
-            "file_id": "google-file-id",
             "name": "Engineering onboarding",
             "mime_type": "application/vnd.google-apps.document",
             "drive_name": "Engineering",
-            "last_visited_at": "2026-08-04T00:00:00Z",
         }
     ]
+
+
+async def test_recent_alias_api_hard_rejects_more_than_fifty(client: AsyncClient) -> None:
+    async with client:
+        response = await client.post(
+            "/aliases/recent",
+            json={"aliases": ["eng-onboarding"] * 51},
+        )
+
+    assert response.status_code == 422
 
 
 async def test_alias_api_requires_authentication(aliases: _Aliases) -> None:

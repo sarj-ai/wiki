@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-from typing import cast
+from typing import Self, cast
 import uuid
 
 from pydantic import ValidationError
 import pytest
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.aliases.errors import (
@@ -15,7 +13,7 @@ from app.aliases.errors import (
     AliasNotFoundError,
     AliasTargetUnsupportedError,
 )
-from app.aliases.schemas import DocumentAliasRead, DocumentAliasWrite
+from app.aliases.schemas import DocumentAliasWrite
 from app.aliases.service import PostgresAliasService
 from app.drive.schemas import DriveSummary
 from app.drive.service import DriveService
@@ -24,7 +22,7 @@ from app.files.schemas import FileResponse
 from app.files.service import FilesService
 from app.identifiers import DriveId, FileId, GoogleUserId
 from app.models.user import User
-from app.models.wiki import DocumentAlias, DocumentAliasVisit
+from app.models.wiki import DocumentAlias
 
 
 @pytest.mark.parametrize(
@@ -71,6 +69,8 @@ class _Files:
         self.mime_type = mime_type
         self.inaccessible_ids = inaccessible_ids or set()
         self.get_calls: list[str] = []
+        self.bulk_calls: list[list[str]] = []
+        self.can_edit_calls = 0
 
     async def get(self, file_id: str) -> FileResponse:
         self.get_calls.append(file_id)
@@ -88,14 +88,25 @@ class _Files:
         )
 
     async def can_edit(self, _file_id: str) -> bool:
+        self.can_edit_calls += 1
         return self.editable
+
+    async def get_accessible_many(self, file_ids: list[str]) -> dict[str, FileResponse]:
+        self.bulk_calls.append(file_ids)
+        accessible: dict[str, FileResponse] = {}
+        for file_id in file_ids:
+            try:
+                accessible[file_id] = await self.get(file_id)
+            except FileNotInScopeError:
+                continue
+        return accessible
 
 
 class _Result:
     def __init__(
         self,
         row: DocumentAlias | None = None,
-        rows: list[tuple[DocumentAliasVisit, DocumentAlias]] | None = None,
+        rows: list[DocumentAlias] | None = None,
     ) -> None:
         self.row = row
         self.rows = rows or []
@@ -103,8 +114,11 @@ class _Result:
     def scalar_one_or_none(self) -> DocumentAlias | None:
         return self.row
 
-    def all(self) -> list[tuple[DocumentAliasVisit, DocumentAlias]]:
+    def all(self) -> list[DocumentAlias]:
         return self.rows
+
+    def scalars(self) -> Self:
+        return self
 
 
 class _Session:
@@ -114,14 +128,12 @@ class _Session:
         active: DocumentAlias | None = None,
         by_alias: DocumentAlias | None = None,
         inserted: DocumentAlias | None = None,
-        recent_rows: list[tuple[DocumentAliasVisit, DocumentAlias]] | None = None,
-        execute_error: SQLAlchemyError | None = None,
+        recent_rows: list[DocumentAlias] | None = None,
     ) -> None:
         self.active = active
         self.by_alias = by_alias
         self.inserted = inserted
         self.recent_rows = recent_rows
-        self.execute_error = execute_error
         self.execute_calls = 0
         self.commits = 0
         self.rollbacks = 0
@@ -132,8 +144,6 @@ class _Session:
 
     async def execute(self, _statement: object) -> _Result:
         self.execute_calls += 1
-        if self.execute_error is not None:
-            raise self.execute_error
         if self.recent_rows is not None:
             return _Result(rows=self.recent_rows)
         if self.execute_calls == 1:
@@ -217,6 +227,19 @@ async def test_saving_same_alias_is_idempotent() -> None:
     assert session.commits == 0
 
 
+async def test_save_reuses_edit_capability_from_initial_file_fetch() -> None:
+    files = _Files()
+    service = _service(
+        _Session(inserted=DocumentAlias(alias="eng-onboarding", file_id="file-1")),
+        files,
+    )
+
+    await service.save(FileId("file-1"), "eng-onboarding")
+
+    assert files.get_calls == ["file-1"]
+    assert files.can_edit_calls == 0
+
+
 async def test_read_only_user_cannot_claim_an_alias() -> None:
     service = _service(_Session(), _Files(editable=False))
 
@@ -250,72 +273,26 @@ async def test_retire_is_idempotent_and_preserves_tombstone() -> None:
     assert empty_session.commits == 0
 
 
-async def test_record_visit_rechecks_access_before_writing() -> None:
-    row = DocumentAlias(alias="eng-onboarding", file_id="file-1", created_by=_user().id)
-    session = _Session(by_alias=row)
-    service = _service(session, _Files(accessible=False))
-
-    with pytest.raises(AliasNotFoundError):
-        await service.record_visit("eng-onboarding")
-
-    assert session.execute_calls == 0
-    assert session.commits == 0
-
-
-async def test_record_visit_is_best_effort_and_returns_resolved_alias() -> None:
-    row = DocumentAlias(alias="eng-onboarding", file_id="file-1", created_by=_user().id)
-    session = _Session(by_alias=row, execute_error=SQLAlchemyError("database unavailable"))
-
-    result = await _service(session, _Files()).record_visit("eng-onboarding")
-
-    assert result == DocumentAliasRead(alias="eng-onboarding", file_id=FileId("file-1"))
-    assert session.rollbacks == 1
-
-
-async def test_record_visit_upserts_prunes_and_commits() -> None:
-    row = DocumentAlias(alias="eng-onboarding", file_id="file-1", created_by=_user().id)
-    session = _Session(by_alias=row)
-
-    await _service(session, _Files()).record_visit("eng-onboarding")
-
-    assert session.execute_calls == 3
-    assert session.commits == 1
-
-
-async def test_recent_rechecks_each_file_and_omits_inaccessible_items() -> None:
-    now = datetime.now(UTC)
+async def test_recent_bulk_resolves_once_and_omits_inaccessible_items() -> None:
     accessible_alias = DocumentAlias(
         alias="eng-onboarding", file_id="file-1", created_by=_user().id
     )
     inaccessible_alias = DocumentAlias(
         alias="people-org-chart", file_id="file-2", created_by=_user().id
     )
-    visits = [
-        (
-            DocumentAliasVisit(user_id=_user().id, file_id="file-2", visited_at=now),
-            inaccessible_alias,
-        ),
-        (
-            DocumentAliasVisit(
-                user_id=_user().id,
-                file_id="file-1",
-                visited_at=now - timedelta(minutes=1),
-            ),
-            accessible_alias,
-        ),
-    ]
     files = _Files(inaccessible_ids={"file-2"})
 
-    result = await _service(_Session(recent_rows=visits), files).recent()
+    result = await _service(
+        _Session(recent_rows=[accessible_alias, inaccessible_alias]), files
+    ).resolve_recent(["people-org-chart", "eng-onboarding", "eng-onboarding"])
 
     assert [item.model_dump() for item in result] == [
         {
             "alias": "eng-onboarding",
-            "file_id": "file-1",
             "name": "Document",
             "mime_type": "application/vnd.google-apps.document",
             "drive_name": "Engineering",
-            "last_visited_at": now - timedelta(minutes=1),
         }
     ]
+    assert files.bulk_calls == [["file-2", "file-1"]]
     assert files.get_calls == ["file-2", "file-1"]

@@ -4,19 +4,21 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import Generator
 from contextlib import contextmanager
+from itertools import batched
 import json
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, Any, override
 
 from googleapiclient.errors import HttpError
 
 from app.drive.google_schemas import GoogleFile
-from app.drive.retry import execute_mutation, execute_with_retry
+from app.drive.retry import execute_batch_with_retry, execute_mutation, execute_with_retry
 from app.drive.schemas import MIME_FOLDER, MIME_HTML, NAVIGATOR_SUPPORTED_MIME_TYPES
 from app.drive.service import DriveService, reuse_drive_client
 from app.files.errors import (
     CrossDriveMoveNotSupportedError,
     DriveUpstreamError,
     FileNotInScopeError,
+    FilesError,
     FileVersionChangedError,
     FolderCopyNotSupportedError,
     UnsupportedMimeError,
@@ -36,6 +38,7 @@ _FIELDS = (
 )
 _SMART_TASK_PROPERTY = "sarjWikiTaskId"
 _MAX_HTML_BYTES = 5 * 1024 * 1024
+_FILE_GET_BATCH_SIZE = 100
 
 
 class FilesService(ABC):
@@ -67,6 +70,18 @@ class FilesService(ABC):
 
     @abstractmethod
     async def get(self, file_id: FileId) -> FileResponse: ...
+
+    async def get_accessible_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
+        async def load(file_id: FileId) -> tuple[FileId, FileResponse] | None:
+            try:
+                return file_id, await self.get(file_id)
+            except FilesError as exc:
+                if exc.http_status in {403, 404}:
+                    return None
+                raise
+
+        loaded = await asyncio.gather(*(load(file_id) for file_id in dict.fromkeys(file_ids)))
+        return dict(item for item in loaded if item is not None)
 
     @abstractmethod
     async def can_edit(self, file_id: FileId) -> bool: ...
@@ -177,6 +192,24 @@ class GoogleFilesService(FilesService):
         return await self._normalize_member_drive(result)
 
     @override
+    async def get_accessible_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
+        unique_ids = list(dict.fromkeys(file_ids))
+        if not unique_ids:
+            return {}
+        fetched = await asyncio.to_thread(self._get_accessible_many_sync, unique_ids)
+
+        async def normalize(file: FileResponse) -> tuple[FileId, FileResponse] | None:
+            try:
+                return file.id, await self._normalize_member_drive(file)
+            except FilesError as exc:
+                if exc.http_status in {403, 404}:
+                    return None
+                raise
+
+        normalized = await asyncio.gather(*(normalize(file) for file in fetched.values()))
+        return dict(item for item in normalized if item is not None)
+
+    @override
     async def can_edit(self, file_id: FileId) -> bool:
         result = await asyncio.to_thread(self._get_sync, file_id)
         await self._normalize_member_drive(result)
@@ -283,6 +316,40 @@ class GoogleFilesService(FilesService):
                 client.files().get(fileId=file_id, fields=_FIELDS, supportsAllDrives=True)
             )
         return _to_response(raw)
+
+    def _get_accessible_many_sync(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
+        client = self._client()
+        responses: dict[FileId, FileResponse] = {}
+        failures: list[BaseException] = []
+
+        def collect(request_id: str, response: Any, exception: BaseException | None) -> None:
+            if exception is not None:
+                status = getattr(getattr(exception, "resp", None), "status", None)
+                if status not in {403, 404}:
+                    failures.append(exception)
+                return
+            responses[FileId(request_id)] = _to_response(response)
+
+        with _translated_drive_errors():
+            for chunk in batched(file_ids, _FILE_GET_BATCH_SIZE, strict=False):
+                batch = client.new_batch_http_request(callback=collect)
+                for file_id in chunk:
+                    batch.add(
+                        client.files().get(
+                            fileId=file_id,
+                            fields=_FIELDS,
+                            supportsAllDrives=True,
+                        ),
+                        request_id=file_id,
+                    )
+                execute_batch_with_retry(batch)
+        if failures:
+            failure = failures[0]
+            if isinstance(failure, HttpError):
+                raise _drive_upstream(failure)
+            msg = "Google Drive returned an invalid batch response"
+            raise DriveUpstreamError(502, msg) from failure
+        return responses
 
     def _rename_sync(self, *, file_id: FileId, new_name: str) -> FileResponse:
         client = self._client()

@@ -101,29 +101,6 @@ class DocumentAlias(Base):
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class DocumentAliasVisit(Base):
-    __tablename__ = "document_alias_visits"
-    __table_args__ = (
-        Index(
-            "ix_document_alias_visits_user_visited",
-            "user_id",
-            "visited_at",
-        ),
-    )
-
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    file_id: Mapped[FileId] = mapped_column(Text, primary_key=True)
-    visited_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=text("now()"),
-    )
-
-
 class UserFolderIcon(Base):
     __tablename__ = "user_folder_icons"
 

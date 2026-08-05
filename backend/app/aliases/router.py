@@ -12,6 +12,7 @@ from app.aliases.schemas import (
     DocumentAliasValue,
     DocumentAliasWrite,
     RecentDocumentAlias,
+    RecentDocumentAliasesRequest,
 )
 from app.aliases.service import AliasService
 from app.auth.dependencies import get_current_user
@@ -58,19 +59,12 @@ async def retire_file_alias(
     logger.info("document alias retired actor={actor}", actor=user.id)
 
 
-@router.post("/visits/{alias}")
-async def record_alias_visit(
-    alias: DocumentAliasValue,
-    svc: Annotated[AliasService, Depends(alias_service_dep)],
-) -> DocumentAliasRead:
-    return await svc.record_visit(alias)
-
-
-@router.get("/recent")
+@router.post("/recent")
 async def get_recent_aliases(
+    payload: RecentDocumentAliasesRequest,
     svc: Annotated[AliasService, Depends(alias_service_dep)],
 ) -> list[RecentDocumentAlias]:
-    return await svc.recent()
+    return await svc.resolve_recent(payload.aliases)
 
 
 @router.get("/{alias}")

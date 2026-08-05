@@ -4,13 +4,21 @@ import { Clock3, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Input } from "@/components/ui/input";
-import type { RecentDocumentAlias } from "@/lib/alias-client";
 import { displayFileName, renderMimeIcon } from "@/lib/file-icons";
 import { cn } from "@/lib/utils";
 
+export interface QuickLinkItem {
+  alias: string;
+  driveName: null | string;
+  lastVisitedAt: string;
+  mimeType: string;
+  name: string;
+}
+
 interface QuickLinksProps {
-  aliases: RecentDocumentAlias[];
+  aliases: QuickLinkItem[];
   error?: boolean;
+  loading?: boolean;
 }
 
 const VISITED_AT_FORMAT = new Intl.DateTimeFormat("en", {
@@ -22,7 +30,7 @@ const VISITED_AT_FORMAT = new Intl.DateTimeFormat("en", {
   timeZoneName: "short",
 });
 
-export function QuickLinks({ aliases, error = false }: QuickLinksProps) {
+export function QuickLinks({ aliases, error = false, loading = false }: QuickLinksProps) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -95,7 +103,7 @@ export function QuickLinks({ aliases, error = false }: QuickLinksProps) {
           aria-expanded={filteredAliases.length > 0}
           aria-label="Search quick links"
           className="bg-card h-11 pl-9 text-base md:text-sm"
-          disabled={error || aliases.length === 0}
+          disabled={error || loading || aliases.length === 0}
           onChange={(event) => {
             setQuery(event.target.value);
             setSelectedIndex(0);
@@ -114,7 +122,9 @@ export function QuickLinks({ aliases, error = false }: QuickLinksProps) {
         id="quick-links-results"
         role="listbox"
       >
-        {error ? (
+        {loading ? (
+          <Message detail="Checking your current access…" title="Loading quick links" />
+        ) : error ? (
           <Message
             detail="Your accessible quick links could not be loaded. Try refreshing the page."
             title="Unable to load quick links"
@@ -172,7 +182,7 @@ export function QuickLinks({ aliases, error = false }: QuickLinksProps) {
         )}
       </div>
 
-      {!error && aliases.length > 0 ? (
+      {!error && !loading && aliases.length > 0 ? (
         <p className="text-muted-foreground mt-3 hidden text-xs sm:block">
           Use ↑ and ↓ to navigate, then Enter to open.
         </p>
