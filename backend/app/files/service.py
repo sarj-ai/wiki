@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from googleapiclient._apis.drive.v3.schemas import File
 
 _FIELDS = (
-    "id,name,mimeType,parents,driveId,modifiedTime,description,"
+    "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,"
     "capabilities(canEdit,canAddChildren),appProperties"
 )
 _SMART_TASK_PROPERTY = "sarjWikiTaskId"
@@ -315,7 +315,7 @@ class GoogleFilesService(FilesService):
             raw = execute_with_retry(
                 client.files().get(fileId=file_id, fields=_FIELDS, supportsAllDrives=True)
             )
-        return _to_response(raw)
+        return _to_accessible_response(raw)
 
     def _get_accessible_many_sync(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
         client = self._client()
@@ -328,7 +328,10 @@ class GoogleFilesService(FilesService):
                 if status not in {403, 404}:
                     failures.append(exception)
                 return
-            responses[FileId(request_id)] = _to_response(response)
+            file = GoogleFile.model_validate(response)
+            if file.trashed:
+                return
+            responses[FileId(request_id)] = _file_response(file)
 
         with _translated_drive_errors():
             for chunk in batched(file_ids, _FILE_GET_BATCH_SIZE, strict=False):
@@ -501,7 +504,18 @@ class GoogleFilesService(FilesService):
 
 
 def _to_response(raw: File) -> FileResponse:
+    return _file_response(GoogleFile.model_validate(raw))
+
+
+def _to_accessible_response(raw: File) -> FileResponse:
     file = GoogleFile.model_validate(raw)
+    if file.trashed:
+        msg = "File not available in Sarj Wiki"
+        raise FileNotInScopeError(msg)
+    return _file_response(file)
+
+
+def _file_response(file: GoogleFile) -> FileResponse:
     return FileResponse(
         id=file.id,
         name=file.name,

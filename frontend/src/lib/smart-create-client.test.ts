@@ -148,6 +148,7 @@ describe("smartCreateApi", () => {
           file: {
             can_add_children: false,
             can_edit: true,
+            description: "Created from the selected Drive template",
             drive_id: "drive-1",
             id: "file-1",
             mime_type: "application/vnd.google-apps.document",

@@ -186,6 +186,28 @@ async def test_can_edit_uses_drive_capability(monkeypatch: pytest.MonkeyPatch) -
     assert await _svc("d1").can_edit(FileId("editable")) is True
 
 
+async def test_get_rejects_trashed_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeFiles:
+        def get(self, **_: Any) -> Self:
+            return self
+
+        def execute(self) -> dict[str, Any]:
+            return {
+                "id": "trashed",
+                "mimeType": "application/vnd.google-apps.document",
+                "name": "Trashed",
+                "trashed": True,
+            }
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+    _patch_client(monkeypatch, _FakeClient())
+    with pytest.raises(FileNotInScopeError):
+        await _svc("d1").get(FileId("trashed"))
+
+
 async def test_get_accessible_many_uses_one_google_batch_and_omits_denied_files(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -220,6 +242,7 @@ async def test_get_accessible_many_uses_one_google_batch_and_omits_denied_files(
                         "id": request.file_id,
                         "mimeType": "application/vnd.google-apps.document",
                         "name": f"Document {request.file_id}",
+                        "trashed": request.file_id == "trashed",
                     },
                     None,
                 )
@@ -234,7 +257,7 @@ async def test_get_accessible_many_uses_one_google_batch_and_omits_denied_files(
     _patch_client(monkeypatch, _FakeClient())
 
     result = await _svc("d1").get_accessible_many(
-        [FileId("first"), FileId("denied"), FileId("second")]
+        [FileId("first"), FileId("denied"), FileId("trashed"), FileId("second")]
     )
 
     assert list(result) == ["first", "second"]

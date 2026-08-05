@@ -55,6 +55,25 @@ describe("SmartCreateDialog", () => {
     expect(propose).not.toHaveBeenCalled();
   });
 
+  it("only offers templates from the invoking drive", async () => {
+    vi.spyOn(smartCreateApi, "listTemplates").mockResolvedValue([
+      template,
+      {
+        ...template,
+        driveId: "drive-2",
+        driveName: "Another drive",
+        fileId: "template-2",
+        name: "Cross-drive template",
+      },
+    ]);
+
+    renderDialog(root);
+    clickButton(await findButton("Template"));
+
+    expect(await findButton("PRD Template")).toBeEnabled();
+    expect(document.body).not.toHaveTextContent("Cross-drive template");
+  });
+
   it("clears incompatible template state when switching to AI mode", async () => {
     vi.spyOn(smartCreateApi, "listTemplates").mockResolvedValue([
       { ...template, categoryPath: [] },
