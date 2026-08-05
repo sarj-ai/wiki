@@ -12,6 +12,17 @@ const ZDocRef = z.object({
 
 export const ZRecentDocs = z.array(ZDocRef).catch([]);
 
+const ZRecentAliasVisit = z.object({
+  alias: z
+    .string()
+    .min(5)
+    .max(32)
+    .regex(/^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$/),
+  visitedAt: z.iso.datetime(),
+});
+
+export const ZRecentAliasVisits = z.array(ZRecentAliasVisit).max(50).catch([]);
+
 export const ZSidebarWidthCss = z
   .string()
   .regex(/^\d+px$/)

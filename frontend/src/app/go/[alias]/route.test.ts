@@ -33,12 +33,14 @@ describe("document short-link resolver", () => {
     });
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe("/d/google-file-id_123");
+    expect(response.headers.get("location")).toBe("/d/google-file-id_123?go=eng-onboarding");
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(response.headers.get("location")).not.toContain("utm_source");
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
       expect.stringContaining("/aliases/eng-onboarding"),
-      expect.objectContaining({ headers: { cookie: "access_token=jwt-token" } }),
+      expect.objectContaining({
+        headers: { cookie: "access_token=jwt-token" },
+      }),
     );
   });
 

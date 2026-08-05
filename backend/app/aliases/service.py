@@ -14,8 +14,14 @@ from app.aliases.errors import (
     AliasNotFoundError,
     AliasTargetUnsupportedError,
 )
-from app.aliases.schemas import DocumentAliasForFile, DocumentAliasRead, DocumentAliasValue
+from app.aliases.schemas import (
+    DocumentAliasForFile,
+    DocumentAliasRead,
+    DocumentAliasValue,
+    RecentDocumentAlias,
+)
 from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT, NAVIGATOR_SUPPORTED_MIME_TYPES
+from app.drive.service import DriveService
 from app.files.errors import FilesError
 from app.files.service import FilesService
 from app.identifiers import FileId
@@ -36,12 +42,23 @@ class AliasService(ABC):
     @abstractmethod
     async def retire(self, file_id: FileId) -> None: ...
 
+    async def resolve_recent(self, aliases: list[DocumentAliasValue]) -> list[RecentDocumentAlias]:
+        raise NotImplementedError
+
 
 class PostgresAliasService(AliasService):
-    def __init__(self, *, db: AsyncSession, files: FilesService, user: User) -> None:
+    def __init__(
+        self,
+        *,
+        db: AsyncSession,
+        files: FilesService,
+        user: User,
+        drive: DriveService | None = None,
+    ) -> None:
         self._db = db
         self._files = files
         self._user = user
+        self._drive = drive
 
     @override
     async def get_for_file(self, file_id: FileId) -> DocumentAliasForFile:
@@ -70,7 +87,7 @@ class PostgresAliasService(AliasService):
             MIME_SHORTCUT,
         }:
             raise AliasTargetUnsupportedError
-        if not await self._files.can_edit(file_id):
+        if not file.can_edit:
             raise AliasEditForbiddenError
 
         existing = await self._active_for_file(file_id)
@@ -97,8 +114,8 @@ class PostgresAliasService(AliasService):
 
     @override
     async def retire(self, file_id: FileId) -> None:
-        await self._files.get(file_id)
-        if not await self._files.can_edit(file_id):
+        file = await self._files.get(file_id)
+        if not file.can_edit:
             raise AliasEditForbiddenError
         row = await self._active_for_file(file_id)
         if row is None:
@@ -106,6 +123,37 @@ class PostgresAliasService(AliasService):
         row.retired_at = datetime.now(UTC)
         row.retired_by = self._user.id
         await self._db.commit()
+
+    @override
+    async def resolve_recent(self, aliases: list[DocumentAliasValue]) -> list[RecentDocumentAlias]:
+        if not aliases:
+            return []
+        unique_aliases = list(dict.fromkeys(aliases))
+        result = await self._db.execute(
+            select(DocumentAlias).where(
+                DocumentAlias.alias.in_(unique_aliases),
+                DocumentAlias.retired_at.is_(None),
+            )
+        )
+        rows_by_alias = {row.alias: row for row in result.scalars().all()}
+        ordered_rows = [rows_by_alias[alias] for alias in unique_aliases if alias in rows_by_alias]
+        files_by_id = await self._files.get_accessible_many([row.file_id for row in ordered_rows])
+
+        drive_names = (
+            {drive.id: drive.name for drive in await self._drive.list_drives()}
+            if files_by_id and self._drive is not None
+            else {}
+        )
+        return [
+            RecentDocumentAlias(
+                alias=row.alias,
+                name=file.name,
+                mime_type=file.mime_type,
+                drive_name=(drive_names.get(file.drive_id) if file.drive_id is not None else None),
+            )
+            for row in ordered_rows
+            if (file := files_by_id.get(row.file_id)) is not None
+        ]
 
     async def _active_for_file(self, file_id: FileId) -> DocumentAlias | None:
         result = await self._db.execute(

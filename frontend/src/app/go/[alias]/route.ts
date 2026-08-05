@@ -22,10 +22,12 @@ async function get(request: Request, context: RouteContext): Promise<Response> {
   if (result.status === "unauthorized") return response("Unauthorized", 401);
   if (result.status === "not_found") return notFound();
   if (result.status === "unavailable") return response("Unable to resolve short link", 502);
+  const destination = new URL(`/d/${encodeURIComponent(result.fileId)}`, request.url);
+  destination.searchParams.set("go", alias);
   return new Response(null, {
     headers: {
       ...PRIVATE_NO_STORE,
-      location: `/d/${encodeURIComponent(result.fileId)}`,
+      location: `${destination.pathname}${destination.search}`,
     },
     status: 302,
   });

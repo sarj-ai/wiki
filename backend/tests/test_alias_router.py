@@ -8,7 +8,12 @@ import pytest
 
 from app.aliases.dependencies import alias_service_dep
 from app.aliases.errors import AliasConflictError, AliasNotFoundError
-from app.aliases.schemas import DocumentAliasForFile, DocumentAliasRead, DocumentAliasValue
+from app.aliases.schemas import (
+    DocumentAliasForFile,
+    DocumentAliasRead,
+    DocumentAliasValue,
+    RecentDocumentAlias,
+)
 from app.aliases.service import AliasService
 from app.auth.dependencies import get_current_user
 from app.identifiers import FileId
@@ -38,6 +43,18 @@ class _Aliases(AliasService):
     async def retire(self, file_id: str) -> None:
         del file_id
         self.current = None
+
+    async def resolve_recent(self, aliases: list[DocumentAliasValue]) -> list[RecentDocumentAlias]:
+        if "eng-onboarding" not in aliases:
+            return []
+        return [
+            RecentDocumentAlias(
+                alias="eng-onboarding",
+                name="Engineering onboarding",
+                mime_type="application/vnd.google-apps.document",
+                drive_name="Engineering",
+            )
+        ]
 
 
 async def _unauthorized() -> None:
@@ -96,6 +113,30 @@ async def test_alias_api_maps_conflicts_and_validates_format(client: AsyncClient
     assert conflict.status_code == 409
     assert conflict.json()["code"] == "alias_conflict"
     assert malformed.status_code == 422
+
+
+async def test_recent_alias_api_bulk_resolves_requested_aliases(client: AsyncClient) -> None:
+    async with client:
+        recent = await client.post("/aliases/recent", json={"aliases": ["eng-onboarding"]})
+
+    assert recent.json() == [
+        {
+            "alias": "eng-onboarding",
+            "name": "Engineering onboarding",
+            "mime_type": "application/vnd.google-apps.document",
+            "drive_name": "Engineering",
+        }
+    ]
+
+
+async def test_recent_alias_api_hard_rejects_more_than_fifty(client: AsyncClient) -> None:
+    async with client:
+        response = await client.post(
+            "/aliases/recent",
+            json={"aliases": ["eng-onboarding"] * 51},
+        )
+
+    assert response.status_code == 422
 
 
 async def test_alias_api_requires_authentication(aliases: _Aliases) -> None:

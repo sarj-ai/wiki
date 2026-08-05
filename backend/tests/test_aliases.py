@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import Self, cast
 import uuid
 
 from pydantic import ValidationError
@@ -15,6 +15,8 @@ from app.aliases.errors import (
 )
 from app.aliases.schemas import DocumentAliasWrite
 from app.aliases.service import PostgresAliasService
+from app.drive.schemas import DriveSummary
+from app.drive.service import DriveService
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
 from app.files.service import FilesService
@@ -60,13 +62,19 @@ class _Files:
         accessible: bool = True,
         editable: bool = True,
         mime_type: str = "application/vnd.google-apps.document",
+        inaccessible_ids: set[str] | None = None,
     ) -> None:
         self.accessible = accessible
         self.editable = editable
         self.mime_type = mime_type
+        self.inaccessible_ids = inaccessible_ids or set()
+        self.get_calls: list[str] = []
+        self.bulk_calls: list[list[str]] = []
+        self.can_edit_calls = 0
 
     async def get(self, file_id: str) -> FileResponse:
-        if not self.accessible:
+        self.get_calls.append(file_id)
+        if not self.accessible or file_id in self.inaccessible_ids:
             msg = "File not available in Sarj Wiki"
             raise FileNotInScopeError(msg)
         return FileResponse(
@@ -80,15 +88,37 @@ class _Files:
         )
 
     async def can_edit(self, _file_id: str) -> bool:
+        self.can_edit_calls += 1
         return self.editable
+
+    async def get_accessible_many(self, file_ids: list[str]) -> dict[str, FileResponse]:
+        self.bulk_calls.append(file_ids)
+        accessible: dict[str, FileResponse] = {}
+        for file_id in file_ids:
+            try:
+                accessible[file_id] = await self.get(file_id)
+            except FileNotInScopeError:
+                continue
+        return accessible
 
 
 class _Result:
-    def __init__(self, row: DocumentAlias | None) -> None:
+    def __init__(
+        self,
+        row: DocumentAlias | None = None,
+        rows: list[DocumentAlias] | None = None,
+    ) -> None:
         self.row = row
+        self.rows = rows or []
 
     def scalar_one_or_none(self) -> DocumentAlias | None:
         return self.row
+
+    def all(self) -> list[DocumentAlias]:
+        return self.rows
+
+    def scalars(self) -> Self:
+        return self
 
 
 class _Session:
@@ -98,10 +128,12 @@ class _Session:
         active: DocumentAlias | None = None,
         by_alias: DocumentAlias | None = None,
         inserted: DocumentAlias | None = None,
+        recent_rows: list[DocumentAlias] | None = None,
     ) -> None:
         self.active = active
         self.by_alias = by_alias
         self.inserted = inserted
+        self.recent_rows = recent_rows
         self.execute_calls = 0
         self.commits = 0
         self.rollbacks = 0
@@ -112,6 +144,8 @@ class _Session:
 
     async def execute(self, _statement: object) -> _Result:
         self.execute_calls += 1
+        if self.recent_rows is not None:
+            return _Result(rows=self.recent_rows)
         if self.execute_calls == 1:
             return _Result(self.active)
         return _Result(self.inserted)
@@ -135,10 +169,16 @@ def _user() -> User:
     return user
 
 
+class _Drive:
+    async def list_drives(self) -> list[DriveSummary]:
+        return [DriveSummary(id=DriveId("drive-1"), name="Engineering")]
+
+
 def _service(session: _Session, files: _Files) -> PostgresAliasService:
     return PostgresAliasService(
         db=cast("AsyncSession", session),
         files=cast("FilesService", files),
+        drive=cast("DriveService", _Drive()),
         user=_user(),
     )
 
@@ -187,6 +227,19 @@ async def test_saving_same_alias_is_idempotent() -> None:
     assert session.commits == 0
 
 
+async def test_save_reuses_edit_capability_from_initial_file_fetch() -> None:
+    files = _Files()
+    service = _service(
+        _Session(inserted=DocumentAlias(alias="eng-onboarding", file_id="file-1")),
+        files,
+    )
+
+    await service.save(FileId("file-1"), "eng-onboarding")
+
+    assert files.get_calls == ["file-1"]
+    assert files.can_edit_calls == 0
+
+
 async def test_read_only_user_cannot_claim_an_alias() -> None:
     service = _service(_Session(), _Files(editable=False))
 
@@ -218,3 +271,28 @@ async def test_retire_is_idempotent_and_preserves_tombstone() -> None:
     empty_session = _Session()
     await _service(empty_session, _Files()).retire(FileId("file-1"))
     assert empty_session.commits == 0
+
+
+async def test_recent_bulk_resolves_once_and_omits_inaccessible_items() -> None:
+    accessible_alias = DocumentAlias(
+        alias="eng-onboarding", file_id="file-1", created_by=_user().id
+    )
+    inaccessible_alias = DocumentAlias(
+        alias="people-org-chart", file_id="file-2", created_by=_user().id
+    )
+    files = _Files(inaccessible_ids={"file-2"})
+
+    result = await _service(
+        _Session(recent_rows=[accessible_alias, inaccessible_alias]), files
+    ).resolve_recent(["people-org-chart", "eng-onboarding", "eng-onboarding"])
+
+    assert [item.model_dump() for item in result] == [
+        {
+            "alias": "eng-onboarding",
+            "name": "Document",
+            "mime_type": "application/vnd.google-apps.document",
+            "drive_name": "Engineering",
+        }
+    ]
+    assert files.bulk_calls == [["file-2", "file-1"]]
+    assert files.get_calls == ["file-2", "file-1"]
