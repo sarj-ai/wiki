@@ -37,8 +37,11 @@ describe("document short-link resolver", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(response.headers.get("location")).not.toContain("utm_source");
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
-      expect.stringContaining("/aliases/eng-onboarding"),
-      expect.objectContaining({ headers: { cookie: "access_token=jwt-token" } }),
+      expect.stringContaining("/aliases/visits/eng-onboarding"),
+      expect.objectContaining({
+        headers: { cookie: "access_token=jwt-token" },
+        method: "POST",
+      }),
     );
   });
 

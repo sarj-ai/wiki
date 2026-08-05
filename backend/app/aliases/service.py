@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import asyncio
 from datetime import UTC, datetime
+from itertools import starmap
 from typing import override
 
-from sqlalchemy import select
+from loguru import logger
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.aliases.errors import (
@@ -14,13 +18,24 @@ from app.aliases.errors import (
     AliasNotFoundError,
     AliasTargetUnsupportedError,
 )
-from app.aliases.schemas import DocumentAliasForFile, DocumentAliasRead, DocumentAliasValue
+from app.aliases.schemas import (
+    DocumentAliasForFile,
+    DocumentAliasRead,
+    DocumentAliasValue,
+    RecentDocumentAlias,
+)
 from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT, NAVIGATOR_SUPPORTED_MIME_TYPES
+from app.drive.service import DriveService
 from app.files.errors import FilesError
+from app.files.schemas import FileResponse
 from app.files.service import FilesService
 from app.identifiers import FileId
 from app.models.user import User
-from app.models.wiki import DocumentAlias
+from app.models.wiki import DocumentAlias, DocumentAliasVisit
+
+
+_RECENT_ALIAS_LIMIT = 50
+_RECENT_ACCESS_CHECK_CONCURRENCY = 8
 
 
 class AliasService(ABC):
@@ -36,12 +51,26 @@ class AliasService(ABC):
     @abstractmethod
     async def retire(self, file_id: FileId) -> None: ...
 
+    async def record_visit(self, alias: DocumentAliasValue) -> DocumentAliasRead:
+        raise NotImplementedError
+
+    async def recent(self) -> list[RecentDocumentAlias]:
+        raise NotImplementedError
+
 
 class PostgresAliasService(AliasService):
-    def __init__(self, *, db: AsyncSession, files: FilesService, user: User) -> None:
+    def __init__(
+        self,
+        *,
+        db: AsyncSession,
+        files: FilesService,
+        user: User,
+        drive: DriveService | None = None,
+    ) -> None:
         self._db = db
         self._files = files
         self._user = user
+        self._drive = drive
 
     @override
     async def get_for_file(self, file_id: FileId) -> DocumentAliasForFile:
@@ -106,6 +135,93 @@ class PostgresAliasService(AliasService):
         row.retired_at = datetime.now(UTC)
         row.retired_by = self._user.id
         await self._db.commit()
+
+    @override
+    async def record_visit(self, alias: DocumentAliasValue) -> DocumentAliasRead:
+        resolved = await self.resolve(alias)
+        now = datetime.now(UTC)
+        try:
+            await self._persist_visit(resolved.file_id, now)
+        except SQLAlchemyError:
+            await self._db.rollback()
+            logger.warning(
+                "document alias visit could not be recorded alias={alias} actor={actor}",
+                alias=alias,
+                actor=self._user.id,
+            )
+        return resolved
+
+    async def _persist_visit(self, file_id: FileId, visited_at: datetime) -> None:
+        statement = (
+            pg_insert(DocumentAliasVisit)
+            .values(user_id=self._user.id, file_id=file_id, visited_at=visited_at)
+            .on_conflict_do_update(
+                index_elements=[DocumentAliasVisit.user_id, DocumentAliasVisit.file_id],
+                set_={"visited_at": visited_at},
+            )
+        )
+        excess_file_ids = (
+            select(DocumentAliasVisit.file_id)
+            .where(DocumentAliasVisit.user_id == self._user.id)
+            .order_by(DocumentAliasVisit.visited_at.desc(), DocumentAliasVisit.file_id)
+            .offset(_RECENT_ALIAS_LIMIT)
+        )
+        await self._db.execute(select(User.id).where(User.id == self._user.id).with_for_update())
+        await self._db.execute(statement)
+        await self._db.execute(
+            delete(DocumentAliasVisit).where(
+                DocumentAliasVisit.user_id == self._user.id,
+                DocumentAliasVisit.file_id.in_(excess_file_ids),
+            )
+        )
+        await self._db.commit()
+
+    @override
+    async def recent(self) -> list[RecentDocumentAlias]:
+        result = await self._db.execute(
+            select(DocumentAliasVisit, DocumentAlias)
+            .join(DocumentAlias, DocumentAlias.file_id == DocumentAliasVisit.file_id)
+            .where(
+                DocumentAliasVisit.user_id == self._user.id,
+                DocumentAlias.retired_at.is_(None),
+            )
+            .order_by(DocumentAliasVisit.visited_at.desc(), DocumentAliasVisit.file_id)
+            .limit(_RECENT_ALIAS_LIMIT)
+        )
+
+        access_check_limit = asyncio.Semaphore(_RECENT_ACCESS_CHECK_CONCURRENCY)
+
+        async def load_if_accessible(
+            visit: DocumentAliasVisit, alias: DocumentAlias
+        ) -> tuple[DocumentAliasVisit, DocumentAlias, FileResponse] | None:
+            async with access_check_limit:
+                try:
+                    file = await self._files.get(alias.file_id)
+                except FilesError as exc:
+                    if exc.http_status in {403, 404}:
+                        return None
+                    raise
+            return visit, alias, file
+
+        checked = await asyncio.gather(*starmap(load_if_accessible, result.all()))
+        accessible = [item for item in checked if item is not None]
+
+        drive_names = (
+            {drive.id: drive.name for drive in await self._drive.list_drives()}
+            if accessible and self._drive is not None
+            else {}
+        )
+        return [
+            RecentDocumentAlias(
+                alias=alias.alias,
+                file_id=file.id,
+                name=file.name,
+                mime_type=file.mime_type,
+                drive_name=(drive_names.get(file.drive_id) if file.drive_id is not None else None),
+                last_visited_at=visit.visited_at,
+            )
+            for visit, alias, file in accessible
+        ]
 
     async def _active_for_file(self, file_id: FileId) -> DocumentAlias | None:
         result = await self._db.execute(

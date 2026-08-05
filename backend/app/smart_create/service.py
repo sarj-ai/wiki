@@ -11,7 +11,7 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 from loguru import logger
-from pydantic import BaseModel, StringConstraints, ValidationError
+from pydantic import BaseModel, Field, StringConstraints, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -253,6 +253,7 @@ class GeneratedProposal(BaseModel):
     ]
     destination_folder_id: FileId
     template_file_id: FileId | None = None
+    confidence: Annotated[float, Field(ge=0, le=1)]
 
 
 class ProposalGenerator(ABC):
@@ -266,14 +267,16 @@ class ProposalGenerator(ABC):
 
 
 class VertexProposalGenerator(ProposalGenerator):
-    def __init__(self) -> None:
+    def __init__(self, *, project: str | None = None, model: str | None = None) -> None:
+        resolved_project = project or settings.GOOGLE_CLOUD_PROJECT
+        self._model = model or settings.GEMINI_MODEL
         self._client = (
             genai.Client(
                 vertexai=True,
-                project=settings.GOOGLE_CLOUD_PROJECT,
+                project=resolved_project,
                 location=settings.GEMINI_LOCATION,
             )
-            if settings.GOOGLE_CLOUD_PROJECT is not None
+            if resolved_project is not None
             else None
         )
 
@@ -290,7 +293,7 @@ class VertexProposalGenerator(ProposalGenerator):
         prompt = _build_prompt(request, folders, templates)
         async with asyncio.timeout(_MODEL_TIMEOUT_SECONDS):
             response = await self._client.aio.models.generate_content(
-                model=settings.GEMINI_MODEL,
+                model=self._model,
                 contents=prompt,
                 config=genai_types.GenerateContentConfig(
                     response_mime_type="application/json",
@@ -338,7 +341,7 @@ class GeminiSmartProposalService(SmartProposalService):
         template_task = asyncio.create_task(self._templates.list_templates())
         trees = await self._load_cached_trees(drives)
         catalog = await template_task
-        folders = _shortlist_folders(request, drives, trees)
+        folders = smart_create_candidates(request, drives, trees, candidate_depth=1)
         compatible_templates = [
             template
             for template in _compatible_templates(request.file_type, catalog.templates)
@@ -347,7 +350,7 @@ class GeminiSmartProposalService(SmartProposalService):
         fallback = _fallback_proposal(request, folders)
         try:
             generated = await self._generator.generate(request, folders, compatible_templates)
-            return _validated_proposal(
+            return validate_generated_proposal(
                 request,
                 generated,
                 folders,
@@ -495,12 +498,16 @@ def _build_prompt(
     instructions = (
         "Recommend concise metadata and placement for a Sarj Wiki file. "
         "Use the description's complete meaning and phrases, not an isolated overlapping word. "
+        "Prefer a broad, durable folder whose purpose will remain appropriate as the file evolves; "
+        "avoid a narrow or temporary folder merely because it repeats words from the description. "
         "Folders about health, relationships, identity, immigration, finance, banking, or legal "
         "matters require explicit evidence that the file is actually about that sensitive category; "
         "for example, plant health is not personal health. When placement is uncertain, keep the "
         "invoking folder. "
         "Choose destination_folder_id only from folders. Choose template_file_id only from "
-        "templates, or null for a blank file. The alias must be two or three lowercase words "
+        "templates, or null for a blank file. confidence must be 0 to 1 and reflect confidence in "
+        "the destination choice, not confidence in the other metadata. The alias must be two or "
+        "three lowercase words "
         "of 2-12 ASCII letters separated by hyphens. Return one fitting emoji and no prose."
     )
     return "\n".join(  # ruff: ignore[static-join-to-f-string]
@@ -508,28 +515,28 @@ def _build_prompt(
     )
 
 
-def _shortlist_folders(
+def smart_create_candidates(
     request: AIMode,
     drives: list[DriveSummary],
     trees: list[DriveTree],
+    *,
+    candidate_depth: int | None = None,
 ) -> list[ProposalDestination]:
+    if candidate_depth is not None and candidate_depth < 0:
+        msg = "candidate_depth must be non-negative or None"
+        raise ValueError(msg)
     invoking_drive = next(
         (drive for drive in drives if drive.id == request.invoking_drive_id), None
     )
     if invoking_drive is None:
         return []
-    destinations: list[ProposalDestination] = [
-        ProposalDestination(
-            folder_id=FileId(invoking_drive.id),
-            drive_id=invoking_drive.id,
-            drive_name=invoking_drive.name,
-            folder_path=[invoking_drive.name],
-        )
-    ]
-    for tree in trees:
-        if tree.drive_id != invoking_drive.id:
-            continue
-        destinations.extend(_tree_destinations(invoking_drive, tree))
+    destinations = smart_create_destinations(invoking_drive, trees)
+
+    destinations = _destinations_within_candidate_depth(
+        destinations,
+        invoking_folder_id=request.invoking_folder_id,
+        candidate_depth=candidate_depth,
+    )
     terms = frozenset(_WORD_PATTERN.findall(request.description.casefold()))
     destinations.sort(
         key=lambda destination: (
@@ -539,6 +546,59 @@ def _shortlist_folders(
         )
     )
     return destinations[:_MAX_FOLDER_CANDIDATES]
+
+
+def smart_create_destinations(
+    drive: DriveSummary,
+    trees: list[DriveTree],
+) -> list[ProposalDestination]:
+    destinations: list[ProposalDestination] = [
+        ProposalDestination(
+            folder_id=FileId(drive.id),
+            drive_id=drive.id,
+            drive_name=drive.name,
+            folder_path=[drive.name],
+        )
+    ]
+    for tree in trees:
+        if tree.drive_id != drive.id:
+            continue
+        destinations.extend(_tree_destinations(drive, tree))
+    return destinations
+
+
+def _destinations_within_candidate_depth(
+    destinations: list[ProposalDestination],
+    *,
+    invoking_folder_id: FileId | None,
+    candidate_depth: int | None,
+) -> list[ProposalDestination]:
+    """Bound exploration while retaining the invoking path needed for a safe fallback."""
+    if candidate_depth is None:
+        return destinations
+    by_id = {destination.folder_id: destination for destination in destinations}
+    invoking = by_id.get(invoking_folder_id) if invoking_folder_id is not None else None
+    invoking_depth = len(invoking.folder_path) - 1 if invoking is not None else 0
+    maximum_depth = invoking_depth + candidate_depth
+    retained_ids: set[FileId] = set()
+    if invoking is not None:
+        invoking_path = tuple(part.casefold() for part in invoking.folder_path)
+        retained_ids.update(
+            destination.folder_id
+            for destination in destinations
+            if _is_path_prefix(destination.folder_path, invoking_path)
+        )
+    return [
+        destination
+        for destination in destinations
+        if len(destination.folder_path) - 1 <= maximum_depth
+        or destination.folder_id in retained_ids
+    ]
+
+
+def _is_path_prefix(path: list[str], invoking_path: tuple[str, ...]) -> bool:
+    normalized = tuple(part.casefold() for part in path)
+    return len(normalized) <= len(invoking_path) and invoking_path[: len(normalized)] == normalized
 
 
 def _tree_destinations(drive: DriveSummary, tree: DriveTree) -> list[ProposalDestination]:
@@ -589,7 +649,7 @@ def _compatible_templates(
     return [template for template in templates if template.mime_type == mime_type]
 
 
-def _validated_proposal(
+def validate_generated_proposal(
     request: AIMode,
     generated: GeneratedProposal,
     folders: list[ProposalDestination],

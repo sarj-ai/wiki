@@ -1100,6 +1100,48 @@
         "title": "ProposalDestination",
         "type": "object"
       },
+      "RecentDocumentAlias": {
+        "properties": {
+          "alias": {
+            "maxLength": 32,
+            "minLength": 5,
+            "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+            "title": "Alias",
+            "type": "string"
+          },
+          "drive_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drive Name"
+          },
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "last_visited_at": {
+            "format": "date-time",
+            "title": "Last Visited At",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": ["alias", "file_id", "name", "mime_type", "drive_name", "last_visited_at"],
+        "title": "RecentDocumentAlias",
+        "type": "object"
+      },
       "ReorganizationProposalRead": {
         "additionalProperties": false,
         "properties": {
@@ -1947,6 +1989,72 @@
           }
         },
         "summary": "Save File Alias",
+        "tags": ["aliases"]
+      }
+    },
+    "/aliases/recent": {
+      "get": {
+        "operationId": "get_recent_aliases_aliases_recent_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecentDocumentAlias"
+                  },
+                  "title": "Response Get Recent Aliases Aliases Recent Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Recent Aliases",
+        "tags": ["aliases"]
+      }
+    },
+    "/aliases/visits/{alias}": {
+      "post": {
+        "operationId": "record_alias_visit_aliases_visits__alias__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alias",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 5,
+              "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+              "title": "Alias",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentAliasRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Alias Visit",
         "tags": ["aliases"]
       }
     },

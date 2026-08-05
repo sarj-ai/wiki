@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime
 
 from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
@@ -8,7 +9,12 @@ import pytest
 
 from app.aliases.dependencies import alias_service_dep
 from app.aliases.errors import AliasConflictError, AliasNotFoundError
-from app.aliases.schemas import DocumentAliasForFile, DocumentAliasRead, DocumentAliasValue
+from app.aliases.schemas import (
+    DocumentAliasForFile,
+    DocumentAliasRead,
+    DocumentAliasValue,
+    RecentDocumentAlias,
+)
 from app.aliases.service import AliasService
 from app.auth.dependencies import get_current_user
 from app.identifiers import FileId
@@ -38,6 +44,21 @@ class _Aliases(AliasService):
     async def retire(self, file_id: str) -> None:
         del file_id
         self.current = None
+
+    async def record_visit(self, alias: DocumentAliasValue) -> DocumentAliasRead:
+        return await self.resolve(alias)
+
+    async def recent(self) -> list[RecentDocumentAlias]:
+        return [
+            RecentDocumentAlias(
+                alias="eng-onboarding",
+                file_id=FileId("google-file-id"),
+                name="Engineering onboarding",
+                mime_type="application/vnd.google-apps.document",
+                drive_name="Engineering",
+                last_visited_at=datetime(2026, 8, 4, tzinfo=UTC),
+            )
+        ]
 
 
 async def _unauthorized() -> None:
@@ -96,6 +117,24 @@ async def test_alias_api_maps_conflicts_and_validates_format(client: AsyncClient
     assert conflict.status_code == 409
     assert conflict.json()["code"] == "alias_conflict"
     assert malformed.status_code == 422
+
+
+async def test_alias_visit_and_recent_api(client: AsyncClient) -> None:
+    async with client:
+        visit = await client.post("/aliases/visits/eng-onboarding")
+        recent = await client.get("/aliases/recent")
+
+    assert visit.json() == {"alias": "eng-onboarding", "file_id": "google-file-id"}
+    assert recent.json() == [
+        {
+            "alias": "eng-onboarding",
+            "file_id": "google-file-id",
+            "name": "Engineering onboarding",
+            "mime_type": "application/vnd.google-apps.document",
+            "drive_name": "Engineering",
+            "last_visited_at": "2026-08-04T00:00:00Z",
+        }
+    ]
 
 
 async def test_alias_api_requires_authentication(aliases: _Aliases) -> None:

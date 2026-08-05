@@ -45,4 +45,10 @@ describe("private Wiki link previews", () => {
       "https://wiki.sarj.ai/login?redirect=%2Fgo%2Feng-onboarding",
     );
   });
+
+  it("protects the quick-links index and preserves it through login", () => {
+    const response = preview("/go", "Mozilla/5.0");
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("https://wiki.sarj.ai/login?redirect=%2Fgo");
+  });
 });

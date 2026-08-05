@@ -30,6 +30,7 @@ from app.smart_create.service import (
     ProposalGenerator,
     ReorganizationEvidence,
     ReorganizationGenerator,
+    smart_create_candidates,
 )
 from app.templates.schemas import TemplateCatalogRead, TemplateMimeType, TemplateRead
 from app.templates.service import TemplateCatalogService
@@ -107,6 +108,20 @@ class _Cache(SidebarCacheService):
                         name="Health & Relationships",
                         mime_type=MIME_FOLDER,
                         parent_id=FileId("product"),
+                        modified_time=None,
+                    ),
+                    DriveNode(
+                        id=FileId("roadmap-archive"),
+                        name="Roadmap archive",
+                        mime_type=MIME_FOLDER,
+                        parent_id=FileId("roadmaps"),
+                        modified_time=None,
+                    ),
+                    DriveNode(
+                        id=FileId("roadmap-deep"),
+                        name="Deep roadmap archive",
+                        mime_type=MIME_FOLDER,
+                        parent_id=FileId("roadmap-archive"),
                         modified_time=None,
                     ),
                 ],
@@ -226,6 +241,7 @@ async def test_accepts_enumerated_same_workspace_template() -> None:
             alias="quarterly-roadmap",
             destination_folder_id=FileId("roadmaps"),
             template_file_id=FileId("prd"),
+            confidence=0.9,
         )
     )
 
@@ -243,6 +259,7 @@ async def test_invalid_model_identifier_uses_deterministic_fallback() -> None:
             emoji="🧪",
             alias="invented-folder",
             destination_folder_id=FileId("not-visible"),
+            confidence=0.2,
         )
     )
 
@@ -269,6 +286,7 @@ async def test_smart_create_only_exposes_the_invoking_drive() -> None:
             alias="quarterly-roadmap",
             destination_folder_id=FileId("roadmaps"),
             template_file_id=FileId("prd"),
+            confidence=0.9,
         )
     )
     service = GeminiSmartProposalService(
@@ -282,7 +300,82 @@ async def test_smart_create_only_exposes_the_invoking_drive() -> None:
     await service.propose(_request())
 
     assert {folder.drive_id for folder in generator.folders} == {"product"}
+    folder_ids = {str(folder.folder_id) for folder in generator.folders}
+    assert "roadmap-archive" in folder_ids
+    assert "roadmap-deep" not in folder_ids
     assert {template.drive_id for template in generator.templates} == {"product"}
+
+
+@pytest.mark.parametrize(
+    ("candidate_depth", "expected"),
+    [
+        (1, {"product", "planning", "quarterly", "future", "peer-child"}),
+        (2, {"product", "planning", "quarterly", "future", "peer-child", "deep"}),
+        (3, {"product", "planning", "quarterly", "future", "peer-child", "deep"}),
+        (None, {"product", "planning", "quarterly", "future", "peer-child", "deep"}),
+    ],
+)
+def test_candidate_depth_is_relative_and_retains_current_ancestry(
+    candidate_depth: int | None, expected: set[str]
+) -> None:
+    drive = DriveSummary(id=DriveId("product"), name="Product")
+    tree = DriveTree(
+        drive_id=drive.id,
+        folders=[
+            DriveNode(
+                id=FileId("planning"),
+                name="Planning",
+                mime_type=MIME_FOLDER,
+                parent_id=None,
+                modified_time=None,
+            ),
+            DriveNode(
+                id=FileId("quarterly"),
+                name="Quarterly",
+                mime_type=MIME_FOLDER,
+                parent_id=FileId("planning"),
+                modified_time=None,
+            ),
+            DriveNode(
+                id=FileId("future"),
+                name="Future",
+                mime_type=MIME_FOLDER,
+                parent_id=FileId("quarterly"),
+                modified_time=None,
+            ),
+            DriveNode(
+                id=FileId("peer-child"),
+                name="Peer child",
+                mime_type=MIME_FOLDER,
+                parent_id=FileId("planning"),
+                modified_time=None,
+            ),
+            DriveNode(
+                id=FileId("deep"),
+                name="Deep",
+                mime_type=MIME_FOLDER,
+                parent_id=FileId("future"),
+                modified_time=None,
+            ),
+        ],
+        files=[],
+        files_complete=True,
+    )
+
+    candidates = smart_create_candidates(
+        AIMode(
+            kind="ai",
+            description="Quarterly product roadmap",
+            file_type="document",
+            invoking_folder_id=FileId("quarterly"),
+            invoking_drive_id=DriveId("product"),
+        ),
+        [drive],
+        [tree],
+        candidate_depth=candidate_depth,
+    )
+
+    assert {str(candidate.folder_id) for candidate in candidates} == expected
 
 
 @pytest.mark.parametrize(
@@ -318,6 +411,7 @@ async def test_sensitive_destination_requires_explicit_category_evidence(
             emoji=emoji,
             alias=alias,
             destination_folder_id=FileId("health-relationships"),
+            confidence=0.8,
         )
     )
 
