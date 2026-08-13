@@ -67,6 +67,8 @@ pre-commit:
       run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache SKIP=sarj-strict-markdownlint,sarj-strict-taplo,sarj-strict-yamllint uvx --python 3.14 pre-commit run
       fail_text: "AGENT: a pre-commit hook (hygiene, gitleaks, actionlint, or a sarj-* rule) rejected staged files. Fix: repair the reported finding (sarj rules accept a narrow '# sarj-noqa: SARJ0XX — reason' only with justification), stage, and retry. NEVER use --no-verify."
 
+    sarj-standards:
+      run: uvx --isolated --python 3.14 --from sarj-standards==5.8.1 sarj-standards check --staged --trust-repository-code -- {staged_files}
 pre-push:
   parallel: true
   commands:
