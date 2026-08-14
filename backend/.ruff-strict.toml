@@ -2,7 +2,6 @@
 # consumer repos it was taken from as `repo A` and `repo B`; those labels are
 # stable throughout this file.
 line-length = 120
-target-version = "py314"
 extend-exclude = ["sdk"]
 
 [format]
@@ -80,6 +79,7 @@ extend-select = [
 
   "FAST001",
   "FAST002",
+  "FAST003",
 
   "LOG001",
   "LOG002",
@@ -111,6 +111,15 @@ ignore = [
   # them costs 0/1/0 — and S101/S105/S106 moved to `per-file-ignores` for test
   # code, where the exemption is true, instead of silencing three security
   # checks repo-wide. Do not re-add them here.
+
+  # Sarj owns these comment concerns with narrower, syntax-aware rules and
+  # tracked-reference exemptions. Ruff's generic variants double-report
+  # commented code and reject even ticket-backed TODOs.
+  "ERA001",
+  "FIX002",
+  "TD002",
+  "TD003",
+  "TD004",
 
   # Complexity is a code-smell heuristic, not a correctness rule, and these five
   # thresholds fight the style this same config mandates:
@@ -392,6 +401,7 @@ raises-require-match-for = [
 "scripts/**"      = ["T201", "S", "BLE001", "TRY002", "INP001"]
 # CLI entrypoints print to stdout — that's their job, not stray debug output.
 "**/__main__.py"  = ["T201"]
+"**/cli/**/*.py"  = ["T201"]
 # NOTE: `"__init__.py" = []` and `"**/settings.py" = []` used to sit here. Ruff
 # per-file-ignores are additive and an empty list cannot un-ignore anything, so
 # both entries were no-ops; they are removed rather than left as config that

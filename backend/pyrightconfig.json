@@ -1,7 +1,13 @@
 {
   "extends": ".pyright-strict.json",
-  "include": ["app", "tests"],
-  "exclude": ["alembic/versions", "**/__pycache__"],
+  "include": [
+    "app",
+    "tests"
+  ],
+  "exclude": [
+    "alembic/versions",
+    "**/__pycache__"
+  ],
   "reportAny": false,
   "reportDeprecated": "error",
   "reportExplicitAny": false,
@@ -19,5 +25,6 @@
   "reportUnknownMemberType": false,
   "reportUnknownParameterType": false,
   "reportUnknownVariableType": false,
-  "reportUnnecessaryTypeIgnoreComment": false
+  "reportUnnecessaryTypeIgnoreComment": false,
+  "pythonVersion": "3.14"
 }

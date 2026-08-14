@@ -1,3 +1,7 @@
+import { readdirSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import tseslint from "typescript-eslint";
 import react from "eslint-plugin-react";
 import { fixupPluginRules } from "@eslint/compat";
@@ -5,10 +9,77 @@ import reactHooks from "eslint-plugin-react-hooks";
 import unicorn from "eslint-plugin-unicorn";
 import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
 import perfectionist from "eslint-plugin-perfectionist";
+import promise from "eslint-plugin-promise";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import sarj from "@sarj/eslint-plugin";
 import zod from "eslint-plugin-zod";
+
+const CONFIG_DIRECTORY = dirname(fileURLToPath(import.meta.url));
+const TYPE_PROJECT_FILES = new Set(["tsconfig.json", "jsconfig.json"]);
+const TYPE_PROJECT_SEARCH_DEPTH = 8;
+const TYPE_PROJECT_SEARCH_LIMIT = 2_000;
+const TYPE_PROJECT_SKIPPED_DIRECTORIES = new Set([
+  ".git",
+  ".next",
+  ".turbo",
+  "build",
+  "coverage",
+  "dist",
+  "lib",
+  "node_modules",
+  "vendor",
+]);
+
+/**
+ * Find a root or nested workspace type project without crawling dependencies.
+ *
+ * A direct `existsSync(root/tsconfig.json)` check silently disabled every typed
+ * rule in monorepos whose configs live under `apps/*` or `packages/*`. Keep the
+ * search bounded so config loading has deterministic cost even in huge repos.
+ */
+const hasTypeProject = (root) => {
+  const pending = [[root, 0]];
+  let inspected = 0;
+
+  while (pending.length > 0 && inspected < TYPE_PROJECT_SEARCH_LIMIT) {
+    const [directory, depth] = pending.shift();
+    inspected += 1;
+    let entries;
+    try {
+      entries = readdirSync(directory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    if (entries.some((entry) => entry.isFile() && TYPE_PROJECT_FILES.has(entry.name))) return true;
+    if (depth >= TYPE_PROJECT_SEARCH_DEPTH) continue;
+    for (const entry of entries) {
+      if (
+        entry.isDirectory() &&
+        !entry.name.startsWith(".") &&
+        !TYPE_PROJECT_SKIPPED_DIRECTORIES.has(entry.name)
+      ) {
+        pending.push([join(directory, entry.name), depth + 1]);
+      }
+    }
+  }
+  return false;
+};
+
+const normalizeRoot = (root) => {
+  const value = root instanceof URL ? fileURLToPath(root) : root;
+  return isAbsolute(value) ? value : resolve(value);
+};
+const UNTYPED_RULE_OVERRIDES = Object.fromEntries(
+  Object.entries(tseslint.plugin.rules)
+    .filter(([, rule]) => rule.meta?.docs?.requiresTypeChecking === true)
+    .map(([name]) => [`@typescript-eslint/${name}`, "off"]),
+);
+const DEFAULT_SYNTAX_ONLY_CONFIG_FILES = [
+  "**/vite.config.ts",
+  "**/.dependency-cruiser.{js,cjs,mjs,ts,cts,mts}",
+  "**/eslint.config*.{js,cjs,mjs,ts,cts,mts}",
+];
 
 // unicorn ships 341 rules; this config used to run 12 of them. The set below
 // was chosen by RUNNING every non-deprecated unicorn 72 rule over 4,356 deduped
@@ -32,8 +103,8 @@ import zod from "eslint-plugin-zod";
 // are almost always a symptom of a wrong edit (`no-unnecessary-await`,
 // `no-useless-fallback-in-spread`), calls that silently do nothing
 // (`no-single-promise-in-promise-methods`, `no-invalid-fetch-options`), and
-// footguns with real production failure modes (`no-thenable`,
-// `no-array-fill-with-reference-type`, `no-unsafe-string-replacement`).
+// footguns with real production failure modes (`no-array-fill-with-reference-type`,
+// `no-unsafe-string-replacement`).
 //
 // DOM-family entries are included UNSCOPED on purpose. They are receiver-matched
 // — they only fire on `document.*`, an `Element`, or an event API — so they are
@@ -109,7 +180,9 @@ const UNICORN_CORRECTNESS_RULES = {
   "unicorn/no-shorthand-property-overrides": "error",
   "unicorn/no-single-promise-in-promise-methods": "error",
   "unicorn/no-subtraction-comparison": "error",
-  "unicorn/no-thenable": "error",  // 1 / 1
+  // JSON Schema requires a `then` property. The syntax-only rule rejects that
+  // standards-compliant data shape even when the key is computed.
+  "unicorn/no-thenable": "off",
   "unicorn/no-this-assignment": "error",
   "unicorn/no-this-outside-of-class": "error",  // 2 / 2
   "unicorn/no-typeof-undefined": "error",
@@ -150,7 +223,9 @@ const UNICORN_CORRECTNESS_RULES = {
   "unicorn/no-useless-re-export": "error",
   "unicorn/no-useless-recursion": "error",  // 3 / 1
   "unicorn/no-useless-spread": "error",
-  "unicorn/no-useless-switch-case": "error",  // 23 / 13
+  // Explicit union cases are required by switch-exhaustiveness-check even when
+  // they share the default branch behavior.
+  "unicorn/no-useless-switch-case": "off",
   "unicorn/no-xor-as-exponentiation": "error",
   "unicorn/prefer-add-event-listener": "error",  // 24 / 9
   "unicorn/prefer-add-event-listener-options": "error",  // 5 / 2
@@ -272,7 +347,7 @@ const missingUnicornRules = [
 
 if (missingUnicornRules.length > 0) {
   throw new Error(
-    `sarj-lint-configs: ${String(missingUnicornRules.length)} rule(s) this config enables do not exist ` +
+    `sarj-standards: ${String(missingUnicornRules.length)} rule(s) this config enables do not exist ` +
       `in the installed eslint-plugin-unicorn (${missingUnicornRules.slice(0, 5).join(", ")}). ` +
       `Either the plugin is older than the required >= 72 (which also needs eslint >= 10.4), ` +
       `or a rule name in this config is a typo or was renamed upstream.`,
@@ -435,16 +510,42 @@ const BUILD_OUTPUT_IGNORES = [
   "**/.svelte-kit/**",
   "**/.astro/**",
   "**/.wrangler/**",
+  "**/.pnp.cjs",
+  "**/.pnp.loader.mjs",
   "**/storybook-static/**",
   "**/__generated__/**",
   "**/generated/**",
+  "**/eslint.config.js",
+  "**/eslint.config.cjs",
+  "**/eslint.config.mjs",
+  "**/eslint.config.ts",
+  "**/eslint.strict.mjs",
   "**/*.min.js",
   "**/*.min.mjs",
   "**/*.min.cjs",
 ];
 
-/** @type {import("eslint").Linter.Config[]} */
-const config = [
+/**
+ * Build the config at call time, so an import cached from another working
+ * directory cannot freeze type-aware linting off for the real project.
+ *
+ * @param {{ tsconfigRootDir?: string | URL, projectService?: boolean | object, syntaxOnlyConfigFiles?: string[] }} [options]
+ * @returns {import("eslint").Linter.Config[]}
+ */
+export function createConfig(options = {}) {
+  const explicitRoot = options.tsconfigRootDir === undefined
+    ? undefined
+    : normalizeRoot(options.tsconfigRootDir);
+  const candidates = explicitRoot === undefined
+    ? [CONFIG_DIRECTORY, process.cwd()].map(normalizeRoot)
+    : [explicitRoot];
+  const detectedRoot = candidates.find(hasTypeProject);
+  const TYPE_PROJECT_ROOT = detectedRoot ?? candidates[0];
+  const PROJECT_SERVICE = options.projectService ?? detectedRoot !== undefined;
+  const HAS_TYPE_PROJECT = PROJECT_SERVICE !== false;
+  const SYNTAX_ONLY_CONFIG_FILES = options.syntaxOnlyConfigFiles ?? DEFAULT_SYNTAX_ONLY_CONFIG_FILES;
+
+  return [
   // A config entry carrying ONLY `ignores` is a global ignore — it must stay
   // first and must not grow a `files` key, or it silently degrades into a
   // per-file entry that ignores nothing.
@@ -457,6 +558,7 @@ const config = [
     // Dead eslint-disable directives are an error (parity with ruff RUF100).
     linterOptions: {
       reportUnusedDisableDirectives: "error",
+      reportUnusedInlineConfigs: "error",
     },
     plugins: {
       "@typescript-eslint": tseslint.plugin,
@@ -465,6 +567,7 @@ const config = [
       unicorn,
       "@eslint-community/eslint-comments": eslintComments,
       perfectionist,
+      promise,
       "simple-import-sort": simpleImportSort,
       "@sarj": sarj,
       zod,
@@ -472,8 +575,8 @@ const config = [
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
-        projectService: true,
-        tsconfigRootDir: process.cwd(),
+        projectService: PROJECT_SERVICE,
+        tsconfigRootDir: TYPE_PROJECT_ROOT,
         ecmaFeatures: { jsx: true },
       },
     },
@@ -507,7 +610,15 @@ const config = [
       "@typescript-eslint/no-floating-promises": "error",
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-misused-promises": "error",
+      // The upstream rule flags every nested then/catch/finally call, including
+      // deliberate fire-and-forget work and synchronous framework callbacks.
+      // The typed @sarj rule below owns only semantics-preserving async returns.
+      "promise/prefer-await-to-then": "off",
       "@typescript-eslint/require-await": "error",
+      // `isolatedDeclarations` requires annotations on exported values that
+      // cannot be declaration-emitted in isolation, even when the initializer
+      // looks inferable. The compiler owns that boundary.
+      "@typescript-eslint/no-inferrable-types": "off",
       "@typescript-eslint/restrict-template-expressions": "error",
       "@typescript-eslint/no-unused-vars": [
         "error",
@@ -563,6 +674,34 @@ const config = [
           leadingUnderscore: "allow",
         },
       ],
+      // Only accessibility bands are ordered. Field-vs-method and static-vs-
+      // instance layout remain unconstrained, while public methods cannot be
+      // buried below implementation-private methods. `@sarj/stepdown` then
+      // orders sole-caller private helpers within the private band.
+      "@typescript-eslint/member-ordering": [
+        "error",
+        {
+          default: "never",
+          interfaces: "never",
+          typeLiterals: "never",
+          classes: {
+            memberTypes: [
+              ["public-constructor", "public-accessor", "public-get", "public-set", "public-method", "public-static-method", "public-instance-method", "public-decorated-method"],
+              ["protected-constructor", "protected-accessor", "protected-get", "protected-set", "protected-method", "protected-static-method", "protected-instance-method", "protected-decorated-method"],
+              ["private-constructor", "private-accessor", "#private-accessor", "private-get", "#private-get", "private-set", "#private-set", "private-method", "private-static-method", "private-instance-method", "private-decorated-method", "#private-method"],
+            ],
+            order: "as-written",
+          },
+          classExpressions: {
+            memberTypes: [
+              ["public-constructor", "public-accessor", "public-get", "public-set", "public-method", "public-static-method", "public-instance-method", "public-decorated-method"],
+              ["protected-constructor", "protected-accessor", "protected-get", "protected-set", "protected-method", "protected-static-method", "protected-instance-method", "protected-decorated-method"],
+              ["private-constructor", "private-accessor", "#private-accessor", "private-get", "#private-get", "private-set", "#private-set", "private-method", "private-static-method", "private-instance-method", "private-decorated-method", "#private-method"],
+            ],
+            order: "as-written",
+          },
+        },
+      ],
 
       // Additional type-aware strictness incorporated from a first-party base config.
       "@typescript-eslint/prefer-as-const": "error",
@@ -572,13 +711,14 @@ const config = [
         { ignorePrimitives: { number: true, string: true, boolean: true } },
       ],
       "@typescript-eslint/prefer-optional-chain": "error",
-      // checkMethodDeclarations is off because the autofix is destructive on
-      // framework-defined methods. React's ReactNode union includes
-      // Promise<AwaitedReactNode> (for async Server Components), so a class
-      // component's render() infers as promise-returning and the fixer adds
-      // `async` — which makes React throw #482 and takes down every route the
-      // component wraps. Standalone functions and arrows are still checked.
-      "@typescript-eslint/promise-function-async": ["error", { checkMethodDeclarations: false }],
+      // `require-await` rejects async functions without awaits, while this rule
+      // requires `async` on functions that directly return a Promise. The two
+      // rules deadlock on `() => Promise.resolve(value)`; require-await wins.
+      "@typescript-eslint/promise-function-async": "off",
+      "@typescript-eslint/no-confusing-void-expression": [
+        "error",
+        { ignoreArrowShorthand: true },
+      ],
       "@typescript-eslint/no-non-null-asserted-optional-chain": "error",
       "@typescript-eslint/no-unnecessary-type-assertion": "error",
       "@typescript-eslint/no-redundant-type-constituents": "error",
@@ -595,6 +735,7 @@ const config = [
       "@typescript-eslint/no-invalid-void-type": "error",
       "@typescript-eslint/no-unnecessary-template-expression": "error",
       "@typescript-eslint/no-import-type-side-effects": "error",
+      "@typescript-eslint/consistent-type-exports": "error",
       "@typescript-eslint/array-type": "error",
       // `no-else-return` used to sit here. It is gone because
       // `unicorn/no-useless-else` (enabled below) is a strict superset: it flags
@@ -617,62 +758,11 @@ const config = [
       "react-hooks/purity": "error",
       "react-hooks/refs": "error",
       "react-hooks/set-state-in-render": "error",
-      "react/forbid-elements": [
-        "error",
-        {
-          forbid: [
-            {
-              element: "button",
-              message: "Use <Button> from your design system.",
-            },
-            {
-              element: "input",
-              message:
-                "Use <Input> / <Checkbox> / <RadioGroup> from your design system.",
-            },
-            {
-              element: "select",
-              message: "Use <Select> from your design system.",
-            },
-            {
-              element: "textarea",
-              message: "Use <Textarea> from your design system.",
-            },
-            {
-              element: "dialog",
-              message: "Use <Dialog> / <AlertDialog> from your design system.",
-            },
-            {
-              element: "table",
-              message: "Use <Table> family from your design system.",
-            },
-          ],
-        },
-      ],
-      "react/forbid-component-props": [
-        "error",
-        {
-          forbid: [
-            {
-              propName: "style",
-              message:
-                "Use design-token utility classes. For dynamic values, set a CSS custom property and reference it via an arbitrary-value class.",
-            },
-          ],
-        },
-      ],
-      "react/forbid-dom-props": [
-        "error",
-        {
-          forbid: [
-            {
-              propName: "style",
-              message:
-                "Use design-token utility classes. For dynamic values, set a CSS custom property and reference it via an arbitrary-value class.",
-            },
-          ],
-        },
-      ],
+      // These rules cannot distinguish a raw inline style from the CSS custom
+      // properties their own message recommends for dynamic utility values.
+      // Semantic-color and design-system rules remain the style authorities.
+      "react/forbid-component-props": "off",
+      "react/forbid-dom-props": "off",
       "react/jsx-pascal-case": "error",
       "react/no-danger": "error",
       "react/no-this-in-sfc": "error",
@@ -687,6 +777,11 @@ const config = [
       "react/jsx-no-script-url": "error",
       "react/self-closing-comp": "error",
       "react/jsx-no-useless-fragment": "error",
+      "react/jsx-key": "error",
+      "react/no-children-prop": "error",
+      "react/no-invalid-html-attribute": "error",
+      "react/style-prop-object": "error",
+      "react/button-has-type": "error",
       "react/jsx-boolean-value": ["error", "never"],
 
       "unicorn/consistent-function-scoping": "error",
@@ -735,8 +830,10 @@ const config = [
           ],
         },
       ],
-      "unicorn/prefer-switch": "warn",
-      "unicorn/no-useless-undefined": "error",
+      "unicorn/prefer-switch": "error",
+      // Its `() => undefined` fix produces `() => {}`, which no-empty-function
+      // rejects. Explicit undefined is the single authority for no-op arrows.
+      "unicorn/no-useless-undefined": "off",
       "unicorn/prefer-node-protocol": "error",
       "unicorn/prefer-string-replace-all": "error",
       "unicorn/prefer-top-level-await": "error",
@@ -750,7 +847,7 @@ const config = [
       ...UNICORN_CORRECTNESS_RULES,
       ...UNICORN_MODERNISATION_RULES,
 
-      "@sarj/prefer-zod-enum": "error",
+      "zod/prefer-enum-over-literal-union": "error",
       // A type hand-written beside the Zod schema it restates drifts the moment
       // the schema gains a field. Measured over 30,759 files in 17 repos: 5
       // reports, 5 true positives. `requireIdenticalShape: false` widens it to
@@ -780,67 +877,22 @@ const config = [
       "zod/no-any-schema": "error",
 
       // Deterministic ordering (incorporated from a first-party config).
-      // perfectionist sorts
-      // structural members; simple-import-sort owns import/export ordering
+      // simple-import-sort owns import/export ordering
       // (chosen over eslint-plugin-import to avoid Next.js resolver conflicts).
-      "perfectionist/sort-objects": [
-        "error",
-        { type: "natural", order: "asc" },
-      ],
+      // Object insertion order is observable through Object.keys/entries and
+      // is commonly used for UI presentation. Sorting can silently change
+      // behavior, so semantic order remains authoritative.
+      "perfectionist/sort-objects": "off",
       "perfectionist/sort-interfaces": "error",
-      "perfectionist/sort-classes": "error",
+      // Alphabetical class sorting contradicts both accessibility bands and
+      // caller-before-helper stepdown order. The two rules above own classes.
+      "perfectionist/sort-classes": "off",
       "perfectionist/sort-jsx-props": "error",
       "perfectionist/sort-union-types": "error",
-      // Public API first, private machinery below — a file should read
-      // newspaper-style. This is the ALREADY-INSTALLED rule for that job; it was
-      // simply never switched on. It is enabled here instead of growing a
-      // `@sarj` rule, because building in-house what an available plugin rule
-      // already does is this repo's repeated failure mode.
-      //
-      // WARN, not error: this introduces an opinion rather than ratcheting an
-      // existing one. Adoption where the rule can fire is 20.6% for function
-      // declarations (4.0% counting all member kinds), and OSS agrees (20.8% /
-      // 3.4%). The narrowest variant shipped here still produces 5,280 reports
-      // across first-party code, so it is a migration; 75% of violating files
-      // need exactly one move, so it is cheap per file.
-      //
-      // The two options are load-bearing, not cosmetic:
-      //   - `type: "unsorted"` drops the default ALPHABETICAL constraint. Left
-      //     on, it demands `apple` before `zebra` among two exported functions —
-      //     an enormous reordering unrelated to the public-API-first question.
-      //   - the explicit `groups` correct the default order, which lists
-      //     `declare-class, class, export-class` and therefore REQUIRES a
-      //     non-exported class ABOVE an exported one — the exact opposite of the
-      //     intent. Verified by running it: `export class Apple {} / class Zebra {}`
-      //     reports "Expected Zebra (class) to come before Apple (export-class)".
-      //
-      // Two known blind spots, deliberately accepted and recorded so they are
-      // not re-litigated: `const` arrow functions are invisible to this rule
-      // (it has no variable group), and any top-level `const` partitions the
-      // module so members either side are never compared. Together those are why
-      // it covers ~70% rather than 100% of the convention. They are also exactly
-      // the members that are TDZ-UNSAFE to move: `function` declarations hoist,
-      // so reordering them can never throw, whereas moving a `const`/`class`
-      // below a module-initialisation-time use is a live `ReferenceError` at
-      // import. Measured: 0 unsafe moves for declarations in either corpus,
-      // against 31 first-party + 23 OSS for const arrows and 1,114 + 432 for all
-      // member kinds. The blind spots and the safety boundary coincide, so the
-      // scope stops at declarations on purpose.
-      //
-      // Not covered by `@sarj/enforce-file-structure`, which orders only
-      // imports-first and `use server`-first and deliberately PERMITS both
-      // public-first and private-first layouts. This is additive.
-      "perfectionist/sort-modules": [
-        "warn",
-        {
-          type: "unsorted",
-          groups: [
-            ["declare-enum", "declare-interface", "declare-type", "declare-class", "declare-function"],
-            ["export-enum", "export-interface", "export-type", "export-class", "export-function"],
-            ["enum", "interface", "type", "class", "function"],
-          ],
-        },
-      ],
+      // The rule skips imports instead of treating them as partitions, so its
+      // fixer can move declarations across imports and directly violate
+      // `@sarj/enforce-file-structure`. Keep imports-first as the authority.
+      "perfectionist/sort-modules": "off",
       "simple-import-sort/imports": "error",
       "simple-import-sort/exports": "error",
 
@@ -857,8 +909,12 @@ const config = [
       // rule for the whole file — including ones added later — which is the
       // file-level-suppression escape hatch flagged repeatedly in review.
       "@eslint-community/eslint-comments/no-unlimited-disable": "error",
+      "@eslint-community/eslint-comments/disable-enable-pair": [
+        "error",
+        { allowWholeFile: false },
+      ],
       "@eslint-community/eslint-comments/no-restricted-disable": [
-        "warn",
+        "error",
         "no-console",
         "react-hooks/exhaustive-deps",
       ],
@@ -920,30 +976,32 @@ const config = [
       // plugin's own `configs.strict` does not. Each rule's measurements live in
       // the paired tests, which its `meta.docs.url` points at.
       //
-      // A `files:`-scoped block further down turns no-raw-env off for env
-      // source-of-truth files; that is an override, not a tier change.
       "@sarj/zod-naming-convention": "error",
       "@sarj/require-assert-never": "error",
+      "@sarj/require-static-next-matcher": "error",
       "@sarj/require-zod-form-validation": "error",
       "@sarj/prefer-schema-for-api-payload": "error",
       "@sarj/no-client-side-data-fetching": "error",
       "@sarj/prefer-server-actions": "error",
-      "@sarj/prefer-single-sentence-comment": "warn",
       "@sarj/no-unnecessary-use-client": "error",
       "@sarj/no-enum": "error",
       "@sarj/no-raw-env": "error",
       "@sarj/no-sentinel-return-on-catch": "error",
       "@sarj/no-log-only-catch": "error",
       "@sarj/no-long-comment": "error",
+      "@sarj/no-generic-single-export-module": "error",
       "@sarj/no-insecure-random-id": "error",
       "@sarj/no-json-stringify-error": "error",
       "@sarj/no-string-concat-in-loop": "error",
       "@sarj/prefer-discriminated-union": "error",
       "@sarj/no-comment-cruft": "error",
-      "@sarj/no-fat-try-blocks": "error",
+      "@sarj/no-fat-try-blocks": ["error", { max: 5 }],
       "@sarj/no-cors-wildcard-with-credentials": "error",
       "@sarj/no-secret-in-log": "error",
       "@sarj/no-hand-rolled-sleep": "error",
+      "@sarj/no-hand-rolled-spinner": "error",
+      "@sarj/prefer-input-group-search": "error",
+      "@sarj/prefer-immutable-module-constant": "error",
       "@sarj/require-fetch-timeout": "error",
       "@sarj/no-silent-promise-catch": "error",
       "@sarj/enforce-file-structure": "error",
@@ -951,17 +1009,20 @@ const config = [
         "error",
         { requireSemanticTokens: true },
       ],
-      "@sarj/prefer-string-literal-union": "error",
       "@sarj/prefer-constant-time-secret-compare": "error",
       "@sarj/no-dynamic-sql": "error",
       "@sarj/store-insert-requires-on-conflict": "error",
+      "@sarj/stepdown": "error",
       "@sarj/no-offset-pagination": "error",
       "@sarj/no-select-star": "error",
       "@sarj/no-zod-native-enum": "error",
+      "@sarj/no-impossible-zod-literal-bounds": "error",
       "@sarj/prefer-module-level-constant": "error",
       "@sarj/prefer-module-level-schema": "error",
       "@sarj/prefer-non-nullable-collection": "error",
+      "@sarj/prefer-await-in-async-return": "error",
       "@sarj/no-sleep-in-test-body": "error",
+      "@sarj/source-coupled-test": "warn",
       "@sarj/no-positional-tuple-return": "error",
       "@sarj/no-restated-comment": "error",
       "@sarj/no-restated-jsdoc": "error",
@@ -972,11 +1033,11 @@ const config = [
       "@sarj/no-repeated-string-literal": "error",
       "@sarj/no-tautological-expect": "error",
       "@sarj/no-typed-doc-sections": "error",
-      "@sarj/require-interface-for-injected-service": "error",
-      "@sarj/no-conditional-in-test": "error",
+      "@sarj/require-port-for-service": "error",
       "@sarj/no-unsafe-mock-casting": "error",
       "@sarj/prefer-whole-object-assertion": "error",
-      "@sarj/no-async-callback-in-wait-for": "error",
+      "@sarj/duplicate-test-body": "error",
+      "@sarj/test-loops-over-literal-cases": "error",
       // Both architectural rules stay enabled in the shared baseline. The
       // fetch rule ships conservative client/service defaults; consumers can
       // replace its `allow` list. The storage rule is intentionally inert until
@@ -985,8 +1046,25 @@ const config = [
       // custom rule:
       //   "@sarj/no-storage-in-stateless-modules": ["error", { modules: [...] }],
       //   "@sarj/no-raw-fetch-outside-clients": ["error", { allow: [...] }],
+      ...(HAS_TYPE_PROJECT ? {} : UNTYPED_RULE_OVERRIDES),
     },
   },
+
+  ...(SYNTAX_ONLY_CONFIG_FILES.length === 0
+    ? []
+    : [{
+      // Project service rejects conventional tool configs outside a tsconfig.
+      // Pass [] when the project owns them; name other exceptions explicitly.
+      files: SYNTAX_ONLY_CONFIG_FILES,
+      languageOptions: {
+        parserOptions: {
+          program: null,
+          project: false,
+          projectService: false,
+        },
+      },
+      rules: UNTYPED_RULE_OVERRIDES,
+    }]),
 
   {
     files: [
@@ -1022,33 +1100,13 @@ const config = [
     },
   },
 
-  {
-    // The env source-of-truth files parse process.env into a Zod-validated
-    // object the rest of the app imports; they're the one place raw env access
-    // is legitimate, so @sarj/no-raw-env (which replaced the native
-    // no-restricted-properties process.env ban) is disabled here.
-    files: [
-      "**/*.config.{ts,tsx,js,jsx,mjs,cjs,mts,cts}",
-      "**/scripts/**",
-      "**/env/**",
-      "**/env.{ts,tsx,js,mjs}",
-      "**/server-env.{ts,tsx,js,mjs}",
-      "**/client-env.{ts,tsx,js,mjs}",
-      "**/server-settings.{ts,tsx,js,mjs}",
-      "**/client-settings.{ts,tsx,js,mjs}",
-    ],
-    rules: {
-      "@sarj/no-raw-env": "off",
-    },
-  },
-
-  // better-tailwindcss: class-string hygiene for Tailwind repos. Scoped to JSX/TSX
-  // (where className strings live) and harmless where no Tailwind classes exist —
+  // better-tailwindcss: class-string hygiene for Tailwind repos. Include plain
+  // JS/TS because class helpers and variant definitions commonly live there.
   // these three rules only inspect literal class strings, so non-Tailwind repos
   // simply see zero findings. Kept in its own block so the plugin is only wired
   // where it applies.
   {
-    files: ["**/*.{jsx,tsx}"],
+    files: ["**/*.{js,jsx,ts,tsx}"],
     plugins: {
       "better-tailwindcss": betterTailwindcss,
     },
@@ -1056,6 +1114,8 @@ const config = [
       "better-tailwindcss/no-conflicting-classes": "error",
       "better-tailwindcss/no-duplicate-classes": "error",
       "better-tailwindcss/no-deprecated-classes": "error",
+      "better-tailwindcss/no-unnecessary-whitespace": "error",
+      "better-tailwindcss/enforce-shorthand-classes": "error",
     },
   },
   // React component IDENTIFIERS must be PascalCase for JSX to distinguish them
@@ -1097,6 +1157,8 @@ const config = [
     },
   },
 
-];
+  ];
+}
 
+const config = createConfig();
 export default config;
