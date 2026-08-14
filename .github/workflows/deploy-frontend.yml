@@ -39,12 +39,19 @@ jobs:
         with:
           version: "0.11.32"
 
+      - name: Install analysis and frontend dependencies
+        working-directory: .
+        run: |
+          uv sync --locked --project backend
+          npm ci --prefix frontend
+
+      - name: Bootstrap analysis inputs
+        working-directory: .
+        run: npm --prefix frontend run generate:api
+
       - name: Run pre-commit custom standards
         working-directory: .
         run: uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Prettier check
         run: npm run format:check
