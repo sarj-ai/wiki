@@ -1,6 +1,7 @@
 GCP_PROJECT := sarj-docs
 STAMPS := .stamps
 SECRETS_TTL := 1440
+STANDARDS_RUN := uvx --isolated --python 3.14 --from sarj-standards==5.8.1 sarj-standards --root .
 
 .PHONY: setup setup-hooks standards-sync standards-check standards-upgrade \
 	check check-node check-quality check-backend check-frontend fix audit doctor \
@@ -11,20 +12,15 @@ setup-hooks:
 	@cd frontend && npm exec -- lefthook install
 
 standards-sync:
-	@uv run --project backend --locked sarj-lint-configs sync \
-		--python-dest backend --typescript-dest frontend --dest . --force
+	@$(STANDARDS_RUN) update --offline --no-install
 
 standards-check:
-	@uv run --project backend --locked sarj-standards doctor --dest .
-	@uv run --project backend --locked sarj-lint-configs sync \
-		--python-dest backend --typescript-dest frontend --dest . --check
+	@$(STANDARDS_RUN) doctor
+	@$(STANDARDS_RUN) check --trust-repository-code
 
 # Upgrade every Standards package, both locks, and all generated configs in one command.
 standards-upgrade:
-	@uv add --project backend --group dev --bounds exact --upgrade-package sarj-lint-configs sarj-lint-configs
-	@npm install --prefix frontend --save-dev --save-exact \
-		@sarj/eslint-plugin@latest @sarj/tsconfig@latest
-	@$(MAKE) standards-sync
+	@$(STANDARDS_RUN) update
 	@$(MAKE) standards-check
 
 setup: setup-hooks standards-sync

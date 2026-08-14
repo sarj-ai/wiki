@@ -15,7 +15,7 @@ class _Count(BaseModel):
 
 
 _PositiveInt = Annotated[int, Field(gt=0)]
-_VERSION_RE = re.compile(r'^version\s*=\s*"([^"]+)"', re.MULTILINE)
+_VERSION_RE = re.compile(r'^(?:bundle|version)\s*=\s*"([^"]+)"', re.MULTILINE)
 _GROWTH_POSITIONAL_COUNT = 2
 _INITIAL_ARG_COUNT = 4
 
@@ -94,7 +94,7 @@ def _versions_differ(standards_base: str | None, standards_current: str | None) 
 def _pin_version(path: str) -> str:
     match = _VERSION_RE.search(Path(path).read_text(encoding="utf-8"))
     if match is None:
-        sys.stderr.write(f"{path}: no `version = \"...\"` key found\n")
+        sys.stderr.write(f"{path}: no `bundle = \"...\"` or `version = \"...\"` key found\n")
         raise SystemExit(2)
     return match.group(1)
 

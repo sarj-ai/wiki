@@ -20,3 +20,9 @@ typescript = "frontend"
 
 [hooks]
 manager = "lefthook"
+
+[baseline]
+diagnostics = "diagnostic-baseline.json"
+
+[ci]
+bootstrap = ["npm --prefix frontend run generate:api"]

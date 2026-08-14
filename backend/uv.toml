@@ -3,7 +3,7 @@ exclude-newer = "7 days"
 index-strategy = "first-index"
 
 # Preserve the current reviewed third-party lockfile while the rolling cutoff
-# catches up. Sarj Standards is first-party and intentionally remains exempt.
+# catches up. The exact-pinned Sarj analyzer packages remain exempt.
 [exclude-newer-package]
 coverage = "2026-08-04T00:00:00Z"
 cryptography = "2026-08-04T00:00:00Z"
@@ -14,7 +14,6 @@ pip = "2026-08-04T00:00:00Z"
 python-discovery = "2026-08-04T00:00:00Z"
 ruff = "2026-08-04T00:00:00Z"
 sarj-iac-lint = "2100-01-01T00:00:00Z"
-sarj-lint-configs = "2100-01-01T00:00:00Z"
 sarj-python-lint = "2100-01-01T00:00:00Z"
 sarj-sql-lint = "2100-01-01T00:00:00Z"
 ty = "2026-08-04T00:00:00Z"

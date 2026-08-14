@@ -6,5 +6,6 @@
   ],
   "ignore": ["src/components/ui/**", "src/test-stubs/**"],
   "ignoreDependencies": ["@taplo/cli", "markdownlint-cli2"],
+  "ignoreExportsUsedInFile": true,
   "lefthook": false
 }

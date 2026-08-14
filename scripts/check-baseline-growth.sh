@@ -16,9 +16,22 @@ git show "$base_sha:.sarj-standards.toml" > "$temp_dir/base-standards.toml"
   git show "$base_sha:frontend/eslint.config.mjs"
 } > "$temp_dir/base-eslint-configs.mjs"
 
+initializing_diagnostic_baselines=false
+if [[ -f diagnostic-baseline.json ]] && \
+  ! git cat-file -e "$base_sha:diagnostic-baseline.json" 2>/dev/null; then
+  initializing_diagnostic_baselines=true
+fi
+
 for baseline in python-standards-baseline.json frontend/eslint-suppressions.json; do
   base_file="$temp_dir/$(basename "$baseline")"
-  if git show "$base_sha:$baseline" > "$base_file" 2>/dev/null; then
+  prefix=""
+  if [[ "$baseline" == frontend/* ]]; then
+    prefix="frontend/"
+  fi
+  if [[ "$initializing_diagnostic_baselines" == true ]]; then
+    uv run --project backend --locked python scripts/check_baseline_growth.py \
+      --initial "$baseline" "$temp_dir/changed-files" "$prefix"
+  elif git show "$base_sha:$baseline" > "$base_file" 2>/dev/null; then
     if [[ "$baseline" == frontend/* ]]; then
       uv run --project backend --locked python scripts/check_baseline_growth.py \
         --standards-base "$temp_dir/base-standards.toml" \
@@ -32,10 +45,6 @@ for baseline in python-standards-baseline.json frontend/eslint-suppressions.json
         "$base_file" "$baseline"
     fi
   else
-    prefix=""
-    if [[ "$baseline" == frontend/* ]]; then
-      prefix="frontend/"
-    fi
     uv run --project backend --locked python scripts/check_baseline_growth.py \
       --initial "$baseline" "$temp_dir/changed-files" "$prefix"
   fi
