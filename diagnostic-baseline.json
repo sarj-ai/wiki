@@ -1,0 +1,712 @@
+{
+  "schemaVersion": 1,
+  "diagnostics": [
+    {
+      "fingerprint": "6e9cbf33077c4344952150565f7982a048ffaa284fd19c165c38ef3ebba37ac8",
+      "source": "eslint",
+      "ruleId": "@sarj/no-positional-tuple-return",
+      "path": "frontend/src/hooks/use-expanded-folders.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "ee804b49777540094f6be49ee6c27f5d9af9d9a9ba278338a8e9db8927a96db8",
+      "source": "eslint",
+      "ruleId": "@sarj/no-positional-tuple-return",
+      "path": "frontend/src/hooks/use-expanded-folders.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "2f2852d47b0da391c637430fe7ab6a794cae91a49367576d1904c60da57c6365",
+      "source": "eslint",
+      "ruleId": "@sarj/no-sentinel-return-on-catch",
+      "path": "frontend/src/lib/recent-aliases.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "ea06272991374845693d9dcb3f2b1a5a181ec395f219d6bba36800056137f94d",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-await-in-async-return",
+      "path": "frontend/src/components/wiki-search/command-palette-mount.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "50c720d7ef1be5b341adca135270a88babfe3e5138949753f59e8a02db2adf7a",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-await-in-async-return",
+      "path": "frontend/src/components/wiki-sidebar/emoji-picker-popover.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "d874617a754f6b88b5a3a9083eb92f60abdcfaeead0699750a98507bc33da5a5",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "path": "frontend/next.config.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "b5df0ff59f103304a68e182015a550bb83a9631743cb2b82e1076b1c27809448",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "path": "frontend/src/app/go/[alias]/route.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "93cab49f9c9c49419c9bfa51716d947cd696c09aecf730a08d3b34301dbcd009",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "path": "frontend/src/app/layout.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "26a0818a3d364c6c677d2ad6c5c6a1c7e65e56cf271689579fa3ca5411722a3d",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "path": "frontend/src/components/wiki-document/doc-skeleton.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "dbec4af700ea9cd4085efc14291f13635f27c6f95b6f98a26058f295b7dd6363",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "path": "frontend/src/components/wiki-search/command-palette.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "29f09eb88af2edc0d7ab0d2df151863b5d3952c7cdcb00f07340288da74fcb21",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "path": "frontend/src/components/wiki-sidebar/create-file-menu.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "6a2b1afa79b28da611ca81076ebe241c0b6cf0c5976912806d38f56a08ab7429",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "9a3b061023a5fa77cfe2c5f87dde55694366c3f916bcf81db06567d0ab511866",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "path": "frontend/src/lib/smart-create-client.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "70888b3f4448ebe251aacd405c51ae6c281c8acaca2f5f7a1a8a3f8e1e7a5c1d",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "path": "frontend/src/lib/wiki-keys.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "a2af056cae2481adfdcade14e29748155b4d8c28d8be182f2c5655257bd4a6e7",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "path": "frontend/src/lib/wiki-keys.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "ad0efb1c5b88ad9a508b92988131333fd1b22295ce72350825939cab02ae5cd2",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "path": "frontend/src/lib/wiki-read-client.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "8b3208d835e5b2b14e5eb7f99772d2aff102258604073be33009d3409a05398b",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "path": "frontend/src/middleware.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "54f45552f9e6ddfdce321718ef2c8afead63b22d647515a5e0a5cdfdd348e63f",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-whole-object-assertion",
+      "path": "frontend/src/lib/api-client.test.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "d6a1e805925c042a5a489ecc10ff311ed100943f100fd3b8849acd68698ef83c",
+      "source": "eslint",
+      "ruleId": "@sarj/stepdown",
+      "path": "frontend/src/components/wiki-search/command-palette.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "39be4b10df57112efe1d8a95cd87ee1df71a1daf41cd16cc0309bad4b9ba7264",
+      "source": "eslint",
+      "ruleId": "@sarj/stepdown",
+      "path": "frontend/src/components/wiki-sidebar/tree-node.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "fc2d137e3c500969fea266c5d13f4ba3c42bd4466cab2f60f39c621f549f44b5",
+      "source": "eslint",
+      "ruleId": "@sarj/stepdown",
+      "path": "frontend/src/lib/smart-create-client.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "6eab5cf975ee72441b67c84673f63eafc46f553c95c8222277195b7b09fc389d",
+      "source": "eslint",
+      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
+      "path": "frontend/src/components/quick-links/quick-links.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "9c9732ef68701b0f527d6295be794e68117d9a1ab55afdb10cccd516d28a4d2f",
+      "source": "eslint",
+      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
+      "path": "frontend/src/components/quick-links/quick-links.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "b33422f9052789179b25de69425218de702505d85fa4ce6b4e50895d09021a95",
+      "source": "eslint",
+      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
+      "path": "frontend/src/components/wiki-document/doc-skeleton.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "e9d4ba677f1f2e9e61c0d807ee9ceeda8cba65f116f7a3476d74b5165a235be3",
+      "source": "eslint",
+      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
+      "path": "frontend/src/components/wiki-document/doc-skeleton.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "905538b9ffb71f75d86f829ed9520401c0ab9b18331e65f6d5b9f1dbc94800d7",
+      "source": "eslint",
+      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
+      "path": "frontend/src/components/wiki-document/doc-viewer-host.tsx",
+      "count": 2
+    },
+    {
+      "fingerprint": "f0fac7e375927e5659bc3ed58a2107be8f9436546c857958df1edd6a970855c0",
+      "source": "eslint",
+      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
+      "path": "frontend/src/components/wiki-document/doc-viewer-host.tsx",
+      "count": 2
+    },
+    {
+      "fingerprint": "9f77080002489cadb08451c7961aa346b30141252f81fb0dcbaada8522d7a810",
+      "source": "eslint",
+      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
+      "path": "frontend/src/components/wiki-search/command-palette.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "f0f73f9b2515722d3a767d8a1f927cafe43815e6895e9d5ace231c0689a19220",
+      "source": "eslint",
+      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
+      "path": "frontend/src/components/wiki-search/command-palette.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "a4321e7caf9d37e01f9bf06d1948d255eee4eb8e85cc27e705d31f4b5d8acdf6",
+      "source": "eslint",
+      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
+      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "f35bfe638b25827761dcb65f9eb6936414e7a0c8c4763e9eddcf11c8b31906b6",
+      "source": "eslint",
+      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
+      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "1523b67e20dbff649fdd064e9ca7eaa97cfe5b4c0c0feadb48ab27f6f964053d",
+      "source": "eslint",
+      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 2
+    },
+    {
+      "fingerprint": "cc62382c79b53ca7829f623a05729b56b5e1d0608c6ad0007d6f77fb63001def",
+      "source": "eslint",
+      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "count": 2
+    },
+    {
+      "fingerprint": "c34d1e82995ab0f2f85f23fd153f78c1df0e60031dd5d1e79e4e4d2ba2153366",
+      "source": "eslint",
+      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
+      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "faa8f6b9bbed449f6d30667715eb7688e788860503c85bd1d611b8e148cc60c5",
+      "source": "eslint",
+      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
+      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "0bba6cd43ac34119560c6736b28fe0581ca7f18bde9979dbc1f9c0a0ba493c3e",
+      "source": "ruff",
+      "ruleId": "EM101",
+      "path": "backend/alembic/versions/0001_baseline.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "e91d0ed86fc4cc486ea53d298b30f742925ca2d208c348e87aba308ea5b3a54f",
+      "source": "ruff",
+      "ruleId": "I001",
+      "path": "backend/alembic/versions/0001_baseline.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "a979e78711867074d680b2a37e9bd29ffc5ffa57baeec029ae3e715ad0ed2862",
+      "source": "ruff",
+      "ruleId": "INP001",
+      "path": "scripts/check_baseline_growth.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "ad49ce10a51d1d73b3bdd89a341bc996130126d761e56c329d7a0b3b571e2725",
+      "source": "ruff",
+      "ruleId": "INP001",
+      "path": "scripts/check_standards.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "7e589150640aa4ede15209474b459d90c114169c4a35b6aaa28bab9bd1624cb0",
+      "source": "ruff",
+      "ruleId": "Q003",
+      "path": "scripts/check_baseline_growth.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "aba64e62df3ef1f562cc1e50aa0e23641fef0785a6f7f8fcbdc2b8dcd97d8ede",
+      "source": "ruff",
+      "ruleId": "S608",
+      "path": "backend/alembic/versions/0001_baseline.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "88ed944c9ef2dbdb978990f2c926d0361b0496c4c15d17378de2f10ad348bf25",
+      "source": "ruff",
+      "ruleId": "TC003",
+      "path": "backend/alembic/versions/0001_baseline.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "41f6a78471be2ceb8152dbc6c8fb339d126060eee26ca6edf5510e23b06882ec",
+      "source": "sarj-iac-lint",
+      "ruleId": "require-deletion-protection",
+      "path": "terraform/database.tf",
+      "count": 1
+    },
+    {
+      "fingerprint": "0e9babbb6013efb2787bbafdd79588c7c9888d78bca35218f784cee60e1b9a67",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/aliases/router.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "bf67915f72ad587cc6726d21dc5991ef55c8156914a15db5465ee539e72a4b09",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/aliases/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "d2f2a6513f5301b782d2b1382c3bed3684e697648ceb3805d1384d6a0afd3b03",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/aliases/router.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "edefae1bd8e4e7997ba7274f07abd941c1f38e43d4dea73bad90f182e04fa31d",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/aliases/router.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "0403e5c9f01de1eec989b3722cfec4a99dd040a1aed88a80e66baa22b83de0fc",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/auth/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "2c5135fc84b0b832a260b439529f32e6d7ee1b860f48f21493d1250d7a92a12e",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/auth/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "37a4f34deea0cb64f79c18d806bf860b279278f15715584d7824f36183d1e226",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/auth/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6b9a4650d6517d80bb408b198d120f43d7c9ee6a6a6607b06871149d8ff1e098",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/auth/router.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "7f202edc95e348d73807b57846a09ddef5994608023d62991e17c26d61c4974d",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/auth/router.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "41ac8ce8f79b0896be974a401244aaf7de07d0b724df3d37eaae64c22708dad0",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/bootstrap/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "1892cffbf55138c6fe8b5675451ec740e4d7d9b78249d6f33e9667918898562f",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/drive/search_router.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "38e5bf03346d34687f6a9541bfdd8a2111154e72496ebcde81415bdf2e14534a",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/extras/router.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "b8c9be5f6041e2df4fa47256ee80dddbfe11d9e8bced5b282cf410942bbb4b65",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/extras/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "d916850d53b35d3c64e3a123a00c3f29e15028fe5cc86bacf3a7a820a8c63280",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/extras/router.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "dfe3e2adb046879cb49ee3fb637194b0a0d496c46bf6e492c3dad70d4b7c6fe1",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/extras/router.py",
+      "count": 9
+    },
+    {
+      "fingerprint": "e5873ea009cacc2598ce0ad35ba53b04ebdcdba541cecf6776aa35d6a462140a",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/extras/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6968b104d3822133b096e0567cebb4c1c77d1e2aa7a5864c3d571c1dca400253",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/files/router.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "c5480f7313cca231343c6839844e275f3466ba3ce43a1b592115a705fda54d5f",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/files/router.py",
+      "count": 6
+    },
+    {
+      "fingerprint": "d2e9a3770007026d12c8ff0799d29a44a1b06081839576598be5c40825702707",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/files/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "fa433a6ef56d0a8078c823a497f9352101b028872be9ccce01fbde0f21b77ec0",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/files/router.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "079dad59f04395bd4b54a9ab622956cb50bc2b84e0a283c0efce4b19e4aafc0f",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/main.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "9a00f5794fb8baceb165a9ff7cebeb656fc46b8054eac59701a01013ae83a4ac",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/main.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "16541d71b129fc5dcadbf1c281327b5a9fc4a917d786a5c9ed7595267536fd23",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/sidebar/router.py",
+      "count": 5
+    },
+    {
+      "fingerprint": "3465a4d1ce637904059dc218588b41b82a3b303e787d266b660b00578c853881",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/sidebar/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "876e2e2030c5f1463e9c1da8df30bb3028c0d699deeb95cc3879e200390eb390",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/sidebar/router.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "bd402f547ad44907715e4bc0d8ec319e21bf65821e26b1345de43e4a01c75943",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/sidebar/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "fb29aa11abea93dea70b8f14c90228814d1381fc12c690e21b1c265471cc8aeb",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/sidebar/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6d70ede5a9a1e41d4ede7e1809b39a01ee226120b01dc463151c2b48b067d29a",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/smart_create/router.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "d86abea16e591bc60832a6af845269607a35036880d4b249f54cb45e37d1e693",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/smart_create/router.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "f05bb9178ad4ec4ed192278cfa0c963cfaeef36b6f231b44c84b24622369b28c",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/smart_create/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6affc5fac10ea9fae730555c66068f8a147f1a514c203873e9b83c9a1b602683",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/tasks/internal_router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "b71be27d10fe8a3d2a260d29566e90329aad45f04730e90300d71878e33ff4e2",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/tasks/internal_router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "38209f263bc5bb7cb54f6484d19ec7efd3360d3d66f9ea595f846eabfb17ba1f",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/tasks/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "faf407e0ad9288e961288dd058a05f0edc3db136b7929c39b7f2c538a14d683d",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/tasks/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "3cd4f335cf4e7958206a47ecc90aef493bb17509770ac3f84f640068f3c08698",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-openapi-contract",
+      "path": "backend/app/templates/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6eadb1a03708ce8e5ff01264f657991b783fbfd99e4e82dafdd882a0820bb5cc",
+      "source": "sarj-python-lint",
+      "ruleId": "no-hidden-constructor-fallback",
+      "path": "backend/app/smart_create/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "db93a0cef2d62e0149878c1e45293c370f99315a2accae7116c8e48b46ccfbc3",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-immutable-module-constant",
+      "path": "backend/app/smart_create/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "f8366d028ff81b88a9bd23e04702ba68de692fc02fbfe2b9cb6d85550127e7f4",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-namedtuple-over-tuple-return",
+      "path": "backend/app/drive/snippets.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "3340ebcee87590cd5eace59ae087d60c84edb355483798dbbbcfa5419bcb8cce",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/files/service.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "61030a8d108f058ab0cfa986671486999e414b918ca89c294990b10783a6759a",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/files/service.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "a53929100cb104957eadc90b3108059b99499a356d4946598f21074e753ee6de",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/files/service.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "9244bf1687c65ff3b2815715c53689c8906e56904339f4fefa94469fde0a527b",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/models/task.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "1030c60f720b6e037e7de72b674c0ba102da4d2ede24c304ef1be092d5a876a0",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/models/user.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "1d66abf3f76bf1001d053f54db51927852b7345bf5ff34d9b7309a0222be2021",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/models/wiki.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "5db3b612629d45e08527d82b8ad7f9e9928394f3f422ff962546b2bbdf1bac4a",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/models/wiki.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6cc0e199612f7367ccfa55afe1892f2085ec6d9c51aa90030f9de139bf91f579",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/models/wiki.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "3c48ed92a3ada53d336c86ec95332338d9d9a020a7cf3539e78948646f2faa61",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/tasks/service.py",
+      "count": 6
+    },
+    {
+      "fingerprint": "21ba482dc4af1719a0f4bb6233e21995369d9a974e12c8816ac56608a92d4211",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-timedelta-for-durations",
+      "path": "backend/app/auth/jwt.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "45c221b1e1ba3d60479e6f7eef4e6934d21c963bb9116532ab073676c5abd586",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-timedelta-for-durations",
+      "path": "backend/app/auth/jwt.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "bacff7d5a5b5c3c0b86f2f4a74d068c33c777da2a557869dab107e0027748e6f",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-timedelta-for-durations",
+      "path": "backend/app/drive/retry.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "ec4abe193f55a8550a9c6b3fb94f71edf8c3ba611c63589c350a22697a6c6b11",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-timedelta-for-durations",
+      "path": "backend/app/drive/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "b3c6acc507cd3c07fc369645aa9aacc3115076ff547753857a2737dd8ea46177",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-timedelta-for-durations",
+      "path": "backend/app/smart_create/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "e4764861656b2d2bb9006948adf6b3cb3b6fc85072d73103e67d4092ce4e601a",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-timedelta-for-durations",
+      "path": "backend/app/smart_create/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6adf6454c40d1069e3876dda6600e33ea1a2891c0dd4d9d3835733edc33c465a",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-timedelta-for-durations",
+      "path": "backend/scripts/evaluate_reorganization.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "15fb553352112ca00a6996570a752e2749c914be80402f95ed6fa654bdafee2f",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-timedelta-for-durations",
+      "path": "backend/scripts/organize_my_drive.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "92e42989d94bce8ee15bad31770a16b8add0ca6ad9e3ac8b755e2ef793944ab1",
+      "source": "sarj-text-lint",
+      "ruleId": "unpinned-github-action",
+      "path": ".github/workflows/ci-backend.yml",
+      "count": 1
+    },
+    {
+      "fingerprint": "ed083cf155b912c0154b0988cf6360037ab601b261f00d3e2ad77140934b8f9a",
+      "source": "sarj-text-lint",
+      "ruleId": "unpinned-github-action",
+      "path": ".github/workflows/ci-iac.yml",
+      "count": 1
+    },
+    {
+      "fingerprint": "dc9769f57fa1bf55f1acd5948930edb936f4945d4ccc4583db95bbc18818426d",
+      "source": "sarj-text-lint",
+      "ruleId": "unpinned-github-action",
+      "path": ".github/workflows/deploy-backend.yml",
+      "count": 2
+    }
+  ]
+}

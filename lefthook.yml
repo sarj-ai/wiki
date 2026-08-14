@@ -59,12 +59,8 @@ pre-commit:
       glob: "*.toml"
       run: frontend/node_modules/.bin/taplo lint --config .taplo.toml {staged_files}
       fail_text: "AGENT: taplo rejected staged TOML against the canonical .taplo.toml. Fix: repair the reported keys, stage, and retry. NEVER use --no-verify."
-    yamllint:
-      glob: "*.{yml,yaml}"
-      run: UV_CACHE_DIR=/tmp/wiki-yamllint-uv-cache uvx --python 3.14 yamllint --strict --config-file .yamllint.yaml {staged_files}
-      fail_text: "AGENT: yamllint rejected staged YAML against the canonical .yamllint.yaml. Fix: repair the reported lines, stage, and retry. NEVER use --no-verify."
     standards:
-      run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache SKIP=sarj-strict-markdownlint,sarj-strict-taplo,sarj-strict-yamllint uvx --python 3.14 pre-commit run
+      run: UV_CACHE_DIR=/tmp/sarj-docs-uv-cache SKIP=sarj-strict-markdownlint,sarj-strict-taplo uvx --python 3.14 pre-commit run
       fail_text: "AGENT: a pre-commit hook (hygiene, gitleaks, actionlint, or a sarj-* rule) rejected staged files. Fix: repair the reported finding (sarj rules accept a narrow '# sarj-noqa: SARJ0XX — reason' only with justification), stage, and retry. NEVER use --no-verify."
 
     sarj-standards:

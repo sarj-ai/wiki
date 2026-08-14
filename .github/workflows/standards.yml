@@ -35,5 +35,7 @@ jobs:
         working-directory: "frontend"
       - name: Install Python dependencies
         run: uv sync --locked --project backend
+      - name: Bootstrap analysis inputs
+        run: "npm --prefix frontend run generate:api"
       - name: Run standards
         run: uvx --isolated --python 3.14 --from sarj-standards==5.8.1 sarj-standards check --trust-repository-code --format github

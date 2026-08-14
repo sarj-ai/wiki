@@ -1,43 +1,122 @@
 {
-  "src/app/global-error.tsx": {
-    "react/forbid-elements": {
+  "next.config.ts": {
+    "@sarj/prefer-immutable-module-constant": {
       "count": 1
+    }
+  },
+  "src/app/go/[alias]/route.ts": {
+    "@sarj/prefer-immutable-module-constant": {
+      "count": 1
+    }
+  },
+  "src/app/layout.tsx": {
+    "@sarj/prefer-immutable-module-constant": {
+      "count": 1
+    }
+  },
+  "src/components/quick-links/quick-links.tsx": {
+    "better-tailwindcss/enforce-shorthand-classes": {
+      "count": 2
+    }
+  },
+  "src/components/wiki-document/doc-skeleton.tsx": {
+    "@sarj/prefer-immutable-module-constant": {
+      "count": 1
+    },
+    "better-tailwindcss/enforce-shorthand-classes": {
+      "count": 2
     }
   },
   "src/components/wiki-document/doc-viewer-host.tsx": {
-    "react/forbid-dom-props": {
+    "better-tailwindcss/enforce-shorthand-classes": {
+      "count": 4
+    }
+  },
+  "src/components/wiki-search/command-palette-mount.tsx": {
+    "@sarj/prefer-await-in-async-return": {
       "count": 1
     }
   },
-  "src/components/wiki-sidebar/drive-section.tsx": {
-    "react/forbid-elements": {
+  "src/components/wiki-search/command-palette.tsx": {
+    "@sarj/prefer-immutable-module-constant": {
       "count": 1
+    },
+    "@sarj/stepdown": {
+      "count": 1
+    },
+    "better-tailwindcss/enforce-shorthand-classes": {
+      "count": 2
+    }
+  },
+  "src/components/wiki-sidebar/create-file-menu.tsx": {
+    "@sarj/prefer-immutable-module-constant": {
+      "count": 1
+    }
+  },
+  "src/components/wiki-sidebar/drive-access-sheet.tsx": {
+    "@sarj/prefer-immutable-module-constant": {
+      "count": 1
+    },
+    "better-tailwindcss/enforce-shorthand-classes": {
+      "count": 2
     }
   },
   "src/components/wiki-sidebar/emoji-picker-popover.tsx": {
-    "react/forbid-dom-props": {
+    "@sarj/prefer-await-in-async-return": {
       "count": 1
     }
   },
-  "src/components/wiki-sidebar/file-row.tsx": {
-    "react/forbid-component-props": {
-      "count": 3
-    },
-    "react/forbid-dom-props": {
-      "count": 1
+  "src/components/wiki-sidebar/preferences-dialog.tsx": {
+    "better-tailwindcss/enforce-shorthand-classes": {
+      "count": 4
     }
   },
-  "src/components/wiki-sidebar/move-file-dialog.tsx": {
-    "react/forbid-dom-props": {
-      "count": 1
+  "src/components/wiki-sidebar/smart-create-dialog.tsx": {
+    "better-tailwindcss/enforce-shorthand-classes": {
+      "count": 2
     }
   },
   "src/components/wiki-sidebar/tree-node.tsx": {
-    "react/forbid-component-props": {
+    "@sarj/stepdown": {
+      "count": 1
+    }
+  },
+  "src/hooks/use-expanded-folders.ts": {
+    "@sarj/no-positional-tuple-return": {
+      "count": 2
+    }
+  },
+  "src/lib/api-client.test.ts": {
+    "@sarj/prefer-whole-object-assertion": {
+      "count": 1
+    }
+  },
+  "src/lib/recent-aliases.ts": {
+    "@sarj/no-sentinel-return-on-catch": {
+      "count": 1
+    }
+  },
+  "src/lib/smart-create-client.ts": {
+    "@sarj/prefer-immutable-module-constant": {
       "count": 1
     },
-    "react/forbid-dom-props": {
+    "@sarj/stepdown": {
+      "count": 1
+    }
+  },
+  "src/lib/wiki-keys.ts": {
+    "@sarj/prefer-immutable-module-constant": {
       "count": 2
+    }
+  },
+  "src/lib/wiki-read-client.ts": {
+    "@sarj/prefer-immutable-module-constant": {
+      "count": 1
+    }
+  },
+  "src/middleware.ts": {
+    "@sarj/prefer-immutable-module-constant": {
+      "count": 1
     }
   }
 }

@@ -60,6 +60,18 @@ def verify_python_baseline(paths: list[str]) -> int:
     return 1
 
 
+def update_python_baseline(paths: list[str]) -> int:
+    return python_main(
+        [
+            "check",
+            *_rule_arguments(PYTHON_RULES),
+            "--update-baseline",
+            str(_BASELINE),
+            *group_paths(paths).python,
+        ]
+    )
+
+
 def _run_python(paths: list[str]) -> int:
     if not paths:
         return 0
@@ -92,6 +104,8 @@ def _rule_arguments(registry: Mapping[str, object]) -> list[str]:
 
 if __name__ == "__main__":
     arguments = sys.argv[1:]
+    if arguments[:1] == ["--update-python-baseline"]:
+        raise SystemExit(update_python_baseline(arguments[1:] or ["."]))
     if arguments[:1] == ["--verify-python-baseline"]:
         raise SystemExit(verify_python_baseline(arguments[1:] or ["."]))
     raise SystemExit(main(arguments or ["."]))
