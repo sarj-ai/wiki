@@ -9,8 +9,6 @@ repos:
       - id: check-merge-conflict
       - id: check-yaml
         args: [--allow-multiple-documents]
-      - id: check-added-large-files
-        args: [--maxkb=512]
       - id: detect-private-key
 
   - repo: https://github.com/gitleaks/gitleaks
@@ -25,6 +23,11 @@ repos:
 
   - repo: local
     hooks:
+      - id: check-added-large-files
+        name: check for added large files
+        entry: scripts/check-added-large-files.sh
+        language: script
+        types: [file]
       - id: sarj-strict-markdownlint
         name: "sarj-config: strict Markdown"
         entry: markdownlint-cli2 --config .markdownlint.yaml
