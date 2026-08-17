@@ -13,17 +13,19 @@ describe("sanitizeRedirectPath", () => {
     expect(sanitizeRedirectPath("//evil.com/path")).toBe("/");
   });
 
-  it("rejects absolute URLs with a scheme", () => {
-    expect(sanitizeRedirectPath("https://evil.com")).toBe("/");
-    expect(sanitizeRedirectPath("https://evil.com/path")).toBe("/");
-    expect(sanitizeRedirectPath("javascript://evil")).toBe("/");
-  });
+  it.each(["https://evil.com", "https://evil.com/path", "javascript://evil"])(
+    "rejects absolute URL with a scheme: %s",
+    (path) => {
+      expect(sanitizeRedirectPath(path)).toBe("/");
+    },
+  );
 
-  it("rejects paths that don't start with a single forward slash", () => {
-    expect(sanitizeRedirectPath("evil.com")).toBe("/");
-    expect(sanitizeRedirectPath("relative/path")).toBe("/");
-    expect(sanitizeRedirectPath("")).toBe("/");
-  });
+  it.each(["evil.com", "relative/path", ""])(
+    "rejects path without a single leading slash: %s",
+    (path) => {
+      expect(sanitizeRedirectPath(path)).toBe("/");
+    },
+  );
 
   it("rejects paths embedding a scheme later in the string", () => {
     expect(sanitizeRedirectPath("/redirect?next=https://evil")).toBe("/");

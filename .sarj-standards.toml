@@ -25,4 +25,4 @@ manager = "lefthook"
 diagnostics = "diagnostic-baseline.json"
 
 [ci]
-bootstrap = ["npm --prefix frontend run generate:api"]
+bootstrap = ["npm --prefix frontend run generate:api", "npm --prefix frontend exec --call \"next typegen\""]
