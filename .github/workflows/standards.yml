@@ -38,6 +38,8 @@ jobs:
         run: uv sync --locked --project backend
       - name: Bootstrap analysis inputs
         run: "npm --prefix frontend run generate:api"
+      - name: Bootstrap analysis inputs (2)
+        run: "npm --prefix frontend run typegen"
       - name: Run standards
         env:
           SARJ_REACT_DOCTOR_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
