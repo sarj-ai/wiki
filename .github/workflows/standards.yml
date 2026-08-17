@@ -37,5 +37,7 @@ jobs:
         run: uv sync --locked --project backend
       - name: Bootstrap analysis inputs
         run: "npm --prefix frontend run generate:api"
+      - name: Bootstrap analysis inputs (2)
+        run: "npm --prefix frontend exec --call \"next typegen\""
       - name: Run standards
         run: uvx --no-config --isolated --python 3.14 --from sarj-standards==5.13.5 sarj-standards check --trust-repository-code --format github
