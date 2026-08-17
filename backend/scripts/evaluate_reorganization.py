@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 import random
 import secrets
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, NamedTuple
 
 from google import genai
 from google.genai import types as genai_types
@@ -32,6 +32,11 @@ from scripts.organize_my_drive import MIME_DOCUMENT, InventoryItem, load_drive_o
 
 if TYPE_CHECKING:
     from app.smart_create.schemas import ProposalDestination
+
+
+class _CandidateResponse(NamedTuple):
+    response: GeneratedReorganization | None
+    error: str | None
 
 
 DEFAULT_CASES = 100
@@ -369,7 +374,7 @@ async def _generate_candidate_response(
     evidence: ReorganizationEvidence,
     folders: list[ProposalDestination],
     semaphore: asyncio.Semaphore,
-) -> tuple[GeneratedReorganization | None, str | None]:
+) -> _CandidateResponse:
     try:
         async with semaphore:
             response = await generator.generate(
@@ -378,8 +383,8 @@ async def _generate_candidate_response(
                 folders=folders,
             )
     except Exception as exc:  # No model text or private context reaches disk.
-        return None, type(exc).__name__
-    return response, None
+        return _CandidateResponse(None, type(exc).__name__)
+    return _CandidateResponse(response, None)
 
 
 def summarize(report: RedactedReport) -> str:

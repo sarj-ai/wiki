@@ -8,7 +8,7 @@ from functools import cache
 from itertools import batched
 import json
 import threading
-from typing import TYPE_CHECKING, Any, cast, override
+from typing import TYPE_CHECKING, Any, NamedTuple, cast, override
 
 from google.oauth2.credentials import Credentials
 import google_auth_httplib2
@@ -92,6 +92,11 @@ _PROBE_CACHE_TTL = timedelta(minutes=5)
 _DRIVE_LIST = TypeAdapter(list[DriveSummary])
 
 _SHORTCUT_PROBE: TypeAdapter[ShortcutProbe | None] = TypeAdapter(ShortcutProbe | None)
+
+
+class _DriveFilesResult(NamedTuple):
+    files: list[DriveNode]
+    complete: bool
 
 
 class DriveService(ABC):
@@ -611,7 +616,7 @@ class GoogleDriveService(DriveService):
 
     def _list_drive_files_sync(
         self, drive_id: DriveId, *, is_personal: bool = False
-    ) -> tuple[list[DriveNode], bool]:
+    ) -> _DriveFilesResult:
         client = self._client()
         out: list[DriveNode] = []
         page_token: str | None = None
@@ -643,7 +648,7 @@ class GoogleDriveService(DriveService):
                     user_id=self._user.id,
                     drive_id=drive_id,
                 )
-                return out, False
+                return _DriveFilesResult(files=out, complete=False)
             for raw in resp.get("files", []):
                 file = GoogleFile.model_validate(raw)
                 if is_personal and file.drive_id is not None:
@@ -659,7 +664,7 @@ class GoogleDriveService(DriveService):
                 out.append(_node_from_api(file, drive_id))
             page_token = resp.get("nextPageToken")
             if not page_token:
-                return out, True
+                return _DriveFilesResult(files=out, complete=True)
             pages += 1
             if pages >= _MAX_DRIVE_FILE_PAGES:
                 logger.warning(
@@ -667,7 +672,7 @@ class GoogleDriveService(DriveService):
                     pages=pages,
                     drive_id=drive_id,
                 )
-                return out, False
+                return _DriveFilesResult(files=out, complete=False)
 
     def _search_drive_sync(
         self, drive_id: DriveId, query: str, limit: int, *, is_personal: bool = False
