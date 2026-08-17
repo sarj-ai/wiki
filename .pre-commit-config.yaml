@@ -45,6 +45,6 @@ repos:
         types: [yaml]
       - id: sarj-current-registries
         name: "sarj-standards: every code, config, text, and artifact rule"
-        entry: uvx --isolated --python 3.14 --from sarj-standards==5.8.4 sarj-standards --root . check --trust-repository-code --
+        entry: uvx --no-config --isolated --python 3.14 --from sarj-standards==5.12.3 sarj-standards --root . check --trust-repository-code --
         language: system
         files: '(?i)(\.py|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|Dockerfile|Makefile)$'
