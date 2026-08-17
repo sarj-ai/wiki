@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
-from typing import override
+from typing import NamedTuple, override
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,13 @@ from app.extras.schemas import DocIconRead, FolderIconRead, PreferencesRead, Sor
 from app.extras.service import ExtrasService
 from app.models.user import User
 from app.sidebar.cache import SidebarCacheService
+
+
+class _ExtrasReads(NamedTuple):
+    preferences: PreferencesRead
+    folder_icons: list[FolderIconRead]
+    doc_icons: list[DocIconRead]
+    sort_orders: list[SortOrderRead]
 
 
 class BootstrapService(ABC):
@@ -59,8 +66,8 @@ class AggregatingBootstrapService(BootstrapService):
 
     async def _extras_reads(
         self,
-    ) -> tuple[PreferencesRead, list[FolderIconRead], list[DocIconRead], list[SortOrderRead]]:
-        return (
+    ) -> _ExtrasReads:
+        return _ExtrasReads(
             await self._extras.get_preferences(),
             await self._extras.list_folder_icons(),
             await self._extras.list_doc_icons(),

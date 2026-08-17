@@ -5,7 +5,7 @@
     "open-next.config.ts"
   ],
   "ignore": ["src/components/ui/**", "src/test-stubs/**"],
-  "ignoreDependencies": ["@taplo/cli", "markdownlint-cli2"],
+  "ignoreDependencies": ["@taplo/cli", "markdownlint-cli2", "react-doctor"],
   "ignoreExportsUsedInFile": true,
   "lefthook": false
 }

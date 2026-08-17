@@ -20,9 +20,6 @@
   "backend/app/drive/service.py": {
     "SARJ014": 1
   },
-  "backend/app/drive/snippets.py": {
-    "SARJ026": 1
-  },
   "backend/app/extras/router.py": {
     "SARJ094": 18
   },

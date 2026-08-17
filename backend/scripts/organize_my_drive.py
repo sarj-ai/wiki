@@ -13,7 +13,7 @@ import json
 import os
 from pathlib import Path
 import re
-from typing import TYPE_CHECKING, Any, Literal, Self, cast, override
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, Self, cast, override
 from urllib.parse import parse_qs, urlsplit
 import uuid
 from wsgiref.simple_server import WSGIRequestHandler, make_server
@@ -268,6 +268,11 @@ class InventorySnapshot(BaseModel):
 
 
 ManifestAction = Literal["MOVE", "KEEP", "REVIEW", "SKIP"]
+
+
+class _ManifestActionResult(NamedTuple):
+    action: ManifestAction
+    reason: str
 
 
 class ManifestItem(BaseModel):
@@ -1187,29 +1192,35 @@ def _manifest_action(
     subtree_owned: bool,
     subtree_shared: bool,
     subtree_complete: bool,
-) -> tuple[ManifestAction, str]:
+) -> _ManifestActionResult:
     if classification.destination_path is None:
-        return "KEEP", classification.reason
+        return _ManifestActionResult("KEEP", classification.reason)
     if item.drive_id is not None:
-        return "SKIP", "Shared Drive item discovered inside the My Drive graph"
+        return _ManifestActionResult(
+            "SKIP", "Shared Drive item discovered inside the My Drive graph"
+        )
     if item.trashed:
-        return "SKIP", "Trashed item"
+        return _ManifestActionResult("SKIP", "Trashed item")
     if len(item.parent_ids) != 1:
-        return "SKIP", "Item does not have exactly one parent"
+        return _ManifestActionResult("SKIP", "Item does not have exactly one parent")
     if not item.owned_by_me or not item.capabilities.can_move_item_within_drive:
-        return "SKIP", "Item is not owned by the user or cannot be moved"
+        return _ManifestActionResult("SKIP", "Item is not owned by the user or cannot be moved")
     if item.is_folder and (not subtree_complete or not subtree_owned):
-        return "REVIEW", "Folder subtree is incomplete or contains non-owned items"
+        return _ManifestActionResult(
+            "REVIEW", "Folder subtree is incomplete or contains non-owned items"
+        )
     if not subtree_complete:
-        return "REVIEW", "Inventory is incomplete; no automatic move is safe"
+        return _ManifestActionResult("REVIEW", "Inventory is incomplete; no automatic move is safe")
     if subtree_shared:
-        return "REVIEW", "Shared item or subtree requires explicit permission-risk acceptance"
+        return _ManifestActionResult(
+            "REVIEW", "Shared item or subtree requires explicit permission-risk acceptance"
+        )
     if (
         classification.destination_path == "Review"
         or classification.confidence < AUTO_MOVE_CONFIDENCE
     ):
-        return "REVIEW", classification.reason
-    return "MOVE", classification.reason
+        return _ManifestActionResult("REVIEW", classification.reason)
+    return _ManifestActionResult("MOVE", classification.reason)
 
 
 def _descendants_by_root(items: Iterable[InventoryItem]) -> dict[str, list[InventoryItem]]:
