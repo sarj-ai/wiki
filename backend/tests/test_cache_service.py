@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import timedelta
 from types import TracebackType
-from typing import Self, cast
+from typing import NamedTuple, Self, cast
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -11,14 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.cache.service import CacheNamespace, CachePSqlService
 
 
+class _Row(NamedTuple):
+    key: str
+    value: object
+
+
 class _Result:
-    def __init__(
-        self, *, rows: list[tuple[str, object]] | None = None, scalar: object = None
-    ) -> None:
+    def __init__(self, *, rows: list[_Row] | None = None, scalar: object = None) -> None:
         self._rows = rows or []
         self._scalar = scalar
 
-    def all(self) -> list[tuple[str, object]]:
+    def all(self) -> list[_Row]:
         return self._rows
 
     def scalar_one_or_none(self) -> object:
@@ -110,7 +113,7 @@ async def test_get_ignores_expired_entries_in_sql() -> None:
 
 
 async def test_get_many_returns_valid_json_values() -> None:
-    session = _Session(_Result(rows=[("a", {"accessible": True}), ("b", None)]))
+    session = _Session(_Result(rows=[_Row("a", {"accessible": True}), _Row("b", None)]))
 
     values = await _service(session).get_many(CacheNamespace.SHORTCUT_PROBE, ["a", "b"])
 

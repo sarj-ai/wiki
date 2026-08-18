@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import re
 import sys
-from typing import Annotated
+from typing import Annotated, NamedTuple
 
 from pydantic import BaseModel, Field, RootModel
 
@@ -22,6 +22,11 @@ _INITIAL_ARG_COUNT = 4
 
 class _Baseline(RootModel[dict[str, dict[str, _PositiveInt | _Count]]]):
     pass
+
+
+class _FindingKey(NamedTuple):
+    filename: str
+    rule: str
 
 
 def main(
@@ -45,7 +50,7 @@ def main(
         ):
             exempted.add(rule)
             continue
-        old_count = base.get((filename, rule), 0)
+        old_count = base.get(_FindingKey(filename, rule), 0)
         if count > old_count:
             growth.append(f"{filename}/{rule}: {old_count} -> {count}")
     if growth:
@@ -99,10 +104,10 @@ def _pin_version(path: str) -> str:
     return match.group(1)
 
 
-def _load(path: str) -> dict[tuple[str, str], int]:
+def _load(path: str) -> dict[_FindingKey, int]:
     baseline = _parse(path)
     return {
-        (filename, rule): value if isinstance(value, int) else value.count
+        _FindingKey(filename, rule): value if isinstance(value, int) else value.count
         for filename, rules in baseline.root.items()
         for rule, value in rules.items()
     }
