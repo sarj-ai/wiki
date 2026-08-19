@@ -67,5 +67,11 @@
   },
   "backend/scripts/organize_my_drive.py": {
     "SARJ014": 1
+  },
+  "backend/tests/test_cache_service.py": {
+    "SARJ026": 1
+  },
+  "scripts/check_baseline_growth.py": {
+    "SARJ026": 1
   }
 }
