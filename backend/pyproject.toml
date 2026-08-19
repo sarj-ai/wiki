@@ -41,8 +41,8 @@ dev = [
     "ty>=0.0.65",
     "google-api-python-client-stubs>=1.39.0",
     "sarj-iac-lint==0.14.2",
-    "sarj-python-lint==0.74.0",
-    "sarj-sql-lint==0.14.1",
+    "sarj-python-lint==0.77.0",
+    "sarj-sql-lint==0.16.0",
     "import-linter>=2.13",
     "pip-audit>=2.10.0",
 ]
