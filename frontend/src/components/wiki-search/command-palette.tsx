@@ -13,6 +13,7 @@ import { useCommandPaletteState } from "@/hooks/use-command-palette";
 import { useDriveSearch, useDriveSearchSnippet } from "@/hooks/use-drive-search";
 import { expandPath, requestReveal } from "@/hooks/use-expanded-folders";
 import { wikiKeys } from "@/hooks/use-wiki-tree";
+import { useBrowserUserId } from "@/lib/browser-user-context";
 import { displayFileName, isGoogleWorkspaceType, renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import { resolveShortcutTarget, SHORTCUT_INACCESSIBLE_TOOLTIP } from "@/lib/shortcut-resolver";
@@ -37,6 +38,7 @@ export function CommandPalette() {
   const { open, setOpen } = useCommandPaletteState();
   const router = useRouter();
   const qc = useQueryClient();
+  const userId = useBrowserUserId();
 
   const [query, setQuery] = useState("");
 
@@ -83,7 +85,7 @@ export function CommandPalette() {
     } else if (target.targetMimeType === MIME_FOLDER) {
       const driveId = result.driveId;
       if (driveId) {
-        expandPath(driveId, ancestorChain(qc, driveId, result.id));
+        expandPath(userId, driveId, ancestorChain(qc, driveId, result.id));
 
         requestAnimationFrame(() => {
           const el = document.querySelector<HTMLElement>(
@@ -261,7 +263,7 @@ function Highlighted({ term, text }: { text: string; term: null | string }) {
     }
     if (idx > cursor) parts.push(text.slice(cursor, idx));
     parts.push(
-      <mark className="bg-primary/20 text-foreground rounded-sm px-0.5 py-0.5" key={`m-${idx}`}>
+      <mark className="bg-primary/20 text-foreground rounded-sm p-0.5" key={`m-${idx}`}>
         {text.slice(idx, idx + needle.length)}
       </mark>,
     );

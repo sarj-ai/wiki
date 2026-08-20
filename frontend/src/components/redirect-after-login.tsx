@@ -3,7 +3,8 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-import { REDIRECT_KEY, sanitizeRedirectPath } from "@/lib/url-utils";
+import { takeLoginRedirect } from "@/lib/browser-storage";
+import { sanitizeRedirectPath } from "@/lib/url-utils";
 
 export function RedirectAfterLogin() {
   const router = useRouter();
@@ -11,9 +12,8 @@ export function RedirectAfterLogin() {
 
   useEffect(() => {
     if (pathname !== "/") return;
-    const stashed = localStorage.getItem(REDIRECT_KEY);
+    const stashed = takeLoginRedirect();
     if (stashed === null) return;
-    localStorage.removeItem(REDIRECT_KEY);
     const safePath = sanitizeRedirectPath(stashed);
     if (safePath !== pathname) {
       router.replace(safePath);

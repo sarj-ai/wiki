@@ -18,7 +18,7 @@ import { SidebarFooter } from "@/components/ui/sidebar";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { useIsClient } from "@/hooks/use-is-client";
 import { logout as apiLogout } from "@/lib/auth";
-import { QUERY_CACHE_KEY } from "@/lib/url-utils";
+import { broadcastSessionClear, clearAuthenticatedSession } from "@/lib/session-isolation";
 
 import { PreferencesDialog } from "./preferences-dialog";
 
@@ -26,10 +26,11 @@ export function WikiFooter() {
   const user = useCurrentUser().data ?? null;
   const queryClient = useQueryClient();
   const logout = async () => {
+    const userId = user?.id ?? null;
+    clearAuthenticatedSession(queryClient, userId);
+    broadcastSessionClear();
     await apiLogout();
-    queryClient.clear();
-    localStorage.removeItem(QUERY_CACHE_KEY);
-    window.location.href = "/login";
+    window.location.replace("/login");
   };
   const { resolvedTheme, setTheme } = useTheme();
   const mounted = useIsClient();

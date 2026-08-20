@@ -36,6 +36,17 @@ describe("private Wiki link previews", () => {
     expect(response.headers.get("location")).toBe(
       "https://wiki.sarj.ai/login?redirect=%2Fd%2Fprivate",
     );
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("prevents browser caching of authenticated document and RSC responses", () => {
+    const response = middleware(
+      new NextRequest("https://wiki.sarj.ai/d/private", {
+        headers: { cookie: "access_token=authenticated" },
+      }),
+    );
+
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 
   it("preserves a short link through login", () => {

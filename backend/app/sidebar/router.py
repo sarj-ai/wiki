@@ -17,7 +17,7 @@ from app.sidebar.dependencies import sidebar_cache_service_dep
 
 router = APIRouter(prefix="/sidebar", tags=["sidebar"])
 
-_CACHE_CONTROL = "private, max-age=60, stale-while-revalidate=600"
+_CACHE_CONTROL = "private, no-store"
 
 
 @router.get("/drives")

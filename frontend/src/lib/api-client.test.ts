@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 
+import { TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
 import { ApiError, makeWikiApi } from "@/lib/wiki-api";
 
 const wikiApi = makeWikiApi();
@@ -99,8 +100,7 @@ describe("request bodies", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(out.parentFolderId).toBe("1kl4");
-    expect(out.modifiedTime).toBeUndefined();
+    expect(out).toMatchObject({ parentFolderId: "1kl4", modifiedTime: undefined });
   });
 });
 
@@ -185,6 +185,8 @@ describe("401 refresh-and-replay", () => {
   });
 
   it("does not refresh when /auth/refresh itself returns 401", async () => {
+    const listener = vi.fn();
+    window.addEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
     const fetchMock = vi.fn((input: Request | string | URL) => {
       const url = input instanceof Request ? input.url : String(input);
       expect(url.endsWith("/auth/refresh")).toBe(false);
@@ -196,5 +198,7 @@ describe("401 refresh-and-replay", () => {
 
     await expect(wikiApi.getDrives()).rejects.toMatchObject({ status: 401 });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledTimes(1);
+    window.removeEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
   });
 });

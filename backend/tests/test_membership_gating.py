@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime
 import uuid
 
 from httpx import ASGITransport, AsyncClient
@@ -31,7 +32,10 @@ INACCESSIBLE_DOC = FileId("inaccessible-doc")
 
 class _FakeCache(SidebarCacheService):
     async def get_drive_tree(self, db: object, drive_id: str) -> CachedDriveTree:
-        return CachedDriveTree(tree=_tree(drive_id), refreshed_at=None)
+        return CachedDriveTree(
+            tree=_tree(drive_id),
+            refreshed_at=datetime(2026, 8, 20, tzinfo=UTC),
+        )
 
     async def peek_drive_tree(self, db: object, drive_id: str) -> CachedDriveTree | None:
         return None
@@ -128,6 +132,32 @@ async def test_member_drive_is_allowed(client: AsyncClient, method: str, path: s
     async with client:
         resp = await client.request(method, path)
     assert resp.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/sidebar/drives",
+        f"/sidebar/drives/{MEMBER_DRIVE}/folders",
+        "/sidebar/folders/folder-1/files",
+    ],
+)
+async def test_sidebar_metadata_is_never_browser_cached(client: AsyncClient, path: str) -> None:
+    async with client:
+        resp = await client.get(path)
+    assert resp.status_code == 200
+    assert resp.headers["cache-control"] == "private, no-store"
+
+
+async def test_sidebar_tree_304_is_never_browser_cached(client: AsyncClient) -> None:
+    async with client:
+        first = await client.get(f"/sidebar/drives/{MEMBER_DRIVE}/folders")
+        resp = await client.get(
+            f"/sidebar/drives/{MEMBER_DRIVE}/folders",
+            headers={"if-none-match": first.headers["etag"]},
+        )
+    assert resp.status_code == 304
+    assert resp.headers["cache-control"] == "private, no-store"
 
 
 @pytest.mark.parametrize(

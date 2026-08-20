@@ -1,7 +1,10 @@
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
 import { cookies } from "next/headers";
 
+import { BrowserSessionBoundary } from "@/components/browser-session-boundary";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { GlobalLoadingBar } from "@/components/loading-bar";
+import { QueryProvider } from "@/components/query-provider";
 import { RedirectAfterLogin } from "@/components/redirect-after-login";
 import { SessionRefresh } from "@/components/session-refresh";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -38,26 +41,31 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <HydrationBoundary state={dehydrate(queryClient)}>
-      <SidebarProvider defaultOpen={defaultOpen}>
-        <RedirectAfterLogin />
-        <SessionRefresh />
-        <ErrorBoundary>
-          <WikiSidebar />
-        </ErrorBoundary>
-        <main className="flex-1 overflow-auto">
-          <SidebarTrigger className="bg-background/80 fixed top-3 left-3 z-50 backdrop-blur-sm md:hidden" />
-          <ErrorBoundary>{children}</ErrorBoundary>
-        </main>
+    <QueryProvider key={bootstrap?.me.id ?? "anonymous"} userId={bootstrap?.me.id ?? null}>
+      <HydrationBoundary state={dehydrate(queryClient)}>
+        <BrowserSessionBoundary initialUserId={bootstrap?.me.id ?? null}>
+          <SidebarProvider defaultOpen={defaultOpen}>
+            <RedirectAfterLogin />
+            <SessionRefresh />
+            <ErrorBoundary>
+              <WikiSidebar />
+            </ErrorBoundary>
+            <main className="flex-1 overflow-auto">
+              <SidebarTrigger className="bg-background/80 fixed top-3 left-3 z-50 backdrop-blur-sm md:hidden" />
+              <ErrorBoundary>{children}</ErrorBoundary>
+            </main>
 
-        <ErrorBoundary>
-          <CommandPaletteMount />
-        </ErrorBoundary>
-        <ErrorBoundary>
-          <DocViewerHost />
-        </ErrorBoundary>
-        <DocWarmup />
-      </SidebarProvider>
-    </HydrationBoundary>
+            <ErrorBoundary>
+              <CommandPaletteMount />
+            </ErrorBoundary>
+            <ErrorBoundary>
+              <DocViewerHost />
+            </ErrorBoundary>
+            <DocWarmup />
+          </SidebarProvider>
+        </BrowserSessionBoundary>
+      </HydrationBoundary>
+      <GlobalLoadingBar />
+    </QueryProvider>
   );
 }
