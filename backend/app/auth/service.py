@@ -9,7 +9,8 @@ import uuid
 
 import httpx
 from loguru import logger
-from sqlalchemy import case, or_, select
+from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.encryption import decrypt_text, encrypt_text
@@ -38,6 +39,8 @@ OAUTH_SCOPES = (
     "profile",
     "https://www.googleapis.com/auth/drive",
 )
+
+_IDENTITY_VERIFICATION_FAILED = "Google account could not be verified"
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,8 +89,10 @@ class GoogleAuthService(AuthService):
         self._enforce_domain(userinfo.email)
         try:
             user = await self._upsert_user(userinfo, google_tokens)
+        except AuthFailedError:
+            raise
         except Exception as e:
-            logger.exception("Auth callback failed for {email}", email=userinfo.email)
+            logger.exception("Auth callback failed")
             raise AuthError from e
         return self._issue_session(user)
 
@@ -162,7 +167,7 @@ class GoogleAuthService(AuthService):
                 "logout: Google token revocation failed user={user_id}", user_id=user.id
             )
 
-    async def _exchange_google_code(self, code: str) -> _GoogleTokens:
+    async def _exchange_google_code(self, code: str) -> GoogleTokens:
         resp = await self._http.post(
             GOOGLE_TOKEN_URL,
             data={
@@ -179,20 +184,24 @@ class GoogleAuthService(AuthService):
             )
             raise AuthFailedError
         data = GoogleTokenResponse.model_validate(resp.json())
-        return _GoogleTokens(
+        return GoogleTokens(
             access_token=data.access_token,
             refresh_token=data.refresh_token,
         )
 
-    async def _fetch_userinfo(self, google_access_token: str) -> _Userinfo:
+    async def _fetch_userinfo(self, google_access_token: str) -> GoogleIdentity:
         resp = await self._http.get(
             GOOGLE_USERINFO_URL,
             headers={"Authorization": f"Bearer {google_access_token}"},
         )
         if resp.status_code != 200:
             raise AuthFailedError
-        data = GoogleUserInfo.model_validate(resp.json())
-        return _Userinfo(
+        try:
+            data = GoogleUserInfo.model_validate(resp.json())
+        except ValidationError as exc:
+            logger.warning("auth: Google returned invalid or unverified userinfo")
+            raise AuthFailedError(_IDENTITY_VERIFICATION_FAILED) from exc
+        return GoogleIdentity(
             email=data.email.lower(),
             google_id=data.id,
             display_name=data.name,
@@ -208,11 +217,11 @@ class GoogleAuthService(AuthService):
             )
             raise DomainRestrictedError
 
-    async def _upsert_user(self, info: _Userinfo, tokens: _GoogleTokens) -> User:
+    async def _upsert_user(self, info: GoogleIdentity, tokens: GoogleTokens) -> User:
         encrypted_access = encrypt_text(tokens.access_token)
         encrypted_refresh = encrypt_text(tokens.refresh_token) if tokens.refresh_token else None
 
-        user = await self._find_existing_user(google_id=info.google_id, email=info.email)
+        user = await self._resolve_identity_user(google_id=info.google_id, email=info.email)
         if user is None:
             user = User(
                 email=info.email,
@@ -224,7 +233,6 @@ class GoogleAuthService(AuthService):
             )
             self._db.add(user)
         else:
-            user.google_id = info.google_id
             user.email = info.email
             user.display_name = info.display_name
             user.avatar_url = info.avatar_url
@@ -236,14 +244,21 @@ class GoogleAuthService(AuthService):
         await self._db.refresh(user)
         return user
 
-    async def _find_existing_user(self, *, google_id: GoogleUserId, email: str) -> User | None:
-        stmt = (
-            select(User)
-            .where(or_(User.google_id == google_id, User.email == email))
-            .order_by(case((User.google_id == google_id, 0), else_=1))
-            .limit(1)
-        )
-        return (await self._db.execute(stmt)).scalar_one_or_none()
+    async def _resolve_identity_user(self, *, google_id: GoogleUserId, email: str) -> User | None:
+        subject_user = await self._find_user_by_google_id(google_id)
+        email_user = await self._find_user_by_email(email)
+        if email_user is not None and (subject_user is None or email_user.id != subject_user.id):
+            logger.warning("auth: email is already bound to another Google identity")
+            raise AuthFailedError(_IDENTITY_VERIFICATION_FAILED)
+        return subject_user
+
+    async def _find_user_by_google_id(self, google_id: GoogleUserId) -> User | None:
+        result = await self._db.execute(select(User).where(User.google_id == google_id))
+        return result.scalar_one_or_none()
+
+    async def _find_user_by_email(self, email: str) -> User | None:
+        result = await self._db.execute(select(User).where(User.email == email))
+        return result.scalar_one_or_none()
 
     async def _load_user(self, user_id: uuid.UUID) -> User | None:
         result = await self._db.execute(select(User).where(User.id == user_id))
@@ -258,13 +273,13 @@ class GoogleAuthService(AuthService):
 
 
 @dataclass(frozen=True, slots=True)
-class _GoogleTokens:
+class GoogleTokens:
     access_token: str
     refresh_token: str | None
 
 
 @dataclass(frozen=True, slots=True)
-class _Userinfo:
+class GoogleIdentity:
     email: str
     google_id: GoogleUserId
     display_name: str | None
