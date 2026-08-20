@@ -1,6 +1,6 @@
+import { recentAliasesStorageKey } from "@/lib/browser-storage";
 import { ZRecentAliasVisits } from "@/lib/storage-schemas";
 
-const RECENT_ALIAS_KEY_PREFIX = "sarj-wiki:recent-go";
 export const MAX_RECENT_ALIASES = 50;
 
 export interface RecentAliasVisit {
@@ -19,7 +19,7 @@ export function recordRecentAlias(userId: string, alias: string): void {
 
 export function readRecentAliases(userId: string): RecentAliasVisit[] {
   try {
-    const raw = window.localStorage.getItem(storageKey(userId)) ?? "[]";
+    const raw = window.localStorage.getItem(recentAliasesStorageKey(userId)) ?? "[]";
     return ZRecentAliasVisits.parse(JSON.parse(raw));
   } catch {
     return [];
@@ -29,12 +29,8 @@ export function readRecentAliases(userId: string): RecentAliasVisit[] {
 export function writeRecentAliases(userId: string, visits: RecentAliasVisit[]): void {
   try {
     const capped = ZRecentAliasVisits.parse(visits.slice(0, MAX_RECENT_ALIASES));
-    window.localStorage.setItem(storageKey(userId), JSON.stringify(capped));
+    window.localStorage.setItem(recentAliasesStorageKey(userId), JSON.stringify(capped));
   } catch {
     // Browser storage can be unavailable or full; quick links remain optional.
   }
-}
-
-function storageKey(userId: string): string {
-  return `${RECENT_ALIAS_KEY_PREFIX}:${userId}`;
 }

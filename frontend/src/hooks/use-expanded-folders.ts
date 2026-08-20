@@ -1,8 +1,10 @@
 "use client";
 
-import { create } from "zustand";
+import { create, type StateCreator } from "zustand";
 import { persist, type StorageValue } from "zustand/middleware";
 
+import { collapsedDrivesStorageKey, expandedFoldersStorageKey } from "@/lib/browser-storage";
+import { useBrowserUserId } from "@/lib/browser-user-context";
 import { ZPersistedExpansion } from "@/lib/storage-schemas";
 
 interface FolderExpansionState {
@@ -15,61 +17,89 @@ interface DriveCollapseState {
   setCollapsed: (id: string, next: boolean) => void;
 }
 
-const useFolderStore = create<FolderExpansionState>()(
-  persist(
-    (set) => ({
-      expanded: {},
-      setExpanded: (id, next) =>
-        set((state) => {
-          if (next) {
-            if (state.expanded[id]) return state;
-            return { expanded: { ...state.expanded, [id]: true } };
-          }
-          if (!state.expanded[id]) return state;
-          const { [id]: _removed, ...rest } = state.expanded;
-          return { expanded: rest };
-        }),
+const folderInitializer: StateCreator<FolderExpansionState> = (set) => ({
+  expanded: {},
+  setExpanded: (id: string, next: boolean) =>
+    set((state) => {
+      if (next) {
+        if (state.expanded[id]) return state;
+        return { expanded: { ...state.expanded, [id]: true } };
+      }
+      if (!state.expanded[id]) return state;
+      const { [id]: _removed, ...rest } = state.expanded;
+      return { expanded: rest };
     }),
-    {
-      name: "wiki-expanded-folders",
-      storage: legacyAwareStorage("expanded", (map, version) => ({
+});
+
+const driveInitializer: StateCreator<DriveCollapseState> = (set) => ({
+  collapsed: {},
+  setCollapsed: (id: string, next: boolean) =>
+    set((state) => {
+      if (next) {
+        if (state.collapsed[id]) return state;
+        return { collapsed: { ...state.collapsed, [id]: true } };
+      }
+      if (!state.collapsed[id]) return state;
+      const { [id]: _removed, ...rest } = state.collapsed;
+      return { collapsed: rest };
+    }),
+});
+
+const folderStores = new Map<string, ReturnType<typeof createFolderStore>>();
+const driveStores = new Map<string, ReturnType<typeof createDriveStore>>();
+const anonymousFolderStore = createFolderStore(null);
+const anonymousDriveStore = createDriveStore(null);
+
+function createFolderStore(userId: null | string) {
+  if (!userId) return create<FolderExpansionState>()(folderInitializer);
+  return create<FolderExpansionState>()(
+    persist(folderInitializer, {
+      name: expandedFoldersStorageKey(userId),
+      storage: validatedStorage("expanded", (map, version) => ({
         state: { expanded: map },
         version,
       })),
-    },
-  ),
-);
-
-const useDriveCollapseStore = create<DriveCollapseState>()(
-  persist(
-    (set) => ({
-      collapsed: {},
-      setCollapsed: (id, next) =>
-        set((state) => {
-          if (next) {
-            if (state.collapsed[id]) return state;
-            return { collapsed: { ...state.collapsed, [id]: true } };
-          }
-          if (!state.collapsed[id]) return state;
-          const { [id]: _removed, ...rest } = state.collapsed;
-          return { collapsed: rest };
-        }),
     }),
-    {
-      name: "wiki-collapsed-drives",
-      storage: legacyAwareStorage("collapsed", (map, version) => ({
+  );
+}
+
+function createDriveStore(userId: null | string) {
+  if (!userId) return create<DriveCollapseState>()(driveInitializer);
+  return create<DriveCollapseState>()(
+    persist(driveInitializer, {
+      name: collapsedDrivesStorageKey(userId),
+      storage: validatedStorage("collapsed", (map, version) => ({
         state: { collapsed: map },
         version,
       })),
-    },
-  ),
-);
+    }),
+  );
+}
+
+function folderStore(userId: null | string) {
+  if (!userId) return anonymousFolderStore;
+  const existing = folderStores.get(userId);
+  if (existing) return existing;
+  const created = createFolderStore(userId);
+  folderStores.set(userId, created);
+  return created;
+}
+
+function driveStore(userId: null | string) {
+  if (!userId) return anonymousDriveStore;
+  const existing = driveStores.get(userId);
+  if (existing) return existing;
+  const created = createDriveStore(userId);
+  driveStores.set(userId, created);
+  return created;
+}
 
 let pendingReveal: null | string = null;
 
 export function useExpandedFolder(id: string): [boolean, (next: boolean) => void] {
-  const expanded = useFolderStore((s) => s.expanded[id] === true);
-  const setExpanded = useFolderStore((s) => s.setExpanded);
+  const store = folderStore(useBrowserUserId());
+  const expanded = store((s) => s.expanded[id] === true);
+  const setExpanded = store((s) => s.setExpanded);
   const setter = (next: boolean) => {
     setExpanded(id, next);
   };
@@ -77,20 +107,40 @@ export function useExpandedFolder(id: string): [boolean, (next: boolean) => void
 }
 
 export function useExpandedDrive(id: string): [boolean, (next: boolean) => void] {
-  const collapsed = useDriveCollapseStore((s) => s.collapsed[id] === true);
-  const setCollapsed = useDriveCollapseStore((s) => s.setCollapsed);
+  const store = driveStore(useBrowserUserId());
+  const collapsed = store((s) => s.collapsed[id] === true);
+  const setCollapsed = store((s) => s.setCollapsed);
   const setter = (next: boolean) => {
     setCollapsed(id, !next);
   };
   return [!collapsed, setter];
 }
 
-export function expandPath(driveId: string, folderIds: readonly string[]): void {
-  useDriveCollapseStore.getState().setCollapsed(driveId, false);
-  const setExpanded = useFolderStore.getState().setExpanded;
+export function expandPath(
+  userId: null | string,
+  driveId: string,
+  folderIds: readonly string[],
+): void {
+  if (!userId) return;
+  driveStore(userId).getState().setCollapsed(driveId, false);
+  const setExpanded = folderStore(userId).getState().setExpanded;
   for (const folderId of folderIds) {
     setExpanded(folderId, true);
   }
+}
+
+export function resetExpansionState(userId: null | string): void {
+  const folders = userId ? folderStores.get(userId) : undefined;
+  const drives = userId ? driveStores.get(userId) : undefined;
+  folders?.setState({ expanded: {} });
+  drives?.setState({ collapsed: {} });
+  if (userId) {
+    folderStores.delete(userId);
+    driveStores.delete(userId);
+  }
+  anonymousFolderStore.setState({ expanded: {} });
+  anonymousDriveStore.setState({ collapsed: {} });
+  pendingReveal = null;
 }
 
 export function requestReveal(fileId: string): void {
@@ -103,7 +153,7 @@ export function consumeRevealFor(fileId: string): boolean {
   return true;
 }
 
-function legacyAwareStorage<S>(
+function validatedStorage<S>(
   stateKey: "collapsed" | "expanded",
   toValue: (map: Record<string, true>, version: number) => StorageValue<S>,
 ): {
@@ -117,13 +167,6 @@ function legacyAwareStorage<S>(
       const raw = window.localStorage.getItem(name);
       if (!raw) return null;
       const parsed = parseJsonOrNull(raw);
-      if (Array.isArray(parsed)) {
-        const map: Record<string, true> = {};
-        for (const id of parsed) {
-          if (typeof id === "string") map[id] = true;
-        }
-        return toValue(map, 0);
-      }
       const validated = ZPersistedExpansion.safeParse(parsed);
       if (!validated.success) return null;
       return toValue(validated.data.state[stateKey] ?? {}, validated.data.version);

@@ -2,12 +2,13 @@
 
 import { useEffect } from "react";
 
-import { REDIRECT_KEY, sanitizeRedirectPath } from "@/lib/url-utils";
+import { storeLoginRedirect } from "@/lib/browser-storage";
+import { sanitizeRedirectPath } from "@/lib/url-utils";
 
 export function StashRedirect({ redirect }: { redirect: string | undefined }) {
   useEffect(() => {
     if (redirect) {
-      localStorage.setItem(REDIRECT_KEY, sanitizeRedirectPath(redirect));
+      storeLoginRedirect(sanitizeRedirectPath(redirect));
     }
   }, [redirect]);
   return null;

@@ -38,9 +38,6 @@
     },
     "@sarj/stepdown": {
       "count": 1
-    },
-    "better-tailwindcss/enforce-shorthand-classes": {
-      "count": 2
     }
   },
   "src/components/wiki-sidebar/create-file-menu.tsx": {
@@ -74,11 +71,6 @@
   "src/hooks/use-expanded-folders.ts": {
     "@sarj/no-positional-tuple-return": {
       "count": 2
-    }
-  },
-  "src/lib/api-client.test.ts": {
-    "@sarj/prefer-whole-object-assertion": {
-      "count": 1
     }
   },
   "src/lib/recent-aliases.ts": {

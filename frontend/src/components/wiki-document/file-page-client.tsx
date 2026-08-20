@@ -11,6 +11,7 @@ import { WikiToolbar } from "@/components/wiki-document/wiki-toolbar";
 import { WikiNotFound } from "@/components/wiki-not-found";
 import { useFile } from "@/hooks/use-wiki-tree";
 import { ApiError } from "@/lib/api-error";
+import { useBrowserUserId } from "@/lib/browser-user-context";
 import { displayFileName } from "@/lib/file-icons";
 import { saveLastDoc } from "@/lib/last-doc";
 import { markNav, markPaint } from "@/lib/perf-marks";
@@ -126,6 +127,7 @@ function FilePageBody({
   title,
   version,
 }: FilePageBodyProps) {
+  const userId = useBrowserUserId();
   const setActive = useDocViewerStore((s) => s.setActive);
   const setSlot = useDocViewerStore((s) => s.setSlot);
   const displayTitle = displayFileName(title, mimeType);
@@ -141,8 +143,8 @@ function FilePageBody({
       title: displayTitle,
       ...(version === undefined ? {} : { version }),
     });
-    saveLastDoc({ fileId, mimeType, title: displayTitle });
-  }, [displayTitle, fileId, mimeType, reloadKey, setActive, version]);
+    if (userId) saveLastDoc(userId, { fileId, mimeType, title: displayTitle });
+  }, [displayTitle, fileId, mimeType, reloadKey, setActive, userId, version]);
   useEffect(
     () => () => {
       setActive(null);

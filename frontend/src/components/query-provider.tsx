@@ -1,28 +1,33 @@
 "use client";
 
-import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
-import { MutationCache, type Query, QueryCache, QueryClient } from "@tanstack/react-query";
-import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "@/lib/api-error";
-import { QUERY_CACHE_KEY, REDIRECT_KEY, sanitizeRedirectPath } from "@/lib/url-utils";
+import { purgeLegacyBrowserStorage, storeLoginRedirect } from "@/lib/browser-storage";
+import { notifyTerminalUnauthorized, TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
+import {
+  broadcastSessionClear,
+  clearAuthenticatedSession,
+  subscribeToSessionClear,
+} from "@/lib/session-isolation";
+import { sanitizeRedirectPath } from "@/lib/url-utils";
 
-const CACHE_BUSTER = "v2";
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-export function QueryProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
+export function QueryProvider({
+  children,
+  userId,
+}: {
+  children: React.ReactNode;
+  userId: null | string;
+}) {
+  const redirecting = useRef(false);
 
   const [queryClient] = useState(() => {
+    if (typeof window !== "undefined") purgeLegacyBrowserStorage();
     const handle401 = (err: unknown): void => {
-      if (!(err instanceof ApiError) || err.status !== 401) return;
-      if (typeof window === "undefined") return;
-      if (window.location.pathname === "/login") return;
-      const safePath = sanitizeRedirectPath(window.location.pathname);
-      localStorage.setItem(REDIRECT_KEY, safePath);
-      router.push(`/login?redirect=${encodeURIComponent(safePath)}`);
+      if (err instanceof ApiError && err.status === 401) notifyTerminalUnauthorized();
     };
     return new QueryClient({
       defaultOptions: {
@@ -43,41 +48,28 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     });
   });
 
-  const [persistOptions] = useState(() => {
-    const storage =
-      typeof window === "undefined"
-        ? {
-            getItem: () => null,
-            removeItem: () => {
-              // SSR no-op: nothing is persisted outside the browser.
-            },
-            setItem: () => {
-              // SSR no-op: nothing is persisted outside the browser.
-            },
-          }
-        : window.localStorage;
-    return {
-      buster: CACHE_BUSTER,
-      dehydrateOptions: {
-        shouldDehydrateQuery: (query: Query) => {
-          if (query.state.status !== "success") return false;
-          const [root, scope] = query.queryKey;
-          if (root !== "wiki") return false;
-          if (scope === "drive-search") return false;
-          return true;
-        },
-      },
-      maxAge: ONE_DAY_MS,
-      persister: createAsyncStoragePersister({
-        key: QUERY_CACHE_KEY,
-        storage,
-      }),
+  useEffect(() => {
+    const handleTerminalUnauthorized = () => {
+      if (redirecting.current || window.location.pathname === "/login") return;
+      redirecting.current = true;
+      const safePath = sanitizeRedirectPath(window.location.pathname);
+      clearAuthenticatedSession(queryClient, userId);
+      broadcastSessionClear();
+      storeLoginRedirect(safePath);
+      window.location.replace(`/login?redirect=${encodeURIComponent(safePath)}`);
     };
-  });
+    window.addEventListener(TERMINAL_UNAUTHORIZED_EVENT, handleTerminalUnauthorized);
+    const unsubscribe = subscribeToSessionClear(() => {
+      if (redirecting.current) return;
+      redirecting.current = true;
+      clearAuthenticatedSession(queryClient, userId);
+      window.location.replace("/login");
+    });
+    return () => {
+      window.removeEventListener(TERMINAL_UNAUTHORIZED_EVENT, handleTerminalUnauthorized);
+      unsubscribe();
+    };
+  }, [queryClient, userId]);
 
-  return (
-    <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
-      {children}
-    </PersistQueryClientProvider>
-  );
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
