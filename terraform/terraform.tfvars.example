@@ -14,5 +14,6 @@ google_client_secret = "<oauth-client-secret>"
 # Fernet key for encrypting per-user OAuth tokens at rest in Postgres.
 # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 fernet_key = "<fernet-key>"
+cache_fernet_key = "<newest-cache-fernet-key>,<previous-cache-fernet-key>"
 
 alert_email = "alerts@sarj.ai"
