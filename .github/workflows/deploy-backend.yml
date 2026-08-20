@@ -308,7 +308,7 @@ jobs:
           EOF
           )
           completion_count=0
-          for _attempt in {1..6}; do
+          for _attempt in {1..12}; do
             completion_count=$(gcloud logging read "$completion_filter" \
               --project "${{ env.PROJECT_ID }}" \
               --limit 10 \

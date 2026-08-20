@@ -34,3 +34,11 @@ def test_migration_job_has_database_only_environment() -> None:
     assert "SECRET_KEY" not in migration_job
     assert "FERNET_KEY" not in migration_job
     assert "GOOGLE_CLIENT" not in migration_job
+
+
+def test_log_gate_allows_for_cloud_logging_ingestion_delay() -> None:
+    workflow = _DEPLOY_WORKFLOW.read_text()
+    log_gate = workflow.index("- name: Verify correlated production logs")
+    blocked_release = workflow.index("- name: Report blocked release without rollback")
+
+    assert "for _attempt in {1..12}; do" in workflow[log_gate:blocked_release]
