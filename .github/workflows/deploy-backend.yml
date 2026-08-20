@@ -110,6 +110,7 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
+          build-args: RELEASE_SHA=${{ github.sha }}
           context: backend
           push: true
           tags: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}
@@ -132,7 +133,150 @@ jobs:
           exit-code: "1"
 
       - name: Deploy to Cloud Run
+        id: deploy
         run: |
+          set -euo pipefail
+          previous_revision=$(gcloud run services describe "${{ env.SERVICE }}" \
+            --project "${{ env.PROJECT_ID }}" \
+            --region "${{ env.REGION }}" \
+            --format='value(status.latestReadyRevisionName)')
+          echo "previous_revision=$previous_revision" >> "$GITHUB_OUTPUT"
+          echo "started_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
           gcloud run services update ${{ env.SERVICE }} \
+            --project ${{ env.PROJECT_ID }} \
             --region ${{ env.REGION }} \
-            --image "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}"
+            --image "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}" \
+            --quiet
+
+      - name: Verify revision and production health
+        id: verify
+        run: |
+          set -euo pipefail
+          service_json=''
+          new_revision=''
+          active_revision=''
+          for _attempt in {1..6}; do
+            service_json=$(gcloud run services describe "${{ env.SERVICE }}" \
+              --project "${{ env.PROJECT_ID }}" \
+              --region "${{ env.REGION }}" \
+              --format=json)
+            new_revision=$(jq -r '.status.latestReadyRevisionName // empty' <<< "$service_json")
+            active_revision=$(jq -r \
+              '[.status.traffic[]? | select(.percent == 100) | .revisionName] | if length == 1 then .[0] else "" end' \
+              <<< "$service_json")
+            if [[ -n "$new_revision" && "$active_revision" == "$new_revision" ]]; then
+              break
+            fi
+            sleep 10
+          done
+          if [[ -z "$new_revision" || "$active_revision" != "$new_revision" ]]; then
+            echo "Cloud Run did not converge to one latest revision at 100% traffic" >&2
+            exit 1
+          fi
+          echo "new_revision=$new_revision" >> "$GITHUB_OUTPUT"
+
+          canary_id="wiki-${GITHUB_SHA:0:12}-${GITHUB_RUN_ATTEMPT}"
+          echo "canary_id=$canary_id" >> "$GITHUB_OUTPUT"
+          health_body="$RUNNER_TEMP/backend-health.json"
+          health_headers="$RUNNER_TEMP/backend-health.headers"
+          healthy=false
+          for _attempt in {1..6}; do
+            : > "$health_body"
+            : > "$health_headers"
+            status=$(curl --silent --show-error \
+              --connect-timeout 10 \
+              --max-time 20 \
+              --dump-header "$health_headers" \
+              --output "$health_body" \
+              --write-out '%{http_code}' \
+              --header "X-Request-ID: $canary_id" \
+              https://api-wiki.sarj.ai/health || true)
+            echoed_id=$(awk 'tolower($1) == "x-request-id:" { sub(/\r$/, "", $2); print $2 }' \
+              "$health_headers" | tail -n 1)
+            if [[ "$status" == 200 && "$echoed_id" == "$canary_id" ]] \
+              && jq -e --arg revision "$GITHUB_SHA" \
+                '.status == "ok" and .database == "ok" and .revision == $revision' \
+                "$health_body" >/dev/null; then
+              healthy=true
+              break
+            fi
+            sleep 10
+          done
+          if [[ "$healthy" != true ]]; then
+            echo "Production health canary did not return the expected release identity" >&2
+            exit 1
+          fi
+          echo "finished_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+      - name: Verify correlated production logs
+        run: |
+          set -euo pipefail
+          completion_filter=$(cat <<EOF
+          resource.type="cloud_run_revision"
+          AND resource.labels.service_name="${{ env.SERVICE }}"
+          AND resource.labels.revision_name="${{ steps.verify.outputs.new_revision }}"
+          AND timestamp>="${{ steps.deploy.outputs.started_at }}"
+          AND timestamp<="${{ steps.verify.outputs.finished_at }}"
+          AND textPayload:"${{ steps.verify.outputs.canary_id }}"
+          AND textPayload:"request.complete"
+          EOF
+          )
+          completion_count=0
+          for _attempt in {1..6}; do
+            completion_count=$(gcloud logging read "$completion_filter" \
+              --project "${{ env.PROJECT_ID }}" \
+              --limit 10 \
+              --format='value(insertId)' | wc -l | tr -d ' ')
+            if [[ "$completion_count" -ge 1 ]]; then
+              break
+            fi
+            sleep 10
+          done
+          if [[ "$completion_count" -lt 1 ]]; then
+            echo "No correlated request.complete log arrived for the production canary" >&2
+            exit 1
+          fi
+
+          error_filter=$(cat <<EOF
+          resource.type="cloud_run_revision"
+          AND resource.labels.service_name="${{ env.SERVICE }}"
+          AND resource.labels.revision_name="${{ steps.verify.outputs.new_revision }}"
+          AND timestamp>="${{ steps.deploy.outputs.started_at }}"
+          AND timestamp<="${{ steps.verify.outputs.finished_at }}"
+          AND (
+            httpRequest.status>=500
+            OR severity>=ERROR
+            OR textPayload=~"[|] (ERROR|CRITICAL) +[|]"
+          )
+          EOF
+          )
+          error_count=$(gcloud logging read "$error_filter" \
+            --project "${{ env.PROJECT_ID }}" \
+            --limit 100 \
+            --format='value(insertId)' | wc -l | tr -d ' ')
+          if [[ "$error_count" -ne 0 ]]; then
+            echo "The new revision emitted $error_count error log entries in the bounded release window" >&2
+            exit 1
+          fi
+
+          {
+            echo '## Backend production gate'
+            echo "- Revision: \`${{ steps.verify.outputs.new_revision }}\`"
+            echo "- Release: \`${GITHUB_SHA}\`"
+            echo "- Canary: \`${{ steps.verify.outputs.canary_id }}\`"
+            echo "- Correlated completion logs: $completion_count"
+            echo '- Error logs: 0'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report blocked release without rollback
+        if: failure()
+        run: |
+          {
+            echo '## Backend production gate failed'
+            echo "- Previous revision: \`${{ steps.deploy.outputs.previous_revision || 'unknown' }}\`"
+            echo "- Candidate revision: \`${{ steps.verify.outputs.new_revision || 'unknown' }}\`"
+            echo '- Automatic rollback was not attempted.'
+            echo '- Alembic still runs during container startup, so rollback safety is not guaranteed.'
+            echo '- Stop subsequent merges, inspect the bounded release evidence, and repair forward.'
+          } >> "$GITHUB_STEP_SUMMARY"

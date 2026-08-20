@@ -43,6 +43,13 @@ resource "google_project_iam_member" "github_actions_run_developer" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
+# Post-deployment verification reads only bounded Cloud Run log windows.
+resource "google_project_iam_member" "github_actions_logging_viewer" {
+  project = var.project_id
+  role    = "roles/logging.viewer"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
 # Deployment verifies that asynchronous infrastructure exists before switching
 # traffic to a revision that enqueues Smart Create work.
 resource "google_cloud_tasks_queue_iam_member" "github_actions_queue_viewer" {

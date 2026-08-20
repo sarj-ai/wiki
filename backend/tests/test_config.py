@@ -23,6 +23,7 @@ _BASELINE = {
     "COOKIE_DOMAIN": None,
     "LOG_JSON": None,
     "LOG_LEVEL": None,
+    "RELEASE_SHA": None,
     "SIDEBAR_CACHE_TTL": None,
     "CLOUD_TASKS_QUEUE": None,
     "CLOUD_TASKS_LOCATION": None,
@@ -45,6 +46,7 @@ def test_baseline_parses_with_typed_defaults(monkeypatch: pytest.MonkeyPatch) ->
     assert str(s.DATABASE_URL) == "postgresql+asyncpg://u:p@localhost:5432/db"
     assert s.SECRET_KEY.get_secret_value() == "x" * 32
     assert s.LOG_LEVEL == "INFO"
+    assert s.RELEASE_SHA == "dev"
     assert timedelta(minutes=10) == s.SIDEBAR_CACHE_TTL
 
 
@@ -75,6 +77,8 @@ def test_frontend_origin_strips_httpurl_trailing_slash(monkeypatch: pytest.Monke
         ("ALLOWED_DOMAIN", "Sarj.AI"),
         ("COOKIE_DOMAIN", "localhost"),
         ("LOG_LEVEL", "VERBOSE"),
+        ("RELEASE_SHA", "ABCDEF" * 6 + "ABCD"),
+        ("RELEASE_SHA", "abc123"),
         ("SIDEBAR_CACHE_TTL", "PT0S"),
     ],
 )
@@ -86,6 +90,11 @@ def test_invalid_values_are_rejected(monkeypatch: pytest.MonkeyPatch, key: str, 
 def test_sidebar_cache_ttl_parses_iso8601(monkeypatch: pytest.MonkeyPatch) -> None:
     s = _settings(monkeypatch, SIDEBAR_CACHE_TTL="PT5M")
     assert timedelta(minutes=5) == s.SIDEBAR_CACHE_TTL
+
+
+def test_release_sha_accepts_full_lowercase_git_sha(monkeypatch: pytest.MonkeyPatch) -> None:
+    release_sha = "a" * 40
+    assert release_sha == _settings(monkeypatch, RELEASE_SHA=release_sha).RELEASE_SHA
 
 
 def test_db_paths_are_mutually_exclusive(monkeypatch: pytest.MonkeyPatch) -> None:
