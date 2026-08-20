@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 
-from app.config import settings
+from app.database_config import database_settings
 from app.identifiers import DriveId, FileId, GoogleUserId
 
 
@@ -29,9 +29,9 @@ _POOL_KWARGS = {
 
 
 def build_engine() -> AsyncEngine:
-    if settings.DATABASE_URL is not None:
+    if database_settings.DATABASE_URL is not None:
         return create_async_engine(
-            str(settings.DATABASE_URL),
+            str(database_settings.DATABASE_URL),
             connect_args={
                 "server_settings": {"statement_timeout": _STATEMENT_TIMEOUT_MS},
             },
@@ -55,8 +55,8 @@ _connector: Connector | None = None
 
 
 async def _connect_via_connector() -> Any:
-    instance = settings.DB_INSTANCE_CONNECTION_NAME
-    iam_user = settings.DB_IAM_USER
+    instance = database_settings.DB_INSTANCE_CONNECTION_NAME
+    iam_user = database_settings.DB_IAM_USER
     if instance is None or iam_user is None:  # pragma: no cover — config validator forbids this
         msg = "Connector path requires DB_INSTANCE_CONNECTION_NAME and DB_IAM_USER"
         raise RuntimeError(msg)
@@ -72,7 +72,7 @@ async def _connect_via_connector() -> Any:
         instance,
         "asyncpg",
         user=iam_user,
-        db=settings.DB_NAME,
+        db=database_settings.DB_NAME,
         enable_iam_auth=True,
         ip_type=IPTypes.PRIVATE,
         server_settings={"statement_timeout": _STATEMENT_TIMEOUT_MS},
