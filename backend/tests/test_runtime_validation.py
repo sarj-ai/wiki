@@ -44,7 +44,15 @@ def test_google_token_response_requires_access_token() -> None:
 
 def test_google_user_info_rejects_invalid_email() -> None:
     with pytest.raises(ValidationError):
-        GoogleUserInfo.model_validate({"id": "g1", "email": "not-an-email"})
+        GoogleUserInfo.model_validate({"id": "g1", "email": "not-an-email", "verified_email": True})
+
+
+@pytest.mark.parametrize("verified_email", [False, 1, "true"])
+def test_google_user_info_requires_literal_verified_email(verified_email: object) -> None:
+    with pytest.raises(ValidationError):
+        GoogleUserInfo.model_validate(
+            {"id": "g1", "email": "user@example.com", "verified_email": verified_email}
+        )
 
 
 def test_sort_order_rejects_non_finite() -> None:

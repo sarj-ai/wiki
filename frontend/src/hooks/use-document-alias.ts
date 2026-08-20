@@ -6,6 +6,7 @@ import { retireDocumentAliasAction, saveDocumentAliasAction } from "@/app/action
 import { runAction } from "@/lib/action-client";
 import { wikiReadApi } from "@/lib/wiki-read-client";
 
+// eslint-disable-next-line @sarj/no-positional-tuple-return -- TanStack Query requires query keys to be readonly arrays.
 const aliasKey = (fileId: string) => ["document-alias", fileId] as const;
 
 export function useDocumentAlias(fileId: string, enabled: boolean) {

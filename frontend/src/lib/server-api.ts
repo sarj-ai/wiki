@@ -14,7 +14,7 @@ serverClient.interceptors.request.use(async (request) => {
   if (token === undefined) {
     throw new ServerApiError(401);
   }
-  request.headers.set("cookie", `access_token=${token}`);
+  request.headers.set("Authorization", `Bearer ${token}`);
   return request;
 });
 

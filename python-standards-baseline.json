@@ -20,9 +20,6 @@
   "backend/app/drive/service.py": {
     "SARJ014": 1
   },
-  "backend/app/drive/snippets.py": {
-    "SARJ026": 1
-  },
   "backend/app/extras/router.py": {
     "SARJ094": 18
   },
@@ -64,11 +61,5 @@
   },
   "backend/app/templates/router.py": {
     "SARJ094": 1
-  },
-  "backend/scripts/evaluate_reorganization.py": {
-    "SARJ014": 1
-  },
-  "backend/scripts/organize_my_drive.py": {
-    "SARJ014": 1
   }
 }

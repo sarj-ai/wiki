@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import cast, override
+from typing import NamedTuple, cast, override
 import uuid
 
 from pydantic import BaseModel
@@ -322,6 +322,12 @@ class _SidebarCache(SidebarCacheService):
         raise NotImplementedError
 
 
+class _ServiceFixture(NamedTuple):
+    service: DriveSmartFileCreationService
+    aliases: _Aliases
+    extras: _Extras
+
+
 def _service(
     files: _Files,
     tasks: _Tasks,
@@ -329,10 +335,10 @@ def _service(
     *,
     aliases: _Aliases | None = None,
     db: _Database | None = None,
-) -> tuple[DriveSmartFileCreationService, _Aliases, _Extras]:
+) -> _ServiceFixture:
     alias_service = aliases or _Aliases()
     extras = _Extras()
-    return (
+    return _ServiceFixture(
         DriveSmartFileCreationService(
             files=files,
             aliases=alias_service,
@@ -468,7 +474,7 @@ async def test_alias_drive_failure_is_a_warning_after_file_creation() -> None:
     service, _, _ = _service(
         files,
         tasks,
-        aliases=_Aliases(DriveUpstreamError(502, "Drive unavailable")),
+        aliases=_Aliases(DriveUpstreamError(502)),
     )
     payload = SmartFileCreate(
         source=BlankSource(kind="blank", file_type="document"),

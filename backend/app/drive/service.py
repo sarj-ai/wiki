@@ -8,7 +8,7 @@ from functools import cache
 from itertools import batched
 import json
 import threading
-from typing import TYPE_CHECKING, Any, cast, override
+from typing import TYPE_CHECKING, Any, NamedTuple, cast, override
 
 from google.oauth2.credentials import Credentials
 import google_auth_httplib2
@@ -92,6 +92,11 @@ _PROBE_CACHE_TTL = timedelta(minutes=5)
 _DRIVE_LIST = TypeAdapter(list[DriveSummary])
 
 _SHORTCUT_PROBE: TypeAdapter[ShortcutProbe | None] = TypeAdapter(ShortcutProbe | None)
+
+
+class _DriveFilesResult(NamedTuple):
+    files: list[DriveNode]
+    complete: bool
 
 
 class DriveService(ABC):
@@ -396,7 +401,7 @@ class GoogleDriveService(DriveService):
 
         def _collect(request_id: str, response: Any, exception: BaseException | None) -> None:
             target_id = FileId(request_id)
-            probes[target_id] = self._classify_probe(target_id, response, exception)
+            probes[target_id] = self._classify_probe(response, exception)
 
         for chunk in batched(target_ids, _PROBE_BATCH_SIZE, strict=False):
             batch = client.new_batch_http_request(callback=_collect)
@@ -411,28 +416,21 @@ class GoogleDriveService(DriveService):
                 )
             try:
                 execute_batch_with_retry(batch)
-            except HttpError:
-                logger.exception(
-                    "shortcut probe batch failed user={user_id}", user_id=self._user.id
-                )
+            except HttpError as exc:
+                _log_provider_failure("shortcut_probe_batch", exc)
                 for tid in chunk:
                     probes.setdefault(tid, None)
         return probes
 
-    def _classify_probe(
-        self, target_id: FileId, response: Any, exception: BaseException | None
-    ) -> ShortcutProbe | None:
+    @staticmethod
+    def _classify_probe(response: Any, exception: BaseException | None) -> ShortcutProbe | None:
         if exception is not None:
             status = getattr(getattr(exception, "resp", None), "status", None)
             if status == 404:
                 return None
             if status == 403:
                 return ShortcutProbe(accessible=False)
-            logger.opt(exception=exception).warning(
-                "shortcut target probe failed user={user_id} target={target_id}",
-                user_id=self._user.id,
-                target_id=target_id,
-            )
+            _log_provider_failure("shortcut_target_probe", exception)
             return None
         probe = GoogleFileProbe.model_validate(response)
         if probe.trashed:
@@ -448,10 +446,10 @@ class GoogleDriveService(DriveService):
             )
             root = GoogleFileLocation.model_validate(raw)
             out.append(DriveSummary(id=DriveId(root.id), name=_MY_DRIVE_NAME, is_personal=True))
-        except HttpError, ValidationError:
-            logger.exception(
-                "My Drive root lookup failed for user={user_id}", user_id=self._user.id
-            )
+        except HttpError as exc:
+            _log_provider_failure("my_drive_root", exc)
+        except ValidationError:
+            _log_invalid_provider_response("my_drive_root")
         page_token: str | None = None
         while True:
             params: dict[str, Any] = {
@@ -464,8 +462,8 @@ class GoogleDriveService(DriveService):
                 params["pageToken"] = page_token
             try:
                 resp = execute_with_retry(client.drives().list(**params))
-            except HttpError:
-                logger.exception("drives.list failed for user={user_id}", user_id=self._user.id)
+            except HttpError as exc:
+                _log_provider_failure("list_drives", exc)
                 return out
             for d in resp.get("drives", []):
                 try:
@@ -497,11 +495,11 @@ class GoogleDriveService(DriveService):
                     )
                 )
                 location = GoogleFileLocation.model_validate(raw)
-            except HttpError, ValidationError:
-                logger.warning(
-                    "My Drive ancestry verification failed for user={user_id}",
-                    user_id=self._user.id,
-                )
+            except HttpError as exc:
+                _log_provider_failure("verify_my_drive_ancestry", exc)
+                return False
+            except ValidationError:
+                _log_invalid_provider_response("verify_my_drive_ancestry")
                 return False
             if location.drive_id is not None:
                 return False
@@ -535,12 +533,8 @@ class GoogleDriveService(DriveService):
                 params["pageToken"] = page_token
             try:
                 resp = execute_with_retry(client.files().list(**params))
-            except HttpError:
-                logger.exception(
-                    "walk_drive_folders failed user={user_id} drive={drive_id}",
-                    user_id=self._user.id,
-                    drive_id=drive_id,
-                )
+            except HttpError as exc:
+                _log_provider_failure("walk_drive_folders", exc)
                 return out
             for raw in resp.get("files", []):
                 file = GoogleFile.model_validate(raw)
@@ -577,12 +571,8 @@ class GoogleDriveService(DriveService):
                 params["pageToken"] = page_token
             try:
                 resp = execute_with_retry(client.files().list(**params))
-            except HttpError:
-                logger.exception(
-                    "list_folder_children failed user={user_id} folder={folder_id}",
-                    user_id=self._user.id,
-                    folder_id=folder_id,
-                )
+            except HttpError as exc:
+                _log_provider_failure("list_folder_children", exc)
                 return out
             for raw in resp.get("files", []):
                 file = GoogleFile.model_validate(raw)
@@ -611,7 +601,7 @@ class GoogleDriveService(DriveService):
 
     def _list_drive_files_sync(
         self, drive_id: DriveId, *, is_personal: bool = False
-    ) -> tuple[list[DriveNode], bool]:
+    ) -> _DriveFilesResult:
         client = self._client()
         out: list[DriveNode] = []
         page_token: str | None = None
@@ -637,13 +627,9 @@ class GoogleDriveService(DriveService):
                 params["pageToken"] = page_token
             try:
                 resp = execute_with_retry(client.files().list(**params))
-            except HttpError:
-                logger.exception(
-                    "list_drive_files failed user={user_id} drive={drive_id}",
-                    user_id=self._user.id,
-                    drive_id=drive_id,
-                )
-                return out, False
+            except HttpError as exc:
+                _log_provider_failure("list_drive_files", exc)
+                return _DriveFilesResult(files=out, complete=False)
             for raw in resp.get("files", []):
                 file = GoogleFile.model_validate(raw)
                 if is_personal and file.drive_id is not None:
@@ -659,15 +645,11 @@ class GoogleDriveService(DriveService):
                 out.append(_node_from_api(file, drive_id))
             page_token = resp.get("nextPageToken")
             if not page_token:
-                return out, True
+                return _DriveFilesResult(files=out, complete=True)
             pages += 1
             if pages >= _MAX_DRIVE_FILE_PAGES:
-                logger.warning(
-                    "drive file listing truncated at {pages} pages drive={drive_id}",
-                    pages=pages,
-                    drive_id=drive_id,
-                )
-                return out, False
+                logger.warning("Drive file listing truncated pages={pages}", pages=pages)
+                return _DriveFilesResult(files=out, complete=False)
 
     def _search_drive_sync(
         self, drive_id: DriveId, query: str, limit: int, *, is_personal: bool = False
@@ -692,13 +674,8 @@ class GoogleDriveService(DriveService):
             params["driveId"] = drive_id
         try:
             resp = execute_with_retry(client.files().list(**params))
-        except HttpError:
-            logger.exception(
-                "search_drive failed user={user_id} drive={drive_id} q={query!r}",
-                user_id=self._user.id,
-                drive_id=drive_id,
-                query=query,
-            )
+        except HttpError as exc:
+            _log_provider_failure("search_drive", exc)
             return []
         results: list[SearchResult] = []
         for raw in resp.get("files", []):
@@ -727,12 +704,8 @@ class GoogleDriveService(DriveService):
         }
         try:
             resp = execute_with_retry(client.files().list(**params))
-        except HttpError:
-            logger.exception(
-                "all-drives search failed user={user_id} q={query!r}",
-                user_id=self._user.id,
-                query=query,
-            )
+        except HttpError as exc:
+            _log_provider_failure("search_all_drives", exc)
             return None
         if resp.get("incompleteResults"):
             return None
@@ -749,8 +722,8 @@ class GoogleDriveService(DriveService):
                         fileId=file_id, fields="id,mimeType,size", supportsAllDrives=True
                     )
                 )
-            except HttpError:
-                logger.exception("snippet metadata fetch failed file={file_id}", file_id=file_id)
+            except HttpError as exc:
+                _log_provider_failure("fetch_snippet_metadata", exc)
                 return SnippetResult(file_id=file_id, mime_type="", snippet=None, match_term=None)
             mime_type = GoogleFileMetadata.model_validate(meta).mime_type
 
@@ -813,20 +786,17 @@ class GoogleDriveService(DriveService):
         except HttpError as exc:
             status = getattr(exc.resp, "status", None)
             if status == 403:
-                raise DrivePermissionsForbiddenError from exc
+                raise DrivePermissionsForbiddenError from None
             if status == 404:
-                raise DrivePermissionsNotFoundError from exc
-            raise DrivePermissionsUpstreamError from exc
+                raise DrivePermissionsNotFoundError from None
+            raise DrivePermissionsUpstreamError from None
 
         permissions: list[DrivePermission] = []
         for item in raw.get("permissions", []):
             try:
                 permission = GooglePermission.model_validate(item)
             except ValidationError:
-                logger.warning(
-                    "Drive permission payload validation failed drive={drive_id}",
-                    drive_id=drive_id,
-                )
+                _log_invalid_provider_response("list_drive_permissions")
                 continue
             permissions.append(
                 DrivePermission(
@@ -853,8 +823,8 @@ class GoogleDriveService(DriveService):
         client = self._client()
         try:
             raw = execute_with_retry(client.files().export(fileId=file_id, mimeType="text/plain"))
-        except HttpError:
-            logger.warning("document text export failed file={file_id}", file_id=file_id)
+        except HttpError as exc:
+            _log_provider_failure("export_document_text", exc)
             return None
         if isinstance(raw, bytes):
             return raw[:_MAX_EXPORT_BYTES].decode("utf-8", errors="replace")
@@ -877,7 +847,7 @@ class GoogleDriveService(DriveService):
     @staticmethod
     def _build_credentials(user: User) -> Credentials:
         if user.encrypted_access_token is None:
-            msg = f"User {user.id} has no encrypted_access_token"
+            msg = "User has no encrypted Drive access token"
             raise ValueError(msg)
         access_token = decrypt_text(user.encrypted_access_token)
         refresh_token = (
@@ -899,6 +869,19 @@ def reuse_drive_client(user: User, clients: dict[int, DriveResource]) -> DriveRe
         client = GoogleDriveService.build_drive_client(user)
         clients[thread_id] = client
     return client
+
+
+def _log_provider_failure(operation: str, exc: BaseException) -> None:
+    status = getattr(getattr(exc, "resp", None), "status", None)
+    logger.warning(
+        "Google Drive request failed operation={operation} status={status}",
+        operation=operation,
+        status=status if isinstance(status, int) else "unknown",
+    )
+
+
+def _log_invalid_provider_response(operation: str) -> None:
+    logger.warning("Google Drive response was invalid operation={operation}", operation=operation)
 
 
 @cache

@@ -674,20 +674,6 @@
       "count": 1
     },
     {
-      "fingerprint": "6adf6454c40d1069e3876dda6600e33ea1a2891c0dd4d9d3835733edc33c465a",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-timedelta-for-durations",
-      "path": "backend/scripts/evaluate_reorganization.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "15fb553352112ca00a6996570a752e2749c914be80402f95ed6fa654bdafee2f",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-timedelta-for-durations",
-      "path": "backend/scripts/organize_my_drive.py",
-      "count": 1
-    },
-    {
       "fingerprint": "92e42989d94bce8ee15bad31770a16b8add0ca6ad9e3ac8b755e2ef793944ab1",
       "source": "sarj-text-lint",
       "ruleId": "unpinned-github-action",

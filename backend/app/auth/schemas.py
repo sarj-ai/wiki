@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Self
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
 from app.identifiers import GoogleUserId
 from app.models.user import User
@@ -38,5 +38,14 @@ class GoogleUserInfo(BaseModel):
 
     id: GoogleUserId
     email: EmailStr
+    verified_email: Literal[True]
     name: str | None = None
     picture: str | None = None
+
+    @field_validator("verified_email", mode="before")
+    @classmethod
+    def require_literal_true(cls, value: object) -> Literal[True]:
+        if value is not True:
+            msg = "Google email is not verified"
+            raise ValueError(msg)
+        return True

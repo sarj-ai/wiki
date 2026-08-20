@@ -32,7 +32,7 @@ describe("authenticated HTML content proxy", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("forwards the access cookie and preserves the isolated viewer headers", async () => {
+  it("forwards Bearer authentication and preserves the isolated viewer headers", async () => {
     cookieValue.token = "jwt-token";
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response("<!doctype html><title>Chart</title>", {
@@ -56,7 +56,7 @@ describe("authenticated HTML content proxy", () => {
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
       expect.any(String),
-      expect.objectContaining({ headers: { cookie: "access_token=jwt-token" } }),
+      expect.objectContaining({ headers: { Authorization: "Bearer jwt-token" } }),
     );
   });
 

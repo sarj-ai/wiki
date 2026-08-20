@@ -23,7 +23,7 @@ jobs:
           persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.11.32"
 
@@ -76,15 +76,14 @@ jobs:
     name: OpenAPI spec in sync
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.head_ref || github.ref }}
-          persist-credentials: ${{ github.event_name == 'pull_request' }}
+          persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.11.32"
           enable-cache: true
@@ -120,17 +119,8 @@ jobs:
           npm run typecheck
           npm test
 
-      - name: Commit regenerated artifacts to the PR branch
-        if: steps.drift.outputs.changed == 'true' && github.event_name == 'pull_request'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/openapi.json
-          git commit -m "chore: regenerate OpenAPI spec"
-          git push origin "HEAD:${GITHUB_HEAD_REF}"
-
       - name: Fail on drift
-        if: steps.drift.outputs.changed == 'true' && github.event_name != 'pull_request'
+        if: steps.drift.outputs.changed == 'true'
         run: git diff --exit-code -- frontend/openapi.json
 
   secret-scan:

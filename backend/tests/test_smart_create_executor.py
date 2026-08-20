@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import cast, override
+from typing import NamedTuple, cast, override
 import uuid
 
 from pydantic import BaseModel
@@ -197,7 +197,7 @@ class _Creation:
     ) -> SmartCreateResult:
         self.calls += 1
         if self.upstream_error:
-            raise DriveUpstreamError(503, "Drive unavailable")
+            raise DriveUpstreamError(503)
         result = SmartCreateResult(task_id=task_id, file=_file(), warnings=[])
         self.tasks.result = result
         self.tasks.status = TaskStatus.SUCCEEDED
@@ -227,9 +227,13 @@ class _Executor(DriveSmartCreateTaskExecutor):
         return self.runtime
 
 
-def _executor(
-    tasks: _Tasks, *, upstream_error: bool = False
-) -> tuple[_Executor, _Creation, _Sidebar]:
+class _ExecutorFixture(NamedTuple):
+    executor: _Executor
+    creation: _Creation
+    sidebar: _Sidebar
+
+
+def _executor(tasks: _Tasks, *, upstream_error: bool = False) -> _ExecutorFixture:
     creation = _Creation(tasks, upstream_error=upstream_error)
     sidebar = _Sidebar()
     runtime = SmartCreateRuntime(
@@ -237,7 +241,7 @@ def _executor(
         files=cast("GoogleFilesService", _Files()),
         sidebar=cast("SidebarCacheService", sidebar),
     )
-    return _Executor(tasks, runtime), creation, sidebar
+    return _ExecutorFixture(_Executor(tasks, runtime), creation, sidebar)
 
 
 async def test_executor_claims_runs_and_returns_typed_success() -> None:

@@ -5,13 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 import re
 import sys
-from typing import Annotated
+from typing import Annotated, NamedTuple
 
 from pydantic import BaseModel, Field, RootModel
 
 
 class _Count(BaseModel):
     count: int = Field(gt=0)
+
+
+class _FindingKey(NamedTuple):
+    filename: str
+    rule: str
 
 
 _PositiveInt = Annotated[int, Field(gt=0)]
@@ -99,10 +104,10 @@ def _pin_version(path: str) -> str:
     return match.group(1)
 
 
-def _load(path: str) -> dict[tuple[str, str], int]:
+def _load(path: str) -> dict[_FindingKey, int]:
     baseline = _parse(path)
     return {
-        (filename, rule): value if isinstance(value, int) else value.count
+        _FindingKey(filename, rule): value if isinstance(value, int) else value.count
         for filename, rules in baseline.root.items()
         for rule, value in rules.items()
     }

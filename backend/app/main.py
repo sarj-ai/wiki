@@ -17,6 +17,7 @@ from app.aliases.router import router as aliases_router
 from app.auth.router import router as auth_router
 from app.bootstrap.router import router as bootstrap_router
 from app.config import settings
+from app.csrf import CookieOriginMiddleware
 from app.database import async_session, close_connector
 from app.drive.errors import DrivePermissionsError
 from app.drive.search_router import router as drive_search_router
@@ -53,9 +54,10 @@ app.add_middleware(
     allow_origins=[settings.frontend_origin],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
-    expose_headers=["Retry-After", "Server-Timing", "Idempotency-Replayed"],
+    allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],
+    expose_headers=["Retry-After", "Server-Timing", "Idempotency-Replayed", "X-Request-ID"],
 )
+app.add_middleware(CookieOriginMiddleware, allowed_origin=settings.frontend_origin)
 app.add_middleware(RequestIDMiddleware)
 
 
@@ -82,7 +84,7 @@ async def files_error_handler(
 ) -> JSONResponse:
     return JSONResponse(
         status_code=exc.http_status,
-        content={"code": exc.code, "detail": str(exc)},
+        content={"code": exc.code, "detail": exc.public_detail},
     )
 
 
@@ -135,7 +137,7 @@ app.include_router(internal_tasks_router)
 @app.get("/health")
 @limiter.exempt  # type: ignore[untyped-decorator]
 async def health_check(_request: Request) -> dict[str, str]:
-    result: dict[str, str] = {"status": "ok"}
+    result: dict[str, str] = {"revision": settings.RELEASE_SHA, "status": "ok"}
     try:
         async with async_session() as db:
             await db.execute(text("SELECT 1"))
