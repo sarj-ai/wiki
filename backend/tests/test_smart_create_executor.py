@@ -197,7 +197,7 @@ class _Creation:
     ) -> SmartCreateResult:
         self.calls += 1
         if self.upstream_error:
-            raise DriveUpstreamError(503, "Drive unavailable")
+            raise DriveUpstreamError(503)
         result = SmartCreateResult(task_id=task_id, file=_file(), warnings=[])
         self.tasks.result = result
         self.tasks.status = TaskStatus.SUCCEEDED

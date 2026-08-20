@@ -474,7 +474,7 @@ async def test_alias_drive_failure_is_a_warning_after_file_creation() -> None:
     service, _, _ = _service(
         files,
         tasks,
-        aliases=_Aliases(DriveUpstreamError(502, "Drive unavailable")),
+        aliases=_Aliases(DriveUpstreamError(502)),
     )
     payload = SmartFileCreate(
         source=BlankSource(kind="blank", file_type="document"),

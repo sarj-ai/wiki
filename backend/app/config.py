@@ -23,6 +23,7 @@ InstanceConnectionName = Annotated[
     str, StringConstraints(pattern=r"^[a-z][a-z0-9-]*:[a-z0-9-]+:[a-z][a-z0-9-]*$")
 ]
 LogLevel = Literal["TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"]
+ReleaseSha = Annotated[str, StringConstraints(pattern=r"^(?:dev|[0-9a-f]{40})$")]
 
 
 def parse_fernet_keys(raw: str) -> list[str]:
@@ -59,6 +60,7 @@ class Settings(BaseSettings):
     COOKIE_DOMAIN: DomainStr | None = None
     LOG_JSON: bool = False
     LOG_LEVEL: LogLevel = "INFO"
+    RELEASE_SHA: ReleaseSha = "dev"
     SIDEBAR_CACHE_TTL: Annotated[timedelta, Field(gt=timedelta(0))] = timedelta(minutes=10)
     GOOGLE_CLOUD_PROJECT: NonEmptyStr | None = None
     GEMINI_LOCATION: NonEmptyStr = "global"
