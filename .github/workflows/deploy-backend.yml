@@ -141,7 +141,7 @@ jobs:
             --region "${{ env.REGION }}" \
             --format='value(status.latestReadyRevisionName)')
           echo "previous_revision=$previous_revision" >> "$GITHUB_OUTPUT"
-          echo "started_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+          echo "started_at=$(date -u +'%Y-%m-%dT%H:%M:%S.%NZ')" >> "$GITHUB_OUTPUT"
 
           gcloud run services update ${{ env.SERVICE }} \
             --project ${{ env.PROJECT_ID }} \
@@ -207,7 +207,7 @@ jobs:
             echo "Production health canary did not return the expected release identity" >&2
             exit 1
           fi
-          echo "finished_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+          echo "finished_at=$(date -u +'%Y-%m-%dT%H:%M:%S.%NZ')" >> "$GITHUB_OUTPUT"
 
       - name: Verify correlated production logs
         run: |
