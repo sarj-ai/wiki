@@ -18,6 +18,7 @@ import { expandPath } from "@/hooks/use-expanded-folders";
 import { useBulkSetSortOrders, useMoveFile } from "@/hooks/use-wiki-mutations";
 import { wikiKeys } from "@/hooks/use-wiki-tree";
 import { ApiError } from "@/lib/api-error";
+import { useBrowserUserId } from "@/lib/browser-user-context";
 import { validateCrossDriveMove } from "@/lib/drive-move-validation";
 import { optimisticMoveFile } from "@/lib/wiki-cache";
 import type { DriveNode, DriveTree, SortOrder } from "@/types/wiki";
@@ -60,6 +61,7 @@ const ZDragScopeData = z.object({
 
 export function useWikiReorder(): WikiReorder {
   const qc = useQueryClient();
+  const userId = useBrowserUserId();
   const bulkSetSortOrders = useBulkSetSortOrders();
   const moveFile = useMoveFile();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -266,7 +268,7 @@ export function useWikiReorder(): WikiReorder {
     );
 
     if (newParentFolderId !== destinationDriveId) {
-      expandPath(destinationDriveId, [newParentFolderId]);
+      expandPath(userId, destinationDriveId, [newParentFolderId]);
     }
 
     const destinationName = lookupFolderName(qc, destinationDriveId, newParentFolderId);

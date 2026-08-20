@@ -22,6 +22,7 @@ import {
   usePreferences,
   useSortOrders,
 } from "@/hooks/use-wiki-tree";
+import { useBrowserUserId } from "@/lib/browser-user-context";
 import { renderNodeIcon } from "@/lib/file-icons";
 
 import { DriveSearchBox } from "./drive-search-box";
@@ -39,6 +40,7 @@ const cursorFirstCollision: CollisionDetection = (args) => {
 };
 
 export function WikiSidebar() {
+  const userId = useBrowserUserId();
   const pathname = usePathname();
   const drivesQuery = useDrives();
   const prefsQuery = usePreferences();
@@ -67,6 +69,7 @@ export function WikiSidebar() {
     const [driveCrumb, ...folderCrumbs] = breadcrumb;
     if (!driveCrumb) return;
     expandPath(
+      userId,
       driveCrumb.id,
       folderCrumbs.map((c) => c.id),
     );
@@ -84,7 +87,7 @@ export function WikiSidebar() {
     return () => {
       cancelAnimationFrame(handle);
     };
-  }, [activeDriveId, breadcrumb]);
+  }, [activeDriveId, breadcrumb, userId]);
 
   return (
     <Sidebar>

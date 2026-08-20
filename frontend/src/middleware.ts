@@ -25,7 +25,9 @@ const PREVIEW_HTML = `<!doctype html>
 
 export default function middleware(request: NextRequest) {
   if (request.cookies.has("access_token") || request.cookies.has("refresh_token")) {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    response.headers.set("cache-control", "private, no-store");
+    return response;
   }
   if (UNFURL_CRAWLERS.test(request.headers.get("user-agent") ?? "")) {
     return new NextResponse(PREVIEW_HTML, {
@@ -43,7 +45,9 @@ export default function middleware(request: NextRequest) {
   url.pathname = "/login";
   url.search = "";
   if (redirect !== "/") url.searchParams.set("redirect", redirect);
-  return NextResponse.redirect(url);
+  const response = NextResponse.redirect(url);
+  response.headers.set("cache-control", "private, no-store");
+  return response;
 }
 
 export const config = {

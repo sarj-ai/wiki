@@ -1,6 +1,5 @@
+import { recentDocsStorageKey } from "@/lib/browser-storage";
 import { ZRecentDocs } from "@/lib/storage-schemas";
-
-const RECENT_DOCS_KEY = "sarj-wiki:recent-docs";
 
 const MAX_RECENT = 6;
 
@@ -10,22 +9,32 @@ export interface LastDoc {
   title: string;
 }
 
-export function saveLastDoc(doc: LastDoc): void {
+export function saveLastDoc(userId: string, doc: LastDoc): void {
   try {
-    const next = [doc, ...readRecentDocs().filter((d) => d.fileId !== doc.fileId)].slice(
+    const next = [doc, ...readRecentDocs(userId).filter((d) => d.fileId !== doc.fileId)].slice(
       0,
       MAX_RECENT,
     );
-    localStorage.setItem(RECENT_DOCS_KEY, JSON.stringify(next));
+    localStorage.setItem(recentDocsStorageKey(userId), JSON.stringify(next));
   } catch {
     // localStorage unavailable (private mode / quota) — warm-up just skips.
   }
 }
 
-export function readRecentDocs(): LastDoc[] {
+export function readRecentDocs(userId: string): LastDoc[] {
+  const result = parseRecentDocs(userId);
+  return result.ok ? result.value : [];
+}
+
+type RecentDocsResult = { ok: false } | { ok: true; value: LastDoc[] };
+
+function parseRecentDocs(userId: string): RecentDocsResult {
   try {
-    return ZRecentDocs.parse(JSON.parse(localStorage.getItem(RECENT_DOCS_KEY) ?? "[]"));
+    const value = ZRecentDocs.parse(
+      JSON.parse(localStorage.getItem(recentDocsStorageKey(userId)) ?? "[]"),
+    );
+    return { ok: true, value };
   } catch {
-    return [];
+    return { ok: false };
   }
 }

@@ -4,6 +4,7 @@ import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 
 import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
+import { useBrowserUserId } from "@/lib/browser-user-context";
 import { isGoogleWorkspaceType } from "@/lib/file-icons";
 import { type LastDoc, readRecentDocs } from "@/lib/last-doc";
 import { wikiKeys } from "@/lib/wiki-keys";
@@ -15,6 +16,7 @@ const WARM_COUNT = 3;
 
 export function DocWarmup() {
   const queryClient = useQueryClient();
+  const userId = useBrowserUserId();
   const setWarm = useDocViewerStore((s) => s.setWarm);
   const hasWarmed = useRef(false);
 
@@ -23,7 +25,7 @@ export function DocWarmup() {
     const timer = window.setTimeout(() => {
       if (useDocViewerStore.getState().active) return;
       hasWarmed.current = true;
-      const recents = readRecentDocs();
+      const recents = userId ? readRecentDocs(userId) : [];
       const targets =
         recents.length > 0
           ? recents.slice(0, WARM_COUNT)
@@ -35,7 +37,7 @@ export function DocWarmup() {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [queryClient, setWarm]);
+  }, [queryClient, setWarm, userId]);
 
   return null;
 }

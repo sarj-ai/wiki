@@ -5,6 +5,7 @@ import { API_URL } from "@/lib/env";
 import type { Client } from "@/lib/generated/client";
 import { client } from "@/lib/generated/client.gen";
 import { deduplicatedRefresh } from "@/lib/session-client";
+import { notifyTerminalUnauthorized } from "@/lib/session-events";
 
 type AnyOperation = (options: never) => Promise<unknown>;
 
@@ -63,6 +64,7 @@ client.interceptors.response.use(async (response, request) => {
     }
   }
   if (!settled.ok) {
+    if (settled.status === 401) notifyTerminalUnauthorized();
     const message = await readErrorMessage(settled);
     throw new ApiError(settled.status, message ?? `API error: ${settled.status}`);
   }
