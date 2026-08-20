@@ -34,6 +34,8 @@ from app.tasks.schemas import (
 _JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
 _TASK_READ: TypeAdapter[TaskRead] = TypeAdapter(TaskRead)
 _DEFAULT_RETENTION = timedelta(days=7)
+_MAX_ERROR_DETAIL_LENGTH = 256
+_TASK_FAILURE_DETAIL = "Task could not be completed"
 
 
 class TaskService(ABC):
@@ -242,7 +244,7 @@ class PostgresTaskService(TaskService):
             values={
                 "status": TaskStatus.FAILED,
                 "error_code": error_code,
-                "error_detail": error_detail,
+                "error_detail": _persisted_error_detail(error_detail),
                 "lease_token": None,
                 "lease_expires_at": None,
                 "finished_at": now,
@@ -357,6 +359,12 @@ class PostgresTaskService(TaskService):
 
 def _serialize(model: BaseModel) -> dict[str, JsonValue]:
     return _JSON_OBJECT.validate_python(model.model_dump(mode="json"))
+
+
+def _persisted_error_detail(error_detail: str | None) -> str | None:
+    if error_detail is None:
+        return None
+    return _TASK_FAILURE_DETAIL[:_MAX_ERROR_DETAIL_LENGTH]
 
 
 def _request_hash(payload: dict[str, JsonValue]) -> str:

@@ -5,6 +5,10 @@ class FilesError(Exception):
     http_status: int = 500
     code: str = "files_error"
 
+    @property
+    def public_detail(self) -> str:
+        return str(self)
+
 
 class UnsupportedMimeError(FilesError):
     http_status = 400
@@ -28,9 +32,10 @@ class CrossDriveMoveNotSupportedError(FilesError):
 
 class DriveUpstreamError(FilesError):
     code = "drive_upstream"
+    message = "Google Drive request could not be completed"
 
-    def __init__(self, status: int, message: str, *, reason: str | None = None) -> None:
-        super().__init__(message)
+    def __init__(self, status: int, *, reason: str | None = None) -> None:
+        super().__init__(self.message)
         self.http_status = status if 400 <= status < 500 else 502
         self.reason = reason
 

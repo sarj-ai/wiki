@@ -84,7 +84,7 @@ async def files_error_handler(
 ) -> JSONResponse:
     return JSONResponse(
         status_code=exc.http_status,
-        content={"code": exc.code, "detail": str(exc)},
+        content={"code": exc.code, "detail": exc.public_detail},
     )
 
 
