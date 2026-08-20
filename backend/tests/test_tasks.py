@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import cast
+from typing import Any, cast
 import uuid
 
 from pydantic import BaseModel
@@ -177,6 +177,36 @@ async def test_defer_atomically_releases_retryable_running_lease() -> None:
     sql = str(session.statements[0])
     assert "tasks.lease_token IS NOT DISTINCT FROM" in sql
     assert "RETURNING" in sql
+
+
+async def test_failed_task_persists_only_bounded_public_detail() -> None:
+    now = datetime.now(UTC)
+    row = _task(request_hash="0" * 64, status=TaskStatus.FAILED)
+    row.attempt_count = 1
+    row.started_at = now
+    row.finished_at = now
+    row.error_code = "provider_failed"
+    row.error_detail = "Task could not be completed"
+    raw_provider_detail = (
+        "https://www.googleapis.com/drive/v3/files/private-resource-id "
+        "Bearer ya29.provider-access-token " + '{"error":{"message":"private provider body"}}' * 100
+    )
+    session = _Session(row)
+
+    await _service(session).fail(
+        row.id,
+        lease_token=uuid.uuid4(),
+        error_code="provider_failed",
+        error_detail=raw_provider_detail,
+    )
+
+    params = cast("Any", session.statements[0]).compile().params
+    persisted = cast("str", params["error_detail"])
+    assert persisted == "Task could not be completed"
+    assert len(persisted) <= 256
+    assert "private-resource-id" not in persisted
+    assert "ya29.provider-access-token" not in persisted
+    assert "private provider body" not in persisted
 
 
 async def test_pending_task_can_be_discarded_before_execution() -> None:

@@ -155,7 +155,8 @@ class DriveSmartFileCreationService(SmartFileCreationService):
         try:
             await self._aliases.save(file.id, payload.alias)
         except (AliasError, FilesError) as exc:
-            warnings.append(SmartCreateWarning(code=exc.code, detail=str(exc)))
+            detail = exc.public_detail if isinstance(exc, FilesError) else str(exc)
+            warnings.append(SmartCreateWarning(code=exc.code, detail=detail))
         except SQLAlchemyError as exc:
             await self._db.rollback()
             logger.opt(exception=exc).warning(

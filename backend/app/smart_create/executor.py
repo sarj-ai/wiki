@@ -88,7 +88,7 @@ class DriveSmartCreateTaskExecutor(SmartCreateTaskExecutor):
                 task_id,
                 lease_token=claim.lease_token,
                 error_code=exc.code,
-                error_detail=str(exc),
+                error_detail=exc.public_detail,
             )
 
         if result.file.drive_id is not None:

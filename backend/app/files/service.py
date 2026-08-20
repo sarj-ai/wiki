@@ -266,8 +266,7 @@ class GoogleFilesService(FilesService):
             msg = "Move destination must be a folder"
             raise UnsupportedMimeError(msg)
         if not destination.can_add_children:
-            msg = "Drive denied this move because you cannot add items to the destination"
-            raise DriveUpstreamError(403, msg)
+            raise DriveUpstreamError(403)
         try:
             moved = await asyncio.to_thread(
                 self._move_sync,
@@ -368,9 +367,8 @@ class GoogleFilesService(FilesService):
         if failures:
             failure = failures[0]
             if isinstance(failure, HttpError):
-                raise _drive_upstream(failure)
-            msg = "Google Drive returned an invalid batch response"
-            raise DriveUpstreamError(502, msg) from failure
+                raise _drive_upstream(failure) from None
+            raise DriveUpstreamError(502) from None
         return responses
 
     def _rename_sync(self, *, file_id: FileId, new_name: str) -> FileResponse:
@@ -514,8 +512,7 @@ class GoogleFilesService(FilesService):
                 client.files().get_media(fileId=file_id, supportsAllDrives=True)
             )
         if not isinstance(raw, bytes):
-            msg = "Google Drive returned invalid HTML content"
-            raise DriveUpstreamError(502, msg)
+            raise DriveUpstreamError(502)
         return raw
 
     def _client(self) -> DriveResource:
@@ -553,12 +550,11 @@ def _translated_drive_errors() -> Generator[None]:
     try:
         yield
     except HttpError as e:
-        raise _drive_upstream(e) from e
+        raise _drive_upstream(e) from None
 
 
 def _drive_upstream(exc: HttpError) -> DriveUpstreamError:
     code = exc.resp.status if exc.resp else 502
-    detail = str(exc) or "Drive request failed"
     try:
         payload = _DriveErrorPayload.model_validate_json(exc.content)
         reason = next(
@@ -566,4 +562,4 @@ def _drive_upstream(exc: HttpError) -> DriveUpstreamError:
         )
     except ValidationError:
         reason = None
-    return DriveUpstreamError(code, detail, reason=reason)
+    return DriveUpstreamError(code, reason=reason)

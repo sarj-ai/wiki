@@ -971,12 +971,11 @@ def test_classify_probe_maps_statuses_like_the_old_per_call_path() -> None:
 
         return HttpError(Response({"reason": "test", "status": str(status)}), b"{}")
 
-    target_id = FileId("t")
-    assert svc._classify_probe(target_id, None, _err(404)) is None
-    assert svc._classify_probe(target_id, None, _err(403)) == ShortcutProbe(accessible=False)
-    assert svc._classify_probe(target_id, None, _err(500)) is None
-    assert svc._classify_probe(target_id, {"trashed": True}, None) is None
-    assert svc._classify_probe(target_id, {"id": "t", "driveId": "eng"}, None) == ShortcutProbe(
+    assert svc._classify_probe(None, _err(404)) is None
+    assert svc._classify_probe(None, _err(403)) == ShortcutProbe(accessible=False)
+    assert svc._classify_probe(None, _err(500)) is None
+    assert svc._classify_probe({"trashed": True}, None) is None
+    assert svc._classify_probe({"id": "t", "driveId": "eng"}, None) == ShortcutProbe(
         accessible=True, target_drive_id=DriveId("eng")
     )
 
