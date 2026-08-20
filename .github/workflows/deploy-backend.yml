@@ -172,7 +172,7 @@ jobs:
             --quiet
 
           candidate_revision=''
-          ready_revision=''
+          candidate_ready=''
           for _attempt in {1..6}; do
             service_json=$(gcloud run services describe "${{ env.SERVICE }}" \
               --project "${{ env.PROJECT_ID }}" \
@@ -180,13 +180,21 @@ jobs:
               --format=json)
             candidate_revision=$(jq -r '.status.latestCreatedRevisionName // empty' \
               <<< "$service_json")
-            ready_revision=$(jq -r '.status.latestReadyRevisionName // empty' <<< "$service_json")
-            if [[ -n "$candidate_revision" && "$ready_revision" == "$candidate_revision" ]]; then
-              break
+            if [[ -n "$candidate_revision" ]]; then
+              revision_json=$(gcloud run revisions describe "$candidate_revision" \
+                --project "${{ env.PROJECT_ID }}" \
+                --region "${{ env.REGION }}" \
+                --format=json)
+              candidate_ready=$(jq -r \
+                '[.status.conditions[]? | select(.type == "Ready") | .status][0] // empty' \
+                <<< "$revision_json")
+              if [[ "$candidate_ready" == 'True' ]]; then
+                break
+              fi
             fi
             sleep 10
           done
-          if [[ -z "$candidate_revision" || "$ready_revision" != "$candidate_revision" ]]; then
+          if [[ -z "$candidate_revision" || "$candidate_ready" != 'True' ]]; then
             echo "The no-traffic Cloud Run candidate did not become ready" >&2
             exit 1
           fi
