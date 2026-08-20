@@ -39,7 +39,7 @@ describe("document short-link resolver", () => {
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
       expect.stringContaining("/aliases/eng-onboarding"),
       expect.objectContaining({
-        headers: { cookie: "access_token=jwt-token" },
+        headers: { Authorization: "Bearer jwt-token" },
       }),
     );
   });

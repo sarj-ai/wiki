@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from app.auth.dependencies import auth_service_dep, get_current_user
+from app.auth.dependencies import auth_service_dep, get_current_user, optional_access_token
 from app.auth.errors import AuthError
 from app.auth.schemas import UserProfile
 from app.auth.service import (
@@ -80,7 +80,7 @@ async def logout(
     request: Request,
     auth: Annotated[AuthService, Depends(auth_service_dep)],
 ) -> JSONResponse:
-    await auth.revoke_session(request.cookies.get("access_token"))
+    await auth.revoke_session(optional_access_token(request))
     response = JSONResponse(content={"message": "logged out"})
     clear_auth_cookies(response)
     return response
