@@ -23,6 +23,8 @@ def test_deployment_runs_one_shot_migrations_before_traffic_switch() -> None:
 
     assert candidate < migration < traffic
     assert "--no-traffic" in workflow[candidate:migration]
+    assert 'select(.type == "Ready")' in workflow[candidate:migration]
+    assert "latestReadyRevisionName" not in workflow[candidate:migration]
     assert "--wait" in workflow[migration:traffic]
     assert 'steps.deploy.outputs.release_image }}"' in workflow[migration:traffic]
 
