@@ -19,6 +19,8 @@ from app.extras.schemas import (
     SortOrderWrite,
 )
 from app.extras.service import ExtrasService
+from app.files.schemas import FileResponse
+from app.files.service import FilesService
 from app.identifiers import DriveId, FileId, GoogleUserId
 from app.models.user import User
 from app.sidebar.cache import CachedDriveTree, SidebarCacheService
@@ -53,7 +55,14 @@ class _FakeDriveService(DriveService):
 
 class _FakeExtrasService(ExtrasService):
     async def list_doc_icons(self) -> list[DocIconRead]:
-        return [DocIconRead(drive_id=FileId("doc-1"), icon="📚", cover_url=None)]
+        return [
+            DocIconRead(drive_id=FileId("doc-1"), icon="📚", cover_url=None),
+            DocIconRead(
+                drive_id=FileId("private-doc"),
+                icon="🔒",
+                cover_url="https://example.com/private-cover.png",
+            ),
+        ]
 
     async def get_doc_icon(self, drive_id: str) -> DocIconRead:
         raise NotImplementedError
@@ -83,6 +92,24 @@ class _FakeExtrasService(ExtrasService):
 
     async def upsert_preferences(self, payload: PreferencesWrite) -> PreferencesRead:
         raise NotImplementedError
+
+
+class _FakeFilesService:
+    def __init__(self) -> None:
+        self.requested: list[FileId] = []
+
+    async def get_accessible_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
+        self.requested = file_ids
+        return {
+            FileId("doc-1"): FileResponse(
+                id=FileId("doc-1"),
+                name="Accessible",
+                mime_type="application/vnd.google-apps.document",
+                parent_folder_id=None,
+                drive_id=DriveId("d1"),
+                modified_time=None,
+            )
+        }
 
 
 class _FakeCacheService(SidebarCacheService):
@@ -129,9 +156,11 @@ def _tree(drive_id: str) -> DriveTree:
 async def test_load_aggregates_all_six_reads() -> None:
     user = _user()
     cache = _FakeCacheService(_tree("d1"))
+    files = _FakeFilesService()
     svc = AggregatingBootstrapService(
         drive=_FakeDriveService([DriveSummary(id=DriveId("d1"), name="Eng")]),
         extras=_FakeExtrasService(),
+        files=cast("FilesService", files),
         cache=cache,
         db=_NO_DB,
         user=user,
@@ -144,6 +173,7 @@ async def test_load_aggregates_all_six_reads() -> None:
     assert out.preferences.hidden_workspace_ids == ["hidden-1"]
     assert [i.folder_drive_id for i in out.folder_icons] == ["folder-1"]
     assert [i.drive_id for i in out.doc_icons] == ["doc-1"]
+    assert files.requested == ["doc-1", "private-doc"]
     assert [s.sort_order for s in out.sort_orders] == [1.5]
     assert out.me.id == str(user.id)
     assert out.me.email == "test@sarj.ai"
@@ -158,6 +188,7 @@ async def test_load_omits_first_tree_on_cache_miss() -> None:
     out = await AggregatingBootstrapService(
         drive=_FakeDriveService([DriveSummary(id=DriveId("d1"), name="Eng")]),
         extras=_FakeExtrasService(),
+        files=cast("FilesService", _FakeFilesService()),
         cache=cache,
         db=_NO_DB,
         user=_user(),
@@ -182,6 +213,7 @@ async def test_load_handles_empty_overlays() -> None:
     out = await AggregatingBootstrapService(
         drive=_FakeDriveService([]),
         extras=_EmptyExtras(),
+        files=cast("FilesService", _FakeFilesService()),
         cache=cache,
         db=_NO_DB,
         user=_user(),

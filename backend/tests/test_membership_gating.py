@@ -47,6 +47,16 @@ class _FakeCache(SidebarCacheService):
 
 
 class _FakeExtras:
+    async def list_doc_icons(self) -> list[DocIconRead]:
+        return [
+            DocIconRead(drive_id=ACCESSIBLE_DOC, icon="📄", cover_url=None),
+            DocIconRead(
+                drive_id=INACCESSIBLE_DOC,
+                icon="🔒",
+                cover_url="https://example.com/private-cover.png",
+            ),
+        ]
+
     async def get_doc_icon(self, drive_id: str) -> DocIconRead:
         return DocIconRead(drive_id=FileId(drive_id), icon="📄", cover_url=None)
 
@@ -55,6 +65,10 @@ class _FakeExtras:
 
 
 class _FakeFiles:
+    async def get_accessible_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
+        assert file_ids == [ACCESSIBLE_DOC, INACCESSIBLE_DOC]
+        return {ACCESSIBLE_DOC: await self.get(ACCESSIBLE_DOC)}
+
     async def get(self, file_id: str) -> FileResponse:
         if file_id == ACCESSIBLE_DOC:
             return FileResponse(
@@ -163,6 +177,13 @@ async def test_inaccessible_doc_icon_is_404(
         resp = await client.request(method, f"/extras/doc-icons/{INACCESSIBLE_DOC}", json=json)
     assert resp.status_code == 404
     assert resp.json()["code"] == "file_not_in_scope"
+
+
+async def test_doc_icon_list_omits_inaccessible_metadata(client: AsyncClient) -> None:
+    async with client:
+        resp = await client.get("/extras/doc-icons")
+    assert resp.status_code == 200
+    assert resp.json() == [{"drive_id": ACCESSIBLE_DOC, "icon": "📄", "cover_url": None}]
 
 
 async def test_non_member_never_reaches_the_cache(client: AsyncClient) -> None:

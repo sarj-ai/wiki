@@ -17,8 +17,9 @@ from app.extras.schemas import (
     SortOrderBulkWrite,
     SortOrderRead,
 )
-from app.extras.service import ExtrasService
-from app.files.dependencies import require_accessible_doc
+from app.extras.service import ExtrasService, list_accessible_doc_icons
+from app.files.dependencies import files_service_dep, require_accessible_doc
+from app.files.service import FilesService
 from app.identifiers import DriveId, FileId
 
 
@@ -28,8 +29,9 @@ router = APIRouter(prefix="/extras", tags=["extras"])
 @router.get("/doc-icons")
 async def list_doc_icons(
     svc: Annotated[ExtrasService, Depends(extras_service_dep)],
+    files: Annotated[FilesService, Depends(files_service_dep)],
 ) -> list[DocIconRead]:
-    return await svc.list_doc_icons()
+    return await list_accessible_doc_icons(svc, files)
 
 
 @router.get("/doc-icons/{drive_id}", dependencies=[Depends(require_accessible_doc)])
