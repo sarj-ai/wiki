@@ -11,7 +11,8 @@ from app.bootstrap.schemas import BootstrapRead
 from app.drive.schemas import DriveSummary, DriveTree
 from app.drive.service import DriveService
 from app.extras.schemas import DocIconRead, FolderIconRead, PreferencesRead, SortOrderRead
-from app.extras.service import ExtrasService
+from app.extras.service import ExtrasService, list_accessible_doc_icons
+from app.files.service import FilesService
 from app.models.user import User
 from app.sidebar.cache import SidebarCacheService
 
@@ -34,12 +35,14 @@ class AggregatingBootstrapService(BootstrapService):
         *,
         drive: DriveService,
         extras: ExtrasService,
+        files: FilesService,
         cache: SidebarCacheService,
         db: AsyncSession,
         user: User,
     ) -> None:
         self._drive = drive
         self._extras = extras
+        self._files = files
         self._cache = cache
         self._db = db
         self._user = user
@@ -70,6 +73,6 @@ class AggregatingBootstrapService(BootstrapService):
         return _ExtrasReads(
             await self._extras.get_preferences(),
             await self._extras.list_folder_icons(),
-            await self._extras.list_doc_icons(),
+            await list_accessible_doc_icons(self._extras, self._files),
             await self._extras.list_sort_orders(),
         )

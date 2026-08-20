@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from typing import override
+from typing import TYPE_CHECKING, override
 
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -29,7 +29,20 @@ from app.models.wiki import (
 )
 
 
+if TYPE_CHECKING:
+    from app.files.service import FilesService
+
+
 _DEFAULT_PREFS = PreferencesRead(show_non_doc_files=True, hidden_workspace_ids=[])
+
+
+async def list_accessible_doc_icons(
+    extras: ExtrasService,
+    files: FilesService,
+) -> list[DocIconRead]:
+    icons = await extras.list_doc_icons()
+    accessible = await files.get_accessible_many([icon.drive_id for icon in icons])
+    return [icon for icon in icons if icon.drive_id in accessible]
 
 
 class ExtrasService(ABC):
