@@ -23,6 +23,9 @@ FROM python:3.14.6-alpine AS runtime
 
 WORKDIR /app
 
+ARG RELEASE_SHA=dev
+ENV RELEASE_SHA=$RELEASE_SHA
+
 RUN apk upgrade --no-cache \
     && adduser -D -u 1001 app
 
