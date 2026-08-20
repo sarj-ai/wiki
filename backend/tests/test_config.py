@@ -7,6 +7,7 @@ from pydantic import ValidationError
 import pytest
 
 from app.config import Settings
+from app.database_config import DatabaseSettings
 
 
 _BASELINE = {
@@ -95,6 +96,16 @@ def test_sidebar_cache_ttl_parses_iso8601(monkeypatch: pytest.MonkeyPatch) -> No
 def test_release_sha_accepts_full_lowercase_git_sha(monkeypatch: pytest.MonkeyPatch) -> None:
     release_sha = "a" * 40
     assert release_sha == _settings(monkeypatch, RELEASE_SHA=release_sha).RELEASE_SHA
+
+
+def test_database_settings_do_not_load_application_secrets() -> None:
+    database_fields = {
+        "DATABASE_URL",
+        "DB_IAM_USER",
+        "DB_INSTANCE_CONNECTION_NAME",
+        "DB_NAME",
+    }
+    assert set(DatabaseSettings.model_fields) == database_fields
 
 
 def test_db_paths_are_mutually_exclusive(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -66,6 +66,14 @@ resource "google_service_account_iam_member" "github_actions_act_as_backend" {
   member             = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
+resource "google_cloud_run_v2_job_iam_member" "github_actions_migration_invoker" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_job.backend_migrations.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
 resource "google_service_account_iam_binding" "github_actions_wif" {
   service_account_id = google_service_account.github_actions.name
   role               = "roles/iam.workloadIdentityUser"

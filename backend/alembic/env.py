@@ -2,8 +2,8 @@ import asyncio
 
 from alembic import context
 
-from app.config import settings
 from app.database import Base, build_engine, close_connector
+from app.database_config import database_settings
 from app.models import task, wiki, user  # noqa: F401 — side-effect: register models on Base
 
 config = context.config
@@ -12,10 +12,10 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    if settings.DATABASE_URL is None:
+    if database_settings.DATABASE_URL is None:
         raise RuntimeError("Offline migrations require DATABASE_URL")
     context.configure(
-        url=str(settings.DATABASE_URL),
+        url=str(database_settings.DATABASE_URL),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
