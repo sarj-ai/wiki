@@ -7,9 +7,6 @@ name: CI Backend
       - "backend/**"
       - ".github/workflows/ci-backend.yml"
   pull_request:
-    paths:
-      - "backend/**"
-      - ".github/workflows/ci-backend.yml"
 
 permissions:
   contents: read
@@ -24,7 +21,7 @@ defaults:
 
 jobs:
   lint-and-typecheck:
-    name: Lint + typecheck
+    name: Backend / Lint + typecheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -75,7 +72,7 @@ jobs:
         run: uv run basedpyright -p pyrightconfig.json
 
   test:
-    name: Unit tests
+    name: Backend / Unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -99,7 +96,7 @@ jobs:
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70
 
   image:
-    name: Image build + scan
+    name: Backend / Image build + Trivy scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -127,3 +124,21 @@ jobs:
           format: table
           severity: HIGH,CRITICAL
           exit-code: "1"
+
+  required:
+    name: Backend / required
+    if: ${{ always() }}
+    needs: [lint-and-typecheck, test, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Require every backend gate
+        working-directory: .
+        env:
+          IMAGE_RESULT: ${{ needs.image.result }}
+          LINT_RESULT: ${{ needs.lint-and-typecheck.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+        run: |
+          test "$LINT_RESULT" = success
+          test "$TEST_RESULT" = success
+          test "$IMAGE_RESULT" = success

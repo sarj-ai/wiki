@@ -7,9 +7,6 @@ name: CI IaC
       - "terraform/**"
       - ".github/workflows/ci-iac.yml"
   pull_request:
-    paths:
-      - "terraform/**"
-      - ".github/workflows/ci-iac.yml"
 
 permissions:
   contents: read
@@ -20,7 +17,7 @@ concurrency:
 
 jobs:
   trivy-config:
-    name: Trivy IaC scan
+    name: IaC / Trivy config scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,3 +43,15 @@ jobs:
             cat trivy-report.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  required:
+    name: IaC / required
+    if: ${{ always() }}
+    needs: [trivy-config]
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Require the IaC gate
+        env:
+          TRIVY_RESULT: ${{ needs.trivy-config.result }}
+        run: test "$TRIVY_RESULT" = success
