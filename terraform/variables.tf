@@ -44,6 +44,24 @@ variable "fernet_key" {
   sensitive   = true
 }
 
+variable "cache_fernet_key" {
+  description = "Newest-first Fernet key ring for disposable caches"
+  type        = string
+  sensitive   = true
+  ephemeral   = true
+}
+
+variable "cache_fernet_key_generation" {
+  description = "Monotonic generation that publishes a new cache key-ring version"
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.cache_fernet_key_generation >= 1 && floor(var.cache_fernet_key_generation) == var.cache_fernet_key_generation
+    error_message = "cache_fernet_key_generation must be a positive integer."
+  }
+}
+
 variable "alert_email" {
   description = "Email address for monitoring alerts"
   type        = string

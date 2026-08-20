@@ -18,6 +18,7 @@ _BASELINE = {
     "GOOGLE_CLIENT_ID": "client-id",
     "GOOGLE_CLIENT_SECRET": "client-secret",
     "FERNET_KEY": Fernet.generate_key().decode(),
+    "CACHE_FERNET_KEY": None,
     "GOOGLE_REDIRECT_URI": None,
     "ALLOWED_DOMAIN": None,
     "FRONTEND_URL": None,
@@ -59,6 +60,36 @@ def test_secrets_do_not_leak_in_repr(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "x" * 32 not in rendered
 
 
+def test_cache_fernet_rotation_keys_are_validated_and_redacted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    newest, oldest = Fernet.generate_key().decode(), Fernet.generate_key().decode()
+
+    settings = _settings(monkeypatch, CACHE_FERNET_KEY=f"{newest},{oldest}")
+
+    assert settings.CACHE_FERNET_KEY is not None
+    assert settings.CACHE_FERNET_KEY.get_secret_value() == f"{newest},{oldest}"
+    assert newest not in repr(settings)
+    assert oldest not in repr(settings)
+
+
+@pytest.mark.parametrize(
+    "duplicate",
+    [True, False],
+)
+def test_cache_fernet_rotation_ring_is_bounded_and_unique(
+    monkeypatch: pytest.MonkeyPatch,
+    duplicate: bool,
+) -> None:
+    key = Fernet.generate_key().decode()
+    ring = (
+        f"{key},{key}" if duplicate else ",".join(Fernet.generate_key().decode() for _ in range(4))
+    )
+
+    with pytest.raises(ValidationError):
+        _settings(monkeypatch, CACHE_FERNET_KEY=ring)
+
+
 def test_frontend_origin_strips_httpurl_trailing_slash(monkeypatch: pytest.MonkeyPatch) -> None:
     s = _settings(monkeypatch, FRONTEND_URL="https://wiki.sarj.ai")
     assert str(s.FRONTEND_URL) == "https://wiki.sarj.ai/"
@@ -73,6 +104,7 @@ def test_frontend_origin_strips_httpurl_trailing_slash(monkeypatch: pytest.Monke
         ("GOOGLE_CLIENT_ID", ""),
         ("GOOGLE_CLIENT_SECRET", ""),
         ("FERNET_KEY", "not-a-fernet-key"),
+        ("CACHE_FERNET_KEY", "not-a-fernet-key"),
         ("GOOGLE_REDIRECT_URI", "not-a-url"),
         ("FRONTEND_URL", "wiki.sarj.ai"),
         ("ALLOWED_DOMAIN", "Sarj.AI"),

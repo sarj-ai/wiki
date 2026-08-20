@@ -5,6 +5,7 @@
 #     GOOGLE_REDIRECT_URI, DB_INSTANCE_CONNECTION_NAME, DB_NAME,
 #     DB_IAM_USER (DB auth is IAM — the SA is the credential)
 #   * Sensitive secrets (via Secret Manager): SECRET_KEY, FERNET_KEY,
+#     CACHE_FERNET_KEY,
 #     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 #
 # What the legacy Sarj Wiki stack needed but Sarj Wiki does NOT:
@@ -177,6 +178,15 @@ resource "google_cloud_run_v2_service" "backend" {
         }
       }
       env {
+        name = "CACHE_FERNET_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.cache_fernet_key.secret_id
+            version = google_secret_manager_secret_version.cache_fernet_key.version
+          }
+        }
+      }
+      env {
         name = "GOOGLE_CLIENT_ID"
         value_source {
           secret_key_ref {
@@ -200,7 +210,9 @@ resource "google_cloud_run_v2_service" "backend" {
   depends_on = [
     google_project_service.apis["run.googleapis.com"],
     google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_version.cache_fernet_key,
     google_secret_manager_secret_iam_member.backend_access,
+    google_secret_manager_secret_iam_member.backend_cache_key_access,
     google_project_iam_member.backend_vertex_ai,
     google_cloud_tasks_queue_iam_member.backend_enqueuer,
     google_service_account_iam_member.backend_acts_as_task_invoker,

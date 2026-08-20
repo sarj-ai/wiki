@@ -21,6 +21,7 @@ DomainStr = Annotated[
 ]
 LogLevel = Literal["TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"]
 ReleaseSha = Annotated[str, StringConstraints(pattern=r"^(?:dev|[0-9a-f]{40})$")]
+_MAX_FERNET_ROTATION_KEYS = 3
 
 
 def parse_fernet_keys(raw: str) -> list[str]:
@@ -88,8 +89,15 @@ class Settings(DatabaseSettings):
     def fernet_keys_valid(cls, v: SecretStr | None) -> SecretStr | None:
         if v is None:
             return None
-        if not parse_fernet_keys(v.get_secret_value()):
+        keys = parse_fernet_keys(v.get_secret_value())
+        if not keys:
             msg = "must be a comma-separated list of valid Fernet keys"
+            raise ValueError(msg)
+        if len(keys) != len(set(keys)):
+            msg = "must contain unique Fernet keys"
+            raise ValueError(msg)
+        if len(keys) > _MAX_FERNET_ROTATION_KEYS:
+            msg = "must contain at most three Fernet keys"
             raise ValueError(msg)
         return v
 

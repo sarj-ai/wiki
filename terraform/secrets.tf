@@ -44,10 +44,37 @@ resource "google_secret_manager_secret_version" "secrets" {
   secret_data = each.value
 }
 
+resource "google_secret_manager_secret" "cache_fernet_key" {
+  secret_id = "sarj-docs-cache-fernet-key"
+
+  replication {
+    auto {}
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+
+  depends_on = [google_project_service.apis["secretmanager.googleapis.com"]]
+}
+
+resource "google_secret_manager_secret_version" "cache_fernet_key" {
+  secret                 = google_secret_manager_secret.cache_fernet_key.id
+  secret_data_wo         = var.cache_fernet_key
+  secret_data_wo_version = var.cache_fernet_key_generation
+  deletion_policy        = "DISABLE"
+}
+
 # Grant Cloud Run SA access to read secrets
 resource "google_secret_manager_secret_iam_member" "backend_access" {
   for_each  = local.secrets
   secret_id = google_secret_manager_secret.secrets[each.key].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.backend.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "backend_cache_key_access" {
+  secret_id = google_secret_manager_secret.cache_fernet_key.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.backend.email}"
 }
