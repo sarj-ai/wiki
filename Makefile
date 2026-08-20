@@ -1,7 +1,7 @@
 GCP_PROJECT := sarj-docs
 STAMPS := .stamps
 SECRETS_TTL := 1440
-STANDARDS_RUN := uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.3 sarj-standards
+STANDARDS_RUN := uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.0 code-standards
 
 .PHONY: setup setup-hooks standards-sync standards-check standards-upgrade \
 	check check-node check-quality check-backend check-frontend fix audit doctor \
