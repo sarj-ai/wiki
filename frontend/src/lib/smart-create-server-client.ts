@@ -21,8 +21,8 @@ export async function callSmartCreateApi(
   idempotencyKey?: string,
 ): Promise<SmartUpstreamResponse> {
   const headers = new Headers({
+    Authorization: `Bearer ${token}`,
     "content-type": "application/json",
-    cookie: `access_token=${token}`,
   });
   if (idempotencyKey !== undefined) headers.set("idempotency-key", idempotencyKey);
 
@@ -56,7 +56,7 @@ export async function readSmartCreateApi(
   try {
     const response = await fetch(`${API_URL}${path}`, {
       cache: "no-store",
-      headers: { cookie: `access_token=${token}` },
+      headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     const responseBody = await response.text();

@@ -27,7 +27,7 @@ export async function resolveDocumentAlias(
 ): Promise<AliasResolution> {
   const upstream = await fetch(`${API_URL}/aliases/${encodeURIComponent(alias)}`, {
     cache: "no-store",
-    headers: { cookie: `access_token=${accessToken}` },
+    headers: { Authorization: `Bearer ${accessToken}` },
     signal: AbortSignal.timeout(10_000),
   });
   if (!upstream.ok) {
@@ -49,7 +49,10 @@ export async function getRecentDocumentAliases(
   const upstream = await fetch(`${API_URL}/aliases/recent`, {
     body: JSON.stringify({ aliases }),
     cache: "no-store",
-    headers: { "content-type": "application/json", cookie: `access_token=${accessToken}` },
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json",
+    },
     method: "POST",
     signal: AbortSignal.timeout(10_000),
   });

@@ -42,13 +42,20 @@ async def get_current_user(
 
 
 def _extract_token(request: Request) -> str:
-    token = request.cookies.get("access_token")
-    if token:
+    token = optional_access_token(request)
+    if token is not None:
         return token
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        return auth_header.removeprefix("Bearer ")
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Not authenticated",
     )
+
+
+def optional_access_token(request: Request) -> str | None:
+    cookie_token = request.cookies.get("access_token")
+    if cookie_token:
+        return cookie_token
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        return auth_header.removeprefix("Bearer ")
+    return None

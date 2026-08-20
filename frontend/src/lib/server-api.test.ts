@@ -34,10 +34,11 @@ describe("serverWikiApi", () => {
     });
   });
 
-  it("forwards the cookie and parses through the endpoint transform", async () => {
+  it("forwards a Bearer token and parses through the endpoint transform", async () => {
     cookieValue.token = "jwt-token";
     const fetchMock = vi.fn((request: Request) => {
-      expect(request.headers.get("cookie")).toBe("access_token=jwt-token");
+      expect(request.headers.get("authorization")).toBe("Bearer jwt-token");
+      expect(request.headers.get("cookie")).toBeNull();
       return jsonResponse([{ icon: null, id: "f1", name: "Doc" }]);
     });
     vi.stubGlobal("fetch", fetchMock);

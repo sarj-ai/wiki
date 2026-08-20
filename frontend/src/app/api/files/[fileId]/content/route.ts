@@ -33,7 +33,7 @@ async function get(_request: Request, context: RouteContext): Promise<Response> 
 
   const upstream = await fetch(`${API_URL}/files/${encodeURIComponent(fileId)}/content`, {
     cache: "no-store",
-    headers: { cookie: `access_token=${token}` },
+    headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(15_000),
   });
   if (!upstream.ok) {

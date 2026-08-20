@@ -17,6 +17,7 @@ from app.aliases.router import router as aliases_router
 from app.auth.router import router as auth_router
 from app.bootstrap.router import router as bootstrap_router
 from app.config import settings
+from app.csrf import CookieOriginMiddleware
 from app.database import async_session, close_connector
 from app.drive.errors import DrivePermissionsError
 from app.drive.search_router import router as drive_search_router
@@ -56,6 +57,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
     expose_headers=["Retry-After", "Server-Timing", "Idempotency-Replayed"],
 )
+app.add_middleware(CookieOriginMiddleware, allowed_origin=settings.frontend_origin)
 app.add_middleware(RequestIDMiddleware)
 
 
