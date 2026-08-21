@@ -78,9 +78,126 @@ jobs:
         run: npm run build:worker
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_RELEASE_SHA: ${{ github.sha }}
+
+      - name: Capture current production version
+        id: previous
+        working-directory: .
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          deployments_file="$RUNNER_TEMP/frontend-deployments-before.json"
+          npm exec --prefix frontend -- wrangler deployments list \
+            --name sarj-wiki --json > "$deployments_file"
+          previous_version="$(jq --exit-status --raw-output '
+            sort_by(.created_on)
+            | last
+            | [.versions[] | select(.percentage == 100)]
+            | if length == 1 then .[0].version_id
+              else error("expected one active version") end
+          ' "$deployments_file")"
+          rm -f "$deployments_file"
+          echo "version_id=$previous_version" >> "$GITHUB_OUTPUT"
 
       - name: Deploy to Cloudflare
+        id: deploy
         run: npm run deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Verify exact production revision
+        id: verify
+        working-directory: .
+        run: |
+          body_file="$RUNNER_TEMP/frontend-health-body.json"
+          headers_file="$RUNNER_TEMP/frontend-health-headers.txt"
+          canary_id="$(node --eval 'process.stdout.write(crypto.randomUUID())')"
+
+          for attempt in 1 2 3 4 5 6; do
+            if ! status="$(curl --silent --show-error --max-time 15 \
+                --output "$body_file" \
+                --dump-header "$headers_file" \
+                --write-out '%{http_code}' \
+                --header "X-Request-ID: $canary_id" \
+                https://wiki.sarj.ai/health)"; then
+              status=000
+            fi
+            response_id="$(awk -F ':' '
+              tolower($1) == "x-request-id" {
+                sub(/^[^:]*:[[:space:]]*/, "")
+                gsub(/\r/, "")
+                value = $0
+              }
+              END { print value }
+            ' "$headers_file")"
+            cache_control="$(awk -F ':' '
+              tolower($1) == "cache-control" {
+                sub(/^[^:]*:[[:space:]]*/, "")
+                gsub(/\r/, "")
+                value = tolower($0)
+              }
+              END { print value }
+            ' "$headers_file")"
+            cache_ok=false
+            case ",${cache_control// /}," in
+              *,no-store,*) cache_ok=true ;;
+            esac
+            if test "$status" = 200 \
+              && jq --exit-status --arg sha "$GITHUB_SHA" \
+                '.status == "ok" and .revision == $sha' "$body_file" >/dev/null \
+              && test "$response_id" = "$canary_id" \
+              && test "$cache_ok" = true; then
+              rm -f "$body_file" "$headers_file"
+              echo "Frontend production revision verified."
+              exit 0
+            fi
+            echo "Frontend revision not ready (attempt $attempt/6, HTTP ${status:-000})."
+            sleep 10
+          done
+
+          rm -f "$body_file" "$headers_file"
+          echo "Frontend production revision could not be verified." >&2
+          exit 1
+
+      - name: Roll back an unverified frontend release
+        if: ${{ always() && steps.previous.outcome == 'success' && steps.verify.outcome != 'success' }}
+        working-directory: .
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PREVIOUS_VERSION: ${{ steps.previous.outputs.version_id }}
+        run: |
+          deployments_file="$RUNNER_TEMP/frontend-deployments-reconcile.json"
+
+          active_version() {
+            npm exec --prefix frontend -- wrangler deployments list \
+              --name sarj-wiki --json > "$deployments_file"
+            jq --exit-status --raw-output '
+              sort_by(.created_on)
+              | last
+              | [.versions[] | select(.percentage == 100)]
+              | if length == 1 then .[0].version_id
+                else error("expected one active version") end
+            ' "$deployments_file"
+          }
+
+          npm exec --prefix frontend -- wrangler rollback "$PREVIOUS_VERSION" \
+            --name sarj-wiki \
+            --message "automatic rollback of ${GITHUB_SHA}" \
+            --yes
+
+          for _ in 1 2 3 4 5 6; do
+            if active="$(active_version)" \
+              && test "$active" = "$PREVIOUS_VERSION"; then
+              rm -f "$deployments_file"
+              echo "Previous frontend version is restored."
+              exit 0
+            fi
+            sleep 5
+          done
+
+          rm -f "$deployments_file"
+          echo "Previous frontend version could not be restored." >&2
+          exit 1
