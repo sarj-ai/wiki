@@ -7,9 +7,6 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 import httpx
 from loguru import logger
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
 
 from app.aliases.errors import AliasError
@@ -25,7 +22,6 @@ from app.extras.router import router as extras_router
 from app.files.errors import FilesError
 from app.files.router import router as files_router
 from app.logging_config import configure_logging
-from app.ratelimit import limiter
 from app.request_body import MAX_REQUEST_BODY_BYTES, RequestBodyLimitMiddleware
 from app.request_id import RequestIDMiddleware
 from app.sidebar.router import router as sidebar_router
@@ -46,10 +42,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 
 app = FastAPI(title="Sarj Wiki API", lifespan=lifespan)
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
 app.add_middleware(RequestBodyLimitMiddleware, max_bytes=MAX_REQUEST_BODY_BYTES)
-app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
@@ -137,8 +130,7 @@ app.include_router(internal_tasks_router)
 
 
 @app.get("/health")
-@limiter.exempt  # type: ignore[untyped-decorator]
-async def health_check(_request: Request) -> dict[str, str]:
+async def health_check() -> dict[str, str]:
     result: dict[str, str] = {"revision": settings.RELEASE_SHA, "status": "ok"}
     try:
         async with async_session() as db:

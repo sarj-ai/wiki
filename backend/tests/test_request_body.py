@@ -243,8 +243,7 @@ def test_application_middleware_order() -> None:
 
     assert names.index("RequestIDMiddleware") < names.index("CookieOriginMiddleware")
     assert names.index("CookieOriginMiddleware") < names.index("CORSMiddleware")
-    assert names.index("CORSMiddleware") < names.index("SlowAPIMiddleware")
-    assert names.index("SlowAPIMiddleware") < names.index("RequestBodyLimitMiddleware")
+    assert names.index("CORSMiddleware") < names.index("RequestBodyLimitMiddleware")
 
 
 def test_rejects_non_positive_limit() -> None:
