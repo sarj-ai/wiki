@@ -58,11 +58,6 @@
       "count": 4
     }
   },
-  "src/components/wiki-sidebar/smart-create-dialog.tsx": {
-    "better-tailwindcss/enforce-shorthand-classes": {
-      "count": 2
-    }
-  },
   "src/components/wiki-sidebar/tree-node.tsx": {
     "@sarj/stepdown": {
       "count": 1

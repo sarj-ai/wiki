@@ -2,24 +2,27 @@ import { API_URL } from "@/lib/env";
 
 const REFRESH_TIMEOUT_MS = 10_000;
 
-let refreshPromise: null | Promise<boolean> = null;
+export type SessionRefreshResult = "refreshed" | "unauthorized" | "unavailable";
 
-export async function deduplicatedRefresh(): Promise<boolean> {
+let refreshPromise: null | Promise<SessionRefreshResult> = null;
+
+export async function deduplicatedRefresh(): Promise<SessionRefreshResult> {
   refreshPromise ??= rawRefresh().finally(() => {
     refreshPromise = null;
   });
   return await refreshPromise;
 }
 
-async function rawRefresh(): Promise<boolean> {
+async function rawRefresh(): Promise<SessionRefreshResult> {
   try {
     const response = await fetch(`${API_URL}/auth/refresh`, {
       credentials: "include",
       method: "POST",
       signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),
     });
-    return response.ok;
+    if (response.ok) return "refreshed";
+    return response.status === 401 ? "unauthorized" : "unavailable";
   } catch {
-    return false;
+    return "unavailable";
   }
 }
