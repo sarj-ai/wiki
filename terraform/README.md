@@ -95,8 +95,11 @@ Google Cloud's external HTTPS load balancer with:
   route to it without exposing the `run.app` URL.
 - **Cloud Armor security policy** — GCP's WAF, runs in parallel
   with Cloudflare's edge WAF. Enabled preconfigured rules for XSS,
-  SQLi, LFI, RFI, and RCE from the OWASP ModSecurity CRS, plus a
-  rate-based-ban rule capping per-IP traffic at 100 req/min.
+  SQLi, LFI, RFI, and RCE from the OWASP ModSecurity CRS. An enforced
+  Cloudflare-source edge policy makes `CF-Connecting-IP` trustworthy;
+  backend rules then limit Drive search and snippet traffic to 30 requests
+  per client IP per minute and other application traffic to 200 requests per
+  client IP per minute. Health checks and CORS preflights are excluded.
 - **Google-managed TLS cert** via Certificate Manager, scoped to
   `backend_domain`.
 - **HTTP → HTTPS 301 redirect** so port-80 traffic gets upgraded
@@ -105,11 +108,12 @@ Google Cloud's external HTTPS load balancer with:
 ### Cloudflare
 
 Cloudflare sits in front of the GCLB as the edge proxy (orange cloud).
-All Cloudflare configuration — DNS A-record, zone settings, WAF rules,
-rate limits, and bot mitigation — is managed manually in the Cloudflare
-dashboard. The zone is shared across multiple sarj.ai services, so
-Terraform does not touch it. Cloud Armor (`loadbalancer.tf`) provides
-an independent WAF layer at the GCP tier.
+Zone-level Cloudflare configuration — DNS A-record, zone settings, WAF rules,
+and bot mitigation — is managed manually in the Cloudflare dashboard. The zone
+is shared across multiple sarj.ai services, so Terraform does not touch it.
+Cloud Armor (`loadbalancer.tf`) provides the code-managed backend rate limits
+and an independent WAF layer at the GCP tier; Worker-local Smart Create limits
+remain declared in `frontend/wrangler.toml`.
 
 ### Security Command Center (`security.tf`)
 

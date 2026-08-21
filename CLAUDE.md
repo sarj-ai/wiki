@@ -62,7 +62,7 @@ backend/app/
   config.py   pydantic-settings, loaded once at startup
   database.py async engine + session factory
   logging_config.py   loguru sink + stdlib intercept handler
-  main.py     FastAPI app, lifespan, slowapi rate limiter, routers
+  main.py     FastAPI app, lifespan, middleware, routers
 ```
 
 Routers never call Google APIs or the DB directly — they resolve a service via `Depends` and pass through. `__init__.py` files are empty; every call site imports from the module that actually owns the symbol.

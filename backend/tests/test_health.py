@@ -4,8 +4,6 @@ from types import TracebackType
 
 import httpx
 import pytest
-from starlette.requests import Request
-from starlette.types import Scope
 
 from app import main
 
@@ -36,26 +34,12 @@ class _SessionContext:
         return None
 
 
-def _request() -> Request:
-    scope: Scope = {
-        "headers": [],
-        "http_version": "1.1",
-        "method": "GET",
-        "path": "/health",
-        "query_string": b"",
-        "scheme": "https",
-        "server": ("api.example.test", 443),
-        "type": "http",
-    }
-    return Request(scope)
-
-
 @pytest.mark.asyncio
 async def test_health_reports_database_and_release_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(main, "async_session", lambda: _SessionContext(fail=False))
-    response = await main.health_check(_request())
+    response = await main.health_check()
     assert response == {"database": "ok", "revision": main.settings.RELEASE_SHA, "status": "ok"}
 
 
@@ -64,7 +48,7 @@ async def test_health_keeps_release_identity_when_database_is_degraded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(main, "async_session", lambda: _SessionContext(fail=True))
-    response = await main.health_check(_request())
+    response = await main.health_check()
     assert response == {
         "database": "unavailable",
         "revision": main.settings.RELEASE_SHA,
