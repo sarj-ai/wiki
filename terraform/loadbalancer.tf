@@ -170,9 +170,7 @@ resource "google_compute_security_policy" "edge_armor" {
 #   500-540   OWASP WAF rules. Deny on match, continue on no-match —
 #             run before the allowlist so a malicious request from a
 #             Cloudflare IP still gets blocked.
-#   550-580   Preview-only missing-client-IP detection and per-client-IP
-#             throttles. SlowAPI remains enforced until these rules and the
-#             frontend's 429 behavior are proven in production.
+#   550-580   Missing-client-IP enforcement and per-client-IP throttles.
 #   600-620   Cloudflare IP allowlist. Cloudflare publishes 15 IPv4
 #             ranges and 7 IPv6 ranges; ``SRC_IPS_V1`` caps at 10 per
 #             rule, so we split across three rules. Refresh from
@@ -183,9 +181,8 @@ resource "google_compute_security_policy" "edge_armor" {
 #             Cloud Run run.app URL (rejected earlier by
 #             ``INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER``) are closed.
 #
-# Backend rate rules are added only after the edge origin policy is enforced;
-# otherwise their conforming action could bypass this policy's source gate.
-# SlowAPI remains the temporary limiter during that no-gap rollout.
+# Backend rate rules rely on the enforced edge origin policy; otherwise their
+# conforming action could bypass this policy's source gate.
 resource "google_compute_security_policy" "backend_armor" {
   name = "sarj-docs-backend-armor"
 
@@ -281,26 +278,26 @@ resource "google_compute_security_policy" "backend_armor" {
   }
 
   # A missing or empty visitor identity would make USER_IP fall back to the
-  # immediate Cloudflare source IP. Detect that condition separately so later
-  # enforcement can fail closed without sharing one proxy rate-limit bucket.
+  # immediate Cloudflare source IP. Detect that condition separately so
+  # enforcement fails closed without sharing one proxy rate-limit bucket.
   rule {
     action   = "deny(403)"
     priority = 550
-    preview  = true
+    preview  = false
     match {
       expr {
         expression = "!has(request.headers['cf-connecting-ip']) || request.headers['cf-connecting-ip'] == ''"
       }
     }
-    description = "preview deny missing or empty client IP"
+    description = "deny missing or empty client IP"
   }
 
   # Keep Drive search and snippet requests in independent buckets, matching the
-  # application's existing per-route SlowAPI overrides. OPTIONS remains exempt.
+  # product's per-route rate contract. OPTIONS remains exempt.
   rule {
     action   = "throttle"
     priority = 560
-    preview  = true
+    preview  = false
     match {
       expr {
         expression = "has(request.headers['cf-connecting-ip']) && request.headers['cf-connecting-ip'] != '' && request.method != 'OPTIONS' && request.path.urlDecode() == '/drive-search'"
@@ -316,13 +313,13 @@ resource "google_compute_security_policy" "backend_armor" {
         interval_sec = 60
       }
     }
-    description = "preview drive search throttle per client IP"
+    description = "drive search throttle per client IP"
   }
 
   rule {
     action   = "throttle"
     priority = 570
-    preview  = true
+    preview  = false
     match {
       expr {
         expression = "has(request.headers['cf-connecting-ip']) && request.headers['cf-connecting-ip'] != '' && request.method != 'OPTIONS' && request.path.urlDecode() == '/drive-search/snippet'"
@@ -338,7 +335,7 @@ resource "google_compute_security_policy" "backend_armor" {
         interval_sec = 60
       }
     }
-    description = "preview search snippet throttle per client IP"
+    description = "search snippet throttle per client IP"
   }
 
   # Health checks and preflights must never consume a client bucket. All other
@@ -346,7 +343,7 @@ resource "google_compute_security_policy" "backend_armor" {
   rule {
     action   = "throttle"
     priority = 580
-    preview  = true
+    preview  = false
     match {
       expr {
         expression = "has(request.headers['cf-connecting-ip']) && request.headers['cf-connecting-ip'] != '' && request.method != 'OPTIONS' && request.path.urlDecode() != '/health' && !request.path.urlDecode().matches('^/drive-search$|^/drive-search/snippet$')"
@@ -362,7 +359,7 @@ resource "google_compute_security_policy" "backend_armor" {
         interval_sec = 60
       }
     }
-    description = "preview general throttle per client IP"
+    description = "general throttle per client IP"
   }
 
   # Cloudflare IPv4 set 1 (first 10 of 15 published ranges).
