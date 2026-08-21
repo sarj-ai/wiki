@@ -86,8 +86,9 @@ resource "google_compute_backend_service" "backend" {
 }
 
 # The edge policy establishes Cloudflare as the only intended public path before
-# requests reach the backend WAF. Its default deny remains in preview until the
-# observed policy logs prove the allowlist covers production traffic.
+# requests reach the backend WAF. A shadow catch-all deny remains in preview
+# until policy logs prove the allowlist covers production traffic; Cloud Armor's
+# mandatory default rule cannot itself run in preview.
 resource "google_compute_security_policy" "edge_armor" {
   name = "sarj-docs-edge-armor"
   type = "CLOUD_ARMOR_EDGE"
@@ -137,7 +138,7 @@ resource "google_compute_security_policy" "edge_armor" {
 
   rule {
     action   = "deny(403)"
-    priority = 2147483647
+    priority = 2147483646
     preview  = true
     match {
       versioned_expr = "SRC_IPS_V1"
@@ -146,6 +147,19 @@ resource "google_compute_security_policy" "edge_armor" {
       }
     }
     description = "preview deny for non-Cloudflare origins"
+  }
+
+  rule {
+    action   = "allow"
+    priority = 2147483647
+    preview  = false
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+    description = "default allow after preview evaluation"
   }
 }
 
