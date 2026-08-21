@@ -280,30 +280,30 @@ resource "google_compute_security_policy" "backend_armor" {
     description = "block RCE (opt-out 932200: fires on JWT base64url cookies)"
   }
 
-  # Missing or invalid visitor identity falls back to the immediate Cloudflare
-  # source IP. Detect that condition separately so enforcement can fail closed
-  # without collapsing unrelated visitors into one shared rate-limit bucket.
+  # A missing or empty visitor identity would make USER_IP fall back to the
+  # immediate Cloudflare source IP. Detect that condition separately so later
+  # enforcement can fail closed without sharing one proxy rate-limit bucket.
   rule {
     action   = "deny(403)"
     priority = 550
     preview  = true
     match {
       expr {
-        expression = "!has(request.headers['cf-connecting-ip']) || origin.user_ip == origin.ip"
+        expression = "!has(request.headers['cf-connecting-ip']) || request.headers['cf-connecting-ip'] == ''"
       }
     }
-    description = "preview deny missing or invalid client IP"
+    description = "preview deny missing or empty client IP"
   }
 
-  # Keep full Drive search and snippet lookup in independent buckets, matching
-  # the application's existing per-route SlowAPI overrides.
+  # Keep Drive search and snippet requests in independent buckets, matching the
+  # application's existing per-route SlowAPI overrides. OPTIONS remains exempt.
   rule {
     action   = "throttle"
     priority = 560
     preview  = true
     match {
       expr {
-        expression = "origin.user_ip != origin.ip && request.method == 'GET' && request.path.urlDecode() == '/drive-search'"
+        expression = "has(request.headers['cf-connecting-ip']) && request.headers['cf-connecting-ip'] != '' && request.method != 'OPTIONS' && request.path.urlDecode() == '/drive-search'"
       }
     }
     rate_limit_options {
@@ -325,7 +325,7 @@ resource "google_compute_security_policy" "backend_armor" {
     preview  = true
     match {
       expr {
-        expression = "origin.user_ip != origin.ip && request.method == 'GET' && request.path.urlDecode() == '/drive-search/snippet'"
+        expression = "has(request.headers['cf-connecting-ip']) && request.headers['cf-connecting-ip'] != '' && request.method != 'OPTIONS' && request.path.urlDecode() == '/drive-search/snippet'"
       }
     }
     rate_limit_options {
@@ -341,15 +341,15 @@ resource "google_compute_security_policy" "backend_armor" {
     description = "preview search snippet throttle per client IP"
   }
 
-  # Health checks and preflights must never consume a client bucket. Valid
-  # search GETs are handled by the two independent rules above.
+  # Health checks and preflights must never consume a client bucket. All other
+  # search-path methods are handled by the two independent rules above.
   rule {
     action   = "throttle"
     priority = 580
     preview  = true
     match {
       expr {
-        expression = "origin.user_ip != origin.ip && request.method != 'OPTIONS' && request.path.urlDecode() != '/health' && !(request.method == 'GET' && request.path.urlDecode().matches('^/drive-search(/snippet)?$'))"
+        expression = "has(request.headers['cf-connecting-ip']) && request.headers['cf-connecting-ip'] != '' && request.method != 'OPTIONS' && request.path.urlDecode() != '/health' && !request.path.urlDecode().matches('^/drive-search$|^/drive-search/snippet$')"
       }
     }
     rate_limit_options {
