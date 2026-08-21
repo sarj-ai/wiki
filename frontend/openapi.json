@@ -1055,6 +1055,7 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 500,
             "title": "Hidden Workspace Ids",
             "type": "array"
           },
@@ -1555,10 +1556,10 @@
       "SortOrderBulkWrite": {
         "properties": {
           "items": {
-            "default": [],
             "items": {
               "$ref": "#/components/schemas/SortOrderWrite"
             },
+            "maxItems": 10000,
             "title": "Items",
             "type": "array"
           }

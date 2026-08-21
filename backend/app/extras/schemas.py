@@ -9,6 +9,8 @@ from app.identifiers import DriveId, FileId
 
 IconStr = Annotated[str, StringConstraints(min_length=1, max_length=8)]
 FiniteFloat = Annotated[float, Field(allow_inf_nan=False)]
+MAX_SORT_ORDER_ITEMS = 10_000
+MAX_HIDDEN_WORKSPACE_IDS = 500
 
 
 class DocIconWrite(BaseModel):
@@ -37,7 +39,7 @@ class SortOrderWrite(BaseModel):
 
 
 class SortOrderBulkWrite(BaseModel):
-    items: list[SortOrderWrite] = []
+    items: list[SortOrderWrite] = Field(default_factory=list, max_length=MAX_SORT_ORDER_ITEMS)
 
 
 class SortOrderRead(BaseModel):
@@ -51,7 +53,10 @@ class SortOrderBulkResult(BaseModel):
 
 class PreferencesWrite(BaseModel):
     show_non_doc_files: bool | None = None
-    hidden_workspace_ids: list[DriveId] = Field(default_factory=list)
+    hidden_workspace_ids: list[DriveId] = Field(
+        default_factory=list,
+        max_length=MAX_HIDDEN_WORKSPACE_IDS,
+    )
 
 
 class PreferencesRead(BaseModel):
