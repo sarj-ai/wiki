@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pydantic import ValidationError
+import pytest
+
 from app.drive.schemas import (
     NAVIGATOR_SUPPORTED_MIME_TYPES,
     DriveNode,
@@ -7,7 +10,14 @@ from app.drive.schemas import (
     DriveTree,
     SearchResult,
 )
-from app.extras.schemas import PreferencesRead, PreferencesWrite
+from app.extras.schemas import (
+    MAX_HIDDEN_WORKSPACE_IDS,
+    MAX_SORT_ORDER_ITEMS,
+    PreferencesRead,
+    PreferencesWrite,
+    SortOrderBulkWrite,
+    SortOrderWrite,
+)
 from app.identifiers import DriveId, FileId
 
 
@@ -72,3 +82,25 @@ def test_preferences_write_tracks_omitted_collection() -> None:
 def test_preferences_read_serializes_defaults() -> None:
     p = PreferencesRead(show_non_doc_files=True, hidden_workspace_ids=[])
     assert p.model_dump() == {"show_non_doc_files": True, "hidden_workspace_ids": []}
+
+
+def test_bulk_sort_order_has_bounded_cardinality() -> None:
+    items = [
+        SortOrderWrite(drive_id=DriveId(f"drive-{index}"), sort_order=float(index))
+        for index in range(MAX_SORT_ORDER_ITEMS)
+    ]
+    assert len(SortOrderBulkWrite(items=items).items) == MAX_SORT_ORDER_ITEMS
+
+    with pytest.raises(ValidationError):
+        SortOrderBulkWrite(items=[*items, items[0]])
+
+
+def test_hidden_workspaces_have_bounded_cardinality() -> None:
+    drive_ids = [DriveId(f"drive-{index}") for index in range(MAX_HIDDEN_WORKSPACE_IDS)]
+    assert (
+        len(PreferencesWrite(hidden_workspace_ids=drive_ids).hidden_workspace_ids)
+        == MAX_HIDDEN_WORKSPACE_IDS
+    )
+
+    with pytest.raises(ValidationError):
+        PreferencesWrite(hidden_workspace_ids=[*drive_ids, DriveId("overflow")])
