@@ -34,7 +34,11 @@ resource "google_cloud_run_v2_service" "backend" {
 
   # CI/CD manages the container image — don't let Terraform overwrite it
   lifecycle {
-    ignore_changes = [template[0].containers[0].image]
+    ignore_changes = [
+      client,
+      client_version,
+      template[0].containers[0].image,
+    ]
 
     postcondition {
       condition     = self.ingress == "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"

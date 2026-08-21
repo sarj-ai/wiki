@@ -95,6 +95,7 @@ resource "google_compute_security_policy" "edge_armor" {
   rule {
     action   = "allow"
     priority = 600
+    preview  = false
     match {
       versioned_expr = "SRC_IPS_V1"
       config {
@@ -107,6 +108,7 @@ resource "google_compute_security_policy" "edge_armor" {
   rule {
     action   = "allow"
     priority = 610
+    preview  = false
     match {
       versioned_expr = "SRC_IPS_V1"
       config {
@@ -119,6 +121,7 @@ resource "google_compute_security_policy" "edge_armor" {
   rule {
     action   = "allow"
     priority = 620
+    preview  = false
     match {
       versioned_expr = "SRC_IPS_V1"
       config {
