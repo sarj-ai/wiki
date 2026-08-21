@@ -7,8 +7,8 @@ resource "google_cloud_tasks_queue" "smart_create" {
   location = var.region
 
   rate_limits {
-    # Stay below the backend perimeter's 100 requests/minute per-IP limit while
-    # allowing one task on each of the three configured Cloud Run instances.
+    # Bound legitimate OIDC-authenticated deliveries independently; the public
+    # perimeter still protects this route from arbitrary callers.
     max_dispatches_per_second = 1
     max_concurrent_dispatches = 3
   }
