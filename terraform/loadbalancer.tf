@@ -170,6 +170,9 @@ resource "google_compute_security_policy" "edge_armor" {
 #   500-540   OWASP WAF rules. Deny on match, continue on no-match —
 #             run before the allowlist so a malicious request from a
 #             Cloudflare IP still gets blocked.
+#   550-580   Preview-only missing-client-IP detection and per-client-IP
+#             throttles. SlowAPI remains enforced until these rules and the
+#             frontend's 429 behavior are proven in production.
 #   600-620   Cloudflare IP allowlist. Cloudflare publishes 15 IPv4
 #             ranges and 7 IPv6 ranges; ``SRC_IPS_V1`` caps at 10 per
 #             rule, so we split across three rules. Refresh from
@@ -185,6 +188,10 @@ resource "google_compute_security_policy" "edge_armor" {
 # SlowAPI remains the temporary limiter during that no-gap rollout.
 resource "google_compute_security_policy" "backend_armor" {
   name = "sarj-docs-backend-armor"
+
+  advanced_options_config {
+    user_ip_request_headers = ["CF-Connecting-IP"]
+  }
 
   # OWASP ModSecurity Core Rule Set — preconfigured WAF rules.
   # XSS rule with opt-out for 941340. Rule 941340 ("IE XSS Filters")
@@ -271,6 +278,91 @@ resource "google_compute_security_policy" "backend_armor" {
       }
     }
     description = "block RCE (opt-out 932200: fires on JWT base64url cookies)"
+  }
+
+  # Missing or invalid visitor identity falls back to the immediate Cloudflare
+  # source IP. Detect that condition separately so enforcement can fail closed
+  # without collapsing unrelated visitors into one shared rate-limit bucket.
+  rule {
+    action   = "deny(403)"
+    priority = 550
+    preview  = true
+    match {
+      expr {
+        expression = "!has(request.headers['cf-connecting-ip']) || origin.user_ip == origin.ip"
+      }
+    }
+    description = "preview deny missing or invalid client IP"
+  }
+
+  # Keep full Drive search and snippet lookup in independent buckets, matching
+  # the application's existing per-route SlowAPI overrides.
+  rule {
+    action   = "throttle"
+    priority = 560
+    preview  = true
+    match {
+      expr {
+        expression = "origin.user_ip != origin.ip && request.method == 'GET' && request.path.urlDecode() == '/drive-search'"
+      }
+    }
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+      enforce_on_key = "USER_IP"
+
+      rate_limit_threshold {
+        count        = 30
+        interval_sec = 60
+      }
+    }
+    description = "preview drive search throttle per client IP"
+  }
+
+  rule {
+    action   = "throttle"
+    priority = 570
+    preview  = true
+    match {
+      expr {
+        expression = "origin.user_ip != origin.ip && request.method == 'GET' && request.path.urlDecode() == '/drive-search/snippet'"
+      }
+    }
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+      enforce_on_key = "USER_IP"
+
+      rate_limit_threshold {
+        count        = 30
+        interval_sec = 60
+      }
+    }
+    description = "preview search snippet throttle per client IP"
+  }
+
+  # Health checks and preflights must never consume a client bucket. Valid
+  # search GETs are handled by the two independent rules above.
+  rule {
+    action   = "throttle"
+    priority = 580
+    preview  = true
+    match {
+      expr {
+        expression = "origin.user_ip != origin.ip && request.method != 'OPTIONS' && request.path.urlDecode() != '/health' && !(request.method == 'GET' && request.path.urlDecode().matches('^/drive-search(/snippet)?$'))"
+      }
+    }
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+      enforce_on_key = "USER_IP"
+
+      rate_limit_threshold {
+        count        = 200
+        interval_sec = 60
+      }
+    }
+    description = "preview general throttle per client IP"
   }
 
   # Cloudflare IPv4 set 1 (first 10 of 15 published ranges).
