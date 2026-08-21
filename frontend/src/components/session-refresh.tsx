@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 
 import { deduplicatedRefresh } from "@/lib/session-client";
+import { notifyTerminalUnauthorized } from "@/lib/session-events";
 import { ZLastRefreshMs } from "@/lib/storage-schemas";
 
 const REFRESH_INTERVAL_MS = 20 * 60 * 1000;
@@ -18,8 +19,9 @@ export function SessionRefresh() {
       const last = ZLastRefreshMs.parse(localStorage.getItem(LAST_REFRESH_KEY));
       if (Date.now() - last < REFRESH_INTERVAL_MS) return;
       localStorage.setItem(LAST_REFRESH_KEY, String(Date.now()));
-      void deduplicatedRefresh().then((ok) => {
-        if (!ok) localStorage.removeItem(LAST_REFRESH_KEY);
+      void deduplicatedRefresh().then((result) => {
+        if (result !== "refreshed") localStorage.removeItem(LAST_REFRESH_KEY);
+        if (result === "unauthorized") notifyTerminalUnauthorized();
       });
     };
     maybeRefresh();

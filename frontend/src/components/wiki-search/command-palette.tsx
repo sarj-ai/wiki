@@ -13,6 +13,7 @@ import { useCommandPaletteState } from "@/hooks/use-command-palette";
 import { useDriveSearch, useDriveSearchSnippet } from "@/hooks/use-drive-search";
 import { expandPath, requestReveal } from "@/hooks/use-expanded-folders";
 import { wikiKeys } from "@/hooks/use-wiki-tree";
+import { ApiError, RATE_LIMIT_MESSAGE } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
 import { displayFileName, isGoogleWorkspaceType, renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
@@ -187,7 +188,19 @@ export function CommandPalette() {
                     <Loader2 className="size-3 animate-spin" /> Searching…
                   </div>
                 ) : null}
-                {hasQuery && !searchQuery.isFetching && results.length === 0 ? (
+                {hasQuery && searchQuery.isError ? (
+                  <QueryError
+                    error={searchQuery.error}
+                    fallback="Search is temporarily unavailable."
+                    label="Retry search"
+                    onRetry={() => void searchQuery.refetch()}
+                    retrying={searchQuery.isFetching}
+                  />
+                ) : null}
+                {hasQuery &&
+                !searchQuery.isFetching &&
+                !searchQuery.isError &&
+                results.length === 0 ? (
                   <div className="text-muted-foreground px-3 py-4 text-xs">No results</div>
                 ) : null}
                 {results.map((result) => (
@@ -384,14 +397,23 @@ function PreviewPanel({
             Loading match preview…
           </div>
         ) : null}
-        {!inaccessible && !snippetQuery.isLoading && !snippet?.snippet && (
+        {!inaccessible && snippetQuery.isError ? (
+          <QueryError
+            error={snippetQuery.error}
+            fallback="The match preview is temporarily unavailable."
+            label="Retry preview"
+            onRetry={() => void snippetQuery.refetch()}
+            retrying={snippetQuery.isFetching}
+          />
+        ) : null}
+        {!inaccessible && !snippetQuery.isLoading && !snippetQuery.isError && !snippet?.snippet && (
           <div className="text-muted-foreground text-sm">
             {isGoogleWorkspaceType(target.targetMimeType)
               ? "Drive matched this file but we couldn't pinpoint the exact phrase in its text. Open it to see the match in context."
               : "Inline text preview isn't available for this file type — open it to view the content."}
           </div>
         )}
-        {!inaccessible && snippet?.snippet ? (
+        {!inaccessible && !snippetQuery.isError && snippet?.snippet ? (
           <p className="text-foreground text-sm leading-relaxed">
             <Highlighted term={snippet.matchTerm ?? query} text={snippet.snippet} />
           </p>
@@ -416,6 +438,33 @@ function PreviewPanel({
           )}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function QueryError({
+  error,
+  fallback,
+  label,
+  onRetry,
+  retrying,
+}: {
+  error: unknown;
+  fallback: string;
+  label: string;
+  onRetry: () => void;
+  retrying: boolean;
+}) {
+  const message = error instanceof ApiError && error.status === 429 ? RATE_LIMIT_MESSAGE : fallback;
+  return (
+    <div
+      className="text-muted-foreground flex flex-col items-start gap-2 px-3 py-4 text-xs"
+      role="alert"
+    >
+      <span>{message}</span>
+      <Button disabled={retrying} onClick={onRetry} size="xs" type="button" variant="outline">
+        {label}
+      </Button>
     </div>
   );
 }

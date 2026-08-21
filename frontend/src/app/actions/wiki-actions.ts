@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 
 import type { ActionResult } from "@/lib/action-result";
 import { getRecentDocumentAliases, type RecentDocumentAlias } from "@/lib/alias-client";
+import { RATE_LIMIT_MESSAGE } from "@/lib/api-error";
 import { zRecentDocumentAliasesRequest } from "@/lib/generated/zod.gen";
 import { ServerApiError, serverWikiApi } from "@/lib/server-api";
 import type { CreateFileInput, DocIconInput, PreferencesInput, UserProfile } from "@/lib/wiki-api";
@@ -106,18 +107,23 @@ export async function getRecentDocumentAliasesAction(
   return { error: "Quick links could not be validated", ok: false, status: 502 };
 }
 
+// react-doctor-disable-next-line server-auth-actions -- The backend logout call authenticates the caller before this action clears only that caller's cookies.
 export async function logoutAction(): Promise<ActionResult<null>> {
   return resultOf(async () => {
     try {
       await serverWikiApi.logout();
     } finally {
-      const cookieStore = await cookies();
-      for (const name of ["access_token", "refresh_token", "session_exp"]) {
-        cookieStore.delete(name);
-      }
+      await clearSessionCookies();
     }
     return null;
   });
+}
+
+async function clearSessionCookies(): Promise<void> {
+  const cookieStore = await cookies();
+  for (const name of ["access_token", "refresh_token", "session_exp"]) {
+    cookieStore.delete(name);
+  }
 }
 
 export async function createFileAction(
@@ -204,7 +210,12 @@ async function resultOf<T>(work: () => Promise<T>): Promise<ActionResult<T>> {
   } catch (error: unknown) {
     const status = error instanceof ServerApiError ? error.status : 500;
     return {
-      error: status === 401 ? "Your session has expired" : "The request could not be completed",
+      error:
+        status === 401
+          ? "Your session has expired"
+          : status === 429
+            ? RATE_LIMIT_MESSAGE
+            : "The request could not be completed",
       ok: false,
       status,
     };

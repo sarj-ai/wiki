@@ -73,6 +73,16 @@ describe("Smart Create edge actions", () => {
     expect(mocks.callApi).not.toHaveBeenCalled();
   });
 
+  it("normalizes an upstream creation rate limit", async () => {
+    mocks.callApi.mockResolvedValue({ body: "", ok: false, status: 429 });
+
+    await expect(proposeSmartFileAction("{}")).resolves.toEqual({
+      error: "Too many requests. Try again in a minute.",
+      ok: false,
+      status: 429,
+    });
+  });
+
   it("uses the proposal limit for document reorganization", async () => {
     await expect(proposeFileReorganizationAction("file/with spaces")).resolves.toEqual({
       data: "{}",
@@ -112,5 +122,15 @@ describe("Smart Create edge actions", () => {
       "access-token",
     );
     expect(mocks.readApi).toHaveBeenNthCalledWith(2, "/templates?refresh=true", "access-token");
+  });
+
+  it("normalizes an upstream read rate limit", async () => {
+    mocks.readApi.mockResolvedValue({ body: "", ok: false, status: 429 });
+
+    await expect(listSmartTemplatesAction(false)).resolves.toEqual({
+      error: "Too many requests. Try again in a minute.",
+      ok: false,
+      status: 429,
+    });
   });
 });

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ApiError } from "@/lib/api-error";
+import { ApiError, RATE_LIMIT_MESSAGE, SESSION_REFRESH_UNAVAILABLE_MESSAGE } from "@/lib/api-error";
 import { API_URL } from "@/lib/env";
 import type { Client } from "@/lib/generated/client";
 import { client } from "@/lib/generated/client.gen";
@@ -47,7 +47,14 @@ function sessionExpiresAt(): null | number {
 client.interceptors.request.use(async (request) => {
   const exp = sessionExpiresAt();
   if (exp !== null && Date.now() > exp - SESSION_EXP_SKEW_MS) {
-    await deduplicatedRefresh();
+    const refresh = await deduplicatedRefresh();
+    if (refresh === "unavailable") {
+      throw new ApiError(503, SESSION_REFRESH_UNAVAILABLE_MESSAGE);
+    }
+    if (refresh === "unauthorized") {
+      notifyTerminalUnauthorized();
+      throw new ApiError(401, "Your session has expired");
+    }
   }
   if (request.method !== "GET" && request.method !== "HEAD") {
     replayCache.set(request, request.clone());
@@ -58,13 +65,17 @@ client.interceptors.request.use(async (request) => {
 client.interceptors.response.use(async (response, request) => {
   let settled = response;
   if (settled.status === 401 && !request.url.endsWith("/auth/refresh")) {
-    const refreshed = await deduplicatedRefresh();
-    if (refreshed) {
+    const refresh = await deduplicatedRefresh();
+    if (refresh === "refreshed") {
       settled = await fetch(replayCache.get(request) ?? request);
+    }
+    if (refresh === "unavailable") {
+      throw new ApiError(503, SESSION_REFRESH_UNAVAILABLE_MESSAGE);
     }
   }
   if (!settled.ok) {
     if (settled.status === 401) notifyTerminalUnauthorized();
+    if (settled.status === 429) throw new ApiError(429, RATE_LIMIT_MESSAGE);
     const message = await readErrorMessage(settled);
     throw new ApiError(settled.status, message ?? `API error: ${settled.status}`);
   }

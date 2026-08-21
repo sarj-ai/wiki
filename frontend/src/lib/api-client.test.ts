@@ -137,6 +137,15 @@ describe("error mapping", () => {
     if (!(failure instanceof ApiError)) throw new Error("Expected ApiError");
     expect(failure.message).toBe("API error: 502");
   });
+
+  it("uses stable copy for a bodyless perimeter rate limit", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 429 })));
+
+    await expect(wikiApi.getDrives()).rejects.toMatchObject({
+      message: "Too many requests. Try again in a minute.",
+      status: 429,
+    });
+  });
 });
 
 describe("401 refresh-and-replay", () => {
@@ -199,6 +208,25 @@ describe("401 refresh-and-replay", () => {
     await expect(wikiApi.getDrives()).rejects.toMatchObject({ status: 401 });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(listener).toHaveBeenCalledTimes(1);
+    window.removeEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
+  });
+
+  it("does not announce terminal expiry when refresh is unavailable", async () => {
+    const listener = vi.fn();
+    window.addEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
+    const fetchMock = vi.fn((input: Request | string | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.endsWith("/auth/refresh")) return new Response(null, { status: 429 });
+      return jsonResponse({ detail: "expired" }, 401);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(wikiApi.getDrives()).rejects.toMatchObject({
+      message: "Your session could not be refreshed. Try again in a moment.",
+      status: 503,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(listener).not.toHaveBeenCalled();
     window.removeEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
   });
 });

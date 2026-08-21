@@ -4,6 +4,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { cookies, headers } from "next/headers";
 
 import type { ActionResult } from "@/lib/action-result";
+import { RATE_LIMIT_MESSAGE } from "@/lib/api-error";
 import { callSmartCreateApi, readSmartCreateApi } from "@/lib/smart-create-server-client";
 
 type SmartOperation = "create" | "proposal";
@@ -57,7 +58,9 @@ async function runSmartRead(path: string): Promise<ActionResult<string>> {
   if (!response.ok) {
     return failure(
       response.status,
-      response.error ?? "Smart Create could not complete the request",
+      response.status === 429
+        ? RATE_LIMIT_MESSAGE
+        : (response.error ?? "Smart Create could not complete the request"),
     );
   }
   return { data: response.body, ok: true };
@@ -84,7 +87,7 @@ async function runSmartOperation(
     }
   } else {
     const limit = await limiter.limit({ key: clientAddress });
-    if (!limit.success) return failure(429, "Too many requests. Try again in a minute.");
+    if (!limit.success) return failure(429, RATE_LIMIT_MESSAGE);
   }
 
   const response = await callSmartCreateApi(
@@ -96,7 +99,9 @@ async function runSmartOperation(
   if (!response.ok) {
     return failure(
       response.status,
-      response.error ?? "Smart Create could not complete the request",
+      response.status === 429
+        ? RATE_LIMIT_MESSAGE
+        : (response.error ?? "Smart Create could not complete the request"),
     );
   }
   return { data: response.body, ok: true };

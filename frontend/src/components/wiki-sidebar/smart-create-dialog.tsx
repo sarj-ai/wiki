@@ -40,6 +40,9 @@ import { MIME_DOC } from "@/types/wiki";
 
 import { FolderPickerDialog } from "./folder-picker-dialog";
 
+type TemplateCatalogStatus =
+  { kind: "error"; message: string } | { kind: "loading" } | { kind: "ready" };
+
 export function SmartCreateDialog({
   invokingDriveId,
   invokingFolderId,
@@ -52,7 +55,7 @@ export function SmartCreateDialog({
   const [templates, setTemplates] = useState<
     Awaited<ReturnType<typeof smartCreateApi.listTemplates>>
   >([]);
-  const [catalogStatus, setCatalogStatus] = useState<"error" | "loading" | "ready">("loading");
+  const [catalogStatus, setCatalogStatus] = useState<TemplateCatalogStatus>({ kind: "loading" });
   const [submitting, setSubmitting] = useState(false);
   const [creationStage, setCreationStage] = useState<"enqueuing" | "idle" | "waiting">("idle");
   const [destinationOpen, setDestinationOpen] = useState(false);
@@ -66,7 +69,7 @@ export function SmartCreateDialog({
     if (!open) return;
     const sequence = ++catalogSequence.current;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Opening the dialog intentionally starts a fresh catalog load.
-    setCatalogStatus("loading");
+    setCatalogStatus({ kind: "loading" });
     void smartCreateApi
       .listTemplates()
       .then((result) => {
@@ -74,11 +77,14 @@ export function SmartCreateDialog({
         const scopedTemplates = templatesInDrive(result, invokingDriveId);
         setTemplates(scopedTemplates);
         setState((current) => reconcileTemplateSelection(current, scopedTemplates));
-        setCatalogStatus("ready");
+        setCatalogStatus({ kind: "ready" });
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (sequence !== catalogSequence.current) return;
-        setCatalogStatus("error");
+        setCatalogStatus({
+          kind: "error",
+          message: errorMessage(error, "Templates couldn’t be loaded."),
+        });
       });
     return () => {
       catalogSequence.current += 1;
@@ -100,18 +106,19 @@ export function SmartCreateDialog({
 
   const refreshTemplates = async () => {
     const sequence = ++catalogSequence.current;
-    setCatalogStatus("loading");
+    setCatalogStatus({ kind: "loading" });
     try {
       const result = await smartCreateApi.listTemplates(true);
       if (sequence !== catalogSequence.current) return;
       const scopedTemplates = templatesInDrive(result, invokingDriveId);
       setTemplates(scopedTemplates);
       setState((current) => reconcileTemplateSelection(current, scopedTemplates));
-      setCatalogStatus("ready");
-    } catch {
+      setCatalogStatus({ kind: "ready" });
+    } catch (error: unknown) {
       if (sequence !== catalogSequence.current) return;
-      setCatalogStatus("error");
-      toast.error("Couldn’t refresh templates");
+      const message = errorMessage(error, "Templates couldn’t be loaded.");
+      setCatalogStatus({ kind: "error", message });
+      toast.error(message);
     }
   };
 
@@ -121,6 +128,20 @@ export function SmartCreateDialog({
     setSubmitting(false);
     idempotencyKey.current = null;
     setState({ mode: next, phase: "compose" });
+  };
+
+  const finishProposal = (sequence: number) => {
+    if (sequence !== proposalSequence.current) return;
+    submitLatch.current = false;
+    setSubmitting(false);
+  };
+
+  const finishCreation = (controller: AbortController) => {
+    if (createAbort.current !== controller) return;
+    createAbort.current = null;
+    submitLatch.current = false;
+    setSubmitting(false);
+    setCreationStage("idle");
   };
 
   const continueFromCompose = async () => {
@@ -169,11 +190,8 @@ export function SmartCreateDialog({
       if (sequence !== proposalSequence.current) return;
       toast.error(errorMessage(error, "Couldn’t suggest file details"));
     } finally {
-      if (sequence === proposalSequence.current) {
-        // eslint-disable-next-line require-atomic-updates -- Sequence identity ensures this request still owns the latch.
-        submitLatch.current = false;
-        setSubmitting(false);
-      }
+      // react-doctor-disable-next-line no-loading-flag-reset-outside-finally -- This helper performs the owner-checked reset from the finally block.
+      finishProposal(sequence);
     }
   };
 
@@ -206,13 +224,8 @@ export function SmartCreateDialog({
     } catch (error: unknown) {
       toast.error(errorMessage(error, "Couldn’t create file"));
     } finally {
-      if (createAbort.current === controller) {
-        createAbort.current = null;
-        // eslint-disable-next-line require-atomic-updates -- Controller identity ensures this request still owns the latch.
-        submitLatch.current = false;
-        setSubmitting(false);
-        setCreationStage("idle");
-      }
+      // react-doctor-disable-next-line no-loading-flag-reset-outside-finally -- This helper performs the owner-checked reset from the finally block.
+      finishCreation(controller);
     }
   };
 
@@ -236,7 +249,7 @@ export function SmartCreateDialog({
             </DialogHeader>
           </div>
 
-          <div className="overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+          <div className="overflow-y-auto p-4 sm:px-6 sm:py-5">
             {state.phase === "compose" ? (
               <ComposeStep
                 catalogStatus={catalogStatus}
@@ -367,7 +380,7 @@ interface SmartCreateDialogProps {
 }
 
 interface ComposeStepProps {
-  catalogStatus: "error" | "loading" | "ready";
+  catalogStatus: TemplateCatalogStatus;
   disabled: boolean;
   mode: SmartCreateState["mode"];
   onModeChange: (mode: SmartCreateState["mode"]) => void;
@@ -395,7 +408,7 @@ function ComposeStep({
       >
         <TabsList aria-label="Starting point" className="grid w-full grid-cols-2">
           <TabsTrigger
-            disabled={disabled || (catalogStatus === "ready" && templates.length === 0)}
+            disabled={disabled || (catalogStatus.kind === "ready" && templates.length === 0)}
             value="template"
           >
             <FileStack className="size-4" /> Template
@@ -463,7 +476,7 @@ function ComposeStep({
 }
 
 interface TemplateCatalogProps {
-  catalogStatus: "error" | "loading" | "ready";
+  catalogStatus: TemplateCatalogStatus;
   disabled: boolean;
   onRefresh: () => void;
   onSelect: (template: Awaited<ReturnType<typeof smartCreateApi.listTemplates>>[number]) => void;
@@ -484,24 +497,34 @@ function TemplateCatalog({
       <div className="flex items-center justify-between">
         <Label>Templates in Drive</Label>
         <Button
-          disabled={disabled || catalogStatus === "loading"}
+          disabled={disabled || catalogStatus.kind === "loading"}
           onClick={onRefresh}
           size="xs"
           type="button"
           variant="ghost"
         >
-          <RefreshCw className={cn("size-3.5", catalogStatus === "loading" && "animate-spin")} />
+          <RefreshCw
+            className={cn("size-3.5", catalogStatus.kind === "loading" && "animate-spin")}
+          />
           Refresh
         </Button>
       </div>
       <ScrollArea className="h-[min(16rem,40dvh)] rounded-md border">
         <div className="space-y-1 p-1.5">
-          {catalogStatus === "loading" ? (
+          {catalogStatus.kind === "loading" ? (
             <div className="text-muted-foreground flex h-24 items-center justify-center gap-2 text-sm">
               <Loader2 className="size-4 animate-spin" /> Looking in Templates…
             </div>
           ) : null}
-          {catalogStatus !== "loading" && templates.length === 0 ? (
+          {catalogStatus.kind === "error" ? (
+            <div
+              className="text-muted-foreground flex h-24 items-center justify-center px-6 text-center text-sm"
+              role="alert"
+            >
+              {catalogStatus.message}
+            </div>
+          ) : null}
+          {catalogStatus.kind === "ready" && templates.length === 0 ? (
             <div className="text-muted-foreground flex h-36 flex-col items-center justify-center gap-2 px-6 text-center text-sm">
               <FolderOpen className="size-6" />
               <p>No templates available.</p>
@@ -510,7 +533,7 @@ function TemplateCatalog({
               </p>
             </div>
           ) : null}
-          {catalogStatus !== "loading"
+          {catalogStatus.kind !== "loading"
             ? templates.map((template) => (
                 <Button
                   className={cn(

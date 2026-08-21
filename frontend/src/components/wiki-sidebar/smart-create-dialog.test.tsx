@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
+import { ApiError } from "@/lib/api-error";
 import { smartCreateApi } from "@/lib/smart-create-client";
 import type { DriveTemplate } from "@/lib/smart-create-types";
 import { MIME_DOC } from "@/types/wiki";
@@ -100,6 +101,21 @@ describe("SmartCreateDialog", () => {
 
     expect(await findButton("PRD Template")).toBeEnabled();
     expect(document.body).not.toHaveTextContent("Looking in Templates…");
+  });
+
+  it("shows a retryable template rate limit instead of an empty catalog", async () => {
+    vi.spyOn(smartCreateApi, "listTemplates").mockRejectedValue(
+      new ApiError(429, "Too many requests. Try again in a minute."),
+    );
+
+    renderDialog(root);
+    clickButton(await findButton("Template"));
+
+    await vi.waitFor(() => {
+      expect(document.body).toHaveTextContent("Too many requests. Try again in a minute.");
+      expect(document.body).not.toHaveTextContent("No templates available");
+      expect(findButtonNow("Refresh")).toBeEnabled();
+    });
   });
 
   it("locks compose inputs only while the owned proposal is pending", async () => {
