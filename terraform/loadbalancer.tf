@@ -13,6 +13,33 @@
 #                → GCLB anycast IP (Cloud Armor baseline + TLS term)
 #                → serverless NEG → Cloud Run backend.
 
+locals {
+  cloudflare_origin_cidrs = [
+    "173.245.48.0/20",
+    "103.21.244.0/22",
+    "103.22.200.0/22",
+    "103.31.4.0/22",
+    "141.101.64.0/18",
+    "108.162.192.0/18",
+    "190.93.240.0/20",
+    "188.114.96.0/20",
+    "197.234.240.0/22",
+    "198.41.128.0/17",
+    "162.158.0.0/15",
+    "104.16.0.0/13",
+    "104.24.0.0/14",
+    "172.64.0.0/13",
+    "131.0.72.0/22",
+    "2400:cb00::/32",
+    "2606:4700::/32",
+    "2803:f800::/32",
+    "2405:b500::/32",
+    "2405:8100::/32",
+    "2a06:98c0::/29",
+    "2c0f:f248::/32",
+  ]
+}
+
 # Reserve a global IPv4 address that Cloudflare will DNS-proxy to.
 resource "google_compute_global_address" "backend_lb" {
   name = "sarj-docs-backend-lb-ip"
@@ -49,11 +76,73 @@ resource "google_compute_backend_service" "backend" {
     group = google_compute_region_network_endpoint_group.backend_neg.id
   }
 
-  security_policy = google_compute_security_policy.backend_armor.id
+  edge_security_policy = google_compute_security_policy.edge_armor.id
+  security_policy      = google_compute_security_policy.backend_armor.id
 
   log_config {
     enable      = true
     sample_rate = 1.0
+  }
+}
+
+# The edge policy establishes Cloudflare as the only intended public path before
+# requests reach the backend WAF. Its default deny remains in preview until the
+# observed policy logs prove the allowlist covers production traffic.
+resource "google_compute_security_policy" "edge_armor" {
+  name = "sarj-docs-edge-armor"
+  type = "CLOUD_ARMOR_EDGE"
+
+  rule {
+    action   = "allow"
+    priority = 600
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = slice(local.cloudflare_origin_cidrs, 0, 10)
+      }
+    }
+    description = "allow Cloudflare origins (1/3)"
+  }
+
+  rule {
+    action   = "allow"
+    priority = 610
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = slice(local.cloudflare_origin_cidrs, 10, 20)
+      }
+    }
+    description = "allow Cloudflare origins (2/3)"
+  }
+
+  rule {
+    action   = "allow"
+    priority = 620
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = slice(
+          local.cloudflare_origin_cidrs,
+          20,
+          length(local.cloudflare_origin_cidrs),
+        )
+      }
+    }
+    description = "allow Cloudflare origins (3/3)"
+  }
+
+  rule {
+    action   = "deny(403)"
+    priority = 2147483647
+    preview  = true
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+    description = "preview deny for non-Cloudflare origins"
   }
 }
 
@@ -75,13 +164,9 @@ resource "google_compute_backend_service" "backend" {
 #             Cloud Run run.app URL (rejected earlier by
 #             ``INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER``) are closed.
 #
-# Rate limiting is intentionally NOT done here. ``rate_based_ban`` with
-# ``conform_action = allow`` short-circuits evaluation, which either
-# (a) runs before the allowlist and lets non-Cloudflare traffic through
-# under the burst threshold, or (b) runs after the allowlist and never
-# fires. The FastAPI in-process limiter (``main.py``) handles
-# per-IP throttling at the application layer, and Cloudflare's edge
-# rate limiting covers global burst protection.
+# Backend rate rules are added only after the edge origin policy is enforced;
+# otherwise their conforming action could bypass this policy's source gate.
+# SlowAPI remains the temporary limiter during that no-gap rollout.
 resource "google_compute_security_policy" "backend_armor" {
   name = "sarj-docs-backend-armor"
 
@@ -179,18 +264,7 @@ resource "google_compute_security_policy" "backend_armor" {
     match {
       versioned_expr = "SRC_IPS_V1"
       config {
-        src_ip_ranges = [
-          "173.245.48.0/20",
-          "103.21.244.0/22",
-          "103.22.200.0/22",
-          "103.31.4.0/22",
-          "141.101.64.0/18",
-          "108.162.192.0/18",
-          "190.93.240.0/20",
-          "188.114.96.0/20",
-          "197.234.240.0/22",
-          "198.41.128.0/17",
-        ]
+        src_ip_ranges = slice(local.cloudflare_origin_cidrs, 0, 10)
       }
     }
     description = "allow Cloudflare IPv4 (1/3)"
@@ -203,18 +277,7 @@ resource "google_compute_security_policy" "backend_armor" {
     match {
       versioned_expr = "SRC_IPS_V1"
       config {
-        src_ip_ranges = [
-          "162.158.0.0/15",
-          "104.16.0.0/13",
-          "104.24.0.0/14",
-          "172.64.0.0/13",
-          "131.0.72.0/22",
-          "2400:cb00::/32",
-          "2606:4700::/32",
-          "2803:f800::/32",
-          "2405:b500::/32",
-          "2405:8100::/32",
-        ]
+        src_ip_ranges = slice(local.cloudflare_origin_cidrs, 10, 20)
       }
     }
     description = "allow Cloudflare IPv4 (2/3) + IPv6 (1/2)"
@@ -227,10 +290,11 @@ resource "google_compute_security_policy" "backend_armor" {
     match {
       versioned_expr = "SRC_IPS_V1"
       config {
-        src_ip_ranges = [
-          "2a06:98c0::/29",
-          "2c0f:f248::/32",
-        ]
+        src_ip_ranges = slice(
+          local.cloudflare_origin_cidrs,
+          20,
+          length(local.cloudflare_origin_cidrs),
+        )
       }
     }
     description = "allow Cloudflare IPv6 (2/2)"
