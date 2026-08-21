@@ -85,6 +85,10 @@ const nextConfig: NextConfig = {
       // HTML pages: always revalidate (browser checks for new version).
       source: "/((?!_next/static|_next/image|brand/).*)",
     },
+    {
+      headers: [{ key: "Cache-Control", value: "private, no-store" }, ...SECURITY_HEADERS],
+      source: "/health",
+    },
   ],
   output: "standalone",
   reactCompiler: true,
