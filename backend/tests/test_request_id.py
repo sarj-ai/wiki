@@ -10,6 +10,7 @@ from starlette.responses import Response
 from starlette.routing import Route
 from starlette.types import Message, Receive, Scope, Send
 
+from app.performance import add_duration, increment
 from app.request_id import RequestIDMiddleware
 
 
@@ -52,6 +53,8 @@ async def _run(
 
     async def app(scope: Scope, _receive: Receive, send: Send) -> None:
         scope["route"] = Route(route_template, endpoint)
+        add_duration("auth", 2.5)
+        increment("db_query_count")
         await send({"headers": [], "status": 204, "type": "http.response.start"})
         await send({"body": b"", "type": "http.response.body"})
 
@@ -83,14 +86,15 @@ async def test_generates_request_id_and_logs_safe_completion_fields() -> None:
     assert len(request_id) == 12
     assert request_id.isalnum()
     assert len(result.records) == 1
-    assert result.records[0]["extra"] == {
-        "duration_ms": result.records[0]["extra"]["duration_ms"],
-        "request_method": "GET",
-        "request_route": "/health",
-        "status_code": 204,
-    }
+    assert result.records[0]["extra"]["request_method"] == "GET"
+    assert result.records[0]["extra"]["request_route"] == "/health"
+    assert result.records[0]["extra"]["status_code"] == 204
+    assert result.records[0]["extra"]["auth_ms"] == 2.5
+    assert result.records[0]["extra"]["db_query_count"] == 1
     assert result.records[0]["extra"]["duration_ms"] >= 0
     assert "secret" not in str(result.records[0]["extra"])
+    start = next(message for message in result.messages if message["type"] == "http.response.start")
+    assert dict(start["headers"])[b"server-timing"] == b"auth;dur=2.5"
 
 
 @pytest.mark.asyncio

@@ -1,9 +1,10 @@
 import asyncio
 from collections.abc import AsyncGenerator
+import time
 from typing import Any, ClassVar
 
 from google.cloud.sql.connector import Connector, IPTypes, RefreshStrategy
-from sqlalchemy import Text
+from sqlalchemy import Text, event
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -14,6 +15,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.database_config import database_settings
 from app.identifiers import DriveId, FileId, GoogleUserId
+from app.performance import add_duration, increment
 
 
 _STATEMENT_TIMEOUT_MS = "120000"
@@ -81,6 +83,33 @@ async def _connect_via_connector() -> Any:
 
 engine = build_engine()
 async_session = async_sessionmaker(engine, expire_on_commit=False)
+
+
+@event.listens_for(engine.sync_engine, "before_cursor_execute")
+def _before_cursor_execute(
+    _conn: Any,
+    _cursor: Any,
+    _statement: str,
+    _parameters: Any,
+    context: Any,
+    _executemany: Any,
+) -> None:
+    context.__dict__["_sarj_started_at"] = time.perf_counter()
+
+
+@event.listens_for(engine.sync_engine, "after_cursor_execute")
+def _after_cursor_execute(
+    _conn: Any,
+    _cursor: Any,
+    _statement: str,
+    _parameters: Any,
+    context: Any,
+    _executemany: Any,
+) -> None:
+    started_at = getattr(context, "_sarj_started_at", None)
+    if isinstance(started_at, float):
+        add_duration("db", (time.perf_counter() - started_at) * 1000)
+    increment("db_query_count")
 
 
 class Base(DeclarativeBase):

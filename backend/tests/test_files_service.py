@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, NamedTuple, Self
+from collections.abc import Mapping
+from typing import Any, NamedTuple, Self, override
 import uuid
 
 from googleapiclient.errors import HttpError
@@ -262,6 +263,74 @@ async def test_get_accessible_many_uses_one_google_batch_and_omits_denied_files(
 
     assert list(result) == ["first", "second"]
     assert batch_executions == 1
+
+
+async def test_get_accessible_many_resolves_membership_as_one_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Request(NamedTuple):
+        file_id: str
+
+    class _FakeFiles:
+        def get(self, **kwargs: Any) -> _Request:
+            return _Request(kwargs["fileId"])
+
+    class _Batch:
+        def __init__(self, callback: Any) -> None:
+            self.callback = callback
+            self.requests: list[tuple[str, _Request]] = []
+
+        def add(self, request: _Request, *, request_id: str) -> None:
+            self.requests.append((request_id, request))
+
+        def execute(self) -> None:
+            for request_id, request in self.requests:
+                self.callback(
+                    request_id,
+                    {
+                        "driveId": "reported-drive",
+                        "id": request.file_id,
+                        "mimeType": "application/vnd.google-apps.document",
+                        "name": request.file_id,
+                    },
+                    None,
+                )
+
+    class _FakeClient:
+        def files(self) -> _FakeFiles:
+            return _FakeFiles()
+
+        def new_batch_http_request(self, *, callback: Any) -> _Batch:
+            return _Batch(callback)
+
+    class _BatchMembershipDrive(_FakeDriveService):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.batch_calls: list[dict[FileId, DriveId | None]] = []
+
+        @override
+        async def resolve_member_drive(
+            self, file_id: FileId, drive_id: DriveId | None
+        ) -> DriveId | None:
+            raise AssertionError
+
+        @override
+        async def resolve_member_drives(
+            self, files: Mapping[FileId, DriveId | None]
+        ) -> dict[FileId, DriveId]:
+            self.batch_calls.append(dict(files))
+            return {file_id: DriveId("member-drive") for file_id in files}
+
+    _patch_client(monkeypatch, _FakeClient())
+    drive = _BatchMembershipDrive()
+    service = GoogleFilesService(user=_user(), drive=drive)
+
+    result = await service.get_accessible_many([FileId("one"), FileId("two")])
+
+    assert drive.batch_calls == [
+        {FileId("one"): DriveId("reported-drive"), FileId("two"): DriveId("reported-drive")}
+    ]
+    assert {file.drive_id for file in result.values()} == {"member-drive"}
 
 
 async def test_create_does_not_retry_ambiguous_5xx(monkeypatch: pytest.MonkeyPatch) -> None:

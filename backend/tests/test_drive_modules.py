@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Mapping
 from datetime import timedelta
 import threading
@@ -11,7 +12,7 @@ from pydantic import JsonValue
 import pytest
 
 from app.cache.service import CacheNamespace, CacheService
-from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT, SearchResult, ShortcutProbe
+from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT, DriveSummary, SearchResult, ShortcutProbe
 from app.drive.service import GoogleDriveService
 from app.drive.snippets import extract_snippet
 from app.identifiers import DriveId, FileId, GoogleUserId, UserId
@@ -292,6 +293,33 @@ async def test_list_drives_skips_entries_missing_fields(patch_drive_client: Any)
     patch_drive_client(client)
     result = await _svc().list_drives()
     assert [d.id for d in result] == ["my-drive-root", "d1"]
+
+
+async def test_list_drives_singleflights_concurrent_request_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    svc = _svc()
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    async def _load() -> list[DriveSummary]:
+        nonlocal calls
+        calls += 1
+        started.set()
+        await release.wait()
+        return [DriveSummary(id=DriveId("d1"), name="Drive")]
+
+    monkeypatch.setattr(svc, "_load_drives", _load)
+    first = asyncio.create_task(svc.list_drives())
+    await started.wait()
+    second = asyncio.create_task(svc.list_drives())
+    await asyncio.sleep(0)
+    release.set()
+
+    assert await first == await second
+    assert await svc.list_drives() == [DriveSummary(id=DriveId("d1"), name="Drive")]
+    assert calls == 1
 
 
 @pytest.mark.parametrize(

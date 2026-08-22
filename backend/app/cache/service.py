@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.cache.protection import CacheEntryProtector, InvalidCacheEntryError
 from app.config import settings
 from app.models.wiki import CacheEntry
+from app.performance import increment, timed
 
 
 class CacheNamespace(StrEnum):
@@ -80,8 +81,9 @@ class CachePSqlService(CacheService):
             CacheEntry.key.in_(physical_keys),
             CacheEntry.expires_at > func.now(),
         )
-        async with self._sessionmaker() as db:
-            rows = cast("list[tuple[str, object]]", (await db.execute(statement)).all())
+        with timed("cache"):
+            async with self._sessionmaker() as db:
+                rows = cast("list[tuple[str, object]]", (await db.execute(statement)).all())
         rows_by_key = dict(rows)
         for candidate in physical_keys:
             if candidate not in rows_by_key:
@@ -91,7 +93,9 @@ class CachePSqlService(CacheService):
                 value = self._protector.unprotect(namespace, key, observed)
             except InvalidCacheEntryError:
                 continue
+            increment("cache_hits")
             return value
+        increment("cache_misses")
         return None
 
     @override
@@ -111,16 +115,17 @@ class CachePSqlService(CacheService):
                     return {}
         queried_keys = list(physical_key_owners)
         rows_by_key: dict[str, object] = {}
-        for offset in range(0, len(queried_keys), _MAX_LOOKUP_KEYS_PER_QUERY):
-            chunk = queried_keys[offset : offset + _MAX_LOOKUP_KEYS_PER_QUERY]
-            statement = select(CacheEntry.key, CacheEntry.value).where(
-                CacheEntry.namespace == namespace,
-                CacheEntry.key.in_(chunk),
-                CacheEntry.expires_at > func.now(),
-            )
-            async with self._sessionmaker() as db:
-                rows = cast("list[tuple[str, object]]", (await db.execute(statement)).all())
-            rows_by_key.update(rows)
+        with timed("cache"):
+            for offset in range(0, len(queried_keys), _MAX_LOOKUP_KEYS_PER_QUERY):
+                chunk = queried_keys[offset : offset + _MAX_LOOKUP_KEYS_PER_QUERY]
+                statement = select(CacheEntry.key, CacheEntry.value).where(
+                    CacheEntry.namespace == namespace,
+                    CacheEntry.key.in_(chunk),
+                    CacheEntry.expires_at > func.now(),
+                )
+                async with self._sessionmaker() as db:
+                    rows = cast("list[tuple[str, object]]", (await db.execute(statement)).all())
+                rows_by_key.update(rows)
         values: dict[str, JsonValue] = {}
         for logical_key, physical_keys in physical_by_logical.items():
             for candidate in physical_keys:
@@ -136,6 +141,8 @@ class CachePSqlService(CacheService):
                 except InvalidCacheEntryError:
                     continue
                 break
+        increment("cache_hits", len(values))
+        increment("cache_misses", len(keys) - len(values))
         return values
 
     @override

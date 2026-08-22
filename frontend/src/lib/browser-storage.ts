@@ -22,6 +22,10 @@ export function expandedFoldersStorageKey(userId: string): string {
   return `sarj-wiki:expanded-folders:${userId}`;
 }
 
+export function expandedDrivesStorageKey(userId: string): string {
+  return `sarj-wiki:expanded-drives:${userId}`;
+}
+
 export function collapsedDrivesStorageKey(userId: string): string {
   return `sarj-wiki:collapsed-drives:${userId}`;
 }
@@ -31,6 +35,7 @@ export function clearUserBrowserStorage(userId: string): void {
     recentDocsStorageKey(userId),
     recentAliasesStorageKey(userId),
     expandedFoldersStorageKey(userId),
+    expandedDrivesStorageKey(userId),
     collapsedDrivesStorageKey(userId),
     LAST_REFRESH_KEY,
   ]);

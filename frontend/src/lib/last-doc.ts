@@ -1,5 +1,5 @@
 import { recentDocsStorageKey } from "@/lib/browser-storage";
-import { ZRecentDocs } from "@/lib/storage-schemas";
+import { ZRECENT_DOCS } from "@/lib/storage-schemas";
 
 const MAX_RECENT = 6;
 
@@ -30,7 +30,7 @@ type RecentDocsResult = { ok: false } | { ok: true; value: LastDoc[] };
 
 function parseRecentDocs(userId: string): RecentDocsResult {
   try {
-    const value = ZRecentDocs.parse(
+    const value = ZRECENT_DOCS.parse(
       JSON.parse(localStorage.getItem(recentDocsStorageKey(userId)) ?? "[]"),
     );
     return { ok: true, value };

@@ -31,7 +31,11 @@ INACCESSIBLE_DOC = FileId("inaccessible-doc")
 
 
 class _FakeCache(SidebarCacheService):
+    full_tree_reads = 0
+    metadata_reads = 0
+
     async def get_drive_tree(self, db: object, drive_id: str) -> CachedDriveTree:
+        type(self).full_tree_reads += 1
         return CachedDriveTree(
             tree=_tree(drive_id),
             refreshed_at=datetime(2026, 8, 20, tzinfo=UTC),
@@ -39,6 +43,10 @@ class _FakeCache(SidebarCacheService):
 
     async def peek_drive_tree(self, db: object, drive_id: str) -> CachedDriveTree | None:
         return None
+
+    async def get_drive_tree_refreshed_at(self, db: object, drive_id: str) -> datetime | None:
+        type(self).metadata_reads += 1
+        return datetime(2026, 8, 20, tzinfo=UTC)
 
     async def get_folder_children(self, folder_id: str) -> list:
         return []
@@ -98,6 +106,8 @@ async def _no_db() -> AsyncIterator[None]:
 
 @pytest.fixture
 def client() -> AsyncClient:
+    _FakeCache.full_tree_reads = 0
+    _FakeCache.metadata_reads = 0
     member_drives = [DriveSummary(id=MEMBER_DRIVE, name="Mine")]
     app.dependency_overrides[get_current_user] = _member_user
     app.dependency_overrides[drive_service_dep] = lambda: _FakeDriveService(member_drives)
@@ -155,6 +165,16 @@ async def test_sidebar_tree_304_is_never_browser_cached(client: AsyncClient) -> 
         )
     assert resp.status_code == 304
     assert resp.headers["cache-control"] == "private, no-store"
+    assert _FakeCache.full_tree_reads == 1
+    assert _FakeCache.metadata_reads == 1
+
+
+async def test_unconditional_sidebar_tree_read_skips_metadata_query(client: AsyncClient) -> None:
+    async with client:
+        resp = await client.get(f"/sidebar/drives/{MEMBER_DRIVE}/folders")
+    assert resp.status_code == 200
+    assert _FakeCache.full_tree_reads == 1
+    assert _FakeCache.metadata_reads == 0
 
 
 @pytest.mark.parametrize(

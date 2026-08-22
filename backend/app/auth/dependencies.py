@@ -13,6 +13,7 @@ from app.cache.dependencies import cache_service_dep
 from app.cache.service import CacheService
 from app.database import get_db
 from app.models.user import User
+from app.performance import timed
 
 
 _access_cookie = APIKeyCookie(name="access_token", auto_error=False)
@@ -44,7 +45,8 @@ async def get_current_user(
             detail="Not authenticated",
         )
     try:
-        return await auth.resolve_current_user(token)
+        with timed("auth"):
+            return await auth.resolve_current_user(token)
     except AuthError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

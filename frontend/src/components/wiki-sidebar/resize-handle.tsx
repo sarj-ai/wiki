@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { ZSidebarWidthCss } from "@/lib/storage-schemas";
+import { ZSIDEBAR_WIDTH_CSS } from "@/lib/storage-schemas";
 
 const STORAGE_KEY = "wiki-sidebar-width";
 const MIN_WIDTH_PX = 224;
@@ -86,7 +86,7 @@ export function SidebarResizeHandle() {
 
 function useRestoreSidebarWidth() {
   useEffect(() => {
-    const saved = ZSidebarWidthCss.parse(window.localStorage.getItem(STORAGE_KEY));
+    const saved = ZSIDEBAR_WIDTH_CSS.parse(window.localStorage.getItem(STORAGE_KEY));
     if (saved === null) return;
     const px = Math.min(MAX_WIDTH_PX, Math.max(MIN_WIDTH_PX, Number.parseInt(saved, 10)));
     const wrapper = document.querySelector<HTMLElement>('[data-slot="sidebar-wrapper"]');

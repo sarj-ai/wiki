@@ -7,7 +7,12 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import HttpRequest
 import pytest
 
-from app.drive.retry import execute_mutation, execute_with_retry, retry_after_seconds
+from app.drive.retry import (
+    ProviderDeadlineError,
+    execute_mutation,
+    execute_with_retry,
+    retry_after_seconds,
+)
 
 
 class _Resp(UserDict[str, str]):
@@ -59,3 +64,15 @@ def test_execute_mutation_does_not_retry_5xx() -> None:
     with pytest.raises(HttpError):
         execute_mutation(cast("HttpRequest", req))
     assert req.attempts == 1
+
+
+def test_provider_call_does_not_start_without_attempt_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    req = _FlakyRequest(0, _http_error(503))
+    monkeypatch.setattr("app.drive.retry.provider_retry_remaining_seconds", lambda: 0.5)
+
+    with pytest.raises(ProviderDeadlineError):
+        execute_with_retry(cast("HttpRequest", req))
+
+    assert req.attempts == 0

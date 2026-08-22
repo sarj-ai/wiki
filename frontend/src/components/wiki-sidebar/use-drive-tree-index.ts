@@ -8,8 +8,9 @@ export function useDriveTreeIndex(
   driveId: string,
   folderIcons: FolderIcon[],
   sortOrders: SortOrder[],
+  enabled: boolean,
 ): DriveTreeIndex {
-  const treeQuery = useDriveTree(driveId);
+  const treeQuery = useDriveTree(driveId, enabled);
   const docIconsQuery = useDocIcons();
 
   const childrenByParent = buildChildrenIndex(treeQuery.data?.folders ?? []);

@@ -12,6 +12,7 @@ vi.mock("next/headers", () => ({
         ? { name, value: cookieValue.token }
         : undefined,
   }),
+  headers: () => new Headers({ "X-Request-ID": "frontend-server-test" }),
 }));
 
 afterEach(() => {
@@ -39,6 +40,7 @@ describe("serverWikiApi", () => {
     const fetchMock = vi.fn((request: Request) => {
       expect(request.headers.get("authorization")).toBe("Bearer jwt-token");
       expect(request.headers.get("cookie")).toBeNull();
+      expect(request.headers.get("x-request-id")).toBe("frontend-server-test");
       return jsonResponse([{ icon: null, id: "f1", name: "Doc" }]);
     });
     vi.stubGlobal("fetch", fetchMock);

@@ -4,7 +4,7 @@ import { SarjLogo } from "@/components/sarj-logo";
 import { StashRedirect } from "@/components/stash-redirect";
 import { Button } from "@/components/ui/button";
 import { getLoginUrl } from "@/lib/auth";
-import { ZAuthErrorParam } from "@/lib/storage-schemas";
+import { ZAUTH_ERROR_PARAM } from "@/lib/storage-schemas";
 
 const ERROR_CONFIG: Record<
   string,
@@ -39,7 +39,7 @@ export default async function LoginPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const errorType = ZAuthErrorParam.safeParse(params["error"]).data;
+  const errorType = ZAUTH_ERROR_PARAM.safeParse(params["error"]).data;
   const redirect = typeof params["redirect"] === "string" ? params["redirect"] : undefined;
   const errorConfig = errorType ? ERROR_CONFIG[errorType] : undefined;
 

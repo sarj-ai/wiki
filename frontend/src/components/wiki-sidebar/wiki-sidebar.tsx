@@ -119,6 +119,7 @@ export function WikiSidebar() {
               <div key={drive.id}>
                 <DriveSection
                   activeDriveId={activeDriveId}
+                  defaultExpanded={index === 0}
                   drive={drive}
                   folderIcons={folderIconsQuery.data ?? []}
                   optimisticByContainer={reorder.optimisticByContainer}

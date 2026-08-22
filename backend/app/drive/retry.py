@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any, override
 
 from googleapiclient.errors import HttpError
@@ -12,6 +13,8 @@ from tenacity import (
 )
 from tenacity.wait import wait_base
 
+from app.performance import increment, provider_retry_remaining_seconds, timed
+
 
 if TYPE_CHECKING:
     from googleapiclient.http import BatchHttpRequest, HttpRequest
@@ -19,6 +22,12 @@ if TYPE_CHECKING:
 _RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
 
 _MAX_RETRY_AFTER_SECONDS = 30.0
+
+_MIN_ATTEMPT_BUDGET = timedelta(seconds=1)
+
+
+class ProviderDeadlineError(TimeoutError):
+    pass
 
 
 def _is_retryable_drive_error(exc: BaseException) -> bool:
@@ -53,9 +62,11 @@ class _WaitRetryAfter(wait_base):
     def __call__(self, retry_state: RetryCallState) -> float:
         exc = retry_state.outcome.exception() if retry_state.outcome else None
         suggested = retry_after_seconds(exc)
-        if suggested is not None:
-            return suggested
-        return self._fallback(retry_state)
+        delay = suggested if suggested is not None else self._fallback(retry_state)
+        remaining = provider_retry_remaining_seconds()
+        if remaining is None:
+            return delay
+        return min(delay, max(remaining - _MIN_ATTEMPT_BUDGET.total_seconds(), 0.0))
 
 
 _wait_policy = _WaitRetryAfter(wait_exponential_jitter(initial=1, max=10))
@@ -77,14 +88,29 @@ drive_mutation_retry = retry(
 
 @drive_retry
 def execute_with_retry(req: HttpRequest) -> Any:
-    return req.execute()
+    _ensure_attempt_budget()
+    increment("google_request_count")
+    with timed("google"):
+        return req.execute()
 
 
 @drive_mutation_retry
 def execute_mutation(req: HttpRequest) -> Any:
-    return req.execute()
+    _ensure_attempt_budget()
+    increment("google_request_count")
+    with timed("google"):
+        return req.execute()
 
 
 @drive_retry
 def execute_batch_with_retry(batch: BatchHttpRequest) -> None:
-    batch.execute()
+    _ensure_attempt_budget()
+    increment("google_request_count")
+    with timed("google"):
+        batch.execute()
+
+
+def _ensure_attempt_budget() -> None:
+    remaining = provider_retry_remaining_seconds()
+    if remaining is not None and remaining < _MIN_ATTEMPT_BUDGET.total_seconds():
+        raise ProviderDeadlineError
