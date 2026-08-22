@@ -231,30 +231,27 @@
 }
 
 @keyframes loading-bar {
-  0% {
-    width: 0%;
-    margin-left: 0%;
+  from {
+    transform: translate3d(0, 0, 0);
   }
-  20% {
-    width: 40%;
-    margin-left: 0%;
-  }
-  50% {
-    width: 30%;
-    margin-left: 40%;
-  }
-  80% {
-    width: 20%;
-    margin-left: 70%;
-  }
-  100% {
-    width: 0%;
-    margin-left: 100%;
+  to {
+    transform: translate3d(200%, 0, 0);
   }
 }
 
 @utility animate-loading-bar {
-  animation: loading-bar 1.2s ease-in-out infinite;
+  animation: loading-bar 1s ease-in-out 30 alternate both;
+}
+
+[dir="rtl"] .animate-loading-bar {
+  animation-direction: alternate-reverse;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-loading-bar {
+    animation: none;
+    transform: translate3d(100%, 0, 0);
+  }
 }
 
 /* One-shot pulse drawing the eye to a sidebar row that just became
