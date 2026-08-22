@@ -132,8 +132,11 @@ class PostgresSidebarCacheService(SidebarCacheService):
                 f"drive:{drive_id}",
                 lambda: self._walk_and_save(drive_id),
             )
-        except Exception:
-            logger.exception("background drive refresh failed drive={drive_id}", drive_id=drive_id)
+        except Exception as exc:  # ruff: ignore[blind-except] — detached refresh failures must not escape the task.
+            logger.warning(
+                "background drive refresh failed error_type={error_type}",
+                error_type=type(exc).__name__,
+            )
 
     async def _walk_and_save(self, drive_id: DriveId) -> DriveTree:
         tree = await self._drive.walk_drive_folders(drive_id)

@@ -35,7 +35,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 26.5.1
+          node-version: 26.7.0
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -46,6 +46,9 @@ jobs:
 
       - name: Bootstrap analysis inputs
         run: npm --prefix frontend run generate:api
+
+      - name: Verify executable repository documentation
+        run: uv run --project backend --locked python scripts/repository_checks.py all
 
       - name: Verify canonical Standards configs
         run: make standards-check
@@ -91,37 +94,17 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 26.5.1
+          node-version: 26.7.0
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Export OpenAPI spec from the backend
+      - name: Verify committed OpenAPI spec
         working-directory: backend
-        run: uv run --locked python scripts/export_openapi.py ../frontend/openapi.json
+        run: uv run --locked python scripts/export_openapi.py --check ../frontend/openapi.json
 
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
-
-      - name: Detect drift
-        id: drift
-        run: |
-          if git diff --quiet -- frontend/openapi.json; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Verify regenerated schemas typecheck and pass tests
-        if: steps.drift.outputs.changed == 'true'
-        working-directory: frontend
-        run: |
-          npm run typecheck
-          npm test
-
-      - name: Fail on drift
-        if: steps.drift.outputs.changed == 'true'
-        run: git diff --exit-code -- frontend/openapi.json
 
   secret-scan:
     name: gitleaks (full history)

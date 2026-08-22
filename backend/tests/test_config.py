@@ -25,6 +25,7 @@ _BASELINE = {
     "COOKIE_DOMAIN": None,
     "LOG_JSON": None,
     "LOG_LEVEL": None,
+    "API_DOCS_ENABLED": None,
     "RELEASE_SHA": None,
     "SIDEBAR_CACHE_TTL": None,
     "CLOUD_TASKS_QUEUE": None,
@@ -94,6 +95,34 @@ def test_frontend_origin_strips_httpurl_trailing_slash(monkeypatch: pytest.Monke
     s = _settings(monkeypatch, FRONTEND_URL="https://wiki.sarj.ai")
     assert str(s.FRONTEND_URL) == "https://wiki.sarj.ai/"
     assert s.frontend_origin == "https://wiki.sarj.ai"
+
+
+def test_cookie_domain_must_cover_https_frontend_and_callback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _settings(
+        monkeypatch,
+        COOKIE_DOMAIN="sarj.ai",
+        FRONTEND_URL="https://wiki.sarj.ai",
+        GOOGLE_REDIRECT_URI="https://api-wiki.sarj.ai/auth/callback",
+    )
+    assert settings.COOKIE_DOMAIN == "sarj.ai"
+
+    with pytest.raises(ValidationError, match="requires HTTPS"):
+        _settings(
+            monkeypatch,
+            COOKIE_DOMAIN="sarj.ai",
+            FRONTEND_URL="http://wiki.sarj.ai",
+            GOOGLE_REDIRECT_URI="https://api-wiki.sarj.ai/auth/callback",
+        )
+
+    with pytest.raises(ValidationError, match="must contain both"):
+        _settings(
+            monkeypatch,
+            COOKIE_DOMAIN="sarj.ai",
+            FRONTEND_URL="https://wiki.example.com",
+            GOOGLE_REDIRECT_URI="https://api-wiki.sarj.ai/auth/callback",
+        )
 
 
 @pytest.mark.parametrize(

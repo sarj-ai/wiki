@@ -1,12 +1,4 @@
 # Service accounts and IAM bindings
-#
-# Sarj Wiki only needs one runtime service account — the Cloud
-# Run backend — because the pivot removed:
-#   * Cloud Scheduler jobs (no more webhook renewal or group sync)
-#   * Admin SDK domain-wide-delegation
-#   * Drive push webhook handlers
-# The old ``sarj-docs-scheduler`` SA was dropped alongside
-# terraform/scheduler.tf.
 
 # Cloud Run backend service account
 resource "google_service_account" "backend" {

@@ -21,7 +21,7 @@ from app.extras.schemas import (
 from app.extras.service import ExtrasService
 from app.files.schemas import FileResponse
 from app.files.service import FilesService
-from app.identifiers import DriveId, FileId, GoogleUserId
+from app.identifiers import DriveId, FileId, GoogleUserId, UserId
 from app.models.user import User
 from app.sidebar.cache import CachedDriveTree, SidebarCacheService
 
@@ -64,9 +64,6 @@ class _FakeExtrasService(ExtrasService):
             ),
         ]
 
-    async def get_doc_icon(self, drive_id: str) -> DocIconRead:
-        raise NotImplementedError
-
     async def upsert_doc_icon(self, drive_id: str, payload: DocIconWrite) -> DocIconRead:
         raise NotImplementedError
 
@@ -82,9 +79,6 @@ class _FakeExtrasService(ExtrasService):
         return [SortOrderRead(drive_id=DriveId("doc-1"), sort_order=1.5)]
 
     async def upsert_sort_orders(self, items: list[SortOrderWrite]) -> None:
-        raise NotImplementedError
-
-    async def clear_sort_order(self, drive_id: str) -> None:
         raise NotImplementedError
 
     async def get_preferences(self) -> PreferencesRead:
@@ -141,7 +135,7 @@ _NO_DB = cast("AsyncSession", None)
 
 def _user() -> User:
     u = User()
-    u.id = uuid.uuid4()
+    u.id = UserId(uuid.uuid4())
     u.email = "test@sarj.ai"
     u.google_id = GoogleUserId("gid")
     u.display_name = "Test User"

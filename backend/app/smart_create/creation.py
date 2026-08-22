@@ -118,7 +118,7 @@ class DriveSmartFileCreationService(SmartFileCreationService):
     async def _recover(self, task_id: TaskId, destination: FileResponse) -> FileResponse | None:
         if destination.drive_id is None:
             return None
-        return await self._files.find_by_task(destination.drive_id, str(task_id))
+        return await self._files.find_by_task(destination.drive_id, task_id)
 
     async def _create_file(
         self,
@@ -131,7 +131,7 @@ class DriveSmartFileCreationService(SmartFileCreationService):
                 template_file_id=template.file_id,
                 parent_folder_id=payload.parent_folder_id,
                 name=payload.name,
-                task_id=str(task_id),
+                task_id=task_id,
                 expected_modified_time=template.modified_time,
             )
         source = payload.source
@@ -143,7 +143,7 @@ class DriveSmartFileCreationService(SmartFileCreationService):
             payload.parent_folder_id,
             payload.name,
             mime_type,
-            str(task_id),
+            task_id,
         )
 
     async def _enrich(
@@ -159,8 +159,9 @@ class DriveSmartFileCreationService(SmartFileCreationService):
             warnings.append(SmartCreateWarning(code=exc.code, detail=detail))
         except SQLAlchemyError as exc:
             await self._db.rollback()
-            logger.opt(exception=exc).warning(
-                "Smart Create alias enrichment failed file={file_id}", file_id=file.id
+            logger.warning(
+                "Smart Create alias enrichment failed error_type={error_type}",
+                error_type=type(exc).__name__,
             )
             warnings.append(
                 SmartCreateWarning(
@@ -172,8 +173,9 @@ class DriveSmartFileCreationService(SmartFileCreationService):
             await self._extras.upsert_doc_icon(file.id, DocIconWrite(icon=payload.emoji))
         except SQLAlchemyError as exc:
             await self._db.rollback()
-            logger.opt(exception=exc).warning(
-                "Smart Create icon enrichment failed file={file_id}", file_id=file.id
+            logger.warning(
+                "Smart Create icon enrichment failed error_type={error_type}",
+                error_type=type(exc).__name__,
             )
             warnings.append(
                 SmartCreateWarning(

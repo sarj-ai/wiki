@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 import hmac
 import secrets
 from typing import override
@@ -10,7 +11,7 @@ import uuid
 import httpx
 from loguru import logger
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.encryption import decrypt_text, encrypt_text
@@ -21,11 +22,23 @@ from app.auth.errors import (
     InvalidTokenError,
     TokenRevokedError,
 )
-from app.auth.jwt import create_access_token, create_refresh_token, decode_token
+from app.auth.jwt import (
+    REFRESH_TOKEN_EXPIRE_DAYS,
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+)
 from app.auth.schemas import GoogleTokenResponse, GoogleUserInfo
 from app.cache.service import CacheNamespace, CacheService
 from app.config import settings
-from app.identifiers import GoogleUserId
+from app.identifiers import (
+    AuthSessionFamilyId,
+    AuthSessionId,
+    GoogleUserId,
+    TokenId,
+    UserId,
+)
+from app.models.auth_session import UserSession
 from app.models.user import User
 
 
@@ -89,12 +102,12 @@ class GoogleAuthService(AuthService):
         self._enforce_domain(userinfo.email)
         try:
             user = await self._upsert_user(userinfo, google_tokens)
+            return await self._issue_new_session(user)
         except AuthFailedError:
             raise
         except Exception as e:
-            logger.exception("Auth callback failed")
+            logger.warning("auth: callback failed")
             raise AuthError from e
-        return self._issue_session(user)
 
     @override
     async def refresh_session(self, refresh_token: str) -> AuthSession:
@@ -102,15 +115,35 @@ class GoogleAuthService(AuthService):
         if payload.type != "refresh":
             msg = "Invalid token type"
             raise TokenRevokedError(msg)
+        session = await self._load_session(payload.sid, for_update=True)
+        now = datetime.now(UTC)
+        if (
+            session is None
+            or session.user_id != payload.sub
+            or session.revoked_at is not None
+            or session.expires_at <= now
+        ):
+            msg = "Token has been revoked"
+            raise TokenRevokedError(msg)
+        if not hmac.compare_digest(str(payload.jti), str(session.refresh_jti)):
+            await self._revoke_session_family(session.family_id, now)
+            logger.warning("auth: refresh token replay detected")
+            msg = "Token has been revoked"
+            raise TokenRevokedError(msg)
         user = await self._load_user(payload.sub)
         if user is None:
             msg = "User not found"
             raise TokenRevokedError(msg)
         if not hmac.compare_digest(str(payload.tv), str(user.token_version)):
-            logger.warning("auth: revoked refresh token presented user={user_id}", user_id=user.id)
+            logger.warning("auth: revoked refresh token presented")
             msg = "Token has been revoked"
             raise TokenRevokedError(msg)
-        return self._issue_session(user)
+        refresh_jti = TokenId(uuid.uuid4())
+        session.refresh_jti = refresh_jti
+        session.expires_at = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        session.updated_at = now
+        await self._db.commit()
+        return self._encode_session(user, session.id, refresh_jti)
 
     @override
     async def revoke_session(self, access_token: str | None) -> None:
@@ -118,14 +151,14 @@ class GoogleAuthService(AuthService):
             return
         user: User | None = None
         try:
-            user = await self._revokable_access_user(access_token)
-            if user is None:
+            payload = decode_token(access_token)
+            session = await self._load_session(payload.sid, for_update=True)
+            user = await self._load_user(payload.sub)
+            if session is None or user is None or session.user_id != user.id:
                 return
-            await self._revoke_user_session(user)
+            await self._revoke_user_session(user, session)
         except Exception:  # ruff: ignore[blind-except] — logout proceeds even if DB bump fails; cookies still clear.
-            logger.opt(exception=True).warning(
-                "logout: failed to bump token_version; proceeding to clear cookies"
-            )
+            logger.warning("logout: session revocation failed; proceeding to clear cookies")
         if user is not None and self._cache is not None:
             await self._cache.delete(CacheNamespace.DRIVE_LIST, str(user.id))
 
@@ -135,26 +168,42 @@ class GoogleAuthService(AuthService):
         if payload.type != "access":
             msg = "Invalid token type"
             raise InvalidTokenError(msg)
+        session = await self._load_session(payload.sid)
+        if (
+            session is None
+            or session.user_id != payload.sub
+            or session.revoked_at is not None
+            or session.expires_at <= datetime.now(UTC)
+        ):
+            msg = "Token has been revoked"
+            raise TokenRevokedError(msg)
         user = await self._load_user(payload.sub)
         if user is None:
             msg = "User not found"
             raise TokenRevokedError(msg)
         if not hmac.compare_digest(str(payload.tv), str(user.token_version)):
-            logger.warning("auth: revoked access token presented user={user_id}", user_id=user.id)
+            logger.warning("auth: revoked access token presented")
             msg = "Token has been revoked"
             raise TokenRevokedError(msg)
         return user
 
-    async def _revokable_access_user(self, access_token: str) -> User | None:
-        payload = decode_token(access_token)
-        if payload.type != "access":
-            return None
-        return await self._load_user(payload.sub)
-
-    async def _revoke_user_session(self, user: User) -> None:
+    async def _revoke_user_session(self, user: User, session: UserSession) -> None:
+        now = datetime.now(UTC)
+        session.revoked_at = now
+        session.updated_at = now
         user.token_version += 1
         await self._db.commit()
         await self._revoke_google_token(user)
+
+    async def _revoke_session_family(
+        self, family_id: AuthSessionFamilyId, revoked_at: datetime
+    ) -> None:
+        await self._db.execute(
+            update(UserSession)
+            .where(UserSession.family_id == family_id, UserSession.revoked_at.is_(None))
+            .values(revoked_at=revoked_at, updated_at=revoked_at)
+        )
+        await self._db.commit()
 
     async def _revoke_google_token(self, user: User) -> None:
         if user.encrypted_refresh_token is None:
@@ -163,9 +212,7 @@ class GoogleAuthService(AuthService):
             refresh_token = decrypt_text(user.encrypted_refresh_token)
             await self._http.post(GOOGLE_REVOKE_URL, data={"token": refresh_token})
         except Exception:  # ruff: ignore[blind-except] — best-effort; logout proceeds regardless.
-            logger.opt(exception=True).warning(
-                "logout: Google token revocation failed user={user_id}", user_id=user.id
-            )
+            logger.warning("logout: Google token revocation failed")
 
     async def _exchange_google_code(self, code: str) -> GoogleTokens:
         resp = await self._http.post(
@@ -211,10 +258,7 @@ class GoogleAuthService(AuthService):
     def _enforce_domain(self, email: str) -> None:
         parts = email.rsplit("@", 1)
         if len(parts) != 2 or parts[1] != settings.ALLOWED_DOMAIN:
-            logger.warning(
-                "auth: domain-restricted login rejected domain={domain}",
-                domain=parts[1] if len(parts) == 2 else "<malformed>",
-            )
+            logger.warning("auth: domain-restricted login rejected")
             raise DomainRestrictedError
 
     async def _upsert_user(self, info: GoogleIdentity, tokens: GoogleTokens) -> User:
@@ -260,15 +304,58 @@ class GoogleAuthService(AuthService):
         result = await self._db.execute(select(User).where(User.email == email))
         return result.scalar_one_or_none()
 
-    async def _load_user(self, user_id: uuid.UUID) -> User | None:
+    async def _load_user(self, user_id: UserId) -> User | None:
         result = await self._db.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
 
-    def _issue_session(self, user: User) -> AuthSession:
-        access = create_access_token(
-            user_id=user.id, email=user.email, token_version=user.token_version
+    async def _load_session(
+        self,
+        session_id: AuthSessionId,
+        *,
+        for_update: bool = False,
+    ) -> UserSession | None:
+        statement = select(UserSession).where(UserSession.id == session_id)
+        if for_update:
+            statement = statement.with_for_update()
+        result = await self._db.execute(statement)
+        return result.scalar_one_or_none()
+
+    async def _issue_new_session(self, user: User) -> AuthSession:
+        session_id = AuthSessionId(uuid.uuid4())
+        refresh_jti = TokenId(uuid.uuid4())
+        now = datetime.now(UTC)
+        self._db.add(
+            UserSession(
+                id=session_id,
+                family_id=AuthSessionFamilyId(session_id),
+                user_id=UserId(user.id),
+                refresh_jti=refresh_jti,
+                expires_at=now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+                revoked_at=None,
+                created_at=now,
+                updated_at=now,
+            )
         )
-        refresh = create_refresh_token(user_id=user.id, token_version=user.token_version)
+        await self._db.commit()
+        return self._encode_session(user, session_id, refresh_jti)
+
+    @staticmethod
+    def _encode_session(
+        user: User,
+        session_id: AuthSessionId,
+        refresh_jti: TokenId,
+    ) -> AuthSession:
+        access = create_access_token(
+            user_id=UserId(user.id),
+            session_id=session_id,
+            token_version=user.token_version,
+        )
+        refresh = create_refresh_token(
+            user_id=UserId(user.id),
+            session_id=session_id,
+            refresh_jti=refresh_jti,
+            token_version=user.token_version,
+        )
         return AuthSession(jwt_access=access, jwt_refresh=refresh)
 
 

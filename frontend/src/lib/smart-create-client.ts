@@ -7,7 +7,22 @@ import {
   proposeSmartFileAction,
 } from "@/app/actions/smart-create-actions";
 import { runAction } from "@/lib/action-client";
-import { zFileResponse } from "@/lib/generated/zod.gen";
+import {
+  zBlankSource,
+  zCancelledTaskRead,
+  zFailedTaskRead,
+  zFileResponse,
+  zPendingTaskRead,
+  zProposalDestination,
+  zRunningTaskRead,
+  zSmartCreateResult,
+  zSmartCreateWarning,
+  zSmartProposalRead,
+  zSucceededTaskRead,
+  zTemplateCatalogRead,
+  zTemplateRead,
+  zTemplateSource,
+} from "@/lib/generated/zod.gen";
 import type {
   CreationSource,
   DriveTemplate,
@@ -16,136 +31,28 @@ import type {
   SmartCreationPlan,
   SmartFileType,
 } from "@/lib/smart-create-types";
-import { MIME_DOC, MIME_SLIDE } from "@/types/wiki";
-
-const ZTemplate = z
-  .object({
-    category_path: z.array(z.string()),
-    description: z.string().nullable(),
-    drive_id: z.string(),
-    drive_name: z.string(),
-    file_id: z.string(),
-    mime_type: z.enum([MIME_DOC, MIME_SLIDE]),
-    modified_time: z.string(),
-    name: z.string(),
+const ZSource = z.discriminatedUnion("kind", [zBlankSource.strict(), zTemplateSource.strict()]);
+const ZCreateResult = zSmartCreateResult
+  .extend({
+    file: zFileResponse.strict(),
+    warnings: z.array(zSmartCreateWarning.strict()),
   })
   .strict();
-
-const ZSource = z.discriminatedUnion("kind", [
-  z.object({ file_type: z.enum(["document", "presentation"]), kind: z.literal("blank") }).strict(),
-  z
-    .object({
-      kind: z.literal("template"),
-      mime_type: z.enum([MIME_DOC, MIME_SLIDE]),
-      template_drive_id: z.string(),
-      template_file_id: z.string(),
-      template_modified_time: z.string(),
-    })
-    .strict(),
-]);
-
-const ZProposal = z
-  .object({
-    alias: z.string(),
-    destination: z
-      .object({
-        drive_id: z.string(),
-        drive_name: z.string(),
-        folder_id: z.string(),
-        folder_path: z.array(z.string()),
-      })
-      .strict(),
-    emoji: z.string(),
-    name: z.string(),
+const ZProposal = zSmartProposalRead
+  .extend({
+    destination: zProposalDestination.strict(),
     source: ZSource,
   })
   .strict();
-
-const ZFileResponse = zFileResponse.strict();
-
-const ZCreateResult = z
-  .object({
-    file: ZFileResponse,
-    task_id: z.uuid(),
-    warnings: z.array(z.object({ code: z.string(), detail: z.string() }).strict()),
-  })
+const ZTemplateCatalog = zTemplateCatalogRead
+  .extend({ templates: z.array(zTemplateRead.strict()) })
   .strict();
-
-const ZTemplateCatalog = z.object({ templates: z.array(ZTemplate) }).strict();
-
-const ZTaskBase = {
-  attempt_count: z.number().int().nonnegative(),
-  created_at: z.iso.datetime(),
-  id: z.uuid(),
-  kind: z.literal("file.smart_create"),
-};
-
 const ZTask = z.discriminatedUnion("status", [
-  z
-    .object({
-      ...ZTaskBase,
-      attempt_count: z.literal(0),
-      error_code: z.null(),
-      error_detail: z.null(),
-      finished_at: z.null(),
-      resource_id: z.null(),
-      result: z.null(),
-      started_at: z.null(),
-      status: z.literal("pending"),
-    })
-    .strict(),
-  z
-    .object({
-      ...ZTaskBase,
-      attempt_count: z.number().int().positive(),
-      error_code: z.null(),
-      error_detail: z.null(),
-      finished_at: z.null(),
-      resource_id: z.string().nullable(),
-      result: z.null(),
-      started_at: z.iso.datetime(),
-      status: z.literal("running"),
-    })
-    .strict(),
-  z
-    .object({
-      ...ZTaskBase,
-      attempt_count: z.number().int().positive(),
-      error_code: z.null(),
-      error_detail: z.null(),
-      finished_at: z.iso.datetime(),
-      resource_id: z.string().nullable(),
-      result: ZCreateResult,
-      started_at: z.iso.datetime(),
-      status: z.literal("succeeded"),
-    })
-    .strict(),
-  z
-    .object({
-      ...ZTaskBase,
-      attempt_count: z.number().int().positive(),
-      error_code: z.string(),
-      error_detail: z.string().nullable(),
-      finished_at: z.iso.datetime(),
-      resource_id: z.string().nullable(),
-      result: z.null(),
-      started_at: z.iso.datetime(),
-      status: z.literal("failed"),
-    })
-    .strict(),
-  z
-    .object({
-      ...ZTaskBase,
-      attempt_count: z.literal(0),
-      error_code: z.null(),
-      error_detail: z.null(),
-      finished_at: z.iso.datetime(),
-      resource_id: z.null(),
-      result: z.null(),
-      started_at: z.null(),
-      status: z.literal("cancelled"),
-    })
-    .strict(),
+  zPendingTaskRead.strict(),
+  zRunningTaskRead.strict(),
+  zSucceededTaskRead.extend({ result: ZCreateResult }).strict(),
+  zFailedTaskRead.strict(),
+  zCancelledTaskRead.strict(),
 ]);
 
 const DEFAULT_TASK_POLL_MS = 1_000;

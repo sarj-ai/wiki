@@ -11,7 +11,10 @@
             "type": "string"
           },
           "file_type": {
-            "enum": ["document", "presentation"],
+            "enum": [
+              "document",
+              "presentation"
+            ],
             "title": "File Type",
             "type": "string"
           },
@@ -43,7 +46,11 @@
             "type": "string"
           }
         },
-        "required": ["kind", "description", "file_type"],
+        "required": [
+          "kind",
+          "description",
+          "file_type"
+        ],
         "title": "AIMode",
         "type": "object"
       },
@@ -51,7 +58,10 @@
         "additionalProperties": false,
         "properties": {
           "file_type": {
-            "enum": ["document", "presentation"],
+            "enum": [
+              "document",
+              "presentation"
+            ],
             "title": "File Type",
             "type": "string"
           },
@@ -61,7 +71,10 @@
             "type": "string"
           }
         },
-        "required": ["kind", "file_type"],
+        "required": [
+          "kind",
+          "file_type"
+        ],
         "title": "BlankSource",
         "type": "object"
       },
@@ -135,7 +148,10 @@
             "type": "string"
           }
         },
-        "required": ["id", "name"],
+        "required": [
+          "id",
+          "name"
+        ],
         "title": "BreadcrumbItem",
         "type": "object"
       },
@@ -237,7 +253,11 @@
             "title": "Icon"
           }
         },
-        "required": ["drive_id", "icon", "cover_url"],
+        "required": [
+          "drive_id",
+          "icon",
+          "cover_url"
+        ],
         "title": "DocIconRead",
         "type": "object"
       },
@@ -291,7 +311,9 @@
             "title": "Alias"
           }
         },
-        "required": ["alias"],
+        "required": [
+          "alias"
+        ],
         "title": "DocumentAliasForFile",
         "type": "object"
       },
@@ -309,7 +331,10 @@
             "type": "string"
           }
         },
-        "required": ["alias", "file_id"],
+        "required": [
+          "alias",
+          "file_id"
+        ],
         "title": "DocumentAliasRead",
         "type": "object"
       },
@@ -323,7 +348,9 @@
             "type": "string"
           }
         },
-        "required": ["alias"],
+        "required": [
+          "alias"
+        ],
         "title": "DocumentAliasWrite",
         "type": "object"
       },
@@ -424,7 +451,13 @@
             "title": "Shortcut Target Mime Type"
           }
         },
-        "required": ["id", "name", "mime_type", "parent_id", "modified_time"],
+        "required": [
+          "id",
+          "name",
+          "mime_type",
+          "parent_id",
+          "modified_time"
+        ],
         "title": "DriveNode",
         "type": "object"
       },
@@ -508,7 +541,11 @@
             "type": "string"
           }
         },
-        "required": ["id", "principal_type", "role"],
+        "required": [
+          "id",
+          "principal_type",
+          "role"
+        ],
         "title": "DrivePermission",
         "type": "object"
       },
@@ -541,7 +578,11 @@
             "type": "array"
           }
         },
-        "required": ["drive_id", "access_model", "permissions"],
+        "required": [
+          "drive_id",
+          "access_model",
+          "permissions"
+        ],
         "title": "DrivePermissionsPage",
         "type": "object"
       },
@@ -561,7 +602,10 @@
             "type": "string"
           }
         },
-        "required": ["id", "name"],
+        "required": [
+          "id",
+          "name"
+        ],
         "title": "DriveSummary",
         "type": "object"
       },
@@ -590,8 +634,26 @@
             "type": "array"
           }
         },
-        "required": ["drive_id", "folders", "files", "files_complete"],
+        "required": [
+          "drive_id",
+          "folders",
+          "files",
+          "files_complete"
+        ],
         "title": "DriveTree",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse",
         "type": "object"
       },
       "FailedTaskRead": {
@@ -687,7 +749,9 @@
             "type": "string"
           }
         },
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "title": "FileCopy",
         "type": "object"
       },
@@ -708,7 +772,11 @@
             "type": "string"
           }
         },
-        "required": ["parent_folder_id", "name", "mime_type"],
+        "required": [
+          "parent_folder_id",
+          "name",
+          "mime_type"
+        ],
         "title": "FileCreate",
         "type": "object"
       },
@@ -819,7 +887,9 @@
             "type": "string"
           }
         },
-        "required": ["new_parent_folder_id"],
+        "required": [
+          "new_parent_folder_id"
+        ],
         "title": "FileMove",
         "type": "object"
       },
@@ -832,7 +902,9 @@
             "type": "string"
           }
         },
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "title": "FileRename",
         "type": "object"
       },
@@ -905,7 +977,14 @@
             "title": "Parent Folder Id"
           }
         },
-        "required": ["id", "name", "mime_type", "parent_folder_id", "drive_id", "modified_time"],
+        "required": [
+          "id",
+          "name",
+          "mime_type",
+          "parent_folder_id",
+          "drive_id",
+          "modified_time"
+        ],
         "title": "FileResponse",
         "type": "object"
       },
@@ -927,7 +1006,10 @@
             "title": "Icon"
           }
         },
-        "required": ["folder_drive_id", "icon"],
+        "required": [
+          "folder_drive_id",
+          "icon"
+        ],
         "title": "FolderIconRead",
         "type": "object"
       },
@@ -1045,7 +1127,10 @@
             "type": "boolean"
           }
         },
-        "required": ["show_non_doc_files", "hidden_workspace_ids"],
+        "required": [
+          "show_non_doc_files",
+          "hidden_workspace_ids"
+        ],
         "title": "PreferencesRead",
         "type": "object"
       },
@@ -1097,7 +1182,12 @@
             "type": "array"
           }
         },
-        "required": ["folder_id", "drive_id", "drive_name", "folder_path"],
+        "required": [
+          "folder_id",
+          "drive_id",
+          "drive_name",
+          "folder_path"
+        ],
         "title": "ProposalDestination",
         "type": "object"
       },
@@ -1130,7 +1220,12 @@
             "type": "string"
           }
         },
-        "required": ["alias", "name", "mime_type", "drive_name"],
+        "required": [
+          "alias",
+          "name",
+          "mime_type",
+          "drive_name"
+        ],
         "title": "RecentDocumentAlias",
         "type": "object"
       },
@@ -1148,7 +1243,9 @@
             "type": "array"
           }
         },
-        "required": ["aliases"],
+        "required": [
+          "aliases"
+        ],
         "title": "RecentDocumentAliasesRequest",
         "type": "object"
       },
@@ -1180,7 +1277,11 @@
             ]
           }
         },
-        "required": ["current_destination", "suggested_destination", "reason"],
+        "required": [
+          "current_destination",
+          "suggested_destination",
+          "reason"
+        ],
         "title": "ReorganizationProposalRead",
         "type": "object"
       },
@@ -1388,7 +1489,11 @@
             "type": "array"
           }
         },
-        "required": ["task_id", "file", "warnings"],
+        "required": [
+          "task_id",
+          "file",
+          "warnings"
+        ],
         "title": "SmartCreateResult",
         "type": "object"
       },
@@ -1404,7 +1509,10 @@
             "type": "string"
           }
         },
-        "required": ["code", "detail"],
+        "required": [
+          "code",
+          "detail"
+        ],
         "title": "SmartCreateWarning",
         "type": "object"
       },
@@ -1453,7 +1561,13 @@
             "title": "Source"
           }
         },
-        "required": ["source", "parent_folder_id", "name", "emoji", "alias"],
+        "required": [
+          "source",
+          "parent_folder_id",
+          "name",
+          "emoji",
+          "alias"
+        ],
         "title": "SmartFileCreate",
         "type": "object"
       },
@@ -1501,7 +1615,13 @@
             "title": "Source"
           }
         },
-        "required": ["name", "emoji", "alias", "destination", "source"],
+        "required": [
+          "name",
+          "emoji",
+          "alias",
+          "destination",
+          "source"
+        ],
         "title": "SmartProposalRead",
         "type": "object"
       },
@@ -1538,7 +1658,12 @@
             "title": "Snippet"
           }
         },
-        "required": ["file_id", "mime_type", "snippet", "match_term"],
+        "required": [
+          "file_id",
+          "mime_type",
+          "snippet",
+          "match_term"
+        ],
         "title": "SnippetResult",
         "type": "object"
       },
@@ -1549,7 +1674,9 @@
             "type": "integer"
           }
         },
-        "required": ["updated"],
+        "required": [
+          "updated"
+        ],
         "title": "SortOrderBulkResult",
         "type": "object"
       },
@@ -1578,7 +1705,10 @@
             "type": "number"
           }
         },
-        "required": ["drive_id", "sort_order"],
+        "required": [
+          "drive_id",
+          "sort_order"
+        ],
         "title": "SortOrderRead",
         "type": "object"
       },
@@ -1593,7 +1723,10 @@
             "type": "number"
           }
         },
-        "required": ["drive_id", "sort_order"],
+        "required": [
+          "drive_id",
+          "sort_order"
+        ],
         "title": "SortOrderWrite",
         "type": "object"
       },
@@ -1673,19 +1806,6 @@
         "title": "SucceededTaskRead",
         "type": "object"
       },
-      "TaskDispatchRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "task_id": {
-            "format": "uuid",
-            "title": "Task Id",
-            "type": "string"
-          }
-        },
-        "required": ["task_id"],
-        "title": "TaskDispatchRequest",
-        "type": "object"
-      },
       "TemplateCatalogRead": {
         "properties": {
           "templates": {
@@ -1696,7 +1816,9 @@
             "type": "array"
           }
         },
-        "required": ["templates"],
+        "required": [
+          "templates"
+        ],
         "title": "TemplateCatalogRead",
         "type": "object"
       },
@@ -1835,7 +1957,12 @@
             "type": "string"
           }
         },
-        "required": ["id", "email", "display_name", "avatar_url"],
+        "required": [
+          "id",
+          "email",
+          "display_name",
+          "avatar_url"
+        ],
         "title": "UserProfile",
         "type": "object"
       },
@@ -1871,9 +1998,29 @@
             "type": "string"
           }
         },
-        "required": ["loc", "msg", "type"],
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
         "title": "ValidationError",
         "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyCookie": {
+        "in": "cookie",
+        "name": "access_token",
+        "type": "apiKey"
+      },
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "RefreshCookie": {
+        "in": "cookie",
+        "name": "refresh_token",
+        "type": "apiKey"
       }
     }
   },
@@ -1885,7 +2032,7 @@
   "paths": {
     "/aliases/files/{file_id}": {
       "delete": {
-        "operationId": "retire_file_alias_aliases_files__file_id__delete",
+        "operationId": "retire_file_alias",
         "parameters": [
           {
             "in": "path",
@@ -1901,6 +2048,16 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -1912,11 +2069,21 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Retire File Alias",
-        "tags": ["aliases"]
+        "tags": [
+          "aliases"
+        ]
       },
       "get": {
-        "operationId": "get_file_alias_aliases_files__file_id__get",
+        "operationId": "get_file_alias",
         "parameters": [
           {
             "in": "path",
@@ -1939,6 +2106,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -1950,11 +2127,21 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get File Alias",
-        "tags": ["aliases"]
+        "tags": [
+          "aliases"
+        ]
       },
       "put": {
-        "operationId": "save_file_alias_aliases_files__file_id__put",
+        "operationId": "save_file_alias",
         "parameters": [
           {
             "in": "path",
@@ -1987,6 +2174,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -1998,13 +2195,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Save File Alias",
-        "tags": ["aliases"]
+        "tags": [
+          "aliases"
+        ]
       }
     },
     "/aliases/recent": {
       "post": {
-        "operationId": "get_recent_aliases_aliases_recent_post",
+        "operationId": "get_recent_aliases",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2023,12 +2230,22 @@
                   "items": {
                     "$ref": "#/components/schemas/RecentDocumentAlias"
                   },
-                  "title": "Response Get Recent Aliases Aliases Recent Post",
+                  "title": "Response Get Recent Aliases",
                   "type": "array"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
           },
           "422": {
             "content": {
@@ -2041,13 +2258,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Recent Aliases",
-        "tags": ["aliases"]
+        "tags": [
+          "aliases"
+        ]
       }
     },
     "/aliases/{alias}": {
       "get": {
-        "operationId": "resolve_alias_aliases__alias__get",
+        "operationId": "resolve_alias",
         "parameters": [
           {
             "in": "path",
@@ -2073,6 +2300,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2084,77 +2321,23 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Resolve Alias",
-        "tags": ["aliases"]
-      }
-    },
-    "/auth/callback": {
-      "get": {
-        "operationId": "callback_auth_callback_get",
-        "parameters": [
+        "security": [
           {
-            "in": "query",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "title": "Code",
-              "type": "string"
-            }
+            "APIKeyCookie": []
           },
           {
-            "in": "query",
-            "name": "state",
-            "required": true,
-            "schema": {
-              "title": "State",
-              "type": "string"
-            }
+            "HTTPBearer": []
           }
         ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Callback",
-        "tags": ["auth"]
-      }
-    },
-    "/auth/login": {
-      "get": {
-        "operationId": "login_auth_login_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Login",
-        "tags": ["auth"]
+        "summary": "Resolve Alias",
+        "tags": [
+          "aliases"
+        ]
       }
     },
     "/auth/logout": {
       "post": {
-        "operationId": "logout_auth_logout_post",
+        "operationId": "logout",
         "responses": {
           "200": {
             "content": {
@@ -2166,12 +2349,14 @@
           }
         },
         "summary": "Logout",
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/auth/me": {
       "get": {
-        "operationId": "me_auth_me_get",
+        "operationId": "get_current_user",
         "responses": {
           "200": {
             "content": {
@@ -2182,15 +2367,35 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Me",
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/auth/refresh": {
       "post": {
-        "operationId": "refresh_auth_refresh_post",
+        "operationId": "refresh_session",
         "responses": {
           "200": {
             "content": {
@@ -2199,15 +2404,32 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
           }
         },
+        "security": [
+          {
+            "RefreshCookie": []
+          }
+        ],
         "summary": "Refresh",
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/bootstrap": {
       "get": {
-        "operationId": "bootstrap_bootstrap_get",
+        "operationId": "get_bootstrap",
         "responses": {
           "200": {
             "content": {
@@ -2218,15 +2440,35 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Bootstrap",
-        "tags": ["bootstrap"]
+        "tags": [
+          "bootstrap"
+        ]
       }
     },
     "/drive-search": {
       "get": {
-        "operationId": "search_drive_search_get",
+        "operationId": "search_drive",
         "parameters": [
           {
             "in": "query",
@@ -2260,12 +2502,22 @@
                   "items": {
                     "$ref": "#/components/schemas/SearchResult"
                   },
-                  "title": "Response Search Drive Search Get",
+                  "title": "Response Search Drive",
                   "type": "array"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
           },
           "422": {
             "content": {
@@ -2278,13 +2530,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Search",
-        "tags": ["drive-search"]
+        "tags": [
+          "drive-search"
+        ]
       }
     },
     "/drive-search/snippet": {
       "get": {
-        "operationId": "snippet_drive_search_snippet_get",
+        "operationId": "get_search_snippet",
         "parameters": [
           {
             "in": "query",
@@ -2336,68 +2598,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "401": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Snippet",
-        "tags": ["drive-search"]
-      }
-    },
-    "/extras/doc-icons": {
-      "get": {
-        "operationId": "list_doc_icons_extras_doc_icons_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DocIconRead"
-                  },
-                  "title": "Response List Doc Icons Extras Doc Icons Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "List Doc Icons",
-        "tags": ["extras"]
-      }
-    },
-    "/extras/doc-icons/{drive_id}": {
-      "get": {
-        "operationId": "read_doc_icon_extras_doc_icons__drive_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "drive_id",
-            "required": true,
-            "schema": {
-              "title": "Drive Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DocIconRead"
-                }
-              }
-            },
-            "description": "Successful Response"
+            "description": "Authentication is required or the session is invalid."
           },
           "422": {
             "content": {
@@ -2410,11 +2619,66 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Read Doc Icon",
-        "tags": ["extras"]
-      },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Snippet",
+        "tags": [
+          "drive-search"
+        ]
+      }
+    },
+    "/extras/doc-icons": {
+      "get": {
+        "operationId": "list_doc_icons",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DocIconRead"
+                  },
+                  "title": "Response List Doc Icons",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Doc Icons",
+        "tags": [
+          "extras"
+        ]
+      }
+    },
+    "/extras/doc-icons/{drive_id}": {
       "put": {
-        "operationId": "set_doc_icon_extras_doc_icons__drive_id__put",
+        "operationId": "set_doc_icon",
         "parameters": [
           {
             "in": "path",
@@ -2447,6 +2711,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2458,13 +2732,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Set Doc Icon",
-        "tags": ["extras"]
+        "tags": [
+          "extras"
+        ]
       }
     },
     "/extras/folder-icons": {
       "get": {
-        "operationId": "list_my_folder_icons_extras_folder_icons_get",
+        "operationId": "list_folder_icons",
         "responses": {
           "200": {
             "content": {
@@ -2473,21 +2757,41 @@
                   "items": {
                     "$ref": "#/components/schemas/FolderIconRead"
                   },
-                  "title": "Response List My Folder Icons Extras Folder Icons Get",
+                  "title": "Response List Folder Icons",
                   "type": "array"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List My Folder Icons",
-        "tags": ["extras"]
+        "tags": [
+          "extras"
+        ]
       }
     },
     "/extras/folder-icons/{folder_drive_id}": {
       "put": {
-        "operationId": "set_folder_icon_extras_folder_icons__folder_drive_id__put",
+        "operationId": "set_folder_icon",
         "parameters": [
           {
             "in": "path",
@@ -2520,6 +2824,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2531,13 +2845,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Set Folder Icon",
-        "tags": ["extras"]
+        "tags": [
+          "extras"
+        ]
       }
     },
     "/extras/preferences": {
       "get": {
-        "operationId": "read_preferences_extras_preferences_get",
+        "operationId": "read_preferences",
         "responses": {
           "200": {
             "content": {
@@ -2548,13 +2872,33 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Read Preferences",
-        "tags": ["extras"]
+        "tags": [
+          "extras"
+        ]
       },
       "put": {
-        "operationId": "write_preferences_extras_preferences_put",
+        "operationId": "write_preferences",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2576,6 +2920,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2587,13 +2941,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Write Preferences",
-        "tags": ["extras"]
+        "tags": [
+          "extras"
+        ]
       }
     },
     "/extras/sort-order": {
       "get": {
-        "operationId": "list_my_sort_orders_extras_sort_order_get",
+        "operationId": "list_sort_orders",
         "responses": {
           "200": {
             "content": {
@@ -2602,19 +2966,39 @@
                   "items": {
                     "$ref": "#/components/schemas/SortOrderRead"
                   },
-                  "title": "Response List My Sort Orders Extras Sort Order Get",
+                  "title": "Response List Sort Orders",
                   "type": "array"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List My Sort Orders",
-        "tags": ["extras"]
+        "tags": [
+          "extras"
+        ]
       },
       "put": {
-        "operationId": "bulk_set_sort_orders_extras_sort_order_put",
+        "operationId": "set_sort_orders",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2636,38 +3020,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "401": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Bulk Set Sort Orders",
-        "tags": ["extras"]
-      }
-    },
-    "/extras/sort-order/{drive_id}": {
-      "delete": {
-        "operationId": "delete_sort_order_extras_sort_order__drive_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "drive_id",
-            "required": true,
-            "schema": {
-              "title": "Drive Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
+            "description": "Authentication is required or the session is invalid."
           },
           "422": {
             "content": {
@@ -2680,13 +3041,23 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Sort Order",
-        "tags": ["extras"]
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Bulk Set Sort Orders",
+        "tags": [
+          "extras"
+        ]
       }
     },
     "/files": {
       "post": {
-        "operationId": "create_file_files_post",
+        "operationId": "create_file",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2708,6 +3079,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2719,13 +3100,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create File",
-        "tags": ["files"]
+        "tags": [
+          "files"
+        ]
       }
     },
     "/files/smart": {
       "post": {
-        "operationId": "create_smart_file_files_smart_post",
+        "operationId": "create_smart_file",
         "parameters": [
           {
             "in": "header",
@@ -2780,11 +3171,38 @@
                       "$ref": "#/components/schemas/CancelledTaskRead"
                     }
                   ],
-                  "title": "Response Create Smart File Files Smart Post"
+                  "title": "Response Create Smart File"
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Accepted task or an existing idempotent task.",
+            "headers": {
+              "Idempotency-Replayed": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "Server-Timing": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
           },
           "422": {
             "content": {
@@ -2797,13 +3215,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Smart File",
-        "tags": ["files"]
+        "tags": [
+          "files"
+        ]
       }
     },
     "/files/smart-proposal": {
       "post": {
-        "operationId": "create_smart_proposal_files_smart_proposal_post",
+        "operationId": "create_smart_proposal",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2823,7 +3251,24 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Smart creation proposal.",
+            "headers": {
+              "Server-Timing": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
           },
           "422": {
             "content": {
@@ -2836,13 +3281,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Smart Proposal",
-        "tags": ["files"]
+        "tags": [
+          "files"
+        ]
       }
     },
     "/files/{file_id}": {
       "delete": {
-        "operationId": "delete_file_files__file_id__delete",
+        "operationId": "delete_file",
         "parameters": [
           {
             "in": "path",
@@ -2858,6 +3313,16 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2869,11 +3334,21 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Delete File",
-        "tags": ["files"]
+        "tags": [
+          "files"
+        ]
       },
       "get": {
-        "operationId": "read_file_files__file_id__get",
+        "operationId": "read_file",
         "parameters": [
           {
             "in": "path",
@@ -2896,6 +3371,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2907,13 +3392,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Read File",
-        "tags": ["files"]
+        "tags": [
+          "files"
+        ]
       }
     },
     "/files/{file_id}/content": {
       "get": {
-        "operationId": "read_html_content_files__file_id__content_get",
+        "operationId": "read_file_content",
         "parameters": [
           {
             "in": "path",
@@ -2927,7 +3422,24 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response"
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Rendered document content."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
           },
           "422": {
             "content": {
@@ -2940,13 +3452,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Read Html Content",
-        "tags": ["files"]
+        "tags": [
+          "files"
+        ]
       }
     },
     "/files/{file_id}/copy": {
       "post": {
-        "operationId": "copy_file_files__file_id__copy_post",
+        "operationId": "copy_file",
         "parameters": [
           {
             "in": "path",
@@ -2979,6 +3501,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2990,13 +3522,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Copy File",
-        "tags": ["files"]
+        "tags": [
+          "files"
+        ]
       }
     },
     "/files/{file_id}/move": {
       "patch": {
-        "operationId": "move_file_files__file_id__move_patch",
+        "operationId": "move_file",
         "parameters": [
           {
             "in": "path",
@@ -3029,6 +3571,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3040,13 +3592,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Move File",
-        "tags": ["files"]
+        "tags": [
+          "files"
+        ]
       }
     },
     "/files/{file_id}/rename": {
       "patch": {
-        "operationId": "rename_file_files__file_id__rename_patch",
+        "operationId": "rename_file",
         "parameters": [
           {
             "in": "path",
@@ -3079,6 +3641,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3090,13 +3662,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Rename File",
-        "tags": ["files"]
+        "tags": [
+          "files"
+        ]
       }
     },
     "/files/{file_id}/reorganize-proposal": {
       "post": {
-        "operationId": "propose_file_reorganization_files__file_id__reorganize_proposal_post",
+        "operationId": "propose_file_reorganization",
         "parameters": [
           {
             "in": "path",
@@ -3119,6 +3701,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3130,119 +3722,23 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Propose File Reorganization",
-        "tags": ["files"]
-      }
-    },
-    "/health": {
-      "get": {
-        "operationId": "health_check_health_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Health Check Health Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Health Check"
-      }
-    },
-    "/internal/tasks/smart-create": {
-      "post": {
-        "operationId": "execute_smart_create_task_internal_tasks_smart_create_post",
-        "parameters": [
+        "security": [
           {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TaskDispatchRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "discriminator": {
-                    "mapping": {
-                      "cancelled": "#/components/schemas/CancelledTaskRead",
-                      "failed": "#/components/schemas/FailedTaskRead",
-                      "pending": "#/components/schemas/PendingTaskRead",
-                      "running": "#/components/schemas/RunningTaskRead",
-                      "succeeded": "#/components/schemas/SucceededTaskRead"
-                    },
-                    "propertyName": "status"
-                  },
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/PendingTaskRead"
-                    },
-                    {
-                      "$ref": "#/components/schemas/RunningTaskRead"
-                    },
-                    {
-                      "$ref": "#/components/schemas/SucceededTaskRead"
-                    },
-                    {
-                      "$ref": "#/components/schemas/FailedTaskRead"
-                    },
-                    {
-                      "$ref": "#/components/schemas/CancelledTaskRead"
-                    }
-                  ],
-                  "title": "Response Execute Smart Create Task Internal Tasks Smart Create Post"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Execute Smart Create Task",
-        "tags": ["internal-tasks"]
+        "summary": "Propose File Reorganization",
+        "tags": [
+          "files"
+        ]
       }
     },
     "/sidebar/drives": {
       "get": {
-        "operationId": "get_drives_sidebar_drives_get",
+        "operationId": "list_drives",
         "responses": {
           "200": {
             "content": {
@@ -3251,21 +3747,41 @@
                   "items": {
                     "$ref": "#/components/schemas/DriveSummary"
                   },
-                  "title": "Response Get Drives Sidebar Drives Get",
+                  "title": "Response List Drives",
                   "type": "array"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Drives",
-        "tags": ["sidebar"]
+        "tags": [
+          "sidebar"
+        ]
       }
     },
     "/sidebar/drives/{drive_id}/folders": {
       "get": {
-        "operationId": "get_drive_folders_sidebar_drives__drive_id__folders_get",
+        "operationId": "get_drive_tree",
         "parameters": [
           {
             "in": "path",
@@ -3288,6 +3804,31 @@
             },
             "description": "Successful Response"
           },
+          "304": {
+            "description": "The cached tree matches If-None-Match and has no response body.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3299,13 +3840,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Drive Folders",
-        "tags": ["sidebar"]
+        "tags": [
+          "sidebar"
+        ]
       }
     },
     "/sidebar/drives/{drive_id}/permissions": {
       "get": {
-        "operationId": "get_drive_permissions_sidebar_drives__drive_id__permissions_get",
+        "operationId": "list_drive_permissions",
         "parameters": [
           {
             "in": "path",
@@ -3344,6 +3895,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3355,13 +3916,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Drive Permissions",
-        "tags": ["sidebar"]
+        "tags": [
+          "sidebar"
+        ]
       }
     },
     "/sidebar/drives/{drive_id}/refresh": {
       "post": {
-        "operationId": "refresh_drive_folders_sidebar_drives__drive_id__refresh_post",
+        "operationId": "refresh_drive_tree",
         "parameters": [
           {
             "in": "path",
@@ -3384,6 +3955,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3395,13 +3976,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Refresh Drive Folders",
-        "tags": ["sidebar"]
+        "tags": [
+          "sidebar"
+        ]
       }
     },
     "/sidebar/folders/{folder_id}/files": {
       "get": {
-        "operationId": "get_folder_files_sidebar_folders__folder_id__files_get",
+        "operationId": "list_folder_files",
         "parameters": [
           {
             "in": "path",
@@ -3421,12 +4012,22 @@
                   "items": {
                     "$ref": "#/components/schemas/DriveNode"
                   },
-                  "title": "Response Get Folder Files Sidebar Folders  Folder Id  Files Get",
+                  "title": "Response List Folder Files",
                   "type": "array"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
           },
           "422": {
             "content": {
@@ -3439,13 +4040,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Folder Files",
-        "tags": ["sidebar"]
+        "tags": [
+          "sidebar"
+        ]
       }
     },
     "/tasks/{task_id}": {
       "get": {
-        "operationId": "get_task_tasks__task_id__get",
+        "operationId": "get_task",
         "parameters": [
           {
             "in": "path",
@@ -3490,11 +4101,28 @@
                       "$ref": "#/components/schemas/CancelledTaskRead"
                     }
                   ],
-                  "title": "Response Get Task Tasks  Task Id  Get"
+                  "title": "Response Get Task"
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Current task state.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
           },
           "422": {
             "content": {
@@ -3507,13 +4135,23 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Task",
-        "tags": ["tasks"]
+        "tags": [
+          "tasks"
+        ]
       }
     },
     "/templates": {
       "get": {
-        "operationId": "list_templates_templates_get",
+        "operationId": "list_templates",
         "parameters": [
           {
             "in": "query",
@@ -3537,6 +4175,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3548,8 +4196,18 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Templates",
-        "tags": ["templates"]
+        "tags": [
+          "templates"
+        ]
       }
     }
   }

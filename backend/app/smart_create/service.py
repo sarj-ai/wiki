@@ -202,7 +202,7 @@ class GeminiReorganizationService(ReorganizationService):
         if file.mime_type == MIME_DOC:
             exported_content = await self._drive.fetch_document_text(file_id)
             if exported_content is None:
-                logger.warning("Re-organize content unavailable file={file_id}", file_id=file_id)
+                logger.warning("Re-organize content unavailable")
                 raise ReorganizationUnavailableError
             content = exported_content
         evidence = ReorganizationEvidence(
@@ -236,7 +236,10 @@ class GeminiReorganizationService(ReorganizationService):
             ValidationError,
             genai_errors.APIError,
         ) as exc:
-            logger.warning("Re-organize proposal failed file={file_id}", file_id=file_id)
+            logger.warning(
+                "Re-organize proposal failed error_type={error_type}",
+                error_type=type(exc).__name__,
+            )
             raise ReorganizationUnavailableError from exc
 
 
@@ -568,7 +571,6 @@ def _destinations_within_candidate_depth(
     invoking_folder_id: FileId | None,
     candidate_depth: int | None,
 ) -> list[ProposalDestination]:
-    """Bound exploration while retaining the invoking path needed for a safe fallback."""
     if candidate_depth is None:
         return destinations
     by_id = {destination.folder_id: destination for destination in destinations}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import override
+from urllib.parse import urlsplit
 
 from google.api_core.exceptions import AlreadyExists, GoogleAPICallError
 from google.cloud import tasks_v2
@@ -27,6 +28,9 @@ class CloudTasksEnqueuer(TaskEnqueuer):
         invoker_service_account: str,
         client: tasks_v2.CloudTasksAsyncClient | None = None,
     ) -> None:
+        if not _is_internal_smart_create_url(target_url):
+            msg = "Cloud Tasks target must be the HTTPS internal Smart Create endpoint"
+            raise ValueError(msg)
         self._client = client or tasks_v2.CloudTasksAsyncClient()
         self._parent = self._client.queue_path(project, location, queue)
         self._target_url = target_url
@@ -54,3 +58,17 @@ class CloudTasksEnqueuer(TaskEnqueuer):
             return
         except GoogleAPICallError as exc:
             raise TaskEnqueueError from exc
+
+
+def _is_internal_smart_create_url(target_url: str) -> bool:
+    parsed = urlsplit(target_url)
+    has_authority = (
+        parsed.hostname is not None and parsed.username is None and parsed.password is None
+    )
+    has_expected_location = (
+        parsed.scheme == "https"
+        and parsed.path == "/internal/tasks/smart-create"
+        and not parsed.query
+        and not parsed.fragment
+    )
+    return has_authority and has_expected_location

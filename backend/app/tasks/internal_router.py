@@ -14,6 +14,7 @@ router = APIRouter(
     prefix="/internal/tasks",
     tags=["internal-tasks"],
     dependencies=[Depends(require_cloud_task)],
+    include_in_schema=False,
 )
 
 

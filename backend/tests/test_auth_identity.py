@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.errors import AuthFailedError
 from app.auth.service import GoogleAuthService, GoogleIdentity, GoogleTokens
-from app.identifiers import GoogleUserId
+from app.identifiers import GoogleUserId, UserId
 from app.models.user import User
 
 
@@ -62,7 +62,7 @@ def _user(*, email: str, google_id: str) -> User:
         encrypted_access_token=uuid.uuid4().hex,
         encrypted_refresh_token=uuid.uuid4().hex,
     )
-    user.id = uuid.uuid4()
+    user.id = UserId(uuid.uuid4())
     user.token_version = 0
     return user
 

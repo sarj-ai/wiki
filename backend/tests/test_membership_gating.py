@@ -61,9 +61,6 @@ class _FakeExtras:
             ),
         ]
 
-    async def get_doc_icon(self, drive_id: str) -> DocIconRead:
-        return DocIconRead(drive_id=FileId(drive_id), icon="📄", cover_url=None)
-
     async def upsert_doc_icon(self, drive_id: str, payload: object) -> DocIconRead:
         return DocIconRead(drive_id=FileId(drive_id), icon="📄", cover_url=None)
 
@@ -180,10 +177,7 @@ async def test_non_member_drive_is_404(client: AsyncClient, method: str, path: s
 # caller can open the doc rather than testing it against the drive list.
 @pytest.mark.parametrize(
     ("method", "json"),
-    [
-        ("GET", None),
-        ("PUT", {"icon": "🔥", "cover_url": None}),
-    ],
+    [("PUT", {"icon": "🔥", "cover_url": None})],
 )
 async def test_accessible_doc_icon_is_allowed(
     client: AsyncClient, method: str, json: dict[str, object] | None
@@ -195,10 +189,7 @@ async def test_accessible_doc_icon_is_allowed(
 
 @pytest.mark.parametrize(
     ("method", "json"),
-    [
-        ("GET", None),
-        ("PUT", {"icon": "🔥", "cover_url": None}),
-    ],
+    [("PUT", {"icon": "🔥", "cover_url": None})],
 )
 async def test_inaccessible_doc_icon_is_404(
     client: AsyncClient, method: str, json: dict[str, object] | None

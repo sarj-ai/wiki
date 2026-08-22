@@ -1,18 +1,17 @@
 from datetime import datetime
-import uuid
 
 from sqlalchemy import DateTime, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
-from app.identifiers import GoogleUserId
+from app.identifiers import GoogleUserId, UserId
 
 
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[uuid.UUID] = mapped_column(
+    id: Mapped[UserId] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
         server_default=text("gen_random_uuid()"),

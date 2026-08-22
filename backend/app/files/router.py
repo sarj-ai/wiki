@@ -22,11 +22,12 @@ from app.files.schemas import (
 )
 from app.files.service import FilesService
 from app.identifiers import FileId
+from app.openapi import authentication_responses
 from app.sidebar.cache import SidebarCacheService
 from app.sidebar.dependencies import sidebar_cache_service_dep
 
 
-router = APIRouter(prefix="/files", tags=["files"])
+router = APIRouter(prefix="/files", tags=["files"], responses=authentication_responses())
 
 _HTML_CSP = "; ".join(
     (
@@ -49,7 +50,17 @@ _HTML_CSP = "; ".join(
 )
 
 
-@router.get("/{file_id}/content", response_class=Response)
+@router.get(
+    "/{file_id}/content",
+    response_class=Response,
+    operation_id="read_file_content",
+    responses={
+        200: {
+            "description": "Rendered document content.",
+            "content": {"text/html": {"schema": {"type": "string"}}},
+        }
+    },
+)
 async def read_html_content(
     file_id: FileId,
     files: Annotated[FilesService, Depends(files_service_dep)],
@@ -69,7 +80,7 @@ async def read_html_content(
     )
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, operation_id="create_file")
 async def create_file(
     payload: FileCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -81,7 +92,7 @@ async def create_file(
     return result
 
 
-@router.get("/{file_id}")
+@router.get("/{file_id}", operation_id="read_file")
 async def read_file(
     file_id: FileId,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -101,7 +112,7 @@ async def read_file(
     )
 
 
-@router.patch("/{file_id}/rename")
+@router.patch("/{file_id}/rename", operation_id="rename_file")
 async def rename_file(
     file_id: FileId,
     payload: FileRename,
@@ -114,7 +125,7 @@ async def rename_file(
     return result
 
 
-@router.patch("/{file_id}/move")
+@router.patch("/{file_id}/move", operation_id="move_file")
 async def move_file(
     file_id: FileId,
     payload: FileMove,
@@ -128,7 +139,11 @@ async def move_file(
     return result.moved
 
 
-@router.post("/{file_id}/copy", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{file_id}/copy",
+    status_code=status.HTTP_201_CREATED,
+    operation_id="copy_file",
+)
 async def copy_file(
     file_id: FileId,
     payload: FileCopy,
@@ -141,7 +156,11 @@ async def copy_file(
     return result
 
 
-@router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{file_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    operation_id="delete_file",
+)
 async def delete_file(
     file_id: FileId,
     db: Annotated[AsyncSession, Depends(get_db)],

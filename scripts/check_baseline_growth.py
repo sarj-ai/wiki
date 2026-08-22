@@ -1,5 +1,3 @@
-"""Reject increases in nested integer lint-baseline counts."""
-
 from __future__ import annotations
 
 from pathlib import Path

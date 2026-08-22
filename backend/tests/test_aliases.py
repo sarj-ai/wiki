@@ -20,7 +20,7 @@ from app.drive.service import DriveService
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
 from app.files.service import FilesService
-from app.identifiers import DriveId, FileId, GoogleUserId
+from app.identifiers import DriveId, FileId, GoogleUserId, UserId
 from app.models.user import User
 from app.models.wiki import DocumentAlias
 
@@ -162,7 +162,7 @@ class _Session:
 
 def _user() -> User:
     user = User()
-    user.id = uuid.uuid4()
+    user.id = UserId(uuid.uuid4())
     user.email = "editor@sarj.ai"
     user.google_id = GoogleUserId("google-user")
     user.token_version = 0

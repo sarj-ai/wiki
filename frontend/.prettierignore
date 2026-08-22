@@ -9,4 +9,5 @@ test-results
 *.lock
 *.tsbuildinfo
 package-lock.json
+openapi.json
 eslint.strict.mjs

@@ -1,5 +1,3 @@
-"""Run every installed Sarj registry with the repository's shrink-only baseline."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field

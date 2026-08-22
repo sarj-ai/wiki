@@ -6,7 +6,7 @@
     "SARJ014": 2
   },
   "backend/app/auth/router.py": {
-    "SARJ094": 12
+    "SARJ094": 4
   },
   "backend/app/bootstrap/router.py": {
     "SARJ094": 1
@@ -21,37 +21,25 @@
     "SARJ014": 1
   },
   "backend/app/extras/router.py": {
-    "SARJ094": 18
+    "SARJ094": 14
   },
   "backend/app/files/router.py": {
-    "SARJ094": 15
-  },
-  "backend/app/files/service.py": {
-    "SARJ093": 6
-  },
-  "backend/app/main.py": {
-    "SARJ094": 2
+    "SARJ094": 14
   },
   "backend/app/models/task.py": {
-    "SARJ093": 1
-  },
-  "backend/app/models/user.py": {
     "SARJ093": 1
   },
   "backend/app/models/wiki.py": {
     "SARJ093": 3
   },
   "backend/app/sidebar/router.py": {
-    "SARJ094": 11
+    "SARJ094": 10
   },
   "backend/app/smart_create/router.py": {
     "SARJ094": 5
   },
   "backend/app/smart_create/service.py": {
     "SARJ014": 2
-  },
-  "backend/app/tasks/internal_router.py": {
-    "SARJ094": 2
   },
   "backend/app/tasks/router.py": {
     "SARJ094": 2

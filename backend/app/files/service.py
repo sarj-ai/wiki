@@ -25,7 +25,7 @@ from app.files.errors import (
     UnsupportedMimeError,
 )
 from app.files.schemas import DeleteResult, FileResponse, MoveResult
-from app.identifiers import DriveId, FileId
+from app.identifiers import DriveId, FileId, TaskId
 from app.models.user import User
 
 
@@ -69,7 +69,7 @@ class FilesService(ABC):
         parent_folder_id: FileId,
         name: str,
         mime_type: str,
-        task_id: str,
+        task_id: TaskId,
     ) -> FileResponse:
         raise NotImplementedError
 
@@ -79,12 +79,12 @@ class FilesService(ABC):
         template_file_id: FileId,
         parent_folder_id: FileId,
         name: str,
-        task_id: str,
+        task_id: TaskId,
         expected_modified_time: str,
     ) -> FileResponse:
         raise NotImplementedError
 
-    async def find_by_task(self, drive_id: DriveId, task_id: str) -> FileResponse | None:
+    async def find_by_task(self, drive_id: DriveId, task_id: TaskId) -> FileResponse | None:
         raise NotImplementedError
 
     @abstractmethod
@@ -141,7 +141,7 @@ class GoogleFilesService(FilesService):
         parent_folder_id: FileId,
         name: str,
         mime_type: str,
-        task_id: str,
+        task_id: TaskId,
     ) -> FileResponse:
         if mime_type not in NAVIGATOR_SUPPORTED_MIME_TYPES:
             msg = f"Unsupported mimeType: {mime_type}"
@@ -166,7 +166,7 @@ class GoogleFilesService(FilesService):
         template_file_id: FileId,
         parent_folder_id: FileId,
         name: str,
-        task_id: str,
+        task_id: TaskId,
         expected_modified_time: str,
     ) -> FileResponse:
         source, destination = await asyncio.gather(
@@ -194,7 +194,7 @@ class GoogleFilesService(FilesService):
         return await self._normalize_member_drive(result)
 
     @override
-    async def find_by_task(self, drive_id: DriveId, task_id: str) -> FileResponse | None:
+    async def find_by_task(self, drive_id: DriveId, task_id: TaskId) -> FileResponse | None:
         drives = await self._drive.list_drives()
         is_personal = any(drive.id == drive_id and drive.is_personal for drive in drives)
         result = await asyncio.to_thread(
@@ -315,12 +315,12 @@ class GoogleFilesService(FilesService):
         parent_folder_id: FileId,
         name: str,
         mime_type: str,
-        task_id: str | None = None,
+        task_id: TaskId | None = None,
     ) -> FileResponse:
         client = self._client()
         body: File = {"name": name, "mimeType": mime_type, "parents": [parent_folder_id]}
         if task_id is not None:
-            body["appProperties"] = {_SMART_TASK_PROPERTY: task_id}
+            body["appProperties"] = {_SMART_TASK_PROPERTY: str(task_id)}
         with _translated_drive_errors():
             raw = execute_mutation(
                 client.files().create(body=body, fields=_FIELDS, supportsAllDrives=True)
@@ -428,13 +428,13 @@ class GoogleFilesService(FilesService):
         template_file_id: FileId,
         parent_folder_id: FileId,
         new_name: str,
-        task_id: str,
+        task_id: TaskId,
     ) -> FileResponse:
         client = self._client()
         body: File = {
             "name": new_name,
             "parents": [parent_folder_id],
-            "appProperties": {_SMART_TASK_PROPERTY: task_id},
+            "appProperties": {_SMART_TASK_PROPERTY: str(task_id)},
         }
         with _translated_drive_errors():
             raw = execute_mutation(
@@ -450,7 +450,7 @@ class GoogleFilesService(FilesService):
     def _find_by_task_sync(
         self,
         drive_id: DriveId,
-        task_id: str,
+        task_id: TaskId,
         *,
         is_personal: bool,
     ) -> FileResponse | None:

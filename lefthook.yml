@@ -10,7 +10,7 @@ pre-commit:
     node-version:
       priority: 1
       run: make check-node
-      fail_text: "AGENT: hooks require node >= 26.5.1. Fix: run 'mise install' (repo ships .mise.toml) or prefix with 'mise exec node@26.5.1 --', and retry. NEVER use --no-verify."
+      fail_text: "AGENT: hooks require node >= 26.7.0. Fix: run 'mise install' (repo ships .mise.toml) or prefix with 'mise exec node@26.7.0 --', and retry. NEVER use --no-verify."
     standards-config:
       run: make standards-check
       fail_text: "AGENT: canonical Standards configs drifted. Fix: run 'make standards-sync', stage the result, and retry. NEVER use --no-verify."

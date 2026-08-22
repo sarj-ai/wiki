@@ -1,5 +1,3 @@
-"""Drop the database rate limiter now enforced by Cloudflare."""
-
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa

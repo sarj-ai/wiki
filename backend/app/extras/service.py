@@ -4,11 +4,10 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, override
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.extras.errors import DocIconNotFoundError
 from app.extras.schemas import (
     DocIconRead,
     DocIconWrite,
@@ -19,7 +18,7 @@ from app.extras.schemas import (
     SortOrderRead,
     SortOrderWrite,
 )
-from app.identifiers import DriveId, FileId
+from app.identifiers import FileId
 from app.models.user import User
 from app.models.wiki import (
     DocIcon,
@@ -49,8 +48,6 @@ class ExtrasService(ABC):
     @abstractmethod
     async def list_doc_icons(self) -> list[DocIconRead]: ...
     @abstractmethod
-    async def get_doc_icon(self, drive_id: FileId) -> DocIconRead: ...
-    @abstractmethod
     async def upsert_doc_icon(self, drive_id: FileId, payload: DocIconWrite) -> DocIconRead: ...
 
     @abstractmethod
@@ -64,9 +61,6 @@ class ExtrasService(ABC):
     async def list_sort_orders(self) -> list[SortOrderRead]: ...
     @abstractmethod
     async def upsert_sort_orders(self, items: list[SortOrderWrite]) -> None: ...
-    @abstractmethod
-    async def clear_sort_order(self, drive_id: DriveId) -> None: ...
-
     @abstractmethod
     async def get_preferences(self) -> PreferencesRead: ...
     @abstractmethod
@@ -82,13 +76,6 @@ class PostgresExtrasService(ExtrasService):
     async def list_doc_icons(self) -> list[DocIconRead]:
         rows = (await self._db.execute(select(DocIcon))).scalars().all()
         return [DocIconRead(drive_id=r.drive_id, icon=r.icon, cover_url=r.cover_url) for r in rows]
-
-    @override
-    async def get_doc_icon(self, drive_id: FileId) -> DocIconRead:
-        row = await self._db.get(DocIcon, drive_id)
-        if row is None:
-            raise DocIconNotFoundError(drive_id)
-        return DocIconRead(drive_id=row.drive_id, icon=row.icon, cover_url=row.cover_url)
 
     @override
     async def upsert_doc_icon(self, drive_id: FileId, payload: DocIconWrite) -> DocIconRead:
@@ -185,16 +172,6 @@ class PostgresExtrasService(ExtrasService):
             set_={"sort_order": stmt.excluded.sort_order},
         )
         await self._db.execute(stmt)
-        await self._db.commit()
-
-    @override
-    async def clear_sort_order(self, drive_id: DriveId) -> None:
-        await self._db.execute(
-            delete(UserSortOrder).where(
-                UserSortOrder.user_id == self._user.id,
-                UserSortOrder.drive_id == drive_id,
-            )
-        )
         await self._db.commit()
 
     @override

@@ -61,12 +61,11 @@ class DriveTemplateCatalogService(TemplateCatalogService):
             return_exceptions=True,
         )
         templates: list[TemplateRead] = []
-        for drive, result in zip(drives, discovered, strict=True):
+        for _drive, result in zip(drives, discovered, strict=True):
             if isinstance(result, BaseException):
-                logger.opt(exception=result).warning(
-                    "template discovery failed user={user_id} drive={drive_id}",
-                    user_id=self._user_id,
-                    drive_id=drive.id,
+                logger.warning(
+                    "template discovery failed error_type={error_type}",
+                    error_type=type(result).__name__,
                 )
                 continue
             templates.extend(result)
@@ -134,9 +133,5 @@ class DriveTemplateCatalogService(TemplateCatalogService):
                         )
                     )
         if pending:
-            logger.warning(
-                "template discovery folder cap reached user={user_id} drive={drive_id}",
-                user_id=self._user_id,
-                drive_id=drive.id,
-            )
+            logger.warning("template discovery folder cap reached")
         return templates

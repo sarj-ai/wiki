@@ -63,6 +63,27 @@ async def test_duplicate_cloud_task_name_is_idempotent_success() -> None:
     assert result is None
 
 
+@pytest.mark.parametrize(
+    "target_url",
+    [
+        "http://wiki-api.sarj.ai/internal/tasks/smart-create",
+        "https://wiki-api.sarj.ai/internal/tasks/other",
+        "https://user@wiki-api.sarj.ai/internal/tasks/smart-create",
+        "https://wiki-api.sarj.ai/internal/tasks/smart-create?redirect=https://attacker.example",
+    ],
+)
+def test_rejects_unsafe_or_unexpected_task_targets(target_url: str) -> None:
+    with pytest.raises(ValueError, match="HTTPS internal Smart Create endpoint"):
+        CloudTasksEnqueuer(
+            project="sarj-docs",
+            location="us-central1",
+            queue="smart-create",
+            target_url=target_url,
+            invoker_service_account="wiki-task-invoker@sarj-docs.iam.gserviceaccount.com",
+            client=cast("tasks_v2.CloudTasksAsyncClient", _Client()),
+        )
+
+
 async def test_dependency_constructs_async_client_on_request_event_loop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
