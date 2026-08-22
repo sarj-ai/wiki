@@ -29,6 +29,8 @@ export const ZSIDEBAR_WIDTH_CSS = z
   .nullable()
   .catch(null);
 
+export const SIDEBAR_WIDTH_COOKIE = "sidebar_width";
+
 export const ZSIDEBAR_STATE_COOKIE = z
   .enum(["true", "false"])
   .catch("true")

@@ -160,6 +160,24 @@ describe("findCachedNodeMeta", () => {
     expect(findCachedNodeMeta(qc, "doc-1")).toEqual({ mimeType: MIME_DOC, name: "Roadmap" });
   });
 
+  it("includes the cached content version needed to mount HTML once", () => {
+    const qc = new QueryClient();
+    qc.setQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"), [
+      makeNode({
+        id: "html-1",
+        mimeType: "text/html",
+        modifiedTime: "2026-08-22T12:00:00Z",
+        name: "Published page",
+      }),
+    ]);
+
+    expect(findCachedNodeMeta(qc, "html-1")).toEqual({
+      mimeType: "text/html",
+      modifiedTime: "2026-08-22T12:00:00Z",
+      name: "Published page",
+    });
+  });
+
   it("finds a folder in a drive tree", () => {
     const qc = new QueryClient();
     const tree: DriveTree = {
@@ -190,6 +208,25 @@ describe("findCachedNodeMeta", () => {
       name: "Budget (link)",
     });
     expect(findCachedNodeMeta(qc, "shortcut-1")).toBeNull();
+  });
+
+  it("does not mistake a shortcut timestamp for the target content version", () => {
+    const qc = new QueryClient();
+    qc.setQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"), [
+      makeNode({
+        id: "shortcut-html",
+        mimeType: MIME_SHORTCUT,
+        modifiedTime: "shortcut-version",
+        name: "Published page",
+        shortcutTargetId: "html-target",
+        shortcutTargetMimeType: "text/html",
+      }),
+    ]);
+
+    expect(findCachedNodeMeta(qc, "html-target")).toEqual({
+      mimeType: "text/html",
+      name: "Published page",
+    });
   });
 
   it("returns null when nothing cached matches", () => {

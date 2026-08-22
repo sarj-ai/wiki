@@ -6,6 +6,7 @@ import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
 
 export interface CachedNodeMeta {
   mimeType: string;
+  modifiedTime?: string;
   name: string;
 }
 
@@ -133,14 +134,21 @@ export function removeFileFromCaches(
 function metaFromNodes(nodes: DriveNode[], fileId: string): CachedNodeMeta | null {
   for (const node of nodes) {
     if (node.id === fileId && node.mimeType !== MIME_SHORTCUT) {
-      return { mimeType: node.mimeType, name: node.name };
+      return {
+        mimeType: node.mimeType,
+        ...(node.modifiedTime === undefined ? {} : { modifiedTime: node.modifiedTime }),
+        name: node.name,
+      };
     }
     if (
       node.mimeType === MIME_SHORTCUT &&
       node.shortcutTargetId === fileId &&
       node.shortcutTargetMimeType
     ) {
-      return { mimeType: node.shortcutTargetMimeType, name: node.name };
+      return {
+        mimeType: node.shortcutTargetMimeType,
+        name: node.name,
+      };
     }
   }
   return null;

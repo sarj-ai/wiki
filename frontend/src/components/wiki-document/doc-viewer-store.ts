@@ -12,30 +12,72 @@ export interface ActiveDoc {
 
 interface DocViewerState {
   active: ActiveDoc | null;
+  activeOwner: null | symbol;
+  clearActive: (owner: symbol) => void;
+  pool: ActiveDoc[];
   prewarm: ActiveDoc | null;
-  setActive: (active: ActiveDoc | null) => void;
+  reset: () => void;
+  setActive: (active: ActiveDoc, owner: symbol) => void;
   setPrewarm: (prewarm: ActiveDoc | null) => void;
-  setSlot: (slot: HTMLElement | null) => void;
+  setSlot: (slot: HTMLElement | null, owner: symbol) => void;
   setWarm: (warm: ActiveDoc[]) => void;
   slot: HTMLElement | null;
+  slotOwner: null | symbol;
   warm: ActiveDoc[];
 }
 
+const MAX_POOL = 3;
+
 export const useDocViewerStore = create<DocViewerState>((set) => ({
   active: null,
+  activeOwner: null,
+  clearActive: (owner) => {
+    set((state) => (state.activeOwner === owner ? { active: null, activeOwner: null } : state));
+  },
+  pool: [],
   prewarm: null,
-  setActive: (active) => {
-    set({ active });
+  reset: () => {
+    set({
+      active: null,
+      activeOwner: null,
+      pool: [],
+      prewarm: null,
+      slot: null,
+      slotOwner: null,
+      warm: [],
+    });
+  },
+  setActive: (active, owner) => {
+    set((state) => ({ active, activeOwner: owner, pool: reconcilePool(state.pool, active) }));
   },
   setPrewarm: (prewarm) => {
     set((state) => (state.prewarm?.fileId === prewarm?.fileId ? state : { ...state, prewarm }));
   },
-  setSlot: (slot) => {
-    set({ slot });
+  setSlot: (slot, owner) => {
+    if (slot !== null) {
+      set({ slot, slotOwner: owner });
+      return;
+    }
+    set((state) => (state.slotOwner === owner ? { slot: null, slotOwner: null } : state));
   },
   setWarm: (warm) => {
     set({ warm });
   },
   slot: null,
+  slotOwner: null,
   warm: [],
 }));
+
+function reconcilePool(pool: ActiveDoc[], active: ActiveDoc): ActiveDoc[] {
+  const head = pool[0];
+  if (
+    head?.fileId === active.fileId &&
+    head.reloadKey === active.reloadKey &&
+    head.mimeType === active.mimeType &&
+    head.title === active.title &&
+    head.version === active.version
+  ) {
+    return pool;
+  }
+  return [active, ...pool.filter((entry) => entry.fileId !== active.fileId)].slice(0, MAX_POOL);
+}

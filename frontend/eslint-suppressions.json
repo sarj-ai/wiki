@@ -55,11 +55,6 @@
       "count": 2
     }
   },
-  "src/components/wiki-document/doc-viewer-host.tsx": {
-    "better-tailwindcss/enforce-shorthand-classes": {
-      "count": 4
-    }
-  },
   "src/components/wiki-search/command-palette-mount.tsx": {
     "@typescript-eslint/naming-convention": {
       "count": 1

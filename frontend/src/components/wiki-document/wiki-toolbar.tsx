@@ -67,8 +67,8 @@ export function WikiToolbar({
   };
 
   return (
-    <header className="border-border bg-background text-foreground flex items-center gap-2 border-b px-4 py-2">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+    <header className="border-border bg-background text-foreground flex h-10 shrink-0 items-center gap-1 overflow-hidden border-b pr-4 pl-12 sm:gap-2 md:pl-4">
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
         <span className="shrink-0">{renderMimeIcon(mimeType, "size-4")}</span>
         <nav
           aria-label="Breadcrumb"
@@ -110,7 +110,7 @@ export function WikiToolbar({
         variant="outline"
       >
         {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-        {copied ? "Copied" : "Copy link"}
+        <span className="hidden sm:inline">{copied ? "Copied" : "Copy link"}</span>
       </Button>
       <ReorganizeDocument
         driveId={driveId}
@@ -122,7 +122,7 @@ export function WikiToolbar({
       <Button asChild size="xs" variant="outline">
         <a href={openUrl} rel="noopener noreferrer" target="_blank">
           <ExternalLink className="size-3.5" />
-          {openLabel}
+          <span className="hidden md:inline">{openLabel}</span>
         </a>
       </Button>
     </header>

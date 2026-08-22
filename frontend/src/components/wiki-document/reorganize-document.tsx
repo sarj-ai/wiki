@@ -82,7 +82,7 @@ export function ReorganizeDocument({
         ) : (
           <Sparkles className="size-3.5" />
         )}
-        {checking ? "Checking…" : "Re-organize"}
+        <span className="hidden sm:inline">{checking ? "Checking…" : "Re-organize"}</span>
       </Button>
       <AlertDialog
         onOpenChange={(open) => {

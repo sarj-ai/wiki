@@ -20,7 +20,7 @@ export function clearAuthenticatedSession(queryClient: QueryClient, userId: null
 }
 
 export function resetDocumentViewer(): void {
-  useDocViewerStore.setState({ active: null, prewarm: null, slot: null, warm: [] });
+  useDocViewerStore.getState().reset();
 }
 
 export function broadcastSessionClear(): void {

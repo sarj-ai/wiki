@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
-import { ZSIDEBAR_WIDTH_CSS } from "@/lib/storage-schemas";
+import { SIDEBAR_WIDTH_COOKIE, ZSIDEBAR_WIDTH_CSS } from "@/lib/storage-schemas";
 
 const STORAGE_KEY = "wiki-sidebar-width";
 const MIN_WIDTH_PX = 224;
@@ -59,7 +59,11 @@ export function SidebarResizeHandle() {
         el.style.transition = "";
       }
       const final = wrapper.style.getPropertyValue("--sidebar-width");
-      if (final) window.localStorage.setItem(STORAGE_KEY, final);
+      if (final) {
+        window.localStorage.setItem(STORAGE_KEY, final);
+        // eslint-disable-next-line unicorn/no-document-cookie -- SSR reads this non-sensitive preference before hydration to prevent a width jump.
+        document.cookie = `${SIDEBAR_WIDTH_COOKIE}=${encodeURIComponent(final)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+      }
       setDragging(false);
     };
 
@@ -85,7 +89,7 @@ export function SidebarResizeHandle() {
 }
 
 function useRestoreSidebarWidth() {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const saved = ZSIDEBAR_WIDTH_CSS.parse(window.localStorage.getItem(STORAGE_KEY));
     if (saved === null) return;
     const px = Math.min(MAX_WIDTH_PX, Math.max(MIN_WIDTH_PX, Number.parseInt(saved, 10)));
