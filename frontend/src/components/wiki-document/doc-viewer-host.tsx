@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
-import { type ActiveDoc, useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
+import {
+  type ActiveDoc,
+  useDocViewerStore,
+  viewerIdentity,
+} from "@/components/wiki-document/doc-viewer-store";
 import { embedUrlFor } from "@/lib/file-urls";
 import { markNav } from "@/lib/perf-marks";
 import { cn } from "@/lib/utils";
@@ -83,6 +87,7 @@ export const DocViewerHost = () => {
         >
           <PooledIframe
             fileId={entry.fileId}
+            identity={viewerKey(entry)}
             key={viewerKey(entry)}
             mimeType={entry.mimeType}
             title={entry.title}
@@ -95,27 +100,30 @@ export const DocViewerHost = () => {
 };
 
 export function viewerKey(entry: ActiveDoc): string {
-  const contentVersion = entry.mimeType === MIME_HTML ? (entry.version ?? "current") : "stable";
-  return `${entry.fileId}:${entry.reloadKey}:${contentVersion}`;
+  return viewerIdentity(entry);
 }
 
 interface PooledIframeProps {
   fileId: string;
+  identity: string;
   mimeType: string;
   title: string;
   version?: string;
 }
 
-const PooledIframe = ({ fileId, mimeType, title, version }: PooledIframeProps) => {
+const PooledIframe = ({ fileId, identity, mimeType, title, version }: PooledIframeProps) => {
   if (mimeType === MIME_HTML) {
-    return <HtmlIframe fileId={fileId} title={title} version={version} />;
+    return <HtmlIframe fileId={fileId} identity={identity} title={title} version={version} />;
   }
-  return <DrivePreviewIframe fileId={fileId} mimeType={mimeType} title={title} />;
+  return (
+    <DrivePreviewIframe fileId={fileId} identity={identity} mimeType={mimeType} title={title} />
+  );
 };
 
-const DrivePreviewIframe = ({ fileId, mimeType, title }: PooledIframeProps) => {
+const DrivePreviewIframe = ({ fileId, identity, mimeType, title }: PooledIframeProps) => {
   const src = embedUrlFor(mimeType, fileId);
   const [isLoading, setIsLoading] = useState(true);
+  const markReady = useViewerLoad(identity);
 
   useEffect(() => {
     markNav(fileId, "iframeMount");
@@ -134,7 +142,10 @@ const DrivePreviewIframe = ({ fileId, mimeType, title }: PooledIframeProps) => {
       <iframe
         allow="clipboard-read; clipboard-write"
         className="block size-full border-0"
-        ref={attachIframeLoadListener.bind(undefined, fileId, setIsLoading)}
+        ref={attachIframeLoadListener.bind(undefined, () => {
+          markIframeLoaded(fileId, setIsLoading);
+          markReady();
+        })}
         src={src}
         title={title}
       />
@@ -142,16 +153,11 @@ const DrivePreviewIframe = ({ fileId, mimeType, title }: PooledIframeProps) => {
   );
 };
 
-function attachIframeLoadListener(
-  fileId: string,
-  setIsLoading: (isLoading: boolean) => void,
-  iframe: HTMLIFrameElement | null,
-) {
+function attachIframeLoadListener(onLoaded: () => void, iframe: HTMLIFrameElement | null) {
   if (!iframe) return;
-  const handleLoad = markIframeLoaded.bind(undefined, fileId, setIsLoading);
-  iframe.addEventListener("load", handleLoad);
+  iframe.addEventListener("load", onLoaded);
   return () => {
-    iframe.removeEventListener("load", handleLoad);
+    iframe.removeEventListener("load", onLoaded);
   };
 }
 
@@ -172,14 +178,17 @@ function* docCandidates(
 
 function HtmlIframe({
   fileId,
+  identity,
   title,
   version,
 }: {
   fileId: string;
+  identity: string;
   title: string;
   version: string | undefined;
 }) {
   const [isLoading, setIsLoading] = useState(true);
+  const markReady = useViewerLoad(identity);
   return (
     <div className="relative size-full">
       {isLoading ? (
@@ -192,7 +201,10 @@ function HtmlIframe({
       ) : null}
       <iframe
         className={HTML_IFRAME_CLASS_NAME}
-        ref={attachIframeLoadListener.bind(undefined, fileId, setIsLoading)}
+        ref={attachIframeLoadListener.bind(undefined, () => {
+          markIframeLoaded(fileId, setIsLoading);
+          markReady();
+        })}
         referrerPolicy="no-referrer"
         sandbox={HTML_IFRAME_SANDBOX}
         src={htmlContentUrl(fileId, version)}
@@ -200,4 +212,23 @@ function HtmlIframe({
       />
     </div>
   );
+}
+
+function useViewerLoad(identity: string): () => void {
+  const clearViewerLoad = useDocViewerStore((state) => state.clearViewerLoad);
+  const markViewerLoading = useDocViewerStore((state) => state.markViewerLoading);
+  const markViewerReady = useDocViewerStore((state) => state.markViewerReady);
+  const owner = useRef(Symbol("viewer-load"));
+
+  useLayoutEffect(() => {
+    const currentOwner = owner.current;
+    markViewerLoading(identity, currentOwner);
+    return () => {
+      clearViewerLoad(identity, currentOwner);
+    };
+  }, [clearViewerLoad, identity, markViewerLoading]);
+
+  return () => {
+    markViewerReady(identity, owner.current);
+  };
 }
