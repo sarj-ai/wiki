@@ -2430,6 +2430,18 @@
     "/bootstrap": {
       "get": {
         "operationId": "get_bootstrap",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "defer_doc_icons",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Defer Doc Icons",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2450,6 +2462,16 @@
               }
             },
             "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [

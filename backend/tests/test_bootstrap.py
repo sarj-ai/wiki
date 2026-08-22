@@ -57,11 +57,7 @@ class _FakeExtrasService(ExtrasService):
     async def list_doc_icons(self) -> list[DocIconRead]:
         return [
             DocIconRead(drive_id=FileId("doc-1"), icon="📚", cover_url=None),
-            DocIconRead(
-                drive_id=FileId("private-doc"),
-                icon="🔒",
-                cover_url="https://example.com/private-cover.png",
-            ),
+            DocIconRead(drive_id=FileId("private-doc"), icon="🔒", cover_url=None),
         ]
 
     async def upsert_doc_icon(self, drive_id: str, payload: DocIconWrite) -> DocIconRead:
@@ -88,24 +84,6 @@ class _FakeExtrasService(ExtrasService):
         raise NotImplementedError
 
 
-class _FakeFilesService:
-    def __init__(self) -> None:
-        self.requested: list[FileId] = []
-
-    async def get_accessible_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
-        self.requested = file_ids
-        return {
-            FileId("doc-1"): FileResponse(
-                id=FileId("doc-1"),
-                name="Accessible",
-                mime_type="application/vnd.google-apps.document",
-                parent_folder_id=None,
-                drive_id=DriveId("d1"),
-                modified_time=None,
-            )
-        }
-
-
 class _FakeCacheService(SidebarCacheService):
     def __init__(self, tree: DriveTree | None = None) -> None:
         self._tree = tree
@@ -130,6 +108,24 @@ class _FakeCacheService(SidebarCacheService):
         raise NotImplementedError
 
 
+class _FakeFilesService:
+    def __init__(self) -> None:
+        self.requested: list[FileId] = []
+
+    async def get_accessible_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
+        self.requested = file_ids
+        return {
+            FileId("doc-1"): FileResponse(
+                id=FileId("doc-1"),
+                name="Accessible",
+                mime_type="application/vnd.google-apps.document",
+                parent_folder_id=None,
+                drive_id=DriveId("d1"),
+                modified_time=None,
+            )
+        }
+
+
 _NO_DB = cast("AsyncSession", None)
 
 
@@ -147,7 +143,7 @@ def _tree(drive_id: str) -> DriveTree:
     return DriveTree(drive_id=DriveId(drive_id), folders=[], files=[], files_complete=True)
 
 
-async def test_load_aggregates_all_six_reads() -> None:
+async def test_load_aggregates_shell_reads_without_document_icons() -> None:
     user = _user()
     cache = _FakeCacheService(_tree("d1"))
     files = _FakeFilesService()
@@ -160,14 +156,14 @@ async def test_load_aggregates_all_six_reads() -> None:
         user=user,
     )
 
-    out = await svc.load()
+    out = await svc.load(defer_doc_icons=True)
 
     assert [d.id for d in out.drives] == ["d1"]
     assert out.preferences.show_non_doc_files is False
     assert out.preferences.hidden_workspace_ids == ["hidden-1"]
     assert [i.folder_drive_id for i in out.folder_icons] == ["folder-1"]
-    assert [i.drive_id for i in out.doc_icons] == ["doc-1"]
-    assert files.requested == ["doc-1", "private-doc"]
+    assert out.doc_icons == []
+    assert files.requested == []
     assert [s.sort_order for s in out.sort_orders] == [1.5]
     assert out.me.id == str(user.id)
     assert out.me.email == "test@sarj.ai"
@@ -219,3 +215,18 @@ async def test_load_handles_empty_overlays() -> None:
     assert out.sort_orders == []
     assert cache.peeked == []
     assert out.first_drive_tree is None
+
+
+async def test_load_keeps_document_icons_for_legacy_callers() -> None:
+    files = _FakeFilesService()
+    out = await AggregatingBootstrapService(
+        drive=_FakeDriveService([]),
+        extras=_FakeExtrasService(),
+        files=cast("FilesService", files),
+        cache=_FakeCacheService(),
+        db=_NO_DB,
+        user=_user(),
+    ).load()
+
+    assert [icon.drive_id for icon in out.doc_icons] == ["doc-1"]
+    assert files.requested == ["doc-1", "private-doc"]
