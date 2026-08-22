@@ -306,11 +306,20 @@ jobs:
             --command ".venv/bin/python" \
             --args=-m,app.cache.cleanup_legacy \
             --quiet
+          cleanup_status=0
           gcloud run jobs execute "${{ env.MIGRATION_JOB }}" \
             --project "${{ env.PROJECT_ID }}" \
             --region "${{ env.REGION }}" \
             --wait \
+            --quiet || cleanup_status=$?
+          gcloud run jobs update "${{ env.MIGRATION_JOB }}" \
+            --project "${{ env.PROJECT_ID }}" \
+            --region "${{ env.REGION }}" \
+            --image "${{ steps.deploy.outputs.release_image }}" \
+            --command ".venv/bin/alembic" \
+            --args=upgrade,head \
             --quiet
+          exit "$cleanup_status"
 
       - name: Verify correlated production logs
         run: |

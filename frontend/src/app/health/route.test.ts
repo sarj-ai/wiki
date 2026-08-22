@@ -25,6 +25,7 @@ describe("frontend release health", () => {
     await expect(response.json()).resolves.toEqual({ revision: releaseSha, status: "ok" });
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("content-type")).toContain("application/json");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(response.headers.get("x-request-id")).toBe("frontend-canary_1");
   });
