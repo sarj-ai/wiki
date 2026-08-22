@@ -4,7 +4,6 @@ import type { CSSProperties } from "react";
 
 import { BrowserSessionBoundary } from "@/components/browser-session-boundary";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { GlobalLoadingBar } from "@/components/loading-bar";
 import { QueryProvider } from "@/components/query-provider";
 import { RedirectAfterLogin } from "@/components/redirect-after-login";
 import { SessionRefresh } from "@/components/session-refresh";
@@ -80,7 +79,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </SidebarProvider>
         </BrowserSessionBoundary>
       </HydrationBoundary>
-      <GlobalLoadingBar />
     </QueryProvider>
   );
 }

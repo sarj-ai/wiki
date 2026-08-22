@@ -50,9 +50,6 @@
   "src/components/wiki-document/doc-skeleton.tsx": {
     "@sarj/prefer-immutable-module-constant": {
       "count": 1
-    },
-    "better-tailwindcss/enforce-shorthand-classes": {
-      "count": 2
     }
   },
   "src/components/wiki-search/command-palette-mount.tsx": {

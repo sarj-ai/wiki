@@ -14,18 +14,24 @@ const DOC_SKELETON_LINES = [
   { id: "l10", w: "w-10/12" },
 ];
 
-export function DocSkeleton() {
+export function DocSkeleton({
+  animated = true,
+  status,
+}: {
+  animated?: boolean;
+  status?: React.ReactNode;
+}) {
   return (
-    <div
-      aria-hidden="true"
-      className="mx-auto flex h-full w-full max-w-3xl flex-col gap-4 px-6 py-10"
-    >
-      <Skeleton className="h-8 w-2/3" />
-      <Skeleton className="h-4 w-1/3" />
-      <div className="mt-4 flex flex-col gap-3">
-        {DOC_SKELETON_LINES.map((line) => (
-          <Skeleton className={cn("h-4", line.w)} key={line.id} />
-        ))}
+    <div className="mx-auto flex size-full max-w-3xl flex-col gap-4 px-6 py-10">
+      {status}
+      <div aria-hidden="true" className="flex flex-col gap-4">
+        <Skeleton className={cn("h-8 w-2/3", !animated && "animate-none")} />
+        <Skeleton className={cn("h-4 w-1/3", !animated && "animate-none")} />
+        <div className="mt-4 flex flex-col gap-3">
+          {DOC_SKELETON_LINES.map((line) => (
+            <Skeleton className={cn("h-4", line.w, !animated && "animate-none")} key={line.id} />
+          ))}
+        </div>
       </div>
     </div>
   );

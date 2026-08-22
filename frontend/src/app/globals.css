@@ -230,30 +230,6 @@
   }
 }
 
-@keyframes loading-bar {
-  from {
-    transform: translate3d(0, 0, 0);
-  }
-  to {
-    transform: translate3d(200%, 0, 0);
-  }
-}
-
-@utility animate-loading-bar {
-  animation: loading-bar 1s ease-in-out 30 alternate both;
-}
-
-[dir="rtl"] .animate-loading-bar {
-  animation-direction: alternate-reverse;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-loading-bar {
-    animation: none;
-    transform: translate3d(100%, 0, 0);
-  }
-}
-
 /* One-shot pulse drawing the eye to a sidebar row that just became
    active — used by the auto-reveal effect when navigating from the
    command palette. Uses the sidebar accent ring so it harmonises

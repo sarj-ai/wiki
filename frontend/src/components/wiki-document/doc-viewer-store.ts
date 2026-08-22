@@ -14,9 +14,6 @@ interface DocViewerState {
   active: ActiveDoc | null;
   activeOwner: null | symbol;
   clearActive: (owner: symbol) => void;
-  clearViewerLoad: (identity: string, owner: symbol) => void;
-  markViewerLoading: (identity: string, owner: symbol) => void;
-  markViewerReady: (identity: string, owner: symbol) => void;
   pool: ActiveDoc[];
   prewarm: ActiveDoc | null;
   reset: () => void;
@@ -26,13 +23,7 @@ interface DocViewerState {
   setWarm: (warm: ActiveDoc[]) => void;
   slot: HTMLElement | null;
   slotOwner: null | symbol;
-  viewerLoads: Record<string, ViewerLoad>;
   warm: ActiveDoc[];
-}
-
-interface ViewerLoad {
-  owner: symbol;
-  status: "loading" | "ready";
 }
 
 const MAX_POOL = 3;
@@ -42,27 +33,6 @@ export const useDocViewerStore = create<DocViewerState>((set) => ({
   activeOwner: null,
   clearActive: (owner) => {
     set((state) => (state.activeOwner === owner ? { active: null, activeOwner: null } : state));
-  },
-  clearViewerLoad: (identity, owner) => {
-    set((state) => {
-      if (state.viewerLoads[identity]?.owner !== owner) return state;
-      const { [identity]: _removed, ...viewerLoads } = state.viewerLoads;
-      return { viewerLoads };
-    });
-  },
-  markViewerLoading: (identity, owner) => {
-    set((state) => ({
-      viewerLoads: { ...state.viewerLoads, [identity]: { owner, status: "loading" } },
-    }));
-  },
-  markViewerReady: (identity, owner) => {
-    set((state) =>
-      state.viewerLoads[identity]?.owner === owner
-        ? {
-            viewerLoads: { ...state.viewerLoads, [identity]: { owner, status: "ready" } },
-          }
-        : state,
-    );
   },
   pool: [],
   prewarm: null,
@@ -74,7 +44,6 @@ export const useDocViewerStore = create<DocViewerState>((set) => ({
       prewarm: null,
       slot: null,
       slotOwner: null,
-      viewerLoads: {},
       warm: [],
     });
   },
@@ -96,14 +65,8 @@ export const useDocViewerStore = create<DocViewerState>((set) => ({
   },
   slot: null,
   slotOwner: null,
-  viewerLoads: {},
   warm: [],
 }));
-
-export function viewerIdentity(entry: ActiveDoc): string {
-  const contentVersion = entry.mimeType === "text/html" ? (entry.version ?? "current") : "stable";
-  return `${entry.fileId}:${entry.reloadKey}:${contentVersion}`;
-}
 
 function reconcilePool(pool: ActiveDoc[], active: ActiveDoc): ActiveDoc[] {
   const head = pool[0];
