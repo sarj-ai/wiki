@@ -60,7 +60,6 @@ export function useDrivePermissions(driveId: null | string, enabled: boolean) {
 export function useFile(fileId: null | string) {
   return useQuery<FileDetail>({
     enabled: !!fileId,
-    meta: { foregroundPrimaryLoad: true },
     queryFn: async () => await wikiReadApi.getFile(fileId ?? ""),
     queryKey: wikiKeys.file(fileId ?? "disabled"),
   });

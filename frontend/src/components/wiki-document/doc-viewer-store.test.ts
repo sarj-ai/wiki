@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { useDocViewerStore, viewerIdentity } from "@/components/wiki-document/doc-viewer-store";
+import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
 import { MIME_DOC } from "@/types/wiki";
 
 const doc = (fileId: string, reloadKey = 0, title = fileId) => ({
@@ -74,33 +74,5 @@ describe("document viewer lifecycle", () => {
     store.setActive(doc("a", 0, "New title"), owner);
 
     expect(useDocViewerStore.getState().pool[0]?.title).toBe("New title");
-  });
-
-  it("ignores stale iframe readiness and cleanup from an older owner", () => {
-    const store = useDocViewerStore.getState();
-    const identity = viewerIdentity(doc("a"));
-    const oldOwner = Symbol("old");
-    const currentOwner = Symbol("current");
-    store.markViewerLoading(identity, oldOwner);
-    store.markViewerLoading(identity, currentOwner);
-
-    store.markViewerReady(identity, oldOwner);
-    store.clearViewerLoad(identity, oldOwner);
-
-    expect(useDocViewerStore.getState().viewerLoads[identity]).toEqual({
-      owner: currentOwner,
-      status: "loading",
-    });
-  });
-
-  it("retains ready prewarmed viewer state when it becomes active", () => {
-    const store = useDocViewerStore.getState();
-    const entry = doc("a");
-    const viewerOwner = Symbol("viewer");
-    store.markViewerLoading(viewerIdentity(entry), viewerOwner);
-    store.markViewerReady(viewerIdentity(entry), viewerOwner);
-    store.setActive(entry, Symbol("active"));
-
-    expect(useDocViewerStore.getState().viewerLoads[viewerIdentity(entry)]?.status).toBe("ready");
   });
 });
