@@ -1,5 +1,5 @@
 {
-  "extends": ".pyright-strict.json",
+  "extends": ".basedpyright-strict.json",
   "include": [
     "app",
     "tests"

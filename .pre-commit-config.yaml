@@ -44,7 +44,12 @@ repos:
         additional_dependencies: [yamllint==1.38.0]
         types: [yaml]
       - id: sarj-current-registries
-        name: "sarj-standards: every code, config, text, and artifact rule"
+        name: "sarj-standards: Python registry with exact native baseline"
+        entry: uv run --project backend --locked python scripts/check_standards.py
+        language: system
+        files: '(?i)\.py$'
+      - id: sarj-current-text-config-registries
+        name: "sarj-standards: every non-Python code, config, text, and artifact rule"
         entry: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.0 code-standards check --trust-repository-code --
         language: system
-        files: '(?i)(\.py|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|Dockerfile|Makefile)$'
+        files: '(?i)(\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|Dockerfile|Makefile)$'

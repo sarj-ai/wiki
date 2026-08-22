@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "merge_base": "6fbbd00724d36488f4a3acf4807eaf71ab89baf6",
+  "from_bundle": "7.0.5",
+  "to_bundle": "7.1.9",
+  "reason": "Standards 7.1.9 requires SCREAMING_SNAKE_CASE for module constants; record only the existing naming findings on unchanged source so future findings fail.",
+  "allowances": {
+    "frontend/eslint-suppressions.json": {
+      "src/app/actions/smart-create-actions.test.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/app/actions/wiki-actions.test.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/app/api/files/[fileId]/content/route.test.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 2 }
+      },
+      "src/app/go/[alias]/route.test.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 2 }
+      },
+      "src/app/health/route.test.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 2 }
+      },
+      "src/app/layout.tsx": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/components/wiki-search/command-palette-mount.tsx": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/components/wiki-search/command-palette.test.tsx": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/components/wiki-sidebar/emoji-picker-popover.tsx": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/components/wiki-sidebar/smart-create-dialog.test.tsx": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/components/wiki-sidebar/use-wiki-reorder.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 2 }
+      },
+      "src/hooks/use-expanded-folders.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 2 }
+      },
+      "src/lib/api-client.test.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/lib/api-client.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 3 }
+      },
+      "src/lib/env.test.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/lib/env.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 3 }
+      },
+      "src/lib/perf-marks.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/lib/reorganize-client.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 2 }
+      },
+      "src/lib/server-api.test.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/lib/server-api.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 2 }
+      },
+      "src/lib/smart-create-client.test.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/lib/smart-create-client.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 6 }
+      },
+      "src/lib/smart-create-server-client.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/lib/smart-create-types.test.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/lib/storage-schemas.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 10 }
+      },
+      "src/lib/wiki-keys.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 2 }
+      },
+      "src/lib/wiki-read-client.test.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/lib/wiki-read-client.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 1 }
+      },
+      "src/lib/wiki-schemas.ts": {
+        "@typescript-eslint/naming-convention": { "before": 0, "after": 18 }
+      }
+    }
+  }
+}

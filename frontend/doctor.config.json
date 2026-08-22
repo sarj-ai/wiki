@@ -1,7 +1,7 @@
 {
   "$schema": "https://react.doctor/schema/config.json",
   "adoptExistingLintConfig": false,
-  "blocking": "warning",
+  "blocking": "error",
   "buckets": {
     "compiler-cleanup": "off"
   },
@@ -16,6 +16,7 @@
   },
   "serverAuthFunctionNames": ["forRequest"],
   "share": false,
+  "warnings": false,
   "supplyChain": {
     "enabled": false
   }

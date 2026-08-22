@@ -51,5 +51,5 @@ jobs:
           npm --prefix frontend run typegen
       - name: Run standards
         env:
-          SARJ_REACT_DOCTOR_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.0 code-standards check --trust-repository-code --format github
