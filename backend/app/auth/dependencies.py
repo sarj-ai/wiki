@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, Security, status
+from fastapi.security import APIKeyCookie, HTTPAuthorizationCredentials, HTTPBearer
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +13,10 @@ from app.cache.dependencies import cache_service_dep
 from app.cache.service import CacheService
 from app.database import get_db
 from app.models.user import User
+
+
+_access_cookie = APIKeyCookie(name="access_token", auto_error=False)
+_bearer_token = HTTPBearer(auto_error=False)
 
 
 def http_client_dep(request: Request) -> httpx.AsyncClient:
@@ -28,10 +33,16 @@ def auth_service_dep(
 
 
 async def get_current_user(
-    request: Request,
     auth: Annotated[AuthService, Depends(auth_service_dep)],
+    cookie_token: Annotated[str | None, Security(_access_cookie)],
+    bearer: Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_token)],
 ) -> User:
-    token = _extract_token(request)
+    token = cookie_token or (bearer.credentials if bearer is not None else None)
+    if token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
     try:
         return await auth.resolve_current_user(token)
     except AuthError as e:
@@ -39,16 +50,6 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e) or "Not authenticated",
         ) from e
-
-
-def _extract_token(request: Request) -> str:
-    token = optional_access_token(request)
-    if token is not None:
-        return token
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Not authenticated",
-    )
 
 
 def optional_access_token(request: Request) -> str | None:

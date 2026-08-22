@@ -8,12 +8,17 @@ from app.drive.dependencies import drive_service_dep
 from app.drive.schemas import SearchResult, SnippetResult
 from app.drive.service import DriveService
 from app.identifiers import FileId
+from app.openapi import authentication_responses
 
 
-router = APIRouter(prefix="/drive-search", tags=["drive-search"])
+router = APIRouter(
+    prefix="/drive-search",
+    tags=["drive-search"],
+    responses=authentication_responses(),
+)
 
 
-@router.get("")
+@router.get("", operation_id="search_drive")
 async def search(
     q: Annotated[str, Query(min_length=1, max_length=2048)],
     svc: Annotated[DriveService, Depends(drive_service_dep)],
@@ -22,7 +27,7 @@ async def search(
     return await svc.search(q, limit_per_drive=limit_per_drive)
 
 
-@router.get("/snippet")
+@router.get("/snippet", operation_id="get_search_snippet")
 async def snippet(
     file_id: Annotated[FileId, Query(min_length=1)],
     q: Annotated[str, Query(min_length=1, max_length=2048)],

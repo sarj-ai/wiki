@@ -23,7 +23,7 @@ const PREVIEW_HTML = `<!doctype html>
 <body>Sarj Wiki</body>
 </html>`;
 
-export default function middleware(request: NextRequest) {
+export default function proxy(request: NextRequest) {
   if (request.cookies.has("access_token") || request.cookies.has("refresh_token")) {
     const response = NextResponse.next();
     response.headers.set("cache-control", "private, no-store");
@@ -52,4 +52,4 @@ export default function middleware(request: NextRequest) {
 
 export const config = {
   matcher: ["/", "/d/:path*", "/go/:path*"],
-};
+} as const;

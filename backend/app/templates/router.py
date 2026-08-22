@@ -4,15 +4,20 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
+from app.openapi import authentication_responses
 from app.templates.dependencies import template_catalog_service_dep
 from app.templates.schemas import TemplateCatalogRead
 from app.templates.service import TemplateCatalogService
 
 
-router = APIRouter(prefix="/templates", tags=["templates"])
+router = APIRouter(
+    prefix="/templates",
+    tags=["templates"],
+    responses=authentication_responses(),
+)
 
 
-@router.get("")
+@router.get("", operation_id="list_templates")
 async def list_templates(
     templates: Annotated[TemplateCatalogService, Depends(template_catalog_service_dep)],
     *,

@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 
-import middleware from "./middleware";
+import proxy from "./proxy";
 
 const PRIVATE_TITLE = "Confidential Acquisition Plan";
 
 function preview(path: string, userAgent = "Slackbot-LinkExpanding 1.0") {
-  return middleware(
+  return proxy(
     new NextRequest(`https://wiki.sarj.ai${path}`, {
       headers: { "user-agent": userAgent },
     }),
@@ -40,7 +40,7 @@ describe("private Wiki link previews", () => {
   });
 
   it("prevents browser caching of authenticated document and RSC responses", () => {
-    const response = middleware(
+    const response = proxy(
       new NextRequest("https://wiki.sarj.ai/d/private", {
         headers: { cookie: "access_token=authenticated" },
       }),

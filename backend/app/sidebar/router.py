@@ -11,16 +11,17 @@ from app.drive.dependencies import drive_service_dep, require_member_drive
 from app.drive.schemas import DriveNode, DrivePermissionsPage, DriveSummary, DriveTree
 from app.drive.service import DriveService
 from app.identifiers import DriveId, FileId
+from app.openapi import authentication_responses
 from app.sidebar.cache import SidebarCacheService
 from app.sidebar.dependencies import sidebar_cache_service_dep
 
 
-router = APIRouter(prefix="/sidebar", tags=["sidebar"])
+router = APIRouter(prefix="/sidebar", tags=["sidebar"], responses=authentication_responses())
 
 _CACHE_CONTROL = "private, no-store"
 
 
-@router.get("/drives")
+@router.get("/drives", operation_id="list_drives")
 async def get_drives(
     response: Response,
     drive: Annotated[DriveService, Depends(drive_service_dep)],
@@ -32,6 +33,7 @@ async def get_drives(
 @router.get(
     "/drives/{drive_id}/permissions",
     dependencies=[Depends(require_member_drive)],
+    operation_id="list_drive_permissions",
 )
 async def get_drive_permissions(
     drive_id: DriveId,
@@ -47,6 +49,16 @@ async def get_drive_permissions(
     "/drives/{drive_id}/folders",
     response_model=DriveTree,
     dependencies=[Depends(require_member_drive)],
+    operation_id="get_drive_tree",
+    responses={
+        304: {
+            "description": "The cached tree matches If-None-Match and has no response body.",
+            "headers": {
+                "ETag": {"schema": {"type": "string"}},
+                "Cache-Control": {"schema": {"type": "string"}},
+            },
+        }
+    },
 )
 async def get_drive_folders(
     drive_id: DriveId,
@@ -70,7 +82,11 @@ async def get_drive_folders(
     return cached.tree
 
 
-@router.post("/drives/{drive_id}/refresh", dependencies=[Depends(require_member_drive)])
+@router.post(
+    "/drives/{drive_id}/refresh",
+    dependencies=[Depends(require_member_drive)],
+    operation_id="refresh_drive_tree",
+)
 async def refresh_drive_folders(
     drive_id: DriveId,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -79,7 +95,7 @@ async def refresh_drive_folders(
     return await cache.refresh_drive(db, drive_id)
 
 
-@router.get("/folders/{folder_id}/files")
+@router.get("/folders/{folder_id}/files", operation_id="list_folder_files")
 async def get_folder_files(
     folder_id: FileId,
     response: Response,

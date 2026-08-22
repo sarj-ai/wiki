@@ -14,13 +14,13 @@ from app.cache.service import CacheNamespace, CacheService
 from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT, SearchResult, ShortcutProbe
 from app.drive.service import GoogleDriveService
 from app.drive.snippets import extract_snippet
-from app.identifiers import DriveId, FileId, GoogleUserId
+from app.identifiers import DriveId, FileId, GoogleUserId, UserId
 from app.models.user import User
 
 
 def _user() -> User:
     u = User()
-    u.id = uuid.uuid4()
+    u.id = UserId(uuid.uuid4())
     u.email = "test@sarj.ai"
     u.google_id = GoogleUserId("google-test-id")
     u.token_version = 0

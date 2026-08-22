@@ -8,7 +8,7 @@ from fastapi import Response
 from pydantic import BaseModel
 
 from app.files.schemas import FileResponse
-from app.identifiers import FileId, IdempotencyKey, TaskId
+from app.identifiers import FileId, IdempotencyKey, TaskId, UserId
 from app.models.user import User
 from app.smart_create.router import create_smart_file
 from app.smart_create.schemas import BlankSource, SmartCreateResult, SmartFileCreate
@@ -161,7 +161,7 @@ class _Enqueuer(TaskEnqueuer):
 
 def _user() -> User:
     user = User()
-    user.id = uuid.uuid4()
+    user.id = UserId(uuid.uuid4())
     return user
 
 

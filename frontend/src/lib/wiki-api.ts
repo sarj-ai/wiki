@@ -3,35 +3,33 @@ import * as z from "zod";
 import { makeCall } from "@/lib/api-client";
 import type { Client } from "@/lib/generated/client";
 import {
-  bootstrapBootstrapGet,
-  bulkSetSortOrdersExtrasSortOrderPut,
-  copyFileFilesFileIdCopyPost,
-  createFileFilesPost,
-  deleteFileFilesFileIdDelete,
-  deleteSortOrderExtrasSortOrderDriveIdDelete,
-  getDriveFoldersSidebarDrivesDriveIdFoldersGet,
-  getDrivePermissionsSidebarDrivesDriveIdPermissionsGet,
-  getDrivesSidebarDrivesGet,
-  getFileAliasAliasesFilesFileIdGet,
-  getFolderFilesSidebarFoldersFolderIdFilesGet,
-  listDocIconsExtrasDocIconsGet,
-  listMyFolderIconsExtrasFolderIconsGet,
-  listMySortOrdersExtrasSortOrderGet,
-  logoutAuthLogoutPost,
-  meAuthMeGet,
-  moveFileFilesFileIdMovePatch,
-  readDocIconExtrasDocIconsDriveIdGet,
-  readFileFilesFileIdGet,
-  readPreferencesExtrasPreferencesGet,
-  refreshDriveFoldersSidebarDrivesDriveIdRefreshPost,
-  renameFileFilesFileIdRenamePatch,
-  retireFileAliasAliasesFilesFileIdDelete,
-  saveFileAliasAliasesFilesFileIdPut,
-  searchDriveSearchGet,
-  setDocIconExtrasDocIconsDriveIdPut,
-  setFolderIconExtrasFolderIconsFolderDriveIdPut,
-  snippetDriveSearchSnippetGet,
-  writePreferencesExtrasPreferencesPut,
+  copyFile as copyFileRequest,
+  createFile as createFileRequest,
+  deleteFile as deleteFileRequest,
+  getBootstrap as getBootstrapRequest,
+  getCurrentUser,
+  getDriveTree,
+  getFileAlias,
+  getSearchSnippet,
+  listDocIcons,
+  listDrivePermissions,
+  listDrives,
+  listFolderFiles,
+  listFolderIcons,
+  listSortOrders,
+  logout as logoutRequest,
+  moveFile as moveFileRequest,
+  readFile,
+  readPreferences,
+  refreshDriveTree,
+  renameFile as renameFileRequest,
+  retireFileAlias,
+  saveFileAlias,
+  searchDrive,
+  setDocIcon,
+  setFolderIcon,
+  setSortOrders,
+  writePreferences,
 } from "@/lib/generated/sdk.gen";
 import {
   bootstrapRead,
@@ -93,7 +91,7 @@ export function makeWikiApi(client?: Client) {
   return {
     bulkSetSortOrders: async (items: SortOrder[]): Promise<{ updated: number }> =>
       call(
-        bulkSetSortOrdersExtrasSortOrderPut,
+        setSortOrders,
         {
           body: {
             items: items.map((item) => ({ drive_id: item.driveId, sort_order: item.sortOrder })),
@@ -102,19 +100,12 @@ export function makeWikiApi(client?: Client) {
         sortOrderBulkResult,
       ),
 
-    clearSortOrder: async (driveId: string): Promise<void> =>
-      call(deleteSortOrderExtrasSortOrderDriveIdDelete, { path: { drive_id: driveId } }),
-
     copyFile: async (fileId: string, name: string): Promise<FileResponse> =>
-      call(
-        copyFileFilesFileIdCopyPost,
-        { body: { name }, path: { file_id: fileId } },
-        fileResponse,
-      ),
+      call(copyFileRequest, { body: { name }, path: { file_id: fileId } }, fileResponse),
 
     createFile: async (input: CreateFileInput): Promise<FileResponse> =>
       call(
-        createFileFilesPost,
+        createFileRequest,
         {
           body: {
             mime_type: input.mimeType,
@@ -126,11 +117,11 @@ export function makeWikiApi(client?: Client) {
       ),
 
     deleteFile: async (fileId: string): Promise<void> =>
-      call(deleteFileFilesFileIdDelete, { path: { file_id: fileId } }),
+      call(deleteFileRequest, { path: { file_id: fileId } }),
 
     driveSearch: async (query: string, limitPerDrive?: number): Promise<DriveSearchResult[]> =>
       call(
-        searchDriveSearchGet,
+        searchDrive,
         {
           query: {
             q: query,
@@ -146,7 +137,7 @@ export function makeWikiApi(client?: Client) {
       mimeType?: string,
     ): Promise<SnippetResult> =>
       call(
-        snippetDriveSearchSnippetGet,
+        getSearchSnippet,
         {
           query: {
             file_id: fileId,
@@ -157,27 +148,20 @@ export function makeWikiApi(client?: Client) {
         snippetResult,
       ),
 
-    getBootstrap: async (): Promise<Bootstrap> => call(bootstrapBootstrapGet, {}, bootstrapRead),
-
-    getDocIcon: async (driveId: string): Promise<DocIcon> =>
-      call(readDocIconExtrasDocIconsDriveIdGet, { path: { drive_id: driveId } }, docIcon),
+    getBootstrap: async (): Promise<Bootstrap> => call(getBootstrapRequest, {}, bootstrapRead),
 
     getDocumentAlias: async (fileId: string): Promise<DocumentAliasForFile> =>
-      call(getFileAliasAliasesFilesFileIdGet, { path: { file_id: fileId } }, documentAliasForFile),
+      call(getFileAlias, { path: { file_id: fileId } }, documentAliasForFile),
 
     getDriveFolders: async (driveId: string): Promise<DriveTree> =>
-      call(
-        getDriveFoldersSidebarDrivesDriveIdFoldersGet,
-        { path: { drive_id: driveId } },
-        driveTree,
-      ),
+      call(getDriveTree, { path: { drive_id: driveId } }, driveTree),
 
     getDrivePermissions: async (
       driveId: string,
       pageToken?: string,
     ): Promise<DrivePermissionsPage> =>
       call(
-        getDrivePermissionsSidebarDrivesDriveIdPermissionsGet,
+        listDrivePermissions,
         {
           path: { drive_id: driveId },
           query: pageToken === undefined ? {} : { page_token: pageToken },
@@ -185,69 +169,49 @@ export function makeWikiApi(client?: Client) {
         drivePermissionsPage,
       ),
 
-    getDrives: async (): Promise<DriveSummary[]> =>
-      call(getDrivesSidebarDrivesGet, {}, z.array(driveSummary)),
+    getDrives: async (): Promise<DriveSummary[]> => call(listDrives, {}, z.array(driveSummary)),
 
     getFile: async (fileId: string): Promise<FileDetail> =>
-      call(readFileFilesFileIdGet, { path: { file_id: fileId } }, fileDetail),
+      call(readFile, { path: { file_id: fileId } }, fileDetail),
 
     getFolderFiles: async (folderId: string): Promise<DriveNode[]> =>
-      call(
-        getFolderFilesSidebarFoldersFolderIdFilesGet,
-        { path: { folder_id: folderId } },
-        z.array(driveNode),
-      ),
+      call(listFolderFiles, { path: { folder_id: folderId } }, z.array(driveNode)),
 
-    getMe: async (): Promise<UserProfile> => call(meAuthMeGet, {}, userProfile),
+    getMe: async (): Promise<UserProfile> => call(getCurrentUser, {}, userProfile),
 
-    getPreferences: async (): Promise<Preferences> =>
-      call(readPreferencesExtrasPreferencesGet, {}, preferences),
+    getPreferences: async (): Promise<Preferences> => call(readPreferences, {}, preferences),
 
-    listDocIcons: async (): Promise<DocIcon[]> =>
-      call(listDocIconsExtrasDocIconsGet, {}, z.array(docIcon)),
+    listDocIcons: async (): Promise<DocIcon[]> => call(listDocIcons, {}, z.array(docIcon)),
 
     listFolderIcons: async (): Promise<FolderIcon[]> =>
-      call(listMyFolderIconsExtrasFolderIconsGet, {}, z.array(folderIcon)),
+      call(listFolderIcons, {}, z.array(folderIcon)),
 
-    listSortOrders: async (): Promise<SortOrder[]> =>
-      call(listMySortOrdersExtrasSortOrderGet, {}, z.array(sortOrder)),
+    listSortOrders: async (): Promise<SortOrder[]> => call(listSortOrders, {}, z.array(sortOrder)),
 
-    logout: async (): Promise<void> => call(logoutAuthLogoutPost, {}),
+    logout: async (): Promise<void> => call(logoutRequest, {}),
 
     moveFile: async (fileId: string, newParentFolderId: string): Promise<FileResponse> =>
       call(
-        moveFileFilesFileIdMovePatch,
+        moveFileRequest,
         { body: { new_parent_folder_id: newParentFolderId }, path: { file_id: fileId } },
         fileResponse,
       ),
 
     refreshDriveFolders: async (driveId: string): Promise<DriveTree> =>
-      call(
-        refreshDriveFoldersSidebarDrivesDriveIdRefreshPost,
-        { path: { drive_id: driveId } },
-        driveTree,
-      ),
+      call(refreshDriveTree, { path: { drive_id: driveId } }, driveTree),
 
     renameFile: async (fileId: string, name: string): Promise<FileResponse> =>
-      call(
-        renameFileFilesFileIdRenamePatch,
-        { body: { name }, path: { file_id: fileId } },
-        fileResponse,
-      ),
+      call(renameFileRequest, { body: { name }, path: { file_id: fileId } }, fileResponse),
 
     retireDocumentAlias: async (fileId: string): Promise<void> =>
-      call(retireFileAliasAliasesFilesFileIdDelete, { path: { file_id: fileId } }),
+      call(retireFileAlias, { path: { file_id: fileId } }),
 
     saveDocumentAlias: async (fileId: string, alias: string): Promise<DocumentAlias> =>
-      call(
-        saveFileAliasAliasesFilesFileIdPut,
-        { body: { alias }, path: { file_id: fileId } },
-        documentAlias,
-      ),
+      call(saveFileAlias, { body: { alias }, path: { file_id: fileId } }, documentAlias),
 
     setDocIcon: async (driveId: string, payload: DocIconInput): Promise<DocIcon> =>
       call(
-        setDocIconExtrasDocIconsDriveIdPut,
+        setDocIcon,
         {
           body: { cover_url: payload.coverUrl ?? null, icon: payload.icon ?? null },
           path: { drive_id: driveId },
@@ -256,15 +220,11 @@ export function makeWikiApi(client?: Client) {
       ),
 
     setFolderIcon: async (folderDriveId: string, icon: null | string): Promise<FolderIcon> =>
-      call(
-        setFolderIconExtrasFolderIconsFolderDriveIdPut,
-        { body: { icon }, path: { folder_drive_id: folderDriveId } },
-        folderIcon,
-      ),
+      call(setFolderIcon, { body: { icon }, path: { folder_drive_id: folderDriveId } }, folderIcon),
 
     setPreferences: async (payload: PreferencesInput): Promise<Preferences> =>
       call(
-        writePreferencesExtrasPreferencesPut,
+        writePreferences,
         {
           body: {
             ...(payload.hiddenWorkspaceIds === undefined

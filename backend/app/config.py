@@ -54,6 +54,7 @@ class Settings(DatabaseSettings):
     COOKIE_DOMAIN: DomainStr | None = None
     LOG_JSON: bool = False
     LOG_LEVEL: LogLevel = "INFO"
+    API_DOCS_ENABLED: bool = False
     RELEASE_SHA: ReleaseSha = "dev"
     SIDEBAR_CACHE_TTL: Annotated[timedelta, Field(gt=timedelta(0))] = timedelta(minutes=10)
     GOOGLE_CLOUD_PROJECT: NonEmptyStr | None = None
@@ -81,6 +82,24 @@ class Settings(DatabaseSettings):
             value is not None for value in task_config
         ):
             msg = "Cloud Tasks settings must be configured together"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def cookie_domain_matches_application_hosts(self) -> Self:
+        if self.COOKIE_DOMAIN is None:
+            return self
+        frontend_host = self.FRONTEND_URL.host
+        redirect_host = self.GOOGLE_REDIRECT_URI.host
+        domain = self.COOKIE_DOMAIN
+        if self.FRONTEND_URL.scheme != "https" or self.GOOGLE_REDIRECT_URI.scheme != "https":
+            msg = "COOKIE_DOMAIN requires HTTPS frontend and OAuth callback URLs"
+            raise ValueError(msg)
+        if not all(
+            host is not None and (host == domain or host.endswith(f".{domain}"))
+            for host in (frontend_host, redirect_host)
+        ):
+            msg = "COOKIE_DOMAIN must contain both the frontend and OAuth callback hosts"
             raise ValueError(msg)
         return self
 

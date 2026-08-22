@@ -173,9 +173,8 @@ resource "google_compute_security_policy" "edge_armor" {
 #   550-580   Missing-client-IP enforcement and per-client-IP throttles.
 #   600-620   Cloudflare IP allowlist. Cloudflare publishes 15 IPv4
 #             ranges and 7 IPv6 ranges; ``SRC_IPS_V1`` caps at 10 per
-#             rule, so we split across three rules. Refresh from
-#             https://www.cloudflare.com/ips/ on cutover night and at
-#             least quarterly.
+#             rule, so we split across three rules. Refresh quarterly
+#             from https://www.cloudflare.com/ips/.
 #   2147483647 (default)  Deny everything else. Direct hits to the GCLB
 #             IP from non-Cloudflare sources and direct hits to the
 #             Cloud Run run.app URL (rejected earlier by
@@ -207,18 +206,10 @@ resource "google_compute_security_policy" "backend_armor" {
     description = "block XSS (opt-out 941340: fires on JWT base64url cookies)"
   }
 
-  # SQLi at sensitivity level 1 (paranoia 1 only). The cutover-night
-  # post-mortem: paranoia levels 2-4 rules (942200, 942260, 942421,
-  # 942432, ...) all match on base64-url-encoded strings, which is
-  # exactly the shape of the JWT cookie this app sends on every
-  # authenticated request. We exhausted four explicit opt-outs and a
-  # fifth rule started firing on the next click. Rather than continue
-  # whack-a-mole, the SQLi rule is now scoped to paranoia level 1 —
-  # still catches the obvious patterns (UNION SELECT, OR 1=1,
-  # sleep(), etc.) without matching JWTs. Real SQLi defense lives in
-  # the application: every query goes through parameterised
-  # SQLAlchemy, and Cloudflare's edge WAF still runs upstream of
-  # GCLB on the orange-cloud path.
+  # Higher SQLi sensitivity levels match the base64url JWT cookie on
+  # authenticated requests. Sensitivity 1 avoids that false positive;
+  # SQLAlchemy parameterization and Cloudflare's upstream WAF remain
+  # additional SQLi defenses.
   rule {
     action   = "deny(403)"
     priority = 510

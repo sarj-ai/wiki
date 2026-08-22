@@ -14,7 +14,7 @@ from app.auth.encryption import decrypt_cache, encrypt_cache
 from app.config import settings
 from app.drive.schemas import DriveNode, DriveTree, SearchResult, SnippetResult
 from app.drive.service import DriveService
-from app.identifiers import DriveId, FileId, GoogleUserId
+from app.identifiers import DriveId, FileId, GoogleUserId, UserId
 from app.models.user import User
 from app.models.wiki import DriveTreeCache
 from app.sidebar.cache import CACHE_MAX_AGE, PostgresSidebarCacheService
@@ -23,7 +23,7 @@ from app.sidebar.singleflight import Singleflight
 
 def _user() -> User:
     u = User()
-    u.id = uuid.uuid4()
+    u.id = UserId(uuid.uuid4())
     u.email = "test@sarj.ai"
     u.google_id = GoogleUserId("gid")
     u.token_version = 0

@@ -14,7 +14,7 @@ from app.drive.service import GoogleDriveService
 from app.files.dependencies import files_service_dep
 from app.files.errors import DriveUpstreamError
 from app.files.service import GoogleFilesService
-from app.identifiers import FileId, GoogleUserId
+from app.identifiers import FileId, GoogleUserId, UserId
 from app.main import app
 from app.models.user import User
 
@@ -56,7 +56,7 @@ class _FailingGoogleClient:
 
 def _user() -> User:
     user = User()
-    user.id = uuid.uuid4()
+    user.id = UserId(uuid.uuid4())
     user.email = "test@sarj.ai"
     user.google_id = GoogleUserId("provider-error-test")
     user.token_version = 0

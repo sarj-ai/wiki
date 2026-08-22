@@ -1,24 +1,3 @@
-# Cloud Run backend service — post-pivot Sarj Wiki layout.
-#
-# What the Sarj Wiki backend needs at runtime:
-#   * Non-sensitive plaintext env: ALLOWED_DOMAIN, FRONTEND_URL,
-#     GOOGLE_REDIRECT_URI, DB_INSTANCE_CONNECTION_NAME, DB_NAME,
-#     DB_IAM_USER (DB auth is IAM — the SA is the credential)
-#   * Sensitive secrets (via Secret Manager): SECRET_KEY, FERNET_KEY,
-#     CACHE_FERNET_KEY,
-#     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
-#
-# What the legacy Sarj Wiki stack needed but Sarj Wiki does NOT:
-#   * DRIVE_WEBHOOK_TOKEN — no more Drive push notifications
-#   * DRIVE_ROOT_FOLDER_ID — Sarj Wiki discovers drives via
-#     drives.list() at runtime, no static root folder
-#   * ADMIN_IMPERSONATE_EMAIL — no more Admin SDK group sync
-#   * SERVICE_ACCOUNT_KEY_PATH — no service account in the read path
-#   * CLOUD_SCHEDULER_SA_EMAIL — the only /internal endpoint now uses a
-#     dedicated, Google-signed Cloud Tasks OIDC identity
-#   * WEBHOOK_BASE_URL — no webhook registrations
-#   * /secrets/service-account-key volume mount — removed
-
 resource "google_cloud_run_v2_service" "backend" {
   name     = "sarj-docs-backend"
   location = var.region
@@ -99,9 +78,8 @@ resource "google_cloud_run_v2_service" "backend" {
         value = "sarj.ai"
       }
       env {
-        # Scopes the auth JWT cookies to the parent domain so the
-        # Next.js server at wiki.sarj.ai can gate routes and prefetch
-        # server-side (#44). Deliberately separate from ALLOWED_DOMAIN.
+        # The frontend server needs the parent-domain auth cookie for
+        # route gating and server-side prefetching.
         name  = "COOKIE_DOMAIN"
         value = "sarj.ai"
       }

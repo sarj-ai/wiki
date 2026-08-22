@@ -4,6 +4,8 @@ from fastapi import Response
 from httpx import ASGITransport, AsyncClient
 import pytest
 
+from app.auth.dependencies import auth_service_dep
+from app.auth.errors import AuthFailedError
 from app.auth.router import clear_auth_cookies, set_auth_cookies
 from app.auth.service import AuthSession
 from app.config import settings
@@ -92,5 +94,40 @@ async def test_oauth_state_cookie_never_carries_domain(monkeypatch: pytest.Monke
     state_cookies = [
         v for k, v in response.headers.multi_items() if k == "set-cookie" and "oauth_state=" in v
     ]
-    assert len(state_cookies) == 1
-    assert "Domain=" not in state_cookies[0]
+    assert len(state_cookies) == 2
+    assert all("Domain=" not in cookie for cookie in state_cookies)
+    active = [cookie for cookie in state_cookies if "Max-Age=600" in cookie]
+    assert len(active) == 1
+    assert "Path=/auth/callback" in active[0]
+
+
+async def test_oauth_callback_clears_state_cookie_after_failure() -> None:
+    from app.main import app
+
+    class _RejectingAuth:
+        async def exchange_code_for_session(
+            self, code: str, state: str, expected_state: str | None
+        ) -> AuthSession:
+            del code, state, expected_state
+            raise AuthFailedError
+
+    app.dependency_overrides[auth_service_dep] = _RejectingAuth
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        cookies={"oauth_state": "b" * 43},
+    ) as client:
+        response = await client.get(
+            "/auth/callback",
+            params={"code": "code", "state": "a" * 43},
+            follow_redirects=False,
+        )
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 302
+    assert response.headers["cache-control"] == "no-store"
+    assert any(
+        "oauth_state=" in cookie and "Max-Age=0" in cookie and "Path=/auth/callback" in cookie
+        for cookie in response.headers.get_list("set-cookie")
+    )

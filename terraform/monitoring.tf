@@ -1,6 +1,3 @@
-# Monitoring and alerting
-
-# Notification channel
 resource "google_monitoring_notification_channel" "email" {
   display_name = "Sarj Wiki Alerts"
   type         = "email"
@@ -12,7 +9,6 @@ resource "google_monitoring_notification_channel" "email" {
   depends_on = [google_project_service.apis["monitoring.googleapis.com"]]
 }
 
-# Uptime check — hits /health every 5 minutes
 resource "google_monitoring_uptime_check_config" "backend_health" {
   display_name = "Sarj Wiki Backend Health"
   timeout      = "10s"
@@ -36,7 +32,6 @@ resource "google_monitoring_uptime_check_config" "backend_health" {
   depends_on = [google_project_service.apis["monitoring.googleapis.com"]]
 }
 
-# Alert: high 5xx error rate
 resource "google_monitoring_alert_policy" "backend_errors" {
   display_name = "Backend 5xx Errors"
   combiner     = "OR"
@@ -66,7 +61,6 @@ resource "google_monitoring_alert_policy" "backend_errors" {
   notification_channels = [google_monitoring_notification_channel.email.id]
 }
 
-# Alert: Cloud SQL CPU > 80%
 resource "google_monitoring_alert_policy" "db_cpu" {
   display_name = "Database CPU > 80%"
   combiner     = "OR"
@@ -95,7 +89,6 @@ resource "google_monitoring_alert_policy" "db_cpu" {
   notification_channels = [google_monitoring_notification_channel.email.id]
 }
 
-# Alert: Cloud SQL memory > 85%
 resource "google_monitoring_alert_policy" "db_memory" {
   display_name = "Database Memory > 85%"
   combiner     = "OR"
@@ -123,11 +116,3 @@ resource "google_monitoring_alert_policy" "db_memory" {
 
   notification_channels = [google_monitoring_notification_channel.email.id]
 }
-
-# Cloud Scheduler job failure alert removed — the wiki architecture has
-# no Cloud Scheduler jobs (no webhook renewal, no group sync; freshness
-# is in-app via stale-while-revalidate + the W15 manual refresh button).
-# GCP rejected the filter at apply time with "Cannot find metric(s) that
-# match type = cloudscheduler.googleapis.com/job/attempt_count" because
-# the metric only exists when at least one Cloud Scheduler job has been
-# created in the project. Resource intentionally deleted.

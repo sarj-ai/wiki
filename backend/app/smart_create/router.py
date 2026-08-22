@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user
 from app.identifiers import FileId, IdempotencyKey
 from app.models.user import User
+from app.openapi import authentication_responses
 from app.sidebar.cache import SidebarCacheService
 from app.smart_create.dependencies import reorganization_service_dep, smart_proposal_service_dep
 from app.smart_create.schemas import (
@@ -26,10 +27,10 @@ from app.tasks.schemas import PendingTaskRead, RunningTaskRead, TaskKind, TaskRe
 from app.tasks.service import TaskService
 
 
-router = APIRouter(prefix="/files", tags=["files"])
+router = APIRouter(prefix="/files", tags=["files"], responses=authentication_responses())
 
 
-@router.post("/{file_id}/reorganize-proposal")
+@router.post("/{file_id}/reorganize-proposal", operation_id="propose_file_reorganization")
 async def propose_file_reorganization(
     file_id: FileId,
     service: Annotated[ReorganizationService, Depends(reorganization_service_dep)],
@@ -46,7 +47,16 @@ async def invalidate_smart_create_result(
         await sidebar_cache.invalidate_drive(db, result.file.drive_id)
 
 
-@router.post("/smart-proposal")
+@router.post(
+    "/smart-proposal",
+    operation_id="create_smart_proposal",
+    responses={
+        200: {
+            "headers": {"Server-Timing": {"schema": {"type": "string"}}},
+            "description": "Smart creation proposal.",
+        }
+    },
+)
 async def create_smart_proposal(
     payload: AIMode,
     service: Annotated[SmartProposalService, Depends(smart_proposal_service_dep)],
@@ -59,7 +69,21 @@ async def create_smart_proposal(
     return result
 
 
-@router.post("/smart", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/smart",
+    status_code=status.HTTP_202_ACCEPTED,
+    operation_id="create_smart_file",
+    responses={
+        202: {
+            "headers": {
+                "Idempotency-Replayed": {"schema": {"type": "boolean"}},
+                "Retry-After": {"schema": {"type": "integer"}},
+                "Server-Timing": {"schema": {"type": "string"}},
+            },
+            "description": "Accepted task or an existing idempotent task.",
+        }
+    },
+)
 async def create_smart_file(
     payload: SmartFileCreate,
     idempotency_key: Annotated[uuid.UUID, Header(alias="Idempotency-Key")],

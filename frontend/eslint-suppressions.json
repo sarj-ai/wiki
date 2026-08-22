@@ -90,10 +90,5 @@
     "@sarj/prefer-immutable-module-constant": {
       "count": 1
     }
-  },
-  "src/middleware.ts": {
-    "@sarj/prefer-immutable-module-constant": {
-      "count": 1
-    }
   }
 }

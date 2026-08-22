@@ -23,6 +23,5 @@ async def require_accessible_doc(
     drive_id: FileId,
     files: Annotated[FilesService, Depends(files_service_dep)],
 ) -> FileId:
-    """Reject document-icon writes unless the caller can open the document — the historically named ``drive_id`` path param carries a Google document id, not a shared-drive id."""
     await files.get(drive_id)
     return drive_id

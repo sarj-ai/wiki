@@ -79,7 +79,7 @@ class _Files(FilesService):
 
     @override
     async def create_tracked(
-        self, parent_folder_id: FileId, name: str, mime_type: str, task_id: str
+        self, parent_folder_id: FileId, name: str, mime_type: str, task_id: TaskId
     ) -> FileResponse:
         self.created += 1
         return _file("created")
@@ -91,14 +91,14 @@ class _Files(FilesService):
         template_file_id: FileId,
         parent_folder_id: FileId,
         name: str,
-        task_id: str,
+        task_id: TaskId,
         expected_modified_time: str,
     ) -> FileResponse:
         self.created += 1
         return _file("copied")
 
     @override
-    async def find_by_task(self, drive_id: DriveId, task_id: str) -> FileResponse | None:
+    async def find_by_task(self, drive_id: DriveId, task_id: TaskId) -> FileResponse | None:
         return self.recovered
 
     @override
@@ -171,10 +171,6 @@ class _Extras(ExtrasService):
         return []
 
     @override
-    async def get_doc_icon(self, drive_id: FileId) -> DocIconRead:
-        raise NotImplementedError
-
-    @override
     async def upsert_doc_icon(self, drive_id: FileId, payload: DocIconWrite) -> DocIconRead:
         self.icon = payload.icon
         return DocIconRead(drive_id=drive_id, icon=payload.icon, cover_url=None)
@@ -195,10 +191,6 @@ class _Extras(ExtrasService):
 
     @override
     async def upsert_sort_orders(self, items: list[SortOrderWrite]) -> None:
-        raise NotImplementedError
-
-    @override
-    async def clear_sort_order(self, drive_id: DriveId) -> None:
         raise NotImplementedError
 
     @override
