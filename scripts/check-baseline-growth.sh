@@ -37,6 +37,11 @@ for baseline in python-standards-baseline.json frontend/eslint-suppressions.json
         --standards-base "$temp_dir/base-standards.toml" \
         --standards-current .sarj-standards.toml \
         --base-config "$temp_dir/base-eslint-configs.mjs" \
+        --bootstrap standards-baseline-bootstrap.json \
+        --merge-base "$base_sha" \
+        --allowance-path "$baseline" \
+        --changed-files "$temp_dir/changed-files" \
+        --changed-prefix "$prefix" \
         "$base_file" "$baseline"
     else
       uv run --project backend --locked python scripts/check_baseline_growth.py \

@@ -11,6 +11,9 @@
   "backend/app/bootstrap/router.py": {
     "SARJ094": 1
   },
+  "backend/app/cache/__init__.py": {
+    "SARJ420": 1
+  },
   "backend/app/drive/retry.py": {
     "SARJ014": 1
   },
@@ -39,7 +42,8 @@
     "SARJ094": 5
   },
   "backend/app/smart_create/service.py": {
-    "SARJ014": 2
+    "SARJ014": 2,
+    "SARJ096": 1
   },
   "backend/app/tasks/router.py": {
     "SARJ094": 2
