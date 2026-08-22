@@ -54,13 +54,14 @@ import { useDriveTreeIndex } from "./use-drive-tree-index";
 
 export function DriveSection({
   activeDriveId,
+  defaultExpanded,
   drive,
   folderIcons,
   optimisticByContainer,
   showNonDocFiles,
   sortOrders,
 }: DriveSectionProps) {
-  const [expanded, setExpanded] = useExpandedDrive(drive.id);
+  const [expanded, setExpanded] = useExpandedDrive(drive.id, defaultExpanded);
   const {
     childrenByParent,
     docIconOverrides,
@@ -69,7 +70,7 @@ export function DriveSection({
     iconOverrides,
     sortOrderMap,
     treeQuery,
-  } = useDriveTreeIndex(drive.id, folderIcons, sortOrders);
+  } = useDriveTreeIndex(drive.id, folderIcons, sortOrders, expanded);
   const lazyRootFiles = useFolderFiles(drive.id, expanded && !filesComplete);
   const refreshDrive = useRefreshDrive();
 
@@ -242,6 +243,7 @@ export function DriveSection({
 
 interface DriveSectionProps {
   activeDriveId: null | string;
+  defaultExpanded: boolean;
   drive: DriveSummary;
   folderIcons: FolderIcon[];
   optimisticByContainer: Map<string, string[]>;

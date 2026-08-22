@@ -9,6 +9,13 @@ from uuid import uuid4
 from loguru import logger
 from starlette.routing import Route
 
+from app.performance import (
+    begin_request_metrics,
+    reset_request_metrics,
+    server_timing_value,
+    snapshot,
+)
+
 
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -30,6 +37,7 @@ class RequestIDMiddleware:
 
         request_id = _inbound_request_id(scope) or uuid4().hex[:12]
         token = request_id_var.set(request_id)
+        metrics_token = begin_request_metrics()
         started_at = time.perf_counter()
         status_code = 500
 
@@ -39,6 +47,9 @@ class RequestIDMiddleware:
                 status_code = message["status"]
                 headers = list(message.get("headers", []))
                 headers.append((_HEADER, request_id.encode("latin-1")))
+                timing = server_timing_value()
+                if timing is not None:
+                    headers.append((b"server-timing", timing.encode("latin-1")))
                 message["headers"] = headers
             await send(message)
 
@@ -50,7 +61,9 @@ class RequestIDMiddleware:
                 request_method=scope["method"],
                 request_route=_route_template(scope),
                 status_code=status_code,
+                **snapshot(),
             ).info("request.complete")
+            reset_request_metrics(metrics_token)
             request_id_var.reset(token)
 
 

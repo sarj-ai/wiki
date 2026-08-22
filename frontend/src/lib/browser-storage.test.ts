@@ -3,6 +3,7 @@
 import {
   clearUserBrowserStorage,
   collapsedDrivesStorageKey,
+  expandedDrivesStorageKey,
   expandedFoldersStorageKey,
   purgeLegacyBrowserStorage,
   readActiveBrowserUser,
@@ -24,6 +25,7 @@ describe("browser metadata storage", () => {
   it("uses disjoint keys for every immutable user id", () => {
     expect(recentDocsStorageKey("user-a")).not.toBe(recentDocsStorageKey("user-b"));
     expect(expandedFoldersStorageKey("user-a")).not.toBe(expandedFoldersStorageKey("user-b"));
+    expect(expandedDrivesStorageKey("user-a")).not.toBe(expandedDrivesStorageKey("user-b"));
     expect(collapsedDrivesStorageKey("user-a")).not.toBe(collapsedDrivesStorageKey("user-b"));
     expect(recentAliasesStorageKey("user-a")).not.toBe(recentAliasesStorageKey("user-b"));
   });
@@ -33,6 +35,7 @@ describe("browser metadata storage", () => {
       recentDocsStorageKey("user-a"),
       recentAliasesStorageKey("user-a"),
       expandedFoldersStorageKey("user-a"),
+      expandedDrivesStorageKey("user-a"),
       collapsedDrivesStorageKey("user-a"),
     ];
     for (const key of userAKeys) window.localStorage.setItem(key, "private-a");

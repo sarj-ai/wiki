@@ -144,11 +144,6 @@
       "count": 3
     }
   },
-  "src/lib/perf-marks.ts": {
-    "@typescript-eslint/naming-convention": {
-      "count": 1
-    }
-  },
   "src/lib/recent-aliases.ts": {
     "@sarj/no-sentinel-return-on-catch": {
       "count": 1
@@ -193,11 +188,6 @@
   "src/lib/smart-create-types.test.ts": {
     "@typescript-eslint/naming-convention": {
       "count": 1
-    }
-  },
-  "src/lib/storage-schemas.ts": {
-    "@typescript-eslint/naming-convention": {
-      "count": 10
     }
   },
   "src/lib/wiki-keys.ts": {

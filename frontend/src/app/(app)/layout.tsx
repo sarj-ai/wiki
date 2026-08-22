@@ -13,12 +13,12 @@ import { DocWarmup } from "@/components/wiki-document/doc-warmup";
 import { CommandPaletteMount } from "@/components/wiki-search/command-palette-mount";
 import { WikiSidebar } from "@/components/wiki-sidebar/wiki-sidebar";
 import { serverWikiApi } from "@/lib/server-api";
-import { ZSidebarStateCookie } from "@/lib/storage-schemas";
+import { ZSIDEBAR_STATE_COOKIE } from "@/lib/storage-schemas";
 import { authKeys, wikiKeys } from "@/lib/wiki-keys";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
-  const defaultOpen = ZSidebarStateCookie.parse(cookieStore.get("sidebar_state")?.value);
+  const defaultOpen = ZSIDEBAR_STATE_COOKIE.parse(cookieStore.get("sidebar_state")?.value);
 
   const queryClient = new QueryClient();
   const bootstrap = await serverWikiApi.getBootstrap().catch((error: unknown) => {

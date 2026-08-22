@@ -45,6 +45,9 @@ function sessionExpiresAt(): null | number {
 }
 
 client.interceptors.request.use(async (request) => {
+  if (!request.headers.has("X-Request-ID")) {
+    request.headers.set("X-Request-ID", crypto.randomUUID());
+  }
   const exp = sessionExpiresAt();
   if (exp !== null && Date.now() > exp - SESSION_EXP_SKEW_MS) {
     const refresh = await deduplicatedRefresh();

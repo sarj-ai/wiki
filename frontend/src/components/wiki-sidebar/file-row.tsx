@@ -26,6 +26,13 @@ import { CHEVRON_OFFSET, ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants
 import { PickableIcon } from "./pickable-icon";
 import { useIsMovingFile } from "./use-in-flight-moves";
 
+const MODIFIED_DATE_FORMAT = new Intl.DateTimeFormat("en", {
+  day: "numeric",
+  month: "short",
+  timeZone: "UTC",
+  year: "numeric",
+});
+
 interface FileRowProps {
   activeDriveId: null | string;
   depth: number;
@@ -112,7 +119,7 @@ function FileRowImpl({
   const iconLeft = `${rowIndent(depth) + CHEVRON_OFFSET}px`;
   const linkPadding = `${rowIndent(depth) + CHEVRON_OFFSET + ICON_COLUMN_WIDTH}px`;
   const edited = node.modifiedTime
-    ? ` — edited ${new Date(node.modifiedTime).toLocaleDateString()}`
+    ? ` — edited ${MODIFIED_DATE_FORMAT.format(new Date(node.modifiedTime))}`
     : "";
   const titleAttr =
     route.tooltip ?? (isForm ? `${displayName} — opens in a new tab` : `${displayName}${edited}`);
@@ -239,6 +246,7 @@ function RowButton({
         onPointerDown={onPrefetch}
         onPointerEnter={onPrewarm}
         onPointerLeave={onPrewarmCancel}
+        prefetch={false}
         title={titleAttr}
       >
         <span className="truncate">{displayName}</span>

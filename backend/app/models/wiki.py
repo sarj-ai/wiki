@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
-from app.identifiers import DriveId, FileId
+from app.identifiers import DriveId, FileId, UserId
 
 
 class CacheEntry(Base):
@@ -22,8 +22,17 @@ class CacheEntry(Base):
 
 
 class DriveTreeCache(Base):
-    __tablename__ = "drive_tree_cache"
+    __tablename__ = "user_drive_tree_cache"
+    __table_args__ = (
+        Index("ix_user_drive_tree_cache_drive_id", "drive_id"),
+        Index("ix_user_drive_tree_cache_refreshed_at", "refreshed_at"),
+    )
 
+    user_id: Mapped[UserId] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
     drive_id: Mapped[DriveId] = mapped_column(Text, primary_key=True)
     tree: Mapped[str] = mapped_column(Text, nullable=False)
     refreshed_at: Mapped[datetime] = mapped_column(

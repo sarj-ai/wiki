@@ -217,6 +217,8 @@ jobs:
             --project "${{ env.PROJECT_ID }}" \
             --region "${{ env.REGION }}" \
             --image "${{ steps.deploy.outputs.release_image }}" \
+            --command ".venv/bin/alembic" \
+            --args "upgrade,head" \
             --quiet
           gcloud run jobs execute "${{ env.MIGRATION_JOB }}" \
             --project "${{ env.PROJECT_ID }}" \
@@ -293,6 +295,22 @@ jobs:
             exit 1
           fi
           echo "finished_at=$(date -u +'%Y-%m-%dT%H:%M:%S.%NZ')" >> "$GITHUB_OUTPUT"
+
+      - name: Clear legacy global drive-tree cache after traffic switch
+        run: |
+          set -euo pipefail
+          gcloud run jobs update "${{ env.MIGRATION_JOB }}" \
+            --project "${{ env.PROJECT_ID }}" \
+            --region "${{ env.REGION }}" \
+            --image "${{ steps.deploy.outputs.release_image }}" \
+            --command ".venv/bin/python" \
+            --args=-m,app.cache.cleanup_legacy \
+            --quiet
+          gcloud run jobs execute "${{ env.MIGRATION_JOB }}" \
+            --project "${{ env.PROJECT_ID }}" \
+            --region "${{ env.REGION }}" \
+            --wait \
+            --quiet
 
       - name: Verify correlated production logs
         run: |

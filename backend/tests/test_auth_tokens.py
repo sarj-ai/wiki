@@ -15,7 +15,7 @@ from app.auth.jwt import (
     create_refresh_token,
     decode_token,
 )
-from app.auth.service import GoogleAuthService
+from app.auth.service import AccessIdentity, GoogleAuthService
 from app.config import settings
 from app.identifiers import AuthSessionFamilyId, AuthSessionId, TokenId, UserId
 from app.models.auth_session import UserSession
@@ -73,6 +73,25 @@ class _FakeDb:
         self.commits += 1
 
 
+class _JoinedResult:
+    def __init__(self, row: AccessIdentity | None) -> None:
+        self._row = row
+
+    def one_or_none(self) -> AccessIdentity | None:
+        return self._row
+
+
+class _JoinedDb:
+    def __init__(self, row: AccessIdentity | None) -> None:
+        self.calls = 0
+        self._row = row
+
+    async def execute(self, statement: object) -> _JoinedResult:
+        del statement
+        self.calls += 1
+        return _JoinedResult(self._row)
+
+
 class _SessionService(GoogleAuthService):
     def __init__(self, user: User, session: UserSession) -> None:
         self.db = _FakeDb()
@@ -80,6 +99,16 @@ class _SessionService(GoogleAuthService):
         self.user = user
         self.session = session
         self.revoked_families: list[AuthSessionFamilyId] = []
+
+    @override
+    async def _load_access_identity(
+        self,
+        session_id: AuthSessionId,
+        user_id: UserId,
+    ) -> AccessIdentity | None:
+        if self.session.id != session_id or self.user.id != user_id:
+            return None
+        return AccessIdentity(session=self.session, user=self.user)
 
     @override
     async def _load_user(self, user_id: UserId) -> User | None:
@@ -164,3 +193,13 @@ async def test_access_token_requires_an_active_matching_session() -> None:
     session.revoked_at = datetime.now(UTC)
     with pytest.raises(TokenRevokedError):
         await service.resolve_current_user(token)
+
+
+async def test_access_token_loads_session_and_user_in_one_query() -> None:
+    fixture = _user_and_session()
+    db = _JoinedDb(AccessIdentity(session=fixture.session, user=fixture.user))
+    service = GoogleAuthService(cast("Any", db), cast("Any", object()))
+    token = create_access_token(UserId(fixture.user.id), fixture.session.id)
+
+    assert await service.resolve_current_user(token) is fixture.user
+    assert db.calls == 1

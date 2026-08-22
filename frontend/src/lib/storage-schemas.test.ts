@@ -1,59 +1,77 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ZAuthErrorParam,
-  ZLastRefreshMs,
-  ZPersistedExpansion,
-  ZSidebarStateCookie,
-  ZSidebarWidthCss,
+  ZAUTH_ERROR_PARAM,
+  ZLAST_REFRESH_MS,
+  ZPERSISTED_DRIVE_EXPANSION,
+  ZPERSISTED_EXPANSION,
+  ZSIDEBAR_STATE_COOKIE,
+  ZSIDEBAR_WIDTH_CSS,
 } from "@/lib/storage-schemas";
 
-describe("ZLastRefreshMs", () => {
+describe("ZLAST_REFRESH_MS", () => {
   it("coerces a numeric string", () => {
-    expect(ZLastRefreshMs.parse("123")).toBe(123);
+    expect(ZLAST_REFRESH_MS.parse("123")).toBe(123);
   });
 
   it("falls back to 0 on garbage or null", () => {
-    expect(ZLastRefreshMs.parse("not-a-number")).toBe(0);
-    expect(ZLastRefreshMs.parse(null)).toBe(0);
-    expect(ZLastRefreshMs.parse("-5")).toBe(0);
+    expect(ZLAST_REFRESH_MS.parse("not-a-number")).toBe(0);
+    expect(ZLAST_REFRESH_MS.parse(null)).toBe(0);
+    expect(ZLAST_REFRESH_MS.parse("-5")).toBe(0);
   });
 });
 
-describe("ZSidebarWidthCss", () => {
+describe("ZSIDEBAR_WIDTH_CSS", () => {
   it("accepts a px value and rejects anything else", () => {
-    expect(ZSidebarWidthCss.parse("320px")).toBe("320px");
-    expect(ZSidebarWidthCss.parse("100%")).toBeNull();
-    expect(ZSidebarWidthCss.parse(null)).toBeNull();
+    expect(ZSIDEBAR_WIDTH_CSS.parse("320px")).toBe("320px");
+    expect(ZSIDEBAR_WIDTH_CSS.parse("100%")).toBeNull();
+    expect(ZSIDEBAR_WIDTH_CSS.parse(null)).toBeNull();
   });
 });
 
-describe("ZSidebarStateCookie", () => {
+describe("ZSIDEBAR_STATE_COOKIE", () => {
   it("maps to a boolean and defaults to true", () => {
     const missing: string | undefined = undefined;
-    expect(ZSidebarStateCookie.parse("false")).toBe(false);
-    expect(ZSidebarStateCookie.parse("true")).toBe(true);
-    expect(ZSidebarStateCookie.parse(missing)).toBe(true);
-    expect(ZSidebarStateCookie.parse("garbage")).toBe(true);
+    expect(ZSIDEBAR_STATE_COOKIE.parse("false")).toBe(false);
+    expect(ZSIDEBAR_STATE_COOKIE.parse("true")).toBe(true);
+    expect(ZSIDEBAR_STATE_COOKIE.parse(missing)).toBe(true);
+    expect(ZSIDEBAR_STATE_COOKIE.parse("garbage")).toBe(true);
   });
 });
 
-describe("ZAuthErrorParam", () => {
+describe("ZAUTH_ERROR_PARAM", () => {
   it("accepts known keys and rejects unknown", () => {
-    expect(ZAuthErrorParam.safeParse("auth_failed").success).toBe(true);
-    expect(ZAuthErrorParam.safeParse("../etc").success).toBe(false);
-    expect(ZAuthErrorParam.safeParse(["array"]).success).toBe(false);
+    expect(ZAUTH_ERROR_PARAM.safeParse("auth_failed").success).toBe(true);
+    expect(ZAUTH_ERROR_PARAM.safeParse("../etc").success).toBe(false);
+    expect(ZAUTH_ERROR_PARAM.safeParse(["array"]).success).toBe(false);
   });
 });
 
-describe("ZPersistedExpansion", () => {
+describe("ZPERSISTED_EXPANSION", () => {
   it("accepts a valid envelope and rejects malformed shapes", () => {
     expect(
-      ZPersistedExpansion.safeParse({ state: { expanded: { f1: true } }, version: 0 }).success,
+      ZPERSISTED_EXPANSION.safeParse({ state: { expanded: { f1: true } }, version: 0 }).success,
     ).toBe(true);
-    expect(ZPersistedExpansion.safeParse({ state: { expanded: { f1: false } } }).success).toBe(
+    expect(ZPERSISTED_EXPANSION.safeParse({ state: { expanded: { f1: false } } }).success).toBe(
       false,
     );
-    expect(ZPersistedExpansion.safeParse("nope").success).toBe(false);
+    expect(ZPERSISTED_EXPANSION.safeParse("nope").success).toBe(false);
+  });
+});
+
+describe("ZPERSISTED_DRIVE_EXPANSION", () => {
+  it("accepts only the explicit version-one representation", () => {
+    expect(
+      ZPERSISTED_DRIVE_EXPANSION.safeParse({
+        state: { expanded: { d1: true }, initialized: true },
+        version: 1,
+      }).success,
+    ).toBe(true);
+    expect(
+      ZPERSISTED_DRIVE_EXPANSION.safeParse({
+        state: { collapsed: { d1: true } },
+        version: 0,
+      }).success,
+    ).toBe(false);
   });
 });

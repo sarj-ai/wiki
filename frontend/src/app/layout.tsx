@@ -22,11 +22,12 @@ const GOOGLE_DOC_ORIGINS = [
 
 const nunito = localFont({
   display: "swap",
+  preload: false,
   src: [
-    { path: "../../public/fonts/Nunito-Regular.ttf", style: "normal", weight: "400" },
-    { path: "../../public/fonts/Nunito-Medium.ttf", style: "normal", weight: "500" },
-    { path: "../../public/fonts/Nunito-SemiBold.ttf", style: "normal", weight: "600" },
-    { path: "../../public/fonts/Nunito-Bold.ttf", style: "normal", weight: "700" },
+    { path: "../../public/fonts/Nunito-Regular.woff2", style: "normal", weight: "400" },
+    { path: "../../public/fonts/Nunito-Medium.woff2", style: "normal", weight: "500" },
+    { path: "../../public/fonts/Nunito-SemiBold.woff2", style: "normal", weight: "600" },
+    { path: "../../public/fonts/Nunito-Bold.woff2", style: "normal", weight: "700" },
   ],
   variable: "--font-nunito",
 });

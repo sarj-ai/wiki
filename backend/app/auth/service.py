@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import hmac
 import secrets
-from typing import override
+from typing import NamedTuple, override
 import uuid
 
 import httpx
@@ -60,6 +60,11 @@ _IDENTITY_VERIFICATION_FAILED = "Google account could not be verified"
 class AuthSession:
     jwt_access: str
     jwt_refresh: str
+
+
+class AccessIdentity(NamedTuple):
+    session: UserSession
+    user: User
 
 
 class AuthService(ABC):
@@ -168,24 +173,36 @@ class GoogleAuthService(AuthService):
         if payload.type != "access":
             msg = "Invalid token type"
             raise InvalidTokenError(msg)
-        session = await self._load_session(payload.sid)
+        identity = await self._load_access_identity(payload.sid, payload.sub)
+        if identity is None:
+            msg = "Token has been revoked"
+            raise TokenRevokedError(msg)
+        session, user = identity
         if (
-            session is None
-            or session.user_id != payload.sub
+            session.user_id != payload.sub
             or session.revoked_at is not None
             or session.expires_at <= datetime.now(UTC)
         ):
             msg = "Token has been revoked"
-            raise TokenRevokedError(msg)
-        user = await self._load_user(payload.sub)
-        if user is None:
-            msg = "User not found"
             raise TokenRevokedError(msg)
         if not hmac.compare_digest(str(payload.tv), str(user.token_version)):
             logger.warning("auth: revoked access token presented")
             msg = "Token has been revoked"
             raise TokenRevokedError(msg)
         return user
+
+    async def _load_access_identity(
+        self,
+        session_id: AuthSessionId,
+        user_id: UserId,
+    ) -> AccessIdentity | None:
+        statement = (
+            select(UserSession, User)
+            .join(User, User.id == UserSession.user_id)
+            .where(UserSession.id == session_id, UserSession.user_id == user_id)
+        )
+        row = (await self._db.execute(statement)).one_or_none()
+        return AccessIdentity(session=row[0], user=row[1]) if row is not None else None
 
     async def _revoke_user_session(self, user: User, session: UserSession) -> None:
         now = datetime.now(UTC)

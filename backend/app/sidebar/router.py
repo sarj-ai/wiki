@@ -67,16 +67,21 @@ async def get_drive_folders(
     db: Annotated[AsyncSession, Depends(get_db)],
     cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
 ) -> DriveTree | Response:
+    request_etag = request.headers.get("if-none-match")
+    if request_etag:
+        refreshed_at = await cache.get_drive_tree_refreshed_at(db, drive_id)
+        metadata_etag = _tree_etag(drive_id, refreshed_at)
+        if metadata_etag is not None and request_etag == metadata_etag:
+            return Response(
+                status_code=status.HTTP_304_NOT_MODIFIED,
+                headers={"ETag": metadata_etag, "Cache-Control": _CACHE_CONTROL},
+            )
+
     cached = await cache.get_drive_tree(db, drive_id)
     etag = _tree_etag(drive_id, cached.refreshed_at)
     if etag is None:
         response.headers["Cache-Control"] = _CACHE_CONTROL
         return cached.tree
-    if request.headers.get("if-none-match") == etag:
-        return Response(
-            status_code=status.HTTP_304_NOT_MODIFIED,
-            headers={"ETag": etag, "Cache-Control": _CACHE_CONTROL},
-        )
     response.headers["ETag"] = etag
     response.headers["Cache-Control"] = _CACHE_CONTROL
     return cached.tree

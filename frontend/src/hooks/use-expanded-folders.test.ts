@@ -9,6 +9,7 @@ import {
 import {
   clearUserBrowserStorage,
   collapsedDrivesStorageKey,
+  expandedDrivesStorageKey,
   expandedFoldersStorageKey,
 } from "@/lib/browser-storage";
 import { installLocalStorage } from "@/test-stubs/local-storage";
@@ -25,7 +26,7 @@ describe("per-user sidebar expansion", () => {
     expect(window.localStorage.getItem(expandedFoldersStorageKey("user-b"))).toBeNull();
     expect(window.localStorage.getItem(collapsedDrivesStorageKey("user-b"))).toBeNull();
     expect(window.localStorage.getItem(expandedFoldersStorageKey("user-a"))).toContain("folder-a");
-    expect(window.localStorage.getItem(collapsedDrivesStorageKey("user-a"))).not.toBeNull();
+    expect(window.localStorage.getItem(expandedDrivesStorageKey("user-a"))).toContain("drive-a");
   });
 
   it("does not persist when authenticated identity is unavailable", () => {
@@ -42,6 +43,7 @@ describe("per-user sidebar expansion", () => {
     clearUserBrowserStorage("user-a");
 
     expect(window.localStorage.getItem(expandedFoldersStorageKey("user-a"))).toBeNull();
+    expect(window.localStorage.getItem(expandedDrivesStorageKey("user-a"))).toBeNull();
     expect(window.localStorage.getItem(collapsedDrivesStorageKey("user-a"))).toBeNull();
     expect(consumeRevealFor("private-file")).toBe(false);
   });

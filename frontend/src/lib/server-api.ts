@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 import { API_URL } from "@/lib/env";
 import { createClient, createConfig } from "@/lib/generated/client";
@@ -9,12 +9,13 @@ import { makeWikiApi } from "@/lib/wiki-api";
 const serverClient = createClient(createConfig({ baseUrl: API_URL, cache: "no-store" }));
 
 serverClient.interceptors.request.use(async (request) => {
-  const cookieStore = await cookies();
+  const [cookieStore, requestHeaders] = await Promise.all([cookies(), headers()]);
   const token = cookieStore.get("access_token")?.value;
   if (token === undefined) {
     throw new ServerApiError(401);
   }
   request.headers.set("Authorization", `Bearer ${token}`);
+  request.headers.set("X-Request-ID", requestHeaders.get("X-Request-ID") ?? crypto.randomUUID());
   return request;
 });
 

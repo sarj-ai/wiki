@@ -9,6 +9,7 @@ import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
 import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
 import { WikiToolbar } from "@/components/wiki-document/wiki-toolbar";
 import { WikiNotFound } from "@/components/wiki-not-found";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useFile } from "@/hooks/use-wiki-tree";
 import { ApiError } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
@@ -131,6 +132,7 @@ function FilePageBody({
   const setActive = useDocViewerStore((s) => s.setActive);
   const setSlot = useDocViewerStore((s) => s.setSlot);
   const displayTitle = displayFileName(title, mimeType);
+  useDocumentTitle(displayTitle);
 
   useEffect(() => {
     markPaint(fileId, "toolbarPaint");

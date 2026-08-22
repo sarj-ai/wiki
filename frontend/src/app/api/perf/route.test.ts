@@ -1,0 +1,57 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { POST } from "./route";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("performance ingestion", () => {
+  it("accepts only the bounded allow-listed schema", async () => {
+    const log = vi.spyOn(console, "warn").mockImplementation(vi.fn());
+    const response = await POST(
+      authenticatedRequest({
+        durationMs: 123.4,
+        navigationId: "2bc85d65-67f1-46e9-adde-edf75ce07e53",
+        phase: "iframeMount",
+        visibility: "visible",
+      }),
+    );
+    expect(response.status).toBe(204);
+    expect(log).toHaveBeenCalledOnce();
+    expect(log.mock.calls[0]?.[0]).not.toContain("fileId");
+  });
+
+  it.each([
+    { durationMs: 1, fileId: "secret", navigationId: crypto.randomUUID(), phase: "click" },
+    { durationMs: -1, navigationId: crypto.randomUUID(), phase: "click" },
+    { durationMs: 1, navigationId: "not-a-uuid", phase: "click" },
+  ])("rejects unsafe or invalid payloads", async (payload) => {
+    const response = await POST(authenticatedRequest(payload));
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects requests without a session cookie", async () => {
+    const response = await POST(
+      new Request("https://wiki.sarj.ai/api/perf", {
+        body: JSON.stringify({
+          durationMs: 1,
+          navigationId: crypto.randomUUID(),
+          phase: "iframeLoad",
+        }),
+        method: "POST",
+      }),
+    );
+    expect(response.status).toBe(401);
+  });
+});
+
+function authenticatedRequest(payload: unknown): Request {
+  const request = new Request("https://wiki.sarj.ai/api/perf", {
+    body: JSON.stringify(payload),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  request.headers.set("cookie", "access_token=test-session");
+  return request;
+}

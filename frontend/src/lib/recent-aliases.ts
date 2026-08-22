@@ -1,5 +1,5 @@
 import { recentAliasesStorageKey } from "@/lib/browser-storage";
-import { ZRecentAliasVisits } from "@/lib/storage-schemas";
+import { ZRECENT_ALIAS_VISITS } from "@/lib/storage-schemas";
 
 export const MAX_RECENT_ALIASES = 50;
 
@@ -20,7 +20,7 @@ export function recordRecentAlias(userId: string, alias: string): void {
 export function readRecentAliases(userId: string): RecentAliasVisit[] {
   try {
     const raw = window.localStorage.getItem(recentAliasesStorageKey(userId)) ?? "[]";
-    return ZRecentAliasVisits.parse(JSON.parse(raw));
+    return ZRECENT_ALIAS_VISITS.parse(JSON.parse(raw));
   } catch {
     return [];
   }
@@ -28,7 +28,7 @@ export function readRecentAliases(userId: string): RecentAliasVisit[] {
 
 export function writeRecentAliases(userId: string, visits: RecentAliasVisit[]): void {
   try {
-    const capped = ZRecentAliasVisits.parse(visits.slice(0, MAX_RECENT_ALIASES));
+    const capped = ZRECENT_ALIAS_VISITS.parse(visits.slice(0, MAX_RECENT_ALIASES));
     window.localStorage.setItem(recentAliasesStorageKey(userId), JSON.stringify(capped));
   } catch {
     // Browser storage can be unavailable or full; quick links remain optional.

@@ -35,7 +35,9 @@ resource "google_cloud_run_v2_service" "backend" {
 
     vpc_access {
       connector = google_vpc_access_connector.connector.id
-      egress    = "ALL_TRAFFIC"
+      # Cloud SQL remains on its private address while public Google APIs
+      # avoid the connector's throughput and scaling limits.
+      egress = "PRIVATE_RANGES_ONLY"
     }
 
     containers {

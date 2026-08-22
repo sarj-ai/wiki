@@ -216,17 +216,18 @@ class GoogleFilesService(FilesService):
         if not unique_ids:
             return {}
         fetched = await asyncio.to_thread(self._get_accessible_many_sync, unique_ids)
-
-        async def normalize(file: FileResponse) -> _AccessibleFile | None:
-            try:
-                return _AccessibleFile(file.id, await self._normalize_member_drive(file))
-            except FilesError as exc:
-                if exc.http_status in {403, 404}:
-                    return None
-                raise
-
-        normalized = await asyncio.gather(*(normalize(file) for file in fetched.values()))
-        return {item.id: item.response for item in normalized if item is not None}
+        member_drives = await self._drive.resolve_member_drives(
+            {file.id: file.drive_id for file in fetched.values()}
+        )
+        return {
+            file.id: (
+                file
+                if file.drive_id == member_drive_id
+                else file.model_copy(update={"drive_id": member_drive_id})
+            )
+            for file in fetched.values()
+            if (member_drive_id := member_drives.get(file.id)) is not None
+        }
 
     @override
     async def can_edit(self, file_id: FileId) -> bool:

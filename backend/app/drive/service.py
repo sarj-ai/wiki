@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import timedelta
 from functools import cache
 from itertools import batched
@@ -57,7 +57,7 @@ from app.models.user import User
 if TYPE_CHECKING:
     from googleapiclient._apis.drive.v3.resources import DriveResource
 
-_DRIVE_HTTP_TIMEOUT_SECONDS = 30
+_DRIVE_HTTP_TIMEOUT = timedelta(seconds=10)
 
 _PROBE_BATCH_SIZE = 100
 
@@ -111,6 +111,17 @@ class DriveService(ABC):
         drives = await self.list_drives()
         return drive_id if any(d.id == drive_id and not d.is_personal for d in drives) else None
 
+    async def resolve_member_drives(
+        self, files: Mapping[FileId, DriveId | None]
+    ) -> dict[FileId, DriveId]:
+        drives = await self.list_drives()
+        shared_drive_ids = {drive.id for drive in drives if not drive.is_personal}
+        return {
+            file_id: drive_id
+            for file_id, drive_id in files.items()
+            if drive_id is not None and drive_id in shared_drive_ids
+        }
+
     @abstractmethod
     async def walk_drive_folders(self, drive_id: DriveId) -> DriveTree: ...
 
@@ -147,10 +158,23 @@ class GoogleDriveService(DriveService):
         self._user = user
         self._cache = cache_service
         self._clients: dict[int, DriveResource] = {}
+        self._drives_task: asyncio.Task[list[DriveSummary]] | None = None
         self._my_drive_id: DriveId | None = None
 
     @override
     async def list_drives(self) -> list[DriveSummary]:
+        task = self._drives_task
+        if task is None:
+            task = asyncio.create_task(self._load_drives())
+            self._drives_task = task
+        try:
+            return await asyncio.shield(task)
+        except BaseException:
+            if task.done() and self._drives_task is task:
+                self._drives_task = None
+            raise
+
+    async def _load_drives(self) -> list[DriveSummary]:
         cache_key = str(self._user.id)
         if self._cache is not None:
             cached = await self._cache.get(CacheNamespace.DRIVE_LIST, cache_key)
@@ -189,6 +213,38 @@ class GoogleDriveService(DriveService):
             root_id=FileId(personal.id),
         )
         return personal.id if is_descendant else None
+
+    @override
+    async def resolve_member_drives(
+        self, files: Mapping[FileId, DriveId | None]
+    ) -> dict[FileId, DriveId]:
+        drives = await self.list_drives()
+        shared_drive_ids = {drive.id for drive in drives if not drive.is_personal}
+        resolved = {
+            file_id: drive_id
+            for file_id, drive_id in files.items()
+            if drive_id is not None and drive_id in shared_drive_ids
+        }
+        personal = next((drive for drive in drives if drive.is_personal), None)
+        if personal is None:
+            return resolved
+        personal_ids = [file_id for file_id, drive_id in files.items() if drive_id is None]
+        descendants = await asyncio.gather(
+            *(
+                asyncio.to_thread(
+                    self._is_personal_descendant_sync,
+                    file_id=file_id,
+                    root_id=FileId(personal.id),
+                )
+                for file_id in personal_ids
+            )
+        )
+        resolved.update(
+            (file_id, personal.id)
+            for file_id, is_descendant in zip(personal_ids, descendants, strict=True)
+            if is_descendant
+        )
+        return resolved
 
     @override
     async def walk_drive_folders(self, drive_id: DriveId) -> DriveTree:
@@ -837,7 +893,7 @@ class GoogleDriveService(DriveService):
     def build_drive_client(user: User) -> DriveResource:
         authed_http = google_auth_httplib2.AuthorizedHttp(
             GoogleDriveService._build_credentials(user),
-            http=httplib2.Http(timeout=_DRIVE_HTTP_TIMEOUT_SECONDS),
+            http=httplib2.Http(timeout=_DRIVE_HTTP_TIMEOUT.total_seconds()),
         )
         built = discovery.build_from_document(  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
             drive_discovery_document(), http=authed_http
