@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { notFound } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
@@ -25,7 +25,14 @@ export function FilePageClient({ driveId }: { driveId: string }) {
   const htmlMimeType = fileQuery.data?.mimeType;
   const refetchFile = fileQuery.refetch;
 
-  const [reloadKey, setReloadKey] = useState(0);
+  const [reload, setReload] = useState({ fileId: driveId, key: 0 });
+  const reloadKey = reload.fileId === driveId ? reload.key : 0;
+  const reloadCurrent = () => {
+    setReload((current) => ({
+      fileId: driveId,
+      key: current.fileId === driveId ? current.key + 1 : 1,
+    }));
+  };
 
   useEffect(() => {
     if (htmlMimeType !== MIME_HTML) return;
@@ -50,7 +57,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
   const isLoading = fileQuery.isPending || (!fileQuery.data && fileQuery.isFetching);
   if (isLoading) {
     const hint = findCachedNodeMeta(queryClient, driveId);
-    if (!hint) {
+    if (!hint || (hint.mimeType === MIME_HTML && hint.modifiedTime === undefined)) {
       return <FilePagePending />;
     }
     return (
@@ -61,11 +68,12 @@ export function FilePageClient({ driveId }: { driveId: string }) {
         fileId={driveId}
         mimeType={hint.mimeType}
         onReload={() => {
-          setReloadKey((n) => n + 1);
+          reloadCurrent();
         }}
         parentFolderId={undefined}
         reloadKey={reloadKey}
         title={hint.name}
+        {...(hint.modifiedTime === undefined ? {} : { version: hint.modifiedTime })}
       />
     );
   }
@@ -93,7 +101,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
       fileId={file.id}
       mimeType={file.mimeType}
       onReload={() => {
-        setReloadKey((n) => n + 1);
+        reloadCurrent();
       }}
       parentFolderId={file.parentFolderId}
       reloadKey={reloadKey}
@@ -130,32 +138,40 @@ function FilePageBody({
 }: FilePageBodyProps) {
   const userId = useBrowserUserId();
   const setActive = useDocViewerStore((s) => s.setActive);
+  const clearActive = useDocViewerStore((s) => s.clearActive);
   const setSlot = useDocViewerStore((s) => s.setSlot);
+  const viewerOwner = useRef(Symbol("document-viewer"));
+  const setOwnedSlot = (slot: HTMLElement | null) => {
+    setSlot(slot, viewerOwner.current);
+  };
   const displayTitle = displayFileName(title, mimeType);
   useDocumentTitle(displayTitle);
 
   useEffect(() => {
     markPaint(fileId, "toolbarPaint");
   }, [fileId]);
+  useLayoutEffect(() => {
+    const owner = viewerOwner.current;
+    setActive(
+      {
+        fileId,
+        mimeType,
+        reloadKey,
+        title: displayTitle,
+        ...(version === undefined ? {} : { version }),
+      },
+      owner,
+    );
+    return () => {
+      clearActive(owner);
+    };
+  }, [clearActive, displayTitle, fileId, mimeType, reloadKey, setActive, version]);
   useEffect(() => {
-    setActive({
-      fileId,
-      mimeType,
-      reloadKey,
-      title: displayTitle,
-      ...(version === undefined ? {} : { version }),
-    });
     if (userId) saveLastDoc(userId, { fileId, mimeType, title: displayTitle });
-  }, [displayTitle, fileId, mimeType, reloadKey, setActive, userId, version]);
-  useEffect(
-    () => () => {
-      setActive(null);
-    },
-    [setActive],
-  );
+  }, [displayTitle, fileId, mimeType, userId]);
 
   return (
-    <div className="flex h-[100dvh] flex-col">
+    <div className="flex h-svh min-h-0 flex-col overflow-hidden">
       <WikiToolbar
         breadcrumb={breadcrumb}
         canEdit={canEdit}
@@ -166,21 +182,25 @@ function FilePageBody({
         parentFolderId={parentFolderId}
         title={displayTitle}
       />
-      <div className="flex-1 overflow-hidden" ref={setSlot} />
+      <div className="flex-1 overflow-hidden" ref={setOwnedSlot} />
     </div>
   );
 }
 
 function FilePagePending() {
   return (
-    <div aria-busy="true" aria-label="Loading file" className="flex h-[100dvh] flex-col">
-      <header className="border-border bg-background flex items-center gap-2 border-b px-4 py-2">
+    <div
+      aria-busy="true"
+      aria-label="Loading file"
+      className="flex h-svh min-h-0 flex-col overflow-hidden"
+    >
+      <header className="border-border bg-background flex h-10 shrink-0 items-center gap-2 overflow-hidden border-b pr-4 pl-12 md:pl-4">
         <Skeleton className="size-4 shrink-0 rounded-sm" />
         <Skeleton className="h-4 w-48" />
         <div className="ml-auto flex items-center gap-2">
-          <Skeleton className="h-6 w-8" />
-          <Skeleton className="h-6 w-24" />
-          <Skeleton className="h-6 w-28" />
+          <Skeleton className="h-6 w-36 sm:w-64" />
+          <Skeleton className="hidden h-6 w-24 sm:block" />
+          <Skeleton className="hidden h-6 w-28 md:block" />
         </div>
       </header>
       <div className="flex-1 overflow-hidden">

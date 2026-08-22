@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 
 import { DocSkeleton } from "@/components/wiki-document/doc-skeleton";
 import { type ActiveDoc, useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
@@ -16,8 +16,6 @@ interface SlotRect {
   width: number;
 }
 
-const MAX_POOL = 3;
-
 const MAX_MOUNTED = 4;
 
 export const HTML_IFRAME_SANDBOX = "allow-popups allow-popups-to-escape-sandbox allow-scripts";
@@ -30,22 +28,11 @@ export function htmlContentUrl(fileId: string, version?: string): string {
 
 export const DocViewerHost = () => {
   const active = useDocViewerStore((s) => s.active);
+  const pool = useDocViewerStore((s) => s.pool);
   const prewarm = useDocViewerStore((s) => s.prewarm);
   const warm = useDocViewerStore((s) => s.warm);
   const slot = useDocViewerStore((s) => s.slot);
-  const [pool, setPool] = useState<ActiveDoc[]>([]);
   const [rect, setRect] = useState<null | SlotRect>(null);
-
-  const head = pool[0];
-  if (
-    active &&
-    (head?.fileId !== active.fileId ||
-      head.reloadKey !== active.reloadKey ||
-      head.mimeType !== active.mimeType ||
-      head.version !== active.version)
-  ) {
-    setPool([active, ...pool.filter((entry) => entry.fileId !== active.fileId)].slice(0, MAX_POOL));
-  }
 
   const mounted: ActiveDoc[] = [];
   const seen = new Set<string>();
@@ -57,12 +44,21 @@ export const DocViewerHost = () => {
     if (mounted.length >= MAX_MOUNTED) break;
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!slot) return;
     const sync = () => {
       const r = slot.getBoundingClientRect();
-      setRect({ height: r.height, left: r.left, top: r.top, width: r.width });
+      const next = { height: r.height, left: r.left, top: r.top, width: r.width };
+      setRect((previous) =>
+        previous?.height === next.height &&
+        previous.left === next.left &&
+        previous.top === next.top &&
+        previous.width === next.width
+          ? previous
+          : next,
+      );
     };
+    sync();
     const observer = new ResizeObserver(sync);
     observer.observe(slot);
     window.addEventListener("resize", sync);
@@ -87,7 +83,7 @@ export const DocViewerHost = () => {
         >
           <PooledIframe
             fileId={entry.fileId}
-            key={`${entry.fileId}:${entry.reloadKey}:${entry.version ?? "current"}`}
+            key={viewerKey(entry)}
             mimeType={entry.mimeType}
             title={entry.title}
             {...(entry.version === undefined ? {} : { version: entry.version })}
@@ -98,6 +94,11 @@ export const DocViewerHost = () => {
   );
 };
 
+export function viewerKey(entry: ActiveDoc): string {
+  const contentVersion = entry.mimeType === MIME_HTML ? (entry.version ?? "current") : "stable";
+  return `${entry.fileId}:${entry.reloadKey}:${contentVersion}`;
+}
+
 interface PooledIframeProps {
   fileId: string;
   mimeType: string;
@@ -107,7 +108,7 @@ interface PooledIframeProps {
 
 const PooledIframe = ({ fileId, mimeType, title, version }: PooledIframeProps) => {
   if (mimeType === MIME_HTML) {
-    return isolatedHtmlIframe({ fileId, title, version });
+    return <HtmlIframe fileId={fileId} title={title} version={version} />;
   }
   return <DrivePreviewIframe fileId={fileId} mimeType={mimeType} title={title} />;
 };
@@ -121,7 +122,7 @@ const DrivePreviewIframe = ({ fileId, mimeType, title }: PooledIframeProps) => {
   }, [fileId]);
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative size-full">
       {isLoading ? (
         <div
           aria-label="Loading document"
@@ -132,7 +133,7 @@ const DrivePreviewIframe = ({ fileId, mimeType, title }: PooledIframeProps) => {
       ) : null}
       <iframe
         allow="clipboard-read; clipboard-write"
-        className="block h-full w-full border-0"
+        className="block size-full border-0"
         ref={attachIframeLoadListener.bind(undefined, fileId, setIsLoading)}
         src={src}
         title={title}
@@ -169,7 +170,7 @@ function* docCandidates(
   yield* warm;
 }
 
-function isolatedHtmlIframe({
+function HtmlIframe({
   fileId,
   title,
   version,
@@ -178,13 +179,25 @@ function isolatedHtmlIframe({
   title: string;
   version: string | undefined;
 }) {
+  const [isLoading, setIsLoading] = useState(true);
   return (
-    <iframe
-      className={HTML_IFRAME_CLASS_NAME}
-      referrerPolicy="no-referrer"
-      sandbox={HTML_IFRAME_SANDBOX}
-      src={htmlContentUrl(fileId, version)}
-      title={title}
-    />
+    <div className="relative size-full">
+      {isLoading ? (
+        <div
+          aria-label="Loading document"
+          className="bg-background absolute inset-0 z-10 overflow-hidden"
+        >
+          <DocSkeleton />
+        </div>
+      ) : null}
+      <iframe
+        className={HTML_IFRAME_CLASS_NAME}
+        ref={attachIframeLoadListener.bind(undefined, fileId, setIsLoading)}
+        referrerPolicy="no-referrer"
+        sandbox={HTML_IFRAME_SANDBOX}
+        src={htmlContentUrl(fileId, version)}
+        title={title}
+      />
+    </div>
   );
 }

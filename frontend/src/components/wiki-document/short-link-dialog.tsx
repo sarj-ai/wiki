@@ -101,7 +101,7 @@ export function ShortLinkDialog({ fileId }: ShortLinkDialogProps) {
         variant="outline"
       >
         <Link2 className="size-3.5" />
-        Short link
+        <span className="hidden sm:inline">Short link</span>
       </Button>
       <Dialog
         onOpenChange={(nextOpen) => {

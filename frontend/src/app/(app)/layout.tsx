@@ -1,5 +1,6 @@
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
 import { cookies } from "next/headers";
+import type { CSSProperties } from "react";
 
 import { BrowserSessionBoundary } from "@/components/browser-session-boundary";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -13,12 +14,26 @@ import { DocWarmup } from "@/components/wiki-document/doc-warmup";
 import { CommandPaletteMount } from "@/components/wiki-search/command-palette-mount";
 import { WikiSidebar } from "@/components/wiki-sidebar/wiki-sidebar";
 import { serverWikiApi } from "@/lib/server-api";
-import { ZSIDEBAR_STATE_COOKIE } from "@/lib/storage-schemas";
+import {
+  SIDEBAR_WIDTH_COOKIE,
+  ZSIDEBAR_STATE_COOKIE,
+  ZSIDEBAR_WIDTH_CSS,
+} from "@/lib/storage-schemas";
 import { authKeys, wikiKeys } from "@/lib/wiki-keys";
+
+interface SidebarStyle extends CSSProperties {
+  "--sidebar-width"?: string;
+}
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
   const defaultOpen = ZSIDEBAR_STATE_COOKIE.parse(cookieStore.get("sidebar_state")?.value);
+  const savedWidth = ZSIDEBAR_WIDTH_CSS.parse(cookieStore.get(SIDEBAR_WIDTH_COOKIE)?.value);
+  const sidebarWidth = savedWidth
+    ? `${Math.min(576, Math.max(224, Number.parseInt(savedWidth, 10)))}px`
+    : undefined;
+  const sidebarStyle: SidebarStyle | undefined =
+    sidebarWidth === undefined ? undefined : { "--sidebar-width": sidebarWidth };
 
   const queryClient = new QueryClient();
   const bootstrap = await serverWikiApi.getBootstrap().catch((error: unknown) => {
@@ -44,13 +59,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <QueryProvider key={bootstrap?.me.id ?? "anonymous"} userId={bootstrap?.me.id ?? null}>
       <HydrationBoundary state={dehydrate(queryClient)}>
         <BrowserSessionBoundary initialUserId={bootstrap?.me.id ?? null}>
-          <SidebarProvider defaultOpen={defaultOpen}>
+          <SidebarProvider defaultOpen={defaultOpen} style={sidebarStyle}>
             <RedirectAfterLogin />
             <SessionRefresh />
             <ErrorBoundary>
               <WikiSidebar />
             </ErrorBoundary>
-            <main className="flex-1 overflow-auto">
+            <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
               <SidebarTrigger className="bg-background/80 fixed top-3 left-3 z-50 backdrop-blur-sm md:hidden" />
               <ErrorBoundary>{children}</ErrorBoundary>
             </main>

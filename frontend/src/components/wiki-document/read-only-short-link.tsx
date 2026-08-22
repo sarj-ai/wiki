@@ -43,8 +43,8 @@ export function ReadOnlyShortLink({ fileId }: ReadOnlyShortLinkProps) {
       variant="outline"
     >
       {copied ? <Check className="size-3.5" /> : <Link2 className="size-3.5" />}
-      {copied ? "Copied" : `go/${alias}`}
-      {!copied ? <Copy className="size-3.5" /> : null}
+      <span className="hidden sm:inline">{copied ? "Copied" : `go/${alias}`}</span>
+      {!copied ? <Copy className="hidden size-3.5 sm:block" /> : null}
     </Button>
   );
 }
