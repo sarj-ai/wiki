@@ -187,7 +187,7 @@ function FilePageBody({
   );
 }
 
-function FilePagePending() {
+export function FilePagePending() {
   return (
     <div
       aria-busy="true"

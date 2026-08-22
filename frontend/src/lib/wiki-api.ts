@@ -148,7 +148,8 @@ export function makeWikiApi(client?: Client) {
         snippetResult,
       ),
 
-    getBootstrap: async (): Promise<Bootstrap> => call(getBootstrapRequest, {}, bootstrapRead),
+    getBootstrap: async (): Promise<Bootstrap> =>
+      call(getBootstrapRequest, { query: { defer_doc_icons: true } }, bootstrapRead),
 
     getDocumentAlias: async (fileId: string): Promise<DocumentAliasForFile> =>
       call(getFileAlias, { path: { file_id: fileId } }, documentAliasForFile),
@@ -171,8 +172,12 @@ export function makeWikiApi(client?: Client) {
 
     getDrives: async (): Promise<DriveSummary[]> => call(listDrives, {}, z.array(driveSummary)),
 
-    getFile: async (fileId: string): Promise<FileDetail> =>
-      call(readFile, { path: { file_id: fileId } }, fileDetail),
+    getFile: async (fileId: string, signal?: AbortSignal): Promise<FileDetail> =>
+      call(
+        readFile,
+        { path: { file_id: fileId }, ...(signal === undefined ? {} : { signal }) },
+        fileDetail,
+      ),
 
     getFolderFiles: async (folderId: string): Promise<DriveNode[]> =>
       call(listFolderFiles, { path: { folder_id: folderId } }, z.array(driveNode)),

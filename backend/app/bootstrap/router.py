@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.bootstrap.dependencies import bootstrap_service_dep
 from app.bootstrap.schemas import BootstrapRead
@@ -16,5 +16,7 @@ router = APIRouter(tags=["bootstrap"], responses=authentication_responses())
 @router.get("/bootstrap", operation_id="get_bootstrap")
 async def bootstrap(
     svc: Annotated[BootstrapService, Depends(bootstrap_service_dep)],
+    *,
+    defer_doc_icons: Annotated[bool, Query()] = False,
 ) -> BootstrapRead:
-    return await svc.load()
+    return await svc.load(defer_doc_icons=defer_doc_icons)

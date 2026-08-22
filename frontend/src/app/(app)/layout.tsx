@@ -43,7 +43,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     queryClient.setQueryData(wikiKeys.drives, bootstrap.drives);
     queryClient.setQueryData(wikiKeys.preferences, bootstrap.preferences);
     queryClient.setQueryData(wikiKeys.folderIcons, bootstrap.folderIcons);
-    queryClient.setQueryData(wikiKeys.docIcons, bootstrap.docIcons);
+    // An empty list means the render-blocking bootstrap intentionally deferred
+    // provider-authorized icon metadata to the dedicated client query.
+    if (bootstrap.docIcons.length > 0) {
+      queryClient.setQueryData(wikiKeys.docIcons, bootstrap.docIcons);
+    }
     queryClient.setQueryData(wikiKeys.sortOrders, bootstrap.sortOrders);
     queryClient.setQueryData(authKeys.me, bootstrap.me);
     if (bootstrap.firstDriveTree) {

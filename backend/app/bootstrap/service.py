@@ -26,7 +26,7 @@ class _ExtrasReads(NamedTuple):
 
 class BootstrapService(ABC):
     @abstractmethod
-    async def load(self) -> BootstrapRead: ...
+    async def load(self, *, defer_doc_icons: bool = False) -> BootstrapRead: ...
 
 
 class AggregatingBootstrapService(BootstrapService):
@@ -48,8 +48,10 @@ class AggregatingBootstrapService(BootstrapService):
         self._user = user
 
     @override
-    async def load(self) -> BootstrapRead:
-        drives, extras = await asyncio.gather(self._drive.list_drives(), self._extras_reads())
+    async def load(self, *, defer_doc_icons: bool = False) -> BootstrapRead:
+        drives, extras = await asyncio.gather(
+            self._drive.list_drives(), self._extras_reads(defer_doc_icons=defer_doc_icons)
+        )
         preferences, folder_icons, doc_icons, sort_orders = extras
         return BootstrapRead(
             drives=drives,
@@ -67,12 +69,10 @@ class AggregatingBootstrapService(BootstrapService):
         cached = await self._cache.peek_drive_tree(self._db, drives[0].id)
         return cached.tree if cached is not None else None
 
-    async def _extras_reads(
-        self,
-    ) -> _ExtrasReads:
+    async def _extras_reads(self, *, defer_doc_icons: bool) -> _ExtrasReads:
         return _ExtrasReads(
             await self._extras.get_preferences(),
             await self._extras.list_folder_icons(),
-            await list_accessible_doc_icons(self._extras, self._files),
+            ([] if defer_doc_icons else await list_accessible_doc_icons(self._extras, self._files)),
             await self._extras.list_sort_orders(),
         )
