@@ -58,7 +58,7 @@
     "@eslint/compat": "2.1.0",
     "@hey-api/openapi-ts": "^0.99.0",
     "@opennextjs/cloudflare": "^1.20.2",
-    "@sarj/eslint-plugin": "15.13.1",
+    "@sarj/eslint-plugin": "15.13.2",
     "@sarj/tsconfig": "0.1.6",
     "@tailwindcss/postcss": "^4.3.3",
     "@taplo/cli": "^0.7.0",
