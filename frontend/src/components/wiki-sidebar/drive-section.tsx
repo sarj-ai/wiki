@@ -50,6 +50,7 @@ import { FileRow } from "./file-row";
 import { SortableItem } from "./sortable-item";
 import { TreeNode } from "./tree-node";
 import { useIsCrossContainerDropTarget } from "./use-drag-over-store";
+import { useDrivePredictiveLoading } from "./use-drive-predictive-loading";
 import { useDriveTreeIndex } from "./use-drive-tree-index";
 
 export function DriveSection({
@@ -62,6 +63,7 @@ export function DriveSection({
   sortOrders,
 }: DriveSectionProps) {
   const [expanded, setExpanded] = useExpandedDrive(drive.id, defaultExpanded);
+  const predictiveLoading = useDrivePredictiveLoading(drive.id, expanded);
   const {
     childrenByParent,
     docIconOverrides,
@@ -128,9 +130,15 @@ export function DriveSection({
             <button
               aria-expanded={expanded}
               className="flex w-full items-center gap-1 pr-14"
+              onBlur={predictiveLoading.onBlur}
               onClick={() => {
                 setExpanded(!expanded);
               }}
+              onFocus={predictiveLoading.onFocus}
+              onPointerCancel={predictiveLoading.onPointerLeave}
+              onPointerDown={predictiveLoading.onPointerDown}
+              onPointerEnter={predictiveLoading.onPointerEnter}
+              onPointerLeave={predictiveLoading.onPointerLeave}
               type="button"
             >
               <ChevronRight

@@ -58,18 +58,30 @@ export function useDrivePermissions(driveId: null | string, enabled: boolean) {
 }
 
 export function useFile(fileId: null | string) {
-  return useQuery<FileDetail>({
+  return useQuery({
+    ...fileQueryOptions(fileId ?? "disabled"),
     enabled: !!fileId,
-    queryFn: async () => await wikiReadApi.getFile(fileId ?? ""),
-    queryKey: wikiKeys.file(fileId ?? "disabled"),
+  });
+}
+
+export function fileQueryOptions(fileId: string) {
+  return queryOptions<FileDetail>({
+    queryFn: async () => await wikiReadApi.getFile(fileId),
+    queryKey: wikiKeys.file(fileId),
   });
 }
 
 export function useFolderFiles(folderId: null | string, enabled: boolean) {
-  return useQuery<DriveNode[]>({
+  return useQuery({
+    ...folderFilesQueryOptions(folderId ?? "disabled"),
     enabled: enabled && !!folderId,
-    queryFn: async () => await wikiReadApi.getFolderFiles(folderId ?? ""),
-    queryKey: wikiKeys.folderFiles(folderId ?? "disabled"),
+  });
+}
+
+export function folderFilesQueryOptions(folderId: string) {
+  return queryOptions<DriveNode[]>({
+    queryFn: async () => await wikiReadApi.getFolderFiles(folderId),
+    queryKey: wikiKeys.folderFiles(folderId),
     staleTime: TREE_STALE_MS,
   });
 }

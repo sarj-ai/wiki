@@ -1,0 +1,163 @@
+"use client";
+
+import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
+
+import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
+import { fileQueryOptions } from "@/hooks/use-wiki-tree";
+import {
+  allowsIframeSpeculation,
+  allowsReusableSpeculation,
+  readNavigatorHints,
+} from "@/lib/speculation-policy";
+
+export const DOCUMENT_INTENT_PREFETCH_MS = 150;
+export const DOCUMENT_INTENT_PREWARM_MS = 300;
+
+interface DocumentIntentOptions {
+  disabled: boolean;
+  fileId: string;
+  mimeType: string;
+  onStrongIntent: () => void;
+  title: string;
+}
+
+interface DocumentIntentHandlers {
+  onBlur: () => void;
+  onClick: (event: React.MouseEvent<HTMLAnchorElement>) => void;
+  onFocus: () => void;
+  onPointerDown: (event: React.PointerEvent<HTMLAnchorElement>) => void;
+  onPointerEnter: (event: React.PointerEvent<HTMLAnchorElement>) => void;
+  onPointerLeave: (event: React.PointerEvent<HTMLAnchorElement>) => void;
+}
+
+interface IntentState {
+  committed: boolean;
+  focused: boolean;
+  hovered: boolean;
+  prefetchTimer: null | number;
+  prewarmTimer: null | number;
+}
+
+export function useDocumentIntent({
+  disabled,
+  fileId,
+  mimeType,
+  onStrongIntent,
+  title,
+}: DocumentIntentOptions): DocumentIntentHandlers {
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  const setPrewarm = useDocViewerStore((state) => state.setPrewarm);
+  const stateRef = useRef<IntentState>({
+    committed: false,
+    focused: false,
+    hovered: false,
+    prefetchTimer: null,
+    prewarmTimer: null,
+  });
+
+  const prefetch = () => {
+    void queryClient.prefetchQuery(fileQueryOptions(fileId));
+    router.prefetch(`/d/${encodeURIComponent(fileId)}`);
+  };
+
+  const prewarm = () => {
+    setPrewarm({ fileId, mimeType, reloadKey: 0, title });
+  };
+
+  const startSpeculation = () => {
+    if (disabled || stateRef.current.committed || !allowsSpeculation()) return;
+    const state = stateRef.current;
+    if (state.prefetchTimer !== null || state.prewarmTimer !== null) return;
+    state.prefetchTimer = window.setTimeout(() => {
+      state.prefetchTimer = null;
+      if ((state.hovered || state.focused) && allowsSpeculation()) prefetch();
+    }, DOCUMENT_INTENT_PREFETCH_MS);
+    state.prewarmTimer = window.setTimeout(() => {
+      state.prewarmTimer = null;
+      if ((state.hovered || state.focused) && allowsIframeIntentSpeculation()) prewarm();
+    }, DOCUMENT_INTENT_PREWARM_MS);
+  };
+
+  const endSpeculationIfIdle = () => {
+    const state = stateRef.current;
+    if (!state.hovered && !state.focused) {
+      state.committed = false;
+      clearIntentTimers(state);
+    }
+  };
+
+  const commit = () => {
+    if (disabled) return;
+    stateRef.current.committed = true;
+    clearIntentTimers(stateRef.current);
+    onStrongIntent();
+    prefetch();
+    prewarm();
+  };
+
+  useEffect(() => {
+    const state = stateRef.current;
+    clearIntentTimers(state);
+    state.committed = false;
+    state.focused = false;
+    state.hovered = false;
+    return () => {
+      clearIntentTimers(state);
+    };
+  }, [disabled, fileId]);
+
+  return {
+    onBlur: () => {
+      stateRef.current.focused = false;
+      endSpeculationIfIdle();
+    },
+    onClick: (event) => {
+      if (event.detail === 0) commit();
+    },
+    onFocus: () => {
+      stateRef.current.focused = true;
+      startSpeculation();
+    },
+    onPointerDown: (event) => {
+      if (isPrimaryUnmodifiedPointer(event)) commit();
+    },
+    onPointerEnter: (event) => {
+      if (!isHoverPointer(event.pointerType)) return;
+      stateRef.current.hovered = true;
+      startSpeculation();
+    },
+    onPointerLeave: (event) => {
+      if (!isHoverPointer(event.pointerType)) return;
+      stateRef.current.hovered = false;
+      endSpeculationIfIdle();
+    },
+  };
+}
+
+function isHoverPointer(pointerType: string): boolean {
+  return pointerType === "" || pointerType === "mouse" || pointerType === "pen";
+}
+
+function isPrimaryUnmodifiedPointer(event: React.PointerEvent<HTMLAnchorElement>): boolean {
+  return event.button === 0 && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+}
+
+function allowsSpeculation(): boolean {
+  if (document.visibilityState !== "visible") return false;
+  return allowsReusableSpeculation(readNavigatorHints(navigator));
+}
+
+function allowsIframeIntentSpeculation(): boolean {
+  if (!allowsSpeculation()) return false;
+  return allowsIframeSpeculation(readNavigatorHints(navigator));
+}
+
+function clearIntentTimers(state: IntentState): void {
+  if (state.prefetchTimer !== null) window.clearTimeout(state.prefetchTimer);
+  if (state.prewarmTimer !== null) window.clearTimeout(state.prewarmTimer);
+  state.prefetchTimer = null;
+  state.prewarmTimer = null;
+}
