@@ -1,14 +1,11 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { memo } from "react";
-import { useDebouncedCallback } from "use-debounce";
 
 import { SidebarMenuButton } from "@/components/ui/sidebar";
-import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
 import { useSetDocIcon } from "@/hooks/use-wiki-mutations";
 import { displayFileName, renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
@@ -16,14 +13,13 @@ import { runWithErrorToast } from "@/lib/mutation-toast";
 import { markNav } from "@/lib/perf-marks";
 import { type ResolvedShortcut, resolveShortcutTarget } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
-import { wikiKeys } from "@/lib/wiki-keys";
-import { wikiReadApi } from "@/lib/wiki-read-client";
 import type { DriveNode } from "@/types/wiki";
 import { MIME_DOC, MIME_FORM } from "@/types/wiki";
 
 import { ItemMenu } from "./item-menu";
 import { CHEVRON_OFFSET, ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants";
 import { PickableIcon } from "./pickable-icon";
+import { useDocumentIntent } from "./use-document-intent";
 import { useIsMovingFile } from "./use-in-flight-moves";
 
 const MODIFIED_DATE_FORMAT = new Intl.DateTimeFormat("en", {
@@ -45,14 +41,12 @@ interface FileRowProps {
 interface RowButtonProps {
   displayName: string;
   href: string;
+  intent: ReturnType<typeof useDocumentIntent>;
   isActive: boolean;
   isForm: boolean;
   isMoving: boolean;
   linkPadding: string;
   node: DriveNode;
-  onPrefetch: () => void;
-  onPrewarm: () => void;
-  onPrewarmCancel: () => void;
   route: ResolvedShortcut;
   titleAttr: string;
 }
@@ -70,37 +64,21 @@ function FileRowImpl({
 
   const isForm = route.targetMimeType === MIME_FORM;
   const isDoc = !route.isShortcut && node.mimeType === MIME_DOC;
-  const href = isForm
-    ? openUrlFor(route.targetMimeType, route.targetId)
-    : `/d/${encodeURIComponent(route.targetId)}`;
+  const documentHref = `/d/${encodeURIComponent(route.targetId)}`;
+  const href = isForm ? openUrlFor(route.targetMimeType, route.targetId) : documentHref;
   const isActive = !isForm && (activeDriveId === route.targetId || pathname === href);
   const isMoving = useIsMovingFile(node.id);
   const displayName = displayFileName(node.name, route.targetMimeType);
 
-  const queryClient = useQueryClient();
-  const prefetchFile = (): void => {
-    void queryClient.prefetchQuery({
-      queryFn: async () => await wikiReadApi.getFile(route.targetId),
-      queryKey: wikiKeys.file(route.targetId),
-    });
-  };
-
-  const setPrewarm = useDocViewerStore((s) => s.setPrewarm);
-  const prewarmNow = (): void => {
-    if (isForm || route.inaccessible) return;
-    setPrewarm({
-      fileId: route.targetId,
-      mimeType: route.isShortcut ? route.targetMimeType : node.mimeType,
-      reloadKey: 0,
-      title: displayName,
-    });
-  };
-  const schedulePrewarm = useDebouncedCallback(prewarmNow, 120);
-  const handleCommit = (): void => {
-    markNav(route.targetId, "click");
-    prefetchFile();
-    prewarmNow();
-  };
+  const intent = useDocumentIntent({
+    disabled: isForm || route.inaccessible || isActive,
+    fileId: route.targetId,
+    mimeType: route.isShortcut ? route.targetMimeType : node.mimeType,
+    onStrongIntent: () => {
+      markNav(route.targetId, "click");
+    },
+    title: displayName,
+  });
 
   const setDocIcon = useSetDocIcon();
   const handleIconChange = async (next: null | string) => {
@@ -129,14 +107,12 @@ function FileRowImpl({
       <RowButton
         displayName={displayName}
         href={href}
+        intent={intent}
         isActive={isActive}
         isForm={isForm}
         isMoving={isMoving}
         linkPadding={linkPadding}
         node={node}
-        onPrefetch={handleCommit}
-        onPrewarm={schedulePrewarm}
-        onPrewarmCancel={schedulePrewarm.cancel}
         route={route}
         titleAttr={titleAttr}
       />
@@ -185,11 +161,9 @@ function RowButton({
   isActive,
   isForm,
   isMoving,
+  intent,
   linkPadding,
   node,
-  onPrefetch,
-  onPrewarm,
-  onPrewarmCancel,
   route,
   titleAttr,
 }: RowButtonProps) {
@@ -241,11 +215,12 @@ function RowButton({
       <Link
         draggable={false}
         href={`/d/${encodeURIComponent(route.targetId)}`}
-        onBlur={onPrewarmCancel}
-        onFocus={onPrewarm}
-        onPointerDown={onPrefetch}
-        onPointerEnter={onPrewarm}
-        onPointerLeave={onPrewarmCancel}
+        onBlur={intent.onBlur}
+        onClick={intent.onClick}
+        onFocus={intent.onFocus}
+        onPointerDown={intent.onPointerDown}
+        onPointerEnter={intent.onPointerEnter}
+        onPointerLeave={intent.onPointerLeave}
         prefetch={false}
         title={titleAttr}
       >

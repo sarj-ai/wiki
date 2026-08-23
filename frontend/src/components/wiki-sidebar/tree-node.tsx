@@ -9,13 +9,11 @@ import { useDebouncedCallback } from "use-debounce";
 import { SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem } from "@/components/ui/sidebar";
 import { useExpandedFolder } from "@/hooks/use-expanded-folders";
 import { useSetFolderIcon } from "@/hooks/use-wiki-mutations";
-import { useFolderFiles } from "@/hooks/use-wiki-tree";
+import { folderFilesQueryOptions, useFolderFiles } from "@/hooks/use-wiki-tree";
 import { renderNodeIcon } from "@/lib/file-icons";
 import { runWithErrorToast } from "@/lib/mutation-toast";
 import { resolveShortcutTarget } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
-import { wikiKeys } from "@/lib/wiki-keys";
-import { wikiReadApi } from "@/lib/wiki-read-client";
 import {
   applyOptimisticOrder,
   compareNodeOrder,
@@ -111,10 +109,7 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
   const prefetchChildren = useDebouncedCallback(() => {
     const folderId = meta.expandFolderId;
     if (!needsLazyFiles || expanded || meta.inaccessible || !folderId) return;
-    void queryClient.prefetchQuery({
-      queryFn: async () => await wikiReadApi.getFolderFiles(folderId),
-      queryKey: wikiKeys.folderFiles(folderId),
-    });
+    void queryClient.prefetchQuery(folderFilesQueryOptions(folderId));
   }, HOVER_PREFETCH_DELAY_MS);
 
   const setFolderIcon = useSetFolderIcon();
@@ -298,7 +293,9 @@ function FolderHeader({
         )}
         data-file-id={node.id}
         disabled={meta.inaccessible}
+        onBlur={onHoverEnd}
         onClick={onToggle}
+        onFocus={onHoverStart}
         onPointerEnter={onHoverStart}
         onPointerLeave={onHoverEnd}
         style={{ paddingLeft: chevronPadding }}

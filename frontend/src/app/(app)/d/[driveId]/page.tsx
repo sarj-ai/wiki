@@ -7,6 +7,8 @@ import { zDocumentAliasWrite } from "@/lib/generated/zod.gen";
 import { serverWikiApi } from "@/lib/server-api";
 import { wikiKeys } from "@/lib/wiki-keys";
 
+const DIRECT_FILE_PREFETCH_TIMEOUT_MS = 1_500;
+
 export default async function FilePage({
   params,
   searchParams,
@@ -25,7 +27,9 @@ export default async function FilePage({
   // server/provider request.
   const file = isClientNavigation
     ? null
-    : await serverWikiApi.getFile(driveId, AbortSignal.timeout(8_000)).catch(() => null);
+    : await serverWikiApi
+        .getFile(driveId, AbortSignal.timeout(DIRECT_FILE_PREFETCH_TIMEOUT_MS))
+        .catch(() => null);
   if (file) queryClient.setQueryData(wikiKeys.file(driveId), file);
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>

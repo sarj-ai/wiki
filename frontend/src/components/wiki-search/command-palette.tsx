@@ -4,7 +4,8 @@ import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { Command as CommandPrimitive } from "cmdk";
 import { ExternalLink, Loader2, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useDebouncedCallback } from "use-debounce";
 
 import { Button } from "@/components/ui/button";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
@@ -12,14 +13,13 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useCommandPaletteState } from "@/hooks/use-command-palette";
 import { useDriveSearch, useDriveSearchSnippet } from "@/hooks/use-drive-search";
 import { expandPath, requestReveal } from "@/hooks/use-expanded-folders";
-import { wikiKeys } from "@/hooks/use-wiki-tree";
+import { fileQueryOptions, wikiKeys } from "@/hooks/use-wiki-tree";
 import { ApiError, RATE_LIMIT_MESSAGE } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
 import { displayFileName, isGoogleWorkspaceType, renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import { resolveShortcutTarget, SHORTCUT_INACCESSIBLE_TOOLTIP } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
-import { wikiReadApi } from "@/lib/wiki-read-client";
 import type { DriveSearchResult, DriveTree } from "@/types/wiki";
 import { MIME_FOLDER, MIME_FORM } from "@/types/wiki";
 
@@ -56,6 +56,21 @@ export function CommandPalette() {
   const selectedResult = results.find((r) => r.id === selectedId) ?? null;
   const hasQuery = query.trim().length >= 2;
 
+  const prepareResult = (result: DriveSearchResult): void => {
+    if (result.shortcutInaccessible) return;
+    const target = resolveShortcutTarget(result);
+    if (target.targetMimeType === MIME_FORM || target.targetMimeType === MIME_FOLDER) return;
+    void qc.prefetchQuery(fileQueryOptions(target.targetId));
+    router.prefetch(`/d/${encodeURIComponent(target.targetId)}`);
+  };
+  const schedulePrepareResult = useDebouncedCallback(prepareResult, 150);
+
+  useEffect(() => {
+    schedulePrepareResult.cancel();
+    if (open && selectedResult) schedulePrepareResult(selectedResult);
+    return schedulePrepareResult.cancel;
+  }, [open, schedulePrepareResult, selectedResult]);
+
   const closePalette = () => {
     setQuery("");
     setSelectedResultId(null);
@@ -71,6 +86,7 @@ export function CommandPalette() {
   };
 
   const openResult = (result: DriveSearchResult) => {
+    schedulePrepareResult.cancel();
     if (result.shortcutInaccessible) {
       closePalette();
       return;
@@ -96,6 +112,7 @@ export function CommandPalette() {
         });
       }
     } else {
+      prepareResult(result);
       requestReveal(target.targetId);
       router.push(`/d/${encodeURIComponent(target.targetId)}`);
     }
@@ -106,28 +123,6 @@ export function CommandPalette() {
     if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
     event.preventDefault();
     if (selectedResult) openResult(selectedResult);
-  };
-
-  const prefetchResult = (result: DriveSearchResult) => {
-    if (result.shortcutInaccessible) return;
-    const target = resolveShortcutTarget(result);
-    if (target.targetMimeType === MIME_FORM || target.targetMimeType === MIME_FOLDER) return;
-    void qc.prefetchQuery({
-      queryFn: async () => await wikiReadApi.getFile(target.targetId),
-      queryKey: wikiKeys.file(target.targetId),
-    });
-    const trimmed = query.trim();
-    if (trimmed.length >= 2) {
-      void qc.prefetchQuery({
-        queryFn: async () =>
-          wikiReadApi.driveSearchSnippet(
-            target.targetId,
-            trimmed,
-            target.targetMimeType !== "" ? target.targetMimeType : undefined,
-          ),
-        queryKey: wikiKeys.driveSearchSnippet(target.targetId, trimmed),
-      });
-    }
   };
 
   return (
@@ -204,14 +199,7 @@ export function CommandPalette() {
                   <div className="text-muted-foreground px-3 py-4 text-xs">No results</div>
                 ) : null}
                 {results.map((result) => (
-                  <ResultRow
-                    driveName={result.driveName}
-                    key={result.id}
-                    onPrefetch={() => {
-                      prefetchResult(result);
-                    }}
-                    result={result}
-                  />
+                  <ResultRow driveName={result.driveName} key={result.id} result={result} />
                 ))}
               </div>
             </CommandList>
@@ -301,12 +289,10 @@ function relativeTime(iso: null | string): string {
 
 function ResultRow({
   driveName,
-  onPrefetch,
   result,
 }: {
   result: DriveSearchResult;
   driveName: string | undefined;
-  onPrefetch: () => void;
 }) {
   const inaccessible = result.shortcutInaccessible;
   const tooltip = inaccessible ? SHORTCUT_INACCESSIBLE_TOOLTIP : undefined;
@@ -320,7 +306,6 @@ function ResultRow({
         "flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left text-sm",
         inaccessible && "text-muted-foreground/60",
       )}
-      onPointerEnter={onPrefetch}
       title={tooltip}
       value={result.id}
     >

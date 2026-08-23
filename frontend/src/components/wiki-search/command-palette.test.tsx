@@ -8,14 +8,17 @@ import { ApiError } from "@/lib/api-error";
 import type { DriveSearchResult } from "@/types/wiki";
 import { MIME_DOC } from "@/types/wiki";
 
-const mocks = vi.hoisted(
-  (): { searchQuery: Record<string, unknown>; snippetQuery: Record<string, unknown> } => ({
-    searchQuery: {},
-    snippetQuery: {},
-  }),
-);
+const mocks = vi.hoisted(() => ({
+  getFile: vi.fn(),
+  routerPrefetch: vi.fn(),
+  routerPush: vi.fn(),
+  searchQuery: {},
+  snippetQuery: {},
+}));
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ prefetch: mocks.routerPrefetch, push: mocks.routerPush }),
+}));
 vi.mock("@/hooks/use-command-palette", () => ({
   useCommandPaletteState: () => ({ open: true, setOpen: vi.fn() }),
 }));
@@ -24,6 +27,7 @@ vi.mock("@/hooks/use-drive-search", () => ({
   useDriveSearchSnippet: () => mocks.snippetQuery,
 }));
 vi.mock("@/lib/browser-user-context", () => ({ useBrowserUserId: () => "user-1" }));
+vi.mock("@/lib/wiki-read-client", () => ({ wikiReadApi: { getFile: mocks.getFile } }));
 
 import { CommandPalette } from "./command-palette";
 
@@ -51,6 +55,10 @@ describe("CommandPalette rate-limit errors", () => {
     root = createRoot(host);
     mocks.searchQuery = queryState();
     mocks.snippetQuery = queryState();
+    mocks.getFile.mockReset();
+    mocks.getFile.mockResolvedValue(RESULT);
+    mocks.routerPrefetch.mockReset();
+    mocks.routerPush.mockReset();
   });
 
   afterEach(() => {
@@ -104,6 +112,17 @@ describe("CommandPalette rate-limit errors", () => {
 
     clickButton("Retry preview");
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("prepares only the stable selected document after the intent delay", async () => {
+    mocks.searchQuery = queryState({ data: [RESULT] });
+    renderPalette(root);
+
+    expect(mocks.getFile).not.toHaveBeenCalled();
+    expect(mocks.routerPrefetch).not.toHaveBeenCalled();
+
+    await vi.waitFor(() => expect(mocks.getFile).toHaveBeenCalledOnce());
+    expect(mocks.routerPrefetch).toHaveBeenCalledWith("/d/file-1");
   });
 });
 
