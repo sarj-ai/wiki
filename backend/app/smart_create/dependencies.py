@@ -4,10 +4,12 @@ from functools import cache
 from typing import Annotated
 
 from fastapi import Depends
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.aliases.dependencies import alias_service_dep
 from app.aliases.service import AliasService
+from app.auth.dependencies import http_client_dep
 from app.cache.dependencies import cache_service_dep
 from app.cache.service import CacheService
 from app.database import async_session, get_db
@@ -102,10 +104,12 @@ def smart_create_task_executor_dep(
     db: Annotated[AsyncSession, Depends(get_db)],
     tasks: Annotated[TaskService, Depends(task_service_dep)],
     cache: Annotated[CacheService, Depends(cache_service_dep)],
+    http: Annotated[httpx.AsyncClient, Depends(http_client_dep)],
 ) -> SmartCreateTaskExecutor:
     return DriveSmartCreateTaskExecutor(
         db=db,
         tasks=tasks,
         cache=cache,
+        http=http,
         sessionmaker=async_session,
     )

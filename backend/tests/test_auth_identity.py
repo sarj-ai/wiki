@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import cast, override
 import uuid
 
@@ -86,7 +87,11 @@ async def test_recycled_email_cannot_take_over_existing_account() -> None:
     with pytest.raises(AuthFailedError, match="could not be verified"):
         await service._upsert_user(
             _userinfo(email=existing.email, google_id="attacker-subject"),
-            GoogleTokens(access_token=uuid.uuid4().hex, refresh_token=uuid.uuid4().hex),
+            GoogleTokens(
+                access_token=uuid.uuid4().hex,
+                refresh_token=uuid.uuid4().hex,
+                expires_at=datetime.now(UTC) + timedelta(hours=1),
+            ),
         )
 
     assert existing.google_id == "original-subject"
@@ -105,7 +110,11 @@ async def test_same_subject_can_refresh_email_and_profile() -> None:
 
     result = await service._upsert_user(
         _userinfo(email="new@sarj.ai", google_id="stable-subject"),
-        GoogleTokens(access_token=uuid.uuid4().hex, refresh_token=None),
+        GoogleTokens(
+            access_token=uuid.uuid4().hex,
+            refresh_token=None,
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+        ),
     )
 
     assert result is existing

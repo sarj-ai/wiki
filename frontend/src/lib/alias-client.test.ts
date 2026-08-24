@@ -31,6 +31,7 @@ describe("alias server client", () => {
           {
             alias: "team-handbook",
             drive_name: null,
+            file_id: "file-1",
             mime_type: "application/vnd.google-apps.document",
             name: "Team Handbook",
           },
@@ -43,6 +44,7 @@ describe("alias server client", () => {
         {
           alias: "team-handbook",
           driveName: null,
+          fileId: "file-1",
           mimeType: "application/vnd.google-apps.document",
           name: "Team Handbook",
         },

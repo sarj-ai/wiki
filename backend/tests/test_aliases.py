@@ -289,6 +289,7 @@ async def test_recent_bulk_resolves_once_and_omits_inaccessible_items() -> None:
     assert [item.model_dump() for item in result] == [
         {
             "alias": "eng-onboarding",
+            "file_id": "file-1",
             "name": "Document",
             "mime_type": "application/vnd.google-apps.document",
             "drive_name": "Engineering",

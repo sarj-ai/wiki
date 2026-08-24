@@ -50,16 +50,18 @@ export function markNav(id: string, phase: string, extra: null | PerfExtra = nul
     startSample(id, now);
     return;
   }
-  if (phase !== "iframeLoad") return;
+  if (!["commit", "toolbarPaint", "iframeMount", "iframeLoad"].includes(phase)) return;
   const sample = NAVIGATION_SAMPLES.get(id);
   if (!sample) return;
-  NAVIGATION_SAMPLES.delete(id);
-  window.clearTimeout(sample.timeout);
-  reportPhase(sample, now - sample.startedAt);
+  if (phase === "iframeLoad") {
+    NAVIGATION_SAMPLES.delete(id);
+    window.clearTimeout(sample.timeout);
+  }
+  reportPhase(sample, phase, now - sample.startedAt);
 }
 
 export function markPaint(id: string, phase: string): void {
-  if (!PERF_ENABLED || typeof window === "undefined") return;
+  if (typeof window === "undefined") return;
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       markNav(id, phase);
@@ -80,14 +82,21 @@ function startSample(id: string, startedAt: number): void {
   NAVIGATION_SAMPLES.set(id, sample);
 }
 
-function reportPhase(sample: NavigationSample, durationMs: number): void {
+function reportPhase(sample: NavigationSample, phase: string, durationMs: number): void {
+  if (!isReportablePhase(phase)) return;
   sendPerformanceEvent({
     durationMs,
     navigationId: sample.navigationId,
-    phase: "iframeLoad",
+    phase,
     saveData: readSaveData(),
     visibility: document.visibilityState === "hidden" ? "hidden" : "visible",
   });
+}
+
+function isReportablePhase(
+  phase: string,
+): phase is "commit" | "iframeLoad" | "iframeMount" | "toolbarPaint" {
+  return ["commit", "iframeLoad", "iframeMount", "toolbarPaint"].includes(phase);
 }
 
 function readSaveData(): boolean | undefined {

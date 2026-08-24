@@ -39,7 +39,7 @@ resource "google_cloud_run_v2_job" "backend_migrations" {
 
         env {
           name  = "DB_INSTANCE_CONNECTION_NAME"
-          value = google_sql_database_instance.main.connection_name
+          value = var.dammam_database_promoted ? google_sql_database_instance.dammam[0].connection_name : google_sql_database_instance.main.connection_name
         }
         env {
           name  = "DB_NAME"

@@ -6,6 +6,7 @@ import { zDocumentAliasRead, zRecentDocumentAlias } from "@/lib/generated/zod.ge
 export interface RecentDocumentAlias {
   alias: string;
   driveName: null | string;
+  fileId: string;
   mimeType: string;
   name: string;
 }
@@ -68,6 +69,7 @@ export async function getRecentDocumentAliases(
     aliases: parsed.data.map((item) => ({
       alias: item.alias,
       driveName: item.drive_name,
+      fileId: item.file_id,
       mimeType: item.mime_type,
       name: item.name,
     })),

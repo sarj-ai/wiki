@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.identifiers import GoogleUserId
 from app.models.user import User
@@ -30,7 +30,7 @@ class GoogleTokenResponse(BaseModel):
 
     access_token: str
     refresh_token: str | None = None
-    expires_in: timedelta | None = None
+    expires_in: timedelta = Field(gt=timedelta(0), le=timedelta(hours=24))
 
 
 class GoogleUserInfo(BaseModel):

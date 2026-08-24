@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import Callable, Mapping
-from datetime import timedelta
+from datetime import UTC, timedelta
 from functools import cache
 from itertools import batched
 import json
@@ -20,8 +20,8 @@ from loguru import logger
 from pydantic import TypeAdapter, ValidationError
 
 from app.auth.encryption import decrypt_text
+from app.auth.google_tokens import GoogleRefreshResult
 from app.cache.service import CacheNamespace, CacheService
-from app.config import settings
 from app.drive.errors import (
     DrivePermissionsForbiddenError,
     DrivePermissionsNotFoundError,
@@ -93,6 +93,8 @@ _DRIVE_LIST = TypeAdapter(list[DriveSummary])
 
 _SHORTCUT_PROBE: TypeAdapter[ShortcutProbe | None] = TypeAdapter(ShortcutProbe | None)
 
+GoogleRefreshHandler = Callable[..., GoogleRefreshResult]
+
 
 class _DriveFilesResult(NamedTuple):
     files: list[DriveNode]
@@ -100,20 +102,33 @@ class _DriveFilesResult(NamedTuple):
 
 
 class DriveService(ABC):
+    @property
+    def google_refresh_handler(self) -> GoogleRefreshHandler | None:
+        return None
+
     @abstractmethod
     async def list_drives(self) -> list[DriveSummary]: ...
 
     async def resolve_member_drive(
-        self, file_id: FileId, drive_id: DriveId | None
+        self,
+        file_id: FileId,
+        drive_id: DriveId | None,
+        *,
+        parent_id: FileId | None = None,
     ) -> DriveId | None:
+        del parent_id
         if not file_id or drive_id is None:
             return None
         drives = await self.list_drives()
         return drive_id if any(d.id == drive_id and not d.is_personal for d in drives) else None
 
     async def resolve_member_drives(
-        self, files: Mapping[FileId, DriveId | None]
+        self,
+        files: Mapping[FileId, DriveId | None],
+        *,
+        parent_ids: Mapping[FileId, FileId | None] | None = None,
     ) -> dict[FileId, DriveId]:
+        del parent_ids
         drives = await self.list_drives()
         shared_drive_ids = {drive.id for drive in drives if not drive.is_personal}
         return {
@@ -154,12 +169,24 @@ class DriveService(ABC):
 
 
 class GoogleDriveService(DriveService):
-    def __init__(self, user: User, cache_service: CacheService | None = None) -> None:
+    def __init__(
+        self,
+        user: User,
+        cache_service: CacheService | None = None,
+        *,
+        refresh_handler: GoogleRefreshHandler | None = None,
+    ) -> None:
         self._user = user
         self._cache = cache_service
+        self._refresh_handler = refresh_handler
         self._clients: dict[int, DriveResource] = {}
         self._drives_task: asyncio.Task[list[DriveSummary]] | None = None
         self._my_drive_id: DriveId | None = None
+
+    @property
+    @override
+    def google_refresh_handler(self) -> GoogleRefreshHandler | None:
+        return self._refresh_handler
 
     @override
     async def list_drives(self) -> list[DriveSummary]:
@@ -199,10 +226,14 @@ class GoogleDriveService(DriveService):
 
     @override
     async def resolve_member_drive(
-        self, file_id: FileId, drive_id: DriveId | None
+        self,
+        file_id: FileId,
+        drive_id: DriveId | None,
+        *,
+        parent_id: FileId | None = None,
     ) -> DriveId | None:
         if drive_id is not None:
-            return await super().resolve_member_drive(file_id, drive_id)
+            return await super().resolve_member_drive(file_id, drive_id, parent_id=parent_id)
         drives = await self.list_drives()
         personal = next((d for d in drives if d.is_personal), None)
         if personal is None:
@@ -211,12 +242,16 @@ class GoogleDriveService(DriveService):
             self._is_personal_descendant_sync,
             file_id=file_id,
             root_id=FileId(personal.id),
+            parent_id=parent_id,
         )
         return personal.id if is_descendant else None
 
     @override
     async def resolve_member_drives(
-        self, files: Mapping[FileId, DriveId | None]
+        self,
+        files: Mapping[FileId, DriveId | None],
+        *,
+        parent_ids: Mapping[FileId, FileId | None] | None = None,
     ) -> dict[FileId, DriveId]:
         drives = await self.list_drives()
         shared_drive_ids = {drive.id for drive in drives if not drive.is_personal}
@@ -235,6 +270,7 @@ class GoogleDriveService(DriveService):
                     self._is_personal_descendant_sync,
                     file_id=file_id,
                     root_id=FileId(personal.id),
+                    parent_id=parent_ids.get(file_id) if parent_ids is not None else None,
                 )
                 for file_id in personal_ids
             )
@@ -533,14 +569,28 @@ class GoogleDriveService(DriveService):
             if not page_token:
                 return out
 
-    def _is_personal_descendant_sync(self, *, file_id: FileId, root_id: FileId) -> bool:
+    def _is_personal_descendant_sync(
+        self,
+        *,
+        file_id: FileId,
+        root_id: FileId,
+        parent_id: FileId | None = None,
+    ) -> bool:
         client = self._client()
-        pending = [file_id]
+        if file_id == root_id:
+            return True
+        if parent_id is None:
+            return False
+        if parent_id == root_id:
+            return True
+        pending = [parent_id]
         visited: set[FileId] = set()
         while pending and len(visited) < _MAX_PERSONAL_ANCESTRY_NODES:
             current = pending.pop()
             if current in visited:
                 continue
+            if current == root_id:
+                return True
             visited.add(current)
             try:
                 raw = execute_with_retry(
@@ -887,12 +937,19 @@ class GoogleDriveService(DriveService):
         return str(raw)[: _MAX_EXPORT_BYTES // 2]
 
     def _client(self) -> DriveResource:
-        return reuse_drive_client(self._user, self._clients)
+        return reuse_drive_client(
+            self._user,
+            self._clients,
+            refresh_handler=self._refresh_handler,
+        )
 
     @staticmethod
-    def build_drive_client(user: User) -> DriveResource:
+    def build_drive_client(
+        user: User,
+        refresh_handler: GoogleRefreshHandler | None = None,
+    ) -> DriveResource:
         authed_http = google_auth_httplib2.AuthorizedHttp(
-            GoogleDriveService._build_credentials(user),
+            GoogleDriveService._build_credentials(user, refresh_handler),
             http=httplib2.Http(timeout=_DRIVE_HTTP_TIMEOUT.total_seconds()),
         )
         built = discovery.build_from_document(  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
@@ -901,28 +958,39 @@ class GoogleDriveService(DriveService):
         return cast("DriveResource", built)
 
     @staticmethod
-    def _build_credentials(user: User) -> Credentials:
+    def _build_credentials(
+        user: User,
+        refresh_handler: GoogleRefreshHandler | None = None,
+    ) -> Credentials:
         if user.encrypted_access_token is None:
             msg = "User has no encrypted Drive access token"
             raise ValueError(msg)
         access_token = decrypt_text(user.encrypted_access_token)
-        refresh_token = (
-            decrypt_text(user.encrypted_refresh_token) if user.encrypted_refresh_token else None
-        )
         return Credentials(  # type: ignore[no-untyped-call]
             token=access_token,
-            refresh_token=refresh_token,
-            token_uri="https://oauth2.googleapis.com/token",  # ruff: ignore[hardcoded-password-func-arg] — public OAuth endpoint URL, not a credential
-            client_id=settings.GOOGLE_CLIENT_ID,
-            client_secret=settings.GOOGLE_CLIENT_SECRET.get_secret_value(),
+            expiry=(
+                user.google_access_token_expires_at.astimezone(UTC).replace(tzinfo=None)
+                if user.google_access_token_expires_at is not None
+                else None
+            ),
+            refresh_handler=refresh_handler,
         )
 
 
-def reuse_drive_client(user: User, clients: dict[int, DriveResource]) -> DriveResource:
+def reuse_drive_client(
+    user: User,
+    clients: dict[int, DriveResource],
+    *,
+    refresh_handler: GoogleRefreshHandler | None = None,
+) -> DriveResource:
     thread_id = threading.get_ident()
     client = clients.get(thread_id)
     if client is None:
-        client = GoogleDriveService.build_drive_client(user)
+        client = (
+            GoogleDriveService.build_drive_client(user, refresh_handler)
+            if refresh_handler is not None
+            else GoogleDriveService.build_drive_client(user)
+        )
         clients[thread_id] = client
     return client
 

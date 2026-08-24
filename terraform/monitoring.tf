@@ -42,7 +42,7 @@ resource "google_monitoring_alert_policy" "backend_errors" {
     condition_threshold {
       filter = <<-EOT
         resource.type = "cloud_run_revision"
-        AND resource.labels.service_name = "${google_cloud_run_v2_service.backend.name}"
+        AND resource.labels.service_name = "${local.active_backend_service_name}"
         AND metric.type = "run.googleapis.com/request_count"
         AND metric.labels.response_code_class = "5xx"
       EOT
@@ -71,7 +71,7 @@ resource "google_monitoring_alert_policy" "db_cpu" {
     condition_threshold {
       filter = <<-EOT
         resource.type = "cloudsql_database"
-        AND resource.labels.database_id = "${var.project_id}:${google_sql_database_instance.main.name}"
+        AND resource.labels.database_id = "${var.project_id}:${local.active_database_name}"
         AND metric.type = "cloudsql.googleapis.com/database/cpu/utilization"
       EOT
 
@@ -99,7 +99,7 @@ resource "google_monitoring_alert_policy" "db_memory" {
     condition_threshold {
       filter = <<-EOT
         resource.type = "cloudsql_database"
-        AND resource.labels.database_id = "${var.project_id}:${google_sql_database_instance.main.name}"
+        AND resource.labels.database_id = "${var.project_id}:${local.active_database_name}"
         AND metric.type = "cloudsql.googleapis.com/database/memory/utilization"
       EOT
 

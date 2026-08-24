@@ -413,7 +413,7 @@ resource "google_compute_security_policy" "backend_armor" {
 # URL map — all paths go to the backend service.
 resource "google_compute_url_map" "backend" {
   name            = "sarj-docs-backend-url-map"
-  default_service = google_compute_backend_service.backend.id
+  default_service = var.serve_dammam ? google_compute_backend_service.backend_dammam[0].id : google_compute_backend_service.backend.id
 }
 
 # Managed TLS cert via Certificate Manager.

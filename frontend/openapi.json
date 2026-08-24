@@ -1211,6 +1211,10 @@
             ],
             "title": "Drive Name"
           },
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
           "mime_type": {
             "title": "Mime Type",
             "type": "string"
@@ -1222,6 +1226,7 @@
         },
         "required": [
           "alias",
+          "file_id",
           "name",
           "mime_type",
           "drive_name"

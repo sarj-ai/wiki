@@ -14,12 +14,12 @@ concurrency:
 
 env:
   PROJECT_ID: sarj-docs
-  REGION: me-central1
-  REPOSITORY: sarj-docs
-  SERVICE: sarj-docs-backend
-  MIGRATION_JOB: sarj-docs-backend-migrations
+  REGION: ${{ vars.BACKEND_REGION || 'me-central1' }}
+  REPOSITORY: ${{ vars.BACKEND_REPOSITORY || 'sarj-docs' }}
+  SERVICE: ${{ vars.BACKEND_SERVICE || 'sarj-docs-backend' }}
+  MIGRATION_JOB: ${{ vars.BACKEND_MIGRATION_JOB || 'sarj-docs-backend-migrations' }}
   IMAGE: backend
-  SMART_CREATE_QUEUE_NAME: smart-create
+  SMART_CREATE_QUEUE_NAME: ${{ vars.SMART_CREATE_QUEUE_NAME || 'smart-create' }}
 
 jobs:
   deploy:

@@ -37,6 +37,9 @@ class _Cache:
         self.loaded: list[DriveId] = []
 
     async def get_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree:
+        raise AssertionError
+
+    async def peek_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree:
         self.loaded.append(drive_id)
         tree = DriveTree(
             drive_id=drive_id,
@@ -63,7 +66,7 @@ class _Cache:
 
 
 @pytest.mark.asyncio
-async def test_read_file_rebuilds_invalidated_tree_for_complete_breadcrumb() -> None:
+async def test_read_file_only_peeks_cached_tree_for_complete_breadcrumb() -> None:
     cache = _Cache()
 
     detail = await read_file(

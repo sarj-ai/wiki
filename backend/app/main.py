@@ -23,6 +23,7 @@ from app.extras.router import router as extras_router
 from app.files.errors import FilesError
 from app.files.router import router as files_router
 from app.logging_config import configure_logging
+from app.maintenance import MaintenanceModeMiddleware
 from app.request_body import MAX_REQUEST_BODY_BYTES, RequestBodyLimitMiddleware
 from app.request_id import RequestIDMiddleware
 from app.security_headers import SecurityHeadersMiddleware
@@ -35,14 +36,10 @@ from app.templates.router import router as templates_router
 
 
 async def global_exception_handler(
-    request: Request,
+    _request: Request,
     exc: Exception,  # ruff: ignore[unused-function-argument] — FastAPI signature requirement
 ) -> JSONResponse:
-    logger.error(
-        "Unhandled exception on {method} {path}",
-        method=request.method,
-        path=request.url.path,
-    )
+    logger.error("unhandled request exception")
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"},
@@ -143,6 +140,10 @@ def create_app(app_settings: Settings) -> FastAPI:
         allowed_origin=app_settings.frontend_origin,
     )
     application.add_middleware(RequestIDMiddleware)
+    application.add_middleware(
+        MaintenanceModeMiddleware,
+        enabled=app_settings.MAINTENANCE_MODE,
+    )
     application.add_middleware(
         SecurityHeadersMiddleware,
         enable_hsts=app_settings.FRONTEND_URL.scheme == "https",

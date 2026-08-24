@@ -91,7 +91,7 @@ export function DriveAccessSheet({ drive }: { drive: DriveSummary }) {
           </div>
         </SheetHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {drive.isPersonal ? (
             <PersonalDriveNotice driveId={drive.id} />
           ) : query.isPending ? (

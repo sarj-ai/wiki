@@ -12,6 +12,9 @@ vi.mock("@/hooks/use-current-user", () => ({
 }));
 
 vi.mock("@/app/actions/wiki-actions", () => ({ getRecentDocumentAliasesAction }));
+vi.mock("@/components/wiki-sidebar/use-document-intent", () => ({
+  useDocumentIntent: () => ({}),
+}));
 
 describe("QuickLinksLoader", () => {
   let host: HTMLDivElement;
@@ -43,6 +46,7 @@ describe("QuickLinksLoader", () => {
         {
           alias: "team-handbook",
           driveName: "People",
+          fileId: "file-team",
           mimeType: "application/vnd.google-apps.document",
           name: "Team handbook",
         },

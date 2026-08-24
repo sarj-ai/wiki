@@ -66,7 +66,7 @@ export function PreferencesDialog({ onOpenChange, open }: PreferencesDialogProps
               Visible drives
             </div>
             {(drivesQuery.data ?? []).length === 0 && (
-              <div className="text-muted-foreground px-2 py-2 text-xs">No drives</div>
+              <div className="text-muted-foreground p-2 text-xs">No drives</div>
             )}
             <div className="space-y-0.5">
               {(drivesQuery.data ?? []).map((drive) => {
@@ -120,7 +120,7 @@ function CheckboxRow({
 }) {
   return (
     <label
-      className="hover:bg-accent/50 flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-sm"
+      className="hover:bg-accent/50 flex cursor-pointer items-start gap-3 rounded-md p-2 text-sm"
       htmlFor={id}
     >
       <Checkbox

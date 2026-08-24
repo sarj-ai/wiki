@@ -38,6 +38,21 @@ output "wif_service_account" {
   value       = google_service_account.github_actions.email
 }
 
+output "dammam_backend_url" {
+  description = "Protected Dammam Cloud Run canary URL"
+  value       = var.enable_dammam_stack ? google_cloud_run_v2_service.backend_dammam[0].uri : null
+}
+
+output "dammam_database_connection_name" {
+  description = "Dammam SQL replica or promoted-primary connection name"
+  value       = var.enable_dammam_stack ? google_sql_database_instance.dammam[0].connection_name : null
+}
+
+output "dammam_state_bucket" {
+  description = "Versioned Saudi bucket prepared for Terraform state migration"
+  value       = var.enable_dammam_stack ? google_storage_bucket.terraform_state_dammam[0].name : null
+}
+
 # CNAME challenge record for DNS-01 cert validation. Add this once to
 # Cloudflare DNS (DNS-only, grey cloud) — Google checks it on every renewal,
 # so it must stay in place permanently.

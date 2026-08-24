@@ -10,6 +10,53 @@ variable "region" {
   default     = "me-central1"
 }
 
+variable "dammam_region" {
+  description = "Saudi GCP region used by the parallel migration stack"
+  type        = string
+  default     = "me-central2"
+}
+
+variable "enable_dammam_stack" {
+  description = "Create the parallel Dammam runtime and cross-region SQL replica"
+  type        = bool
+  default     = false
+}
+
+variable "dammam_database_promoted" {
+  description = "Reconcile the Dammam SQL replica after manual promotion"
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.dammam_database_promoted || var.enable_dammam_stack
+    error_message = "Dammam cannot be promoted unless its parallel stack is enabled."
+  }
+}
+
+variable "serve_dammam" {
+  description = "Atomically point the global backend URL map at the Dammam backend"
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.serve_dammam || (var.enable_dammam_stack && var.dammam_database_promoted)
+    error_message = "Dammam traffic requires an enabled stack and promoted database."
+  }
+}
+
+variable "dammam_image" {
+  description = "Pinned image digest for the Dammam Cloud Run service and migration job"
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "maintenance_mode" {
+  description = "Return 503 for application routes while keeping /health available during cutover"
+  type        = bool
+  default     = false
+}
+
 variable "frontend_url" {
   description = "Frontend URL (e.g. https://docs.sarj.ai)"
   type        = string

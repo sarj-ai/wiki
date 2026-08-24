@@ -12,6 +12,14 @@ import {
 import { MIME_DOC } from "@/types/wiki";
 
 const MOCKS = vi.hoisted(() => ({
+  getQueryData: vi.fn(() => ({
+    breadcrumb: [],
+    canEdit: false,
+    driveId: "drive-1",
+    id: "doc-1",
+    mimeType: "application/vnd.google-apps.document",
+    name: "Document one",
+  })),
   prefetchQuery: vi.fn().mockResolvedValue(undefined),
   prefetchRoute: vi.fn(),
   strongIntent: vi.fn(),
@@ -19,7 +27,10 @@ const MOCKS = vi.hoisted(() => ({
 
 vi.mock("@tanstack/react-query", () => ({
   queryOptions: (options: unknown) => options,
-  useQueryClient: () => ({ prefetchQuery: MOCKS.prefetchQuery }),
+  useQueryClient: () => ({
+    getQueryData: MOCKS.getQueryData,
+    prefetchQuery: MOCKS.prefetchQuery,
+  }),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -56,7 +67,7 @@ describe("predictive document intent", () => {
     vi.useRealTimers();
   });
 
-  it("stages reusable prefetch at 150ms and iframe prewarm at 300ms", () => {
+  it("stages reusable prefetch at 150ms and iframe prewarm at 300ms", async () => {
     renderHarness(root);
     const link = getLink(container);
 
@@ -74,6 +85,7 @@ describe("predictive document intent", () => {
     expect(useDocViewerStore.getState().prewarm).toBeNull();
 
     advance(DOCUMENT_INTENT_PREWARM_MS - DOCUMENT_INTENT_PREFETCH_MS);
+    await flushAsync();
     expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
   });
 
@@ -115,11 +127,12 @@ describe("predictive document intent", () => {
     expect(MOCKS.prefetchQuery).not.toHaveBeenCalled();
   });
 
-  it("flushes all stages for an unmodified primary pointerdown without rescheduling on focus", () => {
+  it("flushes all stages for an unmodified primary pointerdown without rescheduling on focus", async () => {
     renderHarness(root);
     const link = getLink(container);
 
     dispatchPointer(link, "pointerdown", { button: 0, pointerType: "touch" });
+    await flushAsync();
     dispatch(link, "focusin");
 
     expect(MOCKS.strongIntent).toHaveBeenCalledOnce();
@@ -130,7 +143,7 @@ describe("predictive document intent", () => {
     expect(MOCKS.prefetchQuery).toHaveBeenCalledOnce();
   });
 
-  it("ignores modified pointerdown but flushes a keyboard or assistive click", () => {
+  it("ignores modified pointerdown but flushes a keyboard or assistive click", async () => {
     renderHarness(root);
     const link = getLink(container);
 
@@ -142,6 +155,7 @@ describe("predictive document intent", () => {
     expect(MOCKS.prefetchQuery).not.toHaveBeenCalled();
 
     dispatch(link, "click", { detail: 0 });
+    await flushAsync();
     expect(MOCKS.strongIntent).toHaveBeenCalledOnce();
     expect(MOCKS.prefetchQuery).toHaveBeenCalledOnce();
     expect(MOCKS.prefetchRoute).toHaveBeenCalledOnce();
@@ -151,7 +165,7 @@ describe("predictive document intent", () => {
   it.each([
     ["Save-Data", { connection: { saveData: true } }],
     ["a hidden tab", { visibility: "hidden" }],
-  ])("blocks every speculative stage for %s but not committed navigation", (_name, hints) => {
+  ])("blocks every speculative stage for %s but not committed navigation", async (_name, hints) => {
     if ("connection" in hints) setNavigatorHint("connection", hints.connection);
     if ("visibility" in hints) {
       vi.spyOn(document, "visibilityState", "get").mockReturnValue(
@@ -167,6 +181,7 @@ describe("predictive document intent", () => {
     expect(useDocViewerStore.getState().prewarm).toBeNull();
 
     dispatchPointer(link, "pointerdown", { button: 0, pointerType: "mouse" });
+    await flushAsync();
     expect(MOCKS.prefetchQuery).toHaveBeenCalledOnce();
     expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
   });
@@ -232,6 +247,12 @@ function getLink(_container: HTMLElement): HTMLElement {
 function advance(milliseconds: number): void {
   act(() => {
     vi.advanceTimersByTime(milliseconds);
+  });
+}
+
+async function flushAsync(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
   });
 }
 

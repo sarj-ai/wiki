@@ -4,6 +4,7 @@ import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 
 import { useDocViewerStore } from "@/components/wiki-document/doc-viewer-store";
+import { fileQueryOptions } from "@/hooks/use-wiki-tree";
 import { useBrowserUserId } from "@/lib/browser-user-context";
 import { isGoogleWorkspaceType } from "@/lib/file-icons";
 import { type LastDoc, readRecentDocs } from "@/lib/last-doc";
@@ -29,14 +30,39 @@ export function DocWarmup() {
       const recents = userId ? readRecentDocs(userId) : [];
       const targets =
         recents.length > 0 ? recents.slice(0, limit) : firstWorkspaceDocs(queryClient, limit);
-      if (targets.length > 0) {
-        setWarm(targets.map((doc) => ({ ...doc, reloadKey: 0 })));
-      }
+      if (targets.length > 0) void authorizeAndWarm(queryClient, targets, setWarm);
     };
     return scheduleWarmup(run);
   }, [queryClient, setWarm, userId]);
 
   return null;
+}
+
+async function authorizeAndWarm(
+  queryClient: QueryClient,
+  targets: LastDoc[],
+  setWarm: ReturnType<typeof useDocViewerStore.getState>["setWarm"],
+): Promise<void> {
+  const settled = await Promise.allSettled(
+    targets.map(async (target) => await queryClient.fetchQuery(fileQueryOptions(target.fileId))),
+  );
+  setWarm(
+    settled.flatMap((result) =>
+      result.status === "fulfilled"
+        ? [
+            {
+              fileId: result.value.id,
+              mimeType: result.value.mimeType,
+              reloadKey: 0,
+              title: result.value.name,
+              ...(result.value.modifiedTime === undefined
+                ? {}
+                : { version: result.value.modifiedTime }),
+            },
+          ]
+        : [],
+    ),
+  );
 }
 
 function scheduleWarmup(run: () => void): () => void {
