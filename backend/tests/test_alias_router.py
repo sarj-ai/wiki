@@ -50,6 +50,7 @@ class _Aliases(AliasService):
         return [
             RecentDocumentAlias(
                 alias="eng-onboarding",
+                file_id=FileId("file-1"),
                 name="Engineering onboarding",
                 mime_type="application/vnd.google-apps.document",
                 drive_name="Engineering",
@@ -122,6 +123,7 @@ async def test_recent_alias_api_bulk_resolves_requested_aliases(client: AsyncCli
     assert recent.json() == [
         {
             "alias": "eng-onboarding",
+            "file_id": "file-1",
             "name": "Engineering onboarding",
             "mime_type": "application/vnd.google-apps.document",
             "drive_name": "Engineering",

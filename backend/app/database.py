@@ -24,8 +24,8 @@ _POOL_KWARGS = {
     "echo": False,
     "pool_pre_ping": True,
     "pool_recycle": 180,
-    "pool_size": 5,
-    "max_overflow": 5,
+    "pool_size": 4,
+    "max_overflow": 1,
     "pool_timeout": 30,
 }
 

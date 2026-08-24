@@ -206,11 +206,20 @@ class GoogleAuthService(AuthService):
 
     async def _revoke_user_session(self, user: User, session: UserSession) -> None:
         now = datetime.now(UTC)
+        refresh_token = (
+            decrypt_text(user.encrypted_refresh_token) if user.encrypted_refresh_token else None
+        )
         session.revoked_at = now
         session.updated_at = now
         user.token_version += 1
+        user.google_token_generation += 1
+        user.encrypted_access_token = None
+        user.encrypted_refresh_token = None
+        user.google_access_token_expires_at = None
+        user.google_refresh_lease_owner = None
+        user.google_refresh_lease_until = None
         await self._db.commit()
-        await self._revoke_google_token(user)
+        await self._revoke_google_token(refresh_token)
 
     async def _revoke_session_family(
         self, family_id: AuthSessionFamilyId, revoked_at: datetime
@@ -222,11 +231,10 @@ class GoogleAuthService(AuthService):
         )
         await self._db.commit()
 
-    async def _revoke_google_token(self, user: User) -> None:
-        if user.encrypted_refresh_token is None:
+    async def _revoke_google_token(self, refresh_token: str | None) -> None:
+        if refresh_token is None:
             return
         try:
-            refresh_token = decrypt_text(user.encrypted_refresh_token)
             await self._http.post(GOOGLE_REVOKE_URL, data={"token": refresh_token})
         except Exception:  # ruff: ignore[blind-except] — best-effort; logout proceeds regardless.
             logger.warning("logout: Google token revocation failed")
@@ -251,6 +259,7 @@ class GoogleAuthService(AuthService):
         return GoogleTokens(
             access_token=data.access_token,
             refresh_token=data.refresh_token,
+            expires_at=datetime.now(UTC) + data.expires_in,
         )
 
     async def _fetch_userinfo(self, google_access_token: str) -> GoogleIdentity:
@@ -291,6 +300,7 @@ class GoogleAuthService(AuthService):
                 avatar_url=info.avatar_url,
                 encrypted_access_token=encrypted_access,
                 encrypted_refresh_token=encrypted_refresh,
+                google_access_token_expires_at=tokens.expires_at,
             )
             self._db.add(user)
         else:
@@ -298,8 +308,12 @@ class GoogleAuthService(AuthService):
             user.display_name = info.display_name
             user.avatar_url = info.avatar_url
             user.encrypted_access_token = encrypted_access
+            user.google_access_token_expires_at = tokens.expires_at
             if encrypted_refresh is not None:
                 user.encrypted_refresh_token = encrypted_refresh
+            user.google_token_generation = (user.google_token_generation or 0) + 1
+            user.google_refresh_lease_owner = None
+            user.google_refresh_lease_until = None
 
         await self._db.commit()
         await self._db.refresh(user)
@@ -380,6 +394,7 @@ class GoogleAuthService(AuthService):
 class GoogleTokens:
     access_token: str
     refresh_token: str | None
+    expires_at: datetime
 
 
 @dataclass(frozen=True, slots=True)

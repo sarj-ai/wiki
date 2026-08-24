@@ -3,10 +3,15 @@ import { createRoot, type Root } from "react-dom/client";
 
 import { type QuickLinkItem, QuickLinks } from "./quick-links";
 
+vi.mock("@/components/wiki-sidebar/use-document-intent", () => ({
+  useDocumentIntent: () => ({}),
+}));
+
 const RECENT_ALIASES: QuickLinkItem[] = [
   {
     alias: "team-handbook",
     driveName: "People",
+    fileId: "file-team",
     lastVisitedAt: "2026-08-04T15:00:00Z",
     mimeType: "application/vnd.google-apps.document",
     name: "Team Handbook",
@@ -14,6 +19,7 @@ const RECENT_ALIASES: QuickLinkItem[] = [
   {
     alias: "launch-plan",
     driveName: "Product",
+    fileId: "file-launch",
     lastVisitedAt: "2026-08-03T12:00:00Z",
     mimeType: "application/vnd.google-apps.spreadsheet",
     name: "Launch Plan",
@@ -46,7 +52,7 @@ describe("QuickLinks", () => {
 
     expect(host).toHaveTextContent("Launch Plan");
     expect(host).not.toHaveTextContent("Team Handbook");
-    expect(host.querySelector("a")).toHaveAttribute("href", "/go/launch-plan");
+    expect(host.querySelector("a")).toHaveAttribute("href", "/d/file-launch?go=launch-plan");
   });
 
   it("supports arrow-key selection and Enter to open", () => {
@@ -55,14 +61,14 @@ describe("QuickLinks", () => {
     const input = getSearchInput(host);
 
     keyDown(input, "ArrowDown");
-    expect(host.querySelector('a[href="/go/launch-plan"]')).toHaveAttribute(
+    expect(host.querySelector('a[href="/d/file-launch?go=launch-plan"]')).toHaveAttribute(
       "aria-selected",
       "true",
     );
     keyDown(input, "Enter");
 
     expect(click).toHaveBeenCalledOnce();
-    expect(click.mock.instances[0]).toHaveAttribute("href", "/go/launch-plan");
+    expect(click.mock.instances[0]).toHaveAttribute("href", "/d/file-launch?go=launch-plan");
   });
 
   it("focuses search with the global slash shortcut", () => {

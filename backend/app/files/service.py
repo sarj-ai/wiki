@@ -217,7 +217,8 @@ class GoogleFilesService(FilesService):
             return {}
         fetched = await asyncio.to_thread(self._get_accessible_many_sync, unique_ids)
         member_drives = await self._drive.resolve_member_drives(
-            {file.id: file.drive_id for file in fetched.values()}
+            {file.id: file.drive_id for file in fetched.values()},
+            parent_ids={file.id: file.parent_folder_id for file in fetched.values()},
         )
         return {
             file.id: (
@@ -303,7 +304,11 @@ class GoogleFilesService(FilesService):
         return DeleteResult(source=source)
 
     async def _normalize_member_drive(self, file: FileResponse) -> FileResponse:
-        resolved_drive_id = await self._drive.resolve_member_drive(file.id, file.drive_id)
+        resolved_drive_id = await self._drive.resolve_member_drive(
+            file.id,
+            file.drive_id,
+            parent_id=file.parent_folder_id,
+        )
         if resolved_drive_id is None:
             msg = "File not available in Sarj Wiki"
             raise FileNotInScopeError(msg)
@@ -517,7 +522,11 @@ class GoogleFilesService(FilesService):
         return raw
 
     def _client(self) -> DriveResource:
-        return reuse_drive_client(self._user, self._clients)
+        return reuse_drive_client(
+            self._user,
+            self._clients,
+            refresh_handler=self._drive.google_refresh_handler,
+        )
 
 
 def _to_response(raw: File) -> FileResponse:

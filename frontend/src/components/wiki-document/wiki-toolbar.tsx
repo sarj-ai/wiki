@@ -19,6 +19,7 @@ import { ReorganizeDocument } from "./reorganize-document";
 import { ShortLinkDialog } from "./short-link-dialog";
 
 interface WikiToolbarProps {
+  authority?: "pending" | "resolved";
   breadcrumb: BreadcrumbItem[];
   canEdit: boolean;
   driveId: string | undefined;
@@ -33,6 +34,7 @@ interface WikiToolbarProps {
 const COPY_FEEDBACK_MS = 2000;
 
 export function WikiToolbar({
+  authority = "resolved",
   breadcrumb,
   canEdit,
   driveId,
@@ -112,13 +114,29 @@ export function WikiToolbar({
         {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         <span className="hidden sm:inline">{copied ? "Copied" : "Copy link"}</span>
       </Button>
-      <ReorganizeDocument
-        driveId={driveId}
-        fileId={fileId}
-        fileName={displayTitle}
-        parentFolderId={parentFolderId}
-      />
-      {canEdit ? <ShortLinkDialog fileId={fileId} /> : <ReadOnlyShortLink fileId={fileId} />}
+      <div className="size-6 shrink-0 sm:w-24">
+        {authority === "resolved" ? (
+          <ReorganizeDocument
+            driveId={driveId}
+            fileId={fileId}
+            fileName={displayTitle}
+            parentFolderId={parentFolderId}
+          />
+        ) : (
+          <span aria-hidden className="bg-muted block size-full animate-pulse rounded-md" />
+        )}
+      </div>
+      <div className="size-6 shrink-0 sm:w-24">
+        {authority === "resolved" ? (
+          canEdit ? (
+            <ShortLinkDialog fileId={fileId} />
+          ) : (
+            <ReadOnlyShortLink fileId={fileId} />
+          )
+        ) : (
+          <span aria-hidden className="bg-muted block size-full animate-pulse rounded-md" />
+        )}
+      </div>
       <Button asChild size="xs" variant="outline">
         <a href={openUrl} rel="noopener noreferrer" target="_blank">
           <ExternalLink className="size-3.5" />

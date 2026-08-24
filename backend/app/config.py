@@ -54,6 +54,7 @@ class Settings(DatabaseSettings):
     COOKIE_DOMAIN: DomainStr | None = None
     LOG_JSON: bool = False
     LOG_LEVEL: LogLevel = "INFO"
+    MAINTENANCE_MODE: bool = False
     API_DOCS_ENABLED: bool = False
     RELEASE_SHA: ReleaseSha = "dev"
     SIDEBAR_CACHE_TTL: Annotated[timedelta, Field(gt=timedelta(0))] = timedelta(minutes=10)

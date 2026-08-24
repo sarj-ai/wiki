@@ -310,14 +310,23 @@ async def test_get_accessible_many_resolves_membership_as_one_batch(
 
         @override
         async def resolve_member_drive(
-            self, file_id: FileId, drive_id: DriveId | None
+            self,
+            file_id: FileId,
+            drive_id: DriveId | None,
+            *,
+            parent_id: FileId | None = None,
         ) -> DriveId | None:
+            del parent_id
             raise AssertionError
 
         @override
         async def resolve_member_drives(
-            self, files: Mapping[FileId, DriveId | None]
+            self,
+            files: Mapping[FileId, DriveId | None],
+            *,
+            parent_ids: Mapping[FileId, FileId | None] | None = None,
         ) -> dict[FileId, DriveId]:
+            del parent_ids
             self.batch_calls.append(dict(files))
             return {file_id: DriveId("member-drive") for file_id in files}
 
@@ -365,11 +374,15 @@ async def test_task_recovery_uses_user_corpus_for_my_drive(
 
     class _PersonalDriveService(_FakeDriveService):
         async def resolve_member_drive(
-            self, file_id: FileId, drive_id: DriveId | None
+            self,
+            file_id: FileId,
+            drive_id: DriveId | None,
+            *,
+            parent_id: FileId | None = None,
         ) -> DriveId | None:
             if file_id == FileId("recovered") and drive_id is None:
                 return DriveId("personal-root")
-            return await super().resolve_member_drive(file_id, drive_id)
+            return await super().resolve_member_drive(file_id, drive_id, parent_id=parent_id)
 
     class _FakeFiles:
         def list(self, **kwargs: Any) -> Self:
@@ -666,11 +679,15 @@ async def test_personal_html_skips_shared_drive_membership_recheck(
 
     class _PersonalDriveService(_FakeDriveService):
         async def resolve_member_drive(
-            self, file_id: FileId, drive_id: DriveId | None
+            self,
+            file_id: FileId,
+            drive_id: DriveId | None,
+            *,
+            parent_id: FileId | None = None,
         ) -> DriveId | None:
             if file_id == "chart" and drive_id is None:
                 return DriveId("personal-root")
-            return await super().resolve_member_drive(file_id, drive_id)
+            return await super().resolve_member_drive(file_id, drive_id, parent_id=parent_id)
 
     class _Request:
         def __init__(self, result: Any) -> None:

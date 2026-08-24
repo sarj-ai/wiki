@@ -82,7 +82,7 @@ resource "google_logging_metric" "auth_failures" {
   name   = "backend_auth_failures"
   filter = <<-EOT
     resource.type="cloud_run_revision"
-    AND resource.labels.service_name="${google_cloud_run_v2_service.backend.name}"
+    AND resource.labels.service_name="${local.active_backend_service_name}"
     AND (httpRequest.status=401 OR httpRequest.status=403)
   EOT
 

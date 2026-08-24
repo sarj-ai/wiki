@@ -43,6 +43,9 @@ def configure_logging(*, json: bool = False, level: str = "INFO") -> None:
         std = logging.getLogger(name)
         std.handlers = [_InterceptHandler()]
         std.propagate = False
+    # Uvicorn's access formatter includes the raw path and query string. The
+    # request middleware emits a structured, route-template-only completion log.
+    logging.getLogger("uvicorn.access").disabled = True
 
 
 def _patch_record(record: loguru.Record) -> None:

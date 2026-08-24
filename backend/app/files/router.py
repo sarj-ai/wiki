@@ -23,6 +23,7 @@ from app.files.schemas import (
 from app.files.service import FilesService
 from app.identifiers import FileId
 from app.openapi import authentication_responses
+from app.performance import increment
 from app.sidebar.cache import SidebarCacheService
 from app.sidebar.dependencies import sidebar_cache_service_dep
 
@@ -102,7 +103,8 @@ async def read_file(
 ) -> FileDetail:
     file, drives = await asyncio.gather(files.get(file_id), drive.list_drives())
     drive_name = next((d.name for d in drives if d.id == file.drive_id), None)
-    cached = await cache.get_drive_tree(db, file.drive_id) if file.drive_id else None
+    cached = await cache.peek_drive_tree(db, file.drive_id) if file.drive_id else None
+    increment("file_tree_cache_hit" if cached is not None else "file_tree_cache_miss")
     tree = cached.tree if cached else None
     breadcrumb = build_breadcrumb(tree, file.drive_id, drive_name, file.parent_folder_id)
     return FileDetail(

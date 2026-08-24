@@ -62,6 +62,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
     }
     return (
       <FilePageBody
+        authority="pending"
         breadcrumb={[]}
         canEdit={false}
         driveId={undefined}
@@ -95,6 +96,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
 
   return (
     <FilePageBody
+      authority="resolved"
       breadcrumb={file.breadcrumb}
       canEdit={file.canEdit}
       driveId={file.driveId}
@@ -112,6 +114,7 @@ export function FilePageClient({ driveId }: { driveId: string }) {
 }
 
 interface FilePageBodyProps {
+  authority: "pending" | "resolved";
   breadcrumb: BreadcrumbItem[];
   canEdit: boolean;
   driveId: string | undefined;
@@ -125,6 +128,7 @@ interface FilePageBodyProps {
 }
 
 function FilePageBody({
+  authority,
   breadcrumb,
   canEdit,
   driveId,
@@ -152,6 +156,10 @@ function FilePageBody({
   }, [fileId]);
   useLayoutEffect(() => {
     const owner = viewerOwner.current;
+    if (authority !== "resolved") {
+      clearActive(owner);
+      return;
+    }
     setActive(
       {
         fileId,
@@ -165,14 +173,17 @@ function FilePageBody({
     return () => {
       clearActive(owner);
     };
-  }, [clearActive, displayTitle, fileId, mimeType, reloadKey, setActive, version]);
+  }, [authority, clearActive, displayTitle, fileId, mimeType, reloadKey, setActive, version]);
   useEffect(() => {
-    if (userId) saveLastDoc(userId, { fileId, mimeType, title: displayTitle });
-  }, [displayTitle, fileId, mimeType, userId]);
+    if (authority === "resolved" && userId) {
+      saveLastDoc(userId, { fileId, mimeType, title: displayTitle });
+    }
+  }, [authority, displayTitle, fileId, mimeType, userId]);
 
   return (
     <div className="flex h-svh min-h-0 flex-col overflow-hidden">
       <WikiToolbar
+        authority={authority}
         breadcrumb={breadcrumb}
         canEdit={canEdit}
         driveId={driveId}
@@ -182,7 +193,9 @@ function FilePageBody({
         parentFolderId={parentFolderId}
         title={displayTitle}
       />
-      <div className="flex-1 overflow-hidden" ref={setOwnedSlot} />
+      <div className="flex-1 overflow-hidden" ref={setOwnedSlot}>
+        {authority === "pending" ? <DocSkeleton /> : null}
+      </div>
     </div>
   );
 }
@@ -199,7 +212,7 @@ export function FilePagePending() {
         <Skeleton className="h-4 w-48" />
         <div className="ml-auto flex items-center gap-2">
           <Skeleton className="h-6 w-36 sm:w-64" />
-          <Skeleton className="hidden h-6 w-24 sm:block" />
+          <Skeleton className="size-6 sm:w-24" />
           <Skeleton className="hidden h-6 w-28 md:block" />
         </div>
       </header>

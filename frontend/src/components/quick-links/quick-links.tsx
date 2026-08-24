@@ -1,15 +1,18 @@
 "use client";
 
 import { Search } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { Input } from "@/components/ui/input";
+import { useDocumentIntent } from "@/components/wiki-sidebar/use-document-intent";
 import { displayFileName, renderMimeIcon } from "@/lib/file-icons";
 import { cn } from "@/lib/utils";
 
 export interface QuickLinkItem {
   alias: string;
   driveName: null | string;
+  fileId: string;
   lastVisitedAt: string;
   mimeType: string;
   name: string;
@@ -34,7 +37,6 @@ export function QuickLinks({ aliases, error = false, loading = false }: QuickLin
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const linkRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredAliases = aliases.filter((item) => {
     if (normalizedQuery.length === 0) return true;
@@ -72,7 +74,7 @@ export function QuickLinks({ aliases, error = false, loading = false }: QuickLin
       }
       case "Enter": {
         event.preventDefault();
-        linkRefs.current[activeIndex]?.click();
+        document.getElementById(`quick-link-${activeIndex}`)?.click();
         break;
       }
     }
@@ -131,43 +133,14 @@ export function QuickLinks({ aliases, error = false, loading = false }: QuickLin
           />
         ) : (
           filteredAliases.map((item, index) => (
-            <a
-              aria-selected={index === activeIndex}
-              className={cn(
-                "focus-visible:ring-ring flex min-h-16 items-center gap-3 border-b px-3 py-3 outline-none last:border-b-0 focus-visible:ring-2 focus-visible:ring-inset sm:px-4",
-                index === activeIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
-              )}
-              href={`/go/${encodeURIComponent(item.alias)}`}
+            <QuickLinkRow
               id={`quick-link-${index}`}
+              index={index}
+              item={item}
               key={item.alias}
-              onFocus={() => {
-                setSelectedIndex(index);
-              }}
-              ref={(element) => {
-                linkRefs.current[index] = element;
-              }}
-              role="option"
-            >
-              <span className="bg-background flex size-9 shrink-0 items-center justify-center rounded-lg border">
-                {renderMimeIcon(item.mimeType, "size-4")}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">
-                  {displayFileName(item.name, item.mimeType)}
-                </span>
-                <span className="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1.5 text-xs">
-                  <span className="truncate">{item.driveName ?? "My Drive"}</span>
-                  <span aria-hidden>·</span>
-                  <span className="truncate font-mono">go/{item.alias}</span>
-                </span>
-              </span>
-              <time
-                className="text-muted-foreground hidden shrink-0 text-xs sm:block"
-                dateTime={item.lastVisitedAt}
-              >
-                {VISITED_AT_FORMAT.format(new Date(item.lastVisitedAt))}
-              </time>
-            </a>
+              selected={index === activeIndex}
+              setSelectedIndex={setSelectedIndex}
+            />
           ))
         )}
       </div>
@@ -178,6 +151,61 @@ export function QuickLinks({ aliases, error = false, loading = false }: QuickLin
         </p>
       ) : null}
     </section>
+  );
+}
+
+interface QuickLinkRowProps {
+  id: string;
+  index: number;
+  item: QuickLinkItem;
+  selected: boolean;
+  setSelectedIndex: React.Dispatch<React.SetStateAction<number>>;
+}
+
+function QuickLinkRow({ id, index, item, selected, setSelectedIndex }: QuickLinkRowProps) {
+  const intent = useDocumentIntent({
+    disabled: false,
+    fileId: item.fileId,
+    mimeType: item.mimeType,
+    title: item.name,
+  });
+  return (
+    <Link
+      {...intent}
+      aria-selected={selected}
+      className={cn(
+        "focus-visible:ring-ring flex min-h-16 items-center gap-3 border-b p-3 outline-none last:border-b-0 focus-visible:ring-2 focus-visible:ring-inset sm:px-4",
+        selected ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
+      )}
+      href={`/d/${encodeURIComponent(item.fileId)}?go=${encodeURIComponent(item.alias)}`}
+      id={id}
+      onFocus={() => {
+        setSelectedIndex(index);
+        intent.onFocus();
+      }}
+      prefetch={false}
+      role="option"
+    >
+      <span className="bg-background flex size-9 shrink-0 items-center justify-center rounded-lg border">
+        {renderMimeIcon(item.mimeType, "size-4")}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium">
+          {displayFileName(item.name, item.mimeType)}
+        </span>
+        <span className="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1.5 text-xs">
+          <span className="truncate">{item.driveName ?? "My Drive"}</span>
+          <span aria-hidden>·</span>
+          <span className="truncate font-mono">go/{item.alias}</span>
+        </span>
+      </span>
+      <time
+        className="text-muted-foreground hidden shrink-0 text-xs sm:block"
+        dateTime={item.lastVisitedAt}
+      >
+        {VISITED_AT_FORMAT.format(new Date(item.lastVisitedAt))}
+      </time>
+    </Link>
   );
 }
 

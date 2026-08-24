@@ -11,6 +11,8 @@ import {
   allowsReusableSpeculation,
   readNavigatorHints,
 } from "@/lib/speculation-policy";
+import { wikiKeys } from "@/lib/wiki-keys";
+import type { FileDetail } from "@/types/wiki";
 
 export const DOCUMENT_INTENT_PREFETCH_MS = 150;
 export const DOCUMENT_INTENT_PREWARM_MS = 300;
@@ -19,7 +21,7 @@ interface DocumentIntentOptions {
   disabled: boolean;
   fileId: string;
   mimeType: string;
-  onStrongIntent: () => void;
+  onStrongIntent?: () => void;
   title: string;
 }
 
@@ -43,9 +45,7 @@ interface IntentState {
 export function useDocumentIntent({
   disabled,
   fileId,
-  mimeType,
   onStrongIntent,
-  title,
 }: DocumentIntentOptions): DocumentIntentHandlers {
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -58,13 +58,22 @@ export function useDocumentIntent({
     prewarmTimer: null,
   });
 
-  const prefetch = () => {
-    void queryClient.prefetchQuery(fileQueryOptions(fileId));
+  const prefetch = async () => {
     router.prefetch(`/d/${encodeURIComponent(fileId)}`);
+    await queryClient.prefetchQuery(fileQueryOptions(fileId));
+    return queryClient.getQueryData<FileDetail>(wikiKeys.file(fileId)) ?? null;
   };
 
-  const prewarm = () => {
-    setPrewarm({ fileId, mimeType, reloadKey: 0, title });
+  const prewarm = async () => {
+    const file = await prefetch();
+    if (file === null) return;
+    setPrewarm({
+      fileId: file.id,
+      mimeType: file.mimeType,
+      reloadKey: 0,
+      title: file.name,
+      ...(file.modifiedTime === undefined ? {} : { version: file.modifiedTime }),
+    });
   };
 
   const startSpeculation = () => {
@@ -73,11 +82,11 @@ export function useDocumentIntent({
     if (state.prefetchTimer !== null || state.prewarmTimer !== null) return;
     state.prefetchTimer = window.setTimeout(() => {
       state.prefetchTimer = null;
-      if ((state.hovered || state.focused) && allowsSpeculation()) prefetch();
+      if ((state.hovered || state.focused) && allowsSpeculation()) void prefetch();
     }, DOCUMENT_INTENT_PREFETCH_MS);
     state.prewarmTimer = window.setTimeout(() => {
       state.prewarmTimer = null;
-      if ((state.hovered || state.focused) && allowsIframeIntentSpeculation()) prewarm();
+      if ((state.hovered || state.focused) && allowsIframeIntentSpeculation()) void prewarm();
     }, DOCUMENT_INTENT_PREWARM_MS);
   };
 
@@ -93,9 +102,8 @@ export function useDocumentIntent({
     if (disabled) return;
     stateRef.current.committed = true;
     clearIntentTimers(stateRef.current);
-    onStrongIntent();
-    prefetch();
-    prewarm();
+    onStrongIntent?.();
+    void prewarm();
   };
 
   useEffect(() => {

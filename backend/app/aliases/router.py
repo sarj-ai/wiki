@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from loguru import logger
 
 from app.aliases.dependencies import alias_service_dep
@@ -64,7 +64,9 @@ async def retire_file_alias(
 async def get_recent_aliases(
     payload: RecentDocumentAliasesRequest,
     svc: Annotated[AliasService, Depends(alias_service_dep)],
+    response: Response,
 ) -> list[RecentDocumentAlias]:
+    response.headers["Cache-Control"] = "private, no-store"
     return await svc.resolve_recent(payload.aliases)
 
 

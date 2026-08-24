@@ -36,6 +36,7 @@ class RecentDocumentAliasesRequest(BaseModel):
 
 class RecentDocumentAlias(BaseModel):
     alias: DocumentAliasValue
+    file_id: FileId
     name: str
     mime_type: str
     drive_name: str | None

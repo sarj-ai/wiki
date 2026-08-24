@@ -147,6 +147,7 @@ class PostgresAliasService(AliasService):
         return [
             RecentDocumentAlias(
                 alias=row.alias,
+                file_id=file.id,
                 name=file.name,
                 mime_type=file.mime_type,
                 drive_name=(drive_names.get(file.drive_id) if file.drive_id is not None else None),

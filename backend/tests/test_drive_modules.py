@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Mapping
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 import threading
 from typing import Any, Self, override
 import uuid
@@ -11,6 +11,7 @@ from httplib2 import Response
 from pydantic import JsonValue
 import pytest
 
+from app.auth.encryption import encrypt_text
 from app.cache.service import CacheNamespace, CacheService
 from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT, DriveSummary, SearchResult, ShortcutProbe
 from app.drive.service import GoogleDriveService
@@ -26,6 +27,18 @@ def _user() -> User:
     u.google_id = GoogleUserId("google-test-id")
     u.token_version = 0
     return u
+
+
+def test_google_credentials_convert_aware_expiry_for_google_auth() -> None:
+    user = _user()
+    user.encrypted_access_token = encrypt_text(uuid.uuid4().hex)
+    user.google_access_token_expires_at = datetime.now(UTC) + timedelta(hours=1)
+
+    credentials = GoogleDriveService._build_credentials(user)
+
+    assert credentials.valid
+    assert credentials.expiry is not None
+    assert credentials.expiry.tzinfo is None
 
 
 class _FakePendingCall:
@@ -328,9 +341,7 @@ async def test_list_drives_singleflights_concurrent_request_calls(
         (
             "personal-doc",
             [
-                {"id": "personal-doc", "parents": ["personal-folder"]},
                 {"id": "personal-folder", "parents": ["personal-root"]},
-                {"id": "personal-root"},
             ],
         ),
         ("personal-root", [{"id": "personal-root"}]),
@@ -348,7 +359,11 @@ async def test_resolve_member_drive_accepts_only_my_drive_ancestry(
     )
     patch_drive_client(client)
 
-    resolved = await _svc().resolve_member_drive(FileId(file_id), None)
+    resolved = await _svc().resolve_member_drive(
+        FileId(file_id),
+        None,
+        parent_id=(FileId("personal-folder") if file_id == "personal-doc" else None),
+    )
 
     assert resolved == "personal-root"
 

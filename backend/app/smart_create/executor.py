@@ -6,9 +6,11 @@ from datetime import timedelta
 from typing import override
 import uuid
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.aliases.service import PostgresAliasService
+from app.auth.google_tokens import GoogleTokenManager
 from app.cache.service import CacheService
 from app.drive.service import GoogleDriveService
 from app.extras.service import PostgresExtrasService
@@ -47,11 +49,13 @@ class DriveSmartCreateTaskExecutor(SmartCreateTaskExecutor):
         db: AsyncSession,
         tasks: TaskService,
         cache: CacheService,
+        http: httpx.AsyncClient | None = None,
         sessionmaker: async_sessionmaker[AsyncSession],
     ) -> None:
         self._db = db
         self._tasks = tasks
         self._cache = cache
+        self._http = http
         self._sessionmaker = sessionmaker
 
     @override
@@ -100,13 +104,21 @@ class DriveSmartCreateTaskExecutor(SmartCreateTaskExecutor):
         if user is None:  # pragma: no cover — owner FK cascades task deletion
             msg = "Task owner no longer exists"
             raise RuntimeError(msg)
-        drive = GoogleDriveService(user, self._cache)
-        files = GoogleFilesService(user=user, drive=drive)
-        aliases = PostgresAliasService(db=self._db, files=files, user=user)
-        extras = PostgresExtrasService(db=self._db, user=user)
+        if self._http is None:  # pragma: no cover — production dependency always provides it
+            msg = "Google token HTTP client is unavailable"
+            raise RuntimeError(msg)
+        prepared = await GoogleTokenManager(self._db, self._http).prepare(user)
+        drive = GoogleDriveService(
+            prepared.user,
+            self._cache,
+            refresh_handler=prepared.refresh_handler,
+        )
+        files = GoogleFilesService(user=prepared.user, drive=drive)
+        aliases = PostgresAliasService(db=self._db, files=files, user=prepared.user)
+        extras = PostgresExtrasService(db=self._db, user=prepared.user)
         templates = DriveTemplateCatalogService(
             drive=drive,
-            user_id=user.id,
+            user_id=prepared.user.id,
             cache=self._cache,
         )
         creation = DriveSmartFileCreationService(
@@ -119,7 +131,7 @@ class DriveSmartCreateTaskExecutor(SmartCreateTaskExecutor):
         )
         sidebar = PostgresSidebarCacheService(
             drive=drive,
-            user=user,
+            user=prepared.user,
             singleflight=Singleflight(),
             bg_tasks=set(),
             sessionmaker=self._sessionmaker,

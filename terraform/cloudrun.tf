@@ -93,13 +93,21 @@ resource "google_cloud_run_v2_service" "backend" {
         name  = "GOOGLE_REDIRECT_URI"
         value = "https://${var.backend_domain}/auth/callback"
       }
+      env {
+        name  = "LOG_JSON"
+        value = "true"
+      }
+      env {
+        name  = "MAINTENANCE_MODE"
+        value = tostring(var.maintenance_mode)
+      }
 
       # Database via the Cloud SQL Python Connector with IAM database
       # authentication — none of these are secrets; the credential is
       # the service account itself.
       env {
         name  = "DB_INSTANCE_CONNECTION_NAME"
-        value = google_sql_database_instance.main.connection_name
+        value = var.dammam_database_promoted ? google_sql_database_instance.dammam[0].connection_name : google_sql_database_instance.main.connection_name
       }
       env {
         name  = "DB_NAME"
