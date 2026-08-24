@@ -13,7 +13,7 @@ terraform {
   }
 
   backend "gcs" {
-    bucket = "sarj-docs-terraform-state"
+    bucket = "sarj-docs-terraform-state-dammam"
     prefix = "terraform/state"
   }
 }

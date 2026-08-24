@@ -42,14 +42,6 @@ resource "google_project_iam_member" "backend_vertex_ai" {
 
 # The backend may enqueue into this queue, without receiving project-wide task
 # administration permissions.
-resource "google_cloud_tasks_queue_iam_member" "backend_enqueuer" {
-  project  = var.project_id
-  location = google_cloud_tasks_queue.smart_create.location
-  name     = google_cloud_tasks_queue.smart_create.name
-  role     = "roles/cloudtasks.enqueuer"
-  member   = "serviceAccount:${google_service_account.backend.email}"
-}
-
 # Creating an OIDC-authenticated task requires the enqueueing backend to select
 # (act as) the dedicated token identity.
 resource "google_service_account_iam_member" "backend_acts_as_task_invoker" {
@@ -63,18 +55,3 @@ resource "google_service_account_iam_member" "backend_acts_as_task_invoker" {
 # + Cloudflare layer on top (see loadbalancer.tf / cloudflare.tf)
 # terminates TLS, applies WAF rules, and scrubs bad traffic before
 # it reaches Cloud Run.
-resource "google_cloud_run_v2_service_iam_member" "backend_public" {
-  project  = var.project_id
-  name     = google_cloud_run_v2_service.backend.name
-  location = var.region
-  role     = "roles/run.invoker"
-  member   = "allUsers"
-}
-
-resource "google_cloud_run_v2_service_iam_member" "cloud_tasks_backend_invoker" {
-  project  = var.project_id
-  name     = google_cloud_run_v2_service.backend.name
-  location = var.region
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${google_service_account.cloud_tasks_invoker.email}"
-}

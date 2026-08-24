@@ -3,7 +3,7 @@ from pathlib import Path
 
 _DOCKERFILE = Path(__file__).parents[1] / "Dockerfile"
 _DEPLOY_WORKFLOW = Path(__file__).parents[2] / ".github/workflows/deploy-backend.yml"
-_MIGRATIONS_TERRAFORM = Path(__file__).parents[2] / "terraform/migrations.tf"
+_MIGRATIONS_TERRAFORM = Path(__file__).parents[2] / "terraform/dammam.tf"
 
 
 def test_application_container_does_not_run_database_migrations() -> None:
@@ -30,7 +30,13 @@ def test_deployment_runs_one_shot_migrations_before_traffic_switch() -> None:
 
 
 def test_migration_job_has_database_only_environment() -> None:
-    migration_job = _MIGRATIONS_TERRAFORM.read_text()
+    terraform = _MIGRATIONS_TERRAFORM.read_text()
+    start = terraform.index('resource "google_cloud_run_v2_job" "backend_migrations_dammam"')
+    end = terraform.index(
+        'resource "google_cloud_run_v2_job_iam_member"',
+        start,
+    )
+    migration_job = terraform[start:end]
     assert "SECRET_KEY" not in migration_job
     assert "FERNET_KEY" not in migration_job
     assert "GOOGLE_CLIENT" not in migration_job

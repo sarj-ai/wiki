@@ -1,6 +1,6 @@
 provider "google" {
   project = var.project_id
-  region  = var.region
+  region  = var.dammam_region
 }
 
 # Enable required GCP APIs
@@ -19,6 +19,7 @@ resource "google_project_service" "apis" {
     "securitycenter.googleapis.com",
     "aiplatform.googleapis.com",
     "cloudtasks.googleapis.com",
+    "cloudasset.googleapis.com",
   ])
 
   service            = each.value
