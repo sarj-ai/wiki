@@ -330,8 +330,8 @@ jobs:
           AND resource.labels.revision_name="${{ steps.verify.outputs.new_revision }}"
           AND timestamp>="${{ steps.deploy.outputs.started_at }}"
           AND timestamp<="${{ steps.verify.outputs.finished_at }}"
-          AND textPayload:"${{ steps.verify.outputs.canary_id }}"
-          AND textPayload:"request.complete"
+          AND jsonPayload.record.extra.request_id="${{ steps.verify.outputs.canary_id }}"
+          AND jsonPayload.record.message="request.complete"
           EOF
           )
           completion_count=0
@@ -359,6 +359,7 @@ jobs:
           AND (
             httpRequest.status>=500
             OR severity>=ERROR
+            OR jsonPayload.record.level.name=~"^(ERROR|CRITICAL)$"
             OR textPayload=~"[|] (ERROR|CRITICAL) +[|]"
           )
           EOF
