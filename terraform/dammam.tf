@@ -1,10 +1,10 @@
 locals {
   dammam_image = coalesce(
     var.dammam_image,
-    "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.sarj_docs.repository_id}/backend:latest",
+    "${var.dammam_region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.dammam[0].repository_id}/backend:latest",
   )
-  active_backend_service_name = var.serve_dammam ? google_cloud_run_v2_service.backend_dammam[0].name : google_cloud_run_v2_service.backend.name
-  active_database_name        = var.serve_dammam ? google_sql_database_instance.dammam[0].name : google_sql_database_instance.main.name
+  active_backend_service_name = google_cloud_run_v2_service.backend_dammam[0].name
+  active_database_name        = google_sql_database_instance.dammam[0].name
 }
 
 resource "google_storage_bucket" "terraform_state_dammam" {
@@ -33,6 +33,37 @@ resource "google_storage_bucket_iam_member" "terraform_state_dammam_ci" {
   bucket = google_storage_bucket.terraform_state_dammam[0].name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+# Independent logical database exports complement Cloud SQL PITR and on-demand
+# backups. The bucket stays in Saudi Arabia and is protected from accidental
+# deletion and overwrites.
+resource "google_storage_bucket" "db_exports_dammam" {
+  count                       = var.enable_dammam_stack ? 1 : 0
+  name                        = "sarj-docs-db-exports-dammam"
+  location                    = upper(var.dammam_region)
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+  force_destroy               = false
+
+  versioning {
+    enabled = true
+  }
+
+  soft_delete_policy {
+    retention_duration_seconds = 2592000
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "google_storage_bucket_iam_member" "db_exports_dammam_sql" {
+  count  = var.enable_dammam_stack ? 1 : 0
+  bucket = google_storage_bucket.db_exports_dammam[0].name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_sql_database_instance.dammam[0].service_account_email_address}"
 }
 
 resource "google_compute_subnetwork" "dammam" {
@@ -95,7 +126,7 @@ resource "google_sql_database_instance" "dammam" {
   name                 = "sarj-docs-db-dammam"
   database_version     = "POSTGRES_18"
   region               = var.dammam_region
-  master_instance_name = var.dammam_database_promoted ? null : google_sql_database_instance.main.name
+  master_instance_name = null
 
   settings {
     tier              = var.db_tier
@@ -110,30 +141,24 @@ resource "google_sql_database_instance" "dammam" {
       ssl_mode        = "ENCRYPTED_ONLY"
     }
 
-    dynamic "backup_configuration" {
-      for_each = var.dammam_database_promoted ? [true] : []
-      content {
-        enabled                        = true
-        point_in_time_recovery_enabled = true
-        location                       = var.dammam_region
-        start_time                     = "02:00"
-        transaction_log_retention_days = 7
+    backup_configuration {
+      enabled                        = true
+      point_in_time_recovery_enabled = true
+      location                       = var.dammam_region
+      start_time                     = "02:00"
+      transaction_log_retention_days = 7
 
-        backup_retention_settings {
-          retained_backups = 14
-        }
+      backup_retention_settings {
+        retained_backups = 14
       }
     }
 
     deletion_protection_enabled = true
 
-    dynamic "maintenance_window" {
-      for_each = var.dammam_database_promoted ? [true] : []
-      content {
-        day          = 7
-        hour         = 3
-        update_track = "stable"
-      }
+    maintenance_window {
+      day          = 7
+      hour         = 3
+      update_track = "stable"
     }
 
     database_flags {
@@ -234,7 +259,7 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
   deletion_protection = true
 
   lifecycle {
-    ignore_changes = [client, client_version]
+    ignore_changes = [client, client_version, template[0].containers[0].image]
   }
 
   template {
@@ -288,7 +313,7 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
           COOKIE_DOMAIN                       = "sarj.ai"
           FRONTEND_URL                        = var.frontend_url
           GOOGLE_REDIRECT_URI                 = "https://${var.backend_domain}/auth/callback"
-          DB_INSTANCE_CONNECTION_NAME         = var.dammam_database_promoted ? google_sql_database_instance.dammam[0].connection_name : google_sql_database_instance.main.connection_name
+          DB_INSTANCE_CONNECTION_NAME         = google_sql_database_instance.dammam[0].connection_name
           DB_NAME                             = "sarj_wiki"
           DB_IAM_USER                         = trimsuffix(google_service_account.backend.email, ".gserviceaccount.com")
           GOOGLE_CLOUD_PROJECT                = var.project_id
@@ -370,6 +395,10 @@ resource "google_cloud_run_v2_job" "backend_migrations_dammam" {
   location            = var.dammam_region
   deletion_protection = true
 
+  lifecycle {
+    ignore_changes = [client, client_version, template[0].template[0].containers[0].image]
+  }
+
   template {
     parallelism = 1
     task_count  = 1
@@ -390,7 +419,7 @@ resource "google_cloud_run_v2_job" "backend_migrations_dammam" {
         }
         env {
           name  = "DB_INSTANCE_CONNECTION_NAME"
-          value = var.dammam_database_promoted ? google_sql_database_instance.dammam[0].connection_name : google_sql_database_instance.main.connection_name
+          value = google_sql_database_instance.dammam[0].connection_name
         }
         env {
           name  = "DB_NAME"

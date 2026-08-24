@@ -1,11 +1,11 @@
 output "backend_url" {
   description = "Cloud Run backend service URL (not the public URL — that's lb_ip / backend_domain)"
-  value       = google_cloud_run_v2_service.backend.uri
+  value       = google_cloud_run_v2_service.backend_dammam[0].uri
 }
 
 output "smart_create_queue" {
   description = "Cloud Tasks queue resource name used for asynchronous Smart Create"
-  value       = google_cloud_tasks_queue.smart_create.id
+  value       = google_cloud_tasks_queue.smart_create_dammam[0].id
 }
 
 output "cloud_tasks_invoker_service_account" {
@@ -15,12 +15,12 @@ output "cloud_tasks_invoker_service_account" {
 
 output "artifact_registry" {
   description = "Docker image registry path"
-  value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.sarj_docs.repository_id}"
+  value       = "${var.dammam_region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.dammam[0].repository_id}"
 }
 
 output "cloud_sql_private_ip" {
   description = "Cloud SQL private IP address"
-  value       = google_sql_database_instance.main.private_ip_address
+  value       = google_sql_database_instance.dammam[0].private_ip_address
 }
 
 output "lb_ip" {

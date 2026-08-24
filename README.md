@@ -49,32 +49,22 @@ make doctor
 `make check` mirrors CI. `make audit` performs network-backed dependency audits, and
 `make doctor` verifies generated standards configuration and version pins.
 
-## Dammam production cutover
+## Saudi production topology
 
-The regional migration is staged; never combine database promotion and URL-map switching in one
-Terraform apply. Every saved plan must contain no destroys or replacements. Both Cloud Tasks
-queues must be paused and `maintenance_mode=true` must be live before Cloud SQL promotion.
+Production is pinned to Google Cloud `me-central2` (Dammam): Cloud Run, Cloud SQL, Cloud Tasks,
+Artifact Registry, the VPC connector, and deployment jobs all live in Saudi Arabia. The global
+load balancer routes only to `sarj-docs-backend-dammam`; GitHub repository variables must keep the
+backend release workflow pointed at the matching Dammam resources.
 
-1. Deploy the backward-compatible token-lifecycle migration to Doha and record the immutable
-   backend image digest.
-2. Build the parallel stack with `enable_dammam_stack=true`, `serve_dammam=false`, and that
-   `dammam_image`. Keep `smart-create-dammam` paused.
-3. Wait for `sarj-docs-db-dammam` to be `RUNNABLE`; confirm it replicates `sarj-docs-db` with zero
-   lag.
-4. Pause `smart-create`, verify both queues have zero running tasks, enable maintenance, and check
-   that application routes return 503 while `/health` remains 200.
-5. Promote `sarj-docs-db-dammam`, then reconcile with `dammam_database_promoted=true`,
-   `maintenance_mode=true`, and `serve_dammam=false`.
-6. Confirm Doha `/health` can reach the promoted Dammam database, then apply `serve_dammam=true`
-   while maintenance remains enabled and confirm public health reports the Dammam release.
-7. Disable maintenance, resume only `smart-create-dammam`, and run authenticated journeys. Keep
-   Doha as a protected rollback runtime connected to the Dammam primary.
-8. Point backend deployment repository variables at `me-central2`, `sarj-docs-dammam`,
-   `sarj-docs-backend-dammam`, `sarj-docs-backend-migrations-dammam`, and `smart-create-dammam`.
+Cloud SQL has point-in-time recovery and 14 retained regional backups. Independent logical exports
+belong in the versioned, soft-delete-protected `sarj-docs-db-exports-dammam` bucket. Before a risky
+database operation, create both an on-demand backup and a timestamped export, verify each completed,
+and verify `/health` reports both `status=ok` and `database=ok`.
 
-After promotion, runtime rollback means setting `serve_dammam=false`; never restore the former
-Doha database as primary. Migrate Terraform state to the versioned Dammam bucket only after the
-observation window, and decommission protected Doha resources in a separate reviewed change.
+Do not recreate the retired Doha runtime or route traffic outside Dammam. A runtime rollback uses a
+previous immutable Dammam image revision; a data rollback uses Dammam PITR or the protected Saudi
+export. Database migrations must remain backward compatible because the deployment workflow runs
+them before switching Cloud Run traffic.
 
 ## License and security
 

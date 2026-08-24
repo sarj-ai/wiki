@@ -4,12 +4,6 @@ variable "project_id" {
   default     = "sarj-docs"
 }
 
-variable "region" {
-  description = "GCP region"
-  type        = string
-  default     = "me-central1"
-}
-
 variable "dammam_region" {
   description = "Saudi GCP region used by the parallel migration stack"
   type        = string
@@ -17,31 +11,9 @@ variable "dammam_region" {
 }
 
 variable "enable_dammam_stack" {
-  description = "Create the parallel Dammam runtime and cross-region SQL replica"
+  description = "Create the canonical Dammam production stack"
   type        = bool
-  default     = false
-}
-
-variable "dammam_database_promoted" {
-  description = "Reconcile the Dammam SQL replica after manual promotion"
-  type        = bool
-  default     = false
-
-  validation {
-    condition     = !var.dammam_database_promoted || var.enable_dammam_stack
-    error_message = "Dammam cannot be promoted unless its parallel stack is enabled."
-  }
-}
-
-variable "serve_dammam" {
-  description = "Atomically point the global backend URL map at the Dammam backend"
-  type        = bool
-  default     = false
-
-  validation {
-    condition     = !var.serve_dammam || (var.enable_dammam_stack && var.dammam_database_promoted)
-    error_message = "Dammam traffic requires an enabled stack and promoted database."
-  }
+  default     = true
 }
 
 variable "dammam_image" {

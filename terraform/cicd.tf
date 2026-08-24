@@ -52,27 +52,12 @@ resource "google_project_iam_member" "github_actions_logging_viewer" {
 
 # Deployment verifies that asynchronous infrastructure exists before switching
 # traffic to a revision that enqueues Smart Create work.
-resource "google_cloud_tasks_queue_iam_member" "github_actions_queue_viewer" {
-  project  = var.project_id
-  location = google_cloud_tasks_queue.smart_create.location
-  name     = google_cloud_tasks_queue.smart_create.name
-  role     = "roles/cloudtasks.viewer"
-  member   = "serviceAccount:${google_service_account.github_actions.email}"
-}
-
 resource "google_service_account_iam_member" "github_actions_act_as_backend" {
   service_account_id = google_service_account.backend.name
   role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-resource "google_cloud_run_v2_job_iam_member" "github_actions_migration_invoker" {
-  project  = var.project_id
-  location = var.region
-  name     = google_cloud_run_v2_job.backend_migrations.name
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${google_service_account.github_actions.email}"
-}
 
 resource "google_service_account_iam_binding" "github_actions_wif" {
   service_account_id = google_service_account.github_actions.name

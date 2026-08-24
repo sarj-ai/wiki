@@ -49,42 +49,6 @@ resource "google_compute_global_address" "backend_lb" {
 
 # Serverless Network Endpoint Group wraps the Cloud Run service so
 # the LB can route to it without exposing the run.app URL.
-resource "google_compute_region_network_endpoint_group" "backend_neg" {
-  name                  = "sarj-docs-backend-neg"
-  region                = var.region
-  network_endpoint_type = "SERVERLESS"
-
-  cloud_run {
-    service = google_cloud_run_v2_service.backend.name
-  }
-}
-
-# Backend service — wires the NEG into the LB with Cloud Armor.
-resource "google_compute_backend_service" "backend" {
-  name     = "sarj-docs-backend-service"
-  protocol = "HTTPS"
-  # ``port_name`` deliberately omitted — Serverless NEGs (Cloud Run)
-  # don't accept it; GCP rejects ``port_name`` for serverless backends
-  # with "Port name is not supported for a backend service with
-  # Serverless network endpoint groups." Only instance-group NEGs need
-  # this field.
-  timeout_sec           = 30
-  load_balancing_scheme = "EXTERNAL_MANAGED"
-  enable_cdn            = false
-
-  backend {
-    group = google_compute_region_network_endpoint_group.backend_neg.id
-  }
-
-  edge_security_policy = google_compute_security_policy.edge_armor.id
-  security_policy      = google_compute_security_policy.backend_armor.id
-
-  log_config {
-    enable      = true
-    sample_rate = 1.0
-  }
-}
-
 # The edge policy establishes Cloudflare as the only intended public path before
 # requests reach the backend WAF. The explicit catch-all rejects every other
 # source; Cloud Armor reserves the mandatory default rule, which is unreachable.
@@ -413,7 +377,7 @@ resource "google_compute_security_policy" "backend_armor" {
 # URL map — all paths go to the backend service.
 resource "google_compute_url_map" "backend" {
   name            = "sarj-docs-backend-url-map"
-  default_service = var.serve_dammam ? google_compute_backend_service.backend_dammam[0].id : google_compute_backend_service.backend.id
+  default_service = google_compute_backend_service.backend_dammam[0].id
 }
 
 # Managed TLS cert via Certificate Manager.

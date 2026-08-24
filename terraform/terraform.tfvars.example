@@ -1,5 +1,5 @@
 project_id     = "sarj-docs"
-region         = "me-central1"
+dammam_region  = "me-central2"
 frontend_url   = "https://wiki.sarj.ai"
 backend_domain = "api-wiki.sarj.ai"
 db_tier        = "db-f1-micro"
