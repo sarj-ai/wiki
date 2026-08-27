@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "7.1.16",
-    "consumerBaseSha": "4b6c50dec0fb482e0b709f230d017606489415e0",
-    "catalogDigest": "24c021f8dad29534209e6c000e094e4de63e5243f763cf0785dcfab2a93c6d34"
+    "bundleVersion": "7.5.4",
+    "consumerBaseSha": "c97f9b23418ed08a2b6e129c36cfa2c8bea40576",
+    "catalogDigest": "595df38c5f7e31628fa7b8584109bb46a0de4da1e0bfde4e2ecff0c4e03ff422"
   },
   "diagnostics": [
     {
@@ -315,247 +315,177 @@
       "count": 1
     },
     {
-      "fingerprint": "0e9babbb6013efb2787bbafdd79588c7c9888d78bca35218f784cee60e1b9a67",
+      "fingerprint": "4051e6511be33afe011c8b6ecb0e34d6d9ac1f1dd263340d16316b7b0430a219",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
-      "path": "backend/app/aliases/router.py",
-      "count": 4
-    },
-    {
-      "fingerprint": "bf67915f72ad587cc6726d21dc5991ef55c8156914a15db5465ee539e72a4b09",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
-      "path": "backend/app/aliases/router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "d2f2a6513f5301b782d2b1382c3bed3684e697648ceb3805d1384d6a0afd3b03",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/aliases/router.py",
       "count": 2
     },
     {
-      "fingerprint": "edefae1bd8e4e7997ba7274f07abd941c1f38e43d4dea73bad90f182e04fa31d",
+      "fingerprint": "a60a9a3c0fb65f8f52bc32c66bd3f49f6bb9644fcbc86b31409f36b95611511b",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
+      "path": "backend/app/aliases/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "da41f7a9df10a09fa714430103f33af09bd4a64c277e77f8e66dfc1395200ea5",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-explicit-openapi-contract",
+      "path": "backend/app/aliases/router.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "e3efe7e1b602402c091ff79ca9b90d38832c829e0ef47c8bcf23122d77f7f6cb",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/aliases/router.py",
       "count": 3
     },
     {
-      "fingerprint": "0403e5c9f01de1eec989b3722cfec4a99dd040a1aed88a80e66baa22b83de0fc",
+      "fingerprint": "62ba807169b02f27c4c8989dbc690d42a5a9a1e58225c1b4689c12f816cde052",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/auth/router.py",
       "count": 1
     },
     {
-      "fingerprint": "2c5135fc84b0b832a260b439529f32e6d7ee1b860f48f21493d1250d7a92a12e",
+      "fingerprint": "a407a9313150778cdecadab60f436e807e3531bb2a1cde9ddc2cd43b5917211b",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/auth/router.py",
-      "count": 1
+      "count": 3
     },
     {
-      "fingerprint": "37a4f34deea0cb64f79c18d806bf860b279278f15715584d7824f36183d1e226",
+      "fingerprint": "52484200f2f69001118875a97596c85b0a8ef3190c9dfb0d43e05f1c85578bd5",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
-      "path": "backend/app/auth/router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "6b9a4650d6517d80bb408b198d120f43d7c9ee6a6a6607b06871149d8ff1e098",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
-      "path": "backend/app/auth/router.py",
-      "count": 5
-    },
-    {
-      "fingerprint": "7f202edc95e348d73807b57846a09ddef5994608023d62991e17c26d61c4974d",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
-      "path": "backend/app/auth/router.py",
-      "count": 4
-    },
-    {
-      "fingerprint": "41ac8ce8f79b0896be974a401244aaf7de07d0b724df3d37eaae64c22708dad0",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/bootstrap/router.py",
       "count": 1
     },
     {
-      "fingerprint": "1892cffbf55138c6fe8b5675451ec740e4d7d9b78249d6f33e9667918898562f",
+      "fingerprint": "076e179ff6e815161f1566d8ae8889831bc521af96d1a5bd3ba05b19ff0ee598",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/drive/search_router.py",
       "count": 2
     },
     {
-      "fingerprint": "38e5bf03346d34687f6a9541bfdd8a2111154e72496ebcde81415bdf2e14534a",
+      "fingerprint": "40fc282f9f6bc9929eb2eeeeab2fde5628e82ae2b04595811da31f770e6a8789",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/extras/router.py",
       "count": 4
     },
     {
-      "fingerprint": "b8c9be5f6041e2df4fa47256ee80dddbfe11d9e8bced5b282cf410942bbb4b65",
+      "fingerprint": "468e3d5c773558a9f58d7c361f788ead0c3f9b1ebc2d054f59200928c2b53cb6",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/extras/router.py",
       "count": 1
     },
     {
-      "fingerprint": "d916850d53b35d3c64e3a123a00c3f29e15028fe5cc86bacf3a7a820a8c63280",
+      "fingerprint": "92d5486719e3faca18be2d398a84b1f612cd13de612c12ac69ce9a8251ad85e0",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
-      "path": "backend/app/extras/router.py",
-      "count": 3
-    },
-    {
-      "fingerprint": "dfe3e2adb046879cb49ee3fb637194b0a0d496c46bf6e492c3dad70d4b7c6fe1",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
-      "path": "backend/app/extras/router.py",
-      "count": 9
-    },
-    {
-      "fingerprint": "e5873ea009cacc2598ce0ad35ba53b04ebdcdba541cecf6776aa35d6a462140a",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/extras/router.py",
       "count": 1
     },
     {
-      "fingerprint": "6968b104d3822133b096e0567cebb4c1c77d1e2aa7a5864c3d571c1dca400253",
+      "fingerprint": "eee0320a2643ea4d7b00d04c6f38cced69582f574767d5fa3c2d7534b0b0a006",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
+      "path": "backend/app/extras/router.py",
+      "count": 8
+    },
+    {
+      "fingerprint": "37e5827b4a2a812358da074616ddadd2222d1d66dec7363a23fecb1947f339f5",
+      "source": "sarj-python-lint",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/files/router.py",
       "count": 4
     },
     {
-      "fingerprint": "c5480f7313cca231343c6839844e275f3466ba3ce43a1b592115a705fda54d5f",
+      "fingerprint": "6876656f803015c5d55901defe787a96dc2a0997406b96d74d4aa8fbb094e03e",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/files/router.py",
       "count": 6
     },
     {
-      "fingerprint": "d2e9a3770007026d12c8ff0799d29a44a1b06081839576598be5c40825702707",
+      "fingerprint": "9b0f77bd5e3f234aca74bc40cbed4e63a83e8dba17fd4f8e8ead087b3281b50a",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
-      "path": "backend/app/files/router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "fa433a6ef56d0a8078c823a497f9352101b028872be9ccce01fbde0f21b77ec0",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/files/router.py",
       "count": 4
     },
     {
-      "fingerprint": "079dad59f04395bd4b54a9ab622956cb50bc2b84e0a283c0efce4b19e4aafc0f",
+      "fingerprint": "8bcc98a1f3d3fc3c4730c0cc510fe39f2f20213321365ac27f8876153be94968",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
-      "path": "backend/app/main.py",
+      "ruleId": "fastapi-explicit-openapi-contract",
+      "path": "backend/app/sidebar/router.py",
       "count": 1
     },
     {
-      "fingerprint": "9a00f5794fb8baceb165a9ff7cebeb656fc46b8054eac59701a01013ae83a4ac",
+      "fingerprint": "ab2f589bd45510c7de1e704c678d6081867b20992f8e6b40a4c61b10353353ee",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
-      "path": "backend/app/main.py",
+      "ruleId": "fastapi-explicit-openapi-contract",
+      "path": "backend/app/sidebar/router.py",
       "count": 1
     },
     {
-      "fingerprint": "16541d71b129fc5dcadbf1c281327b5a9fc4a917d786a5c9ed7595267536fd23",
+      "fingerprint": "b74a06719075f29b1a45f3a91d2589186d3fe98f45f419c5912d12d318f22450",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/sidebar/router.py",
       "count": 5
     },
     {
-      "fingerprint": "3465a4d1ce637904059dc218588b41b82a3b303e787d266b660b00578c853881",
+      "fingerprint": "e87ef7999b926c3bd03e9e67fbb122dece83426b4eaec0c0b7644c8da0f0c8f0",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
-      "path": "backend/app/sidebar/router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "876e2e2030c5f1463e9c1da8df30bb3028c0d699deeb95cc3879e200390eb390",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/sidebar/router.py",
       "count": 3
     },
     {
-      "fingerprint": "bd402f547ad44907715e4bc0d8ec319e21bf65821e26b1345de43e4a01c75943",
+      "fingerprint": "1d72c5473d985a5b2fbc01a8415e40dab3c11646a5af6cbb03eba8e7601b6865",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
-      "path": "backend/app/sidebar/router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "fb29aa11abea93dea70b8f14c90228814d1381fc12c690e21b1c265471cc8aeb",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
-      "path": "backend/app/sidebar/router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "6d70ede5a9a1e41d4ede7e1809b39a01ee226120b01dc463151c2b48b067d29a",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/smart_create/router.py",
       "count": 2
     },
     {
-      "fingerprint": "d86abea16e591bc60832a6af845269607a35036880d4b249f54cb45e37d1e693",
+      "fingerprint": "47f3abbfc957cad286798e5883d0b76bcdc2fd364a00a51a13b062d9248be9c4",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/smart_create/router.py",
       "count": 2
     },
     {
-      "fingerprint": "f05bb9178ad4ec4ed192278cfa0c963cfaeef36b6f231b44c84b24622369b28c",
+      "fingerprint": "f8883c0b1104d3d403655a9bf917ebd55dae43b0059fc13d6c71389139a89f2b",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/smart_create/router.py",
       "count": 1
     },
     {
-      "fingerprint": "6affc5fac10ea9fae730555c66068f8a147f1a514c203873e9b83c9a1b602683",
+      "fingerprint": "df36db26124dc1d568229f999285d9e5d16b7e1c2245c5d9937ed3ba93624201",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
-      "path": "backend/app/tasks/internal_router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "b71be27d10fe8a3d2a260d29566e90329aad45f04730e90300d71878e33ff4e2",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
-      "path": "backend/app/tasks/internal_router.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "38209f263bc5bb7cb54f6484d19ec7efd3360d3d66f9ea595f846eabfb17ba1f",
-      "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/tasks/router.py",
       "count": 1
     },
     {
-      "fingerprint": "faf407e0ad9288e961288dd058a05f0edc3db136b7929c39b7f2c538a14d683d",
+      "fingerprint": "e86af6acdba99762b1c34a8911659729ed44d970772e559943b6b35f71a842e4",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/tasks/router.py",
       "count": 1
     },
     {
-      "fingerprint": "3cd4f335cf4e7958206a47ecc90aef493bb17509770ac3f84f640068f3c08698",
+      "fingerprint": "1468c751da62dd61386b19a70f72952050555a8a9bb67c40a5cd53771f3d36a4",
       "source": "sarj-python-lint",
-      "ruleId": "fastapi-openapi-contract",
+      "ruleId": "fastapi-explicit-openapi-contract",
       "path": "backend/app/templates/router.py",
       "count": 1
     },
@@ -684,27 +614,6 @@
       "ruleId": "prefer-timedelta-for-durations",
       "path": "backend/app/smart_create/service.py",
       "count": 1
-    },
-    {
-      "fingerprint": "92e42989d94bce8ee15bad31770a16b8add0ca6ad9e3ac8b755e2ef793944ab1",
-      "source": "sarj-text-lint",
-      "ruleId": "unpinned-github-action",
-      "path": ".github/workflows/ci-backend.yml",
-      "count": 1
-    },
-    {
-      "fingerprint": "ed083cf155b912c0154b0988cf6360037ab601b261f00d3e2ad77140934b8f9a",
-      "source": "sarj-text-lint",
-      "ruleId": "unpinned-github-action",
-      "path": ".github/workflows/ci-iac.yml",
-      "count": 1
-    },
-    {
-      "fingerprint": "dc9769f57fa1bf55f1acd5948930edb936f4945d4ccc4583db95bbc18818426d",
-      "source": "sarj-text-lint",
-      "ruleId": "unpinned-github-action",
-      "path": ".github/workflows/deploy-backend.yml",
-      "count": 2
     }
   ]
 }

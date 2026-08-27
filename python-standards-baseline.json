@@ -50,5 +50,8 @@
   },
   "backend/app/templates/router.py": {
     "SARJ094": 1
+  },
+  "backend/tests/test_sidebar_cache.py": {
+    "SARJ428": 2
   }
 }
