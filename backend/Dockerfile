@@ -26,7 +26,8 @@ WORKDIR /app
 ARG RELEASE_SHA=dev
 ENV RELEASE_SHA=$RELEASE_SHA
 
-RUN python -m pip uninstall --yes pip \
+RUN apk upgrade --no-cache \
+    && python -m pip uninstall --yes pip \
     && adduser -D -u 1001 app
 
 COPY --from=builder --chown=app:app /app/.venv .venv
