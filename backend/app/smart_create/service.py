@@ -395,9 +395,7 @@ def _build_reorganization_prompt(
         "destination_folder_id only from folders. Give one short reason grounded in the document's "
         "topic without quoting private content, and return no prose outside the JSON response."
     )
-    return "\n".join(  # ruff: ignore[static-join-to-f-string]
-        (instructions, serialized_context)
-    )
+    return f"{instructions}\n{serialized_context}"
 
 
 def organization_candidates(
@@ -508,9 +506,7 @@ def _build_prompt(
         "templates, or null for a blank file. The alias must be two or three lowercase words "
         "of 2-12 ASCII letters separated by hyphens. Return one fitting emoji and no prose."
     )
-    return "\n".join(  # ruff: ignore[static-join-to-f-string]
-        (instructions, serialized_context)
-    )
+    return f"{instructions}\n{serialized_context}"
 
 
 def smart_create_candidates(

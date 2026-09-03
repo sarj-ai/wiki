@@ -186,9 +186,7 @@
             "type": "string"
           },
           "kind": {
-            "const": "file.smart_create",
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/TaskKind"
           },
           "resource_id": {
             "title": "Resource Id",
@@ -352,6 +350,183 @@
           "alias"
         ],
         "title": "DocumentAliasWrite",
+        "type": "object"
+      },
+      "DocumentOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_folder_id": {
+            "title": "Parent Folder Id",
+            "type": "string"
+          },
+          "web_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Web Url"
+          }
+        },
+        "required": [
+          "file_id",
+          "name",
+          "parent_folder_id"
+        ],
+        "title": "DocumentOutput",
+        "type": "object"
+      },
+      "DocumentTransformRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/TransformMode"
+          },
+          "output_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Name"
+          },
+          "source": {
+            "discriminator": {
+              "mapping": {
+                "drive_file": "#/components/schemas/DriveFileSource",
+                "markdown": "#/components/schemas/MarkdownSource"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DriveFileSource"
+              },
+              {
+                "$ref": "#/components/schemas/MarkdownSource"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "required": [
+          "source",
+          "mode"
+        ],
+        "title": "DocumentTransformRequest",
+        "type": "object"
+      },
+      "DocumentTransformResult": {
+        "additionalProperties": false,
+        "properties": {
+          "applied_patch_count": {
+            "minimum": 0.0,
+            "title": "Applied Patch Count",
+            "type": "integer"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/TransformFinding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/TransformMode"
+          },
+          "model_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Model Ids",
+            "type": "array"
+          },
+          "needs_review": {
+            "title": "Needs Review",
+            "type": "boolean"
+          },
+          "operation_id": {
+            "format": "uuid",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "output": {
+            "$ref": "#/components/schemas/DocumentOutput"
+          },
+          "pipeline_version": {
+            "title": "Pipeline Version",
+            "type": "string"
+          },
+          "source_sha256": {
+            "title": "Source Sha256",
+            "type": "string"
+          },
+          "tool_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Tool Versions",
+            "type": "object"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ValidationSummary"
+          }
+        },
+        "required": [
+          "operation_id",
+          "source_sha256",
+          "output",
+          "mode",
+          "applied_patch_count",
+          "findings",
+          "validation",
+          "model_ids",
+          "tool_versions",
+          "pipeline_version",
+          "needs_review"
+        ],
+        "title": "DocumentTransformResult",
+        "type": "object"
+      },
+      "DriveFileSource": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_modified_time": {
+            "title": "Expected Modified Time",
+            "type": "string"
+          },
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "drive_file",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "file_id",
+          "expected_modified_time"
+        ],
+        "title": "DriveFileSource",
         "type": "object"
       },
       "DriveNode": {
@@ -694,9 +869,7 @@
             "type": "string"
           },
           "kind": {
-            "const": "file.smart_create",
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/TaskKind"
           },
           "resource_id": {
             "anyOf": [
@@ -1045,6 +1218,40 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "MarkdownSource": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "maxLength": 524288,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "destination_folder_id": {
+            "title": "Destination Folder Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "markdown",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "content",
+          "name",
+          "destination_folder_id"
+        ],
+        "title": "MarkdownSource",
+        "type": "object"
+      },
       "PendingTaskRead": {
         "properties": {
           "attempt_count": {
@@ -1075,9 +1282,7 @@
             "type": "string"
           },
           "kind": {
-            "const": "file.smart_create",
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/TaskKind"
           },
           "resource_id": {
             "title": "Resource Id",
@@ -1320,9 +1525,7 @@
             "type": "string"
           },
           "kind": {
-            "const": "file.smart_create",
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/TaskKind"
           },
           "resource_id": {
             "anyOf": [
@@ -1766,9 +1969,7 @@
             "type": "string"
           },
           "kind": {
-            "const": "file.smart_create",
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/TaskKind"
           },
           "resource_id": {
             "anyOf": [
@@ -1782,7 +1983,15 @@
             "title": "Resource Id"
           },
           "result": {
-            "$ref": "#/components/schemas/SmartCreateResult"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SmartCreateResult"
+              },
+              {
+                "$ref": "#/components/schemas/DocumentTransformResult"
+              }
+            ],
+            "title": "Result"
           },
           "started_at": {
             "format": "date-time",
@@ -1810,6 +2019,14 @@
         ],
         "title": "SucceededTaskRead",
         "type": "object"
+      },
+      "TaskKind": {
+        "enum": [
+          "file.smart_create",
+          "file.document_transform"
+        ],
+        "title": "TaskKind",
+        "type": "string"
       },
       "TemplateCatalogRead": {
         "properties": {
@@ -1928,6 +2145,45 @@
         "title": "TemplateSource",
         "type": "object"
       },
+      "TransformFinding": {
+        "additionalProperties": false,
+        "properties": {
+          "block_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Id"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "detail"
+        ],
+        "title": "TransformFinding",
+        "type": "object"
+      },
+      "TransformMode": {
+        "enum": [
+          "format",
+          "unslop",
+          "both"
+        ],
+        "title": "TransformMode",
+        "type": "string"
+      },
       "UserProfile": {
         "properties": {
           "avatar_url": {
@@ -2010,6 +2266,36 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "ValidationSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "protected_content_preserved": {
+            "title": "Protected Content Preserved",
+            "type": "boolean"
+          },
+          "source_unchanged": {
+            "title": "Source Unchanged",
+            "type": "boolean"
+          },
+          "structure_preserved": {
+            "title": "Structure Preserved",
+            "type": "boolean"
+          },
+          "unsafe_patch_count": {
+            "minimum": 0.0,
+            "title": "Unsafe Patch Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_unchanged",
+          "protected_content_preserved",
+          "structure_preserved",
+          "unsafe_patch_count"
+        ],
+        "title": "ValidationSummary",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -2044,6 +2330,7 @@
             "name": "file_id",
             "required": true,
             "schema": {
+              "minLength": 1,
               "title": "File Id",
               "type": "string"
             }
@@ -2095,6 +2382,7 @@
             "name": "file_id",
             "required": true,
             "schema": {
+              "minLength": 1,
               "title": "File Id",
               "type": "string"
             }
@@ -2153,6 +2441,7 @@
             "name": "file_id",
             "required": true,
             "schema": {
+              "minLength": 1,
               "title": "File Id",
               "type": "string"
             }
@@ -2287,7 +2576,7 @@
             "required": true,
             "schema": {
               "maxLength": 32,
-              "minLength": 5,
+              "minLength": 1,
               "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
               "title": "Alias",
               "type": "string"
@@ -2347,10 +2636,20 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ],
+                  "type": "object"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Session revoked."
           }
         },
         "summary": "Logout",
@@ -2490,6 +2789,104 @@
         "summary": "Bootstrap",
         "tags": [
           "bootstrap"
+        ]
+      }
+    },
+    "/document-transforms": {
+      "post": {
+        "operationId": "create_document_transform",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentTransformRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "cancelled": "#/components/schemas/CancelledTaskRead",
+                      "failed": "#/components/schemas/FailedTaskRead",
+                      "pending": "#/components/schemas/PendingTaskRead",
+                      "running": "#/components/schemas/RunningTaskRead",
+                      "succeeded": "#/components/schemas/SucceededTaskRead"
+                    },
+                    "propertyName": "status"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PendingTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RunningTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SucceededTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FailedTaskRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CancelledTaskRead"
+                    }
+                  ],
+                  "title": "Response Create Document Transform"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Document Transform",
+        "tags": [
+          "document-transforms"
         ]
       }
     },
@@ -2825,6 +3222,7 @@
             "name": "folder_drive_id",
             "required": true,
             "schema": {
+              "minLength": 1,
               "title": "Folder Drive Id",
               "type": "string"
             }
@@ -3331,6 +3729,7 @@
             "name": "file_id",
             "required": true,
             "schema": {
+              "minLength": 1,
               "title": "File Id",
               "type": "string"
             }
@@ -3382,6 +3781,7 @@
             "name": "file_id",
             "required": true,
             "schema": {
+              "minLength": 1,
               "title": "File Id",
               "type": "string"
             }
@@ -3442,6 +3842,7 @@
             "name": "file_id",
             "required": true,
             "schema": {
+              "minLength": 1,
               "title": "File Id",
               "type": "string"
             }
@@ -3502,6 +3903,7 @@
             "name": "file_id",
             "required": true,
             "schema": {
+              "minLength": 1,
               "title": "File Id",
               "type": "string"
             }
@@ -3572,6 +3974,7 @@
             "name": "file_id",
             "required": true,
             "schema": {
+              "minLength": 1,
               "title": "File Id",
               "type": "string"
             }
@@ -3642,6 +4045,7 @@
             "name": "file_id",
             "required": true,
             "schema": {
+              "minLength": 1,
               "title": "File Id",
               "type": "string"
             }
@@ -3712,6 +4116,7 @@
             "name": "file_id",
             "required": true,
             "schema": {
+              "minLength": 1,
               "title": "File Id",
               "type": "string"
             }
@@ -3901,6 +4306,7 @@
             "schema": {
               "anyOf": [
                 {
+                  "maxLength": 4096,
                   "type": "string"
                 },
                 {
@@ -4026,6 +4432,7 @@
             "name": "folder_id",
             "required": true,
             "schema": {
+              "minLength": 1,
               "title": "Folder Id",
               "type": "string"
             }

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Path, Response, status
 
 from app.auth.dependencies import get_current_user
 from app.identifiers import TaskId
@@ -23,6 +23,7 @@ router = APIRouter(
 
 @router.get(
     "/{task_id}",
+    status_code=status.HTTP_200_OK,
     operation_id="get_task",
     responses={
         200: {
@@ -32,7 +33,7 @@ router = APIRouter(
     },
 )
 async def get_task(
-    task_id: TaskId,
+    task_id: Annotated[TaskId, Path()],
     service: Annotated[TaskService, Depends(task_service_dep)],
     user: Annotated[User, Depends(get_current_user)],
     response: Response,

@@ -1,15 +1,6 @@
 {
-  "backend/app/aliases/router.py": {
-    "SARJ094": 10
-  },
   "backend/app/auth/jwt.py": {
     "SARJ014": 2
-  },
-  "backend/app/auth/router.py": {
-    "SARJ094": 4
-  },
-  "backend/app/bootstrap/router.py": {
-    "SARJ094": 1
   },
   "backend/app/cache/__init__.py": {
     "SARJ420": 1
@@ -17,39 +8,18 @@
   "backend/app/drive/retry.py": {
     "SARJ014": 1
   },
-  "backend/app/drive/search_router.py": {
-    "SARJ094": 2
-  },
-  "backend/app/extras/router.py": {
-    "SARJ094": 14
-  },
-  "backend/app/files/router.py": {
-    "SARJ094": 14
-  },
   "backend/app/models/task.py": {
     "SARJ093": 1
   },
   "backend/app/models/wiki.py": {
     "SARJ093": 3
   },
-  "backend/app/sidebar/router.py": {
-    "SARJ094": 10
-  },
-  "backend/app/smart_create/router.py": {
-    "SARJ094": 5
-  },
   "backend/app/smart_create/service.py": {
     "SARJ014": 2,
     "SARJ096": 1
   },
-  "backend/app/tasks/router.py": {
-    "SARJ094": 2
-  },
   "backend/app/tasks/service.py": {
     "SARJ093": 6
-  },
-  "backend/app/templates/router.py": {
-    "SARJ094": 1
   },
   "backend/tests/test_sidebar_cache.py": {
     "SARJ428": 2

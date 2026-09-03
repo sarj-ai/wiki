@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from datetime import timedelta
 from enum import StrEnum
-from typing import cast, override
+from typing import override
 
 from pydantic import JsonValue
 from sqlalchemy import delete, func, or_, select
@@ -83,7 +83,7 @@ class CachePSqlService(CacheService):
         )
         with timed("cache"):
             async with self._sessionmaker() as db:
-                rows = cast("list[tuple[str, object]]", (await db.execute(statement)).all())
+                rows = [(row[0], row[1]) for row in (await db.execute(statement)).all()]
         rows_by_key = dict(rows)
         for candidate in physical_keys:
             if candidate not in rows_by_key:
@@ -124,7 +124,7 @@ class CachePSqlService(CacheService):
                     CacheEntry.expires_at > func.now(),
                 )
                 async with self._sessionmaker() as db:
-                    rows = cast("list[tuple[str, object]]", (await db.execute(statement)).all())
+                    rows = [(row[0], row[1]) for row in (await db.execute(statement)).all()]
                 rows_by_key.update(rows)
         values: dict[str, JsonValue] = {}
         for logical_key, physical_keys in physical_by_logical.items():

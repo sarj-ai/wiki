@@ -1,25 +1,26 @@
 # Managed by `code-standards setup`; commit this file.
-schema = 3
-bundle = "7.5.4"
+schema = 4
+bundle = "7.9.12"
+profile = "standard"
 rule_profile = "all"
 
 [capabilities]
-disable = ["markdownlint", "taplo"]
-
-
+disable = ["swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security", "markdownlint", "taplo"]
 
 [artifacts]
 durable = ["**/README.md", "docs/**", "**/docs/**", "architecture/**", "**/adr/**", ".github/**", "**/AGENTS.md", "**/CLAUDE.md"]
 
-[text]
-exclude = ["**/.env.example"]
-
 [dest]
 python = "backend"
 typescript = "frontend"
+swift = "."
+kotlin = "."
 
 [hooks]
 manager = "lefthook"
+
+[text]
+exclude = ["**/.env.example"]
 
 [baseline]
 diagnostics = "diagnostic-baseline.json"

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import cast
-
 from fastapi import FastAPI, Response
 from httpx import ASGITransport, AsyncClient
 
@@ -62,6 +60,12 @@ async def test_enables_hsts_only_for_https_deployments() -> None:
 def test_security_headers_are_outermost_application_middleware() -> None:
     from app.main import app
 
-    names = [cast("type[object]", middleware.cls).__name__ for middleware in app.user_middleware]
+    names = [_type_name(middleware.cls) for middleware in app.user_middleware]
 
     assert names[0] == "SecurityHeadersMiddleware"
+
+
+def _type_name(value: object) -> str:
+    name = getattr(value, "__name__", None)
+    assert isinstance(name, str)
+    return name

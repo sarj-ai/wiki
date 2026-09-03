@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import AsyncIterator
-from typing import cast
 
 from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
@@ -174,7 +173,8 @@ async def test_passes_non_http_scope_through() -> None:
         observed = scope["type"] == "lifespan"
 
     middleware = RequestBodyLimitMiddleware(inner, max_bytes=8)
-    await middleware(cast("Scope", {"type": "lifespan"}), _unused_receive, _unused_send)
+    scope: Scope = {"type": "lifespan"}
+    await middleware(scope, _unused_receive, _unused_send)
 
     assert observed
 
@@ -239,7 +239,7 @@ async def test_cookie_origin_guard_rejects_before_body_limit() -> None:
 def test_application_middleware_order() -> None:
     from app.main import app
 
-    names = [cast("type[object]", middleware.cls).__name__ for middleware in app.user_middleware]
+    names = [_type_name(middleware.cls) for middleware in app.user_middleware]
 
     assert names.index("RequestIDMiddleware") < names.index("CookieOriginMiddleware")
     assert names.index("CookieOriginMiddleware") < names.index("CORSMiddleware")
@@ -262,23 +262,20 @@ async def _invoke(
     async def send(message: Message) -> None:
         sent.append(message)
 
-    scope = cast(
-        "Scope",
-        {
-            "type": "http",
-            "asgi": {"version": "3.0"},
-            "http_version": "1.1",
-            "method": "POST",
-            "scheme": "http",
-            "path": "/",
-            "raw_path": b"/",
-            "query_string": b"",
-            "root_path": "",
-            "headers": headers or [],
-            "client": ("127.0.0.1", 1),
-            "server": ("test", 80),
-        },
-    )
+    scope: Scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "root_path": "",
+        "headers": headers or [],
+        "client": ("127.0.0.1", 1),
+        "server": ("test", 80),
+    }
     receive_callable = receive if receive is not None else _empty_receive
     await app(scope, receive_callable, send)
     return sent
@@ -307,6 +304,12 @@ async def _empty_receive() -> Message:
 async def _unused_receive() -> Message:
     msg = "receive must not be called"
     raise AssertionError(msg)
+
+
+def _type_name(value: object) -> str:
+    name = getattr(value, "__name__", None)
+    assert isinstance(name, str)
+    return name
 
 
 async def _unused_send(message: Message) -> None:

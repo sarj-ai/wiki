@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
+import secrets
 import threading
 from typing import Any, Self, override
 import uuid
@@ -22,7 +23,7 @@ from app.models.user import User
 
 def _user() -> User:
     u = User()
-    u.id = UserId(uuid.uuid4())
+    u.id = UserId(uuid.uuid7())
     u.email = "test@sarj.ai"
     u.google_id = GoogleUserId("google-test-id")
     u.token_version = 0
@@ -31,10 +32,10 @@ def _user() -> User:
 
 def test_google_credentials_convert_aware_expiry_for_google_auth() -> None:
     user = _user()
-    user.encrypted_access_token = encrypt_text(uuid.uuid4().hex)
+    user.encrypted_access_token = encrypt_text(secrets.token_hex(16))
     user.google_access_token_expires_at = datetime.now(UTC) + timedelta(hours=1)
 
-    credentials = GoogleDriveService._build_credentials(user)
+    credentials = GoogleDriveService.build_credentials(user)
 
     assert credentials.valid
     assert credentials.expiry is not None
@@ -260,8 +261,8 @@ async def test_list_drive_permissions_maps_page_and_requests_private_fields(
     )
     patch_drive_client(client)
 
-    incoming_page_token = "incoming"  # ruff: ignore[hardcoded-password-string]
-    next_page_token = "next"  # ruff: ignore[hardcoded-password-string]
+    incoming_page_token = "incoming"
+    next_page_token = "next"
     page = await _svc().list_drive_permissions(DriveId("d1"), page_token=incoming_page_token)
 
     assert page.access_model == "shared_drive_membership"

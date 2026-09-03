@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import threading
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
 from app.drive import service as drive_service
 from app.drive.service import reuse_drive_client
+from app.models.user import User
 
 
 def test_same_thread_builds_client_once(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -22,7 +23,7 @@ def test_same_thread_builds_client_once(monkeypatch: pytest.MonkeyPatch) -> None
     )
 
     clients: dict[int, Any] = {}
-    user = cast("Any", object())
+    user = User()
 
     first = reuse_drive_client(user, clients)
     second = reuse_drive_client(user, clients)
@@ -44,7 +45,7 @@ def test_distinct_client_per_worker_thread(monkeypatch: pytest.MonkeyPatch) -> N
     )
 
     clients: dict[int, Any] = {}
-    user = cast("Any", object())
+    user = User()
 
     def worker() -> None:
         reuse_drive_client(user, clients)

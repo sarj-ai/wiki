@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections.abc import Callable
-from typing import Annotated, Literal, cast, override
+from collections.abc import Callable, Mapping
+from typing import Annotated, Literal, Protocol, override
 
 from fastapi import Depends, Header, HTTPException, status
 from google.auth.exceptions import GoogleAuthError
@@ -21,6 +21,15 @@ class _CloudTaskClaims(BaseModel):
     aud: str
     email: EmailStr
     email_verified: Literal[True]
+
+
+class _GoogleTokenVerifier(Protocol):
+    def __call__(
+        self,
+        id_token: str,
+        request: GoogleAuthRequest,
+        audience: str,
+    ) -> Mapping[str, object]: ...
 
 
 class TaskRequestAuthenticator(ABC):
@@ -63,8 +72,7 @@ class GoogleOidcTaskRequestAuthenticator(TaskRequestAuthenticator):
             )
 
 
-def task_request_authenticator_dep() -> TaskRequestAuthenticator:
-    audience = settings.CLOUD_TASKS_TARGET_URL
+def _task_request_authenticator(audience: str | None) -> TaskRequestAuthenticator:
     service_account = settings.CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT
     if audience is None or service_account is None:
         msg = "Cloud Tasks OIDC settings are required"
@@ -75,8 +83,29 @@ def task_request_authenticator_dep() -> TaskRequestAuthenticator:
     )
 
 
-async def require_cloud_task(
-    authenticator: Annotated[TaskRequestAuthenticator, Depends(task_request_authenticator_dep)],
+def smart_create_task_request_authenticator_dep() -> TaskRequestAuthenticator:
+    return _task_request_authenticator(settings.CLOUD_TASKS_TARGET_URL)
+
+
+def document_transform_task_request_authenticator_dep() -> TaskRequestAuthenticator:
+    return _task_request_authenticator(settings.DOCUMENT_TRANSFORM_TARGET_URL)
+
+
+async def require_smart_create_cloud_task(
+    authenticator: Annotated[
+        TaskRequestAuthenticator,
+        Depends(smart_create_task_request_authenticator_dep),
+    ],
+    authorization: Annotated[str | None, Header()] = None,
+) -> None:
+    await authenticator.authenticate(authorization)
+
+
+async def require_document_transform_cloud_task(
+    authenticator: Annotated[
+        TaskRequestAuthenticator,
+        Depends(document_transform_task_request_authenticator_dep),
+    ],
     authorization: Annotated[str | None, Header()] = None,
 ) -> None:
     await authenticator.authenticate(authorization)
@@ -90,8 +119,5 @@ def _unauthorized() -> HTTPException:
 
 
 def _verify_google_token(token: str, audience: str) -> object:
-    verifier = cast(
-        "Callable[[str, GoogleAuthRequest, str], object]",
-        id_token.verify_oauth2_token,
-    )
+    verifier: _GoogleTokenVerifier = id_token.verify_oauth2_token
     return verifier(token, GoogleAuthRequest(), audience)

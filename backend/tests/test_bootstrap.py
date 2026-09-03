@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import cast
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,10 +19,10 @@ from app.extras.schemas import (
 )
 from app.extras.service import ExtrasService
 from app.files.schemas import FileResponse
-from app.files.service import FilesService
 from app.identifiers import DriveId, FileId, GoogleUserId, UserId
 from app.models.user import User
 from app.sidebar.cache import CachedDriveTree, SidebarCacheService
+from tests.support import dependency
 
 
 class _FakeDriveService(DriveService):
@@ -126,12 +125,12 @@ class _FakeFilesService:
         }
 
 
-_NO_DB = cast("AsyncSession", None)
+_NO_DB = None
 
 
 def _user() -> User:
     u = User()
-    u.id = UserId(uuid.uuid4())
+    u.id = UserId(uuid.uuid7())
     u.email = "test@sarj.ai"
     u.google_id = GoogleUserId("gid")
     u.display_name = "Test User"
@@ -150,9 +149,9 @@ async def test_load_aggregates_shell_reads_without_document_icons() -> None:
     svc = AggregatingBootstrapService(
         drive=_FakeDriveService([DriveSummary(id=DriveId("d1"), name="Eng")]),
         extras=_FakeExtrasService(),
-        files=cast("FilesService", files),
+        files=dependency(files),
         cache=cache,
-        db=_NO_DB,
+        db=dependency(_NO_DB),
         user=user,
     )
 
@@ -178,9 +177,9 @@ async def test_load_omits_first_tree_on_cache_miss() -> None:
     out = await AggregatingBootstrapService(
         drive=_FakeDriveService([DriveSummary(id=DriveId("d1"), name="Eng")]),
         extras=_FakeExtrasService(),
-        files=cast("FilesService", _FakeFilesService()),
+        files=dependency(_FakeFilesService()),
         cache=cache,
-        db=_NO_DB,
+        db=dependency(_NO_DB),
         user=_user(),
     ).load()
 
@@ -203,9 +202,9 @@ async def test_load_handles_empty_overlays() -> None:
     out = await AggregatingBootstrapService(
         drive=_FakeDriveService([]),
         extras=_EmptyExtras(),
-        files=cast("FilesService", _FakeFilesService()),
+        files=dependency(_FakeFilesService()),
         cache=cache,
-        db=_NO_DB,
+        db=dependency(_NO_DB),
         user=_user(),
     ).load()
 
@@ -222,9 +221,9 @@ async def test_load_keeps_document_icons_for_legacy_callers() -> None:
     out = await AggregatingBootstrapService(
         drive=_FakeDriveService([]),
         extras=_FakeExtrasService(),
-        files=cast("FilesService", files),
+        files=dependency(files),
         cache=_FakeCacheService(),
-        db=_NO_DB,
+        db=dependency(_NO_DB),
         user=_user(),
     ).load()
 

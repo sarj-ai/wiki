@@ -229,7 +229,7 @@ async def test_doc_icon_list_omits_inaccessible_metadata(client: AsyncClient) ->
 
 async def test_non_member_never_reaches_the_cache(client: AsyncClient) -> None:
     async with client:
-        resp = await client.request("GET", f"/sidebar/drives/{uuid.uuid4()}/folders")
+        resp = await client.request("GET", f"/sidebar/drives/{uuid.uuid7()}/folders")
     assert resp.status_code == 404
 
 

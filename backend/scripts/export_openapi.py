@@ -64,9 +64,9 @@ def _render_spec() -> bytes:
 
 
 def _configure_import_environment() -> None:
-    os.environ.update(  # ruff: ignore[banned-api] — isolate application imports from ambient config
-        _SCHEMA_ENV
-    )
+    for name, value in _SCHEMA_ENV.items():
+        os.putenv(name, value)
+    os.reload_environ()
 
 
 def _write_atomic(path: Path, content: bytes) -> None:

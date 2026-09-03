@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast, override
+from typing import override
 
 from pydantic import ValidationError
 import pytest
@@ -17,7 +17,6 @@ from app.drive.schemas import (
 )
 from app.drive.service import DriveService
 from app.files.schemas import FileResponse
-from app.files.service import FilesService
 from app.identifiers import DriveId, FileId
 from app.sidebar.cache import CachedDriveTree, SidebarCacheService
 from app.smart_create.errors import ReorganizationUnavailableError
@@ -34,6 +33,10 @@ from app.smart_create.service import (
 )
 from app.templates.schemas import TemplateCatalogRead, TemplateMimeType, TemplateRead
 from app.templates.service import TemplateCatalogService
+from tests.support import dependency
+
+
+_DOC_MIME: TemplateMimeType = "application/vnd.google-apps.document"
 
 
 class _Drive(DriveService):
@@ -156,7 +159,7 @@ class _Templates(TemplateCatalogService):
                     drive_name="Product",
                     name="PRD",
                     description="Product requirements",
-                    mime_type=cast("TemplateMimeType", MIME_DOC),
+                    mime_type=_DOC_MIME,
                     modified_time="2026-08-02T00:00:00Z",
                     category_path=["Product"],
                 ),
@@ -166,7 +169,7 @@ class _Templates(TemplateCatalogService):
                     drive_name="People",
                     name="People template",
                     description="People operations",
-                    mime_type=cast("TemplateMimeType", MIME_DOC),
+                    mime_type=_DOC_MIME,
                     modified_time="2026-08-02T00:00:00Z",
                     category_path=["People"],
                 ),
@@ -287,7 +290,7 @@ async def test_smart_create_only_exposes_the_invoking_drive() -> None:
         )
     )
     service = GeminiSmartProposalService(
-        db=cast("AsyncSession", object()),
+        db=AsyncSession(),
         drive=_Drive(),
         sidebar_cache=_Cache(),
         templates=_Templates(),
@@ -491,9 +494,9 @@ async def test_reorganization_passes_content_and_metadata_to_generator() -> None
         )
     )
     service = GeminiReorganizationService(
-        db=cast("AsyncSession", object()),
+        db=AsyncSession(),
         drive=_Drive("Customer interview findings and roadmap tradeoffs"),
-        files=cast("FilesService", _Files()),
+        files=dependency(_Files()),
         sidebar_cache=_Cache(),
         generator=generator,
     )
@@ -514,12 +517,9 @@ async def test_reorganization_uses_name_and_metadata_for_non_google_docs() -> No
     )
     drive = _Drive("This content must not be fetched")
     service = GeminiReorganizationService(
-        db=cast("AsyncSession", object()),
+        db=AsyncSession(),
         drive=drive,
-        files=cast(
-            "FilesService",
-            _Files(mime_type="application/pdf", name="Quarterly investor report.pdf"),
-        ),
+        files=dependency(_Files(mime_type="application/pdf", name="Quarterly investor report.pdf")),
         sidebar_cache=_Cache(),
         generator=generator,
     )
@@ -575,7 +575,7 @@ def _request() -> AIMode:
 
 def _service(proposal: GeneratedProposal | Exception) -> GeminiSmartProposalService:
     return GeminiSmartProposalService(
-        db=cast("AsyncSession", object()),
+        db=AsyncSession(),
         drive=_Drive(),
         sidebar_cache=_Cache(),
         templates=_Templates(),
@@ -589,9 +589,9 @@ def _reorganization_service(
     document_text: str | None = "Product roadmap priorities and milestones",
 ) -> GeminiReorganizationService:
     return GeminiReorganizationService(
-        db=cast("AsyncSession", object()),
+        db=AsyncSession(),
         drive=_Drive(document_text),
-        files=cast("FilesService", _Files()),
+        files=dependency(_Files()),
         sidebar_cache=_Cache(),
         generator=_ReorganizationGenerator(proposal),
     )

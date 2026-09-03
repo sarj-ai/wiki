@@ -5,12 +5,11 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 import uuid
 
 import pytest
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.auth.encryption import decrypt_cache, encrypt_cache
 from app.config import settings
@@ -22,11 +21,12 @@ from app.models.wiki import DriveTreeCache
 import app.sidebar.cache as sidebar_cache
 from app.sidebar.cache import CACHE_MAX_AGE, CachedDriveTree, PostgresSidebarCacheService
 from app.sidebar.singleflight import Singleflight
+from tests.support import dependency
 
 
 def _user() -> User:
     u = User()
-    u.id = UserId(uuid.uuid4())
+    u.id = UserId(uuid.uuid7())
     u.email = "test@sarj.ai"
     u.google_id = GoogleUserId("gid")
     u.token_version = 0
@@ -103,7 +103,7 @@ class _ScalarResult:
 class FakeSession:
     def __init__(self, row: DriveTreeCache | None = None) -> None:
         self.row = row
-        self.deleted: list[object] = []
+        self.deleted_rows: list[object] = []
         self.executed: list[Any] = []
         self.get_keys: list[object] = []
         self.commits = 0
@@ -113,7 +113,7 @@ class FakeSession:
         return self.row
 
     async def delete(self, row: object) -> None:
-        self.deleted.append(row)
+        self.deleted_rows.append(row)
 
     async def execute(self, stmt: Any) -> _ScalarResult:
         self.executed.append(stmt)
@@ -123,8 +123,8 @@ class FakeSession:
         self.commits += 1
 
 
-def _db(session: FakeSession) -> AsyncSession:
-    return cast("AsyncSession", cast("object", session))
+def _db(session: FakeSession) -> Any:
+    return session
 
 
 def _service(
@@ -143,7 +143,7 @@ def _service(
         user=user or _user(),
         singleflight=singleflight or Singleflight(),
         bg_tasks=set(),
-        sessionmaker=cast("async_sessionmaker[AsyncSession]", fake_sessionmaker),
+        sessionmaker=dependency(fake_sessionmaker),
     )
 
 
@@ -161,7 +161,7 @@ def test_warm_row_round_trips_through_encryption() -> None:
 
     assert cached.tree == tree
     assert cached.refreshed_at == row.refreshed_at
-    assert db.deleted == []
+    assert db.deleted_rows == []
 
 
 def test_tree_lookup_uses_principal_and_drive_composite_key() -> None:
@@ -215,7 +215,7 @@ def test_undecryptable_row_is_treated_as_cache_miss() -> None:
 
     cached = asyncio.run(service.get_drive_tree(_db(db), DriveId("drive-1")))
 
-    assert db.deleted == [row]
+    assert db.deleted_rows == [row]
     assert drive.walks == 1
     assert cached.tree == tree
     assert cached.refreshed_at is None
@@ -258,7 +258,7 @@ def test_decoded_tree_cache_is_scoped_by_principal(monkeypatch: pytest.MonkeyPat
     tree = _tree()
     refreshed_at = datetime.now(UTC)
     row = DriveTreeCache(
-        user_id=UserId(uuid.uuid4()),
+        user_id=UserId(uuid.uuid7()),
         drive_id=DriveId("drive-principal-cache-test"),
         tree=encrypt_cache(tree.model_dump_json()),
         refreshed_at=refreshed_at,
@@ -339,7 +339,7 @@ def test_unparseable_row_is_treated_as_cache_miss() -> None:
 
     cached = asyncio.run(service.get_drive_tree(_db(db), DriveId("drive-1")))
 
-    assert db.deleted == [row]
+    assert db.deleted_rows == [row]
     assert drive.walks == 1
     assert cached.tree == tree
     assert cached.refreshed_at is None
@@ -358,7 +358,7 @@ def test_pre_files_complete_row_is_treated_as_cache_miss() -> None:
 
     cached = asyncio.run(service.get_drive_tree(_db(db), DriveId("drive-1")))
 
-    assert db.deleted == [row]
+    assert db.deleted_rows == [row]
     assert drive.walks == 1
     assert cached.tree == tree
 

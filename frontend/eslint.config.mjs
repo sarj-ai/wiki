@@ -49,7 +49,7 @@ const reactNamingConvention = strictNamingConvention && [
 export default defineConfig([
   ...withoutReactPlugin(configsAsErrors(nextVitals)),
   ...configsAsErrors(nextTs),
-  ...configsAsErrors(sarjStrict),
+  ...sarjStrict,
   // Type-aware linting: turn on the typed rule sets across the project.
   {
     languageOptions: {

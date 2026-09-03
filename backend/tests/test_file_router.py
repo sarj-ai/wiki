@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-from typing import cast
-
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.drive.schemas import DriveNode, DriveSummary, DriveTree
-from app.drive.service import DriveService
 from app.files.router import read_file
 from app.files.schemas import FileResponse
-from app.files.service import FilesService
 from app.identifiers import DriveId, FileId
-from app.sidebar.cache import CachedDriveTree, SidebarCacheService
+from app.sidebar.cache import CachedDriveTree
+from tests.support import dependency
 
 
 class _Files:
@@ -71,10 +68,10 @@ async def test_read_file_only_peeks_cached_tree_for_complete_breadcrumb() -> Non
 
     detail = await read_file(
         FileId("doc-1"),
-        cast("AsyncSession", None),
-        cast("FilesService", _Files()),
-        cast("DriveService", _Drive()),
-        cast("SidebarCacheService", cache),
+        dependency(None),
+        dependency(_Files()),
+        dependency(_Drive()),
+        dependency(cache),
     )
 
     assert cache.loaded == [DriveId("drive-1")]

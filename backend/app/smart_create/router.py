@@ -4,7 +4,7 @@ from time import monotonic
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Depends, Header, Response, status
+from fastapi import APIRouter, Body, Depends, Header, Path, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
@@ -30,9 +30,13 @@ from app.tasks.service import TaskService
 router = APIRouter(prefix="/files", tags=["files"], responses=authentication_responses())
 
 
-@router.post("/{file_id}/reorganize-proposal", operation_id="propose_file_reorganization")
+@router.post(
+    "/{file_id}/reorganize-proposal",
+    status_code=status.HTTP_200_OK,
+    operation_id="propose_file_reorganization",
+)
 async def propose_file_reorganization(
-    file_id: FileId,
+    file_id: Annotated[FileId, Path(min_length=1)],
     service: Annotated[ReorganizationService, Depends(reorganization_service_dep)],
 ) -> ReorganizationProposalRead:
     return await service.propose(file_id)
@@ -49,6 +53,7 @@ async def invalidate_smart_create_result(
 
 @router.post(
     "/smart-proposal",
+    status_code=status.HTTP_200_OK,
     operation_id="create_smart_proposal",
     responses={
         200: {
@@ -58,7 +63,7 @@ async def invalidate_smart_create_result(
     },
 )
 async def create_smart_proposal(
-    payload: AIMode,
+    payload: Annotated[AIMode, Body()],
     service: Annotated[SmartProposalService, Depends(smart_proposal_service_dep)],
     _user: Annotated[User, Depends(get_current_user)],
     response: Response,
@@ -85,7 +90,7 @@ async def create_smart_proposal(
     },
 )
 async def create_smart_file(
-    payload: SmartFileCreate,
+    payload: Annotated[SmartFileCreate, Body()],
     idempotency_key: Annotated[uuid.UUID, Header(alias="Idempotency-Key")],
     response: Response,
     user: Annotated[User, Depends(get_current_user)],

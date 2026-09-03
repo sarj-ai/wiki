@@ -71,7 +71,7 @@ class _FakeDriveService(DriveService):
 
 def _user() -> User:
     u = User()
-    u.id = UserId(uuid.uuid4())
+    u.id = UserId(uuid.uuid7())
     u.email = "test@sarj.ai"
     u.google_id = GoogleUserId("gid")
     u.token_version = 0
@@ -418,7 +418,7 @@ async def test_task_recovery_uses_user_corpus_for_my_drive(
     )
     service = GoogleFilesService(user=_user(), drive=drive)
 
-    result = await service.find_by_task(DriveId("personal-root"), TaskId(uuid.uuid4()))
+    result = await service.find_by_task(DriveId("personal-root"), TaskId(uuid.uuid7()))
 
     assert result is not None
     assert result.drive_id == DriveId("personal-root")

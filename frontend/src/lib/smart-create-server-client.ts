@@ -4,7 +4,7 @@ import * as z from "zod";
 
 import { API_URL } from "@/lib/env";
 
-const ZErrorResponse = z.object({ detail: z.string().optional() });
+const ErrorResponseSchema = z.object({ detail: z.string().optional() });
 const UPSTREAM_TIMEOUT_MS = 30_000;
 
 export interface SmartUpstreamResponse {
@@ -36,7 +36,7 @@ export async function callSmartCreateApi(
     });
     const responseBody = await response.text();
     if (response.ok) return { body: responseBody, ok: true, status: response.status };
-    const parsed = ZErrorResponse.safeParse(safeJson(responseBody));
+    const parsed = ErrorResponseSchema.safeParse(safeJson(responseBody));
     const error = parsed.success ? parsed.data.detail : undefined;
     return {
       body: responseBody,
@@ -61,7 +61,7 @@ export async function readSmartCreateApi(
     });
     const responseBody = await response.text();
     if (response.ok) return { body: responseBody, ok: true, status: response.status };
-    const parsed = ZErrorResponse.safeParse(safeJson(responseBody));
+    const parsed = ErrorResponseSchema.safeParse(safeJson(responseBody));
     const error = parsed.success ? parsed.data.detail : undefined;
     return {
       body: responseBody,

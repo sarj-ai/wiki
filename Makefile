@@ -1,7 +1,7 @@
 GCP_PROJECT := sarj-docs
 STAMPS := .stamps
 SECRETS_TTL := 1440
-STANDARDS_RUN := uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.0 code-standards
+STANDARDS_RUN := uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.2 code-standards
 
 .PHONY: help setup setup-hooks standards-sync standards-check standards-upgrade \
 	check check-node check-quality check-backend check-frontend check-repository fix audit doctor \
@@ -73,7 +73,7 @@ doctor: ## Diagnose repository Standards drift in a clean tree copy.
 	@tmp=$$(mktemp -d) && tmp=$$(cd "$$tmp" && pwd -P) && trap 'rm -rf "$$tmp"' EXIT && \
 		git ls-files --cached --others --exclude-standard -z | \
 		tar --null -T - -cf - | tar -xf - -C "$$tmp" && \
-		uv run --project backend --locked sarj-lint-configs doctor --dest "$$tmp"
+		$(STANDARDS_RUN) --root "$$tmp" doctor
 
 fix: ## Apply safe backend and frontend formatter/linter fixes.
 	@cd backend && uv run ruff check --fix .

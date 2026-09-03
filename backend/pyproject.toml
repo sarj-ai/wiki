@@ -19,6 +19,7 @@ dependencies = [
   "tenacity>=9.1.4",
   "cloud-sql-python-connector[asyncpg]>=1.21.0",
   "pydantic[email]>=2.13.4",
+  "python-docx>=1.2.0",
 ]
 description = "Internal knowledge base API for Sarj"
 name = "sarj-docs-backend"
@@ -38,9 +39,9 @@ dev = [
     "basedpyright>=1.39.0",
     "ty>=0.0.65",
     "google-api-python-client-stubs>=1.39.0",
-    "sarj-iac-lint==0.15.0",
-    "sarj-python-lint==0.79.1",
-    "sarj-sql-lint==0.16.3",
+    "sarj-iac-lint==0.15.1",
+    "sarj-python-lint==0.80.5",
+    "sarj-sql-lint==0.16.5",
     "import-linter>=2.13",
     "pip-audit>=2.10.0",
 ]
@@ -58,7 +59,7 @@ extend-exclude = ["alembic/versions"]
 line-length = 100
 target-version = "py314"
 
-[tool.ruff.lint.per-file-ignores]
+[tool.ruff.lint.extend-per-file-ignores]
 "alembic/env.py" = ["ALL"]
 "app/**" = [
   # FastAPI, Pydantic, and SQLAlchemy evaluate annotations for dependency
@@ -129,19 +130,6 @@ target-version = "py314"
 force-sort-within-sections = true
 known-first-party = ["app"]
 lines-after-imports = 2
-
-[tool.ruff.lint.flake8-tidy-imports.banned-api]
-"datetime.datetime.utcnow".msg = "Deprecated in 3.12. Use datetime.now(UTC)."
-"fastapi.UploadFile".msg = "Use a pre-signed URL so the client uploads directly to object storage."
-"os.environ".msg = "Use the Pydantic Settings class (app.config). For genuine raw access add `# noqa: TID251 — <reason>`."
-"os.getenv".msg = "Use the Pydantic Settings class (app.config) instead of os.getenv."
-"pickle.load".msg = "pickle is unsafe on untrusted input. Use JSON via Pydantic / orjson."
-"pickle.loads".msg = "pickle is unsafe on untrusted input. Use JSON via Pydantic / orjson."
-"pydantic.alias_generators.to_camel".msg = "Keep API contracts snake_case; transform on the frontend."
-"unittest.mock.AsyncMock".msg = "Prefer real fixtures / hand-rolled fakes."
-"unittest.mock.MagicMock".msg = "Prefer real fixtures / hand-rolled fakes."
-"unittest.mock.Mock".msg = "Prefer real fixtures / hand-rolled fakes implementing the relevant ABC."
-"unittest.mock.patch".msg = "Prefer dependency injection via fixtures over monkey-patching."
 
 [tool.importlinter]
 include_external_packages = true

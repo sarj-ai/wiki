@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Sparkles } from "lucide-react";
+import { FileText, Plus, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -13,6 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { DocumentPolishDialog } from "@/components/wiki-document/document-polish-dialog";
 import { useCreateFile } from "@/hooks/use-wiki-mutations";
 import { isGoogleWorkspaceType, renderMimeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
@@ -55,6 +56,7 @@ export function CreateFileMenu({ compact = true, driveId, parentFolderId }: Crea
   const createFile = useCreateFile();
   const [menuOpen, setMenuOpen] = useState(false);
   const [smartOpen, setSmartOpen] = useState(false);
+  const [markdownPolishOpen, setMarkdownPolishOpen] = useState(false);
 
   const [pendingType, setPendingType] = useState<CreateType | null>(null);
 
@@ -108,6 +110,16 @@ export function CreateFileMenu({ compact = true, driveId, parentFolderId }: Crea
             <Sparkles className="size-4" />
             Smart create…
           </DropdownMenuItem>
+          <DropdownMenuItem
+            className="flex items-center gap-2 text-sm"
+            onClick={() => {
+              setMenuOpen(false);
+              setMarkdownPolishOpen(true);
+            }}
+          >
+            <FileText className="size-4" />
+            Polish Markdown…
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           {CREATE_TYPES.map((type) => (
             <DropdownMenuItem
@@ -128,6 +140,19 @@ export function CreateFileMenu({ compact = true, driveId, parentFolderId }: Crea
         invokingFolderId={parentFolderId}
         onOpenChange={setSmartOpen}
         open={smartOpen}
+      />
+      <DocumentPolishDialog
+        onOpenChange={setMarkdownPolishOpen}
+        open={markdownPolishOpen}
+        source={{
+          initialDestination: {
+            driveId,
+            driveName: "Current workspace",
+            folderId: parentFolderId,
+            folderPath: ["Current folder"],
+          },
+          kind: "markdown",
+        }}
       />
       <NamePromptDialog
         confirmLabel="Create"

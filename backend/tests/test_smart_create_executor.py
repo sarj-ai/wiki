@@ -1,20 +1,16 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import NamedTuple, cast, override
+from typing import NamedTuple, override
 import uuid
 
 from pydantic import BaseModel
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.cache.service import CacheService
 from app.files.errors import DriveUpstreamError
 from app.files.schemas import FileResponse
-from app.files.service import GoogleFilesService
 from app.identifiers import DriveId, FileId, IdempotencyKey, TaskId
-from app.sidebar.cache import SidebarCacheService
-from app.smart_create.creation import DriveSmartFileCreationService
 from app.smart_create.executor import DriveSmartCreateTaskExecutor, SmartCreateRuntime
 from app.smart_create.schemas import BlankSource, SmartCreateResult, SmartFileCreate
 from app.tasks.errors import TaskExecutionDeferredError, TaskNotClaimableError
@@ -30,6 +26,7 @@ from app.tasks.schemas import (
     TaskStatus,
 )
 from app.tasks.service import TaskService
+from tests.support import dependency
 
 
 def _payload() -> SmartFileCreate:
@@ -55,8 +52,8 @@ def _file() -> FileResponse:
 
 class _Tasks(TaskService):
     def __init__(self, *, claimable: bool = True) -> None:
-        self.task_id = TaskId(uuid.uuid4())
-        self.owner_id = uuid.uuid4()
+        self.task_id = TaskId(uuid.uuid7())
+        self.owner_id = uuid.uuid7()
         self.claimable = claimable
         self.status: TaskStatus = TaskStatus.PENDING
         self.lease_duration: timedelta | None = None
@@ -125,7 +122,9 @@ class _Tasks(TaskService):
             raise TaskNotClaimableError
         self.status = TaskStatus.RUNNING
         self.lease_duration = lease_duration
-        return TaskClaim(task=cast("RunningTaskRead", self.read()), lease_token=uuid.uuid4())
+        task = self.read()
+        assert isinstance(task, RunningTaskRead)
+        return TaskClaim(task=task, lease_token=uuid.uuid7())
 
     @override
     async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
@@ -215,10 +214,10 @@ class _Sidebar:
 class _Executor(DriveSmartCreateTaskExecutor):
     def __init__(self, tasks: _Tasks, runtime: SmartCreateRuntime) -> None:
         super().__init__(
-            db=cast("AsyncSession", object()),
+            db=AsyncSession(),
             tasks=tasks,
-            cache=cast("CacheService", object()),
-            sessionmaker=cast("async_sessionmaker[AsyncSession]", object()),
+            cache=dependency(object()),
+            sessionmaker=async_sessionmaker(),
         )
         self.runtime = runtime
 
@@ -237,9 +236,9 @@ def _executor(tasks: _Tasks, *, upstream_error: bool = False) -> _ExecutorFixtur
     creation = _Creation(tasks, upstream_error=upstream_error)
     sidebar = _Sidebar()
     runtime = SmartCreateRuntime(
-        creation=cast("DriveSmartFileCreationService", creation),
-        files=cast("GoogleFilesService", _Files()),
-        sidebar=cast("SidebarCacheService", sidebar),
+        creation=dependency(creation),
+        files=dependency(_Files()),
+        sidebar=dependency(sidebar),
     )
     return _ExecutorFixture(_Executor(tasks, runtime), creation, sidebar)
 

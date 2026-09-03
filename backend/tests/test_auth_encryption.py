@@ -1,15 +1,6 @@
 from __future__ import annotations
 
-import os
-
 from cryptography.fernet import Fernet
-
-
-os.environ.setdefault("FERNET_KEY", Fernet.generate_key().decode())  # ruff: ignore[banned-api] — pre-import env setup
-os.environ.setdefault("SECRET_KEY", "x" * 40)  # ruff: ignore[banned-api] — pre-import env setup
-os.environ.setdefault("GOOGLE_CLIENT_ID", "test-client-id")  # ruff: ignore[banned-api] — pre-import env setup
-os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-client-secret")  # ruff: ignore[banned-api] — pre-import env setup
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost:5432/test")  # ruff: ignore[banned-api] — pre-import env setup
 
 from app.auth.encryption import decrypt_text, encrypt_text
 from app.config import parse_fernet_keys

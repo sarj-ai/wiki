@@ -3,7 +3,7 @@ import * as z from "zod";
 import { proposeFileReorganizationAction } from "@/app/actions/smart-create-actions";
 import { runAction } from "@/lib/action-client";
 
-const ZDestination = z
+const DestinationSchema = z
   .object({
     drive_id: z.string(),
     drive_name: z.string(),
@@ -12,11 +12,11 @@ const ZDestination = z
   })
   .strict();
 
-const ZProposal = z
+const ProposalSchema = z
   .object({
-    current_destination: ZDestination,
+    current_destination: DestinationSchema,
     reason: z.string().nullable(),
-    suggested_destination: ZDestination.nullable(),
+    suggested_destination: DestinationSchema.nullable(),
   })
   .strict();
 
@@ -35,7 +35,7 @@ export interface ReorganizationProposal {
 
 export async function proposeFileReorganization(fileId: string): Promise<ReorganizationProposal> {
   const body = await runAction(async () => await proposeFileReorganizationAction(fileId));
-  const proposal = ZProposal.parse(JSON.parse(body));
+  const proposal = ProposalSchema.parse(JSON.parse(body));
   return {
     currentDestination: toDestination(proposal.current_destination),
     ...(proposal.reason === null ? {} : { reason: proposal.reason }),
@@ -45,7 +45,7 @@ export async function proposeFileReorganization(fileId: string): Promise<Reorgan
   };
 }
 
-function toDestination(value: z.output<typeof ZDestination>): ReorganizationDestination {
+function toDestination(value: z.output<typeof DestinationSchema>): ReorganizationDestination {
   return {
     driveId: value.drive_id,
     driveName: value.drive_name,

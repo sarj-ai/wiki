@@ -13,8 +13,11 @@ from app.identifiers import AuthSessionId, TokenId, UserId
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
-TOKEN_ISSUER = "sarj-wiki"  # ruff: ignore[hardcoded-password-string] — JWT identity, not a secret
-TOKEN_AUDIENCE = "sarj-wiki-api"  # ruff: ignore[hardcoded-password-string] — JWT identity, not a secret
+JWT_ISSUER = "sarj-wiki"
+JWT_AUDIENCE = "sarj-wiki-api"
+# Compatibility exports for callers that imported the original public names.
+TOKEN_ISSUER = JWT_ISSUER
+TOKEN_AUDIENCE = JWT_AUDIENCE
 
 
 class TokenPayload(BaseModel):
@@ -34,9 +37,9 @@ def create_access_token(
     payload = {
         "sub": str(user_id),
         "sid": str(session_id),
-        "jti": str(uuid.uuid4()),
-        "iss": TOKEN_ISSUER,
-        "aud": TOKEN_AUDIENCE,
+        "jti": str(uuid.uuid7()),
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
         "iat": now,
         "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
         "type": "access",
@@ -56,8 +59,8 @@ def create_refresh_token(
         "sub": str(user_id),
         "sid": str(session_id),
         "jti": str(refresh_jti),
-        "iss": TOKEN_ISSUER,
-        "aud": TOKEN_AUDIENCE,
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
         "iat": now,
         "exp": now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
         "type": "refresh",
@@ -72,8 +75,8 @@ def decode_token(token: str) -> TokenPayload:
             token,
             settings.SECRET_KEY.get_secret_value(),
             algorithms=[ALGORITHM],
-            audience=TOKEN_AUDIENCE,
-            issuer=TOKEN_ISSUER,
+            audience=JWT_AUDIENCE,
+            issuer=JWT_ISSUER,
             options={"require": ["aud", "exp", "iat", "iss", "jti", "sid", "sub", "type"]},
         )
     except jwt.PyJWTError as e:

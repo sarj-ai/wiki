@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast, override
+from typing import override
 import uuid
 
 import jwt
@@ -20,11 +20,12 @@ from app.config import settings
 from app.identifiers import AuthSessionFamilyId, AuthSessionId, TokenId, UserId
 from app.models.auth_session import UserSession
 from app.models.user import User
+from tests.support import dependency
 
 
 def test_tokens_have_verified_identity_and_no_email_claim() -> None:
-    user_id = UserId(uuid.uuid4())
-    session_id = AuthSessionId(uuid.uuid4())
+    user_id = UserId(uuid.uuid7())
+    session_id = AuthSessionId(uuid.uuid7())
     token = create_access_token(user_id, session_id)
 
     raw = jwt.decode(
@@ -49,9 +50,9 @@ def test_tokens_have_verified_identity_and_no_email_claim() -> None:
 def test_tokens_reject_wrong_issuer_or_audience(claim: str, value: str) -> None:
     now = datetime.now(UTC)
     payload: dict[str, object] = {
-        "sub": str(uuid.uuid4()),
-        "sid": str(uuid.uuid4()),
-        "jti": str(uuid.uuid4()),
+        "sub": str(uuid.uuid7()),
+        "sid": str(uuid.uuid7()),
+        "jti": str(uuid.uuid7()),
         "iss": TOKEN_ISSUER,
         "aud": TOKEN_AUDIENCE,
         "iat": now,
@@ -95,7 +96,10 @@ class _JoinedDb:
 class _SessionService(GoogleAuthService):
     def __init__(self, user: User, session: UserSession) -> None:
         self.db = _FakeDb()
-        super().__init__(cast("Any", self.db), cast("Any", object()))
+        super().__init__(
+            dependency(self.db),
+            dependency(object()),
+        )
         self.user = user
         self.session = session
         self.revoked_families: list[AuthSessionFamilyId] = []
@@ -139,8 +143,8 @@ class _AuthFixture:
 
 
 def _user_and_session() -> _AuthFixture:
-    user_id = UserId(uuid.uuid4())
-    session_id = AuthSessionId(uuid.uuid4())
+    user_id = UserId(uuid.uuid7())
+    session_id = AuthSessionId(uuid.uuid7())
     user = User(
         id=user_id,
         email="person@sarj.ai",
@@ -156,7 +160,7 @@ def _user_and_session() -> _AuthFixture:
         id=session_id,
         family_id=AuthSessionFamilyId(session_id),
         user_id=user_id,
-        refresh_jti=TokenId(uuid.uuid4()),
+        refresh_jti=TokenId(uuid.uuid7()),
         expires_at=now + timedelta(days=7),
         revoked_at=None,
         created_at=now,
@@ -198,7 +202,10 @@ async def test_access_token_requires_an_active_matching_session() -> None:
 async def test_access_token_loads_session_and_user_in_one_query() -> None:
     fixture = _user_and_session()
     db = _JoinedDb(AccessIdentity(session=fixture.session, user=fixture.user))
-    service = GoogleAuthService(cast("Any", db), cast("Any", object()))
+    service = GoogleAuthService(
+        dependency(db),
+        dependency(object()),
+    )
     token = create_access_token(UserId(fixture.user.id), fixture.session.id)
 
     assert await service.resolve_current_user(token) is fixture.user

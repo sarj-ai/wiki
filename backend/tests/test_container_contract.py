@@ -2,8 +2,12 @@ from pathlib import Path
 
 
 _DOCKERFILE = Path(__file__).parents[1] / "Dockerfile"
-_DEPLOY_WORKFLOW = Path(__file__).parents[2] / ".github/workflows/deploy-backend.yml"
-_MIGRATIONS_TERRAFORM = Path(__file__).parents[2] / "terraform/dammam.tf"
+_REPOSITORY_ROOT = Path(__file__).parents[2]
+_DEPLOY_WORKFLOW = _REPOSITORY_ROOT / ".github/workflows/deploy-backend.yml"
+_DEPLOY_CANDIDATE = _REPOSITORY_ROOT / "scripts/github/deploy-backend-candidate.sh"
+_RUN_MIGRATIONS = _REPOSITORY_ROOT / "scripts/github/run-backend-migrations.sh"
+_VERIFY_LOGS = _REPOSITORY_ROOT / "scripts/github/verify-backend-correlated-logs.sh"
+_MIGRATIONS_TERRAFORM = _REPOSITORY_ROOT / "terraform/dammam.tf"
 
 
 def test_application_container_does_not_run_database_migrations() -> None:
@@ -22,11 +26,18 @@ def test_deployment_runs_one_shot_migrations_before_traffic_switch() -> None:
     traffic = workflow.index("- name: Switch production traffic")
 
     assert candidate < migration < traffic
-    assert "--no-traffic" in workflow[candidate:migration]
-    assert 'select(.type == "Ready")' in workflow[candidate:migration]
-    assert "latestReadyRevisionName" not in workflow[candidate:migration]
-    assert "--wait" in workflow[migration:traffic]
-    assert 'steps.deploy.outputs.release_image }}"' in workflow[migration:traffic]
+    assert "scripts/github/deploy-backend-candidate.sh" in workflow[candidate:migration]
+    assert "scripts/github/run-backend-migrations.sh" in workflow[migration:traffic]
+    assert "steps.deploy.outputs.release_image }}" in workflow[migration:traffic]
+
+    candidate_script = _DEPLOY_CANDIDATE.read_text()
+    assert "--no-traffic" in candidate_script
+    assert 'select(.type == "Ready")' in candidate_script
+    assert "latestReadyRevisionName" not in candidate_script
+
+    migration_script = _RUN_MIGRATIONS.read_text()
+    assert "--wait" in migration_script
+    assert '"$RELEASE_IMAGE"' in migration_script
 
 
 def test_migration_job_has_database_only_environment() -> None:
@@ -47,4 +58,5 @@ def test_log_gate_allows_for_cloud_logging_ingestion_delay() -> None:
     log_gate = workflow.index("- name: Verify correlated production logs")
     blocked_release = workflow.index("- name: Report blocked release without rollback")
 
-    assert "for _attempt in {1..12}; do" in workflow[log_gate:blocked_release]
+    assert "scripts/github/verify-backend-correlated-logs.sh" in workflow[log_gate:blocked_release]
+    assert "for _attempt in {1..12}; do" in _VERIFY_LOGS.read_text()

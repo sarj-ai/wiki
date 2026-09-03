@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+import secrets
 from typing import Self
 import uuid
 
@@ -20,7 +21,7 @@ from app.models.user import User
 
 
 _PROVIDER_URL = "https://www.googleapis.com/drive/v3/files/private-resource-id"
-_PROVIDER_TOKEN = uuid.uuid4().hex
+_PROVIDER_TOKEN = secrets.token_urlsafe()
 _PROVIDER_BODY = f'{{"error":{{"message":"Bearer {_PROVIDER_TOKEN}"}}}}'
 
 
@@ -56,7 +57,7 @@ class _FailingGoogleClient:
 
 def _user() -> User:
     user = User()
-    user.id = UserId(uuid.uuid4())
+    user.id = UserId(uuid.uuid7())
     user.email = "test@sarj.ai"
     user.google_id = GoogleUserId("provider-error-test")
     user.token_version = 0

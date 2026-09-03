@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import NamedTuple, cast, override
+from typing import NamedTuple, override
 import uuid
 
 from pydantic import BaseModel
@@ -47,6 +47,9 @@ from app.tasks.schemas import (
 from app.tasks.service import TaskService
 from app.templates.schemas import TemplateCatalogRead, TemplateMimeType, TemplateRead
 from app.templates.service import TemplateCatalogService
+
+
+_DOC_MIME: TemplateMimeType = "application/vnd.google-apps.document"
 
 
 def _file(
@@ -282,7 +285,7 @@ class _Templates(TemplateCatalogService):
         return TemplateCatalogRead(templates=self.templates)
 
 
-class _Database:
+class _Database(AsyncSession):
     def __init__(self) -> None:
         self.rollbacks = 0
 
@@ -337,7 +340,7 @@ def _service(
             extras=extras,
             tasks=tasks,
             templates=templates or _Templates(),
-            db=cast("AsyncSession", db or _Database()),
+            db=db or _Database(),
         ),
         alias_service,
         extras,
@@ -357,8 +360,8 @@ async def test_blank_creation_records_resource_and_enriches() -> None:
     )
     with pytest.raises(_SucceededError):
         await service.execute(
-            task_id=TaskId(uuid.uuid4()),
-            lease_token=uuid.uuid4(),
+            task_id=TaskId(uuid.uuid7()),
+            lease_token=uuid.uuid7(),
             payload=payload,
             existing_resource=None,
         )
@@ -381,8 +384,8 @@ async def test_recovery_does_not_create_second_file() -> None:
     )
     with pytest.raises(_SucceededError):
         await service.execute(
-            task_id=TaskId(uuid.uuid4()),
-            lease_token=uuid.uuid4(),
+            task_id=TaskId(uuid.uuid7()),
+            lease_token=uuid.uuid7(),
             payload=payload,
             existing_resource=None,
         )
@@ -400,7 +403,7 @@ async def test_changed_template_is_rejected_before_copy() -> None:
         drive_name="Product",
         name="PRD",
         description=None,
-        mime_type=cast("TemplateMimeType", MIME_DOC),
+        mime_type=_DOC_MIME,
         modified_time="new-version",
         category_path=[],
     )
@@ -411,7 +414,7 @@ async def test_changed_template_is_rejected_before_copy() -> None:
             template_file_id=template.file_id,
             template_drive_id=template.drive_id,
             template_modified_time="old-version",
-            mime_type=cast("TemplateMimeType", MIME_DOC),
+            mime_type=_DOC_MIME,
         ),
         parent_folder_id=FileId("folder"),
         name="PRD",
@@ -420,8 +423,8 @@ async def test_changed_template_is_rejected_before_copy() -> None:
     )
     with pytest.raises(TemplateChangedError):
         await service.execute(
-            task_id=TaskId(uuid.uuid4()),
-            lease_token=uuid.uuid4(),
+            task_id=TaskId(uuid.uuid7()),
+            lease_token=uuid.uuid7(),
             payload=payload,
             existing_resource=None,
         )
@@ -448,8 +451,8 @@ async def test_alias_database_failure_rolls_back_and_succeeds_with_warning() -> 
 
     with pytest.raises(_SucceededError):
         await service.execute(
-            task_id=TaskId(uuid.uuid4()),
-            lease_token=uuid.uuid4(),
+            task_id=TaskId(uuid.uuid7()),
+            lease_token=uuid.uuid7(),
             payload=payload,
             existing_resource=None,
         )
@@ -478,8 +481,8 @@ async def test_alias_drive_failure_is_a_warning_after_file_creation() -> None:
 
     with pytest.raises(_SucceededError):
         await service.execute(
-            task_id=TaskId(uuid.uuid4()),
-            lease_token=uuid.uuid4(),
+            task_id=TaskId(uuid.uuid7()),
+            lease_token=uuid.uuid7(),
             payload=payload,
             existing_resource=None,
         )
@@ -491,11 +494,11 @@ async def test_alias_drive_failure_is_a_warning_after_file_creation() -> None:
 async def test_successful_smart_creation_invalidates_sidebar_drive() -> None:
     cache = _SidebarCache()
     result = SmartCreateResult(
-        task_id=TaskId(uuid.uuid4()),
+        task_id=TaskId(uuid.uuid7()),
         file=_file("created"),
         warnings=[],
     )
 
-    await invalidate_smart_create_result(cast("AsyncSession", object()), cache, result)
+    await invalidate_smart_create_result(_Database(), cache, result)
 
     assert cache.invalidated == DriveId("drive")

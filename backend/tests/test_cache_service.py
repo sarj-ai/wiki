@@ -3,15 +3,15 @@ from __future__ import annotations
 import asyncio
 from datetime import timedelta
 from types import TracebackType
-from typing import NamedTuple, Self, cast
+from typing import NamedTuple, Self
 
 from cryptography.fernet import Fernet
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql import ClauseElement
 
 from app.cache.protection import CacheEntryProtector
 from app.cache.service import CacheNamespace, CachePSqlService
+from tests.support import dependency
 
 
 class _CacheRow(NamedTuple):
@@ -86,7 +86,7 @@ def _protector(*keys: str) -> CacheEntryProtector:
 def _service(*sessions: _Session, protector: CacheEntryProtector | None = None) -> CachePSqlService:
     factory = _SessionMaker(*sessions)
     return CachePSqlService(
-        cast("async_sessionmaker[AsyncSession]", factory),
+        dependency(factory),
         protector or _protector(),
     )
 
@@ -100,7 +100,8 @@ class _CollidingProtector:
 
 
 def _statement_parameters(statement: object) -> str:
-    return repr(cast("ClauseElement", statement).compile().params)
+    assert isinstance(statement, ClauseElement)
+    return repr(statement.compile().params)
 
 
 async def test_put_many_is_one_atomic_expiring_upsert() -> None:
@@ -235,7 +236,7 @@ async def test_concurrent_reads_use_independent_sessions() -> None:
     )
     factory = _SessionMaker(first, second)
     service = CachePSqlService(
-        cast("async_sessionmaker[AsyncSession]", factory),
+        dependency(factory),
         protector,
     )
 
@@ -344,7 +345,10 @@ async def test_put_persists_only_active_hmac_key_and_encrypted_envelope() -> Non
 
 async def test_get_many_physical_key_collision_fails_closed_without_database_access() -> None:
     session = _Session()
-    service = _service(session, protector=cast("CacheEntryProtector", _CollidingProtector()))
+    service = _service(
+        session,
+        protector=dependency(_CollidingProtector()),
+    )
 
     values = await service.get_many(CacheNamespace.DRIVE_LIST, ["user-a", "user-b"])
 
@@ -354,7 +358,10 @@ async def test_get_many_physical_key_collision_fails_closed_without_database_acc
 
 async def test_put_many_physical_key_collision_fails_before_database_access() -> None:
     session = _Session()
-    service = _service(session, protector=cast("CacheEntryProtector", _CollidingProtector()))
+    service = _service(
+        session,
+        protector=dependency(_CollidingProtector()),
+    )
 
     await service.put_many(
         CacheNamespace.DRIVE_LIST,
@@ -369,7 +376,7 @@ async def test_get_many_chunks_large_lookup_batches() -> None:
     first, second = _Session(_Result()), _Session(_Result())
     factory = _SessionMaker(first, second)
     service = CachePSqlService(
-        cast("async_sessionmaker[AsyncSession]", factory),
+        dependency(factory),
         _protector(),
     )
 
