@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
 import json
-from typing import cast
 import uuid
 
 from google.api_core.exceptions import AlreadyExists
@@ -13,6 +11,7 @@ import pytest
 from app.identifiers import TaskId
 from app.tasks import dependencies
 from app.tasks.queue import CloudTasksEnqueuer, TaskEnqueuer
+from tests.support import dependency
 
 
 class _Client:
@@ -25,9 +24,8 @@ class _Client:
 
     async def create_task(self, *, parent: str, task: tasks_v2.Task) -> tasks_v2.Task:
         if self.duplicate:
-            factory = cast("Callable[[str], AlreadyExists]", AlreadyExists)
             msg = "deterministic task already exists"
-            raise factory(msg)
+            raise AlreadyExists(msg)
         self.task = task
         return task
 
@@ -39,13 +37,17 @@ def _enqueuer(client: _Client) -> CloudTasksEnqueuer:
         queue="smart-create",
         target_url="https://wiki-api.sarj.ai/internal/tasks/smart-create",
         invoker_service_account="wiki-task-invoker@sarj-docs.iam.gserviceaccount.com",
-        client=cast("tasks_v2.CloudTasksAsyncClient", client),
+        document_transform_queue="document-transform",
+        document_transform_target_url=(
+            "https://wiki-api.sarj.ai/internal/tasks/document-transform"
+        ),
+        client=dependency(client),
     )
 
 
 async def test_enqueue_uses_deterministic_name_oidc_and_id_only_body() -> None:
     client = _Client()
-    task_id = TaskId(uuid.uuid4())
+    task_id = TaskId(uuid.uuid7())
 
     await _enqueuer(client).enqueue_smart_create(task_id)
 
@@ -58,9 +60,21 @@ async def test_enqueue_uses_deterministic_name_oidc_and_id_only_body() -> None:
 
 
 async def test_duplicate_cloud_task_name_is_idempotent_success() -> None:
-    result = await _enqueuer(_Client(duplicate=True)).enqueue_smart_create(TaskId(uuid.uuid4()))
+    result = await _enqueuer(_Client(duplicate=True)).enqueue_smart_create(TaskId(uuid.uuid7()))
 
     assert result is None
+
+
+async def test_document_transform_uses_separate_queue_and_exact_internal_target() -> None:
+    client = _Client()
+    task_id = TaskId(uuid.uuid7())
+
+    await _enqueuer(client).enqueue_document_transform(task_id)
+
+    assert client.task is not None
+    assert "/queues/document-transform/tasks/document-transform-" in client.task.name
+    assert client.task.http_request.url.endswith("/internal/tasks/document-transform")
+    assert client.task.http_request.oidc_token.audience == client.task.http_request.url
 
 
 @pytest.mark.parametrize(
@@ -80,14 +94,18 @@ def test_rejects_unsafe_or_unexpected_task_targets(target_url: str) -> None:
             queue="smart-create",
             target_url=target_url,
             invoker_service_account="wiki-task-invoker@sarj-docs.iam.gserviceaccount.com",
-            client=cast("tasks_v2.CloudTasksAsyncClient", _Client()),
+            client=dependency(_Client()),
         )
 
 
 async def test_dependency_constructs_async_client_on_request_event_loop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    expected = cast("TaskEnqueuer", object())
+    class _ExpectedEnqueuer(TaskEnqueuer):
+        async def enqueue_smart_create(self, task_id: TaskId) -> None:
+            del task_id
+
+    expected = _ExpectedEnqueuer()
 
     def construct() -> TaskEnqueuer:
         asyncio.get_running_loop()

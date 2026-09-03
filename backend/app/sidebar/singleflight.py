@@ -2,16 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Any, TypeVar, cast
 
 
-T = TypeVar("T")
-
-
-class Singleflight:
+class Singleflight[T]:
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
-        self._inflight: dict[str, asyncio.Future[Any]] = {}
+        self._inflight: dict[str, asyncio.Future[T]] = {}
 
     async def do(self, key: str, fn: Callable[[], Awaitable[T]]) -> T:
         loop = asyncio.get_running_loop()
@@ -22,7 +18,7 @@ class Singleflight:
                 self._inflight[key] = fut
 
         if existing is not None:
-            return cast("T", await existing)
+            return await existing
 
         try:
             result = await fn()

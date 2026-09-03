@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, Copy, ExternalLink, RefreshCw } from "lucide-react";
+import { Check, ChevronRight, Copy, ExternalLink, RefreshCw, Sparkles } from "lucide-react";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
 
@@ -13,7 +13,9 @@ import {
 } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import type { BreadcrumbItem } from "@/types/wiki";
+import { MIME_DOC, MIME_MARKDOWN } from "@/types/wiki";
 
+import { DocumentPolishDialog } from "./document-polish-dialog";
 import { ReadOnlyShortLink } from "./read-only-short-link";
 import { ReorganizeDocument } from "./reorganize-document";
 import { ShortLinkDialog } from "./short-link-dialog";
@@ -25,6 +27,7 @@ interface WikiToolbarProps {
   driveId: string | undefined;
   fileId: string;
   mimeType: string;
+  modifiedTime?: string;
   onReload: () => void;
   parentFolderId: string | undefined;
 
@@ -40,6 +43,7 @@ export function WikiToolbar({
   driveId,
   fileId,
   mimeType,
+  modifiedTime,
   onReload,
   parentFolderId,
   title,
@@ -47,6 +51,7 @@ export function WikiToolbar({
   const openUrl = openUrlFor(mimeType, fileId);
   const openLabel = openInGoogleLabel(mimeType);
   const [copied, setCopied] = useState(false);
+  const [polishOpen, setPolishOpen] = useState(false);
   const displayTitle = displayFileName(title, mimeType);
 
   const trail: BreadcrumbItem[] = iframeShowsOwnTitle(mimeType)
@@ -114,6 +119,35 @@ export function WikiToolbar({
         {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         <span className="hidden sm:inline">{copied ? "Copied" : "Copy link"}</span>
       </Button>
+      {authority === "resolved" &&
+      modifiedTime !== undefined &&
+      (mimeType === MIME_DOC || mimeType === MIME_MARKDOWN) ? (
+        <>
+          <Button
+            aria-label="Polish document"
+            onClick={() => {
+              setPolishOpen(true);
+            }}
+            size="xs"
+            type="button"
+            variant="outline"
+          >
+            <Sparkles className="size-3.5" />
+            <span className="hidden sm:inline">Polish</span>
+          </Button>
+          <DocumentPolishDialog
+            key={fileId}
+            onOpenChange={setPolishOpen}
+            open={polishOpen}
+            source={{
+              expectedModifiedTime: modifiedTime,
+              fileId,
+              kind: "drive_file",
+              name: displayTitle,
+            }}
+          />
+        </>
+      ) : null}
       <div className="size-6 shrink-0 sm:w-24">
         {authority === "resolved" ? (
           <ReorganizeDocument

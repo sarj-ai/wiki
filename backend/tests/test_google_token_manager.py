@@ -4,12 +4,11 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import cast, override
+import secrets
+from typing import override
 import uuid
 
-import httpx
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.encryption import encrypt_text
 from app.auth.google_tokens import (
@@ -20,6 +19,7 @@ from app.auth.google_tokens import (
 )
 from app.identifiers import GoogleUserId, UserId
 from app.models.user import User
+from tests.support import dependency
 
 
 @dataclass
@@ -39,8 +39,8 @@ class _SharedTokenState:
 class _MemoryTokenManager(GoogleTokenManager):
     def __init__(self, state: _SharedTokenState) -> None:
         super().__init__(
-            cast("AsyncSession", None),
-            cast("httpx.AsyncClient", None),
+            dependency(None),
+            dependency(None),
         )
         self.state = state
 
@@ -118,17 +118,17 @@ def _user() -> User:
         google_id=GoogleUserId("google-subject"),
         display_name="User",
     )
-    user.id = UserId(uuid.uuid4())
+    user.id = UserId(uuid.uuid7())
     user.token_version = 0
     user.google_token_generation = 0
     return user
 
 
 async def test_valid_access_token_does_not_refresh() -> None:
-    access_token = uuid.uuid4().hex
+    access_token = secrets.token_urlsafe()
     state = _SharedTokenState(
         access_token=access_token,
-        refresh_token=uuid.uuid4().hex,
+        refresh_token=secrets.token_urlsafe(),
         expires_at=datetime.now(UTC) + timedelta(minutes=10),
     )
 
@@ -140,8 +140,8 @@ async def test_valid_access_token_does_not_refresh() -> None:
 
 async def test_expiring_access_token_refreshes_proactively() -> None:
     state = _SharedTokenState(
-        access_token=uuid.uuid4().hex,
-        refresh_token=uuid.uuid4().hex,
+        access_token=secrets.token_urlsafe(),
+        refresh_token=secrets.token_urlsafe(),
         expires_at=datetime.now(UTC) + timedelta(minutes=4),
     )
 
@@ -153,8 +153,8 @@ async def test_expiring_access_token_refreshes_proactively() -> None:
 
 async def test_concurrent_instances_share_one_refresh_lease() -> None:
     state = _SharedTokenState(
-        access_token=uuid.uuid4().hex,
-        refresh_token=uuid.uuid4().hex,
+        access_token=secrets.token_urlsafe(),
+        refresh_token=secrets.token_urlsafe(),
         expires_at=datetime.now(UTC) - timedelta(seconds=1),
     )
     managers = [_MemoryTokenManager(state) for _ in range(12)]
@@ -167,8 +167,8 @@ async def test_concurrent_instances_share_one_refresh_lease() -> None:
 
 async def test_google_auth_callback_forces_one_persisted_refresh() -> None:
     state = _SharedTokenState(
-        access_token=uuid.uuid4().hex,
-        refresh_token=uuid.uuid4().hex,
+        access_token=secrets.token_urlsafe(),
+        refresh_token=secrets.token_urlsafe(),
         expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
     manager = _MemoryTokenManager(state)

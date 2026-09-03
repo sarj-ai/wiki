@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from typing import Self, cast
+from typing import Self
 import uuid
 
 from pydantic import ValidationError
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.aliases.errors import (
     AliasConflictError,
@@ -16,13 +15,12 @@ from app.aliases.errors import (
 from app.aliases.schemas import DocumentAliasWrite
 from app.aliases.service import PostgresAliasService
 from app.drive.schemas import DriveSummary
-from app.drive.service import DriveService
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
-from app.files.service import FilesService
 from app.identifiers import DriveId, FileId, GoogleUserId, UserId
 from app.models.user import User
 from app.models.wiki import DocumentAlias
+from tests.support import dependency
 
 
 @pytest.mark.parametrize(
@@ -162,7 +160,7 @@ class _Session:
 
 def _user() -> User:
     user = User()
-    user.id = UserId(uuid.uuid4())
+    user.id = UserId(uuid.uuid7())
     user.email = "editor@sarj.ai"
     user.google_id = GoogleUserId("google-user")
     user.token_version = 0
@@ -176,9 +174,9 @@ class _Drive:
 
 def _service(session: _Session, files: _Files) -> PostgresAliasService:
     return PostgresAliasService(
-        db=cast("AsyncSession", session),
-        files=cast("FilesService", files),
-        drive=cast("DriveService", _Drive()),
+        db=dependency(session),
+        files=dependency(files),
+        drive=dependency(_Drive()),
         user=_user(),
     )
 

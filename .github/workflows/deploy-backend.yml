@@ -6,6 +6,14 @@ name: Deploy Backend
     paths:
       - "backend/**"
       - ".github/workflows/deploy-backend.yml"
+      - "scripts/github/clear-legacy-drive-tree-cache.sh"
+      - "scripts/github/deploy-backend-candidate.sh"
+      - "scripts/github/report-blocked-backend-release.sh"
+      - "scripts/github/run-backend-migrations.sh"
+      - "scripts/github/switch-backend-production-traffic.sh"
+      - "scripts/github/verify-backend-production-health.sh"
+      - "scripts/github/verify-backend-correlated-logs.sh"
+      - "scripts/github/verify-smart-create-queue.sh"
   workflow_dispatch:
 
 concurrency:
@@ -97,11 +105,7 @@ jobs:
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
       - name: Verify Smart Create queue exists
-        run: |
-          gcloud tasks queues describe "${{ env.SMART_CREATE_QUEUE_NAME }}" \
-            --location "${{ env.REGION }}" \
-            --project "${{ env.PROJECT_ID }}" \
-            --format="value(name)"
+        run: scripts/github/verify-smart-create-queue.sh
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
@@ -135,265 +139,42 @@ jobs:
 
       - name: Deploy candidate without traffic
         id: deploy
-        run: |
-          set -euo pipefail
-          candidate_image="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${GITHUB_SHA}"
-          candidate_digest=$(gcloud artifacts docker images describe "$candidate_image" \
-            --project "${{ env.PROJECT_ID }}" \
-            --format='value(image_summary.digest)')
-          expected_revision_image="${candidate_image%:*}@${candidate_digest}"
-          service_json=$(gcloud run services describe "${{ env.SERVICE }}" \
-            --project "${{ env.PROJECT_ID }}" \
-            --region "${{ env.REGION }}" \
-            --format=json)
-          previous_revision=$(jq -r \
-            '[.status.traffic[]? | select(.percent == 100) | .revisionName] | if length == 1 then .[0] else "" end' \
-            <<< "$service_json")
-          if [[ -z "$previous_revision" ]]; then
-            echo "Cloud Run does not have exactly one revision at 100% traffic" >&2
-            exit 1
-          fi
-          previous_image=$(gcloud run revisions describe "$previous_revision" \
-            --project "${{ env.PROJECT_ID }}" \
-            --region "${{ env.REGION }}" \
-            --format='value(spec.containers[0].image)')
-          if [[ "$previous_image" == "$expected_revision_image" ]]; then
-            echo "This immutable release is already serving production traffic" >&2
-            exit 1
-          fi
-          echo "previous_revision=$previous_revision" >> "$GITHUB_OUTPUT"
-          echo "started_at=$(date -u +'%Y-%m-%dT%H:%M:%S.%NZ')" >> "$GITHUB_OUTPUT"
-
-          gcloud run services update ${{ env.SERVICE }} \
-            --project ${{ env.PROJECT_ID }} \
-            --region ${{ env.REGION }} \
-            --image "$candidate_image" \
-            --no-traffic \
-            --quiet
-
-          candidate_revision=''
-          candidate_ready=''
-          for _attempt in {1..6}; do
-            service_json=$(gcloud run services describe "${{ env.SERVICE }}" \
-              --project "${{ env.PROJECT_ID }}" \
-              --region "${{ env.REGION }}" \
-              --format=json)
-            candidate_revision=$(jq -r '.status.latestCreatedRevisionName // empty' \
-              <<< "$service_json")
-            if [[ -n "$candidate_revision" ]]; then
-              revision_json=$(gcloud run revisions describe "$candidate_revision" \
-                --project "${{ env.PROJECT_ID }}" \
-                --region "${{ env.REGION }}" \
-                --format=json)
-              candidate_ready=$(jq -r \
-                '[.status.conditions[]? | select(.type == "Ready") | .status][0] // empty' \
-                <<< "$revision_json")
-              if [[ "$candidate_ready" == 'True' ]]; then
-                break
-              fi
-            fi
-            sleep 10
-          done
-          if [[ -z "$candidate_revision" || "$candidate_ready" != 'True' ]]; then
-            echo "The no-traffic Cloud Run candidate did not become ready" >&2
-            exit 1
-          fi
-          candidate_revision_image=$(gcloud run revisions describe "$candidate_revision" \
-            --project "${{ env.PROJECT_ID }}" \
-            --region "${{ env.REGION }}" \
-            --format='value(spec.containers[0].image)')
-          if [[ "$candidate_revision_image" != "$expected_revision_image" ]]; then
-            echo "The no-traffic candidate does not resolve to the release image digest" >&2
-            exit 1
-          fi
-          echo "new_revision=$candidate_revision" >> "$GITHUB_OUTPUT"
-          echo "release_image=$expected_revision_image" >> "$GITHUB_OUTPUT"
+        run: scripts/github/deploy-backend-candidate.sh
 
       - name: Run database migrations once
         id: migrate
-        run: |
-          set -euo pipefail
-          gcloud run jobs update "${{ env.MIGRATION_JOB }}" \
-            --project "${{ env.PROJECT_ID }}" \
-            --region "${{ env.REGION }}" \
-            --image "${{ steps.deploy.outputs.release_image }}" \
-            --command ".venv/bin/alembic" \
-            --args "upgrade,head" \
-            --quiet
-          gcloud run jobs execute "${{ env.MIGRATION_JOB }}" \
-            --project "${{ env.PROJECT_ID }}" \
-            --region "${{ env.REGION }}" \
-            --wait \
-            --quiet
+        env:
+          RELEASE_IMAGE: ${{ steps.deploy.outputs.release_image }}
+        run: scripts/github/run-backend-migrations.sh
 
       - name: Switch production traffic
         id: traffic
-        run: |
-          set -euo pipefail
-          gcloud run services update-traffic "${{ env.SERVICE }}" \
-            --project "${{ env.PROJECT_ID }}" \
-            --region "${{ env.REGION }}" \
-            --to-revisions "${{ steps.deploy.outputs.new_revision }}=100" \
-            --quiet
+        env:
+          CANDIDATE_REVISION: ${{ steps.deploy.outputs.new_revision }}
+        run: scripts/github/switch-backend-production-traffic.sh
 
       - name: Verify revision and production health
         id: verify
-        run: |
-          set -euo pipefail
-          service_json=''
-          new_revision=''
-          active_revision=''
-          for _attempt in {1..6}; do
-            service_json=$(gcloud run services describe "${{ env.SERVICE }}" \
-              --project "${{ env.PROJECT_ID }}" \
-              --region "${{ env.REGION }}" \
-              --format=json)
-            new_revision=$(jq -r '.status.latestReadyRevisionName // empty' <<< "$service_json")
-            active_revision=$(jq -r \
-              '[.status.traffic[]? | select(.percent == 100) | .revisionName] | if length == 1 then .[0] else "" end' \
-              <<< "$service_json")
-            if [[ -n "$new_revision" && "$active_revision" == "$new_revision" ]]; then
-              break
-            fi
-            sleep 10
-          done
-          if [[ -z "$new_revision" || "$active_revision" != "$new_revision" ]]; then
-            echo "Cloud Run did not converge to one latest revision at 100% traffic" >&2
-            exit 1
-          fi
-          echo "new_revision=$new_revision" >> "$GITHUB_OUTPUT"
-
-          canary_id="wiki-${GITHUB_SHA:0:12}-${GITHUB_RUN_ATTEMPT}"
-          echo "canary_id=$canary_id" >> "$GITHUB_OUTPUT"
-          health_body="$RUNNER_TEMP/backend-health.json"
-          health_headers="$RUNNER_TEMP/backend-health.headers"
-          healthy=false
-          for _attempt in {1..6}; do
-            : > "$health_body"
-            : > "$health_headers"
-            status=$(curl --silent --show-error \
-              --connect-timeout 10 \
-              --max-time 20 \
-              --dump-header "$health_headers" \
-              --output "$health_body" \
-              --write-out '%{http_code}' \
-              --header "X-Request-ID: $canary_id" \
-              https://api-wiki.sarj.ai/health || true)
-            echoed_id=$(awk 'tolower($1) == "x-request-id:" { sub(/\r$/, "", $2); print $2 }' \
-              "$health_headers" | tail -n 1)
-            if [[ "$status" == 200 && "$echoed_id" == "$canary_id" ]] \
-              && jq -e --arg revision "$GITHUB_SHA" \
-                '.status == "ok" and .database == "ok" and .revision == $revision' \
-                "$health_body" >/dev/null; then
-              healthy=true
-              break
-            fi
-            sleep 10
-          done
-          if [[ "$healthy" != true ]]; then
-            echo "Production health canary did not return the expected release identity" >&2
-            exit 1
-          fi
-          echo "finished_at=$(date -u +'%Y-%m-%dT%H:%M:%S.%NZ')" >> "$GITHUB_OUTPUT"
+        run: scripts/github/verify-backend-production-health.sh
 
       - name: Clear legacy global drive-tree cache after traffic switch
-        run: |
-          set -euo pipefail
-          gcloud run jobs update "${{ env.MIGRATION_JOB }}" \
-            --project "${{ env.PROJECT_ID }}" \
-            --region "${{ env.REGION }}" \
-            --image "${{ steps.deploy.outputs.release_image }}" \
-            --command ".venv/bin/python" \
-            --args=-m,app.cache.cleanup_legacy \
-            --quiet
-          cleanup_status=0
-          gcloud run jobs execute "${{ env.MIGRATION_JOB }}" \
-            --project "${{ env.PROJECT_ID }}" \
-            --region "${{ env.REGION }}" \
-            --wait \
-            --quiet || cleanup_status=$?
-          gcloud run jobs update "${{ env.MIGRATION_JOB }}" \
-            --project "${{ env.PROJECT_ID }}" \
-            --region "${{ env.REGION }}" \
-            --image "${{ steps.deploy.outputs.release_image }}" \
-            --command ".venv/bin/alembic" \
-            --args=upgrade,head \
-            --quiet
-          exit "$cleanup_status"
+        env:
+          RELEASE_IMAGE: ${{ steps.deploy.outputs.release_image }}
+        run: scripts/github/clear-legacy-drive-tree-cache.sh
 
       - name: Verify correlated production logs
-        run: |
-          set -euo pipefail
-          completion_filter=$(cat <<EOF
-          resource.type="cloud_run_revision"
-          AND resource.labels.service_name="${{ env.SERVICE }}"
-          AND resource.labels.revision_name="${{ steps.verify.outputs.new_revision }}"
-          AND timestamp>="${{ steps.deploy.outputs.started_at }}"
-          AND timestamp<="${{ steps.verify.outputs.finished_at }}"
-          AND jsonPayload.record.extra.request_id="${{ steps.verify.outputs.canary_id }}"
-          AND jsonPayload.record.message="request.complete"
-          EOF
-          )
-          completion_count=0
-          for _attempt in {1..12}; do
-            completion_count=$(gcloud logging read "$completion_filter" \
-              --project "${{ env.PROJECT_ID }}" \
-              --limit 10 \
-              --format='value(insertId)' | wc -l | tr -d ' ')
-            if [[ "$completion_count" -ge 1 ]]; then
-              break
-            fi
-            sleep 10
-          done
-          if [[ "$completion_count" -lt 1 ]]; then
-            echo "No correlated request.complete log arrived for the production canary" >&2
-            exit 1
-          fi
-
-          error_filter=$(cat <<EOF
-          resource.type="cloud_run_revision"
-          AND resource.labels.service_name="${{ env.SERVICE }}"
-          AND resource.labels.revision_name="${{ steps.verify.outputs.new_revision }}"
-          AND timestamp>="${{ steps.deploy.outputs.started_at }}"
-          AND timestamp<="${{ steps.verify.outputs.finished_at }}"
-          AND (
-            httpRequest.status>=500
-            OR severity>=ERROR
-            OR jsonPayload.record.level.name=~"^(ERROR|CRITICAL)$"
-            OR textPayload=~"[|] (ERROR|CRITICAL) +[|]"
-          )
-          EOF
-          )
-          error_count=$(gcloud logging read "$error_filter" \
-            --project "${{ env.PROJECT_ID }}" \
-            --limit 100 \
-            --format='value(insertId)' | wc -l | tr -d ' ')
-          if [[ "$error_count" -ne 0 ]]; then
-            echo "The new revision emitted $error_count error log entries in the bounded release window" >&2
-            exit 1
-          fi
-
-          {
-            echo '## Backend production gate'
-            echo "- Revision: \`${{ steps.verify.outputs.new_revision }}\`"
-            echo "- Release: \`${GITHUB_SHA}\`"
-            echo "- Migration job: \`${{ env.MIGRATION_JOB }}\`"
-            echo "- Canary: \`${{ steps.verify.outputs.canary_id }}\`"
-            echo "- Correlated completion logs: $completion_count"
-            echo '- Error logs: 0'
-          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          CANARY_ID: ${{ steps.verify.outputs.canary_id }}
+          DEPLOY_STARTED_AT: ${{ steps.deploy.outputs.started_at }}
+          VERIFIED_REVISION: ${{ steps.verify.outputs.new_revision }}
+          VERIFY_FINISHED_AT: ${{ steps.verify.outputs.finished_at }}
+        run: scripts/github/verify-backend-correlated-logs.sh
 
       - name: Report blocked release without rollback
         if: failure()
-        run: |
-          {
-            echo '## Backend production gate failed'
-            echo "- Previous revision: \`${{ steps.deploy.outputs.previous_revision || 'unknown' }}\`"
-            echo "- Candidate revision: \`${{ steps.deploy.outputs.new_revision || 'unknown' }}\`"
-            echo "- Migration outcome: \`${{ steps.migrate.outcome || 'not-run' }}\`"
-            echo "- Traffic-switch outcome: \`${{ steps.traffic.outcome || 'not-run' }}\`"
-            echo '- Automatic rollback was not attempted.'
-            echo '- Migration compatibility with the previous revision is not proven, so rollback safety is not guaranteed.'
-            echo '- The workflow orders migrations before the traffic switch and stops immediately if they fail.'
-            echo '- Stop subsequent merges, inspect the bounded release evidence, and repair forward.'
-          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          CANDIDATE_REVISION: ${{ steps.deploy.outputs.new_revision || 'unknown' }}
+          MIGRATION_OUTCOME: ${{ steps.migrate.outcome || 'not-run' }}
+          PREVIOUS_REVISION: ${{ steps.deploy.outputs.previous_revision || 'unknown' }}
+          TRAFFIC_OUTCOME: ${{ steps.traffic.outcome || 'not-run' }}
+        run: scripts/github/report-blocked-backend-release.sh

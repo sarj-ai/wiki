@@ -4,7 +4,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 from datetime import timedelta
 from typing import override
-from uuid import uuid4
+from uuid import uuid7
 
 from pydantic import JsonValue
 
@@ -116,7 +116,7 @@ class _Cache(CacheService):
 
 async def test_discovers_only_native_templates_under_exact_root_folder() -> None:
     drive = _TemplateDrive()
-    service = DriveTemplateCatalogService(drive=drive, user_id=uuid4())
+    service = DriveTemplateCatalogService(drive=drive, user_id=uuid7())
 
     catalog = await service.list_templates()
 
@@ -130,7 +130,7 @@ async def test_discovers_only_native_templates_under_exact_root_folder() -> None
 
 async def test_caches_catalog_until_explicit_refresh() -> None:
     drive = _TemplateDrive()
-    service = DriveTemplateCatalogService(drive=drive, user_id=uuid4(), cache=_Cache())
+    service = DriveTemplateCatalogService(drive=drive, user_id=uuid7(), cache=_Cache())
 
     first = await service.list_templates()
     drive._children[FileId("templates")].append(_node("memo", "Memo", MIME_DOC, "templates"))

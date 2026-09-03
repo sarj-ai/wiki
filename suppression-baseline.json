@@ -1,20 +1,19 @@
 {
+  "schema_version": 1,
   "_comment": "Suppression ceilings, written by `sarj-ratchet --update`. Counts may only go DOWN: `codes` is per dialect+code, `packages` is per top-level package, `files.per_file_ceiling` caps any single file with `files.exceptions` grandfathering the pre-existing hot spots. Raising a ceiling requires `--update --allow-increase` and review.",
   "packages_scanned": [
     "backend"
   ],
   "codes": {
     "noqa:F401": 1,
-    "pyright:reportUntypedFunctionDecorator": 2,
-    "type-ignore:arg-type": 1,
     "type-ignore:attr-defined": 1,
     "type-ignore:call-arg": 2,
-    "type-ignore:no-untyped-call": 2,
-    "type-ignore:untyped-decorator": 1
+    "type-ignore:no-untyped-call": 2
   },
   "packages": {
-    "backend": 10
+    "backend": 6
   },
+  "excluded_subtrees": [],
   "files": {
     "per_file_ceiling": 10,
     "exceptions": {}

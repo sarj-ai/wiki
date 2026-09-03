@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -21,7 +21,11 @@ router = APIRouter(prefix="/sidebar", tags=["sidebar"], responses=authentication
 _CACHE_CONTROL = "private, no-store"
 
 
-@router.get("/drives", operation_id="list_drives")
+@router.get(
+    "/drives",
+    status_code=status.HTTP_200_OK,
+    operation_id="list_drives",
+)
 async def get_drives(
     response: Response,
     drive: Annotated[DriveService, Depends(drive_service_dep)],
@@ -32,14 +36,15 @@ async def get_drives(
 
 @router.get(
     "/drives/{drive_id}/permissions",
+    status_code=status.HTTP_200_OK,
     dependencies=[Depends(require_member_drive)],
     operation_id="list_drive_permissions",
 )
 async def get_drive_permissions(
-    drive_id: DriveId,
+    drive_id: Annotated[DriveId, Path(min_length=1)],
     response: Response,
     drive: Annotated[DriveService, Depends(drive_service_dep)],
-    page_token: str | None = None,
+    page_token: Annotated[str | None, Query(max_length=4096)] = None,
 ) -> DrivePermissionsPage:
     response.headers["Cache-Control"] = "private, no-store"
     return await drive.list_drive_permissions(drive_id, page_token=page_token)
@@ -47,6 +52,7 @@ async def get_drive_permissions(
 
 @router.get(
     "/drives/{drive_id}/folders",
+    status_code=status.HTTP_200_OK,
     response_model=DriveTree,
     dependencies=[Depends(require_member_drive)],
     operation_id="get_drive_tree",
@@ -61,7 +67,7 @@ async def get_drive_permissions(
     },
 )
 async def get_drive_folders(
-    drive_id: DriveId,
+    drive_id: Annotated[DriveId, Path(min_length=1)],
     request: Request,
     response: Response,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -89,20 +95,25 @@ async def get_drive_folders(
 
 @router.post(
     "/drives/{drive_id}/refresh",
+    status_code=status.HTTP_200_OK,
     dependencies=[Depends(require_member_drive)],
     operation_id="refresh_drive_tree",
 )
 async def refresh_drive_folders(
-    drive_id: DriveId,
+    drive_id: Annotated[DriveId, Path(min_length=1)],
     db: Annotated[AsyncSession, Depends(get_db)],
     cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
 ) -> DriveTree:
     return await cache.refresh_drive(db, drive_id)
 
 
-@router.get("/folders/{folder_id}/files", operation_id="list_folder_files")
+@router.get(
+    "/folders/{folder_id}/files",
+    status_code=status.HTTP_200_OK,
+    operation_id="list_folder_files",
+)
 async def get_folder_files(
-    folder_id: FileId,
+    folder_id: Annotated[FileId, Path(min_length=1)],
     response: Response,
     cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
 ) -> list[DriveNode]:

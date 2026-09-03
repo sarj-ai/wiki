@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import cast, override
+import secrets
+from typing import override
 import uuid
 
 import httpx
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.errors import AuthFailedError
 from app.auth.service import GoogleAuthService, GoogleIdentity, GoogleTokens
 from app.identifiers import GoogleUserId, UserId
 from app.models.user import User
+from tests.support import dependency
 
 
 class _FakeDb:
@@ -39,8 +40,8 @@ class _IdentityAuthService(GoogleAuthService):
         email_user: User | None,
     ) -> None:
         super().__init__(
-            db=cast("AsyncSession", db),
-            http_client=cast("httpx.AsyncClient", None),
+            db=dependency(db),
+            http_client=dependency(None),
         )
         self.subject_user = subject_user
         self.email_user = email_user
@@ -60,10 +61,10 @@ def _user(*, email: str, google_id: str) -> User:
         google_id=GoogleUserId(google_id),
         display_name="Old name",
         avatar_url="https://example.com/old.png",
-        encrypted_access_token=uuid.uuid4().hex,
-        encrypted_refresh_token=uuid.uuid4().hex,
+        encrypted_access_token=secrets.token_urlsafe(),
+        encrypted_refresh_token=secrets.token_urlsafe(),
     )
-    user.id = UserId(uuid.uuid4())
+    user.id = UserId(uuid.uuid7())
     user.token_version = 0
     return user
 
@@ -88,8 +89,8 @@ async def test_recycled_email_cannot_take_over_existing_account() -> None:
         await service._upsert_user(
             _userinfo(email=existing.email, google_id="attacker-subject"),
             GoogleTokens(
-                access_token=uuid.uuid4().hex,
-                refresh_token=uuid.uuid4().hex,
+                access_token=secrets.token_urlsafe(),
+                refresh_token=secrets.token_urlsafe(),
                 expires_at=datetime.now(UTC) + timedelta(hours=1),
             ),
         )
@@ -111,7 +112,7 @@ async def test_same_subject_can_refresh_email_and_profile() -> None:
     result = await service._upsert_user(
         _userinfo(email="new@sarj.ai", google_id="stable-subject"),
         GoogleTokens(
-            access_token=uuid.uuid4().hex,
+            access_token=secrets.token_urlsafe(),
             refresh_token=None,
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         ),
@@ -145,7 +146,7 @@ async def test_unverified_or_missing_google_email_fails_auth(
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         service = GoogleAuthService(
-            db=cast("AsyncSession", _FakeDb()),
+            db=dependency(_FakeDb()),
             http_client=client,
         )
         with pytest.raises(AuthFailedError, match="could not be verified"):

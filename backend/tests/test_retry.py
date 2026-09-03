@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from collections import UserDict
-from typing import Any, cast
+from typing import Any
 
 from googleapiclient.errors import HttpError
-from googleapiclient.http import HttpRequest
 import pytest
 
 from app.drive.retry import (
@@ -13,6 +12,7 @@ from app.drive.retry import (
     execute_with_retry,
     retry_after_seconds,
 )
+from tests.support import dependency
 
 
 class _Resp(UserDict[str, str]):
@@ -23,7 +23,10 @@ class _Resp(UserDict[str, str]):
 
 
 def _http_error(status: int, headers: dict[str, str] | None = None) -> HttpError:
-    return HttpError(cast("Any", _Resp(status, headers)), b'{"error": "test"}')
+    return HttpError(
+        dependency(_Resp(status, headers)),
+        b'{"error": "test"}',
+    )
 
 
 class _FlakyRequest:
@@ -49,20 +52,20 @@ def test_retry_after_parses_and_caps() -> None:
 
 def test_execute_with_retry_retries_transient_5xx() -> None:
     req = _FlakyRequest(1, _http_error(503, {"retry-after": "0"}))
-    assert execute_with_retry(cast("HttpRequest", req)) == {"ok": True}
+    assert execute_with_retry(dependency(req)) == {"ok": True}
     assert req.attempts == 2
 
 
 def test_execute_mutation_retries_rate_limit() -> None:
     req = _FlakyRequest(1, _http_error(429, {"retry-after": "0"}))
-    assert execute_mutation(cast("HttpRequest", req)) == {"ok": True}
+    assert execute_mutation(dependency(req)) == {"ok": True}
     assert req.attempts == 2
 
 
 def test_execute_mutation_does_not_retry_5xx() -> None:
     req = _FlakyRequest(99, _http_error(500, {"retry-after": "0"}))
     with pytest.raises(HttpError):
-        execute_mutation(cast("HttpRequest", req))
+        execute_mutation(dependency(req))
     assert req.attempts == 1
 
 
@@ -73,6 +76,6 @@ def test_provider_call_does_not_start_without_attempt_budget(
     monkeypatch.setattr("app.drive.retry.provider_retry_remaining_seconds", lambda: 0.5)
 
     with pytest.raises(ProviderDeadlineError):
-        execute_with_retry(cast("HttpRequest", req))
+        execute_with_retry(dependency(req))
 
     assert req.attempts == 0

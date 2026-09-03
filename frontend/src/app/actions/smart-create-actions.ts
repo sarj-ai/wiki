@@ -27,6 +27,13 @@ export async function createSmartFileAction(
   return runSmartOperation("create", body, idempotencyKey);
 }
 
+export async function createDocumentTransformAction(
+  body: string,
+  idempotencyKey: string,
+): Promise<ActionResult<string>> {
+  return runSmartOperation("create", body, idempotencyKey, "/document-transforms");
+}
+
 export async function proposeSmartFileAction(body: string): Promise<ActionResult<string>> {
   return runSmartOperation("proposal", body);
 }

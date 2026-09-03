@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import asyncio
 from datetime import timedelta
-from typing import cast, override
+from typing import override
 from uuid import UUID
 
 from loguru import logger
@@ -23,7 +23,7 @@ _MAX_VISITED_FOLDERS_PER_DRIVE = 500
 _SUPPORTED_MIME_TYPES = frozenset({MIME_DOC, MIME_SLIDE})
 
 
-_singleflight = Singleflight()
+_singleflight = Singleflight[TemplateCatalogRead]()
 
 
 class TemplateCatalogService(ABC):
@@ -127,7 +127,7 @@ class DriveTemplateCatalogService(TemplateCatalogService):
                             drive_name=drive.name,
                             name=child.name,
                             description=child.description,
-                            mime_type=cast("TemplateMimeType", child.mime_type),
+                            mime_type=_template_mime_type(child.mime_type),
                             modified_time=child.modified_time,
                             category_path=list(category),
                         )
@@ -135,3 +135,14 @@ class DriveTemplateCatalogService(TemplateCatalogService):
         if pending:
             logger.warning("template discovery folder cap reached")
         return templates
+
+
+def _template_mime_type(value: str) -> TemplateMimeType:
+    match value:
+        case "application/vnd.google-apps.document":
+            return "application/vnd.google-apps.document"
+        case "application/vnd.google-apps.presentation":
+            return "application/vnd.google-apps.presentation"
+        case _:
+            msg = f"Unsupported template MIME type: {value}"
+            raise ValueError(msg)

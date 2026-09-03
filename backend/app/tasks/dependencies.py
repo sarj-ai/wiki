@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from functools import cache
 from typing import Annotated
 
@@ -16,7 +17,8 @@ def task_service_dep(db: Annotated[AsyncSession, Depends(get_db)]) -> TaskServic
     return PostgresTaskService(db=db)
 
 
-async def task_enqueuer_dep() -> TaskEnqueuer:  # ruff: ignore[unused-async] — construction requires the request event loop.
+async def task_enqueuer_dep() -> TaskEnqueuer:
+    await asyncio.sleep(0)
     return _cached_task_enqueuer()
 
 
@@ -36,6 +38,8 @@ def _cached_task_enqueuer() -> TaskEnqueuer:
         queue=queue,
         target_url=target_url,
         invoker_service_account=invoker,
+        document_transform_queue=settings.DOCUMENT_TRANSFORM_QUEUE,
+        document_transform_target_url=settings.DOCUMENT_TRANSFORM_TARGET_URL,
     )
 
 

@@ -7,6 +7,8 @@ import uuid
 from fastapi import Response
 from pydantic import BaseModel
 
+from app.document_transform.router import create_document_transform
+from app.document_transform.schemas import DocumentTransformRequest, MarkdownSource, TransformMode
 from app.files.schemas import FileResponse
 from app.identifiers import FileId, IdempotencyKey, TaskId, UserId
 from app.models.user import User
@@ -14,6 +16,7 @@ from app.smart_create.router import create_smart_file
 from app.smart_create.schemas import BlankSource, SmartCreateResult, SmartFileCreate
 from app.tasks.queue import TaskEnqueuer
 from app.tasks.schemas import (
+    DocumentTransformTaskRecord,
     PendingTaskRead,
     SmartCreateTaskRecord,
     SucceededTaskRead,
@@ -51,10 +54,14 @@ def _result(task_id: TaskId) -> SmartCreateResult:
     )
 
 
-def _pending(task_id: TaskId) -> PendingTaskRead:
+def _pending(
+    task_id: TaskId,
+    *,
+    kind: TaskKind = TaskKind.FILE_SMART_CREATE,
+) -> PendingTaskRead:
     return PendingTaskRead(
         id=task_id,
-        kind=TaskKind.FILE_SMART_CREATE,
+        kind=kind,
         status=TaskStatus.PENDING,
         result=None,
         resource_id=None,
@@ -86,9 +93,10 @@ def _succeeded(task_id: TaskId) -> SucceededTaskRead:
 
 class _Tasks(TaskService):
     def __init__(self, *, created: bool, terminal: bool = False) -> None:
-        self.task_id = TaskId(uuid.uuid4())
+        self.task_id = TaskId(uuid.uuid7())
         self.created = created
         self.terminal = terminal
+        self.requested_kind = TaskKind.FILE_SMART_CREATE
 
     @override
     async def create_or_replay(
@@ -99,7 +107,8 @@ class _Tasks(TaskService):
         idempotency_key: IdempotencyKey,
         payload: BaseModel,
     ) -> TaskReservation:
-        task = _succeeded(self.task_id) if self.terminal else _pending(self.task_id)
+        self.requested_kind = kind
+        task = _succeeded(self.task_id) if self.terminal else _pending(self.task_id, kind=kind)
         return TaskReservation(task=task, created=self.created)
 
     @override
@@ -149,19 +158,28 @@ class _Tasks(TaskService):
     async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord:
         raise NotImplementedError
 
+    @override
+    async def load_document_transform(self, task_id: TaskId) -> DocumentTransformTaskRecord:
+        raise NotImplementedError
+
 
 class _Enqueuer(TaskEnqueuer):
     def __init__(self) -> None:
         self.task_ids: list[TaskId] = []
+        self.document_task_ids: list[TaskId] = []
 
     @override
     async def enqueue_smart_create(self, task_id: TaskId) -> None:
         self.task_ids.append(task_id)
 
+    @override
+    async def enqueue_document_transform(self, task_id: TaskId) -> None:
+        self.document_task_ids.append(task_id)
+
 
 def _user() -> User:
     user = User()
-    user.id = UserId(uuid.uuid4())
+    user.id = UserId(uuid.uuid7())
     return user
 
 
@@ -172,7 +190,7 @@ async def test_new_task_returns_pending_immediately_and_enqueues() -> None:
 
     task = await create_smart_file(
         payload=_payload(),
-        idempotency_key=uuid.uuid4(),
+        idempotency_key=uuid.uuid7(),
         response=response,
         user=_user(),
         tasks=tasks,
@@ -191,7 +209,7 @@ async def test_pending_replay_reenqueues_deterministically() -> None:
 
     task = await create_smart_file(
         payload=_payload(),
-        idempotency_key=uuid.uuid4(),
+        idempotency_key=uuid.uuid7(),
         response=Response(),
         user=_user(),
         tasks=tasks,
@@ -207,7 +225,7 @@ async def test_succeeded_replay_returns_typed_result_without_enqueue() -> None:
 
     task = await create_smart_file(
         payload=_payload(),
-        idempotency_key=uuid.uuid4(),
+        idempotency_key=uuid.uuid7(),
         response=Response(),
         user=_user(),
         tasks=tasks,
@@ -217,3 +235,33 @@ async def test_succeeded_replay_returns_typed_result_without_enqueue() -> None:
     assert isinstance(task, SucceededTaskRead)
     assert task.result.file.id == FileId("created")
     assert enqueuer.task_ids == []
+
+
+async def test_document_transform_endpoint_creates_separate_queued_task() -> None:
+    tasks = _Tasks(created=True)
+    enqueuer = _Enqueuer()
+    response = Response()
+    payload = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content="# Decision\n\nThe team approved option B.",
+            name="Decision",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.FORMAT,
+    )
+
+    task = await create_document_transform(
+        payload=payload,
+        idempotency_key=uuid.uuid7(),
+        response=response,
+        user=_user(),
+        tasks=tasks,
+        enqueuer=enqueuer,
+    )
+
+    assert task.kind is TaskKind.FILE_DOCUMENT_TRANSFORM
+    assert tasks.requested_kind is TaskKind.FILE_DOCUMENT_TRANSFORM
+    assert enqueuer.document_task_ids == [task.id]
+    assert enqueuer.task_ids == []
+    assert response.headers["Idempotency-Replayed"] == "false"

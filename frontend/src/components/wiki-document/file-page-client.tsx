@@ -189,6 +189,7 @@ function FilePageBody({
         driveId={driveId}
         fileId={fileId}
         mimeType={mimeType}
+        {...(version === undefined ? {} : { modifiedTime: version })}
         onReload={onReload}
         parentFolderId={parentFolderId}
         title={displayTitle}

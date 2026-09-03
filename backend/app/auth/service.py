@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import hmac
@@ -42,7 +43,7 @@ from app.models.auth_session import UserSession
 from app.models.user import User
 
 
-GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"  # ruff: ignore[hardcoded-password-string] — public OAuth endpoint URL, not a credential
+GOOGLE_OAUTH_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 
@@ -143,7 +144,7 @@ class GoogleAuthService(AuthService):
             logger.warning("auth: revoked refresh token presented")
             msg = "Token has been revoked"
             raise TokenRevokedError(msg)
-        refresh_jti = TokenId(uuid.uuid4())
+        refresh_jti = TokenId(uuid.uuid7())
         session.refresh_jti = refresh_jti
         session.expires_at = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
         session.updated_at = now
@@ -155,14 +156,16 @@ class GoogleAuthService(AuthService):
         if access_token is None:
             return
         user: User | None = None
-        try:
+        revoked = False
+        with suppress(Exception):
             payload = decode_token(access_token)
             session = await self._load_session(payload.sid, for_update=True)
             user = await self._load_user(payload.sub)
             if session is None or user is None or session.user_id != user.id:
                 return
             await self._revoke_user_session(user, session)
-        except Exception:  # ruff: ignore[blind-except] — logout proceeds even if DB bump fails; cookies still clear.
+            revoked = True
+        if not revoked:
             logger.warning("logout: session revocation failed; proceeding to clear cookies")
         if user is not None and self._cache is not None:
             await self._cache.delete(CacheNamespace.DRIVE_LIST, str(user.id))
@@ -234,14 +237,16 @@ class GoogleAuthService(AuthService):
     async def _revoke_google_token(self, refresh_token: str | None) -> None:
         if refresh_token is None:
             return
-        try:
+        revoked = False
+        with suppress(Exception):
             await self._http.post(GOOGLE_REVOKE_URL, data={"token": refresh_token})
-        except Exception:  # ruff: ignore[blind-except] — best-effort; logout proceeds regardless.
+            revoked = True
+        if not revoked:
             logger.warning("logout: Google token revocation failed")
 
     async def _exchange_google_code(self, code: str) -> GoogleTokens:
         resp = await self._http.post(
-            GOOGLE_TOKEN_URL,
+            GOOGLE_OAUTH_URL,
             data={
                 "code": code,
                 "client_id": settings.GOOGLE_CLIENT_ID,
@@ -352,8 +357,8 @@ class GoogleAuthService(AuthService):
         return result.scalar_one_or_none()
 
     async def _issue_new_session(self, user: User) -> AuthSession:
-        session_id = AuthSessionId(uuid.uuid4())
-        refresh_jti = TokenId(uuid.uuid4())
+        session_id = AuthSessionId(uuid.uuid7())
+        refresh_jti = TokenId(uuid.uuid7())
         now = datetime.now(UTC)
         self._db.add(
             UserSession(

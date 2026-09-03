@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Body, Depends, Path, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -53,6 +53,7 @@ _HTML_CSP = "; ".join(
 
 @router.get(
     "/{file_id}/content",
+    status_code=status.HTTP_200_OK,
     response_class=Response,
     operation_id="read_file_content",
     responses={
@@ -63,7 +64,7 @@ _HTML_CSP = "; ".join(
     },
 )
 async def read_html_content(
-    file_id: FileId,
+    file_id: Annotated[FileId, Path(min_length=1)],
     files: Annotated[FilesService, Depends(files_service_dep)],
 ) -> Response:
     content = await files.get_html_content(file_id)
@@ -83,7 +84,7 @@ async def read_html_content(
 
 @router.post("", status_code=status.HTTP_201_CREATED, operation_id="create_file")
 async def create_file(
-    payload: FileCreate,
+    payload: Annotated[FileCreate, Body()],
     db: Annotated[AsyncSession, Depends(get_db)],
     files: Annotated[FilesService, Depends(files_service_dep)],
     cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
@@ -93,9 +94,13 @@ async def create_file(
     return result
 
 
-@router.get("/{file_id}", operation_id="read_file")
+@router.get(
+    "/{file_id}",
+    status_code=status.HTTP_200_OK,
+    operation_id="read_file",
+)
 async def read_file(
-    file_id: FileId,
+    file_id: Annotated[FileId, Path(min_length=1)],
     db: Annotated[AsyncSession, Depends(get_db)],
     files: Annotated[FilesService, Depends(files_service_dep)],
     drive: Annotated[DriveService, Depends(drive_service_dep)],
@@ -114,10 +119,14 @@ async def read_file(
     )
 
 
-@router.patch("/{file_id}/rename", operation_id="rename_file")
+@router.patch(
+    "/{file_id}/rename",
+    status_code=status.HTTP_200_OK,
+    operation_id="rename_file",
+)
 async def rename_file(
-    file_id: FileId,
-    payload: FileRename,
+    file_id: Annotated[FileId, Path(min_length=1)],
+    payload: Annotated[FileRename, Body()],
     db: Annotated[AsyncSession, Depends(get_db)],
     files: Annotated[FilesService, Depends(files_service_dep)],
     cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
@@ -127,10 +136,14 @@ async def rename_file(
     return result
 
 
-@router.patch("/{file_id}/move", operation_id="move_file")
+@router.patch(
+    "/{file_id}/move",
+    status_code=status.HTTP_200_OK,
+    operation_id="move_file",
+)
 async def move_file(
-    file_id: FileId,
-    payload: FileMove,
+    file_id: Annotated[FileId, Path(min_length=1)],
+    payload: Annotated[FileMove, Body()],
     db: Annotated[AsyncSession, Depends(get_db)],
     files: Annotated[FilesService, Depends(files_service_dep)],
     cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
@@ -147,8 +160,8 @@ async def move_file(
     operation_id="copy_file",
 )
 async def copy_file(
-    file_id: FileId,
-    payload: FileCopy,
+    file_id: Annotated[FileId, Path(min_length=1)],
+    payload: Annotated[FileCopy, Body()],
     db: Annotated[AsyncSession, Depends(get_db)],
     files: Annotated[FilesService, Depends(files_service_dep)],
     cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
@@ -164,7 +177,7 @@ async def copy_file(
     operation_id="delete_file",
 )
 async def delete_file(
-    file_id: FileId,
+    file_id: Annotated[FileId, Path(min_length=1)],
     db: Annotated[AsyncSession, Depends(get_db)],
     files: Annotated[FilesService, Depends(files_service_dep)],
     cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],

@@ -29,6 +29,7 @@ vi.mock("@/lib/smart-create-server-client", () => ({
 }));
 
 import {
+  createDocumentTransformAction,
   createSmartFileAction,
   getSmartCreateTaskAction,
   listSmartTemplatesAction,
@@ -107,6 +108,18 @@ describe("Smart Create edge actions", () => {
       "{}",
       "access-token",
       "55555555-5555-4555-8555-555555555555",
+    );
+  });
+
+  it("routes document transforms through the creation limit with idempotency", async () => {
+    await createDocumentTransformAction('{"mode":"both"}', "66666666-6666-4666-8666-666666666666");
+
+    expect(mocks.createLimit).toHaveBeenCalledWith({ key: "203.0.113.10" });
+    expect(mocks.callApi).toHaveBeenCalledWith(
+      "/document-transforms",
+      '{"mode":"both"}',
+      "access-token",
+      "66666666-6666-4666-8666-666666666666",
     );
   });
 

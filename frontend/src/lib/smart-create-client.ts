@@ -31,26 +31,29 @@ import type {
   SmartCreationPlan,
   SmartFileType,
 } from "@/lib/smart-create-types";
-const ZSource = z.discriminatedUnion("kind", [zBlankSource.strict(), zTemplateSource.strict()]);
-const ZCreateResult = zSmartCreateResult
+const SourceSchema = z.discriminatedUnion("kind", [
+  zBlankSource.strict(),
+  zTemplateSource.strict(),
+]);
+const CreateResultSchema = zSmartCreateResult
   .extend({
     file: zFileResponse.strict(),
     warnings: z.array(zSmartCreateWarning.strict()),
   })
   .strict();
-const ZProposal = zSmartProposalRead
+const ProposalSchema = zSmartProposalRead
   .extend({
     destination: zProposalDestination.strict(),
-    source: ZSource,
+    source: SourceSchema,
   })
   .strict();
-const ZTemplateCatalog = zTemplateCatalogRead
+const TemplateCatalogSchema = zTemplateCatalogRead
   .extend({ templates: z.array(zTemplateRead.strict()) })
   .strict();
-const ZTask = z.discriminatedUnion("status", [
+const TaskSchema = z.discriminatedUnion("status", [
   zPendingTaskRead.strict(),
   zRunningTaskRead.strict(),
-  zSucceededTaskRead.extend({ result: ZCreateResult }).strict(),
+  zSucceededTaskRead.extend({ result: CreateResultSchema }).strict(),
   zFailedTaskRead.strict(),
   zCancelledTaskRead.strict(),
 ]);
@@ -64,7 +67,7 @@ export interface SmartProposalInput {
   invokingFolderId?: string;
 }
 
-export const smartCreateApi = {
+const SmartCreateApi = {
   create: async (plan: SmartCreationPlan, idempotencyKey: string): Promise<SmartCreateTask> => {
     const body = JSON.stringify({
       alias: plan.alias,
@@ -76,19 +79,19 @@ export const smartCreateApi = {
     const responseBody = await runAction(
       async () => await createSmartFileAction(body, idempotencyKey),
     );
-    return parseTask(ZTask.parse(JSON.parse(responseBody)));
+    return parseTask(TaskSchema.parse(JSON.parse(responseBody)));
   },
 
   getTask: async (taskId: string, signal?: AbortSignal): Promise<SmartCreateTask> => {
     signal?.throwIfAborted();
     const responseBody = await runAction(async () => await getSmartCreateTaskAction(taskId));
     signal?.throwIfAborted();
-    return parseTask(ZTask.parse(JSON.parse(responseBody)));
+    return parseTask(TaskSchema.parse(JSON.parse(responseBody)));
   },
 
   listTemplates: async (refresh = false): Promise<DriveTemplate[]> => {
     const responseBody = await runAction(async () => await listSmartTemplatesAction(refresh));
-    const result = ZTemplateCatalog.parse(JSON.parse(responseBody));
+    const result = TemplateCatalogSchema.parse(JSON.parse(responseBody));
     return result.templates.map((template) => ({
       categoryPath: template.category_path,
       ...(template.description === null ? {} : { description: template.description }),
@@ -110,7 +113,7 @@ export const smartCreateApi = {
       kind: "ai",
     });
     const responseBody = await runAction(async () => await proposeSmartFileAction(body));
-    const result = ZProposal.parse(JSON.parse(responseBody));
+    const result = ProposalSchema.parse(JSON.parse(responseBody));
     return {
       alias: result.alias,
       destination: {
@@ -130,7 +133,9 @@ export const smartCreateApi = {
     signal?: AbortSignal,
     pollIntervalMs = DEFAULT_TASK_POLL_MS,
   ): Promise<SmartCreateResult> => await waitForTask(initialTask, signal, pollIntervalMs),
-};
+} as const;
+
+export { SmartCreateApi as smartCreateApi };
 
 async function waitForTask(
   task: SmartCreateTask,
@@ -147,29 +152,13 @@ async function waitForTask(
     case "pending":
     case "running": {
       await abortableDelay(pollIntervalMs, signal);
-      const nextTask = await smartCreateApi.getTask(task.id, signal);
+      const nextTask = await SmartCreateApi.getTask(task.id, signal);
       return await waitForTask(nextTask, signal, pollIntervalMs);
     }
   }
 }
 
-function parseCreateResult(result: z.infer<typeof ZCreateResult>): SmartCreateResult {
-  return {
-    file: {
-      canEdit: result.file.can_edit,
-      driveId: result.file.drive_id ?? undefined,
-      id: result.file.id,
-      mimeType: result.file.mime_type,
-      modifiedTime: result.file.modified_time ?? undefined,
-      name: result.file.name,
-      parentFolderId: result.file.parent_folder_id ?? undefined,
-    },
-    taskId: result.task_id,
-    warnings: result.warnings,
-  };
-}
-
-function parseTask(task: z.infer<typeof ZTask>): SmartCreateTask {
+function parseTask(task: z.infer<typeof TaskSchema>): SmartCreateTask {
   switch (task.status) {
     case "cancelled":
       return { id: task.id, status: "cancelled" };
@@ -186,6 +175,22 @@ function parseTask(task: z.infer<typeof ZTask>): SmartCreateTask {
     case "succeeded":
       return { id: task.id, result: parseCreateResult(task.result), status: "succeeded" };
   }
+}
+
+function parseCreateResult(result: z.infer<typeof CreateResultSchema>): SmartCreateResult {
+  return {
+    file: {
+      canEdit: result.file.can_edit,
+      driveId: result.file.drive_id ?? undefined,
+      id: result.file.id,
+      mimeType: result.file.mime_type,
+      modifiedTime: result.file.modified_time ?? undefined,
+      name: result.file.name,
+      parentFolderId: result.file.parent_folder_id ?? undefined,
+    },
+    taskId: result.task_id,
+    warnings: result.warnings,
+  };
 }
 
 async function abortableDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
@@ -206,7 +211,7 @@ async function abortableDelay(milliseconds: number, signal?: AbortSignal): Promi
   });
 }
 
-function parseSource(source: z.infer<typeof ZSource>): CreationSource {
+function parseSource(source: z.infer<typeof SourceSchema>): CreationSource {
   return source.kind === "blank"
     ? { fileType: source.file_type, kind: "blank" }
     : {
@@ -218,7 +223,7 @@ function parseSource(source: z.infer<typeof ZSource>): CreationSource {
       };
 }
 
-function serializeSource(source: CreationSource): z.input<typeof ZSource> {
+function serializeSource(source: CreationSource): z.input<typeof SourceSchema> {
   return source.kind === "blank"
     ? { file_type: source.fileType, kind: "blank" }
     : {

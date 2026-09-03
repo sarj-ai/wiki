@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 import uuid
 
 from pydantic import BaseModel
 import pytest
 from sqlalchemy import Table
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ClauseElement
 
 from app.identifiers import FileId, IdempotencyKey, TaskId
 from app.models.task import Task
@@ -50,13 +50,13 @@ class _Session:
 def _task(*, request_hash: str, status: TaskStatus = TaskStatus.PENDING) -> Task:
     now = datetime.now(UTC)
     task = Task()
-    task.id = TaskId(uuid.uuid4())
-    task.owner_user_id = uuid.uuid4()
+    task.id = TaskId(uuid.uuid7())
+    task.owner_user_id = uuid.uuid7()
     task.kind = TaskKind.FILE_SMART_CREATE
     task.status = status
-    task.idempotency_key = IdempotencyKey(uuid.uuid4())
+    task.idempotency_key = IdempotencyKey(uuid.uuid7())
     task.request_hash = request_hash
-    task.payload = cast("dict[str, object]", {"destination": "folder-1", "name": "PRD"})
+    task.payload = {"destination": "folder-1", "name": "PRD"}
     task.result = None
     task.resource_id = None
     task.error_code = None
@@ -73,7 +73,8 @@ def _task(*, request_hash: str, status: TaskStatus = TaskStatus.PENDING) -> Task
 
 
 def _service(session: _Session) -> PostgresTaskService:
-    return PostgresTaskService(db=cast("AsyncSession", session))
+    db: Any = session
+    return PostgresTaskService(db=db)
 
 
 async def test_create_or_replay_creates_one_canonical_task() -> None:
@@ -130,7 +131,7 @@ async def test_claim_is_an_atomic_conditional_transition_with_a_lease() -> None:
     row = _task(request_hash="0" * 64, status=TaskStatus.RUNNING)
     row.attempt_count = 1
     row.started_at = datetime.now(UTC)
-    row.lease_token = uuid.uuid4()
+    row.lease_token = uuid.uuid7()
     row.lease_expires_at = datetime.now(UTC) + timedelta(minutes=1)
     session = _Session(row)
 
@@ -151,7 +152,7 @@ async def test_stale_executor_cannot_complete_a_reclaimed_task() -> None:
     with pytest.raises(TaskLeaseLostError):
         await _service(session).succeed(
             row.id,
-            lease_token=uuid.uuid4(),
+            lease_token=uuid.uuid7(),
             result=_Payload(name="PRD", destination="folder-1"),
         )
 
@@ -162,12 +163,12 @@ async def test_defer_atomically_releases_retryable_running_lease() -> None:
     row = _task(request_hash="0" * 64, status=TaskStatus.RUNNING)
     row.attempt_count = 1
     row.started_at = datetime.now(UTC)
-    row.lease_token = uuid.uuid4()
+    row.lease_token = uuid.uuid7()
     row.lease_expires_at = datetime.now(UTC) + timedelta(minutes=1)
     row.resource_id = FileId("already-created")
     session = _Session(row, row)
 
-    deferred = await _service(session).defer(row.id, lease_token=uuid.uuid4())
+    deferred = await _service(session).defer(row.id, lease_token=uuid.uuid7())
     reclaimed = await _service(session).claim(row.id, lease_duration=timedelta(minutes=6))
 
     assert deferred.status == TaskStatus.RUNNING
@@ -195,13 +196,16 @@ async def test_failed_task_persists_only_bounded_public_detail() -> None:
 
     await _service(session).fail(
         row.id,
-        lease_token=uuid.uuid4(),
+        lease_token=uuid.uuid7(),
         error_code="provider_failed",
         error_detail=raw_provider_detail,
     )
 
-    params = cast("Any", session.statements[0]).compile().params
-    persisted = cast("str", params["error_detail"])
+    statement = session.statements[0]
+    assert isinstance(statement, ClauseElement)
+    params = statement.compile().params or {}
+    persisted = params["error_detail"]
+    assert isinstance(persisted, str)
     assert persisted == "Task could not be completed"
     assert len(persisted) <= 256
     assert "private-resource-id" not in persisted
@@ -224,7 +228,8 @@ async def test_pending_task_can_be_discarded_before_execution() -> None:
 
 
 def test_database_model_carries_legal_state_and_idempotency_constraints() -> None:
-    table = cast("Table", Task.__table__)
+    table = Task.__table__
+    assert isinstance(table, Table)
     names = {constraint.name for constraint in table.constraints}
 
     assert "ck_tasks_legal_state" in names

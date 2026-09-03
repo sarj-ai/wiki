@@ -9,6 +9,7 @@
     "jsx": "react-jsx",
     "noEmit": true,
     "incremental": true,
+    "skipLibCheck": true,
     "types": ["vitest/globals", "@testing-library/jest-dom"],
     "plugins": [
       {

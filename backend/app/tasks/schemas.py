@@ -7,12 +7,14 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt
 
+from app.document_transform.schemas import DocumentTransformRequest, DocumentTransformResult
 from app.identifiers import FileId, TaskId
 from app.smart_create.schemas import SmartCreateResult, SmartFileCreate
 
 
 class TaskKind(StrEnum):
     FILE_SMART_CREATE = "file.smart_create"
+    FILE_DOCUMENT_TRANSFORM = "file.document_transform"
 
 
 class TaskStatus(StrEnum):
@@ -27,7 +29,7 @@ class _TaskReadBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: TaskId
-    kind: Literal[TaskKind.FILE_SMART_CREATE]
+    kind: TaskKind
     created_at: datetime
 
 
@@ -55,7 +57,7 @@ class RunningTaskRead(_TaskReadBase):
 
 class SucceededTaskRead(_TaskReadBase):
     status: Literal[TaskStatus.SUCCEEDED]
-    result: SmartCreateResult
+    result: SmartCreateResult | DocumentTransformResult
     resource_id: FileId | None
     error_code: None
     error_detail: None
@@ -106,6 +108,12 @@ class SmartCreateTaskRecord(BaseModel):
     owner_user_id: uuid.UUID
     task: TaskRead
     payload: SmartFileCreate
+
+
+class DocumentTransformTaskRecord(BaseModel):
+    owner_user_id: uuid.UUID
+    task: TaskRead
+    payload: DocumentTransformRequest
 
 
 class TaskDispatchRequest(BaseModel):

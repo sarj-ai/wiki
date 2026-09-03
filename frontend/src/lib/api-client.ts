@@ -14,7 +14,7 @@ type OperationOptions<Op extends AnyOperation> = Omit<
   "client" | "throwOnError"
 >;
 
-const replayCache = new WeakMap<Request, Request>();
+const REPLAY_CACHE = new WeakMap<Request, Request>();
 
 client.setConfig({
   baseUrl: API_URL,
@@ -24,7 +24,7 @@ client.setConfig({
 
 const SESSION_EXP_SKEW_MS = 30_000;
 const SESSION_EXP_COOKIE = /(?:^|;\s*)session_exp=(\d+)/;
-const ZErrorDetail = z.object({
+const ErrorDetailSchema = z.object({
   detail: z
     .union([
       z.string(),
@@ -36,7 +36,7 @@ const ZErrorDetail = z.object({
     ])
     .optional(),
 });
-const ZOperationResult = z.object({ data: z.unknown().optional() });
+const OperationResultSchema = z.object({ data: z.unknown().optional() });
 
 function sessionExpiresAt(): null | number {
   if (typeof document === "undefined") return null;
@@ -60,7 +60,7 @@ client.interceptors.request.use(async (request) => {
     }
   }
   if (request.method !== "GET" && request.method !== "HEAD") {
-    replayCache.set(request, request.clone());
+    REPLAY_CACHE.set(request, request.clone());
   }
   return request;
 });
@@ -70,7 +70,7 @@ client.interceptors.response.use(async (response, request) => {
   if (settled.status === 401 && !request.url.endsWith("/auth/refresh")) {
     const refresh = await deduplicatedRefresh();
     if (refresh === "refreshed") {
-      settled = await fetch(replayCache.get(request) ?? request);
+      settled = await fetch(REPLAY_CACHE.get(request) ?? request);
     }
     if (refresh === "unavailable") {
       throw new ApiError(503, SESSION_REFRESH_UNAVAILABLE_MESSAGE);
@@ -107,7 +107,7 @@ export function makeCall(clientOverride?: Client) {
     };
     const result: unknown = await Reflect.apply(operation, undefined, [merged]);
     if (schema === undefined) return;
-    return schema.parse(ZOperationResult.parse(result).data);
+    return schema.parse(OperationResultSchema.parse(result).data);
   }
   return call;
 }
@@ -119,7 +119,7 @@ async function readErrorMessage(response: Response): Promise<null | string> {
     const text = await response.clone().text();
     if (!text) return null;
     const parsed: unknown = JSON.parse(text);
-    const payload = ZErrorDetail.safeParse(parsed);
+    const payload = ErrorDetailSchema.safeParse(parsed);
     if (!payload.success) return null;
     const { detail } = payload.data;
     if (typeof detail === "string" && detail.trim().length > 0) return detail;

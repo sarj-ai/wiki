@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 
 from app.openapi import authentication_responses
 from app.templates.dependencies import template_catalog_service_dep
@@ -17,7 +17,7 @@ router = APIRouter(
 )
 
 
-@router.get("", operation_id="list_templates")
+@router.get("", status_code=status.HTTP_200_OK, operation_id="list_templates")
 async def list_templates(
     templates: Annotated[TemplateCatalogService, Depends(template_catalog_service_dep)],
     *,

@@ -8,7 +8,7 @@ from functools import cache
 from itertools import batched
 import json
 import threading
-from typing import TYPE_CHECKING, Any, NamedTuple, cast, override
+from typing import TYPE_CHECKING, Any, NamedTuple, override
 
 from google.oauth2.credentials import Credentials
 import google_auth_httplib2
@@ -949,16 +949,16 @@ class GoogleDriveService(DriveService):
         refresh_handler: GoogleRefreshHandler | None = None,
     ) -> DriveResource:
         authed_http = google_auth_httplib2.AuthorizedHttp(
-            GoogleDriveService._build_credentials(user, refresh_handler),
+            GoogleDriveService.build_credentials(user, refresh_handler),
             http=httplib2.Http(timeout=_DRIVE_HTTP_TIMEOUT.total_seconds()),
         )
-        built = discovery.build_from_document(  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+        built: DriveResource = discovery.build_from_document(  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
             drive_discovery_document(), http=authed_http
         )
-        return cast("DriveResource", built)
+        return built
 
     @staticmethod
-    def _build_credentials(
+    def build_credentials(
         user: User,
         refresh_handler: GoogleRefreshHandler | None = None,
     ) -> Credentials:
@@ -995,6 +995,16 @@ def reuse_drive_client(
     return client
 
 
+def build_google_credentials(
+    user: User,
+    refresh_handler: GoogleRefreshHandler | None = None,
+) -> Credentials:
+    return GoogleDriveService.build_credentials(
+        user,
+        refresh_handler,
+    )
+
+
 def _log_provider_failure(operation: str, exc: BaseException) -> None:
     status = getattr(getattr(exc, "resp", None), "status", None)
     logger.warning(
@@ -1014,7 +1024,11 @@ def drive_discovery_document() -> dict[str, Any]:
     if content is None:
         msg = "Bundled Drive v3 discovery document not found"
         raise RuntimeError(msg)
-    return cast("dict[str, Any]", json.loads(content))
+    parsed = json.loads(content)
+    if not isinstance(parsed, dict):
+        msg = "Bundled Drive v3 discovery document is not an object"
+        raise TypeError(msg)
+    return parsed
 
 
 def _build_mime_clause() -> str:

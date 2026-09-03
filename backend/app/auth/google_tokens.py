@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import secrets
-from typing import TYPE_CHECKING, NamedTuple, cast
+from typing import TYPE_CHECKING, NamedTuple, TypeIs
 import uuid
 
 import httpx
@@ -17,7 +17,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.auth.encryption import decrypt_text, encrypt_text
 from app.auth.schemas import GoogleTokenResponse
-from app.auth.service import GOOGLE_REVOKE_URL, GOOGLE_TOKEN_URL
+from app.auth.service import GOOGLE_OAUTH_URL, GOOGLE_REVOKE_URL
 from app.config import settings
 from app.models.user import User
 from app.performance import increment, timed
@@ -141,7 +141,7 @@ class GoogleTokenManager:
             if snapshot.credential_ciphertext is None:
                 raise GoogleReauthenticationRequiredError
 
-            owner = uuid.uuid4()
+            owner = uuid.uuid7()
             acquired = await self._acquire_lease(user, snapshot, owner, now)
             if acquired:
                 return await self._refresh_owned(user, snapshot, owner)
@@ -221,7 +221,7 @@ class GoogleTokenManager:
         try:
             with timed("google_token_refresh"):
                 response = await self._http.post(
-                    GOOGLE_TOKEN_URL,
+                    GOOGLE_OAUTH_URL,
                     data={
                         "client_id": settings.GOOGLE_CLIENT_ID,
                         "client_secret": settings.GOOGLE_CLIENT_SECRET.get_secret_value(),
@@ -423,7 +423,11 @@ def _retry_after(response: httpx.Response) -> int | None:
 
 
 def _as_predicate(value: object) -> ColumnElement[bool]:
-    if not isinstance(value, ColumnElement):
+    if not _is_predicate(value):
         msg = "SQLAlchemy comparison did not produce a predicate"
         raise TypeError(msg)
-    return cast("ColumnElement[bool]", value)
+    return value
+
+
+def _is_predicate(value: object) -> TypeIs[ColumnElement[bool]]:
+    return isinstance(value, ColumnElement)

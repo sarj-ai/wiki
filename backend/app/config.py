@@ -62,6 +62,12 @@ class Settings(DatabaseSettings):
     GEMINI_LOCATION: NonEmptyStr = "global"
     GEMINI_MODEL: NonEmptyStr = "gemini-3.5-flash-lite"
     GEMINI_REORGANIZATION_MODEL: NonEmptyStr = "gemini-3.5-flash"
+    DOCUMENT_TRANSFORM_UNSLOP_MODEL: NonEmptyStr = "gemini-3.1-flash-lite"
+    DOCUMENT_TRANSFORM_FALLBACK_MODEL: NonEmptyStr = "gemini-2.5-flash-lite"
+    DOCUMENT_TRANSFORM_RESTYLE_MODEL: NonEmptyStr = "gemini-3.8-flash"
+    DOCUMENT_TRANSFORM_LOGO_URI: HttpUrl = HttpUrl("https://wiki.sarj.ai/brand/sarj-logo-light.png")
+    DOCUMENT_TRANSFORM_QUEUE: NonEmptyStr | None = None
+    DOCUMENT_TRANSFORM_TARGET_URL: NonEmptyStr | None = None
     CLOUD_TASKS_QUEUE: NonEmptyStr | None = None
     CLOUD_TASKS_LOCATION: NonEmptyStr | None = None
     CLOUD_TASKS_TARGET_URL: NonEmptyStr | None = None
@@ -84,7 +90,33 @@ class Settings(DatabaseSettings):
         ):
             msg = "Cloud Tasks settings must be configured together"
             raise ValueError(msg)
+        transform_config = (
+            self.DOCUMENT_TRANSFORM_QUEUE,
+            self.DOCUMENT_TRANSFORM_TARGET_URL,
+        )
+        if any(value is not None for value in transform_config) and not all(
+            value is not None for value in transform_config
+        ):
+            msg = "Document Transform queue settings must be configured together"
+            raise ValueError(msg)
+        if any(value is not None for value in transform_config) and not all(
+            value is not None for value in task_config
+        ):
+            msg = "Document Transform requires the shared Cloud Tasks settings"
+            raise ValueError(msg)
         return self
+
+    @field_validator(
+        "DOCUMENT_TRANSFORM_UNSLOP_MODEL",
+        "DOCUMENT_TRANSFORM_FALLBACK_MODEL",
+        "DOCUMENT_TRANSFORM_RESTYLE_MODEL",
+    )
+    @classmethod
+    def document_transform_models_are_exact(cls, value: str) -> str:
+        if value == "latest" or value.endswith("-latest"):
+            msg = "Document Transform requires an exact Gemini model ID"
+            raise ValueError(msg)
+        return value
 
     @model_validator(mode="after")
     def cookie_domain_matches_application_hosts(self) -> Self:

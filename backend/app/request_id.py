@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 import re
+import secrets
 import time
 from typing import TYPE_CHECKING
-from uuid import uuid4
 
 from loguru import logger
 from starlette.routing import Route
@@ -35,7 +35,7 @@ class RequestIDMiddleware:
             await self._app(scope, receive, send)
             return
 
-        request_id = _inbound_request_id(scope) or uuid4().hex[:12]
+        request_id = _inbound_request_id(scope) or secrets.token_hex(6)
         token = request_id_var.set(request_id)
         metrics_token = begin_request_metrics()
         started_at = time.perf_counter()

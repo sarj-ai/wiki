@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { MIME_DOC, MIME_PDF } from "@/types/wiki";
+import { MIME_DOC, MIME_MARKDOWN, MIME_PDF } from "@/types/wiki";
 
 import { WikiToolbar } from "./wiki-toolbar";
 
@@ -15,6 +15,10 @@ vi.mock("./short-link-dialog", () => ({
 vi.mock("./reorganize-document", () => ({
   // eslint-disable-next-line @typescript-eslint/naming-convention -- matches the component export
   ReorganizeDocument: ({ fileId }: { fileId: string }) => `reorganize:${fileId}`,
+}));
+vi.mock("./document-polish-dialog", () => ({
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches the component export
+  DocumentPolishDialog: ({ source }: { source: { fileId: string } }) => `polish:${source.fileId}`,
 }));
 
 describe("WikiToolbar", () => {
@@ -71,5 +75,43 @@ describe("WikiToolbar", () => {
     );
 
     expect(view).toContain("reorganize:pdf-file");
+    expect(view).not.toContain("polish:pdf-file");
+  });
+
+  it("offers safe copy polishing for a revisioned Google Doc", () => {
+    const view = renderToStaticMarkup(
+      <WikiToolbar
+        breadcrumb={[]}
+        canEdit
+        driveId="drive"
+        fileId="doc-file"
+        mimeType={MIME_DOC}
+        modifiedTime="2026-09-03T12:00:00Z"
+        onReload={vi.fn()}
+        parentFolderId="folder"
+        title="Technical review"
+      />,
+    );
+
+    expect(view).toContain("Polish");
+    expect(view).toContain("polish:doc-file");
+  });
+
+  it("offers the same copy-safe action for Drive-hosted Markdown", () => {
+    const view = renderToStaticMarkup(
+      <WikiToolbar
+        breadcrumb={[]}
+        canEdit={false}
+        driveId="drive"
+        fileId="markdown-file"
+        mimeType={MIME_MARKDOWN}
+        modifiedTime="2026-09-03T12:00:00Z"
+        onReload={vi.fn()}
+        parentFolderId="folder"
+        title="Review.md"
+      />,
+    );
+
+    expect(view).toContain("polish:markdown-file");
   });
 });

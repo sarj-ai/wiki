@@ -89,7 +89,26 @@ async def callback(
     return redirect
 
 
-@router.post("/logout", operation_id="logout")
+@router.post(
+    "/logout",
+    status_code=status.HTTP_200_OK,
+    response_class=JSONResponse,
+    operation_id="logout",
+    responses={
+        200: {
+            "description": "Session revoked.",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {"message": {"type": "string"}},
+                        "required": ["message"],
+                    }
+                }
+            },
+        }
+    },
+)
 async def logout(
     request: Request,
     auth: Annotated[AuthService, Depends(auth_service_dep)],
@@ -104,6 +123,7 @@ async def logout(
 
 @router.post(
     "/refresh",
+    status_code=status.HTTP_200_OK,
     operation_id="refresh_session",
     response_class=JSONResponse,
     responses=authentication_responses(),
@@ -132,6 +152,7 @@ async def refresh(
 
 @router.get(
     "/me",
+    status_code=status.HTTP_200_OK,
     operation_id="get_current_user",
     responses=authentication_responses(),
 )

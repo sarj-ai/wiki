@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from importlib.metadata import version
@@ -17,6 +18,7 @@ from app.bootstrap.router import router as bootstrap_router
 from app.config import Settings, settings
 from app.csrf import CookieOriginMiddleware
 from app.database import async_session, close_connector
+from app.document_transform.router import router as document_transform_router
 from app.drive.errors import DrivePermissionsError
 from app.drive.search_router import router as drive_search_router
 from app.extras.router import router as extras_router
@@ -37,7 +39,7 @@ from app.templates.router import router as templates_router
 
 async def global_exception_handler(
     _request: Request,
-    exc: Exception,  # ruff: ignore[unused-function-argument] — FastAPI signature requirement
+    _exc: Exception,
 ) -> JSONResponse:
     logger.error("unhandled request exception")
     return JSONResponse(
@@ -88,14 +90,21 @@ async def task_error_handler(
 
 async def _health_check(app_settings: Settings) -> dict[str, str]:
     result: dict[str, str] = {"revision": app_settings.RELEASE_SHA, "status": "ok"}
-    try:
-        async with async_session() as db:
-            await db.execute(text("SELECT 1"))
+    database_result = await asyncio.gather(_probe_database(), return_exceptions=True)
+    database_outcome = database_result[0]
+    if not isinstance(database_outcome, BaseException):
         result["database"] = "ok"
-    except Exception:  # ruff: ignore[blind-except] — health reports degraded, never 500.
+    elif not isinstance(database_outcome, Exception):
+        raise database_outcome
+    else:
         result["status"] = "degraded"
         result["database"] = "unavailable"
     return result
+
+
+async def _probe_database() -> None:
+    async with async_session() as db:
+        await db.execute(text("SELECT 1"))
 
 
 async def health_check() -> dict[str, str]:
@@ -164,6 +173,7 @@ def create_app(app_settings: Settings) -> FastAPI:
     application.include_router(aliases_router)
     application.include_router(templates_router)
     application.include_router(smart_create_router)
+    application.include_router(document_transform_router)
     application.include_router(tasks_router)
     application.include_router(internal_tasks_router)
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Body, Depends, Path, Response, status
 from loguru import logger
 
 from app.aliases.dependencies import alias_service_dep
@@ -28,18 +28,26 @@ router = APIRouter(
 )
 
 
-@router.get("/files/{file_id}", operation_id="get_file_alias")
+@router.get(
+    "/files/{file_id}",
+    status_code=status.HTTP_200_OK,
+    operation_id="get_file_alias",
+)
 async def get_file_alias(
-    file_id: FileId,
+    file_id: Annotated[FileId, Path(min_length=1)],
     svc: Annotated[AliasService, Depends(alias_service_dep)],
 ) -> DocumentAliasForFile:
     return await svc.get_for_file(file_id)
 
 
-@router.put("/files/{file_id}", operation_id="save_file_alias")
+@router.put(
+    "/files/{file_id}",
+    status_code=status.HTTP_200_OK,
+    operation_id="save_file_alias",
+)
 async def save_file_alias(
-    file_id: FileId,
-    payload: DocumentAliasWrite,
+    file_id: Annotated[FileId, Path(min_length=1)],
+    payload: Annotated[DocumentAliasWrite, Body()],
     svc: Annotated[AliasService, Depends(alias_service_dep)],
 ) -> DocumentAliasRead:
     result = await svc.save(file_id, payload.alias)
@@ -53,16 +61,20 @@ async def save_file_alias(
     operation_id="retire_file_alias",
 )
 async def retire_file_alias(
-    file_id: FileId,
+    file_id: Annotated[FileId, Path(min_length=1)],
     svc: Annotated[AliasService, Depends(alias_service_dep)],
 ) -> None:
     await svc.retire(file_id)
     logger.info("document alias retired")
 
 
-@router.post("/recent", operation_id="get_recent_aliases")
+@router.post(
+    "/recent",
+    status_code=status.HTTP_200_OK,
+    operation_id="get_recent_aliases",
+)
 async def get_recent_aliases(
-    payload: RecentDocumentAliasesRequest,
+    payload: Annotated[RecentDocumentAliasesRequest, Body()],
     svc: Annotated[AliasService, Depends(alias_service_dep)],
     response: Response,
 ) -> list[RecentDocumentAlias]:
@@ -70,9 +82,13 @@ async def get_recent_aliases(
     return await svc.resolve_recent(payload.aliases)
 
 
-@router.get("/{alias}", operation_id="resolve_alias")
+@router.get(
+    "/{alias}",
+    status_code=status.HTTP_200_OK,
+    operation_id="resolve_alias",
+)
 async def resolve_alias(
-    alias: DocumentAliasValue,
+    alias: Annotated[DocumentAliasValue, Path(min_length=1)],
     svc: Annotated[AliasService, Depends(alias_service_dep)],
 ) -> DocumentAliasRead:
     result = await svc.resolve(alias)

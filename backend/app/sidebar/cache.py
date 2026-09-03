@@ -26,7 +26,9 @@ from app.sidebar.singleflight import Singleflight
 
 CACHE_MAX_AGE = timedelta(days=30)
 
-SINGLEFLIGHT = Singleflight()
+type SidebarFlightResult = DriveTree | list[DriveNode]
+
+SINGLEFLIGHT = Singleflight[SidebarFlightResult]()
 
 BG_TASKS: set[asyncio.Task[None]] = set()
 
@@ -94,7 +96,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
         *,
         drive: DriveService,
         user: User,
-        singleflight: Singleflight,
+        singleflight: Singleflight[SidebarFlightResult],
         bg_tasks: set[asyncio.Task[None]],
         sessionmaker: async_sessionmaker[AsyncSession],
     ) -> None:
@@ -113,6 +115,9 @@ class PostgresSidebarCacheService(SidebarCacheService):
             self._singleflight_key("drive", drive_id),
             lambda: self._walk_and_save(drive_id),
         )
+        if not isinstance(tree, DriveTree):
+            msg = "Drive singleflight returned folder children"
+            raise TypeError(msg)
         return CachedDriveTree(tree=tree, refreshed_at=None)
 
     @override
@@ -141,10 +146,14 @@ class PostgresSidebarCacheService(SidebarCacheService):
 
     @override
     async def get_folder_children(self, folder_id: FileId) -> list[DriveNode]:
-        return await self._sf.do(
+        children = await self._sf.do(
             self._singleflight_key("folder", folder_id),
             lambda: self._drive.list_folder_children(folder_id),
         )
+        if not isinstance(children, list):
+            msg = "Folder singleflight returned a drive tree"
+            raise TypeError(msg)
+        return children
 
     @override
     async def invalidate_drive(self, db: AsyncSession, drive_id: DriveId) -> None:
@@ -158,10 +167,14 @@ class PostgresSidebarCacheService(SidebarCacheService):
     @override
     async def refresh_drive(self, db: AsyncSession, drive_id: DriveId) -> DriveTree:
         await self.invalidate_drive(db, drive_id)
-        return await self._sf.do(
+        tree = await self._sf.do(
             self._singleflight_key("drive", drive_id),
             lambda: self._walk_and_save(drive_id),
         )
+        if not isinstance(tree, DriveTree):
+            msg = "Drive singleflight returned folder children"
+            raise TypeError(msg)
+        return tree
 
     def _schedule_refresh(self, drive_id: DriveId) -> None:
         task = asyncio.create_task(self._refresh_in_background(drive_id))
@@ -169,16 +182,24 @@ class PostgresSidebarCacheService(SidebarCacheService):
         task.add_done_callback(self._bg_tasks.discard)
 
     async def _refresh_in_background(self, drive_id: DriveId) -> None:
-        try:
-            await self._sf.do(
+        outcomes = await asyncio.gather(
+            self._sf.do(
                 self._singleflight_key("drive", drive_id),
                 lambda: self._walk_and_save(drive_id),
-            )
-        except Exception as exc:  # ruff: ignore[blind-except] — detached refresh failures must not escape the task.
-            logger.warning(
-                "background drive refresh failed error_type={error_type}",
-                error_type=type(exc).__name__,
-            )
+            ),
+            return_exceptions=True,
+        )
+        outcome = outcomes[0]
+        match outcome:
+            case Exception():
+                logger.warning(
+                    "background drive refresh failed error_type={error_type}",
+                    error_type=type(outcome).__name__,
+                )
+            case BaseException():
+                raise outcome
+            case _:
+                pass
 
     async def _walk_and_save(self, drive_id: DriveId) -> DriveTree:
         tree = await self._drive.walk_drive_folders(drive_id)

@@ -21,6 +21,7 @@ from app.tasks.errors import (
     TaskNotFoundError,
 )
 from app.tasks.schemas import (
+    DocumentTransformTaskRecord,
     RunningTaskRead,
     SmartCreateTaskRecord,
     TaskClaim,
@@ -95,6 +96,9 @@ class TaskService(ABC):
     @abstractmethod
     async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord: ...
 
+    async def load_document_transform(self, task_id: TaskId) -> DocumentTransformTaskRecord:
+        raise NotImplementedError
+
 
 class PostgresTaskService(TaskService):
     def __init__(self, *, db: AsyncSession) -> None:
@@ -143,7 +147,7 @@ class PostgresTaskService(TaskService):
             msg = "lease_duration must be positive"
             raise ValueError(msg)
         now = datetime.now(UTC)
-        lease_token = uuid.uuid4()
+        lease_token = uuid.uuid7()
         statement = (
             update(Task)
             .where(
@@ -306,6 +310,19 @@ class PostgresTaskService(TaskService):
         if task is None or task.kind != TaskKind.FILE_SMART_CREATE:
             raise TaskNotFoundError
         return SmartCreateTaskRecord.model_validate(
+            {
+                "owner_user_id": task.owner_user_id,
+                "task": _to_read(task),
+                "payload": task.payload,
+            }
+        )
+
+    @override
+    async def load_document_transform(self, task_id: TaskId) -> DocumentTransformTaskRecord:
+        task = await self._db.get(Task, task_id)
+        if task is None or task.kind != TaskKind.FILE_DOCUMENT_TRANSFORM:
+            raise TaskNotFoundError
+        return DocumentTransformTaskRecord.model_validate(
             {
                 "owner_user_id": task.owner_user_id,
                 "task": _to_read(task),
