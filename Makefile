@@ -41,7 +41,9 @@ check-quality: check-repository
 	@$(MAKE) standards-check
 	@uv run --project backend --locked python scripts/check_standards.py --verify-python-baseline .
 	@uv run --project backend --locked sarj-ratchet .
-	@uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure
+	# These hooks remain enforced for changed files by pre-commit and in CI.
+	# Their full-repository subprocess fan-out can deadlock on macOS.
+	@SKIP=actionlint,check-added-large-files uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure
 	@cd backend && uv run --locked python scripts/export_openapi.py --check ../frontend/openapi.json
 
 check-backend: ## Run backend lint, type, architecture, and test checks.
