@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 import uuid
 
+from app.document_transform.ir import DocumentIR
 from app.document_transform.schemas import DocumentOutput, DriveFileSource, MarkdownSource
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId
 
@@ -41,6 +42,13 @@ class OutputDraft:
     brand_warnings: tuple[str, ...] = ()
     completed: bool = False
     result: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class OutputVerification:
+    content_preserved: bool
+    structure_preserved: bool
+    brand_applied: bool = True
 
 
 class DocumentGateway(ABC):
@@ -111,6 +119,16 @@ class DocumentGateway(ABC):
         requests: list[dict[str, Any]],
         required_revision_id: DocsRevisionId,
     ) -> OutputDraft: ...
+
+    @abstractmethod
+    async def verify_output(
+        self,
+        *,
+        draft: OutputDraft,
+        source: SourceSnapshot,
+        expected: DocumentIR,
+        verify_brand: bool,
+    ) -> OutputVerification: ...
 
     @abstractmethod
     async def complete(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterator
+from dataclasses import dataclass
 from functools import cache
 import hashlib
 from io import BytesIO
@@ -15,13 +16,16 @@ from googleapiclient.discovery_cache import get_static_doc
 from googleapiclient.errors import HttpError
 from googleapiclient.http import HttpRequest, MediaIoBaseUpload
 
+from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import DocumentGatewayError, UnsupportedSourceError
 from app.document_transform.gateway import (
     DocumentGateway,
     OutputDraft,
+    OutputVerification,
     SourceSnapshot,
     TabHeader,
 )
+from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, parse_google_document
 from app.document_transform.schemas import DocumentOutput, DriveFileSource, MarkdownSource
 from app.drive.retry import execute_mutation, execute_with_retry
 from app.drive.schemas import MIME_DOC
@@ -33,6 +37,16 @@ from app.drive.service import (
 from app.files.service import FilesService
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId
 from app.models.user import User
+
+
+_RGB_TOLERANCE = 1e-6
+
+
+@dataclass(frozen=True, slots=True)
+class ParagraphRangeKey:
+    tab_id: str
+    start_index: int
+    end_index: int
 
 
 if TYPE_CHECKING:
@@ -234,6 +248,23 @@ class GoogleDocumentGateway(DocumentGateway):
             mutation_sha256,
             requests,
             required_revision_id,
+        )
+
+    @override
+    async def verify_output(
+        self,
+        *,
+        draft: OutputDraft,
+        source: SourceSnapshot,
+        expected: DocumentIR,
+        verify_brand: bool,
+    ) -> OutputVerification:
+        return await asyncio.to_thread(
+            self._verify_output_sync,
+            draft,
+            source,
+            expected,
+            verify_brand=verify_brand,
         )
 
     @override
@@ -531,6 +562,28 @@ class GoogleDocumentGateway(DocumentGateway):
             brand_warnings=draft.brand_warnings,
         )
 
+    def _verify_output_sync(
+        self,
+        draft: OutputDraft,
+        source: SourceSnapshot,
+        expected: DocumentIR,
+        *,
+        verify_brand: bool,
+    ) -> OutputVerification:
+        output_document = self._get_document_sync(draft.document_id)
+        parsed = parse_google_document(output_document, title=expected.title)
+        source_document = source.google_document
+        structure_preserved = source_document is None or (
+            _structural_inventory(source_document) == _structural_inventory(output_document)
+            and _protected_structure_inventory(source_document)
+            == _protected_structure_inventory(output_document)
+        )
+        return OutputVerification(
+            content_preserved=parsed.semantic_sha256 == expected.semantic_sha256,
+            structure_preserved=structure_preserved,
+            brand_applied=not verify_brand or verify_brand_application(output_document, parsed),
+        )
+
     @staticmethod
     def _draft_with_mutation(draft: OutputDraft, mutation_sha256: str) -> OutputDraft:
         return OutputDraft(
@@ -768,4 +821,287 @@ def _structural_text(element: dict[str, Any]) -> str:
         if isinstance(item, dict)
         and isinstance(item.get("textRun"), dict)
         and isinstance((content := item["textRun"].get("content")), str)
+    )
+
+
+def _structural_inventory(document: dict[str, Any]) -> tuple[tuple[int, ...], ...]:
+    inventory: list[tuple[int, ...]] = []
+    for _, document_tab in _document_tabs(document):
+        body = document_tab.get("body", {})
+        content = body.get("content", []) if isinstance(body, dict) else []
+        if not isinstance(content, list):
+            raise DocumentGatewayError
+        counts = {
+            "paragraph": 0,
+            "sectionBreak": 0,
+            "table": 0,
+            "tableOfContents": 0,
+            "inlineObjectElement": 0,
+            "footnoteReference": 0,
+            "horizontalRule": 0,
+        }
+        for element in content:
+            if not isinstance(element, dict):
+                raise DocumentGatewayError
+            _count_structural_keys(element, counts)
+        inventory.append(tuple(counts[key] for key in sorted(counts)))
+    return tuple(inventory)
+
+
+def _count_structural_keys(value: object, counts: dict[str, int]) -> None:
+    match value:
+        case dict() as mapping:
+            for key, child in mapping.items():
+                if isinstance(key, str) and key in counts:
+                    counts[key] += 1
+                _count_structural_keys(child, counts)
+        case list() as items:
+            for child in items:
+                _count_structural_keys(child, counts)
+        case _:
+            pass
+
+
+def _protected_structure_inventory(document: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    inventory: list[tuple[str, str]] = []
+    for tab_id, document_tab in _document_tabs(document):
+        body = document_tab.get("body", {})
+        content = body.get("content", []) if isinstance(body, dict) else []
+        if not isinstance(content, list):
+            raise DocumentGatewayError
+        protected = [
+            _strip_location_fields(element)
+            for element in content
+            if isinstance(element, dict) and not _is_plain_text_paragraph(element)
+        ]
+        inventory.append(
+            (
+                tab_id,
+                json.dumps(protected, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
+            )
+        )
+    return tuple(inventory)
+
+
+def _is_plain_text_paragraph(element: dict[str, Any]) -> bool:
+    paragraph = element.get("paragraph")
+    if not isinstance(paragraph, dict):
+        return False
+    parts = paragraph.get("elements", [])
+    return isinstance(parts, list) and all(
+        isinstance(part, dict) and isinstance(part.get("textRun"), dict) for part in parts
+    )
+
+
+def _strip_location_fields(value: object) -> object:
+    match value:
+        case dict() as mapping:
+            return {
+                key: _strip_location_fields(child)
+                for key, child in mapping.items()
+                if key not in {"startIndex", "endIndex"}
+            }
+        case list() as items:
+            return [_strip_location_fields(child) for child in items]
+        case _:
+            return value
+
+
+def verify_brand_application(document: dict[str, Any], parsed: DocumentIR) -> bool:
+    tabs = tuple(_document_tabs(document))
+    if not tabs or not all(
+        _tab_shell_is_branded(document, document_tab) for _, document_tab in tabs
+    ):
+        return False
+    paragraphs = _paragraphs_by_range(tabs)
+    for block in parsed.blocks:
+        source_range = block.source_range
+        if source_range is None or not block.editable or block.kind is BlockKind.BLANK:
+            continue
+        paragraph = paragraphs.get(
+            ParagraphRangeKey(
+                tab_id=source_range.tab_id,
+                start_index=source_range.start_index,
+                end_index=source_range.end_index,
+            )
+        )
+        if paragraph is None or not _paragraph_has_brand(paragraph, block):
+            return False
+    return True
+
+
+def _tab_shell_is_branded(document: dict[str, Any], document_tab: dict[str, Any]) -> bool:
+    style = document_tab.get("documentStyle")
+    if not isinstance(style, dict):
+        return False
+    expected_margin = CURRENT_BRAND_MANIFEST.document.horizontal_margin_pt
+    expected_vertical = CURRENT_BRAND_MANIFEST.document.vertical_margin_pt
+    if not (
+        _dimension_matches(style.get("marginLeft"), expected_margin)
+        and _dimension_matches(style.get("marginRight"), expected_margin)
+        and _dimension_matches(style.get("marginTop"), expected_vertical)
+        and _dimension_matches(style.get("marginBottom"), expected_vertical)
+    ):
+        return False
+    header_id = style.get("defaultHeaderId")
+    headers = document_tab.get("headers")
+    if not isinstance(header_id, str) or not isinstance(headers, dict):
+        return False
+    header = headers.get(header_id)
+    if not isinstance(header, dict) or not _segment_has_text(headers, header_id):
+        return False
+    object_ids = _values_for_key(header, "inlineObjectId")
+    inline_objects = document.get("inlineObjects")
+    return isinstance(inline_objects, dict) and any(
+        _inline_object_uses_canonical_logo(inline_objects.get(object_id))
+        for object_id in object_ids
+    )
+
+
+def _paragraphs_by_range(
+    tabs: tuple[tuple[str, dict[str, Any]], ...],
+) -> dict[ParagraphRangeKey, dict[str, Any]]:
+    paragraphs: dict[ParagraphRangeKey, dict[str, Any]] = {}
+    for tab_id, document_tab in tabs:
+        body = document_tab.get("body", {})
+        content = body.get("content", []) if isinstance(body, dict) else []
+        if not isinstance(content, list):
+            return {}
+        for element in content:
+            if not isinstance(element, dict) or not isinstance(element.get("paragraph"), dict):
+                continue
+            start = element.get("startIndex")
+            end = element.get("endIndex")
+            if isinstance(start, int) and isinstance(end, int):
+                paragraphs[
+                    ParagraphRangeKey(
+                        tab_id=tab_id,
+                        start_index=start,
+                        end_index=end - 1,
+                    )
+                ] = element["paragraph"]
+    return paragraphs
+
+
+def _paragraph_has_brand(paragraph: dict[str, Any], block: TextBlock) -> bool:
+    elements = paragraph.get("elements", [])
+    paragraph_style = paragraph.get("paragraphStyle", {})
+    if not isinstance(elements, list) or not isinstance(paragraph_style, dict):
+        return False
+    expected_named_style = (
+        f"HEADING_{block.level}"
+        if block.kind is BlockKind.HEADING and block.level in {1, 2, 3, 4, 5, 6}
+        else "NORMAL_TEXT"
+    )
+    style_checks = (
+        paragraph_style.get("namedStyleType") == expected_named_style,
+        paragraph_style.get("alignment") == "START",
+        paragraph_style.get("lineSpacing") == CURRENT_BRAND_MANIFEST.document.line_spacing_percent,
+        _dimension_matches(
+            paragraph_style.get("spaceAbove"),
+            CURRENT_BRAND_MANIFEST.document.paragraph_space_above_pt,
+        ),
+        _dimension_matches(
+            paragraph_style.get("spaceBelow"),
+            CURRENT_BRAND_MANIFEST.document.paragraph_space_below_pt,
+        ),
+        paragraph_style.get("keepWithNext") is (block.kind is BlockKind.HEADING),
+    )
+    if not all(style_checks):
+        return False
+    expected_size = _brand_font_size(block)
+    expected_color = (
+        CURRENT_BRAND_MANIFEST.colors.primary
+        if block.kind is BlockKind.HEADING
+        else CURRENT_BRAND_MANIFEST.colors.ink
+    )
+    return all(
+        _text_run_has_brand(part["textRun"], expected_size, expected_color, block)
+        for part in elements
+        if isinstance(part, dict)
+        and isinstance(part.get("textRun"), dict)
+        and isinstance(part["textRun"].get("content"), str)
+        and part["textRun"]["content"].strip()
+    )
+
+
+def _text_run_has_brand(
+    text_run: dict[str, Any],
+    expected_size: int,
+    expected_color: str,
+    block: TextBlock,
+) -> bool:
+    style = text_run.get("textStyle")
+    if not isinstance(style, dict):
+        return False
+    family = style.get("weightedFontFamily")
+    color = style.get("foregroundColor")
+    return (
+        isinstance(family, dict)
+        and family.get("fontFamily") == CURRENT_BRAND_MANIFEST.document.font_family
+        and _dimension_matches(style.get("fontSize"), expected_size)
+        and _color_matches(color, expected_color)
+        and (block.kind is not BlockKind.HEADING or style.get("bold") is True)
+    )
+
+
+def _brand_font_size(block: TextBlock) -> int:
+    document = CURRENT_BRAND_MANIFEST.document
+    if block.level is None:
+        return document.body_size_pt
+    return {
+        1: document.h1_size_pt,
+        2: document.h2_size_pt,
+        3: document.h3_size_pt,
+    }.get(block.level, document.body_size_pt)
+
+
+def _dimension_matches(value: object, magnitude: int) -> bool:
+    return (
+        isinstance(value, dict)
+        and value.get("unit") == "PT"
+        and value.get("magnitude") == magnitude
+    )
+
+
+def _color_matches(value: object, expected_hex: str) -> bool:
+    if not isinstance(value, dict):
+        return False
+    color = value.get("color")
+    rgb = color.get("rgbColor") if isinstance(color, dict) else None
+    if not isinstance(rgb, dict):
+        return False
+    expected = tuple(int(expected_hex[index : index + 2], 16) / 255 for index in (1, 3, 5))
+    observed = tuple(rgb.get(channel) for channel in ("red", "green", "blue"))
+    return all(
+        isinstance(actual, int | float) and abs(actual - target) < _RGB_TOLERANCE
+        for actual, target in zip(observed, expected, strict=True)
+    )
+
+
+def _values_for_key(value: object, target: str) -> tuple[str, ...]:
+    values: list[str] = []
+    match value:
+        case dict() as mapping:
+            candidate = mapping.get(target)
+            if isinstance(candidate, str):
+                values.append(candidate)
+            for child in mapping.values():
+                values.extend(_values_for_key(child, target))
+        case list() as items:
+            for child in items:
+                values.extend(_values_for_key(child, target))
+        case _:
+            pass
+    return tuple(values)
+
+
+def _inline_object_uses_canonical_logo(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    properties = value.get("inlineObjectProperties")
+    embedded = properties.get("embeddedObject") if isinstance(properties, dict) else None
+    image = embedded.get("imageProperties") if isinstance(embedded, dict) else None
+    return (
+        isinstance(image, dict) and image.get("sourceUri") == CURRENT_BRAND_MANIFEST.assets.logo_uri
     )

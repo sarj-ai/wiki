@@ -5,29 +5,64 @@ import hashlib
 import json
 from typing import Any
 
+from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
+from app.document_transform.errors import SourceTooLargeError
 from app.document_transform.gateway import TabHeader
 from app.document_transform.ir import BlockKind, DocumentIR, SourceRange, TextBlock, utf16_length
 from app.identifiers import DocsTabId
 
 
-SARJ_PURPLE = "#2B165E"
+SARJ_PURPLE = CURRENT_BRAND_MANIFEST.colors.primary
+MAX_DOCS_MUTATION_REQUESTS = 2_500
+MAX_DOCS_MUTATION_BYTES = 5 * 1024 * 1024
 type DocsRequest = dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
 class SarjBrandProfile:
-    version: str = "sarj-v1"
-    font_family: str = "Nunito"
-    body_size_pt: int = 11
-    h1_size_pt: int = 22
-    h2_size_pt: int = 15
-    h3_size_pt: int = 12
-    caption_size_pt: int = 9
-    line_spacing_percent: int = 115
-    paragraph_space_above_pt: int = 2
-    paragraph_space_below_pt: int = 6
-    horizontal_margin_pt: int = 72
-    vertical_margin_pt: int = 72
+    version: str = CURRENT_BRAND_MANIFEST.profile_id
+    sha256: str = CURRENT_BRAND_MANIFEST.sha256
+    primary_color: str = CURRENT_BRAND_MANIFEST.colors.primary
+    ink_color: str = CURRENT_BRAND_MANIFEST.colors.ink
+    muted_color: str = CURRENT_BRAND_MANIFEST.colors.muted
+    border_color: str = CURRENT_BRAND_MANIFEST.colors.border
+    subtle_color: str = CURRENT_BRAND_MANIFEST.colors.subtle
+    font_family: str = CURRENT_BRAND_MANIFEST.document.font_family
+    body_size_pt: int = CURRENT_BRAND_MANIFEST.document.body_size_pt
+    h1_size_pt: int = CURRENT_BRAND_MANIFEST.document.h1_size_pt
+    h2_size_pt: int = CURRENT_BRAND_MANIFEST.document.h2_size_pt
+    h3_size_pt: int = CURRENT_BRAND_MANIFEST.document.h3_size_pt
+    caption_size_pt: int = CURRENT_BRAND_MANIFEST.document.caption_size_pt
+    line_spacing_percent: int = CURRENT_BRAND_MANIFEST.document.line_spacing_percent
+    paragraph_space_above_pt: int = CURRENT_BRAND_MANIFEST.document.paragraph_space_above_pt
+    paragraph_space_below_pt: int = CURRENT_BRAND_MANIFEST.document.paragraph_space_below_pt
+    horizontal_margin_pt: int = CURRENT_BRAND_MANIFEST.document.horizontal_margin_pt
+    vertical_margin_pt: int = CURRENT_BRAND_MANIFEST.document.vertical_margin_pt
+
+    def __post_init__(self) -> None:
+        expected = {
+            "version": CURRENT_BRAND_MANIFEST.profile_id,
+            "sha256": CURRENT_BRAND_MANIFEST.sha256,
+            "primary_color": CURRENT_BRAND_MANIFEST.colors.primary,
+            "ink_color": CURRENT_BRAND_MANIFEST.colors.ink,
+            "muted_color": CURRENT_BRAND_MANIFEST.colors.muted,
+            "border_color": CURRENT_BRAND_MANIFEST.colors.border,
+            "subtle_color": CURRENT_BRAND_MANIFEST.colors.subtle,
+            "font_family": CURRENT_BRAND_MANIFEST.document.font_family,
+            "body_size_pt": CURRENT_BRAND_MANIFEST.document.body_size_pt,
+            "h1_size_pt": CURRENT_BRAND_MANIFEST.document.h1_size_pt,
+            "h2_size_pt": CURRENT_BRAND_MANIFEST.document.h2_size_pt,
+            "h3_size_pt": CURRENT_BRAND_MANIFEST.document.h3_size_pt,
+            "caption_size_pt": CURRENT_BRAND_MANIFEST.document.caption_size_pt,
+            "line_spacing_percent": CURRENT_BRAND_MANIFEST.document.line_spacing_percent,
+            "paragraph_space_above_pt": (CURRENT_BRAND_MANIFEST.document.paragraph_space_above_pt),
+            "paragraph_space_below_pt": (CURRENT_BRAND_MANIFEST.document.paragraph_space_below_pt),
+            "horizontal_margin_pt": CURRENT_BRAND_MANIFEST.document.horizontal_margin_pt,
+            "vertical_margin_pt": CURRENT_BRAND_MANIFEST.document.vertical_margin_pt,
+        }
+        if any(getattr(self, name) != value for name, value in expected.items()):
+            msg = "Sarj brand tokens must match the pinned manifest"
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +174,11 @@ def build_markdown_mutations(
 
 def mutation_sha256(requests: list[DocsRequest]) -> str:
     payload = json.dumps(requests, sort_keys=True, separators=(",", ":"))
+    if (
+        len(requests) > MAX_DOCS_MUTATION_REQUESTS
+        or len(payload.encode()) > MAX_DOCS_MUTATION_BYTES
+    ):
+        raise SourceTooLargeError
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
@@ -183,7 +223,7 @@ def _style_requests(
     requests: list[DocsRequest] = []
     for block in document.blocks:
         source_range = block.source_range
-        if source_range is None or block.kind == BlockKind.BLANK:
+        if source_range is None or block.kind == BlockKind.BLANK or not block.editable:
             continue
         range_value = {
             "startIndex": source_range.start_index,
@@ -195,8 +235,17 @@ def _style_requests(
             text_style: dict[str, Any] = {
                 "weightedFontFamily": {"fontFamily": profile.font_family},
                 "fontSize": {"magnitude": size, "unit": "PT"},
+                "foregroundColor": {
+                    "color": {
+                        "rgbColor": _rgb_color(
+                            profile.primary_color
+                            if block.kind == BlockKind.HEADING
+                            else profile.ink_color
+                        )
+                    }
+                },
             }
-            fields = "weightedFontFamily,fontSize"
+            fields = "weightedFontFamily,fontSize,foregroundColor"
             if block.kind == BlockKind.HEADING:
                 text_style["bold"] = True
                 fields += ",bold"
@@ -249,6 +298,15 @@ def _style_requests(
     return requests
 
 
+def _rgb_color(value: str) -> dict[str, float]:
+    normalized = value.removeprefix("#")
+    return {
+        "red": int(normalized[0:2], 16) / 255,
+        "green": int(normalized[2:4], 16) / 255,
+        "blue": int(normalized[4:6], 16) / 255,
+    }
+
+
 def _font_size(block: TextBlock, profile: SarjBrandProfile) -> int:
     if block.kind != BlockKind.HEADING:
         return profile.body_size_pt
@@ -265,7 +323,7 @@ def _font_size(block: TextBlock, profile: SarjBrandProfile) -> int:
 
 
 def _named_style(block: TextBlock) -> str:
-    if block.kind == BlockKind.HEADING and block.level in {1, 2, 3}:
+    if block.kind == BlockKind.HEADING and block.level in {1, 2, 3, 4, 5, 6}:
         return f"HEADING_{block.level}"
     return "NORMAL_TEXT"
 
@@ -325,11 +383,12 @@ def _brand_shell_requests(
 
 
 def _tab_ids(document: DocumentIR) -> tuple[DocsTabId, ...]:
-    return tuple(
+    located = tuple(
         dict.fromkeys(
             block.source_range.tab_id for block in document.blocks if block.source_range is not None
         )
     )
+    return located or document.tab_ids
 
 
 def _post_edit_locations(original: DocumentIR, transformed: DocumentIR) -> DocumentIR:
@@ -368,4 +427,9 @@ def _post_edit_locations(original: DocumentIR, transformed: DocumentIR) -> Docum
             )
         )
         deltas[source_range.tab_id] = delta + new_length - old_length
-    return DocumentIR(transformed.title, tuple(located), transformed.source_format)
+    return DocumentIR(
+        transformed.title,
+        tuple(located),
+        transformed.source_format,
+        transformed.tab_ids,
+    )

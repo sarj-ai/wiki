@@ -6,7 +6,11 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
-from app.identifiers import FileId
+from app.document_transform.brand_manifest import (
+    CURRENT_BRAND_MANIFEST,
+    CURRENT_BRAND_PROFILE_ID,
+)
+from app.identifiers import BrandProfileId, FileId, ModelId
 
 
 SourceKind = Literal["drive_file", "markdown"]
@@ -56,7 +60,7 @@ class DocumentTransformRequest(StrictTransformModel):
 class TextPatch(StrictTransformModel):
     block_id: str
     expected_sha256: str
-    replacement: str
+    replacement: Annotated[str, StringConstraints(max_length=524_288)]
     rationale: Annotated[str, StringConstraints(strip_whitespace=True, max_length=240)] = ""
 
     @field_validator("replacement")
@@ -69,7 +73,7 @@ class TextPatch(StrictTransformModel):
 
 
 class PatchEnvelope(StrictTransformModel):
-    patches: list[TextPatch] = Field(max_length=500)
+    patches: list[TextPatch] = Field(max_length=100)
 
 
 class TransformFinding(StrictTransformModel):
@@ -104,10 +108,15 @@ class DocumentTransformResult(StrictTransformModel):
     applied_patch_count: int = Field(ge=0)
     findings: list[TransformFinding]
     validation: ValidationSummary
-    model_ids: list[str]
+    model_ids: list[ModelId]
     tool_versions: dict[str, str]
     pipeline_version: str
     needs_review: bool
+    brand_profile_id: BrandProfileId = CURRENT_BRAND_PROFILE_ID
+    brand_profile_sha256: str = CURRENT_BRAND_MANIFEST.sha256
+    deterministic_patch_count: int = Field(default=0, ge=0)
+    model_patch_count: int = Field(default=0, ge=0)
+    llm_invoked: bool = False
 
     @property
     def file(self) -> DocumentOutput:

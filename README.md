@@ -79,26 +79,30 @@ Submit `POST /document-transforms` with an `Idempotency-Key` UUID header, then p
 `GET /tasks/{task_id}` until the asynchronous task reaches a terminal state. Inputs may be a Drive
 file with an expected modification time or pasted Markdown with a destination folder ID.
 
-The copy-on-write pipeline pins model IDs, proposes structured block patches, verifies source block
-hashes, protects facts and syntax, and applies Google Docs mutations against a required revision.
+The copy-on-write pipeline applies fixed, deterministic deletion recipes first, then uses pinned
+model IDs only for remaining contextual candidates. It verifies source block hashes, protects facts
+and syntax, and applies Google Docs mutations against a required revision.
 Unsafe suggestions are skipped and surfaced as review findings. The high-signal detector pack is
 derived from `theclaymethod/unslop` version 2.3.0 at commit
 `d81f5196167ded24f46fced04958c0c12d681798`; scanner hits are only candidates, and accepted edits
 cannot alter names, numbers, dates, citations, links, code, units, scope, negation, or force-bearing
 language.
 
-Inputs are bounded to 512 KiB of pasted Markdown, 500,000 UTF-16 text units, and 50 Google Docs
-tabs. Drive copies preserve unsupported rich structures. Markdown images, raw HTML, footnotes,
+Inputs are bounded to 512 KiB of pasted Markdown, 500,000 UTF-16 text units, 750 blocks, and 50
+Google Docs tabs. Mutation plans are also bounded by request count and serialized bytes. Drive
+copies preserve unsupported rich structures. Markdown images, raw HTML, footnotes,
 strikethrough, nested quotations, and tilde code fences are rejected before output creation because
 the native converter cannot yet prove preservation. Markdown imports remain marked
-`structure_verification_required` until an automated Google Docs round-trip comparator exists.
+`structure_verification_required`. Native Google Doc outputs are re-read after mutation and checked
+against the validated text plus a deterministic structural inventory before success is recorded.
 
 The production model policy uses Vertex AI in `global`: `gemini-3.1-flash-lite` for conservative
 patch proposals, `gemini-2.5-flash-lite` as the stable fallback, and `gemini-3.8-flash` as the final
 higher-reasoning escalation. Visual restyling is deterministic so clean prose is not rewritten
 without a factual-equivalence proof.
 
-The brand layer applies Nunito typography, Sarj heading sizes, restrained purple accents,
+The brand layer uses the immutable, hashed `sarj-2026-v2` manifest distilled from the canonical Sarj
+design skill. It applies Nunito typography, Sarj heading sizes, the current `#392868` purple,
 left-aligned body text, margins, and consistent paragraph rhythm. Existing Docs headers, logos,
 footers, tabs, page numbers, and rich objects are preserved. Markdown imports receive a native DOCX
 header logo and footer page field before Google Docs conversion. The canonical logo is served from
@@ -113,8 +117,9 @@ covers, date chips, Mermaid images, captions, and native footnotes are not silen
 they require a future explicit template.
 
 Document transformations run on a dedicated Cloud Tasks queue and OIDC-authenticated internal
-worker. Task results expose the pipeline version, model IDs, UNSLOP source version, validation
-summary, findings, and output metadata.
+worker. Task results expose the pipeline version, actual model-use flag, deterministic/model patch
+counts, brand profile ID and digest, UNSLOP catalog digest/source version, validation summary,
+findings, and output metadata.
 
 ## License and security
 
