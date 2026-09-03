@@ -4,6 +4,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
+from datetime import timedelta
 from threading import Lock
 from time import perf_counter
 
@@ -106,3 +107,16 @@ def server_timing_value() -> str | None:
 def provider_retry_remaining_seconds() -> float | None:
     deadline = _provider_retry_deadline_var.get()
     return None if deadline is None else max(deadline - perf_counter(), 0.0)
+
+
+@contextmanager
+def provider_retry_budget(duration: timedelta) -> Generator[None]:
+    seconds = duration.total_seconds()
+    if seconds < 1:
+        msg = "Provider retry budget must allow at least one request attempt"
+        raise ValueError(msg)
+    token = _provider_retry_deadline_var.set(perf_counter() + seconds)
+    try:
+        yield
+    finally:
+        _provider_retry_deadline_var.reset(token)

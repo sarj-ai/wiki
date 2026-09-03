@@ -25,15 +25,18 @@ from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.models import PatchGenerator
 from app.document_transform.schemas import (
     DocumentTransformRequest,
+    DocumentTransformResult,
     TransformMode,
 )
+from app.drive.retry import ProviderDeadlineError
 from app.drive.service import GoogleDriveService
 from app.files.service import GoogleFilesService
-from app.identifiers import TaskId
+from app.identifiers import FileId, TaskId
 from app.models.user import User
 from app.tasks.errors import TaskExecutionDeferredError, TaskNotClaimableError
 from app.tasks.schemas import (
     CancelledTaskRead,
+    DocumentTransformTaskRecord,
     FailedTaskRead,
     SucceededTaskRead,
     TaskClaim,
@@ -65,8 +68,49 @@ class RetryTaskStore(Protocol):
     ) -> TaskRead: ...
 
 
+class ClaimedTaskStore(RetryTaskStore, Protocol):
+    async def record_resource(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        resource_id: FileId,
+    ) -> None: ...
+
+    async def succeed(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        result: DocumentTransformResult,
+    ) -> TaskRead: ...
+
+
+class DocumentTransformRunner(Protocol):
+    async def execute(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+    ) -> DocumentTransformResult: ...
+
+
+class DocumentTransformTaskStore(ClaimedTaskStore, Protocol):
+    async def load_document_transform(
+        self,
+        task_id: TaskId,
+    ) -> DocumentTransformTaskRecord: ...
+
+    async def claim(self, task_id: TaskId, *, lease_duration: timedelta) -> TaskClaim: ...
+
+
 class QueuedDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
-    def __init__(self, *, tasks: TaskService, transform: DocumentTransformExecutor) -> None:
+    def __init__(
+        self,
+        *,
+        tasks: DocumentTransformTaskStore,
+        transform: DocumentTransformRunner,
+    ) -> None:
         self._tasks = tasks
         self._transform = transform
 
@@ -196,13 +240,22 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
 async def _execute_claimed(
     task_id: TaskId,
     *,
-    tasks: TaskService,
-    transform: DocumentTransformExecutor,
+    tasks: ClaimedTaskStore,
+    transform: DocumentTransformRunner,
     claim: TaskClaim,
     payload: DocumentTransformRequest,
 ) -> TaskRead:
     try:
         result = await transform.execute(operation_id=task_id, request=payload)
+    except ProviderDeadlineError as exc:
+        return await defer_or_fail_retryable_task(
+            task_id,
+            tasks=tasks,
+            claim=claim,
+            error_code=DocumentGatewayError.code,
+            error_detail=DocumentGatewayError.public_detail,
+            cause=exc,
+        )
     except (DocumentGatewayError, ModelUnavailableError) as exc:
         return await defer_or_fail_retryable_task(
             task_id,
