@@ -11,7 +11,9 @@ from app.document_transform import google_gateway as google_gateway_module
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
 from app.document_transform.errors import (
     CheckpointTooLargeError,
+    DocumentGatewayError,
     IncompatiblePendingOutputError,
+    SourceChangedError,
     SourceTooLargeError,
     UnsupportedSourceError,
 )
@@ -1182,6 +1184,19 @@ def test_multi_tab_brand_verification_never_uses_top_level_inline_objects() -> N
     assert not verify_brand_application(document, parse_google_document(document, title="Decision"))
 
 
+def test_multi_tab_brand_verification_uses_each_document_tab_inline_objects() -> None:
+    document = _branded_google_document()
+    second = deepcopy(document["tabs"][0])
+    second["tabProperties"]["tabId"] = "tab-b"
+    second_tab = second["documentTab"]
+    second_tab["documentStyle"]["defaultHeaderId"] = "header-b"
+    second_tab["headers"] = {"header-b": second_tab["headers"].pop("header-a")}
+    document["tabs"].append(second)
+    document["inlineObjects"] = {"logo-1": {"untrusted": "must be ignored for multi-tab docs"}}
+
+    assert verify_brand_application(document, parse_google_document(document, title="Decision"))
+
+
 def test_post_write_brand_verification_rejects_extra_or_wrong_size_logo() -> None:
     document = _branded_google_document()
     extra_logo = deepcopy(document)
@@ -1525,6 +1540,63 @@ class _InPlaceGateway(_Gateway):
         )
 
 
+class _CrashReplayInPlaceGateway(_InPlaceGateway):
+    def __init__(self, text: str, *, crash_stage: str) -> None:
+        super().__init__(text, missing_header=True)
+        self.crash_stage = crash_stage
+        self.crashed = False
+        self.mutations = {"headers": 0, "content": 0}
+        self.stage_results: dict[str, InPlaceStageResult] = {}
+
+    @override
+    async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot:
+        del source
+        return SourceSnapshot(
+            title="Source",
+            parent_folder_id=FileId("folder"),
+            modified_time="2026-09-03T00:00:00Z",
+            revision_id=DocsRevisionId(self.document["revisionId"]),
+            media_type="application/vnd.google-apps.document",
+            google_document=deepcopy(self.document),
+            owned_by_me=True,
+            can_edit=True,
+            is_personal_drive=True,
+            web_url="https://docs.google.com/document/d/source/edit",
+        )
+
+    @override
+    async def apply_in_place_stage(
+        self,
+        *,
+        document_id: FileId,
+        required_revision_id: DocsRevisionId,
+        marker_name: str,
+        marker_range: dict[str, Any],
+        requests: list[dict[str, Any]],
+    ) -> InPlaceStageResult:
+        recovered = self.stage_results.get(marker_name)
+        if recovered is not None:
+            return InPlaceStageResult(
+                revision_id=recovered.revision_id,
+                document=deepcopy(recovered.document),
+            )
+        stage = "headers" if any("createHeader" in request for request in requests) else "content"
+        result = await super().apply_in_place_stage(
+            document_id=document_id,
+            required_revision_id=required_revision_id,
+            marker_name=marker_name,
+            marker_range=marker_range,
+            requests=requests,
+        )
+        self.mutations[stage] += 1
+        self.stage_results[marker_name] = result
+        if stage == self.crash_stage and not self.crashed:
+            self.crashed = True
+            msg = f"simulated worker crash after {stage} batch"
+            raise RuntimeError(msg)
+        return result
+
+
 def _in_place_request(mode: TransformMode) -> DocumentTransformRequest:
     return DocumentTransformRequest(
         source=DriveFileSource(
@@ -1597,6 +1669,47 @@ async def test_in_place_format_checkpoints_header_then_content() -> None:
         "checkpoint:content",
         "apply",
     ]
+    assert result.changed is True
+    assert result.output_revision_id == "revision-3"
+
+
+@pytest.mark.parametrize("crash_stage", ["headers", "content"])
+async def test_in_place_persisted_checkpoint_replay_skips_model_and_duplicate_batches(
+    crash_stage: str,
+) -> None:
+    operation_id = uuid.uuid7()
+    task_id = TaskId(uuid.uuid7())
+    gateway = _CrashReplayInPlaceGateway("Quarterly review", crash_stage=crash_stage)
+    store = _CheckpointStore(gateway.events)
+    first_generator = _Generator({TransformPhase.FORMAT: "Quarterly review refined."})
+
+    with pytest.raises(RuntimeError, match="simulated worker crash"):
+        await DocumentTransformExecutor(
+            gateway=gateway,
+            generator=first_generator,
+            allow_format_text_edits=True,
+            checkpoint_store=store,
+            task_id=task_id,
+            lease_token=uuid.uuid7(),
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+
+    assert first_generator.calls == [TransformPhase.FORMAT]
+    persisted = store.checkpoints[-1]
+    retry_generator = _Generator({TransformPhase.FORMAT: "must never be generated"})
+    result = await DocumentTransformExecutor(
+        gateway=gateway,
+        generator=retry_generator,
+        allow_format_text_edits=True,
+        checkpoint_store=store,
+        task_id=task_id,
+        lease_token=uuid.uuid7(),
+        checkpoint=persisted,
+        checkpoint_generation=store.generation,
+    ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+
+    assert retry_generator.calls == []
+    assert gateway.mutations == {"headers": 1, "content": 1}
+    assert result.output_strategy is OutputStrategy.IN_PLACE
     assert result.changed is True
     assert result.output_revision_id == "revision-3"
 
@@ -1740,3 +1853,117 @@ def test_google_in_place_lost_response_reconciles_atomic_tab_marker(
     assert body["requests"][0] == {"createNamedRange": {"name": marker, "range": marker_range}}
     assert body["requests"][1] == {"createHeader": {"type": "DEFAULT"}}
     assert result.revision_id == "revision-2"
+
+
+def test_google_in_place_lost_response_reconciles_utf16_shifted_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = "sarj-transform-operation-content-hash"
+    marker_range = {"startIndex": 10, "endIndex": 11, "tabId": "tab-1"}
+    shifted_range = {"startIndex": 13, "endIndex": 14, "tabId": "tab-1"}
+    request = {
+        "insertText": {
+            "location": {"index": 2, "tabId": "tab-1"},
+            "text": "A😀",
+        }
+    }
+    document = _in_place_document("A😀Source", revision="revision-2")
+    document["tabs"][0]["documentTab"]["namedRanges"] = {
+        marker: {
+            "namedRanges": [{"name": marker, "namedRangeId": "range-1", "ranges": [shifted_range]}]
+        }
+    }
+    captured: dict[str, Any] = {}
+
+    class _Documents:
+        def batchUpdate(self, **kwargs: Any) -> object:  # ruff: ignore[invalid-function-name]
+            captured.update(kwargs)
+            return object()
+
+    class _Provider:
+        def documents(self) -> _Documents:
+            return _Documents()
+
+    gateway = object.__new__(GoogleDocumentGateway)
+
+    def get_provider() -> _Provider:
+        return _Provider()
+
+    def lost_response(_request: object) -> dict[str, Any]:
+        raise DocumentGatewayError
+
+    monkeypatch.setattr(gateway, "_docs", get_provider)
+    monkeypatch.setattr(
+        google_gateway_module,
+        "_google_http_request",
+        lambda value, **kwargs: value(**kwargs),
+    )
+    monkeypatch.setattr(gateway, "_execute_mutation_dict", lost_response)
+    monkeypatch.setattr(gateway, "_get_document_sync", lambda _document_id: document)
+
+    result = gateway._apply_in_place_stage_sync(
+        FileId("source"),
+        DocsRevisionId("revision-1"),
+        marker,
+        marker_range,
+        [request],
+    )
+
+    body = captured["body"]
+    assert body["writeControl"] == {"requiredRevisionId": "revision-1"}
+    assert body["requests"] == [
+        {"createNamedRange": {"name": marker, "range": marker_range}},
+        request,
+    ]
+    assert result.revision_id == "revision-2"
+
+
+@pytest.mark.parametrize(
+    ("observed_revision", "expected_error"),
+    [
+        ("revision-1", DocumentGatewayError),
+        ("collaborator-revision", SourceChangedError),
+    ],
+)
+def test_google_in_place_lost_response_without_marker_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    observed_revision: str,
+    expected_error: type[Exception],
+) -> None:
+    marker_range = {"startIndex": 10, "endIndex": 11, "tabId": "tab-1"}
+    document = _in_place_document("Source", revision=observed_revision)
+
+    class _Documents:
+        def batchUpdate(self, **kwargs: Any) -> object:  # ruff: ignore[invalid-function-name]
+            del kwargs
+            return object()
+
+    class _Provider:
+        def documents(self) -> _Documents:
+            return _Documents()
+
+    gateway = object.__new__(GoogleDocumentGateway)
+
+    def get_provider() -> _Provider:
+        return _Provider()
+
+    def lost_response(_request: object) -> dict[str, Any]:
+        raise DocumentGatewayError
+
+    monkeypatch.setattr(gateway, "_docs", get_provider)
+    monkeypatch.setattr(
+        google_gateway_module,
+        "_google_http_request",
+        lambda value, **kwargs: value(**kwargs),
+    )
+    monkeypatch.setattr(gateway, "_execute_mutation_dict", lost_response)
+    monkeypatch.setattr(gateway, "_get_document_sync", lambda _document_id: document)
+
+    with pytest.raises(expected_error):
+        gateway._apply_in_place_stage_sync(
+            FileId("source"),
+            DocsRevisionId("revision-1"),
+            "sarj-transform-operation-content-hash",
+            marker_range,
+            [{"createHeader": {"type": "DEFAULT"}}],
+        )

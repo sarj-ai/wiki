@@ -980,9 +980,10 @@ def _segment_has_content(segments: object, segment_id: str) -> bool:
     for item in content:
         if not isinstance(item, dict):
             continue
-        if _structural_text(item).strip():
+        typed_item = {str(key): value for key, value in item.items()}
+        if _structural_text(typed_item).strip():
             return True
-        paragraph = item.get("paragraph")
+        paragraph = typed_item.get("paragraph")
         if isinstance(paragraph, dict):
             elements = paragraph.get("elements", [])
             if isinstance(elements, list) and any(
@@ -991,7 +992,7 @@ def _segment_has_content(segments: object, segment_id: str) -> bool:
                 for element in elements
             ):
                 return True
-        if any(key in item for key in ("table", "sectionBreak", "tableOfContents")):
+        if any(key in typed_item for key in ("table", "sectionBreak", "tableOfContents")):
             return True
     return False
 
@@ -1032,12 +1033,13 @@ def _header_safe_sha256(document: dict[str, Any]) -> str:
         if not isinstance(value, dict):
             return value
         normalized: dict[str, object] = {}
-        for key, child in value.items():
+        for raw_key, child in value.items():
+            key = str(raw_key)
             if key in {"revisionId", "namedRanges", "headers"}:
                 continue
             if key == "documentStyle" and isinstance(child, dict):
                 normalized[key] = {
-                    nested_key: normalize(nested_value)
+                    str(nested_key): normalize(nested_value)
                     for nested_key, nested_value in child.items()
                     if nested_key != "defaultHeaderId"
                 }
