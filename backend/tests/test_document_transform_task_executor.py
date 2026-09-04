@@ -7,6 +7,7 @@ import uuid
 import pytest
 
 from app.config import settings
+from app.document_transform.errors import DocumentGatewayError, UnsupportedSourceError
 from app.document_transform.schemas import (
     DocumentTransformRequest,
     DriveFileSource,
@@ -242,6 +243,46 @@ async def test_worker_kill_switch_blocks_claimed_in_place_task_before_runtime(
     assert tasks.failed == 1
 
 
+async def test_worker_fails_unsupported_drive_source_without_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tasks = _RetryTasks(payload=_drive_payload())
+    executor = object.__new__(DriveDocumentTransformTaskExecutor)
+    monkeypatch.setattr(executor, "_tasks", tasks, raising=False)
+
+    async def unsupported_runtime(*args: object, **kwargs: object) -> Never:
+        del args, kwargs
+        raise UnsupportedSourceError
+
+    monkeypatch.setattr(DriveDocumentTransformTaskExecutor, "_runtime", unsupported_runtime)
+
+    result = await executor.execute(TaskId(uuid.uuid7()))
+
+    assert isinstance(result, FailedTaskRead)
+    assert tasks.last_error_code == UnsupportedSourceError.code
+    assert tasks.failed == 1
+
+
+async def test_worker_defers_transient_runtime_drive_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tasks = _RetryTasks(payload=_drive_payload())
+    executor = object.__new__(DriveDocumentTransformTaskExecutor)
+    monkeypatch.setattr(executor, "_tasks", tasks, raising=False)
+
+    async def unavailable_runtime(*args: object, **kwargs: object) -> Never:
+        del args, kwargs
+        raise DocumentGatewayError
+
+    monkeypatch.setattr(DriveDocumentTransformTaskExecutor, "_runtime", unavailable_runtime)
+
+    with pytest.raises(TaskExecutionDeferredError):
+        await executor.execute(TaskId(uuid.uuid7()))
+
+    assert tasks.deferred == 1
+    assert tasks.failed == 0
+
+
 def _claim(task_id: TaskId, *, attempt_count: int) -> TaskClaim:
     now = datetime.now(UTC)
     return TaskClaim(
@@ -283,4 +324,15 @@ def _in_place_payload() -> DocumentTransformRequest:
         ),
         mode=TransformMode.FORMAT,
         output_strategy=OutputStrategy.IN_PLACE,
+    )
+
+
+def _drive_payload() -> DocumentTransformRequest:
+    return DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("source"),
+            expected_modified_time="2026-09-03T00:00:00Z",
+        ),
+        mode=TransformMode.FORMAT,
     )

@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 
 import { documentTransformApi } from "@/lib/document-transform-client";
 import type { DocumentTransformResult } from "@/lib/document-transform-types";
-import { MIME_DOC } from "@/types/wiki";
+import { MIME_DOC, MIME_SLIDE } from "@/types/wiki";
 
 import { DocumentPolishDialog, type DocumentPolishSource } from "./document-polish-dialog";
 
@@ -28,6 +28,8 @@ describe("DocumentPolishDialog", () => {
     vi.spyOn(documentTransformApi, "capabilities").mockResolvedValue({
       copy: true,
       inPlace: false,
+      presentationCopy: true,
+      presentationInPlace: false,
     });
   });
 
@@ -45,6 +47,7 @@ describe("DocumentPolishDialog", () => {
       expectedModifiedTime: "2026-09-03T12:00:00Z",
       fileId: "source-1",
       kind: "drive_file",
+      mimeType: MIME_DOC,
       name: "Architecture review",
     });
 
@@ -68,6 +71,7 @@ describe("DocumentPolishDialog", () => {
       expectedModifiedTime: "2026-09-03T12:00:00Z",
       fileId: "source-1",
       kind: "drive_file",
+      mimeType: MIME_DOC,
       name: "Architecture review",
     });
     clickButton(findButtonNow("Unslop"));
@@ -101,7 +105,12 @@ describe("DocumentPolishDialog", () => {
   });
 
   it("offers server-gated in-place editing while defaulting to a review copy", async () => {
-    vi.mocked(documentTransformApi.capabilities).mockResolvedValue({ copy: true, inPlace: true });
+    vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
+      copy: true,
+      inPlace: true,
+      presentationCopy: true,
+      presentationInPlace: false,
+    });
     vi.spyOn(documentTransformApi, "create").mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
       status: "pending",
@@ -118,6 +127,7 @@ describe("DocumentPolishDialog", () => {
         expectedModifiedTime: "2026-09-03T12:00:00Z",
         fileId: "source-1",
         kind: "drive_file",
+        mimeType: MIME_DOC,
         name: "Architecture review",
       },
       onInPlaceComplete,
@@ -177,6 +187,7 @@ describe("DocumentPolishDialog", () => {
       expectedModifiedTime: "2026-09-03T12:00:00Z",
       fileId: "markdown-1",
       kind: "drive_file",
+      mimeType: "text/markdown",
       name: "Notes.md",
     });
 
@@ -197,6 +208,22 @@ describe("DocumentPolishDialog", () => {
         "copy",
       );
     });
+  });
+
+  it("presents native Slides as a copy-only presentation transform", () => {
+    renderDialog(root, {
+      allowInPlace: false,
+      expectedModifiedTime: "2026-09-04T12:00:00Z",
+      fileId: "slides-1",
+      kind: "drive_file",
+      mimeType: MIME_SLIDE,
+      name: "Quarterly review",
+    });
+
+    expect(document.body).toHaveTextContent("Polish presentation");
+    expect(document.body).toHaveTextContent("new Google Slides presentation");
+    expect(document.body).not.toHaveTextContent("Edit original");
+    expect(documentTransformApi.capabilities).not.toHaveBeenCalled();
   });
 
   it("requires pasted Markdown and sends the current folder destination", async () => {
@@ -283,7 +310,9 @@ function transformResult(overrides: TransformResultOverrides = {}): DocumentTran
   const outputFileId = overrides.outputFileId ?? "output-1";
   const outputFileName = overrides.outputFileName ?? "Architecture review — Unslopped";
   return {
+    accessScope: "inherited",
     appliedPatchCount: 1,
+    artifactKind: "document",
     brandProfileId: "sarj-2026-v3",
     brandProfileSha256: "b".repeat(64),
     changed: true,

@@ -16,7 +16,12 @@ import {
 
 const ZMode = z.enum(["format", "unslop", "both"]);
 const ZOutputStrategy = z.enum(["copy", "in_place"]);
-const ZCapabilities = z.object({ copy: z.literal(true), in_place: z.boolean() });
+const ZCapabilities = z.object({
+  copy: z.literal(true),
+  in_place: z.boolean(),
+  presentation_copy: z.literal(true).default(true),
+  presentation_in_place: z.literal(false).default(false),
+});
 const ZMessage = z
   .object({
     block_id: z.string().nullable(),
@@ -25,7 +30,9 @@ const ZMessage = z
   })
   .passthrough();
 const ZResult = z.object({
+  access_scope: z.enum(["inherited", "owner_only"]).default("inherited"),
   applied_patch_count: z.int().nonnegative(),
+  artifact_kind: z.enum(["document", "presentation"]).default("document"),
   brand_profile_id: z.string().default("sarj-legacy-v1"),
   brand_profile_sha256: z.string().default("legacy-unrecorded"),
   deterministic_patch_count: z.int().nonnegative().default(0),
@@ -42,6 +49,7 @@ const ZResult = z.object({
     name: z.string(),
     parent_folder_id: z.string(),
     web_url: z.string().nullable(),
+    media_type: z.string().default("application/vnd.google-apps.document"),
   }),
   pipeline_version: z.string(),
   changed: z.boolean().default(true),
@@ -76,7 +84,12 @@ export const documentTransformApi = {
       async () => await getDocumentTransformCapabilitiesAction(),
     );
     const capabilities = ZCapabilities.parse(JSON.parse(responseBody));
-    return { copy: capabilities.copy, inPlace: capabilities.in_place } as const;
+    return {
+      copy: capabilities.copy,
+      inPlace: capabilities.in_place,
+      presentationCopy: capabilities.presentation_copy,
+      presentationInPlace: capabilities.presentation_in_place,
+    } as const;
   },
 
   create: async (
@@ -170,7 +183,9 @@ function parseTask(task: z.infer<typeof ZTask>): DocumentTransformTask {
 
 function parseResult(result: z.infer<typeof ZResult>): DocumentTransformResult {
   return {
+    accessScope: result.access_scope,
     appliedPatchCount: result.applied_patch_count,
+    artifactKind: result.artifact_kind,
     brandProfileId: result.brand_profile_id,
     brandProfileSha256: result.brand_profile_sha256,
     deterministicPatchCount: result.deterministic_patch_count,
@@ -190,7 +205,7 @@ function parseResult(result: z.infer<typeof ZResult>): DocumentTransformResult {
       canEdit: true,
       driveId: undefined,
       id: result.output.file_id,
-      mimeType: "application/vnd.google-apps.document",
+      mimeType: result.output.media_type,
       modifiedTime: undefined,
       name: result.output.name,
       parentFolderId: result.output.parent_folder_id,

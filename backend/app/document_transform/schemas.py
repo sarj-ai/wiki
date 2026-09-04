@@ -22,6 +22,8 @@ from app.identifiers import BrandProfileId, DocsRevisionId, FileId, ModelId
 
 
 SourceKind = Literal["drive_file", "markdown"]
+ArtifactKind = Literal["document", "presentation"]
+AccessScope = Literal["inherited", "owner_only"]
 _MAX_IN_PLACE_FILE_ID_LENGTH = 128
 
 
@@ -52,6 +54,8 @@ class StrictTransformModel(BaseModel):
 class DocumentTransformCapabilities(StrictTransformModel):
     copy_supported: Literal[True] = Field(default=True, alias="copy")
     in_place: bool
+    presentation_copy: Literal[True] = True
+    presentation_in_place: Literal[False] = False
 
 
 class DriveFileSource(StrictTransformModel):
@@ -132,6 +136,7 @@ class DocumentOutput(StrictTransformModel):
     name: str
     parent_folder_id: FileId
     web_url: str | None = None
+    media_type: str = "application/vnd.google-apps.document"
 
     @property
     def id(self) -> FileId:
@@ -159,6 +164,8 @@ class DocumentTransformResult(StrictTransformModel):
     changed: bool = True
     source_revision_id: DocsRevisionId | None = None
     output_revision_id: DocsRevisionId | None = None
+    artifact_kind: ArtifactKind = "document"
+    access_scope: AccessScope = "inherited"
 
     @property
     def file(self) -> DocumentOutput:

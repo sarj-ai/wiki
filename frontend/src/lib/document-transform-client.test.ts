@@ -30,6 +30,8 @@ describe("documentTransformApi", () => {
     await expect(documentTransformApi.capabilities()).resolves.toEqual({
       copy: true,
       inPlace: true,
+      presentationCopy: true,
+      presentationInPlace: false,
     });
   });
 
@@ -126,7 +128,9 @@ describe("documentTransformApi", () => {
       data: JSON.stringify({
         ...task("succeeded"),
         result: {
+          access_scope: "inherited",
           applied_patch_count: 1,
+          artifact_kind: "presentation",
           findings: [{ block_id: "paragraph-1", code: "ai_phrase", detail: "Removed filler" }],
           mode: "unslop",
           model_ids: ["gemini-flash"],
@@ -134,6 +138,7 @@ describe("documentTransformApi", () => {
           operation_id: taskId,
           output: {
             file_id: "output-1",
+            media_type: "application/vnd.google-apps.presentation",
             name: "Source — Unslopped",
             parent_folder_id: "folder-1",
             web_url: "https://docs.google.com/document/d/output-1/edit",
@@ -156,7 +161,13 @@ describe("documentTransformApi", () => {
       documentTransformApi.waitForCompletion({ id: taskId, status: "running" }, undefined, 0),
     ).resolves.toMatchObject({
       mode: "unslop",
-      outputFile: { id: "output-1", name: "Source — Unslopped" },
+      accessScope: "inherited",
+      artifactKind: "presentation",
+      outputFile: {
+        id: "output-1",
+        mimeType: "application/vnd.google-apps.presentation",
+        name: "Source — Unslopped",
+      },
       sourceSha256: "a".repeat(64),
       validation: { sourceUnchanged: true },
     });

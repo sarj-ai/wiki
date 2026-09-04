@@ -42,12 +42,13 @@ import type { SmartDestination } from "@/lib/smart-create-types";
 import { cn } from "@/lib/utils";
 import { injectNewFileIntoCaches } from "@/lib/wiki-cache";
 import { wikiKeys } from "@/lib/wiki-keys";
+import { MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
 
 const MARKDOWN_LIMIT = 512 * 1024;
 
 const MODES = [
   {
-    description: "Clean the writing, then apply the complete Sarj document system.",
+    description: "Clean the writing, then apply the complete Sarj brand system.",
     icon: Sparkles,
     label: "Both",
     value: "both",
@@ -77,6 +78,7 @@ export type DocumentPolishSource =
       expectedModifiedTime: string;
       fileId: string;
       kind: "drive_file";
+      mimeType: string;
       name: string;
     }
   | {
@@ -111,6 +113,11 @@ export function DocumentPolishDialog({
   const [stage, setStage] = useState<"idle" | "starting" | "transforming">("idle");
   const [reviewMessage, setReviewMessage] = useState<null | string>(null);
   const [reviewResult, setReviewResult] = useState<DocumentTransformResult | null>(null);
+  const isPresentation =
+    source.kind === "drive_file" &&
+    (source.mimeType === MIME_SLIDE || source.mimeType === MIME_PPTX);
+  const artifactNoun = isPresentation ? "presentation" : "document";
+  const outputNoun = isPresentation ? "Google Slides presentation" : "Google Doc";
   const abortRef = useRef<AbortController | null>(null);
   const idempotencyKey = useRef<null | string>(null);
   const submitLatch = useRef(false);
@@ -218,9 +225,9 @@ export function DocumentPolishDialog({
         } else if (error.result) {
           injectNewFileIntoCaches(queryClient, error.result.outputFile);
         }
-        toast.warning("The document needs review");
+        toast.warning(`The ${artifactNoun} needs review`);
       } else if (!(error instanceof DOMException && error.name === "AbortError")) {
-        toast.error(errorMessage(error, "Couldn’t polish document"));
+        toast.error(errorMessage(error, `Couldn’t polish ${artifactNoun}`));
       }
     } finally {
       finishSubmission();
@@ -245,9 +252,9 @@ export function DocumentPolishDialog({
         <DialogContent className="max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-xl">
           <div className="border-b px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
             <DialogHeader>
-              <DialogTitle>Polish document</DialogTitle>
+              <DialogTitle>Polish {artifactNoun}</DialogTitle>
               <DialogDescription>
-                Choose how Sarj Wiki should refine this document.
+                Choose how Sarj Wiki should refine this {artifactNoun}.
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -380,7 +387,7 @@ export function DocumentPolishDialog({
                       Create review copy
                     </span>
                     <span className="text-muted-foreground mt-2 block text-xs leading-relaxed">
-                      Keep the original untouched and create a sibling Google Doc.
+                      Keep the original untouched and create a sibling {outputNoun}.
                     </span>
                     <span className="text-primary mt-2 block text-[10px] font-semibold tracking-wide uppercase">
                       Recommended
@@ -423,7 +430,7 @@ export function DocumentPolishDialog({
                 {source.kind === "drive_file"
                   ? effectiveOutputStrategy === "in_place"
                     ? `“${source.name}” will be amended only after revision and safety checks pass.`
-                    : `“${source.name}” stays unchanged. A new Google Doc will be created next to it.`
+                    : `“${source.name}” stays unchanged. A new ${outputNoun} will be created next to it.`
                   : "Your Markdown stays unchanged. A new Google Doc will be created in the selected folder."}
               </p>
             </div>
@@ -436,8 +443,8 @@ export function DocumentPolishDialog({
                 <Loader2 className="text-primary size-4 shrink-0 animate-spin" />
                 <span>
                   {stage === "starting"
-                    ? "Starting document polish…"
-                    : "Creating and checking the new document… Keep this window open."}
+                    ? `Starting ${artifactNoun} polish…`
+                    : `Creating and checking the new ${artifactNoun}… Keep this window open.`}
                 </span>
               </div>
             ) : null}
@@ -447,7 +454,7 @@ export function DocumentPolishDialog({
                 className="border-border bg-muted/50 rounded-lg border px-3 py-2.5 text-sm"
                 role="alert"
               >
-                <p className="font-medium">This document needs review</p>
+                <p className="font-medium">This {artifactNoun} needs review</p>
                 <p className="text-muted-foreground mt-1 text-xs">{reviewMessage}</p>
                 {reviewResult ? (
                   <Button

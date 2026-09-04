@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { MIME_DOC, MIME_MARKDOWN, MIME_PDF } from "@/types/wiki";
+import { MIME_DOC, MIME_MARKDOWN, MIME_PDF, MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
 
 import { WikiToolbar } from "./wiki-toolbar";
 
@@ -113,5 +113,23 @@ describe("WikiToolbar", () => {
     );
 
     expect(view).toContain("polish:markdown-file");
+  });
+
+  it.each([MIME_SLIDE, MIME_PPTX])("offers copy-safe presentation polishing for %s", (mimeType) => {
+    const view = renderToStaticMarkup(
+      <WikiToolbar
+        breadcrumb={[]}
+        canEdit
+        driveId="drive"
+        fileId="deck-file"
+        mimeType={mimeType}
+        modifiedTime="2026-09-04T12:00:00Z"
+        onReload={vi.fn()}
+        parentFolderId="folder"
+        title="Quarterly review"
+      />,
+    );
+
+    expect(view).toContain("polish:deck-file");
   });
 });

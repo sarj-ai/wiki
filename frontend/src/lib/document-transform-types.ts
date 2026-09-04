@@ -18,7 +18,9 @@ export type DocumentTransformSource =
     };
 
 export interface DocumentTransformResult {
+  accessScope: "inherited" | "owner_only";
   appliedPatchCount: number;
+  artifactKind: "document" | "presentation";
   brandProfileId: string;
   brandProfileSha256: string;
   deterministicPatchCount: number;

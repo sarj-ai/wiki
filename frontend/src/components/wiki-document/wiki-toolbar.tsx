@@ -13,7 +13,7 @@ import {
 } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import type { BreadcrumbItem } from "@/types/wiki";
-import { MIME_DOC, MIME_MARKDOWN } from "@/types/wiki";
+import { MIME_DOC, MIME_MARKDOWN, MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
 
 import { DocumentPolishDialog } from "./document-polish-dialog";
 import { ReadOnlyShortLink } from "./read-only-short-link";
@@ -121,10 +121,17 @@ export function WikiToolbar({
       </Button>
       {authority === "resolved" &&
       modifiedTime !== undefined &&
-      (mimeType === MIME_DOC || mimeType === MIME_MARKDOWN) ? (
+      (mimeType === MIME_DOC ||
+        mimeType === MIME_MARKDOWN ||
+        mimeType === MIME_SLIDE ||
+        mimeType === MIME_PPTX) ? (
         <>
           <Button
-            aria-label="Polish document"
+            aria-label={
+              mimeType === MIME_SLIDE || mimeType === MIME_PPTX
+                ? "Polish presentation"
+                : "Polish document"
+            }
             onClick={() => {
               setPolishOpen(true);
             }}
@@ -145,6 +152,7 @@ export function WikiToolbar({
               expectedModifiedTime: modifiedTime,
               fileId,
               kind: "drive_file",
+              mimeType,
               name: displayTitle,
             }}
           />

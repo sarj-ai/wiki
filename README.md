@@ -68,8 +68,11 @@ them before switching Cloud Run traffic.
 
 ## Document Polish
 
-Document Polish creates a new, branded Google Doc from an existing Drive file or pasted Markdown.
-It never edits the source file. Every run explicitly selects one of three modes:
+Document Polish creates a branded Google Doc or Google Slides sibling from an existing Drive file
+or pasted Markdown. Copy mode is the default and never edits the source. Native Google Docs may
+also be amended in place when the independently gated server capability is enabled; Drive version
+history remains available. Native Slides and PowerPoint are copy-only. Every run explicitly selects
+one of three modes:
 
 - `format` applies the deterministic Sarj document system without rewriting prose.
 - `unslop` removes only confirmed AI-writing defects and otherwise returns an exact no-op.
@@ -77,7 +80,9 @@ It never edits the source file. Every run explicitly selects one of three modes:
 
 Submit `POST /document-transforms` with an `Idempotency-Key` UUID header, then poll
 `GET /tasks/{task_id}` until the asynchronous task reaches a terminal state. Inputs may be a Drive
-file with an expected modification time or pasted Markdown with a destination folder ID.
+file with an expected modification time or pasted Markdown with a destination folder ID. The
+authenticated API infers the source type from current server-side Drive metadata rather than
+trusting a client-supplied type.
 
 The copy-on-write pipeline applies fixed, deterministic deletion recipes first, then uses pinned
 model IDs only for remaining contextual candidates. It verifies source block hashes, protects facts
@@ -95,6 +100,17 @@ strikethrough, nested quotations, and tilde code fences are rejected before outp
 the native converter cannot yet prove preservation. Markdown imports remain marked
 `structure_verification_required`. Native Google Doc outputs are re-read after mutation and checked
 against the validated text plus a deterministic structural inventory before success is recorded.
+Native Slides use the same bounded text planner, but only plain single-run text shapes are editable.
+Bullets, links, mixed text runs, speaker notes, tables, charts, images, video, groups, masters,
+layouts, geometry, and slide order are protected by a separate topology digest.
+
+Native Slides are copied within the same folder. Drive-hosted `.pptx` files are size-bounded,
+validated as safe Office ZIP packages, checked against Drive's current import formats, and imported
+as a new native Google Slides sibling. The original deck and all permissions remain untouched.
+Outputs report `access_scope=inherited` because a sibling inherits its parent folder's access; the
+service never changes permissions or calls an inherited copy private. Slides in-place and
+Slides-to-PowerPoint export remain disabled until their revision and round-trip guarantees pass
+dedicated production canaries.
 
 The production model policy uses Vertex AI in `global`: `gemini-3.1-flash-lite` for conservative
 patch proposals, `gemini-2.5-flash-lite` as the stable fallback, and `gemini-3.8-flash` as the final
@@ -108,6 +124,12 @@ footers, tabs, page numbers, and rich objects are preserved. Markdown imports re
 header logo and footer page field before Google Docs conversion. The canonical logo is served from
 `/brand/sarj-logo-light.png`; if unavailable, the task returns a `logo_unavailable` review finding
 instead of fabricating a placeholder or failing the formatting batch.
+
+For presentations, the same manifest deterministically applies Nunito, role-specific title/body
+sizes, and Sarj colors to safely editable shapes. It places the pinned logo in the first
+collision-free safe corner on each slide; if every corner is occupied, it leaves the content
+unobscured and returns a `slide_logo_collision` review finding. Formatting never asks a model to
+generate layout or Slides API operations.
 
 Recovered Codex and Claude requests for headings, lists, checklists, tables, links, quotations, code
 blocks, dividers, centered logo, hierarchy, spacing, bold table headers, and visual QA are covered.

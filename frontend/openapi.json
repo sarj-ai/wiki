@@ -359,6 +359,11 @@
             "title": "File Id",
             "type": "string"
           },
+          "media_type": {
+            "default": "application/vnd.google-apps.document",
+            "title": "Media Type",
+            "type": "string"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -398,6 +403,18 @@
           },
           "in_place": {
             "title": "In Place",
+            "type": "boolean"
+          },
+          "presentation_copy": {
+            "const": true,
+            "default": true,
+            "title": "Presentation Copy",
+            "type": "boolean"
+          },
+          "presentation_in_place": {
+            "const": false,
+            "default": false,
+            "title": "Presentation In Place",
             "type": "boolean"
           }
         },
@@ -459,10 +476,28 @@
       "DocumentTransformResult": {
         "additionalProperties": false,
         "properties": {
+          "access_scope": {
+            "default": "inherited",
+            "enum": [
+              "inherited",
+              "owner_only"
+            ],
+            "title": "Access Scope",
+            "type": "string"
+          },
           "applied_patch_count": {
             "minimum": 0.0,
             "title": "Applied Patch Count",
             "type": "integer"
+          },
+          "artifact_kind": {
+            "default": "document",
+            "enum": [
+              "document",
+              "presentation"
+            ],
+            "title": "Artifact Kind",
+            "type": "string"
           },
           "brand_profile_id": {
             "default": "sarj-2026-v3",
@@ -2956,14 +2991,7 @@
             "description": "Authentication is required or the session is invalid."
           },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "In-place transformation is limited to native Google Docs"
           },
           "503": {
             "description": "In-place document transformation is disabled"

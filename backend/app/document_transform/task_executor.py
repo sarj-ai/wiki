@@ -24,19 +24,29 @@ from app.document_transform.errors import (
     DocumentGatewayError,
     DocumentTransformError,
     ModelUnavailableError,
+    UnsupportedSourceError,
 )
 from app.document_transform.executor import PIPELINE_VERSION, DocumentTransformExecutor
 from app.document_transform.google_gateway import GoogleDocumentGateway
+from app.document_transform.google_presentation_gateway import (
+    PPTX_MIME_TYPE,
+    GooglePresentationGateway,
+)
 from app.document_transform.models import PatchGenerator
+from app.document_transform.presentation_executor import PresentationTransformExecutor
 from app.document_transform.schemas import (
     DocumentTransformRequest,
     DocumentTransformResult,
+    DriveFileSource,
     InPlaceCheckpoint,
     OutputStrategy,
     TransformMode,
 )
+from app.document_transform.slides_brand import presentation_fingerprint
 from app.drive.retry import ProviderDeadlineError
+from app.drive.schemas import MIME_SLIDE
 from app.drive.service import GoogleDriveService
+from app.files.errors import FileNotInScopeError, FilesError
 from app.files.service import GoogleFilesService
 from app.identifiers import FileId, TaskId
 from app.models.user import User
@@ -142,7 +152,7 @@ class QueuedDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
 
 @dataclass(frozen=True, slots=True)
 class DocumentTransformRuntime:
-    transform: DocumentTransformExecutor
+    transform: DocumentTransformRunner
 
 
 class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
@@ -199,6 +209,22 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 error_code="google_auth_required",
                 error_detail="Reconnect Google Drive, then start the document polish again",
             )
+        except DocumentGatewayError as exc:
+            return await defer_or_fail_retryable_task(
+                task_id,
+                tasks=self._tasks,
+                claim=claim,
+                error_code=exc.code,
+                error_detail=exc.public_detail,
+                cause=exc,
+            )
+        except DocumentTransformError as exc:
+            return await self._tasks.fail(
+                task_id,
+                lease_token=claim.lease_token,
+                error_code=exc.code,
+                error_detail=exc.public_detail,
+            )
         except (RuntimeError, TypeError, ValueError) as exc:
             return await defer_or_fail_retryable_task(
                 task_id,
@@ -243,7 +269,30 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         if payload.mode is not TransformMode.UNSLOP:
             logo_bytes = await self._load_logo()
             logo_uri = self._logo_uri if logo_bytes is not None else ""
-        gateway = GoogleDocumentGateway(
+        if isinstance(payload.source, DriveFileSource):
+            try:
+                source_file = await files.get(payload.source.file_id)
+            except FileNotInScopeError as exc:
+                raise UnsupportedSourceError from exc
+            except FilesError as exc:
+                if exc.http_status in {401, 403}:
+                    raise UnsupportedSourceError from exc
+                raise DocumentGatewayError from exc
+            if source_file.mime_type in {MIME_SLIDE, PPTX_MIME_TYPE}:
+                presentation_gateway = GooglePresentationGateway(
+                    user=prepared.user,
+                    files=files,
+                    refresh_handler=prepared.refresh_handler,
+                    fingerprint=presentation_fingerprint,
+                )
+                return DocumentTransformRuntime(
+                    transform=PresentationTransformExecutor(
+                        gateway=presentation_gateway,
+                        generator=self._generator,
+                        logo_uri=logo_uri,
+                    )
+                )
+        document_gateway = GoogleDocumentGateway(
             user=prepared.user,
             files=files,
             logo_uri=logo_uri,
@@ -251,7 +300,7 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         )
         return DocumentTransformRuntime(
             transform=DocumentTransformExecutor(
-                gateway=gateway,
+                gateway=document_gateway,
                 generator=self._generator,
                 logo_bytes=logo_bytes,
                 checkpoint_store=self._tasks,

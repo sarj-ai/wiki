@@ -39,7 +39,7 @@ from app.document_transform.ir import (
     rewrite_markdown,
 )
 from app.document_transform.models import PatchGenerator
-from app.document_transform.safety import validate_patches
+from app.document_transform.planner import TextTransformPlanner
 from app.document_transform.schemas import (
     DocumentOutput,
     DocumentTransformRequest,
@@ -48,19 +48,14 @@ from app.document_transform.schemas import (
     InPlaceCheckpoint,
     InPlaceCheckpointStage,
     OutputStrategy,
-    TextPatch,
     TransformFinding,
     TransformMode,
-    TransformPhase,
     ValidationSummary,
 )
 from app.document_transform.unslop import (
     UNSLOP_CATALOG_SHA256,
     UNSLOP_UPSTREAM_COMMIT,
     UNSLOP_UPSTREAM_VERSION,
-    UnslopCandidate,
-    deterministic_unslop_replacement,
-    scan_unslop_candidates,
 )
 from app.identifiers import DocsRevisionId, DocsSegmentId, ModelId, TaskId
 
@@ -74,16 +69,6 @@ _OUTPUT_SUFFIX = MappingProxyType(
         TransformMode.BOTH: "Sarj polished",
     }
 )
-
-
-@dataclass(frozen=True, slots=True)
-class TransformOutcome:
-    document: DocumentIR
-    findings: tuple[TransformFinding, ...]
-    applied_count: int
-    deterministic_count: int
-    model_count: int
-    llm_invoked: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,34 +89,6 @@ class InPlaceCheckpointStore(Protocol):
     ) -> int: ...
 
 
-def _deterministic_unslop_patches(
-    document: DocumentIR,
-    candidates: tuple[UnslopCandidate, ...],
-) -> list[TextPatch]:
-    candidates_by_block: dict[str, list[UnslopCandidate]] = {}
-    for candidate in candidates:
-        candidates_by_block.setdefault(candidate.block_id, []).append(candidate)
-    patches: list[TextPatch] = []
-    for block in document.blocks:
-        typed_candidates = tuple(
-            candidate
-            for candidate in candidates_by_block.get(block.id, [])
-            if candidate.has_fixed_deletion
-        )
-        replacement = deterministic_unslop_replacement(block.text, typed_candidates)
-        if replacement == block.text:
-            continue
-        patches.append(
-            TextPatch(
-                block_id=block.id,
-                expected_sha256=block.sha256,
-                replacement=replacement,
-                rationale="deterministic fixed phrase deletion",
-            )
-        )
-    return patches
-
-
 class DocumentTransformExecutor:
     def __init__(
         self,
@@ -149,6 +106,10 @@ class DocumentTransformExecutor:
     ) -> None:
         self._gateway = gateway
         self._generator = generator
+        self._planner = TextTransformPlanner(
+            generator=generator,
+            allow_format_text_edits=allow_format_text_edits,
+        )
         self._brand = brand or SarjBrandProfile()
         self._allow_format_text_edits = allow_format_text_edits
         self._logo_bytes = logo_bytes
@@ -188,7 +149,7 @@ class DocumentTransformExecutor:
                     draft=recovered,
                 )
 
-        outcome = await self._transform(original, request)
+        outcome = await self._planner.transform(original, request)
         findings = list(outcome.findings)
         if request.mode is TransformMode.UNSLOP:
             findings.extend(_markdown_fidelity_findings(snapshot))
@@ -511,7 +472,7 @@ class DocumentTransformExecutor:
         if snapshot.revision_id is None:
             raise InPlaceNotAllowedError
         original = _to_ir(snapshot)
-        outcome = await self._transform(original, request)
+        outcome = await self._planner.transform(original, request)
         _preflight_native_mutation_budget(
             request=request,
             snapshot=snapshot,
@@ -796,63 +757,6 @@ class DocumentTransformExecutor:
             revision_id=None,
             media_type="text/markdown",
             markdown=source.content,
-        )
-
-    async def _transform(
-        self,
-        original: DocumentIR,
-        request: DocumentTransformRequest,
-    ) -> TransformOutcome:
-        current = original
-        findings: list[TransformFinding] = []
-        applied_count = 0
-        deterministic_count = 0
-        model_count = 0
-        llm_invoked = False
-        if request.mode is TransformMode.FORMAT:
-            phases: tuple[TransformPhase, ...] = (TransformPhase.FORMAT,)
-        elif request.mode is TransformMode.UNSLOP:
-            phases = (TransformPhase.UNSLOP,)
-        else:
-            phases = (TransformPhase.UNSLOP, TransformPhase.FORMAT)
-        for phase in phases:
-            if phase is TransformPhase.UNSLOP:
-                candidates = scan_unslop_candidates(current)
-                if not candidates:
-                    continue
-                while candidates:
-                    deterministic = _deterministic_unslop_patches(current, candidates)
-                    if not deterministic:
-                        break
-                    decision = validate_patches(current, deterministic, phase=phase)
-                    if not decision.accepted:
-                        findings.extend(decision.findings)
-                        break
-                    current = current.replace_blocks(decision.accepted)
-                    applied_count += len(decision.accepted)
-                    deterministic_count += len(decision.accepted)
-                    findings.extend(decision.findings)
-                    candidates = scan_unslop_candidates(current)
-                    if not candidates:
-                        break
-                if not candidates:
-                    continue
-            if phase is TransformPhase.FORMAT and not self._allow_format_text_edits:
-                continue
-            llm_invoked = True
-            patches = await self._generator.generate(current, phase=phase)
-            decision = validate_patches(current, patches, phase=phase)
-            current = current.replace_blocks(decision.accepted)
-            applied_count += len(decision.accepted)
-            model_count += len(decision.accepted)
-            findings.extend(decision.findings)
-        return TransformOutcome(
-            current,
-            tuple(findings),
-            applied_count,
-            deterministic_count,
-            model_count,
-            llm_invoked,
         )
 
     async def _create_output(

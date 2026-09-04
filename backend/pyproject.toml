@@ -20,6 +20,7 @@ dependencies = [
   "cloud-sql-python-connector[asyncpg]>=1.21.0",
   "pydantic[email]>=2.13.4",
   "python-docx>=1.2.0",
+  "defusedxml>=0.7.1",
 ]
 description = "Internal knowledge base API for Sarj"
 name = "sarj-docs-backend"
@@ -39,6 +40,7 @@ dev = [
     "basedpyright>=1.39.0",
     "ty>=0.0.65",
     "google-api-python-client-stubs>=1.39.0",
+    "types-defusedxml>=0.7.0.20260504",
     "sarj-iac-lint==0.15.1",
     "sarj-python-lint==0.80.5",
     "sarj-sql-lint==0.16.5",

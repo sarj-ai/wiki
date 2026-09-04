@@ -20,6 +20,7 @@ from app.document_transform.schemas import (
     OutputStrategy,
     TransformMode,
 )
+from app.drive.schemas import MIME_SLIDE
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
 from app.identifiers import FileId, IdempotencyKey, TaskId, UserId
@@ -419,3 +420,32 @@ async def test_document_transform_capability_and_kill_switch(
             enqueuer=_Enqueuer(),
             files=_destination_files(),
         )
+
+
+async def test_native_slides_in_place_is_rejected_before_enqueue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_IN_PLACE_ENABLED", True)
+    payload = DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("source"),
+            expected_modified_time="time",
+        ),
+        mode=TransformMode.FORMAT,
+        output_strategy=OutputStrategy.IN_PLACE,
+    )
+    tasks = _Tasks(created=True)
+    enqueuer = _Enqueuer()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _create_transform(
+            payload,
+            tasks=tasks,
+            enqueuer=enqueuer,
+            files=_destination_files(mime_type=MIME_SLIDE),
+        )
+
+    assert exc_info.value.status_code == 422
+    assert tasks.discarded
+    assert enqueuer.document_task_ids == []
