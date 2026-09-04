@@ -17,9 +17,15 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
+import subprocess
+import sys
+import tempfile
 from typing import TYPE_CHECKING, Annotated, Any, Literal, NamedTuple, NoReturn
 import uuid
 
+from google import genai
+from google.genai import types as genai_types
 import httpx
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr, TypeAdapter
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -27,6 +33,7 @@ from sqlalchemy import select
 
 from app.auth.google_tokens import GoogleTokenManager
 from app.cache.dependencies import cache_service_dep
+from app.config import settings
 from app.database import async_session
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
@@ -74,6 +81,19 @@ _COMMIT_SHA_LENGTH = 40
 _QA_NAMESPACE = uuid.UUID("ce3e8475-23f8-5b24-bef2-5369c7b0c45f")
 _TRANSFORM_OPERATION_PROPERTY = "sarjTransformOperation"
 _TASK_ADAPTER: TypeAdapter[TaskRead] = TypeAdapter(TaskRead)
+_PDF_MIME_TYPE = "application/pdf"
+_MAX_EXPORTED_PDF_BYTES = 50 * 1024 * 1024
+_SCREENSHOT_DPI = 144
+_MAX_JUDGE_SCREENSHOTS = 12
+_MIN_VISUAL_SCORE = 4
+_MAX_PDF_PAGES = 100
+_MAX_PAGE_POINTS = 36 * 72
+_MAX_SCREENSHOT_BYTES = 25 * 1024 * 1024
+_MAX_RENDERED_BYTES = 250 * 1024 * 1024
+_CLOUD_RUN_JOB_ENV = "CLOUD_RUN_JOB"
+_DURABLE_ARTIFACT_ROOT_ENV = "WIKI_QA_DURABLE_ARTIFACT_ROOT"
+
+type QaCohort = Literal["canary", "corpus"]
 
 
 class _StrictModel(BaseModel):
@@ -100,6 +120,11 @@ class QaSecrets(BaseSettings):
     access_token: SecretStr = Field(
         default=SecretStr(""),
         validation_alias=_ACCESS_TOKEN_ENV,
+    )
+    cloud_run_job: str | None = Field(default=None, validation_alias=_CLOUD_RUN_JOB_ENV)
+    durable_artifact_root: Path | None = Field(
+        default=None,
+        validation_alias=_DURABLE_ARTIFACT_ROOT_ENV,
     )
 
 
@@ -164,14 +189,59 @@ class EvidenceResult(_StrictModel):
     deterministic_patch_count: int
     model_patch_count: int
     llm_invoked: bool
+    release_sha_before: str
+    release_sha_after: str
+    visual_evidence: VisualEvidence
+    visual_judge: VisualJudgeEvidence | None = None
     verified_at: datetime
 
 
+class ArtifactFile(_StrictModel):
+    relative_path: str
+    sha256: str
+    byte_size: Annotated[int, Field(gt=0)]
+
+
+class VisualEvidence(_StrictModel):
+    source_pdf: ArtifactFile
+    output_pdf: ArtifactFile
+    source_screenshots: tuple[ArtifactFile, ...]
+    output_screenshots: tuple[ArtifactFile, ...]
+    renderer: Literal["pdftoppm"] = "pdftoppm"
+    renderer_version: str
+    dpi: Literal[144] = _SCREENSHOT_DPI
+
+
+class VisualJudgeEvidence(_StrictModel):
+    model_id: str
+    verdict: Literal["pass", "review"]
+    comparison: Literal["improved", "equivalent", "regressed"]
+    typography_score: Annotated[int, Field(ge=1, le=5)]
+    spacing_score: Annotated[int, Field(ge=1, le=5)]
+    hierarchy_score: Annotated[int, Field(ge=1, le=5)]
+    issue_codes: tuple[
+        Literal[
+            "clipping",
+            "collision",
+            "crowding",
+            "logo",
+            "spacing",
+            "typography",
+            "weak_hierarchy",
+        ],
+        ...,
+    ] = ()
+    judged_screenshot_sha256: tuple[str, ...]
+
+
 class EvidenceManifest(_StrictModel):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     created_at: datetime
     api_base_url: Literal["https://api-wiki.sarj.ai"] = "https://api-wiki.sarj.ai"
     expected_release_sha: str
+    cohort: QaCohort
+    canary_attestation_sha256: str | None = None
+    judge_model: str | None = None
     seed: str
     seed_sha256: str
     mode: TransformMode
@@ -186,7 +256,7 @@ class EvidenceManifest(_StrictModel):
 
 
 class LedgerRecord(_StrictModel):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     recorded_at: datetime
     event: Literal["manifest", "submitted", "terminal", "verified", "failed"]
     operation_key: uuid.UUID | None = None
@@ -214,6 +284,47 @@ class SubmissionResult(NamedTuple):
     replayed: bool
 
 
+class CanaryAttestation(NamedTuple):
+    sha256: str
+    excluded_source_ids: frozenset[FileId]
+
+
+class RunPaths(NamedTuple):
+    manifest: Path
+    ledger: Path
+    artifacts: Path | None
+
+
+class PdfInfo(NamedTuple):
+    pages: int
+    page_sizes_points: tuple[tuple[float, float], ...]
+
+
+class VisualCaptureResult(NamedTuple):
+    evidence: VisualEvidence
+    judge: VisualJudgeEvidence | None
+
+
+class JudgeResponse(_StrictModel):
+    verdict: Literal["pass", "review"]
+    comparison: Literal["improved", "equivalent", "regressed"]
+    typography_score: Annotated[int, Field(ge=1, le=5)]
+    spacing_score: Annotated[int, Field(ge=1, le=5)]
+    hierarchy_score: Annotated[int, Field(ge=1, le=5)]
+    issue_codes: tuple[
+        Literal[
+            "clipping",
+            "collision",
+            "crowding",
+            "logo",
+            "spacing",
+            "typography",
+            "weak_hierarchy",
+        ],
+        ...,
+    ] = ()
+
+
 class QaError(RuntimeError):
     """A deterministic QA invariant failed."""
 
@@ -223,8 +334,26 @@ def _fail(message: str) -> NoReturn:
 
 
 def main() -> None:
-    manifest = asyncio.run(_run(_arguments()))
-    print(manifest.model_dump_json(indent=2))
+    try:
+        manifest = asyncio.run(_run(_arguments()))
+    except QaError as exc:
+        print(json.dumps({"error": _safe_rejection(exc), "status": "failed"}), file=sys.stderr)
+        raise SystemExit(1) from None
+    except Exception:
+        print(json.dumps({"error": "internal_error", "status": "failed"}), file=sys.stderr)
+        raise SystemExit(1) from None
+    print(
+        json.dumps(
+            {
+                "cohort": manifest.cohort,
+                "expected_release_sha": manifest.expected_release_sha,
+                "planned": len(manifest.sources),
+                "verified": len(manifest.results),
+                "manifest_plan_sha256": _manifest_plan_sha256(manifest),
+            },
+            sort_keys=True,
+        )
+    )
 
 
 def _arguments() -> argparse.Namespace:
@@ -238,17 +367,21 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--mode", choices=[item.value for item in TransformMode], default="both")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--canary", action="store_true")
+    parser.add_argument("--canary-manifest", type=Path)
+    parser.add_argument("--canary-ledger", type=Path)
+    parser.add_argument("--canary-artifacts-dir", type=Path)
+    parser.add_argument("--artifacts-dir", type=Path)
+    parser.add_argument("--pdftoppm-version")
+    parser.add_argument("--judge-model")
     parser.add_argument("--confirm-live-copy")
     return parser.parse_args()
 
 
 async def _run(arguments: argparse.Namespace) -> EvidenceManifest:
     _validate_arguments(arguments)
-    manifest_path = arguments.manifest.resolve()
-    ledger_path = arguments.ledger.resolve()
-    if manifest_path == ledger_path:
-        _fail("manifest and ledger paths must be different")
+    paths = _resolve_run_paths(arguments)
     mode = TransformMode(arguments.mode)
+    cohort: QaCohort = "canary" if arguments.canary else "corpus"
     async with async_session() as db, httpx.AsyncClient(timeout=30) as http:
         user = await db.scalar(select(User).where(User.email == arguments.user_email))
         if user is None:
@@ -271,9 +404,27 @@ async def _run(arguments: argparse.Namespace) -> EvidenceManifest:
             refresh_handler=prepared.refresh_handler,
         )
         await _verify_release(http, arguments.expected_release_sha)
+        if cohort == "canary":
+            canary = CanaryAttestation(sha256="", excluded_source_ids=frozenset())
+        else:
+            if (
+                arguments.canary_manifest is None
+                or arguments.canary_ledger is None
+                or arguments.canary_artifacts_dir is None
+            ):
+                _fail("the corpus requires verified canary paths")
+            canary = await asyncio.to_thread(
+                _load_verified_canary,
+                arguments.canary_manifest.resolve(),
+                arguments.canary_ledger.resolve(),
+                arguments.canary_artifacts_dir.resolve(),
+                expected_release_sha=arguments.expected_release_sha,
+                user_email=arguments.user_email,
+                judge_model=arguments.judge_model,
+            )
         manifest = await _load_or_plan_manifest(
-            path=manifest_path,
-            ledger_path=ledger_path,
+            path=paths.manifest,
+            ledger_path=paths.ledger,
             drive_client=drive_client,
             gateway=gateway,
             expected_release_sha=arguments.expected_release_sha,
@@ -281,39 +432,92 @@ async def _run(arguments: argparse.Namespace) -> EvidenceManifest:
             count=arguments.count,
             mode=mode,
             user_email=arguments.user_email,
+            cohort=cohort,
+            canary_attestation_sha256=canary.sha256 or None,
+            excluded_source_ids=canary.excluded_source_ids,
+            judge_model=arguments.judge_model,
         )
-        ledger = await asyncio.to_thread(_ensure_manifest_ledger, ledger_path, manifest)
+        ledger = await asyncio.to_thread(_ensure_manifest_ledger, paths.ledger, manifest)
         if not arguments.execute:
             return manifest
-        token = QaSecrets().access_token.get_secret_value()
-        if not token:
-            _fail(f"{_ACCESS_TOKEN_ENV} is required only with --execute")
-        await _verify_api_identity(
-            http,
-            token=token,
-            expected_email=arguments.user_email,
-        )
-        results = await _execute_corpus(
+        return await _execute_planned_manifest(
+            arguments=arguments,
+            paths=paths,
             manifest=manifest,
             ledger=ledger,
-            ledger_path=ledger_path,
-            manifest_path=manifest_path,
             http=http,
-            token=token,
             drive_client=drive_client,
             gateway=gateway,
-            user_email=arguments.user_email,
         )
-        completed_manifest = manifest.model_copy(update={"results": tuple(results)})
-        await asyncio.to_thread(_write_manifest, manifest_path, completed_manifest)
-        return completed_manifest
+
+
+def _resolve_run_paths(arguments: argparse.Namespace) -> RunPaths:
+    paths = RunPaths(
+        manifest=arguments.manifest.resolve(),
+        ledger=arguments.ledger.resolve(),
+        artifacts=(
+            arguments.artifacts_dir.resolve() if arguments.artifacts_dir is not None else None
+        ),
+    )
+    if paths.manifest == paths.ledger:
+        _fail("manifest and ledger paths must be different")
+    _require_durable_cloud_run_paths(
+        manifest_path=paths.manifest,
+        ledger_path=paths.ledger,
+        artifacts_dir=paths.artifacts,
+    )
+    return paths
+
+
+async def _execute_planned_manifest(
+    *,
+    arguments: argparse.Namespace,
+    paths: RunPaths,
+    manifest: EvidenceManifest,
+    ledger: tuple[LedgerRecord, ...],
+    http: httpx.AsyncClient,
+    drive_client: DriveResource,
+    gateway: GoogleDocumentGateway,
+) -> EvidenceManifest:
+    if paths.artifacts is None:  # pragma: no cover - argument invariant
+        _fail("--artifacts-dir is required with --execute")
+    expected_renderer_version = arguments.pdftoppm_version
+    if not isinstance(expected_renderer_version, str):
+        _fail("--pdftoppm-version is required with --execute")
+    renderer_version = await asyncio.to_thread(_require_pdftoppm, expected_renderer_version)
+    token = QaSecrets().access_token.get_secret_value()
+    if not token:
+        _fail(f"{_ACCESS_TOKEN_ENV} is required only with --execute")
+    await _verify_api_identity(http, token=token, expected_email=arguments.user_email)
+    results = await _execute_corpus(
+        manifest=manifest,
+        ledger=ledger,
+        ledger_path=paths.ledger,
+        manifest_path=paths.manifest,
+        http=http,
+        token=token,
+        drive_client=drive_client,
+        gateway=gateway,
+        user_email=arguments.user_email,
+        expected_release_sha=arguments.expected_release_sha,
+        artifacts_dir=paths.artifacts,
+        renderer_version=renderer_version,
+        judge_model=arguments.judge_model,
+    )
+    completed = manifest.model_copy(update={"results": tuple(results)})
+    await asyncio.to_thread(_write_manifest, paths.manifest, completed)
+    return completed
 
 
 def _validate_arguments(arguments: argparse.Namespace) -> None:
+    canary_manifest = getattr(arguments, "canary_manifest", None)
+    canary_ledger = getattr(arguments, "canary_ledger", None)
+    canary_artifacts_dir = getattr(arguments, "canary_artifacts_dir", None)
+    artifacts_dir = getattr(arguments, "artifacts_dir", None)
+    pdftoppm_version = getattr(arguments, "pdftoppm_version", None)
+    judge_model = getattr(arguments, "judge_model", None)
     if not 1 <= arguments.count <= _DEFAULT_COUNT:
         _fail(f"--count must be between 1 and {_DEFAULT_COUNT}")
-    if arguments.canary and not arguments.execute:
-        _fail("--canary is only valid with --execute")
     if arguments.execute:
         required_count = 1 if arguments.canary else _DEFAULT_COUNT
         required_confirmation = _CANARY_CONFIRMATION if arguments.canary else _CONFIRMATION
@@ -323,8 +527,24 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
             _fail(f"--execute requires --count {required_count}")
         if arguments.mode != TransformMode.BOTH.value:
             _fail("--execute requires --mode both")
+        if artifacts_dir is None:
+            _fail("--execute requires --artifacts-dir")
+        if not pdftoppm_version:
+            _fail("--execute requires --pdftoppm-version")
+        if not judge_model:
+            _fail("--execute requires --judge-model")
     if not arguments.execute and arguments.confirm_live_copy is not None:
         _fail("--confirm-live-copy is only valid with --execute")
+    canary_paths = (canary_manifest, canary_ledger, canary_artifacts_dir)
+    if arguments.canary and any(path is not None for path in canary_paths):
+        _fail("canary execution cannot depend on another canary")
+    if not arguments.canary and any(path is None for path in canary_paths):
+        _fail(
+            "the 20-document corpus requires --canary-manifest, --canary-ledger, "
+            "and --canary-artifacts-dir"
+        )
+    if judge_model and not _is_pinned_judge_model(judge_model):
+        _fail("--judge-model must be an exact pinned model ID")
     if (
         not arguments.expected_release_sha
         or len(arguments.expected_release_sha) != _COMMIT_SHA_LENGTH
@@ -332,13 +552,33 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
         _fail("--expected-release-sha must be a full 40-character commit SHA")
 
 
-async def _verify_release(http: httpx.AsyncClient, expected_release_sha: str) -> None:
+def _require_durable_cloud_run_paths(
+    *,
+    manifest_path: Path,
+    ledger_path: Path,
+    artifacts_dir: Path | None,
+) -> None:
+    environment = QaSecrets()
+    if environment.cloud_run_job is None:
+        return
+    if environment.durable_artifact_root is None:
+        _fail(f"{_DURABLE_ARTIFACT_ROOT_ENV} is required in Cloud Run")
+    root = environment.durable_artifact_root.resolve()
+    paths = [manifest_path, ledger_path]
+    if artifacts_dir is not None:
+        paths.append(artifacts_dir)
+    if any(not path.is_relative_to(root) for path in paths):
+        _fail("Cloud Run evidence paths must stay inside the durable artifact root")
+
+
+async def _verify_release(http: httpx.AsyncClient, expected_release_sha: str) -> str:
     response = await http.get(f"{_API_BASE_URL}/health")
     if response.status_code != httpx.codes.OK:
         _fail(f"production health returned HTTP {response.status_code}")
     body = HealthResponse.model_validate_json(response.content)
     if body.revision != expected_release_sha:
         _fail("production health does not report the expected release SHA")
+    return body.revision
 
 
 async def _verify_api_identity(
@@ -369,6 +609,10 @@ async def _load_or_plan_manifest(
     count: int,
     mode: TransformMode,
     user_email: str,
+    cohort: QaCohort,
+    canary_attestation_sha256: str | None,
+    excluded_source_ids: frozenset[FileId],
+    judge_model: str | None,
 ) -> EvidenceManifest:
     manifest = await asyncio.to_thread(_read_manifest, path)
     if manifest is not None:
@@ -379,6 +623,9 @@ async def _load_or_plan_manifest(
             count=count,
             mode=mode,
             user_email=user_email,
+            cohort=cohort,
+            canary_attestation_sha256=canary_attestation_sha256,
+            judge_model=judge_model,
         )
         return manifest
     if await asyncio.to_thread(_nonempty_file_exists, ledger_path):
@@ -391,10 +638,15 @@ async def _load_or_plan_manifest(
         count=count,
         mode=mode,
         user_email=user_email,
+        cohort=cohort,
+        excluded_source_ids=excluded_source_ids,
     )
     manifest = EvidenceManifest(
         created_at=datetime.now(UTC),
         expected_release_sha=expected_release_sha,
+        cohort=cohort,
+        canary_attestation_sha256=canary_attestation_sha256,
+        judge_model=judge_model,
         seed=seed,
         seed_sha256=_sha256_text(seed),
         mode=mode,
@@ -406,6 +658,7 @@ async def _load_or_plan_manifest(
         selection_rejections=dict(sorted(selection.rejections.items())),
         sources=tuple(selection.sources),
     )
+    _require_manifest_invariants(manifest)
     _write_manifest(path, manifest)
     _append_ledger(
         ledger_path,
@@ -426,6 +679,9 @@ def _require_matching_manifest(
     count: int,
     mode: TransformMode,
     user_email: str,
+    cohort: QaCohort,
+    canary_attestation_sha256: str | None,
+    judge_model: str | None,
 ) -> None:
     expected = (
         manifest.expected_release_sha == expected_release_sha,
@@ -436,9 +692,125 @@ def _require_matching_manifest(
         manifest.pipeline_version == PIPELINE_VERSION,
         manifest.brand_profile_id == CURRENT_BRAND_MANIFEST.profile_id,
         manifest.brand_profile_sha256 == CURRENT_BRAND_MANIFEST.sha256,
+        manifest.cohort == cohort,
+        manifest.canary_attestation_sha256 == canary_attestation_sha256,
+        manifest.judge_model == judge_model,
     )
     if not all(expected):
         _fail("existing evidence manifest does not match this invocation")
+    _require_manifest_invariants(manifest)
+
+
+def _require_manifest_invariants(manifest: EvidenceManifest) -> None:
+    sources = manifest.sources
+    source_ids = tuple(source.source_id for source in sources)
+    operation_keys = tuple(source.operation_key for source in sources)
+    checks = (
+        manifest.seed_sha256 == _sha256_text(manifest.seed),
+        len(sources) == manifest.count,
+        len(set(source_ids)) == len(source_ids),
+        len(set(operation_keys)) == len(operation_keys),
+        tuple(source.ordinal for source in sources) == tuple(range(1, manifest.count + 1)),
+        manifest.canary_attestation_sha256 is None
+        if manifest.cohort == "canary"
+        else _is_sha256(manifest.canary_attestation_sha256),
+        len(manifest.results) <= len(sources),
+    )
+    if not all(checks):
+        _fail("evidence manifest structural invariants failed")
+    for source in sources:
+        expected_operation = corpus_operation_key(
+            expected_release_sha=manifest.expected_release_sha,
+            seed=manifest.seed,
+            source_id=source.source_id,
+            mode=manifest.mode,
+            cohort=manifest.cohort,
+        )
+        if (
+            source.operation_key != expected_operation
+            or source.output_name
+            != _output_name(
+                manifest.expected_release_sha,
+                manifest.seed,
+                source.ordinal,
+                cohort=manifest.cohort,
+            )
+            or source.permission_sha256 != permission_inventory_sha256(source.permission_inventory)
+            or source.parent_permission_sha256
+            != permission_inventory_sha256(source.parent_permission_inventory)
+        ):
+            _fail("evidence manifest source binding failed")
+    for source, result in zip(sources, manifest.results, strict=False):
+        _require_result_binding(
+            source,
+            result,
+            expected_release_sha=manifest.expected_release_sha,
+            artifacts_dir=None,
+            renderer_version=None,
+            judge_model=manifest.judge_model,
+            user_email=str(manifest.user_email),
+        )
+
+
+def _load_verified_canary(
+    manifest_path: Path,
+    ledger_path: Path,
+    artifacts_dir: Path,
+    *,
+    expected_release_sha: str,
+    user_email: str,
+    judge_model: str | None,
+) -> CanaryAttestation:
+    manifest = _read_manifest(manifest_path)
+    if manifest is None:
+        _fail("verified canary manifest is missing")
+    records = _load_ledger(ledger_path)
+    manifest_records = tuple(record for record in records if record.event == "manifest")
+    verified = _verified_results(records)
+    checks = (
+        manifest.cohort == "canary",
+        manifest.count == 1,
+        manifest.mode is TransformMode.BOTH,
+        manifest.expected_release_sha == expected_release_sha,
+        str(manifest.user_email).casefold() == user_email.casefold(),
+        manifest.judge_model == judge_model,
+        manifest.pipeline_version == PIPELINE_VERSION,
+        manifest.brand_profile_id == CURRENT_BRAND_MANIFEST.profile_id,
+        manifest.brand_profile_sha256 == CURRENT_BRAND_MANIFEST.sha256,
+        len(manifest.sources) == 1,
+        len(manifest.results) == 1,
+        len(manifest_records) == 1,
+        manifest_records[0].detail == _manifest_plan_sha256(manifest),
+    )
+    if not all(checks):
+        _fail("canary manifest does not prove this exact release")
+    _require_manifest_invariants(manifest)
+    source = manifest.sources[0]
+    result = manifest.results[0]
+    ledger_result = verified.get(source.operation_key)
+    if ledger_result != result or len(verified) != 1:
+        _fail("canary ledger does not contain one fully verified visual result")
+    _require_result_binding(
+        source,
+        result,
+        expected_release_sha=expected_release_sha,
+        artifacts_dir=artifacts_dir,
+        renderer_version=result.visual_evidence.renderer_version,
+        judge_model=judge_model,
+        user_email=user_email,
+    )
+    payload = json.dumps(
+        {
+            "manifest_plan_sha256": _manifest_plan_sha256(manifest),
+            "result": result.model_dump(mode="json"),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return CanaryAttestation(
+        sha256=_sha256_bytes(payload),
+        excluded_source_ids=frozenset({source.source_id}),
+    )
 
 
 async def _select_sources(
@@ -450,6 +822,8 @@ async def _select_sources(
     count: int,
     mode: TransformMode,
     user_email: str,
+    cohort: QaCohort,
+    excluded_source_ids: frozenset[FileId],
 ) -> SelectionResult:
     candidates = await asyncio.to_thread(_list_owned_doc_metadata, drive_client)
     ordered = seeded_order(candidates, seed)
@@ -458,6 +832,10 @@ async def _select_sources(
     for raw in ordered:
         if len(selected) == count:
             break
+        raw_id = raw.get("id")
+        if isinstance(raw_id, str) and FileId(raw_id) in excluded_source_ids:
+            rejections["canary_overlap"] += 1
+            continue
         try:
             evidence = await _inspect_candidate(
                 raw=raw,
@@ -468,6 +846,7 @@ async def _select_sources(
                 seed=seed,
                 mode=mode,
                 user_email=user_email,
+                cohort=cohort,
             )
         except (QaError, SourceTooLargeError, UnsupportedSourceError) as exc:
             rejections[_safe_rejection(exc)] += 1
@@ -488,6 +867,7 @@ async def _inspect_candidate(
     seed: str,
     mode: TransformMode,
     user_email: str,
+    cohort: QaCohort,
 ) -> SourceEvidence:
     metadata = _parse_file_metadata(raw)
     _require_private_file(metadata, user_email, expected_mime=MIME_DOC)
@@ -526,6 +906,7 @@ async def _inspect_candidate(
         seed=seed,
         source_id=metadata.id,
         mode=mode,
+        cohort=cohort,
     )
     return SourceEvidence(
         ordinal=ordinal,
@@ -539,7 +920,7 @@ async def _inspect_candidate(
         parent_permission_inventory=parent_permissions,
         parent_permission_sha256=permission_inventory_sha256(parent_permissions),
         operation_key=operation_key,
-        output_name=_output_name(expected_release_sha, seed, ordinal),
+        output_name=_output_name(expected_release_sha, seed, ordinal, cohort=cohort),
     )
 
 
@@ -558,10 +939,11 @@ def corpus_operation_key(
     seed: str,
     source_id: str,
     mode: TransformMode,
+    cohort: QaCohort,
 ) -> uuid.UUID:
     return uuid.uuid5(
         _QA_NAMESPACE,
-        f"{expected_release_sha}\0{seed}\0{source_id}\0{mode.value}",
+        f"{expected_release_sha}\0{seed}\0{source_id}\0{mode.value}\0{cohort}",
     )
 
 
@@ -739,11 +1121,25 @@ async def _execute_corpus(
     drive_client: DriveResource,
     gateway: GoogleDocumentGateway,
     user_email: str,
+    expected_release_sha: str,
+    artifacts_dir: Path,
+    renderer_version: str,
+    judge_model: str | None,
 ) -> list[EvidenceResult]:
     results = _verified_results(ledger)
     tasks = _submitted_tasks(ledger)
     for source in manifest.sources:
-        if source.operation_key in results:
+        resumed = results.get(source.operation_key)
+        if resumed is not None:
+            _require_result_binding(
+                source,
+                resumed,
+                expected_release_sha=expected_release_sha,
+                artifacts_dir=artifacts_dir,
+                renderer_version=renderer_version,
+                judge_model=judge_model,
+                user_email=user_email,
+            )
             continue
         try:
             result = await _execute_source(
@@ -756,6 +1152,10 @@ async def _execute_corpus(
                 drive_client=drive_client,
                 gateway=gateway,
                 user_email=user_email,
+                expected_release_sha=expected_release_sha,
+                artifacts_dir=artifacts_dir,
+                renderer_version=renderer_version,
+                judge_model=judge_model,
             )
         except Exception as exc:
             _append_ledger(
@@ -801,7 +1201,12 @@ async def _execute_source(
     drive_client: DriveResource,
     gateway: GoogleDocumentGateway,
     user_email: str,
+    expected_release_sha: str,
+    artifacts_dir: Path,
+    renderer_version: str,
+    judge_model: str | None,
 ) -> EvidenceResult:
+    release_sha_before = await _verify_release(http, expected_release_sha)
     before_state = await _assert_source_unchanged(
         source,
         drive_client=drive_client,
@@ -811,6 +1216,7 @@ async def _execute_source(
     task_id = tasks.get(source.operation_key)
     if task_id is None:
         submission = await _submit_transform(http, token, mode, source)
+        await _verify_release(http, expected_release_sha)
         task_id = submission.task.id
         tasks[source.operation_key] = task_id
         _record_submission(ledger_path, source, task_id, replayed=submission.replayed)
@@ -829,7 +1235,7 @@ async def _execute_source(
         ),
     )
     transform = _require_succeeded_transform(terminal)
-    return await _verify_result_and_drive(
+    result = await _verify_result_and_drive(
         source=source,
         before_snapshot=before_state.snapshot,
         transform=transform,
@@ -838,7 +1244,13 @@ async def _execute_source(
         drive_client=drive_client,
         gateway=gateway,
         user_email=user_email,
+        release_sha_before=release_sha_before,
+        artifacts_dir=artifacts_dir,
+        renderer_version=renderer_version,
+        judge_model=judge_model,
     )
+    release_sha_after = await _verify_release(http, expected_release_sha)
+    return result.model_copy(update={"release_sha_after": release_sha_after})
 
 
 def _record_submission(
@@ -983,6 +1395,10 @@ async def _verify_result_and_drive(
     drive_client: DriveResource,
     gateway: GoogleDocumentGateway,
     user_email: str,
+    release_sha_before: str,
+    artifacts_dir: Path,
+    renderer_version: str,
+    judge_model: str | None,
 ) -> EvidenceResult:
     _require_transform_result(transform, task_id=task_id, mode=mode)
     after_state = await _assert_source_unchanged(
@@ -1027,6 +1443,15 @@ async def _verify_result_and_drive(
         and verification.brand_applied
     ):
         _fail("fresh deterministic semantic, structure, or brand verification failed")
+    visual_evidence, visual_judge = await _capture_visual_evidence(
+        source=source,
+        source_id=source.source_id,
+        output_id=output_id,
+        drive_client=drive_client,
+        artifacts_dir=artifacts_dir,
+        renderer_version=renderer_version,
+        judge_model=judge_model,
+    )
     return EvidenceResult(
         source_id=source.source_id,
         source_modified_time_after=source.modified_time,
@@ -1046,8 +1471,410 @@ async def _verify_result_and_drive(
         deterministic_patch_count=transform.deterministic_patch_count,
         model_patch_count=transform.model_patch_count,
         llm_invoked=transform.llm_invoked,
+        release_sha_before=release_sha_before,
+        release_sha_after=release_sha_before,
+        visual_evidence=visual_evidence,
+        visual_judge=visual_judge,
         verified_at=datetime.now(UTC),
     )
+
+
+async def _capture_visual_evidence(
+    *,
+    source: SourceEvidence,
+    source_id: FileId,
+    output_id: FileId,
+    drive_client: DriveResource,
+    artifacts_dir: Path,
+    renderer_version: str,
+    judge_model: str | None,
+) -> VisualCaptureResult:
+    evidence = await asyncio.to_thread(
+        _capture_visual_evidence_sync,
+        source=source,
+        source_id=source_id,
+        output_id=output_id,
+        drive_client=drive_client,
+        artifacts_dir=artifacts_dir,
+        renderer_version=renderer_version,
+    )
+    judge = (
+        await _judge_visual_evidence(evidence, artifacts_dir=artifacts_dir, model=judge_model)
+        if judge_model is not None
+        else None
+    )
+    _require_visual_judge(evidence, judge, judge_model=judge_model)
+    return VisualCaptureResult(evidence=evidence, judge=judge)
+
+
+def _require_result_binding(
+    source: SourceEvidence,
+    result: EvidenceResult,
+    *,
+    expected_release_sha: str,
+    artifacts_dir: Path | None,
+    renderer_version: str | None,
+    judge_model: str | None,
+    user_email: str,
+) -> None:
+    evidence = result.visual_evidence
+    checks = (
+        result.source_id == source.source_id,
+        result.source_modified_time_after == source.modified_time,
+        result.source_revision_id_after == source.revision_id,
+        result.source_semantic_sha256_after == source.semantic_sha256,
+        result.source_permission_inventory_after == source.permission_inventory,
+        result.source_permission_sha256_after == source.permission_sha256,
+        result.output_parent_id == source.parent_id,
+        result.output_id != source.source_id,
+        result.release_sha_before == expected_release_sha,
+        result.release_sha_after == expected_release_sha,
+        result.applied_patch_count == result.deterministic_patch_count + result.model_patch_count,
+        min(
+            result.applied_patch_count,
+            result.deterministic_patch_count,
+            result.model_patch_count,
+        )
+        >= 0,
+        permission_inventory_sha256(result.output_permission_inventory)
+        == result.output_permission_sha256,
+        bool(evidence.source_screenshots),
+        bool(evidence.output_screenshots),
+        renderer_version is None or evidence.renderer_version == renderer_version,
+    )
+    if not all(checks):
+        _fail("verified result is not bound to its source, release, and visual evidence")
+    _require_private_permissions(source.permission_inventory, user_email)
+    _require_private_permissions(source.parent_permission_inventory, user_email)
+    _require_private_permissions(result.output_permission_inventory, user_email)
+    _require_visual_artifact_layout(source, evidence)
+    if artifacts_dir is not None:
+        for artifact in _all_visual_artifacts(evidence):
+            _require_artifact_file(artifact, artifacts_dir=artifacts_dir)
+    _require_visual_judge(evidence, result.visual_judge, judge_model=judge_model)
+
+
+def _require_visual_artifact_layout(source: SourceEvidence, evidence: VisualEvidence) -> None:
+    prefix = f"{source.ordinal:02d}-{source.operation_key}"
+    expected_paths = (
+        f"{prefix}/source.pdf",
+        f"{prefix}/output.pdf",
+        *(
+            f"{prefix}/source-{ordinal:03d}.png"
+            for ordinal in range(1, len(evidence.source_screenshots) + 1)
+        ),
+        *(
+            f"{prefix}/output-{ordinal:03d}.png"
+            for ordinal in range(1, len(evidence.output_screenshots) + 1)
+        ),
+    )
+    artifacts = _all_visual_artifacts(evidence)
+    if (
+        tuple(artifact.relative_path for artifact in artifacts) != expected_paths
+        or len({artifact.relative_path for artifact in artifacts}) != len(artifacts)
+        or not all(_is_sha256(artifact.sha256) for artifact in artifacts)
+    ):
+        _fail("visual artifact layout is incomplete or unsafe")
+
+
+def _all_visual_artifacts(evidence: VisualEvidence) -> tuple[ArtifactFile, ...]:
+    return (
+        evidence.source_pdf,
+        evidence.output_pdf,
+        *evidence.source_screenshots,
+        *evidence.output_screenshots,
+    )
+
+
+def _require_artifact_file(artifact: ArtifactFile, *, artifacts_dir: Path) -> None:
+    if artifacts_dir.is_symlink() or artifacts_dir.stat().st_mode & 0o077:
+        _fail("visual artifact root permissions are not private")
+    root = artifacts_dir.resolve()
+    candidate = root / artifact.relative_path
+    if candidate.is_symlink():
+        _fail("visual artifact cannot be a symbolic link")
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(root) or not resolved.is_file():
+        _fail("visual artifact is missing or outside its private root")
+    if resolved.stat().st_mode & 0o077:
+        _fail("visual artifact permissions are not private")
+    content = resolved.read_bytes()
+    if len(content) != artifact.byte_size or _sha256_bytes(content) != artifact.sha256:
+        _fail("visual artifact size or digest changed")
+
+
+def _require_visual_judge(
+    evidence: VisualEvidence,
+    judge: VisualJudgeEvidence | None,
+    *,
+    judge_model: str | None,
+) -> None:
+    if judge_model is None:
+        if judge is not None:
+            _fail("visual judge evidence is not bound to this manifest")
+        return
+    selected_source = _evenly_sample(
+        evidence.source_screenshots,
+        _MAX_JUDGE_SCREENSHOTS // 2,
+    )
+    selected_output = _evenly_sample(
+        evidence.output_screenshots,
+        _MAX_JUDGE_SCREENSHOTS // 2,
+    )
+    expected_hashes = tuple(artifact.sha256 for artifact in (*selected_source, *selected_output))
+    judge_checks = (
+        judge is not None,
+        judge is not None and judge.model_id == judge_model,
+        judge is not None and judge.verdict == "pass",
+        judge is not None and judge.comparison != "regressed",
+        judge is not None and not judge.issue_codes,
+        judge is not None
+        and min(judge.typography_score, judge.spacing_score, judge.hierarchy_score)
+        >= _MIN_VISUAL_SCORE,
+        judge is not None and judge.judged_screenshot_sha256 == expected_hashes,
+    )
+    if not all(judge_checks):
+        _fail("visual judge evidence is absent, unbound, or requested review")
+
+
+def _capture_visual_evidence_sync(
+    *,
+    source: SourceEvidence,
+    source_id: FileId,
+    output_id: FileId,
+    drive_client: DriveResource,
+    artifacts_dir: Path,
+    renderer_version: str,
+) -> VisualEvidence:
+    _ensure_private_directory(artifacts_dir)
+    capture_dir = artifacts_dir / f"{source.ordinal:02d}-{source.operation_key}"
+    _ensure_private_directory(capture_dir)
+    source_pdf = capture_dir / "source.pdf"
+    output_pdf = capture_dir / "output.pdf"
+    _write_private_bytes(source_pdf, _export_pdf(drive_client, source_id))
+    _write_private_bytes(output_pdf, _export_pdf(drive_client, output_id))
+    source_images = _render_pdf(source_pdf, capture_dir=capture_dir, stem="source")
+    output_images = _render_pdf(output_pdf, capture_dir=capture_dir, stem="output")
+    return VisualEvidence(
+        source_pdf=_artifact_file(source_pdf, root=artifacts_dir),
+        output_pdf=_artifact_file(output_pdf, root=artifacts_dir),
+        source_screenshots=tuple(
+            _artifact_file(path, root=artifacts_dir) for path in source_images
+        ),
+        output_screenshots=tuple(
+            _artifact_file(path, root=artifacts_dir) for path in output_images
+        ),
+        renderer_version=renderer_version,
+    )
+
+
+def _export_pdf(drive_client: DriveResource, file_id: FileId) -> bytes:
+    raw = execute_with_retry(drive_client.files().export(fileId=file_id, mimeType=_PDF_MIME_TYPE))
+    if not isinstance(raw, bytes) or not raw or len(raw) > _MAX_EXPORTED_PDF_BYTES:
+        _fail("Drive PDF export was empty or exceeded the evidence size limit")
+    return raw
+
+
+def _write_private_bytes(path: Path, content: bytes) -> None:
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
+        temporary = Path(handle.name)
+        handle.write(content)
+        handle.flush()
+        os.fsync(handle.fileno())
+    temporary.chmod(0o600)
+    temporary.replace(path)
+    path.chmod(0o600)
+
+
+def _render_pdf(pdf: Path, *, capture_dir: Path, stem: str) -> tuple[Path, ...]:
+    executable = shutil.which("pdftoppm")
+    if executable is None:  # pragma: no cover - checked before execution
+        _fail("pdftoppm is unavailable")
+    pdf_info = _read_pdf_info(pdf)
+    with tempfile.TemporaryDirectory(dir=capture_dir) as temporary_name:
+        prefix = Path(temporary_name) / stem
+        try:
+            completed = subprocess.run(
+                [
+                    executable,
+                    "-png",
+                    "-r",
+                    str(_SCREENSHOT_DPI),
+                    str(pdf),
+                    str(prefix),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=120,
+            )
+        except subprocess.TimeoutExpired:
+            message = "pdftoppm exceeded the bounded render timeout"
+            raise QaError(message) from None
+        if completed.returncode != 0:
+            _fail("pdftoppm could not render a private PDF artifact")
+        rendered = sorted(Path(temporary_name).glob(f"{stem}-*.png"))
+        if len(rendered) != pdf_info.pages:
+            _fail("pdftoppm did not produce exactly one screenshot per PDF page")
+        sizes = tuple(path.stat().st_size for path in rendered)
+        if any(size <= 0 or size > _MAX_SCREENSHOT_BYTES for size in sizes):
+            _fail("a rendered screenshot exceeded the evidence size limit")
+        if sum(sizes) > _MAX_RENDERED_BYTES:
+            _fail("rendered screenshots exceeded the aggregate evidence size limit")
+        final: list[Path] = []
+        for ordinal, path in enumerate(rendered, start=1):
+            destination = capture_dir / f"{stem}-{ordinal:03d}.png"
+            _write_private_bytes(destination, path.read_bytes())
+            final.append(destination)
+    return tuple(final)
+
+
+def _read_pdf_info(pdf: Path) -> PdfInfo:
+    executable = shutil.which("pdfinfo")
+    if executable is None:
+        _fail("pdfinfo is required to bound screenshot rendering")
+    try:
+        completed = subprocess.run(
+            [executable, "-box", str(pdf)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except subprocess.TimeoutExpired:
+        message = "pdfinfo exceeded the bounded inspection timeout"
+        raise QaError(message) from None
+    if completed.returncode != 0:
+        _fail("pdfinfo could not inspect a private PDF artifact")
+    page_match = re.search(r"(?m)^Pages:\s+(\d+)\s*$", completed.stdout)
+    size_matches = re.findall(
+        r"(?m)^Page(?:\s+\d+)? size:\s+([0-9.]+)\s+x\s+([0-9.]+)\s+pts",
+        completed.stdout,
+    )
+    if page_match is None or not size_matches:
+        _fail("pdfinfo returned incomplete page bounds")
+    pages = int(page_match.group(1))
+    sizes = tuple((float(width), float(height)) for width, height in size_matches)
+    if not 1 <= pages <= _MAX_PDF_PAGES:
+        _fail("PDF page count exceeded the screenshot evidence limit")
+    if any(
+        width <= 0 or height <= 0 or width > _MAX_PAGE_POINTS or height > _MAX_PAGE_POINTS
+        for width, height in sizes
+    ):
+        _fail("PDF page dimensions exceeded the screenshot evidence limit")
+    return PdfInfo(pages=pages, page_sizes_points=sizes)
+
+
+def _artifact_file(path: Path, *, root: Path) -> ArtifactFile:
+    content = path.read_bytes()
+    return ArtifactFile(
+        relative_path=str(path.relative_to(root)),
+        sha256=_sha256_bytes(content),
+        byte_size=len(content),
+    )
+
+
+async def _judge_visual_evidence(
+    evidence: VisualEvidence,
+    *,
+    artifacts_dir: Path,
+    model: str,
+) -> VisualJudgeEvidence:
+    project = settings.GOOGLE_CLOUD_PROJECT
+    if project is None:
+        _fail("GOOGLE_CLOUD_PROJECT is required for the optional visual judge")
+    per_document_limit = _MAX_JUDGE_SCREENSHOTS // 2
+    selected_source = _evenly_sample(evidence.source_screenshots, per_document_limit)
+    selected_output = _evenly_sample(evidence.output_screenshots, per_document_limit)
+    parts: list[genai_types.Part | str] = [
+        (
+            "Compare the SOURCE pages with the SARJ OUTPUT pages for visual document quality. "
+            "Do not quote or transcribe document text. Mark comparison improved, equivalent, or "
+            "regressed. Score the output typography, spacing, and hierarchy from 1 to 5. Return "
+            "review for visible clipping, collision, crowding, logo, spacing, typography, weak "
+            "hierarchy, any regression, or any score below 4. Output the exact JSON schema."
+        )
+    ]
+    parts.append("SOURCE PAGES")
+    for artifact in selected_source:
+        path = artifacts_dir / artifact.relative_path
+        parts.append(genai_types.Part.from_bytes(data=path.read_bytes(), mime_type="image/png"))
+    parts.append("SARJ OUTPUT PAGES")
+    for artifact in selected_output:
+        path = artifacts_dir / artifact.relative_path
+        parts.append(genai_types.Part.from_bytes(data=path.read_bytes(), mime_type="image/png"))
+    try:
+        client = genai.Client(vertexai=True, project=project, location="global")
+        async with asyncio.timeout(60):
+            response = await client.aio.models.generate_content(
+                model=model,
+                contents=parts,
+                config=genai_types.GenerateContentConfig(
+                    temperature=0,
+                    response_mime_type="application/json",
+                    response_schema=JudgeResponse,
+                    http_options=genai_types.HttpOptions(timeout=60_000),
+                ),
+            )
+        judged = _parse_judge_response(response.parsed, response.text)
+    except QaError:
+        raise
+    except Exception:
+        message = "visual judge request or response failed"
+        raise QaError(message) from None
+    return VisualJudgeEvidence(
+        model_id=model,
+        verdict=judged.verdict,
+        comparison=judged.comparison,
+        typography_score=judged.typography_score,
+        spacing_score=judged.spacing_score,
+        hierarchy_score=judged.hierarchy_score,
+        issue_codes=tuple(sorted(set(judged.issue_codes))),
+        judged_screenshot_sha256=tuple(
+            item.sha256 for item in (*selected_source, *selected_output)
+        ),
+    )
+
+
+def _parse_judge_response(parsed: object, text: str | None) -> JudgeResponse:
+    try:
+        if isinstance(parsed, JudgeResponse):
+            return parsed
+        return JudgeResponse.model_validate_json(text or "")
+    except TypeError, ValueError:
+        message = "visual judge response failed strict validation"
+        raise QaError(message) from None
+
+
+def _evenly_sample(
+    artifacts: tuple[ArtifactFile, ...],
+    limit: int,
+) -> tuple[ArtifactFile, ...]:
+    if len(artifacts) <= limit:
+        return artifacts
+    indexes = tuple(round(index * (len(artifacts) - 1) / (limit - 1)) for index in range(limit))
+    return tuple(artifacts[index] for index in indexes)
+
+
+def _require_pdftoppm(expected_version: str) -> str:
+    executable = shutil.which("pdftoppm")
+    if executable is None:
+        _fail("pdftoppm is required to render screenshot evidence")
+    if shutil.which("pdfinfo") is None:
+        _fail("pdfinfo is required to bound screenshot rendering")
+    completed = subprocess.run(
+        [executable, "-v"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    version_line = (completed.stderr or completed.stdout).splitlines()
+    if completed.returncode != 0 or not version_line:
+        _fail("pdftoppm version could not be verified")
+    observed = version_line[0].removeprefix("pdftoppm version ").strip()
+    if observed != expected_version:
+        _fail("pdftoppm does not match the explicitly pinned version")
+    return observed
 
 
 def _require_transform_result(
@@ -1073,7 +1900,7 @@ def _require_transform_result(
         result.llm_invoked == bool(result.model_ids),
     )
     if not all(checks):
-        _fail("production result failed the exact v2 telemetry contract")
+        _fail("production result failed the exact transform telemetry contract")
 
 
 def _require_safe_semantic_delta(
@@ -1159,12 +1986,13 @@ def _nonempty_file_exists(path: Path) -> bool:
 
 
 def _append_ledger(path: Path, record: LedgerRecord) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_private_directory(path.parent)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(record.model_dump_json())
         handle.write("\n")
         handle.flush()
         os.fsync(handle.fileno())
+    path.chmod(0o600)
 
 
 def _submitted_tasks(records: tuple[LedgerRecord, ...]) -> dict[uuid.UUID, TaskId]:
@@ -1180,6 +2008,8 @@ def _submitted_tasks(records: tuple[LedgerRecord, ...]) -> dict[uuid.UUID, TaskI
 def _verified_results(records: tuple[LedgerRecord, ...]) -> dict[uuid.UUID, EvidenceResult]:
     results: dict[uuid.UUID, EvidenceResult] = {}
     for record in records:
+        if record.event == "failed" and record.operation_key in results:
+            _fail("ledger contains a failure after a verified result")
         if record.event == "verified" and record.operation_key is not None and record.result:
             prior = results.setdefault(record.operation_key, record.result)
             if prior != record.result:
@@ -1199,14 +2029,37 @@ def _ordered_results(
 
 
 def _write_manifest(path: Path, manifest: EvidenceManifest) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_private_directory(path.parent)
     temporary = path.with_suffix(f"{path.suffix}.tmp")
     temporary.write_text(f"{manifest.model_dump_json(indent=2)}\n", encoding="utf-8")
+    temporary.chmod(0o600)
     temporary.replace(path)
+    path.chmod(0o600)
 
 
-def _output_name(expected_release_sha: str, seed: str, ordinal: int) -> str:
-    return f"[QA {expected_release_sha[:12]} {_sha256_text(seed)[:8]} {ordinal:02d}] Sarj polished"
+def _ensure_private_directory(path: Path) -> None:
+    if path.is_symlink():
+        _fail("evidence directory must already be private")
+    if path.exists():
+        if not path.is_dir() or path.stat().st_mode & 0o077:
+            _fail("evidence directory must already be private")
+        return
+    path.mkdir(parents=True, mode=0o700)
+    path.chmod(0o700)
+
+
+def _output_name(
+    expected_release_sha: str,
+    seed: str,
+    ordinal: int,
+    *,
+    cohort: QaCohort,
+) -> str:
+    label = "CANARY" if cohort == "canary" else "CORPUS"
+    return (
+        f"[QA {label} {expected_release_sha[:12]} {_sha256_text(seed)[:8]} {ordinal:02d}] "
+        "Sarj polished"
+    )
 
 
 def _safe_rejection(exc: Exception) -> str:
@@ -1215,6 +2068,14 @@ def _safe_rejection(exc: Exception) -> str:
         if detail:
             return detail[:120]
     return type(exc).__name__
+
+
+def _is_pinned_judge_model(model: str) -> bool:
+    return bool(re.fullmatch(r"gemini-[a-z0-9.-]+-\d{3}", model))
+
+
+def _is_sha256(value: str | None) -> bool:
+    return bool(value and re.fullmatch(r"[0-9a-f]{64}", value))
 
 
 def _sha256_text(value: str) -> str:

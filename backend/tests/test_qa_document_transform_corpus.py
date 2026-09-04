@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import argparse
 from datetime import UTC, datetime
+import hashlib
 import json
 from pathlib import Path
+import subprocess
+from typing import Literal
+from unittest.mock import create_autospec
 import uuid
 
 import httpx
@@ -20,23 +24,41 @@ from app.document_transform.schemas import (
 )
 from app.identifiers import FileId, TaskId
 from scripts.qa_document_transform_corpus import (
+    ArtifactFile,
     EvidenceManifest,
     EvidenceResult,
     LedgerRecord,
+    PdfInfo,
     PermissionEntry,
+    QaCohort,
     QaError,
     SourceEvidence,
+    VisualEvidence,
+    VisualJudgeEvidence,
+    _append_ledger,
+    _capture_visual_evidence,
     _ensure_manifest_ledger,
+    _evenly_sample,
     _load_ledger,
+    _load_verified_canary,
+    _manifest_plan_sha256,
     _parse_file_metadata,
+    _parse_judge_response,
+    _read_pdf_info,
+    _render_pdf,
+    _require_artifact_file,
+    _require_manifest_invariants,
     _require_private_file,
     _require_private_permissions,
+    _require_result_binding,
     _require_safe_semantic_delta,
     _require_transform_result,
     _submit_transform,
     _submitted_tasks,
     _validate_arguments,
     _verified_results,
+    _verify_release,
+    _write_manifest,
     corpus_operation_key,
     permission_inventory_sha256,
     seeded_order,
@@ -62,6 +84,7 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
         seed="corpus-1",
         source_id="doc-a",
         mode=TransformMode.BOTH,
+        cohort="corpus",
     )
 
     assert first == corpus_operation_key(
@@ -69,6 +92,7 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
         seed="corpus-1",
         source_id="doc-a",
         mode=TransformMode.BOTH,
+        cohort="corpus",
     )
     assert first.version == 5
     assert first != corpus_operation_key(
@@ -76,6 +100,14 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
         seed="corpus-1",
         source_id="doc-b",
         mode=TransformMode.BOTH,
+        cohort="corpus",
+    )
+    assert first != corpus_operation_key(
+        expected_release_sha="a" * 40,
+        seed="corpus-1",
+        source_id="doc-a",
+        mode=TransformMode.BOTH,
+        cohort="canary",
     )
 
 
@@ -87,6 +119,12 @@ def test_live_execution_is_hard_gated_to_twenty_both_mode_copies() -> None:
         "execute": True,
         "expected_release_sha": "a" * 40,
         "mode": "both",
+        "artifacts_dir": Path("artifacts"),
+        "pdftoppm_version": "25.06.0",
+        "canary_manifest": Path("canary.json"),
+        "canary_ledger": Path("canary.jsonl"),
+        "canary_artifacts_dir": Path("canary-artifacts"),
+        "judge_model": "gemini-2.5-flash-001",
     }
     _validate_arguments(argparse.Namespace(**common))
 
@@ -94,6 +132,10 @@ def test_live_execution_is_hard_gated_to_twenty_both_mode_copies() -> None:
         _validate_arguments(argparse.Namespace(**{**common, "count": 19}))
     with pytest.raises(QaError, match="requires --mode both"):
         _validate_arguments(argparse.Namespace(**{**common, "mode": "format"}))
+    with pytest.raises(QaError, match="exact pinned model"):
+        _validate_arguments(argparse.Namespace(**{**common, "judge_model": "gemini-2.5-flash"}))
+    with pytest.raises(QaError, match="canary-artifacts-dir"):
+        _validate_arguments(argparse.Namespace(**{**common, "canary_artifacts_dir": None}))
 
 
 def test_canary_execution_has_distinct_one_document_gate() -> None:
@@ -104,6 +146,9 @@ def test_canary_execution_has_distinct_one_document_gate() -> None:
         "execute": True,
         "expected_release_sha": "a" * 40,
         "mode": "both",
+        "artifacts_dir": Path("artifacts"),
+        "pdftoppm_version": "25.06.0",
+        "judge_model": "gemini-2.5-flash-001",
     }
     _validate_arguments(argparse.Namespace(**common))
 
@@ -113,17 +158,19 @@ def test_canary_execution_has_distinct_one_document_gate() -> None:
         )
     with pytest.raises(QaError, match="requires --count 1"):
         _validate_arguments(argparse.Namespace(**{**common, "count": 20}))
-    with pytest.raises(QaError, match="only valid with --execute"):
-        _validate_arguments(
-            argparse.Namespace(
-                **{
-                    **common,
-                    "confirm_live_copy": None,
-                    "count": 1,
-                    "execute": False,
-                }
-            )
+    _validate_arguments(
+        argparse.Namespace(
+            **{
+                **common,
+                "artifacts_dir": None,
+                "confirm_live_copy": None,
+                "count": 1,
+                "execute": False,
+                "pdftoppm_version": None,
+                "judge_model": None,
+            }
         )
+    )
 
 
 def test_private_selection_requires_owned_unshared_editable_file_and_owner() -> None:
@@ -206,7 +253,7 @@ def test_semantic_postcondition_rejects_format_text_change_and_unsafe_rewrite() 
         )
 
 
-def test_exact_v2_result_gate_rejects_wrong_brand_digest() -> None:
+def test_exact_transform_result_gate_rejects_wrong_brand_digest() -> None:
     task_id = TaskId(uuid.uuid7())
     result = DocumentTransformResult(
         operation_id=task_id,
@@ -237,7 +284,7 @@ def test_exact_v2_result_gate_rejects_wrong_brand_digest() -> None:
     )
     _require_transform_result(result, task_id=task_id, mode=TransformMode.BOTH)
 
-    with pytest.raises(QaError, match="exact v2 telemetry"):
+    with pytest.raises(QaError, match="exact transform telemetry"):
         _require_transform_result(
             result.model_copy(update={"brand_profile_sha256": "wrong"}),
             task_id=task_id,
@@ -267,23 +314,20 @@ def test_jsonl_ledger_resumes_submitted_and_verified_operations(tmp_path: Path) 
         deterministic_patch_count=0,
         model_patch_count=0,
         llm_invoked=False,
+        release_sha_before="a" * 40,
+        release_sha_after="a" * 40,
+        visual_evidence=_visual_evidence(),
         verified_at=datetime.now(UTC),
     )
     records = (
-        LedgerRecord(
-            recorded_at=datetime.now(UTC),
-            event="submitted",
+        _submitted_ledger_record(
             operation_key=operation_key,
             source_id=FileId("source"),
             task_id=task_id,
         ),
-        LedgerRecord(
-            recorded_at=datetime.now(UTC),
-            event="verified",
+        _verified_ledger_record(
             operation_key=operation_key,
             source_id=FileId("source"),
-            task_id=task_id,
-            output_id=FileId("output"),
             result=result,
         ),
     )
@@ -309,19 +353,9 @@ def test_jsonl_ledger_rejects_truncated_record(tmp_path: Path) -> None:
 
 def test_ledger_is_bound_to_immutable_manifest_plan(tmp_path: Path) -> None:
     source = _source_evidence()
-    manifest = EvidenceManifest(
-        created_at=datetime.now(UTC),
-        expected_release_sha="a" * 40,
+    manifest = _evidence_manifest(
         seed="seed-a",
-        seed_sha256="seed-digest",
-        mode=TransformMode.BOTH,
-        count=1,
-        user_email=_EMAIL,
-        pipeline_version=PIPELINE_VERSION,
-        brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
-        brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
-        selection_rejections={},
-        sources=(source,),
+        source=source,
     )
     path = tmp_path / "qa.jsonl"
 
@@ -332,6 +366,372 @@ def test_ledger_is_bound_to_immutable_manifest_plan(tmp_path: Path) -> None:
     assert [record.event for record in first] == ["manifest"]
     with pytest.raises(QaError, match="does not belong"):
         _ensure_manifest_ledger(path, manifest.model_copy(update={"seed": "seed-b"}))
+
+
+def test_verified_canary_attestation_is_bound_to_release_and_ledger(tmp_path: Path) -> None:
+    expected_release_sha = "a" * 40
+    judge_model = "gemini-2.5-flash-001"
+    seed = "canary-seed"
+    source = _source_evidence(
+        expected_release_sha=expected_release_sha,
+        seed=seed,
+        cohort="canary",
+    )
+    artifacts_dir = tmp_path / "artifacts"
+    visual_evidence = _visual_evidence(source=source, artifacts_dir=artifacts_dir)
+    result = _evidence_result(
+        expected_release_sha=expected_release_sha,
+        source=source,
+        visual_evidence=visual_evidence,
+        judge_model=judge_model,
+    )
+    manifest = _evidence_manifest(
+        expected_release_sha=expected_release_sha,
+        judge_model=judge_model,
+        seed=seed,
+        source=source,
+        results=(result,),
+    )
+    manifest_path = tmp_path / "canary.json"
+    ledger_path = tmp_path / "canary.jsonl"
+    _write_manifest(manifest_path, manifest)
+    _append_ledger(
+        ledger_path,
+        _manifest_ledger_record(_manifest_plan_sha256(manifest)),
+    )
+    _append_ledger(
+        ledger_path,
+        _verified_ledger_record(
+            operation_key=source.operation_key,
+            source_id=source.source_id,
+            result=result,
+        ),
+    )
+
+    attestation = _load_verified_canary(
+        manifest_path,
+        ledger_path,
+        artifacts_dir,
+        expected_release_sha=expected_release_sha,
+        user_email=_EMAIL,
+        judge_model=judge_model,
+    )
+
+    assert len(attestation.sha256) == 64
+    assert attestation.excluded_source_ids == {source.source_id}
+    with pytest.raises(QaError, match="exact release"):
+        _load_verified_canary(
+            manifest_path,
+            ledger_path,
+            artifacts_dir,
+            expected_release_sha="b" * 40,
+            user_email=_EMAIL,
+            judge_model=judge_model,
+        )
+    format_manifest = manifest.model_copy(update={"mode": TransformMode.FORMAT})
+    _write_manifest(manifest_path, format_manifest)
+    ledger_path.unlink()
+    _append_ledger(
+        ledger_path,
+        _manifest_ledger_record(_manifest_plan_sha256(format_manifest)),
+    )
+    _append_ledger(
+        ledger_path,
+        _verified_ledger_record(
+            operation_key=source.operation_key,
+            source_id=source.source_id,
+            result=result,
+        ),
+    )
+    with pytest.raises(QaError, match="exact release"):
+        _load_verified_canary(
+            manifest_path,
+            ledger_path,
+            artifacts_dir,
+            expected_release_sha=expected_release_sha,
+            user_email=_EMAIL,
+            judge_model=judge_model,
+        )
+
+
+def test_private_evidence_files_use_restrictive_modes(tmp_path: Path) -> None:
+    manifest = _evidence_manifest()
+    manifest_path = tmp_path / "nested" / "manifest.json"
+    ledger_path = tmp_path / "nested" / "ledger.jsonl"
+
+    _write_manifest(manifest_path, manifest)
+    _append_ledger(
+        ledger_path,
+        _manifest_ledger_record("digest"),
+    )
+
+    assert manifest_path.stat().st_mode & 0o777 == 0o600
+    assert ledger_path.stat().st_mode & 0o777 == 0o600
+    assert manifest_path.parent.stat().st_mode & 0o777 == 0o700
+
+
+def test_preexisting_permissive_evidence_directory_is_rejected(tmp_path: Path) -> None:
+    unsafe = tmp_path / "unsafe"
+    unsafe.mkdir()
+    unsafe.chmod(0o755)
+
+    with pytest.raises(QaError, match="already be private"):
+        _append_ledger(
+            unsafe / "ledger.jsonl",
+            _manifest_ledger_record("digest"),
+        )
+
+
+def test_manifest_invariants_reject_tampered_source_binding() -> None:
+    release = "a" * 40
+    seed = "seed"
+    source = _source_evidence(expected_release_sha=release, seed=seed, cohort="canary")
+    manifest = _evidence_manifest(
+        expected_release_sha=release,
+        seed=seed,
+        source=source,
+    )
+
+    _require_manifest_invariants(manifest)
+    with pytest.raises(QaError, match="source binding"):
+        _require_manifest_invariants(
+            manifest.model_copy(
+                update={"sources": (source.model_copy(update={"output_name": "tampered"}),)}
+            )
+        )
+
+
+def test_resumed_result_requires_intact_private_artifacts(tmp_path: Path) -> None:
+    release = "a" * 40
+    source = _source_evidence(expected_release_sha=release)
+    artifacts_dir = tmp_path / "artifacts"
+    evidence = _visual_evidence(source=source, artifacts_dir=artifacts_dir)
+    result = _evidence_result(
+        expected_release_sha=release,
+        source=source,
+        visual_evidence=evidence,
+    )
+
+    _require_result_binding(
+        source,
+        result,
+        expected_release_sha=release,
+        artifacts_dir=artifacts_dir,
+        renderer_version="25.06.0",
+        judge_model=None,
+        user_email=_EMAIL,
+    )
+    with pytest.raises(QaError, match="bound to its source"):
+        _require_result_binding(
+            source,
+            result.model_copy(update={"release_sha_after": "b" * 40}),
+            expected_release_sha=release,
+            artifacts_dir=artifacts_dir,
+            renderer_version="25.06.0",
+            judge_model=None,
+            user_email=_EMAIL,
+        )
+    incomplete_evidence = evidence.model_copy(update={"source_screenshots": ()})
+    with pytest.raises(QaError, match="bound to its source"):
+        _require_result_binding(
+            source,
+            result.model_copy(update={"visual_evidence": incomplete_evidence}),
+            expected_release_sha=release,
+            artifacts_dir=artifacts_dir,
+            renderer_version="25.06.0",
+            judge_model=None,
+            user_email=_EMAIL,
+        )
+    output_png = artifacts_dir / evidence.output_screenshots[0].relative_path
+    output_png.write_bytes(b"corrupt")
+    output_png.chmod(0o600)
+    with pytest.raises(QaError, match="size or digest changed"):
+        _require_result_binding(
+            source,
+            result,
+            expected_release_sha=release,
+            artifacts_dir=artifacts_dir,
+            renderer_version="25.06.0",
+            judge_model=None,
+            user_email=_EMAIL,
+        )
+
+
+def test_artifact_paths_cannot_escape_private_root(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    root.mkdir(mode=0o700)
+    secret = tmp_path / "secret.png"
+    secret.write_bytes(b"secret")
+    secret.chmod(0o600)
+    artifact = ArtifactFile(
+        relative_path="../secret.png",
+        sha256=hashlib.sha256(b"secret").hexdigest(),
+        byte_size=6,
+    )
+
+    with pytest.raises(QaError, match="outside"):
+        _require_artifact_file(artifact, artifacts_dir=root)
+
+
+def test_ledger_rejects_failure_after_verified_result() -> None:
+    operation_key = uuid.uuid5(uuid.NAMESPACE_URL, "verified-then-failed")
+    result = _evidence_result(expected_release_sha="a" * 40)
+    records = (
+        _verified_ledger_record(
+            operation_key=operation_key,
+            source_id=result.source_id,
+            result=result,
+        ),
+        _failed_ledger_record(
+            operation_key=operation_key,
+            detail="late_failure",
+        ),
+    )
+
+    with pytest.raises(QaError, match="failure after"):
+        _verified_results(records)
+
+
+def test_even_sampling_includes_first_and_last_pages() -> None:
+    artifacts = tuple(
+        ArtifactFile(relative_path=f"page-{index}.png", sha256=str(index) * 64, byte_size=1)
+        for index in range(10)
+    )
+
+    sampled = _evenly_sample(artifacts, 4)
+
+    assert len(sampled) == 4
+    assert sampled[0] == artifacts[0]
+    assert sampled[-1] == artifacts[-1]
+
+
+@pytest.mark.parametrize(
+    ("pdfinfo_output", "error"),
+    [
+        ("Pages:          101\nPage size:      612 x 792 pts\n", "page count"),
+        ("Pages:          1\nPage size:      3000 x 792 pts\n", "dimensions"),
+    ],
+)
+def test_pdf_preflight_rejects_unbounded_rendering(
+    monkeypatch: pytest.MonkeyPatch,
+    pdfinfo_output: str,
+    error: str,
+) -> None:
+    monkeypatch.setattr("scripts.qa_document_transform_corpus.shutil.which", lambda _: "/pdfinfo")
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus.subprocess.run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["pdfinfo"],
+            returncode=0,
+            stdout=pdfinfo_output,
+            stderr="",
+        ),
+    )
+
+    with pytest.raises(QaError, match=error):
+        _read_pdf_info(Path("private.pdf"))
+
+
+def test_render_rejects_incomplete_or_oversized_screenshot_sets(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("scripts.qa_document_transform_corpus.shutil.which", lambda _: "/pdftoppm")
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus._read_pdf_info",
+        lambda _path: PdfInfo(pages=2, page_sizes_points=((612.0, 792.0),)),
+    )
+
+    def render_one_page(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        Path(f"{command[-1]}-1.png").write_bytes(b"png")
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("scripts.qa_document_transform_corpus.subprocess.run", render_one_page)
+    with pytest.raises(QaError, match="exactly one screenshot"):
+        _render_pdf(tmp_path / "source.pdf", capture_dir=tmp_path, stem="source")
+
+    def render_two_pages(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        Path(f"{command[-1]}-1.png").write_bytes(b"png")
+        Path(f"{command[-1]}-2.png").write_bytes(b"png")
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("scripts.qa_document_transform_corpus.subprocess.run", render_two_pages)
+    monkeypatch.setattr("scripts.qa_document_transform_corpus._MAX_RENDERED_BYTES", 1)
+    with pytest.raises(QaError, match="aggregate evidence"):
+        _render_pdf(tmp_path / "source.pdf", capture_dir=tmp_path, stem="source")
+
+
+def test_judge_response_is_exact_and_redacts_invalid_payload() -> None:
+    secret = "PRIVATE_DOCUMENT_SENTINEL"
+    payload = json.dumps(
+        {
+            "verdict": "pass",
+            "comparison": "improved",
+            "typography_score": 5,
+            "spacing_score": 5,
+            "hierarchy_score": 5,
+            "issue_codes": [],
+            "extra_private_text": secret,
+        }
+    )
+
+    with pytest.raises(QaError) as captured:
+        _parse_judge_response(None, payload)
+    assert secret not in str(captured.value)
+    assert "strict validation" in str(captured.value)
+
+
+@pytest.mark.asyncio
+async def test_release_fence_returns_observed_sha_and_rejects_drift() -> None:
+    expected = "a" * 40
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        revision = expected if request.headers.get("X-Test") is None else "b" * 40
+        return httpx.Response(
+            status_code=httpx.codes.OK,
+            json={"status": "ok", "database": "ok", "revision": revision},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        assert await _verify_release(client, expected) == expected
+        client.headers["X-Test"] = "drift"
+        with pytest.raises(QaError, match="expected release"):
+            await _verify_release(client, expected)
+
+
+@pytest.mark.asyncio
+async def test_visual_judge_rejects_regression_even_with_high_scores(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _visual_evidence()
+
+    async def judge(*_args: object, **_kwargs: object) -> VisualJudgeEvidence:
+        return VisualJudgeEvidence(
+            model_id="gemini-pinned",
+            verdict="pass",
+            comparison="regressed",
+            typography_score=5,
+            spacing_score=5,
+            hierarchy_score=5,
+            judged_screenshot_sha256=("a" * 64,),
+        )
+
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus._capture_visual_evidence_sync",
+        lambda **_kwargs: evidence,
+    )
+    monkeypatch.setattr("scripts.qa_document_transform_corpus._judge_visual_evidence", judge)
+
+    with pytest.raises(QaError, match="requested review"):
+        await _capture_visual_evidence(
+            source=_source_evidence(),
+            source_id=FileId("source"),
+            output_id=FileId("output"),
+            drive_client=create_autospec(object),
+            artifacts_dir=Path("artifacts"),
+            renderer_version="25.06.0",
+            judge_model="gemini-pinned",
+        )
 
 
 @pytest.mark.asyncio
@@ -370,7 +770,120 @@ async def test_submission_uses_live_endpoint_and_uuid5_idempotency_header() -> N
     assert replayed is False
 
 
-def _source_evidence() -> SourceEvidence:
+def _evidence_manifest(
+    *,
+    expected_release_sha: str = "a" * 40,
+    seed: str = "seed",
+    source: SourceEvidence | None = None,
+    results: tuple[EvidenceResult, ...] = (),
+    judge_model: str | None = None,
+) -> EvidenceManifest:
+    source = source or _source_evidence(
+        expected_release_sha=expected_release_sha,
+        seed=seed,
+        cohort="canary",
+    )
+    return EvidenceManifest(
+        created_at=datetime.now(UTC),
+        expected_release_sha=expected_release_sha,
+        cohort="canary",
+        judge_model=judge_model,
+        seed=seed,
+        seed_sha256=hashlib.sha256(seed.encode()).hexdigest(),
+        mode=TransformMode.BOTH,
+        count=1,
+        user_email=_EMAIL,
+        pipeline_version=PIPELINE_VERSION,
+        brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
+        brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
+        selection_rejections={},
+        sources=(source,),
+        results=results,
+    )
+
+
+def _manifest_ledger_record(detail: str) -> LedgerRecord:
+    return _ledger_record(
+        event="manifest",
+        detail=detail,
+    )
+
+
+def _submitted_ledger_record(
+    *,
+    operation_key: uuid.UUID,
+    source_id: FileId,
+    task_id: TaskId,
+) -> LedgerRecord:
+    return _ledger_record(
+        event="submitted",
+        operation_key=operation_key,
+        source_id=source_id,
+        task_id=task_id,
+    )
+
+
+def _verified_ledger_record(
+    *,
+    operation_key: uuid.UUID,
+    source_id: FileId,
+    result: EvidenceResult,
+) -> LedgerRecord:
+    return _ledger_record(
+        event="verified",
+        operation_key=operation_key,
+        source_id=source_id,
+        task_id=result.task_id,
+        output_id=result.output_id,
+        result=result,
+    )
+
+
+def _failed_ledger_record(*, operation_key: uuid.UUID, detail: str) -> LedgerRecord:
+    return _ledger_record(event="failed", operation_key=operation_key, detail=detail)
+
+
+def _ledger_record(
+    *,
+    event: Literal["manifest", "submitted", "terminal", "verified", "failed"],
+    operation_key: uuid.UUID | None = None,
+    source_id: FileId | None = None,
+    task_id: TaskId | None = None,
+    output_id: FileId | None = None,
+    detail: str | None = None,
+    result: EvidenceResult | None = None,
+) -> LedgerRecord:
+    return LedgerRecord(
+        recorded_at=datetime.now(UTC),
+        event=event,
+        operation_key=operation_key,
+        source_id=source_id,
+        task_id=task_id,
+        output_id=output_id,
+        detail=detail,
+        result=result,
+    )
+
+
+def _source_evidence(
+    *,
+    expected_release_sha: str = "a" * 40,
+    seed: str = "seed",
+    cohort: QaCohort = "canary",
+) -> SourceEvidence:
+    owner = PermissionEntry(
+        id="owner-1",
+        principal_type="user",
+        role="owner",
+        email_address=_EMAIL,
+    )
+    operation_key = corpus_operation_key(
+        expected_release_sha=expected_release_sha,
+        seed=seed,
+        source_id="source",
+        mode=TransformMode.BOTH,
+        cohort=cohort,
+    )
     return SourceEvidence(
         ordinal=1,
         source_id=FileId("source"),
@@ -378,10 +891,95 @@ def _source_evidence() -> SourceEvidence:
         modified_time="2026-09-03T00:00:00Z",
         revision_id="revision-1",
         semantic_sha256="semantic",
-        permission_inventory=(),
-        permission_sha256=permission_inventory_sha256(()),
-        parent_permission_inventory=(),
-        parent_permission_sha256=permission_inventory_sha256(()),
-        operation_key=uuid.uuid5(uuid.NAMESPACE_URL, "operation"),
-        output_name="[QA] Sarj polished",
+        permission_inventory=(owner,),
+        permission_sha256=permission_inventory_sha256((owner,)),
+        parent_permission_inventory=(owner,),
+        parent_permission_sha256=permission_inventory_sha256((owner,)),
+        operation_key=operation_key,
+        output_name=(
+            f"[QA {'CANARY' if cohort == 'canary' else 'CORPUS'} "
+            f"{expected_release_sha[:12]} {hashlib.sha256(seed.encode()).hexdigest()[:8]} 01] "
+            "Sarj polished"
+        ),
+    )
+
+
+def _visual_evidence(
+    *,
+    source: SourceEvidence | None = None,
+    artifacts_dir: Path | None = None,
+) -> VisualEvidence:
+    source = source or _source_evidence()
+    prefix = f"{source.ordinal:02d}-{source.operation_key}"
+
+    def artifact(name: str, content: bytes) -> ArtifactFile:
+        if artifacts_dir is not None:
+            artifacts_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            artifacts_dir.chmod(0o700)
+            path = artifacts_dir / prefix / name
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            path.parent.chmod(0o700)
+            path.write_bytes(content)
+            path.chmod(0o600)
+        return ArtifactFile(
+            relative_path=f"{prefix}/{name}",
+            sha256=hashlib.sha256(content).hexdigest(),
+            byte_size=len(content),
+        )
+
+    return VisualEvidence(
+        source_pdf=artifact("source.pdf", b"source-pdf"),
+        output_pdf=artifact("output.pdf", b"output-pdf"),
+        source_screenshots=(artifact("source-001.png", b"source-png"),),
+        output_screenshots=(artifact("output-001.png", b"output-png"),),
+        renderer_version="25.06.0",
+    )
+
+
+def _evidence_result(
+    *,
+    expected_release_sha: str,
+    source: SourceEvidence | None = None,
+    visual_evidence: VisualEvidence | None = None,
+    judge_model: str | None = None,
+) -> EvidenceResult:
+    source = source or _source_evidence(expected_release_sha=expected_release_sha)
+    evidence = visual_evidence or _visual_evidence(source=source)
+    judge = None
+    if judge_model is not None:
+        judge = VisualJudgeEvidence(
+            model_id=judge_model,
+            verdict="pass",
+            comparison="improved",
+            typography_score=5,
+            spacing_score=5,
+            hierarchy_score=5,
+            judged_screenshot_sha256=tuple(
+                item.sha256 for item in (*evidence.source_screenshots, *evidence.output_screenshots)
+            ),
+        )
+    return EvidenceResult(
+        source_id=source.source_id,
+        source_modified_time_after=source.modified_time,
+        source_revision_id_after=source.revision_id,
+        source_semantic_sha256_after=source.semantic_sha256,
+        source_permission_inventory_after=source.permission_inventory,
+        source_permission_sha256_after=source.permission_sha256,
+        task_id=TaskId(uuid.uuid7()),
+        output_id=FileId("output"),
+        output_parent_id=source.parent_id,
+        output_owned_by_me=True,
+        output_shared=False,
+        output_revision_id="revision-2",
+        output_permission_inventory=source.permission_inventory,
+        output_permission_sha256=source.permission_sha256,
+        applied_patch_count=0,
+        deterministic_patch_count=0,
+        model_patch_count=0,
+        llm_invoked=False,
+        release_sha_before=expected_release_sha,
+        release_sha_after=expected_release_sha,
+        visual_evidence=evidence,
+        visual_judge=judge,
+        verified_at=datetime.now(UTC),
     )
