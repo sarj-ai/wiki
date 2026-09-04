@@ -68,7 +68,9 @@ function ReorganizeDocumentForFile({
       }
       setProposalState({ fileId: requestedFileId, proposal: result });
     } catch (error: unknown) {
-      toast.error(toErrorMessage(error, "Couldn’t check this document’s location"));
+      if (mounted.current) {
+        toast.error(toErrorMessage(error, "Couldn’t check this document’s location"));
+      }
     } finally {
       if (mounted.current) setChecking(false);
       releaseLatch(proposeLatch, latch);

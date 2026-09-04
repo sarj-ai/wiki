@@ -258,6 +258,7 @@ function serializeSource(source: DocumentTransformSource): Record<string, string
 }
 
 async function abortableDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
   await new Promise<void>((resolve, reject) => {
     const onAbort = () => {
       window.clearTimeout(timeout);

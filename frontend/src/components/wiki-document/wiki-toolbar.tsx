@@ -158,20 +158,22 @@ export function WikiToolbar({
           />
         </>
       ) : null}
-      <div className="size-6 shrink-0 sm:w-24">
-        {authority === "resolved" ? (
-          canEdit ? (
+      {authority === "resolved" ? (
+        canEdit ? (
+          <div className="size-6 shrink-0 sm:w-24">
             <ReorganizeDocument
               driveId={driveId}
               fileId={fileId}
               fileName={displayTitle}
               parentFolderId={parentFolderId}
             />
-          ) : null
-        ) : (
+          </div>
+        ) : null
+      ) : (
+        <div className="size-6 shrink-0 sm:w-24">
           <span aria-hidden className="bg-muted block size-full animate-pulse rounded-md" />
-        )}
-      </div>
+        </div>
+      )}
       <div className="size-6 shrink-0 sm:w-24">
         {authority === "resolved" ? (
           canEdit ? (

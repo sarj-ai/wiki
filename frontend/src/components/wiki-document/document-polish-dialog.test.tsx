@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 
 import { documentTransformApi } from "@/lib/document-transform-client";
 import {
+  DocumentTransformNeedsReviewError,
   type DocumentTransformResult,
   DocumentTransformTerminalError,
 } from "@/lib/document-transform-types";
@@ -257,6 +258,32 @@ describe("DocumentPolishDialog", () => {
     clickButton(findButtonNow("Create polished copy"));
     await vi.waitFor(() => {
       expect(document.body).toHaveTextContent("Polish did not complete");
+      expect(findButtonNow("Create polished copy")).toBeDisabled();
+    });
+    clickButton(findButtonNow("Create polished copy"));
+    expect(documentTransformApi.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks accidental resubmission after a needs-review outcome", async () => {
+    vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+      id: "55555555-5555-4555-8555-555555555555",
+      status: "pending",
+    });
+    vi.spyOn(documentTransformApi, "waitForCompletion").mockRejectedValue(
+      new DocumentTransformNeedsReviewError("A protected block needs review"),
+    );
+    renderDialog(root, {
+      allowInPlace: false,
+      expectedModifiedTime: "2026-09-03T12:00:00Z",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+    });
+
+    clickButton(findButtonNow("Create polished copy"));
+    await vi.waitFor(() => {
+      expect(document.body).toHaveTextContent("A protected block needs review");
       expect(findButtonNow("Create polished copy")).toBeDisabled();
     });
     clickButton(findButtonNow("Create polished copy"));

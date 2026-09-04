@@ -656,6 +656,7 @@ export function DocumentPolishDialog({
                 submitting ||
                 capabilityPending ||
                 capabilityFailed ||
+                reviewMessage !== null ||
                 terminalMessage !== null ||
                 !valid
               }
