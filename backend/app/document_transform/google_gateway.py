@@ -1344,11 +1344,36 @@ def _has_exact_named_range(
                     tab_id != expected_tab_id
                     or not isinstance(ranges, list)
                     or len(ranges) != 1
-                    or ranges[0] != expected_range
+                    or not _same_named_range(ranges[0], expected_range, tab_id=tab_id)
                 ):
                     return False
                 matches.append(definition)
     return len(matches) == 1
+
+
+def _same_named_range(
+    observed: object,
+    expected: dict[str, Any],
+    *,
+    tab_id: str,
+) -> bool:
+    if not isinstance(observed, dict):
+        return False
+    observed_start = observed.get("startIndex")
+    observed_end = observed.get("endIndex")
+    expected_start = expected.get("startIndex")
+    expected_end = expected.get("endIndex")
+    if not all(
+        type(value) is int for value in (observed_start, observed_end, expected_start, expected_end)
+    ):
+        return False
+    observed_tab_id = observed.get("tabId", tab_id)
+    return (
+        observed_start == expected_start
+        and observed_end == expected_end
+        and observed_tab_id == expected.get("tabId")
+        and observed.get("segmentId", "") == expected.get("segmentId", "")
+    )
 
 
 def _document_tabs(document: dict[str, Any]) -> Iterator[tuple[str, dict[str, Any]]]:

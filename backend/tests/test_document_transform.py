@@ -2946,13 +2946,19 @@ def test_in_place_marker_reconciliation_is_exact_and_tab_scoped() -> None:
     expected = {"startIndex": 10, "endIndex": 11, "tabId": "tab-1"}
     marker = "sarj-transform-operation-content-hash"
     document = _in_place_document("Source")
+    provider_range = {"startIndex": 10, "endIndex": 11, "segmentId": ""}
     document["tabs"][0]["documentTab"]["namedRanges"] = {
-        marker: {"namedRanges": [{"name": marker, "namedRangeId": "range-1", "ranges": [expected]}]}
+        marker: {
+            "namedRanges": [{"name": marker, "namedRangeId": "range-1", "ranges": [provider_range]}]
+        }
     }
 
     assert google_gateway_module._has_exact_named_range(document, marker, expected)
     wrong_tab = {**expected, "tabId": "tab-2"}
     assert not google_gateway_module._has_exact_named_range(document, marker, wrong_tab)
+    provider_range["segmentId"] = "header-1"
+    assert not google_gateway_module._has_exact_named_range(document, marker, expected)
+    provider_range["segmentId"] = ""
     document["tabs"][0]["documentTab"]["namedRanges"][marker]["namedRanges"].append(
         {"name": marker, "namedRangeId": "range-2", "ranges": [expected]}
     )
@@ -2970,10 +2976,11 @@ def test_google_in_place_lost_response_reconciles_atomic_tab_marker(
 ) -> None:
     marker = "sarj-transform-operation-headers-hash"
     marker_range = {"startIndex": 10, "endIndex": 11, "tabId": "tab-1"}
+    provider_range = {"startIndex": 10, "endIndex": 11, "segmentId": ""}
     document = _in_place_document("Source", revision="revision-2")
     document["tabs"][0]["documentTab"]["namedRanges"] = {
         marker: {
-            "namedRanges": [{"name": marker, "namedRangeId": "range-1", "ranges": [marker_range]}]
+            "namedRanges": [{"name": marker, "namedRangeId": "range-1", "ranges": [provider_range]}]
         }
     }
     captured: dict[str, Any] = {}
