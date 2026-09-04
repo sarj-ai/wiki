@@ -66,6 +66,7 @@ class Settings(DatabaseSettings):
     DOCUMENT_TRANSFORM_FALLBACK_MODEL: NonEmptyStr = "gemini-2.5-flash-lite"
     DOCUMENT_TRANSFORM_RESTYLE_MODEL: NonEmptyStr = "gemini-3.8-flash"
     DOCUMENT_TRANSFORM_LOGO_URI: HttpUrl = HttpUrl("https://wiki.sarj.ai/brand/sarj-logo-light.png")
+    DOCUMENT_TRANSFORM_IN_PLACE_ENABLED: bool = False
     DOCUMENT_TRANSFORM_QUEUE: NonEmptyStr | None = None
     DOCUMENT_TRANSFORM_TARGET_URL: NonEmptyStr | None = None
     CLOUD_TASKS_QUEUE: NonEmptyStr | None = None

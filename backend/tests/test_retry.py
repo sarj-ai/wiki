@@ -30,7 +30,7 @@ def _http_error(status: int, headers: dict[str, str] | None = None) -> HttpError
 
 
 class _FlakyRequest:
-    def __init__(self, failures: int, error: HttpError) -> None:
+    def __init__(self, failures: int, error: BaseException) -> None:
         self.attempts = 0
         self._failures = failures
         self._error = error
@@ -56,6 +56,12 @@ def test_execute_with_retry_retries_transient_5xx() -> None:
     assert req.attempts == 2
 
 
+def test_execute_with_retry_retries_transport_timeout() -> None:
+    req = _FlakyRequest(1, TimeoutError("transport timeout"))
+    assert execute_with_retry(dependency(req)) == {"ok": True}
+    assert req.attempts == 2
+
+
 def test_execute_mutation_retries_rate_limit() -> None:
     req = _FlakyRequest(1, _http_error(429, {"retry-after": "0"}))
     assert execute_mutation(dependency(req)) == {"ok": True}
@@ -65,6 +71,13 @@ def test_execute_mutation_retries_rate_limit() -> None:
 def test_execute_mutation_does_not_retry_5xx() -> None:
     req = _FlakyRequest(99, _http_error(500, {"retry-after": "0"}))
     with pytest.raises(HttpError):
+        execute_mutation(dependency(req))
+    assert req.attempts == 1
+
+
+def test_execute_mutation_does_not_retry_ambiguous_transport_timeout() -> None:
+    req = _FlakyRequest(99, TimeoutError("ambiguous timeout"))
+    with pytest.raises(TimeoutError):
         execute_mutation(dependency(req))
     assert req.attempts == 1
 

@@ -155,7 +155,7 @@ def _prompt(document: DocumentIR, *, phase: TransformPhase) -> str:
     )
     return "\n".join(
         (
-            "You are a conservative document editor.",
+            "You are a conservative content editor.",
             instruction,
             (
                 "Return only JSON patches. Do not alter names, facts, numbers, dates, citations, "

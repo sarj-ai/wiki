@@ -13,7 +13,7 @@ import {
 } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import type { BreadcrumbItem } from "@/types/wiki";
-import { MIME_DOC, MIME_MARKDOWN } from "@/types/wiki";
+import { MIME_DOC, MIME_MARKDOWN, MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
 
 import { DocumentPolishDialog } from "./document-polish-dialog";
 import { ReadOnlyShortLink } from "./read-only-short-link";
@@ -121,10 +121,17 @@ export function WikiToolbar({
       </Button>
       {authority === "resolved" &&
       modifiedTime !== undefined &&
-      (mimeType === MIME_DOC || mimeType === MIME_MARKDOWN) ? (
+      (mimeType === MIME_DOC ||
+        mimeType === MIME_MARKDOWN ||
+        mimeType === MIME_SLIDE ||
+        mimeType === MIME_PPTX) ? (
         <>
           <Button
-            aria-label="Polish document"
+            aria-label={
+              mimeType === MIME_SLIDE || mimeType === MIME_PPTX
+                ? "Polish presentation"
+                : "Polish document"
+            }
             onClick={() => {
               setPolishOpen(true);
             }}
@@ -137,29 +144,36 @@ export function WikiToolbar({
           </Button>
           <DocumentPolishDialog
             key={fileId}
+            onInPlaceComplete={onReload}
             onOpenChange={setPolishOpen}
             open={polishOpen}
             source={{
+              allowInPlace: canEdit && mimeType === MIME_DOC,
               expectedModifiedTime: modifiedTime,
               fileId,
               kind: "drive_file",
+              mimeType,
               name: displayTitle,
             }}
           />
         </>
       ) : null}
-      <div className="size-6 shrink-0 sm:w-24">
-        {authority === "resolved" ? (
-          <ReorganizeDocument
-            driveId={driveId}
-            fileId={fileId}
-            fileName={displayTitle}
-            parentFolderId={parentFolderId}
-          />
-        ) : (
+      {authority === "resolved" ? (
+        canEdit ? (
+          <div className="size-6 shrink-0 sm:w-24">
+            <ReorganizeDocument
+              driveId={driveId}
+              fileId={fileId}
+              fileName={displayTitle}
+              parentFolderId={parentFolderId}
+            />
+          </div>
+        ) : null
+      ) : (
+        <div className="size-6 shrink-0 sm:w-24">
           <span aria-hidden className="bg-muted block size-full animate-pulse rounded-md" />
-        )}
-      </div>
+        </div>
+      )}
       <div className="size-6 shrink-0 sm:w-24">
         {authority === "resolved" ? (
           canEdit ? (
@@ -172,7 +186,7 @@ export function WikiToolbar({
         )}
       </div>
       <Button asChild size="xs" variant="outline">
-        <a href={openUrl} rel="noopener noreferrer" target="_blank">
+        <a aria-label={openLabel} href={openUrl} rel="noopener noreferrer" target="_blank">
           <ExternalLink className="size-3.5" />
           <span className="hidden md:inline">{openLabel}</span>
         </a>

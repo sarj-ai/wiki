@@ -7,7 +7,11 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt
 
-from app.document_transform.schemas import DocumentTransformRequest, DocumentTransformResult
+from app.document_transform.schemas import (
+    DocumentTransformCheckpoint,
+    DocumentTransformRequest,
+    DocumentTransformResult,
+)
 from app.identifiers import FileId, TaskId
 from app.smart_create.schemas import SmartCreateResult, SmartFileCreate
 
@@ -113,7 +117,9 @@ class SmartCreateTaskRecord(BaseModel):
 class DocumentTransformTaskRecord(BaseModel):
     owner_user_id: uuid.UUID
     task: TaskRead
-    payload: DocumentTransformRequest
+    payload: DocumentTransformRequest | None
+    checkpoint: DocumentTransformCheckpoint | None = None
+    checkpoint_generation: int = Field(default=0, ge=0)
 
 
 class TaskDispatchRequest(BaseModel):

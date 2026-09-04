@@ -36,6 +36,14 @@ class Task(Base):
         ),
         CheckConstraint("attempt_count >= 0", name="ck_tasks_attempt_count_nonnegative"),
         CheckConstraint(
+            "checkpoint IS NULL OR jsonb_typeof(checkpoint) = 'object'",
+            name="ck_tasks_checkpoint_object",
+        ),
+        CheckConstraint(
+            "checkpoint_generation >= 0",
+            name="ck_tasks_checkpoint_generation_nonnegative",
+        ),
+        CheckConstraint(
             "(status = 'pending' AND attempt_count = 0) OR "
             "(status = 'cancelled' AND attempt_count = 0) OR "
             "status IN ('running', 'succeeded', 'failed') AND attempt_count > 0",
@@ -76,6 +84,14 @@ class Task(Base):
         ),
         Index("ix_tasks_owner_created", "owner_user_id", "created_at"),
         Index("ix_tasks_status_lease", "status", "lease_expires_at"),
+        Index(
+            "uq_tasks_active_in_place_target",
+            "in_place_target",
+            unique=True,
+            postgresql_where=text(
+                "in_place_target IS NOT NULL AND status IN ('pending', 'running')"
+            ),
+        ),
     )
 
     id: Mapped[TaskId] = mapped_column(
@@ -98,7 +114,14 @@ class Task(Base):
     request_hash: Mapped[str] = mapped_column(Text, nullable=False)
     payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     result: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    checkpoint: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    checkpoint_generation: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    )
     resource_id: Mapped[FileId | None] = mapped_column(Text, nullable=True)
+    in_place_target: Mapped[FileId | None] = mapped_column(Text, nullable=True)
     error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     attempt_count: Mapped[int] = mapped_column(

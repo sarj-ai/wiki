@@ -1905,6 +1905,7 @@ dependencies = [
     { name = "asyncpg" },
     { name = "cloud-sql-python-connector", extra = ["asyncpg"] },
     { name = "cryptography" },
+    { name = "defusedxml" },
     { name = "fastapi" },
     { name = "google-api-python-client" },
     { name = "google-auth" },
@@ -1914,6 +1915,7 @@ dependencies = [
     { name = "httplib2" },
     { name = "httpx" },
     { name = "loguru" },
+    { name = "markdown-it-py" },
     { name = "pydantic", extra = ["email"] },
     { name = "pydantic-settings" },
     { name = "pyjwt" },
@@ -1938,6 +1940,7 @@ dev = [
     { name = "sarj-python-lint" },
     { name = "sarj-sql-lint" },
     { name = "ty" },
+    { name = "types-defusedxml" },
     { name = "types-httplib2" },
     { name = "types-requests" },
     { name = "vulture" },
@@ -1949,6 +1952,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.31.0" },
     { name = "cloud-sql-python-connector", extras = ["asyncpg"], specifier = ">=1.21.0" },
     { name = "cryptography", specifier = ">=50.0.0" },
+    { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "fastapi", specifier = ">=0.141.1" },
     { name = "google-api-python-client", specifier = ">=2.198.0" },
     { name = "google-auth", specifier = ">=2.56.2" },
@@ -1958,6 +1962,7 @@ requires-dist = [
     { name = "httplib2", specifier = ">=0.32.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "loguru", specifier = ">=0.7.3" },
+    { name = "markdown-it-py", specifier = "==4.2.0" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.13.4" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },
     { name = "pyjwt", specifier = ">=2.13.0" },
@@ -1982,6 +1987,7 @@ dev = [
     { name = "sarj-python-lint", specifier = "==0.80.5" },
     { name = "sarj-sql-lint", specifier = "==0.16.5" },
     { name = "ty", specifier = ">=0.0.65" },
+    { name = "types-defusedxml", specifier = ">=0.7.0.20260504" },
     { name = "types-httplib2", specifier = ">=0.32.0.20260720" },
     { name = "types-requests", specifier = ">=2.33.0.20260712" },
     { name = "vulture", specifier = ">=2.16" },
@@ -2141,6 +2147,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/81/14/eaaa410a25bbdea19722109b5422380a0e211b3afcf3071d15953ddbd5db/ty-0.0.65-py3-none-win32.whl", hash = "sha256:cf529d538f1403b14b0511e6ec3cdb95d3d974adabf24cc76cedc533368c3edc", size = 11692341, upload-time = "2026-07-29T18:30:54.35Z" },
     { url = "https://files.pythonhosted.org/packages/bc/0f/6d48f206dce9d7e53fe3b5ea0f0ab5800dd9d2365b2b48f736783436c43f/ty-0.0.65-py3-none-win_amd64.whl", hash = "sha256:234a321e33c7cbbfbd67bfa0b01b685dd9c21f1841781a21e5ca1fa0b25f1d5d", size = 12729355, upload-time = "2026-07-29T18:30:57.275Z" },
     { url = "https://files.pythonhosted.org/packages/96/aa/7446f7725e303cf78e058c893af1f0552b9451895454908706f4c6c3494b/ty-0.0.65-py3-none-win_arm64.whl", hash = "sha256:b9424be1ec56d93ff18609fb1c0a0a2283fe1282cd6d1c7604f97d73b94d61f2", size = 12051375, upload-time = "2026-07-29T18:31:00.579Z" },
+]
+
+[[package]]
+name = "types-defusedxml"
+version = "0.7.0.20260504"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/d2/4553c8fa9cdebfe1e84b950cf790a4d2376a97fa016e43f7c65323fa6c7d/types_defusedxml-0.7.0.20260504.tar.gz", hash = "sha256:2ab2828a3f97111ba1c16cee273ad4124a831fc9198c41bf8368ff6ea48ad300", size = 10729, upload-time = "2026-05-04T05:22:50.192Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bf/2d/8a4b5ba1d732b8bc691f0efbb1c6f77cb5f6f473b2afe181d83d910773c5/types_defusedxml-0.7.0.20260504-py3-none-any.whl", hash = "sha256:a959e3a0a43b93e464bd625d91ec9193a2703ddc10443bdd627792485fae0b10", size = 13467, upload-time = "2026-05-04T05:22:49.319Z" },
 ]
 
 [[package]]

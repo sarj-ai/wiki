@@ -19,6 +19,10 @@ class SourceSnapshot:
     media_type: str
     markdown: str | None = None
     google_document: dict[str, Any] | None = None
+    owned_by_me: bool = False
+    can_edit: bool = False
+    is_personal_drive: bool = False
+    web_url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +46,8 @@ class OutputDraft:
     brand_warnings: tuple[str, ...] = ()
     completed: bool = False
     result: dict[str, Any] | None = None
+    result_sha256: str | None = None
+    verified_revision_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +55,27 @@ class OutputVerification:
     content_preserved: bool
     structure_preserved: bool
     brand_applied: bool = True
+    revision_id: DocsRevisionId | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class InPlaceInspection:
+    output: DocumentOutput
+    headers: tuple[TabHeader, ...]
+    missing_header_tab_ids: tuple[DocsTabId, ...]
+    unknown_header_tab_ids: tuple[DocsTabId, ...]
+    marker_range: dict[str, Any] | None
+    logo_uri: str
+    structural_sha256: str
+    protected_structure_sha256: str
+    body_sha256: str
+    header_safe_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class InPlaceStageResult:
+    revision_id: DocsRevisionId
+    document: dict[str, Any]
 
 
 class DocumentGateway(ABC):
@@ -65,7 +92,39 @@ class DocumentGateway(ABC):
         *,
         expected_modified_time: str,
         expected_revision_id: DocsRevisionId | None,
+        expected_parent_folder_id: FileId,
     ) -> bool: ...
+
+    async def inspect_in_place(
+        self,
+        *,
+        snapshot: SourceSnapshot,
+        title: str,
+    ) -> InPlaceInspection:
+        raise NotImplementedError
+
+    async def apply_in_place_stage(
+        self,
+        *,
+        document_id: FileId,
+        required_revision_id: DocsRevisionId,
+        marker_name: str,
+        marker_range: dict[str, Any],
+        requests: list[dict[str, Any]],
+    ) -> InPlaceStageResult:
+        raise NotImplementedError
+
+    async def verify_in_place(
+        self,
+        *,
+        document: dict[str, Any],
+        title: str,
+        expected: DocumentIR,
+        structural_sha256: str,
+        protected_structure_sha256: str,
+        verify_brand: bool,
+    ) -> OutputVerification:
+        raise NotImplementedError
 
     @abstractmethod
     async def create_from_drive_copy(

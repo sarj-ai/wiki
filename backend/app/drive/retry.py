@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, Any, NamedTuple, override
 
 from googleapiclient.errors import HttpError
+import httplib2
 from tenacity import (
     RetryCallState,
     retry,
@@ -17,7 +18,7 @@ from app.performance import increment, provider_retry_remaining_seconds, timed
 
 
 if TYPE_CHECKING:
-    from googleapiclient.http import BatchHttpRequest, HttpRequest
+    from googleapiclient.http import BatchHttpRequest, HttpRequest, MediaIoBaseDownload
 
 _RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
 
@@ -30,14 +31,35 @@ class ProviderDeadlineError(TimeoutError):
     pass
 
 
+class DownloadProgress(NamedTuple):
+    status: Any
+    done: bool
+
+
+def is_retryable_provider_status(status: int | None) -> bool:
+    return status in _RETRYABLE_STATUSES
+
+
+def provider_http_status(exc: HttpError) -> int | None:
+    status = getattr(exc.resp, "status", None)
+    return status if isinstance(status, int) else None
+
+
+def is_transient_provider_transport_error(exc: BaseException) -> bool:
+    return not isinstance(exc, ProviderDeadlineError) and isinstance(
+        exc,
+        (TimeoutError, ConnectionError, httplib2.ServerNotFoundError),
+    )
+
+
 def _is_retryable_drive_error(exc: BaseException) -> bool:
-    if not isinstance(exc, HttpError):
-        return False
-    return exc.resp.status in _RETRYABLE_STATUSES
+    if isinstance(exc, HttpError):
+        return is_retryable_provider_status(provider_http_status(exc))
+    return is_transient_provider_transport_error(exc)
 
 
 def _is_rate_limit_error(exc: BaseException) -> bool:
-    return isinstance(exc, HttpError) and exc.resp.status == 429
+    return isinstance(exc, HttpError) and provider_http_status(exc) == 429
 
 
 def retry_after_seconds(exc: BaseException | None) -> float | None:
@@ -108,6 +130,15 @@ def execute_batch_with_retry(batch: BatchHttpRequest) -> None:
     increment("google_request_count")
     with timed("google"):
         batch.execute()
+
+
+@drive_retry
+def execute_download_chunk_with_retry(download: MediaIoBaseDownload) -> DownloadProgress:
+    _ensure_attempt_budget()
+    increment("google_request_count")
+    with timed("google"):
+        status, done = download.next_chunk(num_retries=0)
+    return DownloadProgress(status, bool(done))
 
 
 def _ensure_attempt_budget() -> None:

@@ -9,13 +9,13 @@ import re
 from typing import Any
 
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
+from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.identifiers import DocsSegmentId, DocsTabId
 
 
 MAX_DOC_UTF16_UNITS = 500_000
 MAX_DOC_TABS = 50
 MAX_DOCUMENT_BLOCKS = 750
-MAX_DRIVE_MARKDOWN_BYTES = 2 * 1024 * 1024
 _MIN_TABLE_COLUMNS = 2
 
 
@@ -131,7 +131,11 @@ _LIST = re.compile(r"^\s*(?:[-*+] |\d+[.)] )(.*)$")
 
 
 def parse_markdown(content: str, *, title: str) -> DocumentIR:
-    if len(content.encode()) > MAX_DRIVE_MARKDOWN_BYTES:
+    try:
+        encoded = content.encode("utf-8", errors="strict")
+    except UnicodeEncodeError as exc:
+        raise UnsupportedSourceError from exc
+    if len(encoded) > MAX_MARKDOWN_BYTES:
         raise SourceTooLargeError
     lines = content.splitlines()
     if any(_looks_like_raw_html(line) for line in lines):
@@ -364,10 +368,12 @@ def _parse_structural_element(
     if not isinstance(elements, list):
         raise UnsupportedSourceError
     runs: list[tuple[str, bool]] = []
+    contains_non_text = False
     for part in elements:
         text_run = part.get("textRun") if isinstance(part, dict) else None
         if not isinstance(text_run, dict):
-            return None
+            contains_non_text = True
+            continue
         content = text_run.get("content")
         if not isinstance(content, str):
             raise UnsupportedSourceError
@@ -375,6 +381,8 @@ def _parse_structural_element(
         locked = _text_run_is_locked(part, style)
         runs.append((content, locked))
     text = "".join(run[0] for run in runs).removesuffix("\n")
+    if not text and contains_non_text:
+        text = "\ufffc"
     if not text:
         return None
     start = element.get("startIndex")
@@ -385,7 +393,7 @@ def _parse_structural_element(
     if not isinstance(paragraph_style, dict):
         raise UnsupportedSourceError
     classification = _classify_block(paragraph_style)
-    editable = _paragraph_is_editable(runs, paragraph_data)
+    editable = not contains_non_text and _paragraph_is_editable(runs, paragraph_data)
     return TextBlock(
         id=f"b{ordinal}",
         kind=classification.kind,

@@ -1,19 +1,36 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+import json
 from typing import Never, override
 import uuid
 
+import httpx
 import pytest
 
+from app.config import settings
+from app.document_transform import task_executor as task_executor_module
+from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
+from app.document_transform.errors import (
+    DocumentGatewayError,
+    OutputVerificationError,
+    UnsupportedSourceError,
+)
+from app.document_transform.executor import PIPELINE_VERSION
 from app.document_transform.schemas import (
+    DocumentOutput,
     DocumentTransformRequest,
+    DocumentTransformResult,
+    DriveFileSource,
     MarkdownSource,
+    OutputStrategy,
     TransformMode,
+    ValidationSummary,
 )
 from app.document_transform.task_executor import (
     DocumentTransformTaskExecutor,
-    QueuedDocumentTransformTaskExecutor,
+    DriveDocumentTransformTaskExecutor,
     defer_or_fail_retryable_task,
 )
 from app.drive.retry import ProviderDeadlineError
@@ -23,12 +40,14 @@ from app.performance import (
     provider_retry_remaining_seconds,
     reset_request_metrics,
 )
+from app.tasks import service as task_service_module
 from app.tasks.errors import TaskExecutionDeferredError
 from app.tasks.internal_router import execute_document_transform_task
 from app.tasks.schemas import (
     DocumentTransformTaskRecord,
     FailedTaskRead,
     RunningTaskRead,
+    SucceededTaskRead,
     TaskClaim,
     TaskDispatchRequest,
     TaskKind,
@@ -38,10 +57,17 @@ from app.tasks.schemas import (
 
 
 class _RetryTasks:
-    def __init__(self, *, attempt_count: int = 1) -> None:
+    def __init__(
+        self,
+        *,
+        attempt_count: int = 1,
+        payload: DocumentTransformRequest | None = None,
+    ) -> None:
         self.deferred = 0
         self.failed = 0
         self.attempt_count = attempt_count
+        self.payload = payload or _payload()
+        self.last_error_code: str | None = None
 
     async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
         self.deferred += 1
@@ -56,6 +82,7 @@ class _RetryTasks:
         error_detail: str | None,
     ) -> TaskRead:
         self.failed += 1
+        self.last_error_code = error_code
         now = datetime.now(UTC)
         return FailedTaskRead(
             id=task_id,
@@ -98,7 +125,7 @@ class _RetryTasks:
         return DocumentTransformTaskRecord(
             owner_user_id=uuid.uuid7(),
             task=_claim(task_id, attempt_count=self.attempt_count).task,
-            payload=_payload(),
+            payload=self.payload,
         )
 
     async def claim(self, task_id: TaskId, *, lease_duration: timedelta) -> TaskClaim:
@@ -117,6 +144,123 @@ class _DeadlineTransform:
         raise ProviderDeadlineError
 
 
+class _NonRetryableGatewayTransform:
+    async def execute(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+    ) -> Never:
+        del operation_id, request
+        raise DocumentGatewayError(retryable=False, http_status=400)
+
+
+class _UnexpectedCrashTransform:
+    async def execute(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+    ) -> Never:
+        del operation_id, request
+        msg = "private document content must not escape"
+        raise RuntimeError(msg)
+
+
+class _VerificationFailureTransform:
+    async def execute(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+    ) -> Never:
+        del operation_id, request
+        raise OutputVerificationError
+
+
+class _SuccessTransform:
+    def __init__(self) -> None:
+        self.markdown: str | None = None
+
+    async def execute(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+    ) -> DocumentTransformResult:
+        assert isinstance(request.source, MarkdownSource)
+        self.markdown = request.source.content
+        return DocumentTransformResult(
+            operation_id=operation_id,
+            source_sha256="source",
+            output=DocumentOutput(
+                file_id=FileId("output"),
+                name="Output",
+                parent_folder_id=FileId("folder"),
+            ),
+            mode=request.mode,
+            applied_patch_count=0,
+            findings=[],
+            validation=ValidationSummary(
+                source_unchanged=True,
+                protected_content_preserved=True,
+                structure_preserved=True,
+                unsafe_patch_count=0,
+            ),
+            model_ids=[],
+            tool_versions={},
+            pipeline_version=PIPELINE_VERSION,
+            needs_review=False,
+            brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
+            brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
+            deterministic_patch_count=0,
+            model_patch_count=0,
+            llm_invoked=False,
+        )
+
+
+class _SuccessTasks(_RetryTasks):
+    def __init__(self, *, payload: DocumentTransformRequest) -> None:
+        super().__init__(payload=payload)
+        self.recorded_resource: FileId | None = None
+
+    @override
+    async def record_resource(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        resource_id: FileId,
+    ) -> None:
+        del task_id, lease_token
+        self.recorded_resource = resource_id
+
+    @override
+    async def succeed(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        result: object,
+    ) -> TaskRead:
+        del lease_token
+        assert isinstance(result, DocumentTransformResult)
+        now = datetime.now(UTC)
+        return SucceededTaskRead(
+            id=task_id,
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            status=TaskStatus.SUCCEEDED,
+            result=result,
+            resource_id=self.recorded_resource,
+            error_code=None,
+            error_detail=None,
+            attempt_count=1,
+            created_at=now,
+            started_at=now,
+            finished_at=now,
+        )
+
+
 class _BudgetProbeExecutor(DocumentTransformTaskExecutor):
     def __init__(self) -> None:
         self.remaining_seconds: float | None = None
@@ -125,6 +269,22 @@ class _BudgetProbeExecutor(DocumentTransformTaskExecutor):
     async def execute(self, task_id: TaskId) -> TaskRead:
         self.remaining_seconds = provider_retry_remaining_seconds()
         return _claim(task_id, attempt_count=1).task
+
+
+class _UnreadableLogoStream(httpx.AsyncByteStream):
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        yield pytest.fail("oversized declared logo must not be read")
+
+
+async def test_logo_stream_rejects_oversized_content_length_before_read() -> None:
+    response = httpx.Response(
+        200,
+        headers={"Content-Length": str(task_executor_module._MAX_LOGO_BYTES + 1)},
+        stream=_UnreadableLogoStream(),
+        request=httpx.Request("GET", CURRENT_BRAND_MANIFEST.assets.logo_uri),
+    )
+
+    assert await task_executor_module._bounded_logo_content(response) is None
 
 
 async def test_retryable_failure_defers_before_attempt_limit() -> None:
@@ -166,13 +326,15 @@ async def test_retryable_failure_becomes_terminal_at_attempt_limit() -> None:
 async def test_provider_deadline_defers_claimed_task_without_stranding_lease() -> None:
     tasks = _RetryTasks()
     task_id = TaskId(uuid.uuid7())
-    executor = QueuedDocumentTransformTaskExecutor(
-        tasks=tasks,
-        transform=_DeadlineTransform(),
-    )
 
     with pytest.raises(TaskExecutionDeferredError):
-        await executor.execute(task_id)
+        await task_executor_module._execute_claimed(
+            task_id,
+            tasks=tasks,
+            transform=_DeadlineTransform(),
+            claim=_claim(task_id, attempt_count=1),
+            payload=tasks.payload,
+        )
 
     assert tasks.deferred == 1
     assert tasks.failed == 0
@@ -181,17 +343,103 @@ async def test_provider_deadline_defers_claimed_task_without_stranding_lease() -
 async def test_provider_deadline_becomes_terminal_at_attempt_limit() -> None:
     tasks = _RetryTasks(attempt_count=10)
     task_id = TaskId(uuid.uuid7())
-    executor = QueuedDocumentTransformTaskExecutor(
+
+    result = await task_executor_module._execute_claimed(
+        task_id,
         tasks=tasks,
         transform=_DeadlineTransform(),
+        claim=_claim(task_id, attempt_count=10),
+        payload=tasks.payload,
     )
-
-    result = await executor.execute(task_id)
 
     assert isinstance(result, FailedTaskRead)
     assert result.error_code == "document_provider_unavailable"
     assert tasks.deferred == 0
     assert tasks.failed == 1
+
+
+async def test_nonretryable_provider_error_fails_immediately() -> None:
+    tasks = _RetryTasks()
+    task_id = TaskId(uuid.uuid7())
+
+    result = await task_executor_module._execute_claimed(
+        task_id,
+        tasks=tasks,
+        transform=_NonRetryableGatewayTransform(),
+        claim=_claim(task_id, attempt_count=1),
+        payload=tasks.payload,
+    )
+
+    assert isinstance(result, FailedTaskRead)
+    assert result.error_code == "document_provider_unavailable"
+    assert tasks.deferred == 0
+    assert tasks.failed == 1
+
+
+async def test_unexpected_worker_crash_is_bounded_and_sanitized() -> None:
+    tasks = _RetryTasks(attempt_count=10)
+    task_id = TaskId(uuid.uuid7())
+
+    result = await task_executor_module._execute_claimed(
+        task_id,
+        tasks=tasks,
+        transform=_UnexpectedCrashTransform(),
+        claim=_claim(task_id, attempt_count=10),
+        payload=tasks.payload,
+    )
+
+    assert isinstance(result, FailedTaskRead)
+    assert result.error_code == "document_transform_internal_error"
+    assert result.error_detail == "The document transformation could not be completed"
+    assert "private document content" not in (result.error_detail or "")
+    assert tasks.deferred == 0
+    assert tasks.failed == 1
+
+
+async def test_output_verification_failure_is_terminal_not_stale_success() -> None:
+    tasks = _RetryTasks()
+    task_id = TaskId(uuid.uuid7())
+
+    result = await task_executor_module._execute_claimed(
+        task_id,
+        tasks=tasks,
+        transform=_VerificationFailureTransform(),
+        claim=_claim(task_id, attempt_count=1),
+        payload=tasks.payload,
+    )
+
+    assert isinstance(result, FailedTaskRead)
+    assert result.error_code == "output_verification_failed"
+    assert tasks.deferred == 0
+    assert tasks.failed == 1
+
+
+async def test_encrypted_markdown_is_decrypted_only_for_successful_worker_execution() -> None:
+    payload = _payload()
+    assert isinstance(payload.source, MarkdownSource)
+    serialized = task_service_module._serialize(payload)
+    persisted = task_service_module._payload_for_storage(
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        payload=payload,
+        serialized=serialized,
+    )
+    assert payload.source.content not in json.dumps(persisted, sort_keys=True)
+    decrypted = task_service_module._deserialize_document_transform_payload(persisted)
+    tasks = _SuccessTasks(payload=decrypted)
+    transform = _SuccessTransform()
+    task_id = TaskId(uuid.uuid7())
+
+    result = await task_executor_module._execute_claimed(
+        task_id,
+        tasks=tasks,
+        transform=transform,
+        claim=_claim(task_id, attempt_count=1),
+        payload=decrypted,
+    )
+
+    assert isinstance(result, SucceededTaskRead)
+    assert transform.markdown == payload.source.content
+    assert tasks.recorded_resource == FileId("output")
 
 
 async def test_internal_document_transform_gets_worker_provider_budget() -> None:
@@ -213,6 +461,61 @@ async def test_internal_document_transform_gets_worker_provider_budget() -> None
     assert executor.remaining_seconds > 230
     assert restored_budget is not None
     assert restored_budget <= interactive_budget
+
+
+async def test_worker_kill_switch_blocks_claimed_in_place_task_before_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_IN_PLACE_ENABLED", False)
+    tasks = _RetryTasks(payload=_in_place_payload())
+    executor = object.__new__(DriveDocumentTransformTaskExecutor)
+    monkeypatch.setattr(executor, "_tasks", tasks, raising=False)
+
+    result = await executor.execute(TaskId(uuid.uuid7()))
+
+    assert isinstance(result, FailedTaskRead)
+    assert tasks.last_error_code == "in_place_disabled"
+    assert tasks.failed == 1
+
+
+async def test_worker_fails_unsupported_drive_source_without_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tasks = _RetryTasks(payload=_drive_payload())
+    executor = object.__new__(DriveDocumentTransformTaskExecutor)
+    monkeypatch.setattr(executor, "_tasks", tasks, raising=False)
+
+    async def unsupported_runtime(*args: object, **kwargs: object) -> Never:
+        del args, kwargs
+        raise UnsupportedSourceError
+
+    monkeypatch.setattr(DriveDocumentTransformTaskExecutor, "_runtime", unsupported_runtime)
+
+    result = await executor.execute(TaskId(uuid.uuid7()))
+
+    assert isinstance(result, FailedTaskRead)
+    assert tasks.last_error_code == UnsupportedSourceError.code
+    assert tasks.failed == 1
+
+
+async def test_worker_defers_transient_runtime_drive_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tasks = _RetryTasks(payload=_drive_payload())
+    executor = object.__new__(DriveDocumentTransformTaskExecutor)
+    monkeypatch.setattr(executor, "_tasks", tasks, raising=False)
+
+    async def unavailable_runtime(*args: object, **kwargs: object) -> Never:
+        del args, kwargs
+        raise DocumentGatewayError
+
+    monkeypatch.setattr(DriveDocumentTransformTaskExecutor, "_runtime", unavailable_runtime)
+
+    with pytest.raises(TaskExecutionDeferredError):
+        await executor.execute(TaskId(uuid.uuid7()))
+
+    assert tasks.deferred == 1
+    assert tasks.failed == 0
 
 
 def _claim(task_id: TaskId, *, attempt_count: int) -> TaskClaim:
@@ -244,4 +547,27 @@ def _payload() -> DocumentTransformRequest:
             destination_folder_id=FileId("folder"),
         ),
         mode=TransformMode.BOTH,
+    )
+
+
+def _in_place_payload() -> DocumentTransformRequest:
+    return DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("source"),
+            expected_modified_time="2026-09-03T00:00:00Z",
+        ),
+        mode=TransformMode.FORMAT,
+        output_strategy=OutputStrategy.IN_PLACE,
+    )
+
+
+def _drive_payload() -> DocumentTransformRequest:
+    return DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("source"),
+            expected_modified_time="2026-09-03T00:00:00Z",
+        ),
+        mode=TransformMode.FORMAT,
     )

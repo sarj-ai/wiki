@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowRight, Folder, Loader2, Sparkles, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -23,7 +23,11 @@ import {
   type ReorganizationProposal,
 } from "@/lib/reorganize-client";
 
-export function ReorganizeDocument({
+export function ReorganizeDocument({ ...props }: ReorganizeDocumentProps) {
+  return <ReorganizeDocumentForFile key={props.fileId} {...props} />;
+}
+
+function ReorganizeDocumentForFile({
   driveId,
   fileId,
   fileName,
@@ -31,44 +35,78 @@ export function ReorganizeDocument({
 }: ReorganizeDocumentProps) {
   const moveFile = useMoveFile();
   const [checking, setChecking] = useState(false);
-  const [proposal, setProposal] = useState<null | ReorganizationProposal>(null);
+  const [proposalState, setProposalState] = useState<{
+    fileId: string;
+    proposal: ReorganizationProposal;
+  } | null>(null);
+  const mounted = useRef(true);
+  const proposeLatch = useRef<null | object>(null);
+  const moveLatch = useRef<null | object>(null);
+  const proposal = proposalState?.fileId === fileId ? proposalState.proposal : null;
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      proposeLatch.current = null;
+      moveLatch.current = null;
+    };
+  }, []);
 
   const propose = async () => {
+    if (proposeLatch.current) return;
+    const latch = {};
+    proposeLatch.current = latch;
+    const requestedFileId = fileId;
     setChecking(true);
     try {
-      const result = await proposeFileReorganization(fileId);
+      const result = await proposeFileReorganization(requestedFileId);
+      if (!mounted.current) return;
       if (result.suggestedDestination === undefined) {
         toast.success("This document is already in the best location");
         return;
       }
-      setProposal(result);
+      setProposalState({ fileId: requestedFileId, proposal: result });
     } catch (error: unknown) {
-      toast.error(toErrorMessage(error, "Couldn’t check this document’s location"));
+      if (mounted.current) {
+        toast.error(toErrorMessage(error, "Couldn’t check this document’s location"));
+      }
     } finally {
-      setChecking(false);
+      if (mounted.current) setChecking(false);
+      releaseLatch(proposeLatch, latch);
     }
   };
 
   const move = async () => {
+    if (moveLatch.current) return;
     const destination = proposal?.suggestedDestination;
     if (destination === undefined) return;
+    const latch = {};
+    moveLatch.current = latch;
+    const requestedFileId = fileId;
     try {
       await moveFile.mutateAsync({
-        fileId,
+        fileId: requestedFileId,
         newParentFolderId: destination.folderId,
         sourceDriveId: driveId,
         sourceParentFolderId: parentFolderId,
       });
+      if (!mounted.current) return;
       toast.success(`Moved “${fileName}” to ${destinationLabel(destination)}`);
-      setProposal(null);
+      setProposalState(null);
     } catch (error: unknown) {
-      toast.error(toErrorMessage(error, "Couldn’t move this document"));
+      if (mounted.current) {
+        toast.error(toErrorMessage(error, "Couldn’t move this document"));
+      }
+    } finally {
+      releaseLatch(moveLatch, latch);
     }
   };
 
   return (
     <>
       <Button
+        aria-label={checking ? "Checking document location" : "Re-organize document"}
         disabled={checking}
         onClick={() => {
           void propose();
@@ -86,11 +124,11 @@ export function ReorganizeDocument({
       </Button>
       <AlertDialog
         onOpenChange={(open) => {
-          if (!open && !moveFile.isPending) setProposal(null);
+          if (!open && !moveFile.isPending) setProposalState(null);
         }}
         open={proposal !== null}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto">
           <AlertDialogHeader>
             <div className="bg-destructive/10 text-destructive flex size-9 items-center justify-center rounded-full">
               <TriangleAlert className="size-4" />
@@ -102,9 +140,9 @@ export function ReorganizeDocument({
             </AlertDialogDescription>
           </AlertDialogHeader>
           {proposal?.suggestedDestination === undefined ? null : (
-            <div className="bg-muted/50 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-lg border p-3">
+            <div className="bg-muted/50 grid grid-cols-1 gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-3">
               <Location destination={proposal.currentDestination} label="Current" />
-              <ArrowRight className="text-muted-foreground size-4" />
+              <ArrowRight className="text-muted-foreground mx-auto size-4 rotate-90 sm:rotate-0" />
               <Location destination={proposal.suggestedDestination} label="Recommended" />
             </div>
           )}
@@ -165,4 +203,8 @@ function Location({
 
 function destinationLabel(destination: ReorganizationDestination): string {
   return destination.folderPath.join(" / ") || destination.driveName;
+}
+
+function releaseLatch(latchRef: { current: null | object }, marker: object): void {
+  if (latchRef.current === marker) latchRef.current = null;
 }

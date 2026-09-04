@@ -31,6 +31,7 @@ vi.mock("@/lib/smart-create-server-client", () => ({
 import {
   createDocumentTransformAction,
   createSmartFileAction,
+  getDocumentTransformCapabilitiesAction,
   getSmartCreateTaskAction,
   listSmartTemplatesAction,
   proposeFileReorganizationAction,
@@ -123,7 +124,11 @@ describe("Smart Create edge actions", () => {
     );
   });
 
-  it("polls tasks and lists templates through authenticated server reads", async () => {
+  it("reads transform capabilities, tasks, and templates with authentication", async () => {
+    await expect(getDocumentTransformCapabilitiesAction()).resolves.toEqual({
+      data: "{}",
+      ok: true,
+    });
     await expect(getSmartCreateTaskAction("55555555-5555-4555-8555-555555555555")).resolves.toEqual(
       { data: "{}", ok: true },
     );
@@ -131,10 +136,15 @@ describe("Smart Create edge actions", () => {
 
     expect(mocks.readApi).toHaveBeenNthCalledWith(
       1,
+      "/document-transforms/capabilities",
+      "access-token",
+    );
+    expect(mocks.readApi).toHaveBeenNthCalledWith(
+      2,
       "/tasks/55555555-5555-4555-8555-555555555555",
       "access-token",
     );
-    expect(mocks.readApi).toHaveBeenNthCalledWith(2, "/templates?refresh=true", "access-token");
+    expect(mocks.readApi).toHaveBeenNthCalledWith(3, "/templates?refresh=true", "access-token");
   });
 
   it("normalizes an upstream read rate limit", async () => {

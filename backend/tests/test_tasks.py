@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import hashlib
+import json
 from typing import Any
 import uuid
 
@@ -9,9 +11,25 @@ import pytest
 from sqlalchemy import Table
 from sqlalchemy.sql.elements import ClauseElement
 
+from app.document_transform.schemas import (
+    DocumentTransformRequest,
+    DriveFileSource,
+    MarkdownSource,
+    OutputStrategy,
+    TransformMode,
+)
+from app.files.schemas import FileResponse
 from app.identifiers import FileId, IdempotencyKey, TaskId
 from app.models.task import Task
-from app.tasks.errors import TaskIdempotencyConflictError, TaskLeaseLostError
+from app.smart_create.schemas import SmartCreateResult
+from app.tasks import service as task_service_module
+from app.tasks.errors import (
+    TaskAdmissionLimitError,
+    TaskIdempotencyConflictError,
+    TaskLeaseLostError,
+    TaskNotFoundError,
+    TaskTargetBusyError,
+)
 from app.tasks.schemas import TaskKind, TaskStatus
 from app.tasks.service import PostgresTaskService
 
@@ -22,15 +40,15 @@ class _Payload(BaseModel):
 
 
 class _Result:
-    def __init__(self, row: Task | None) -> None:
+    def __init__(self, row: object) -> None:
         self._row = row
 
-    def scalar_one_or_none(self) -> Task | None:
+    def scalar_one_or_none(self) -> Any:
         return self._row
 
 
 class _Session:
-    def __init__(self, *rows: Task | None) -> None:
+    def __init__(self, *rows: object) -> None:
         self._rows = iter(rows)
         self.commits = 0
         self.rollbacks = 0
@@ -56,9 +74,13 @@ def _task(*, request_hash: str, status: TaskStatus = TaskStatus.PENDING) -> Task
     task.status = status
     task.idempotency_key = IdempotencyKey(uuid.uuid7())
     task.request_hash = request_hash
-    task.payload = {"destination": "folder-1", "name": "PRD"}
+    task_payload: dict[str, object] = {"destination": "folder-1", "name": "PRD"}
+    task.payload = task_payload
     task.result = None
+    task.checkpoint = None
+    task.checkpoint_generation = 0
     task.resource_id = None
+    task.in_place_target = None
     task.error_code = None
     task.error_detail = None
     task.attempt_count = 0
@@ -75,6 +97,189 @@ def _task(*, request_hash: str, status: TaskStatus = TaskStatus.PENDING) -> Task
 def _service(session: _Session) -> PostgresTaskService:
     db: Any = session
     return PostgresTaskService(db=db)
+
+
+def _in_place_payload() -> DocumentTransformRequest:
+    return DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("document-1"),
+            expected_modified_time="2026-09-03T00:00:00Z",
+        ),
+        mode=TransformMode.UNSLOP,
+        output_strategy=OutputStrategy.IN_PLACE,
+    )
+
+
+def _markdown_payload() -> DocumentTransformRequest:
+    return DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content="# Private decision\n\nThe board approved option B.",
+            name="Decision",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.BOTH,
+    )
+
+
+def _success_result(task_id: TaskId) -> SmartCreateResult:
+    return SmartCreateResult(
+        task_id=task_id,
+        file=FileResponse(
+            id=FileId("created"),
+            name="Decision",
+            mime_type="application/vnd.google-apps.document",
+            parent_folder_id=FileId("folder"),
+            drive_id=None,
+            modified_time=None,
+        ),
+        warnings=[],
+    )
+
+
+async def test_in_place_admission_reserves_target_before_queueing() -> None:
+    row = _task(request_hash="0" * 64)
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    session = _Session(None, None, 0, 0, row)
+
+    reservation = await _service(session).create_or_replay(
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        owner_user_id=row.owner_user_id,
+        idempotency_key=row.idempotency_key,
+        payload=_in_place_payload(),
+    )
+
+    assert reservation.created is True
+    statements = "\n".join(str(statement) for statement in session.statements)
+    assert "pg_advisory_xact_lock" in statements
+    assert "in_place_target" in statements
+    assert session.commits == 1
+
+
+async def test_distinct_active_in_place_task_for_same_target_is_rejected() -> None:
+    row = _task(request_hash="0" * 64)
+    session = _Session(None, None, 0, 0, None, None)
+
+    with pytest.raises(TaskTargetBusyError):
+        await _service(session).create_or_replay(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            owner_user_id=row.owner_user_id,
+            idempotency_key=row.idempotency_key,
+            payload=_in_place_payload(),
+        )
+
+    assert session.rollbacks == 1
+
+
+async def test_document_transform_admission_caps_all_active_owner_tasks() -> None:
+    row = _task(request_hash="0" * 64)
+    payload = DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("document-1"),
+            expected_modified_time="2026-09-03T00:00:00Z",
+        ),
+        mode=TransformMode.UNSLOP,
+    )
+    session = _Session(None, None, 20)
+
+    with pytest.raises(TaskAdmissionLimitError):
+        await _service(session).create_or_replay(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            owner_user_id=row.owner_user_id,
+            idempotency_key=row.idempotency_key,
+            payload=payload,
+        )
+
+    assert session.rollbacks == 1
+
+
+async def test_document_transform_admission_replay_precedes_owner_cap() -> None:
+    payload = _in_place_payload()
+    serialized = task_service_module._serialize(payload)
+    row = _task(request_hash=task_service_module._request_hash(serialized))
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    session = _Session(None, row)
+
+    reservation = await _service(session).create_or_replay(
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        owner_user_id=row.owner_user_id,
+        idempotency_key=row.idempotency_key,
+        payload=payload,
+    )
+
+    assert reservation.created is False
+    assert reservation.task.id == row.id
+    assert len(session.statements) == 2
+
+
+async def test_markdown_task_persists_ciphertext_and_hash_without_plaintext() -> None:
+    payload = _markdown_payload()
+    assert isinstance(payload.source, MarkdownSource)
+    serialized = task_service_module._serialize(payload)
+    row = _task(request_hash=task_service_module._request_hash(serialized))
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    session = _Session(None, None, 0, row)
+
+    reservation = await _service(session).create_or_replay(
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        owner_user_id=row.owner_user_id,
+        idempotency_key=row.idempotency_key,
+        payload=payload,
+    )
+
+    assert reservation.created is True
+    statement = session.statements[-1]
+    assert isinstance(statement, ClauseElement)
+    params = statement.compile().params or {}
+    persisted = params["payload"]
+    assert isinstance(persisted, dict)
+    encoded = json.dumps(persisted, sort_keys=True)
+    assert payload.source.content not in encoded
+    source = persisted["source"]
+    assert isinstance(source, dict)
+    assert source["content_sha256"] == hashlib.sha256(payload.source.content.encode()).hexdigest()
+    assert source["content_encryption"] == "fernet-v1"
+    assert source["content_ciphertext"] != payload.source.content
+    gc_sql = str(statement)
+    assert "DELETE FROM tasks" in gc_sql
+    assert "tasks.expires_at <= now()" in gc_sql
+    assert "tasks.status !=" in gc_sql
+    assert "tasks.lease_expires_at <=" in gc_sql
+
+
+async def test_worker_load_decrypts_markdown_and_accepts_legacy_payloads() -> None:
+    payload = _markdown_payload()
+    assert isinstance(payload.source, MarkdownSource)
+    serialized = task_service_module._serialize(payload)
+    row = _task(request_hash=task_service_module._request_hash(serialized))
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    stored_payload: dict[str, object] = dict(
+        task_service_module._payload_for_storage(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            payload=payload,
+            serialized=serialized,
+        )
+    )
+    row.payload = stored_payload
+    encrypted_record = await _service(_Session(row)).load_document_transform(row.id)
+
+    assert encrypted_record.payload == payload
+    assert encrypted_record.payload is not None
+    assert isinstance(encrypted_record.payload.source, MarkdownSource)
+    assert encrypted_record.payload.source.content == payload.source.content
+
+    legacy_payload: dict[str, object] = dict(serialized)
+    row.payload = legacy_payload
+    legacy_record = await _service(_Session(row)).load_document_transform(row.id)
+    assert legacy_record.payload == payload
+
+    drive_payload = _in_place_payload()
+    serialized_drive: dict[str, object] = dict(task_service_module._serialize(drive_payload))
+    row.payload = serialized_drive
+    drive_record = await _service(_Session(row)).load_document_transform(row.id)
+    assert drive_record.payload == drive_payload
 
 
 async def test_create_or_replay_creates_one_canonical_task() -> None:
@@ -142,6 +347,8 @@ async def test_claim_is_an_atomic_conditional_transition_with_a_lease() -> None:
     sql = str(session.statements[0])
     assert "tasks.status" in sql
     assert "tasks.lease_expires_at" in sql
+    assert "tasks.expires_at > now()" in sql
+    assert "greatest(tasks.expires_at" in sql.lower()
     assert "RETURNING" in sql
 
 
@@ -178,11 +385,43 @@ async def test_defer_atomically_releases_retryable_running_lease() -> None:
     sql = str(session.statements[0])
     assert "tasks.lease_token IS NOT DISTINCT FROM" in sql
     assert "RETURNING" in sql
+    statement = session.statements[0]
+    assert isinstance(statement, ClauseElement)
+    params = statement.compile().params or {}
+    assert "payload" not in params
+
+
+async def test_success_redacts_document_transform_payload_and_terminal_load_skips_decrypt() -> None:
+    now = datetime.now(UTC)
+    row = _task(request_hash="0" * 64, status=TaskStatus.SUCCEEDED)
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    row.attempt_count = 1
+    row.started_at = now
+    row.finished_at = now
+    result = _success_result(row.id)
+    row.result = result.model_dump(mode="json")
+    session = _Session(row)
+
+    await _service(session).succeed(
+        row.id,
+        lease_token=uuid.uuid7(),
+        result=result,
+    )
+
+    statement = session.statements[0]
+    assert isinstance(statement, ClauseElement)
+    params = statement.compile().params or {}
+    assert task_service_module._TERMINAL_REDACTED_PAYLOAD in params.values()
+    redacted_payload: dict[str, object] = {"redacted": True}
+    row.payload = redacted_payload
+    terminal = await _service(_Session(row)).load_document_transform(row.id)
+    assert terminal.payload is None
 
 
 async def test_failed_task_persists_only_bounded_public_detail() -> None:
     now = datetime.now(UTC)
     row = _task(request_hash="0" * 64, status=TaskStatus.FAILED)
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
     row.attempt_count = 1
     row.started_at = now
     row.finished_at = now
@@ -211,6 +450,8 @@ async def test_failed_task_persists_only_bounded_public_detail() -> None:
     assert "private-resource-id" not in persisted
     assert "ya29.provider-access-token" not in persisted
     assert "private provider body" not in persisted
+    assert task_service_module._TERMINAL_REDACTED_PAYLOAD in params.values()
+    assert "expires_at" not in params
 
 
 async def test_pending_task_can_be_discarded_before_execution() -> None:
@@ -225,6 +466,20 @@ async def test_pending_task_can_be_discarded_before_execution() -> None:
     assert "DELETE FROM tasks" in sql
     assert "tasks.status" in sql
     assert "tasks.resource_id IS NULL" in sql
+
+
+async def test_task_lookup_is_owner_isolated_and_expiry_enforced() -> None:
+    row = _task(request_hash="0" * 64)
+    other_owner = uuid.uuid7()
+    session = _Session(None)
+
+    with pytest.raises(TaskNotFoundError):
+        await _service(session).get_for_owner(row.id, other_owner)
+
+    sql = str(session.statements[0])
+    assert "tasks.id" in sql
+    assert "tasks.owner_user_id" in sql
+    assert "tasks.expires_at > now()" in sql
 
 
 def test_database_model_carries_legal_state_and_idempotency_constraints() -> None:

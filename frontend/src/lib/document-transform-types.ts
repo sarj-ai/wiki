@@ -1,6 +1,7 @@
 import type { FileResponse } from "@/types/wiki";
 
 export type DocumentTransformMode = "both" | "format" | "unslop";
+export type DocumentTransformOutputStrategy = "copy" | "in_place";
 
 export type DocumentTransformSource =
   | {
@@ -17,7 +18,9 @@ export type DocumentTransformSource =
     };
 
 export interface DocumentTransformResult {
+  accessScope: "inherited" | "owner_only";
   appliedPatchCount: number;
+  artifactKind: "document" | "presentation";
   brandProfileId: string;
   brandProfileSha256: string;
   deterministicPatchCount: number;
@@ -28,9 +31,13 @@ export interface DocumentTransformResult {
   modelIds: string[];
   needsReview: boolean;
   operationId: string;
+  outputStrategy: DocumentTransformOutputStrategy;
   outputFile: FileResponse;
   outputWebUrl: null | string;
   pipelineVersion: string;
+  changed: boolean;
+  outputRevisionId: null | string;
+  sourceRevisionId: null | string;
   sourceSha256: string;
   toolVersions: Record<string, string>;
   validation: DocumentTransformValidation;
@@ -73,5 +80,15 @@ export class DocumentTransformNeedsReviewError extends Error {
     super(message);
     this.name = "DocumentTransformNeedsReviewError";
     this.result = result;
+  }
+}
+
+export class DocumentTransformTerminalError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+    this.name = "DocumentTransformTerminalError";
   }
 }

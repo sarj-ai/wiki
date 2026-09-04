@@ -14,26 +14,55 @@ import uuid
 from googleapiclient import discovery
 from googleapiclient.discovery_cache import get_static_doc
 from googleapiclient.errors import HttpError
-from googleapiclient.http import HttpRequest, MediaIoBaseUpload
+from googleapiclient.http import HttpRequest, MediaIoBaseDownload, MediaIoBaseUpload
+import httplib2
 
-from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
-from app.document_transform.errors import DocumentGatewayError, UnsupportedSourceError
+from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST, normalize_header_title
+from app.document_transform.docx_renderer import markdown_import_manifest
+from app.document_transform.errors import (
+    DocumentGatewayError,
+    IncompatiblePendingOutputError,
+    InPlaceNeedsReviewError,
+    InPlaceNotAllowedError,
+    SourceChangedError,
+    SourceTooLargeError,
+    UnsupportedSourceError,
+)
 from app.document_transform.gateway import (
     DocumentGateway,
+    InPlaceInspection,
+    InPlaceStageResult,
     OutputDraft,
     OutputVerification,
     SourceSnapshot,
     TabHeader,
 )
-from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, parse_google_document
+from app.document_transform.ir import (
+    BlockKind,
+    DocumentIR,
+    TextBlock,
+    parse_google_document,
+    parse_markdown,
+    rewrite_markdown,
+)
+from app.document_transform.limits import MAX_MARKDOWN_BYTES
+from app.document_transform.markdown_import import verify_markdown_import
 from app.document_transform.schemas import DocumentOutput, DriveFileSource, MarkdownSource
-from app.drive.retry import execute_mutation, execute_with_retry
-from app.drive.schemas import MIME_DOC
+from app.drive.retry import (
+    ProviderDeadlineError,
+    execute_download_chunk_with_retry,
+    execute_mutation,
+    execute_with_retry,
+    is_retryable_provider_status,
+    provider_http_status,
+)
+from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.drive.service import (
     GoogleRefreshHandler,
     build_google_credentials,
     reuse_drive_client,
 )
+from app.files.errors import FileNotInScopeError, FilesError
 from app.files.service import FilesService
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId
 from app.models.user import User
@@ -53,15 +82,17 @@ if TYPE_CHECKING:
     from googleapiclient._apis.drive.v3.resources import DriveResource
 
 
-_MAX_MARKDOWN_BYTES = 2 * 1024 * 1024
 _PROP_OPERATION = "sarjTransformOperation"
 _PROP_SOURCE_HASH = "sarjTransformSourceHash"
 _PROP_STATE = "sarjTransformState"
 _PROP_MUTATION = "sarjTransformMutation"
 _PROP_PENDING_MUTATION = "sarjTransformPendingMutation"
 _PROP_MUTATION_BASE_REVISION_HASH = "sarjTransformMutationBaseHash"
+_PROP_RESULT_HASH = "sarjTransformResultHash"
+_PROP_VERIFIED_REVISION_HASH = "sarjTransformVerifiedRevisionHash"
 _STATE_INCOMPLETE = "incomplete"
 _STATE_COMPLETE = "complete"
+_MARKDOWN_DOWNLOAD_CHUNK_BYTES = 64 * 1024
 
 
 @runtime_checkable
@@ -115,21 +146,41 @@ class GoogleDocumentGateway(DocumentGateway):
 
     @override
     async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot:
-        file = await self._files.get(source.file_id)
+        try:
+            file = await self._files.get(source.file_id)
+        except FilesError as exc:
+            raise DocumentGatewayError(
+                retryable=is_retryable_provider_status(exc.http_status),
+                http_status=exc.http_status,
+            ) from exc
         if file.parent_folder_id is None:
             raise UnsupportedSourceError
         if file.mime_type == MIME_DOC:
-            document = await asyncio.to_thread(self._get_document_sync, source.file_id)
+            document, metadata = await asyncio.gather(
+                asyncio.to_thread(self._get_document_sync, source.file_id),
+                asyncio.to_thread(self._files_get_sync, source.file_id),
+            )
             revision_id = document.get("revisionId")
-            if not isinstance(revision_id, str):
+            if not isinstance(revision_id, str) or metadata.get("mimeType") != MIME_DOC:
                 raise DocumentGatewayError
             return SourceSnapshot(
-                title=file.name,
-                parent_folder_id=file.parent_folder_id,
-                modified_time=file.modified_time,
+                title=_required_string(metadata, "name"),
+                parent_folder_id=_required_parent(metadata),
+                modified_time=_required_string(metadata, "modifiedTime"),
                 revision_id=DocsRevisionId(revision_id),
                 media_type=file.mime_type,
                 google_document=document,
+                owned_by_me=metadata.get("ownedByMe") is True,
+                can_edit=(
+                    isinstance(metadata.get("capabilities"), dict)
+                    and metadata["capabilities"].get("canEdit") is True
+                ),
+                is_personal_drive=metadata.get("driveId") is None,
+                web_url=(
+                    metadata.get("webViewLink")
+                    if isinstance(metadata.get("webViewLink"), str)
+                    else None
+                ),
             )
         if file.mime_type != "text/markdown":
             raise UnsupportedSourceError
@@ -144,6 +195,57 @@ class GoogleDocumentGateway(DocumentGateway):
         )
 
     @override
+    async def inspect_in_place(
+        self,
+        *,
+        snapshot: SourceSnapshot,
+        title: str,
+    ) -> InPlaceInspection:
+        return await asyncio.to_thread(self._inspect_in_place_sync, snapshot, title)
+
+    @override
+    async def apply_in_place_stage(
+        self,
+        *,
+        document_id: FileId,
+        required_revision_id: DocsRevisionId,
+        marker_name: str,
+        marker_range: dict[str, Any],
+        requests: list[dict[str, Any]],
+    ) -> InPlaceStageResult:
+        return await asyncio.to_thread(
+            self._apply_in_place_stage_sync,
+            document_id,
+            required_revision_id,
+            marker_name,
+            marker_range,
+            requests,
+        )
+
+    @override
+    async def verify_in_place(
+        self,
+        *,
+        document: dict[str, Any],
+        title: str,
+        expected: DocumentIR,
+        structural_sha256: str,
+        protected_structure_sha256: str,
+        verify_brand: bool,
+    ) -> OutputVerification:
+        parsed = parse_google_document(document, title=title)
+        return OutputVerification(
+            content_preserved=parsed.semantic_sha256 == expected.semantic_sha256,
+            structure_preserved=(
+                _inventory_sha256(_structural_inventory(document)) == structural_sha256
+                and _inventory_sha256(_protected_structure_inventory(document))
+                == protected_structure_sha256
+            ),
+            brand_applied=not verify_brand or verify_brand_application(document, parsed),
+            revision_id=DocsRevisionId(_required_string(document, "revisionId")),
+        )
+
+    @override
     async def recover_output(self, operation_id: uuid.UUID) -> OutputDraft | None:
         return await asyncio.to_thread(self._recover_output_sync, operation_id)
 
@@ -154,9 +256,18 @@ class GoogleDocumentGateway(DocumentGateway):
         *,
         expected_modified_time: str,
         expected_revision_id: DocsRevisionId | None,
+        expected_parent_folder_id: FileId,
     ) -> bool:
-        file = await self._files.get(source.file_id)
+        try:
+            file = await self._files.get(source.file_id)
+        except FilesError as exc:
+            raise DocumentGatewayError(
+                retryable=is_retryable_provider_status(exc.http_status),
+                http_status=exc.http_status,
+            ) from exc
         if file.modified_time != expected_modified_time:
+            return False
+        if file.parent_folder_id != expected_parent_folder_id:
             return False
         if expected_revision_id is None:
             return True
@@ -211,6 +322,17 @@ class GoogleDocumentGateway(DocumentGateway):
         output_name: str,
         imported_docx: bytes | None = None,
     ) -> OutputDraft:
+        try:
+            destination = await self._files.get(source.destination_folder_id)
+        except FileNotInScopeError as exc:
+            raise UnsupportedSourceError from exc
+        except FilesError as exc:
+            raise DocumentGatewayError(
+                retryable=is_retryable_provider_status(exc.http_status),
+                http_status=exc.http_status,
+            ) from exc
+        if destination.mime_type != MIME_FOLDER or not destination.can_add_children:
+            raise UnsupportedSourceError
         return await asyncio.to_thread(
             self._create_sync,
             operation_id,
@@ -275,11 +397,16 @@ class GoogleDocumentGateway(DocumentGateway):
         draft: OutputDraft,
         result: dict[str, Any],
     ) -> None:
-        del operation_id, result
+        del operation_id
+        result_sha256 = _json_sha256(result)
         await asyncio.to_thread(
             self._update_properties_sync,
             draft.document_id,
-            {_PROP_STATE: _STATE_COMPLETE},
+            {
+                _PROP_STATE: _STATE_COMPLETE,
+                _PROP_RESULT_HASH: result_sha256,
+                _PROP_VERIFIED_REVISION_HASH: _revision_sha256(draft.revision_id),
+            },
         )
 
     def _copy_sync(
@@ -307,9 +434,120 @@ class GoogleDocumentGateway(DocumentGateway):
                     fields="id,name,parents,webViewLink,appProperties",
                 )
             )
-        except DocumentGatewayError:
-            return self._recover_ambiguous_create(operation_id, source_sha256)
+        except DocumentGatewayError as exc:
+            return self._recover_ambiguous_create(
+                operation_id,
+                source_sha256,
+                original_error=exc,
+            )
         return self._draft_from_file(raw, source_sha256=source_sha256)
+
+    def _inspect_in_place_sync(
+        self,
+        snapshot: SourceSnapshot,
+        title: str,
+    ) -> InPlaceInspection:
+        document = snapshot.google_document
+        eligible = all(
+            (
+                document is not None,
+                snapshot.media_type == MIME_DOC,
+                snapshot.owned_by_me,
+                snapshot.can_edit,
+                snapshot.is_personal_drive,
+                snapshot.revision_id is not None,
+            )
+        )
+        if not eligible or document is None:
+            raise InPlaceNotAllowedError
+        if _has_active_suggestions(document):
+            raise InPlaceNeedsReviewError
+        headers: list[TabHeader] = []
+        missing: list[DocsTabId] = []
+        unknown: list[DocsTabId] = []
+        for raw_tab_id, document_tab in _document_tabs(document):
+            tab_id = DocsTabId(raw_tab_id)
+            style = document_tab.get("documentStyle", {})
+            header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
+            segments = document_tab.get("headers", {})
+            if not isinstance(header_id, str):
+                if isinstance(segments, dict) and segments:
+                    unknown.append(tab_id)
+                else:
+                    missing.append(tab_id)
+                continue
+            if isinstance(segments, dict) and any(
+                segment_id != header_id for segment_id in segments
+            ):
+                unknown.append(tab_id)
+                continue
+            if _segment_has_content(segments, header_id):
+                unknown.append(tab_id)
+                continue
+            headers.append(TabHeader(tab_id=tab_id, header_id=DocsSegmentId(header_id)))
+        parse_google_document(document, title=title)
+        marker_range = _terminal_body_marker_range(document)
+        return InPlaceInspection(
+            output=DocumentOutput(
+                file_id=FileId(_required_string(document, "documentId")),
+                name=snapshot.title,
+                parent_folder_id=snapshot.parent_folder_id,
+                web_url=snapshot.web_url,
+            ),
+            headers=tuple(headers),
+            missing_header_tab_ids=tuple(missing),
+            unknown_header_tab_ids=tuple(unknown),
+            marker_range=marker_range,
+            logo_uri=self._logo_uri,
+            structural_sha256=_inventory_sha256(_structural_inventory(document)),
+            protected_structure_sha256=_inventory_sha256(_protected_structure_inventory(document)),
+            body_sha256=_body_sha256(document),
+            header_safe_sha256=_header_safe_sha256(document),
+        )
+
+    def _apply_in_place_stage_sync(
+        self,
+        document_id: FileId,
+        required_revision_id: DocsRevisionId,
+        marker_name: str,
+        marker_range: dict[str, Any],
+        requests: list[dict[str, Any]],
+    ) -> InPlaceStageResult:
+        if not requests or not marker_name:
+            raise DocumentGatewayError
+        expected_marker_range = _post_mutation_marker_range(marker_range, requests)
+        atomic_requests = [
+            {"createNamedRange": {"name": marker_name, "range": marker_range}},
+            *requests,
+        ]
+        try:
+            self._execute_mutation_dict(
+                _google_http_request(
+                    _member(self._docs().documents(), "batchUpdate"),
+                    documentId=document_id,
+                    body={
+                        "requests": atomic_requests,
+                        "writeControl": {"requiredRevisionId": required_revision_id},
+                    },
+                )
+            )
+        except (DocumentGatewayError, ProviderDeadlineError) as exc:
+            document = self._get_document_sync(document_id)
+            if _has_exact_named_range(document, marker_name, expected_marker_range):
+                return InPlaceStageResult(
+                    revision_id=DocsRevisionId(_required_string(document, "revisionId")),
+                    document=document,
+                )
+            if document.get("revisionId") == required_revision_id:
+                raise
+            raise SourceChangedError from exc
+        document = self._get_document_sync(document_id)
+        if not _has_exact_named_range(document, marker_name, expected_marker_range):
+            raise DocumentGatewayError
+        return InPlaceStageResult(
+            revision_id=DocsRevisionId(_required_string(document, "revisionId")),
+            document=document,
+        )
 
     def _create_sync(
         self,
@@ -347,18 +585,24 @@ class GoogleDocumentGateway(DocumentGateway):
                     fields="id,name,parents,webViewLink,appProperties",
                 )
             )
-        except DocumentGatewayError:
-            return self._recover_ambiguous_create(operation_id, source_sha256)
+        except DocumentGatewayError as exc:
+            return self._recover_ambiguous_create(
+                operation_id,
+                source_sha256,
+                original_error=exc,
+            )
         return self._draft_from_file(raw, source_sha256=source_sha256)
 
     def _recover_ambiguous_create(
         self,
         operation_id: uuid.UUID,
         source_sha256: str,
+        *,
+        original_error: DocumentGatewayError,
     ) -> OutputDraft:
         recovered = self._recover_output_sync(operation_id)
         if recovered is None:
-            raise DocumentGatewayError
+            raise original_error
         if recovered.source_sha256 != source_sha256:
             raise DocumentGatewayError
         return recovered
@@ -423,6 +667,8 @@ class GoogleDocumentGateway(DocumentGateway):
                 properties, _PROP_MUTATION_BASE_REVISION_HASH
             ),
             completed=properties.get(_PROP_STATE) == _STATE_COMPLETE,
+            result_sha256=_optional_property(properties, _PROP_RESULT_HASH),
+            verified_revision_sha256=_optional_property(properties, _PROP_VERIFIED_REVISION_HASH),
             brand_warnings=(),
         )
 
@@ -438,12 +684,18 @@ class GoogleDocumentGateway(DocumentGateway):
         tabs = tuple(_document_tabs(document))
         requests: list[dict[str, object]] = []
         warnings: list[str] = [] if self._logo_uri else ["logo_unavailable"]
+        pending_write_may_have_committed = bool(
+            draft.pending_mutation_sha256
+            and draft.mutation_base_revision_sha256
+            and _revision_sha256(draft.revision_id) != draft.mutation_base_revision_sha256
+        )
         for tab_id, document_tab in tabs:
             style = document_tab.get("documentStyle", {})
             header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
             headers = document_tab.get("headers", {})
             if (
                 draft.applied_mutation_sha256 is None
+                and not pending_write_may_have_committed
                 and isinstance(header_id, str)
                 and _segment_has_text(headers, header_id)
             ):
@@ -480,7 +732,11 @@ class GoogleDocumentGateway(DocumentGateway):
                     continue
                 raise DocumentGatewayError
             headers = document_tab.get("headers", {})
-            if draft.applied_mutation_sha256 is None and _segment_has_text(headers, header_id):
+            if (
+                draft.applied_mutation_sha256 is None
+                and not pending_write_may_have_committed
+                and _segment_has_text(headers, header_id)
+            ):
                 if f"header_conflict:{tab_id}" not in warnings:
                     warnings.append(f"header_conflict:{tab_id}")
                 continue
@@ -501,6 +757,8 @@ class GoogleDocumentGateway(DocumentGateway):
             mutation_base_revision_sha256=draft.mutation_base_revision_sha256,
             completed=draft.completed,
             result=draft.result,
+            result_sha256=draft.result_sha256,
+            verified_revision_sha256=draft.verified_revision_sha256,
             brand_warnings=tuple(warnings),
         )
 
@@ -512,18 +770,33 @@ class GoogleDocumentGateway(DocumentGateway):
         required_revision_id: DocsRevisionId,
     ) -> OutputDraft:
         if draft.pending_mutation_sha256 not in {None, mutation_sha256}:
-            raise DocumentGatewayError
-        if (
-            draft.pending_mutation_sha256 == mutation_sha256
-            and draft.mutation_base_revision_sha256 is not None
-            and _revision_sha256(draft.revision_id) != draft.mutation_base_revision_sha256
-        ):
-            self._update_properties_sync(
-                draft.document_id,
-                {_PROP_MUTATION: mutation_sha256},
-            )
-            return self._draft_with_mutation(draft, mutation_sha256)
+            raise IncompatiblePendingOutputError
+        marker_name = f"sarj-transform-copy-{mutation_sha256}"
+        document = self._get_document_sync(draft.document_id)
+        current_revision = DocsRevisionId(_required_string(document, "revisionId"))
+        if draft.pending_mutation_sha256 == mutation_sha256:
+            marker_range = _terminal_body_marker_range(document)
+            if marker_range is not None and _has_exact_named_range(
+                document, marker_name, marker_range
+            ):
+                self._update_properties_sync(
+                    draft.document_id,
+                    {_PROP_MUTATION: mutation_sha256},
+                )
+                return self._draft_with_mutation(
+                    draft,
+                    mutation_sha256,
+                    revision_id=current_revision,
+                )
+            if current_revision != required_revision_id:
+                raise SourceChangedError
         if requests:
+            if current_revision != required_revision_id:
+                raise SourceChangedError
+            marker_range = _terminal_body_marker_range(document)
+            if marker_range is None:
+                raise DocumentGatewayError(retryable=False)
+            expected_marker_range = _post_mutation_marker_range(marker_range, requests)
             self._update_properties_sync(
                 draft.document_id,
                 {
@@ -531,21 +804,39 @@ class GoogleDocumentGateway(DocumentGateway):
                     _PROP_MUTATION_BASE_REVISION_HASH: _revision_sha256(required_revision_id),
                 },
             )
-            self._execute_mutation_dict(
-                _google_http_request(
-                    _member(self._docs().documents(), "batchUpdate"),
-                    documentId=draft.document_id,
-                    body={
-                        "requests": requests,
-                        "writeControl": {"requiredRevisionId": required_revision_id},
-                    },
+            try:
+                self._execute_mutation_dict(
+                    _google_http_request(
+                        _member(self._docs().documents(), "batchUpdate"),
+                        documentId=draft.document_id,
+                        body={
+                            "requests": [
+                                {"createNamedRange": {"name": marker_name, "range": marker_range}},
+                                *requests,
+                            ],
+                            "writeControl": {"requiredRevisionId": required_revision_id},
+                        },
+                    )
                 )
-            )
+            except (DocumentGatewayError, ProviderDeadlineError) as exc:
+                document = self._get_document_sync(draft.document_id)
+                if _has_exact_named_range(document, marker_name, expected_marker_range):
+                    pass
+                elif document.get("revisionId") == required_revision_id:
+                    raise
+                else:
+                    raise SourceChangedError from exc
         self._update_properties_sync(
             draft.document_id,
             {_PROP_MUTATION: mutation_sha256},
         )
         document = self._get_document_sync(draft.document_id)
+        if requests and not _has_exact_named_range(
+            document,
+            marker_name,
+            _terminal_body_marker_range(document) or {},
+        ):
+            raise DocumentGatewayError
         return OutputDraft(
             output=draft.output,
             document_id=draft.document_id,
@@ -571,6 +862,26 @@ class GoogleDocumentGateway(DocumentGateway):
         verify_brand: bool,
     ) -> OutputVerification:
         output_document = self._get_document_sync(draft.document_id)
+        if source.markdown is not None:
+            rendered_markdown = rewrite_markdown(
+                source.markdown,
+                parse_markdown(source.markdown, title=source.title),
+                expected,
+            )
+            verification = verify_markdown_import(
+                output_document,
+                markdown_import_manifest(
+                    rendered_markdown,
+                    title=source.title,
+                    branded=verify_brand,
+                ),
+            )
+            return OutputVerification(
+                content_preserved=verification.content_preserved,
+                structure_preserved=verification.structure_preserved,
+                brand_applied=verification.brand_applied,
+                revision_id=DocsRevisionId(_required_string(output_document, "revisionId")),
+            )
         parsed = parse_google_document(output_document, title=expected.title)
         source_document = source.google_document
         structure_preserved = source_document is None or (
@@ -582,15 +893,21 @@ class GoogleDocumentGateway(DocumentGateway):
             content_preserved=parsed.semantic_sha256 == expected.semantic_sha256,
             structure_preserved=structure_preserved,
             brand_applied=not verify_brand or verify_brand_application(output_document, parsed),
+            revision_id=DocsRevisionId(_required_string(output_document, "revisionId")),
         )
 
     @staticmethod
-    def _draft_with_mutation(draft: OutputDraft, mutation_sha256: str) -> OutputDraft:
+    def _draft_with_mutation(
+        draft: OutputDraft,
+        mutation_sha256: str,
+        *,
+        revision_id: DocsRevisionId | None = None,
+    ) -> OutputDraft:
         return OutputDraft(
             output=draft.output,
             document_id=draft.document_id,
             tab_id=draft.tab_id,
-            revision_id=draft.revision_id,
+            revision_id=revision_id or draft.revision_id,
             source_sha256=draft.source_sha256,
             headers=draft.headers,
             logo_uri=draft.logo_uri,
@@ -600,20 +917,25 @@ class GoogleDocumentGateway(DocumentGateway):
             brand_warnings=draft.brand_warnings,
             completed=draft.completed,
             result=draft.result,
+            result_sha256=draft.result_sha256,
+            verified_revision_sha256=draft.verified_revision_sha256,
         )
 
     def _download_markdown_sync(self, file_id: FileId) -> str:
-        raw = self._execute_bytes(
-            self._drive().files().get_media(fileId=file_id, supportsAllDrives=True)
+        raw = self._execute_bounded_bytes(
+            self._drive().files().get_media(fileId=file_id, supportsAllDrives=True),
+            max_bytes=MAX_MARKDOWN_BYTES,
         )
-        if len(raw) > _MAX_MARKDOWN_BYTES:
-            raise UnsupportedSourceError
         try:
             return raw.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise UnsupportedSourceError from exc
 
     def _get_document_sync(self, file_id: FileId) -> dict[str, Any]:
+        # google-api-python-client materializes JSON responses before returning
+        # them and offers no streaming hook for documents.get. Keep the request
+        # field-complete for structural verification, then apply the strict tab,
+        # block, and UTF-16 limits in parse_google_document immediately.
         return self._execute_dict(
             _google_http_request(
                 _member(self._docs().documents(), "get"),
@@ -630,7 +952,10 @@ class GoogleDocumentGateway(DocumentGateway):
             .get(
                 fileId=file_id,
                 supportsAllDrives=True,
-                fields="id,name,parents,mimeType,modifiedTime,appProperties",
+                fields=(
+                    "id,name,parents,mimeType,modifiedTime,appProperties,ownedByMe,"
+                    "capabilities(canEdit),driveId,webViewLink"
+                ),
             )
         )
 
@@ -690,8 +1015,12 @@ class GoogleDocumentGateway(DocumentGateway):
     def _execute_dict(request: HttpRequest) -> dict[str, Any]:
         try:
             raw: object = execute_with_retry(request)
+        except ProviderDeadlineError:
+            raise
         except HttpError as exc:
-            raise DocumentGatewayError from exc
+            raise _gateway_error(exc) from exc
+        except (TimeoutError, ConnectionError, httplib2.ServerNotFoundError) as exc:
+            raise DocumentGatewayError(retryable=True) from exc
         if isinstance(raw, dict):
             return {str(key): value for key, value in raw.items()}
         raise DocumentGatewayError
@@ -700,8 +1029,12 @@ class GoogleDocumentGateway(DocumentGateway):
     def _execute_mutation_dict(request: HttpRequest) -> dict[str, Any]:
         try:
             raw: object = execute_mutation(request)
+        except ProviderDeadlineError:
+            raise
         except HttpError as exc:
-            raise DocumentGatewayError from exc
+            raise _gateway_error(exc) from exc
+        except (TimeoutError, ConnectionError, httplib2.ServerNotFoundError) as exc:
+            raise DocumentGatewayError(retryable=True) from exc
         if isinstance(raw, dict):
             return {str(key): value for key, value in raw.items()}
         raise DocumentGatewayError
@@ -710,11 +1043,51 @@ class GoogleDocumentGateway(DocumentGateway):
     def _execute_bytes(request: HttpRequest) -> bytes:
         try:
             raw: object = execute_with_retry(request)
+        except ProviderDeadlineError:
+            raise
         except HttpError as exc:
-            raise DocumentGatewayError from exc
+            raise _gateway_error(exc) from exc
+        except (TimeoutError, ConnectionError, httplib2.ServerNotFoundError) as exc:
+            raise DocumentGatewayError(retryable=True) from exc
         if isinstance(raw, bytes):
             return raw
         raise DocumentGatewayError
+
+    @staticmethod
+    def _execute_bounded_bytes(request: HttpRequest, *, max_bytes: int) -> bytes:
+        destination = BytesIO()
+        download = MediaIoBaseDownload(
+            destination,
+            request,
+            chunksize=_MARKDOWN_DOWNLOAD_CHUNK_BYTES,
+        )
+        done = False
+        while not done:
+            try:
+                status, done = execute_download_chunk_with_retry(download)
+            except ProviderDeadlineError:
+                raise
+            except HttpError as exc:
+                raise _gateway_error(exc) from exc
+            except (TimeoutError, ConnectionError, httplib2.ServerNotFoundError) as exc:
+                raise DocumentGatewayError(retryable=True) from exc
+            except ValueError as exc:
+                # Invalid Content-Length or Content-Range from the provider.
+                raise DocumentGatewayError(retryable=False) from exc
+            total_size = status.total_size if status is not None else None
+            if isinstance(total_size, int) and total_size > max_bytes:
+                raise SourceTooLargeError
+            if destination.tell() > max_bytes:
+                raise SourceTooLargeError
+        return destination.getvalue()
+
+
+def _gateway_error(exc: HttpError) -> DocumentGatewayError:
+    status = provider_http_status(exc)
+    return DocumentGatewayError(
+        retryable=status is None or is_retryable_provider_status(status),
+        http_status=status,
+    )
 
 
 @cache
@@ -759,6 +1132,11 @@ def _revision_sha256(revision_id: DocsRevisionId) -> str:
     return hashlib.sha256(revision_id.encode()).hexdigest()
 
 
+def _json_sha256(value: dict[str, Any]) -> str:
+    encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
 def _first_tab_id(document: dict[str, Any]) -> DocsTabId:
     tabs = document.get("tabs")
     if not isinstance(tabs, list) or not tabs or not isinstance(tabs[0], dict):
@@ -783,6 +1161,194 @@ def _segment_has_text(segments: object, segment_id: str) -> bool:
         for item in content
         if isinstance(item, dict)
     )
+
+
+def _segment_has_content(segments: object, segment_id: str) -> bool:
+    if not isinstance(segments, dict):
+        return False
+    segment = segments.get(segment_id, {})
+    if not isinstance(segment, dict):
+        return False
+    content = segment.get("content", [])
+    if not isinstance(content, list):
+        return False
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        typed_item = {str(key): value for key, value in item.items()}
+        if _structural_text(typed_item).strip():
+            return True
+        paragraph = typed_item.get("paragraph")
+        if isinstance(paragraph, dict):
+            elements = paragraph.get("elements", [])
+            if isinstance(elements, list) and any(
+                isinstance(element, dict)
+                and any(key in element for key in ("inlineObjectElement", "person", "richLink"))
+                for element in elements
+            ):
+                return True
+        if any(key in typed_item for key in ("table", "sectionBreak", "tableOfContents")):
+            return True
+    return False
+
+
+def _has_active_suggestions(value: object) -> bool:
+    match value:
+        case dict() as mapping:
+            return any(
+                (key.startswith("suggested") and child not in (None, False, "", [], {}))
+                or _has_active_suggestions(child)
+                for key, child in mapping.items()
+                if isinstance(key, str)
+            )
+        case list() as items:
+            return any(_has_active_suggestions(child) for child in items)
+        case _:
+            return False
+
+
+def _inventory_sha256(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()
+
+
+def _body_sha256(document: dict[str, Any]) -> str:
+    bodies = [
+        {"tab_id": tab_id, "body": document_tab.get("body")}
+        for tab_id, document_tab in _document_tabs(document)
+    ]
+    return _inventory_sha256(bodies)
+
+
+def _header_safe_sha256(document: dict[str, Any]) -> str:
+    def normalize(value: object) -> object:
+        if isinstance(value, list):
+            return [normalize(child) for child in value]
+        if not isinstance(value, dict):
+            return value
+        normalized: dict[str, object] = {}
+        for raw_key, child in value.items():
+            key = str(raw_key)
+            if key in {"revisionId", "namedRanges", "headers"}:
+                continue
+            if key == "documentStyle" and isinstance(child, dict):
+                normalized[key] = {
+                    str(nested_key): normalize(nested_value)
+                    for nested_key, nested_value in child.items()
+                    if nested_key != "defaultHeaderId"
+                }
+            else:
+                normalized[key] = normalize(child)
+        return normalized
+
+    return _inventory_sha256(normalize(document))
+
+
+def _terminal_body_marker_range(document: dict[str, Any]) -> dict[str, Any] | None:
+    candidate: dict[str, Any] | None = None
+    for tab_id, document_tab in _document_tabs(document):
+        body = document_tab.get("body", {})
+        content = body.get("content", []) if isinstance(body, dict) else []
+        if not isinstance(content, list):
+            raise DocumentGatewayError
+        end_indexes: list[int] = []
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            end_index = item.get("endIndex")
+            if isinstance(end_index, int):
+                end_indexes.append(end_index)
+        if not end_indexes:
+            continue
+        end_index = max(end_indexes)
+        if end_index > 0:
+            candidate = {
+                "startIndex": end_index - 1,
+                "endIndex": end_index,
+                "tabId": tab_id,
+            }
+    return candidate
+
+
+def _post_mutation_marker_range(
+    marker_range: dict[str, Any],
+    requests: list[dict[str, Any]],
+) -> dict[str, Any]:
+    expected = dict(marker_range)
+    start = expected.get("startIndex")
+    end = expected.get("endIndex")
+    tab_id = expected.get("tabId")
+    if not isinstance(start, int) or not isinstance(end, int) or not isinstance(tab_id, str):
+        raise DocumentGatewayError
+    for request in requests:
+        deletion = request.get("deleteContentRange")
+        if isinstance(deletion, dict):
+            range_value = deletion.get("range")
+            if not isinstance(range_value, dict):
+                continue
+            deletion_start = range_value.get("startIndex")
+            deletion_end = range_value.get("endIndex")
+            if (
+                range_value.get("tabId") == tab_id
+                and range_value.get("segmentId") is None
+                and isinstance(deletion_start, int)
+                and isinstance(deletion_end, int)
+                and deletion_end <= start
+            ):
+                delta = deletion_end - deletion_start
+                start -= delta
+                end -= delta
+        insertion = request.get("insertText")
+        if isinstance(insertion, dict):
+            location = insertion.get("location")
+            text = insertion.get("text")
+            if not isinstance(location, dict) or not isinstance(text, str):
+                continue
+            insertion_index = location.get("index")
+            if (
+                location.get("tabId") == tab_id
+                and location.get("segmentId") is None
+                and isinstance(insertion_index, int)
+                and insertion_index <= start
+            ):
+                delta = len(text.encode("utf-16-le")) // 2
+                start += delta
+                end += delta
+    expected["startIndex"] = start
+    expected["endIndex"] = end
+    return expected
+
+
+def _has_exact_named_range(
+    document: dict[str, Any],
+    marker_name: str,
+    expected_range: dict[str, Any],
+) -> bool:
+    matches: list[dict[str, Any]] = []
+    expected_tab_id = expected_range.get("tabId")
+    for tab_id, document_tab in _document_tabs(document):
+        named_ranges = document_tab.get("namedRanges")
+        if not isinstance(named_ranges, dict):
+            continue
+        entry = named_ranges.get(marker_name)
+        if not isinstance(entry, dict):
+            continue
+        definitions = entry.get("namedRanges")
+        if not isinstance(definitions, list):
+            return False
+        for definition in definitions:
+            if isinstance(definition, dict) and definition.get("name") == marker_name:
+                ranges = definition.get("ranges")
+                if (
+                    tab_id != expected_tab_id
+                    or not isinstance(ranges, list)
+                    or len(ranges) != 1
+                    or ranges[0] != expected_range
+                ):
+                    return False
+                matches.append(definition)
+    return len(matches) == 1
 
 
 def _document_tabs(document: dict[str, Any]) -> Iterator[tuple[str, dict[str, Any]]]:
@@ -910,7 +1476,13 @@ def _strip_location_fields(value: object) -> object:
 def verify_brand_application(document: dict[str, Any], parsed: DocumentIR) -> bool:
     tabs = tuple(_document_tabs(document))
     if not tabs or not all(
-        _tab_shell_is_branded(document, document_tab) for _, document_tab in tabs
+        _tab_shell_is_branded(
+            document,
+            document_tab,
+            expected_title=parsed.title,
+            allow_legacy_inline_objects=len(tabs) == 1,
+        )
+        for _, document_tab in tabs
     ):
         return False
     paragraphs = _paragraphs_by_range(tabs)
@@ -930,7 +1502,13 @@ def verify_brand_application(document: dict[str, Any], parsed: DocumentIR) -> bo
     return True
 
 
-def _tab_shell_is_branded(document: dict[str, Any], document_tab: dict[str, Any]) -> bool:
+def _tab_shell_is_branded(
+    document: dict[str, Any],
+    document_tab: dict[str, Any],
+    *,
+    expected_title: str,
+    allow_legacy_inline_objects: bool,
+) -> bool:
     style = document_tab.get("documentStyle")
     if not isinstance(style, dict):
         return False
@@ -950,11 +1528,98 @@ def _tab_shell_is_branded(document: dict[str, Any], document_tab: dict[str, Any]
     header = headers.get(header_id)
     if not isinstance(header, dict) or not _segment_has_text(headers, header_id):
         return False
+    if not _header_has_brand(header, expected_title=expected_title):
+        return False
     object_ids = _values_for_key(header, "inlineObjectId")
-    inline_objects = document.get("inlineObjects")
-    return isinstance(inline_objects, dict) and any(
-        _inline_object_uses_canonical_logo(inline_objects.get(object_id))
-        for object_id in object_ids
+    if len(object_ids) != 1:
+        return False
+    inline_objects = document_tab.get("inlineObjects")
+    if not isinstance(inline_objects, dict) and allow_legacy_inline_objects:
+        inline_objects = document.get("inlineObjects")
+    return isinstance(inline_objects, dict) and _inline_object_uses_canonical_logo(
+        inline_objects.get(object_ids[0])
+    )
+
+
+def _header_has_brand(header: dict[str, Any], *, expected_title: str) -> bool:
+    header_tokens = CURRENT_BRAND_MANIFEST.document.header
+    if header_tokens is None:
+        return False
+    content = header.get("content")
+    if not isinstance(content, list):
+        return False
+    if len(content) != 1 or not isinstance(content[0], dict):
+        return False
+    structural_element = content[0]
+    if set(structural_element) - {"startIndex", "endIndex", "paragraph"}:
+        return False
+    paragraph = structural_element.get("paragraph")
+    if not isinstance(paragraph, dict):
+        return False
+    paragraph_style = paragraph.get("paragraphStyle")
+    elements = paragraph.get("elements")
+    if not isinstance(paragraph_style, dict) or not isinstance(elements, list):
+        return False
+    logo_positions = [
+        index
+        for index, element in enumerate(elements)
+        if isinstance(element, dict) and isinstance(element.get("inlineObjectElement"), dict)
+    ]
+    if len(logo_positions) != 1:
+        return False
+    logo_position = logo_positions[0]
+    title_elements = elements[:logo_position]
+    trailing_elements = elements[logo_position + 1 :]
+    if not title_elements or not all(
+        isinstance(element, dict) and isinstance(element.get("textRun"), dict)
+        for element in title_elements
+    ):
+        return False
+    if not all(
+        isinstance(element, dict)
+        and isinstance(element.get("textRun"), dict)
+        and isinstance(element["textRun"].get("content"), str)
+        and not element["textRun"]["content"].strip()
+        for element in trailing_elements
+    ):
+        return False
+    if not all(
+        (
+            paragraph_style.get("namedStyleType") == "NORMAL_TEXT",
+            paragraph_style.get("alignment") == header_tokens.alignment,
+            paragraph_style.get("lineSpacing") == header_tokens.line_spacing_percent,
+            _dimension_matches(paragraph_style.get("spaceAbove"), header_tokens.space_above_pt),
+            _dimension_matches(paragraph_style.get("spaceBelow"), header_tokens.space_below_pt),
+            paragraph_style.get("keepWithNext") is False,
+        )
+    ):
+        return False
+    text_runs = [element["textRun"] for element in title_elements]
+    if not all(isinstance(run.get("content"), str) for run in text_runs):
+        return False
+    normalized_title = normalize_header_title(
+        expected_title,
+        max_chars=header_tokens.max_title_chars,
+    )
+    if "".join(run["content"] for run in text_runs) != f"{normalized_title}\t":
+        return False
+    return bool(text_runs) and all(_header_text_run_has_brand(run) for run in text_runs)
+
+
+def _header_text_run_has_brand(text_run: dict[str, Any]) -> bool:
+    header_tokens = CURRENT_BRAND_MANIFEST.document.header
+    if header_tokens is None:
+        return False
+    style = text_run.get("textStyle")
+    if not isinstance(style, dict):
+        return False
+    family = style.get("weightedFontFamily")
+    return (
+        isinstance(family, dict)
+        and family.get("fontFamily") == header_tokens.font_family
+        and _dimension_matches(style.get("fontSize"), header_tokens.size_pt)
+        and _color_matches(style.get("foregroundColor"), header_tokens.color)
+        and style.get("bold") is header_tokens.bold
     )
 
 
@@ -1102,6 +1767,52 @@ def _inline_object_uses_canonical_logo(value: object) -> bool:
     properties = value.get("inlineObjectProperties")
     embedded = properties.get("embeddedObject") if isinstance(properties, dict) else None
     image = embedded.get("imageProperties") if isinstance(embedded, dict) else None
+    size = embedded.get("size") if isinstance(embedded, dict) else None
+    header_tokens = CURRENT_BRAND_MANIFEST.document.header
+    asset_width = CURRENT_BRAND_MANIFEST.assets.logo_pixel_width
+    asset_height = CURRENT_BRAND_MANIFEST.assets.logo_pixel_height
     return (
-        isinstance(image, dict) and image.get("sourceUri") == CURRENT_BRAND_MANIFEST.assets.logo_uri
+        header_tokens is not None
+        and asset_width is not None
+        and asset_height is not None
+        and isinstance(image, dict)
+        and image.get("sourceUri") == CURRENT_BRAND_MANIFEST.assets.logo_uri
+        and isinstance(size, dict)
+        and _fitted_logo_size_matches(
+            size,
+            pixel_width=asset_width,
+            pixel_height=asset_height,
+            box_width=header_tokens.logo_width_pt,
+            box_height=header_tokens.logo_height_pt,
+            tolerance=header_tokens.logo_size_tolerance_pt,
+        )
     )
+
+
+def _fitted_logo_size_matches(
+    size: object,
+    *,
+    pixel_width: int,
+    pixel_height: int,
+    box_width: int,
+    box_height: int,
+    tolerance: float,
+) -> bool:
+    if not isinstance(size, dict):
+        return False
+    width = _point_magnitude(size.get("width"))
+    height = _point_magnitude(size.get("height"))
+    if width is None or height is None:
+        return False
+    scale = min(box_width / pixel_width, box_height / pixel_height)
+    return (
+        abs(width - pixel_width * scale) <= tolerance
+        and abs(height - pixel_height * scale) <= tolerance
+    )
+
+
+def _point_magnitude(value: object) -> float | None:
+    if not isinstance(value, dict) or value.get("unit") != "PT":
+        return None
+    magnitude = value.get("magnitude")
+    return float(magnitude) if isinstance(magnitude, int | float) else None
