@@ -106,6 +106,14 @@ export function FilePageClient({ driveId }: { driveId: string }) {
         reloadCurrent();
       }}
       parentFolderId={file.parentFolderId}
+      refreshModifiedTime={async () => {
+        const refreshed = await refetchFile();
+        if (refreshed.isError) throw refreshed.error;
+        if (!refreshed.data?.modifiedTime) {
+          throw new Error("Couldn’t verify the document’s latest revision. Please try again.");
+        }
+        return refreshed.data.modifiedTime;
+      }}
       reloadKey={reloadKey}
       title={file.name}
       {...(file.modifiedTime === undefined ? {} : { version: file.modifiedTime })}
@@ -122,6 +130,7 @@ interface FilePageBodyProps {
   mimeType: string;
   onReload: () => void;
   parentFolderId: string | undefined;
+  refreshModifiedTime?: () => Promise<string>;
   reloadKey: number;
   title: string;
   version?: string;
@@ -136,6 +145,7 @@ function FilePageBody({
   mimeType,
   onReload,
   parentFolderId,
+  refreshModifiedTime,
   reloadKey,
   title,
   version,
@@ -192,6 +202,7 @@ function FilePageBody({
         {...(version === undefined ? {} : { modifiedTime: version })}
         onReload={onReload}
         parentFolderId={parentFolderId}
+        {...(refreshModifiedTime === undefined ? {} : { refreshModifiedTime })}
         title={displayTitle}
       />
       <div className="flex-1 overflow-hidden" ref={setOwnedSlot}>

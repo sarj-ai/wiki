@@ -30,6 +30,7 @@ interface WikiToolbarProps {
   modifiedTime?: string;
   onReload: () => void;
   parentFolderId: string | undefined;
+  refreshModifiedTime?: () => Promise<string>;
 
   title: string;
 }
@@ -46,6 +47,7 @@ export function WikiToolbar({
   modifiedTime,
   onReload,
   parentFolderId,
+  refreshModifiedTime,
   title,
 }: WikiToolbarProps) {
   const openUrl = openUrlFor(mimeType, fileId);
@@ -154,6 +156,12 @@ export function WikiToolbar({
               kind: "drive_file",
               mimeType,
               name: displayTitle,
+              refreshExpectedModifiedTime:
+                refreshModifiedTime ??
+                (() =>
+                  Promise.reject(
+                    new Error("Couldn’t verify the document’s latest revision. Please reload."),
+                  )),
             }}
           />
         </>

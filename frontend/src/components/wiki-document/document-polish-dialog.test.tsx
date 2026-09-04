@@ -114,6 +114,136 @@ describe("DocumentPolishDialog", () => {
     });
   });
 
+  it("refreshes Drive metadata before creating a transform", async () => {
+    const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
+    const refreshExpectedModifiedTime = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValue("2026-09-04T13:45:00Z");
+    vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
+    const completion = deferred<DocumentTransformResult>();
+    vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(completion.promise);
+
+    renderDialog(root, {
+      allowInPlace: true,
+      expectedModifiedTime: "2026-09-03T12:00:00Z",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+      refreshExpectedModifiedTime,
+    });
+    await vi.waitFor(() => {
+      expect(findButtonNow("Create polished copy")).toBeEnabled();
+    });
+    clickButton(findButtonNow("Create polished copy"));
+
+    await vi.waitFor(() => {
+      expect(documentTransformApi.create).toHaveBeenCalledWith(
+        expect.objectContaining({ expectedModifiedTime: "2026-09-04T13:45:00Z" }),
+        "both",
+        expect.any(String),
+        "copy",
+      );
+    });
+    expect(refreshExpectedModifiedTime).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when the latest Drive revision cannot be verified", async () => {
+    const refreshExpectedModifiedTime = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValue(new Error("Couldn’t verify the latest revision"));
+    const create = vi.spyOn(documentTransformApi, "create");
+
+    renderDialog(root, {
+      allowInPlace: true,
+      expectedModifiedTime: "2026-09-03T12:00:00Z",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+      refreshExpectedModifiedTime,
+    });
+    await vi.waitFor(() => {
+      expect(findButtonNow("Create polished copy")).toBeEnabled();
+    });
+    clickButton(findButtonNow("Create polished copy"));
+
+    await vi.waitFor(() => {
+      expect(refreshExpectedModifiedTime).toHaveBeenCalledTimes(1);
+    });
+    expect(create).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(findButtonNow("Create polished copy")).toBeEnabled();
+    });
+  });
+
+  it("reuses the refreshed revision and key after an ambiguous create failure", async () => {
+    const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
+    const refreshExpectedModifiedTime = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce("2026-09-04T13:45:00Z")
+      .mockResolvedValueOnce("2026-09-04T13:46:00Z");
+    const create = vi
+      .spyOn(documentTransformApi, "create")
+      .mockRejectedValueOnce(new Error("Response was lost"))
+      .mockResolvedValueOnce(pending);
+    const completion = deferred<DocumentTransformResult>();
+    vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(completion.promise);
+
+    renderDialog(root, {
+      allowInPlace: true,
+      expectedModifiedTime: "2026-09-03T12:00:00Z",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+      refreshExpectedModifiedTime,
+    });
+    await vi.waitFor(() => {
+      expect(findButtonNow("Create polished copy")).toBeEnabled();
+    });
+    clickButton(findButtonNow("Create polished copy"));
+    await vi.waitFor(() => {
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(findButtonNow("Create polished copy")).toBeEnabled();
+    });
+    clickButton(findButtonNow("Create polished copy"));
+
+    await vi.waitFor(() => {
+      expect(create).toHaveBeenCalledTimes(2);
+    });
+    expect(refreshExpectedModifiedTime).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[1]?.[0]).toEqual(create.mock.calls[0]?.[0]);
+    expect(create.mock.calls[1]?.[2]).toBe(create.mock.calls[0]?.[2]);
+  });
+
+  it("does not create a task when unmounted during the metadata refresh", async () => {
+    const refresh = deferred<string>();
+    const create = vi.spyOn(documentTransformApi, "create");
+
+    renderDialog(root, {
+      allowInPlace: true,
+      expectedModifiedTime: "2026-09-03T12:00:00Z",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+      refreshExpectedModifiedTime: vi.fn().mockReturnValue(refresh.promise),
+    });
+    await vi.waitFor(() => {
+      expect(findButtonNow("Create polished copy")).toBeEnabled();
+    });
+    clickButton(findButtonNow("Create polished copy"));
+    flushSync(() => {
+      root.render(null);
+    });
+    refresh.resolve("2026-09-04T13:45:00Z");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("offers server-gated in-place editing while defaulting to a review copy", async () => {
     vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
       copy: true,
@@ -416,15 +546,37 @@ describe("DocumentPolishDialog", () => {
   });
 });
 
-function renderDialog(root: Root, source: DocumentPolishSource, onInPlaceComplete?: () => void) {
+type DialogTestSource =
+  | DocumentPolishSource
+  | (Omit<Extract<DocumentPolishSource, { kind: "drive_file" }>, "refreshExpectedModifiedTime"> & {
+      refreshExpectedModifiedTime?: () => Promise<string>;
+    });
+
+function renderDialog(root: Root, source: DialogTestSource, onInPlaceComplete?: () => void) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  let normalizedSource: DocumentPolishSource;
+  if (source.kind === "drive_file") {
+    normalizedSource = {
+      ...source,
+      refreshExpectedModifiedTime:
+        source.refreshExpectedModifiedTime ??
+        (async () => {
+          await new Promise<void>((resolve) => {
+            queueMicrotask(resolve);
+          });
+          return source.expectedModifiedTime;
+        }),
+    };
+  } else {
+    normalizedSource = source;
+  }
   flushSync(() => {
     root.render(
       <QueryClientProvider client={queryClient}>
         <DocumentPolishDialog
           onOpenChange={vi.fn()}
           open
-          source={source}
+          source={normalizedSource}
           {...(onInPlaceComplete === undefined ? {} : { onInPlaceComplete })}
         />
       </QueryClientProvider>,
