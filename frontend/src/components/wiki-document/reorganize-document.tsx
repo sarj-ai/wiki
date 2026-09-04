@@ -126,7 +126,7 @@ function ReorganizeDocumentForFile({
         }}
         open={proposal !== null}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto">
           <AlertDialogHeader>
             <div className="bg-destructive/10 text-destructive flex size-9 items-center justify-center rounded-full">
               <TriangleAlert className="size-4" />
@@ -138,9 +138,9 @@ function ReorganizeDocumentForFile({
             </AlertDialogDescription>
           </AlertDialogHeader>
           {proposal?.suggestedDestination === undefined ? null : (
-            <div className="bg-muted/50 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-lg border p-3">
+            <div className="bg-muted/50 grid grid-cols-1 gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-3">
               <Location destination={proposal.currentDestination} label="Current" />
-              <ArrowRight className="text-muted-foreground size-4" />
+              <ArrowRight className="text-muted-foreground mx-auto size-4 rotate-90 sm:rotate-0" />
               <Location destination={proposal.suggestedDestination} label="Recommended" />
             </div>
           )}

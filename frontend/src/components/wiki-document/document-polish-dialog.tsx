@@ -118,6 +118,7 @@ export function DocumentPolishDialog({
   const [destinationOpen, setDestinationOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<"idle" | "starting" | "transforming">("idle");
+  const [terminalMessage, setTerminalMessage] = useState<null | string>(null);
   const [reviewMessage, setReviewMessage] = useState<null | string>(null);
   const [reviewResult, setReviewResult] = useState<DocumentTransformResult | null>(null);
   const isPresentation =
@@ -162,6 +163,7 @@ export function DocumentPolishDialog({
     fileLoadGeneration.current += 1;
     setReviewMessage(null);
     setReviewResult(null);
+    setTerminalMessage(null);
   };
 
   const close = () => {
@@ -181,6 +183,7 @@ export function DocumentPolishDialog({
     setStage("idle");
     setReviewMessage(null);
     setReviewResult(null);
+    setTerminalMessage(null);
     onOpenChange(false);
   };
 
@@ -214,6 +217,7 @@ export function DocumentPolishDialog({
       idempotencyKey.current = null;
       setReviewMessage(null);
       setReviewResult(null);
+      setTerminalMessage(null);
     } catch (error: unknown) {
       if (fileLoadGeneration.current === generation) {
         setMarkdownError(errorMessage(error, "Couldn’t read the Markdown file"));
@@ -287,7 +291,7 @@ export function DocumentPolishDialog({
         toast.warning(`The ${artifactNoun} needs review`);
       } else if (!(error instanceof DOMException && error.name === "AbortError")) {
         if (!isCurrent()) return;
-        if (error instanceof DocumentTransformTerminalError) resetIdempotencyKey(idempotencyKey);
+        if (error instanceof DocumentTransformTerminalError) setTerminalMessage(error.message);
         toast.error(errorMessage(error, `Couldn’t polish ${artifactNoun}`));
       }
     } finally {
@@ -622,14 +626,39 @@ export function DocumentPolishDialog({
                 ) : null}
               </div>
             ) : null}
+            {terminalMessage ? (
+              <div
+                className="border-destructive/30 bg-destructive/5 rounded-lg border px-3 py-2.5 text-sm"
+                role="alert"
+              >
+                <p className="font-medium">Polish did not complete</p>
+                <p className="text-muted-foreground mt-1 text-xs">{terminalMessage}</p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Change an option to start a deliberate new attempt.
+                </p>
+              </div>
+            ) : null}
           </div>
 
-          <DialogFooter className="bg-background grid grid-cols-2 border-t px-5 py-4 sm:flex sm:px-6">
-            <Button disabled={submitting} onClick={close} type="button" variant="ghost">
+          <DialogFooter className="bg-background border-t px-5 py-4 sm:flex sm:px-6">
+            <Button
+              className="w-full sm:w-auto"
+              disabled={submitting}
+              onClick={close}
+              type="button"
+              variant="ghost"
+            >
               Cancel
             </Button>
             <Button
-              disabled={submitting || capabilityPending || capabilityFailed || !valid}
+              className="w-full sm:w-auto"
+              disabled={
+                submitting ||
+                capabilityPending ||
+                capabilityFailed ||
+                terminalMessage !== null ||
+                !valid
+              }
               onClick={() => void create()}
               type="button"
             >
@@ -669,8 +698,4 @@ export function DocumentPolishDialog({
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError || error instanceof Error ? error.message : fallback;
-}
-
-function resetIdempotencyKey(keyRef: { current: null | string }): void {
-  keyRef.current = null;
 }

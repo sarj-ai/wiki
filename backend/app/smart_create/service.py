@@ -194,6 +194,9 @@ class GeminiReorganizationService(ReorganizationService):
     @override
     async def propose(self, file_id: FileId) -> ReorganizationProposalRead:
         file, drives = await asyncio.gather(self._files.get(file_id), self._drive.list_drives())
+        if not file.can_edit:
+            msg = "File is not editable"
+            raise FileNotInScopeError(msg)
         drive = next((item for item in drives if item.id == file.drive_id), None)
         if drive is None:
             msg = "File not available in a Drive workspace"

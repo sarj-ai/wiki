@@ -3,7 +3,10 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
 import { documentTransformApi } from "@/lib/document-transform-client";
-import type { DocumentTransformResult } from "@/lib/document-transform-types";
+import {
+  type DocumentTransformResult,
+  DocumentTransformTerminalError,
+} from "@/lib/document-transform-types";
 import { MIME_DOC, MIME_SLIDE } from "@/types/wiki";
 
 import { DocumentPolishDialog, type DocumentPolishSource } from "./document-polish-dialog";
@@ -232,6 +235,32 @@ describe("DocumentPolishDialog", () => {
     });
     clickButton(findButtonNow("Create polished copy"));
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it("blocks accidental resubmission after a terminal task failure", async () => {
+    vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+      id: "55555555-5555-4555-8555-555555555555",
+      status: "pending",
+    });
+    vi.spyOn(documentTransformApi, "waitForCompletion").mockRejectedValue(
+      new DocumentTransformTerminalError("transform_failed", "Safety verification failed"),
+    );
+    renderDialog(root, {
+      allowInPlace: false,
+      expectedModifiedTime: "2026-09-03T12:00:00Z",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+    });
+
+    clickButton(findButtonNow("Create polished copy"));
+    await vi.waitFor(() => {
+      expect(document.body).toHaveTextContent("Polish did not complete");
+      expect(findButtonNow("Create polished copy")).toBeDisabled();
+    });
+    clickButton(findButtonNow("Create polished copy"));
+    expect(documentTransformApi.create).toHaveBeenCalledTimes(1);
   });
 
   it("never offers in-place for a Drive-hosted Markdown file", async () => {

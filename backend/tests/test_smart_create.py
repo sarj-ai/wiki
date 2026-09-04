@@ -16,6 +16,7 @@ from app.drive.schemas import (
     SnippetResult,
 )
 from app.drive.service import DriveService
+from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
 from app.identifiers import DriveId, FileId
 from app.sidebar.cache import CachedDriveTree, SidebarCacheService
@@ -219,8 +220,13 @@ class _ReorganizationGenerator(ReorganizationGenerator):
 
 class _Files:
     def __init__(
-        self, *, mime_type: str = MIME_DOC, name: str = "Quarterly product roadmap"
+        self,
+        *,
+        can_edit: bool = True,
+        mime_type: str = MIME_DOC,
+        name: str = "Quarterly product roadmap",
     ) -> None:
+        self.can_edit = can_edit
         self.mime_type = mime_type
         self.name = name
 
@@ -232,7 +238,7 @@ class _Files:
             parent_folder_id=FileId("product"),
             drive_id=DriveId("product"),
             modified_time=None,
-            can_edit=True,
+            can_edit=self.can_edit,
         )
 
 
@@ -484,6 +490,29 @@ async def test_reorganization_requires_exported_document_content() -> None:
             ),
             document_text=None,
         ).propose(FileId("document"))
+
+
+async def test_reorganization_rejects_read_only_files_before_exporting_content() -> None:
+    drive = _Drive("This content must not be exported")
+    generator = _ReorganizationGenerator(
+        GeneratedReorganization(
+            destination_folder_id=FileId("product"),
+            reason="Current folder is best.",
+        )
+    )
+    service = GeminiReorganizationService(
+        db=AsyncSession(),
+        drive=drive,
+        files=dependency(_Files(can_edit=False)),
+        sidebar_cache=_Cache(),
+        generator=generator,
+    )
+
+    with pytest.raises(FileNotInScopeError, match="not editable"):
+        await service.propose(FileId("document"))
+
+    assert drive.document_fetches == 0
+    assert generator.evidence is None
 
 
 async def test_reorganization_passes_content_and_metadata_to_generator() -> None:
