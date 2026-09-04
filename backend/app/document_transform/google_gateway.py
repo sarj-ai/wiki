@@ -559,6 +559,15 @@ class GoogleDocumentGateway(DocumentGateway):
             )
         except (DocumentGatewayError, ProviderDeadlineError) as exc:
             document = self._get_document_sync(document_id)
+            logger.warning(
+                "document stage provider boundary http_status={http_status} "
+                "revision_unchanged={revision_unchanged} marker_checks={marker_checks}",
+                http_status=exc.http_status if isinstance(exc, DocumentGatewayError) else None,
+                revision_unchanged=document.get("revisionId") == required_revision_id,
+                marker_checks=_named_range_diagnostics(
+                    document, marker_name, expected_marker_range
+                ),
+            )
             if _has_exact_named_range(document, marker_name, expected_marker_range):
                 return InPlaceStageResult(
                     revision_id=DocsRevisionId(_required_string(document, "revisionId")),
@@ -569,6 +578,14 @@ class GoogleDocumentGateway(DocumentGateway):
             raise SourceChangedError from exc
         document = self._get_document_sync(document_id)
         if not _has_exact_named_range(document, marker_name, expected_marker_range):
+            logger.warning(
+                "document stage marker verification failed revision_unchanged={revision_unchanged} "
+                "marker_checks={marker_checks}",
+                revision_unchanged=document.get("revisionId") == required_revision_id,
+                marker_checks=_named_range_diagnostics(
+                    document, marker_name, expected_marker_range
+                ),
+            )
             raise DocumentGatewayError
         return InPlaceStageResult(
             revision_id=DocsRevisionId(_required_string(document, "revisionId")),
@@ -1328,6 +1345,66 @@ def _post_mutation_marker_range(
     expected["startIndex"] = start
     expected["endIndex"] = end
     return expected
+
+
+def _named_range_diagnostics(
+    document: dict[str, Any],
+    marker_name: str,
+    expected_range: dict[str, Any],
+) -> dict[str, int | bool]:
+    # Report marker shape without provider identifiers or index values.
+    checks: dict[str, int | bool] = {
+        "entry_count": 0,
+        "definition_count": 0,
+        "range_count": 0,
+        "malformed_definitions": 0,
+        "malformed_ranges": 0,
+        "matching_name_count": 0,
+        "matching_tab_count": 0,
+        "start_present_count": 0,
+        "end_present_count": 0,
+        "matching_start_count": 0,
+        "matching_end_count": 0,
+        "exact_range_count": 0,
+    }
+    for tab_id, document_tab in _document_tabs(document):
+        named_ranges = document_tab.get("namedRanges")
+        entry = named_ranges.get(marker_name) if isinstance(named_ranges, dict) else None
+        if not isinstance(entry, dict):
+            continue
+        checks["entry_count"] += 1
+        definitions = entry.get("namedRanges")
+        if not isinstance(definitions, list):
+            checks["malformed_definitions"] += 1
+            continue
+        checks["definition_count"] += len(definitions)
+        for definition in definitions:
+            if not isinstance(definition, dict):
+                checks["malformed_definitions"] += 1
+                continue
+            checks["matching_name_count"] += definition.get("name") == marker_name
+            ranges = definition.get("ranges")
+            if not isinstance(ranges, list):
+                checks["malformed_ranges"] += 1
+                continue
+            checks["range_count"] += len(ranges)
+            for observed in ranges:
+                if not isinstance(observed, dict):
+                    checks["malformed_ranges"] += 1
+                    continue
+                checks["matching_tab_count"] += tab_id == expected_range.get("tabId")
+                checks["start_present_count"] += type(observed.get("startIndex")) is int
+                checks["end_present_count"] += type(observed.get("endIndex")) is int
+                checks["matching_start_count"] += observed.get("startIndex") == expected_range.get(
+                    "startIndex"
+                )
+                checks["matching_end_count"] += observed.get("endIndex") == expected_range.get(
+                    "endIndex"
+                )
+                checks["exact_range_count"] += _same_named_range(
+                    observed, expected_range, tab_id=tab_id
+                )
+    return checks
 
 
 def _has_exact_named_range(
