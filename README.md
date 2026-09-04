@@ -121,6 +121,33 @@ worker. Task results expose the pipeline version, actual model-use flag, determi
 counts, brand profile ID and digest, UNSLOP catalog digest/source version, validation summary,
 findings, and output metadata.
 
+Release QA uses `backend/scripts/qa_document_transform_corpus.py`. Its default planning pass is
+read-only and writes a seeded manifest plus a resumable JSONL ledger. It selects only owner-only,
+unshared native Google Docs whose parent folders are also owner-only and private; prior transform
+outputs are excluded. Use the full production release SHA shown by `/health`:
+
+```bash
+cd backend
+uv run python scripts/qa_document_transform_corpus.py \
+  --seed release-2026-09-03 \
+  --expected-release-sha 0123456789abcdef0123456789abcdef01234567 \
+  --manifest /private/tmp/wiki-doc-transform-qa/manifest.json \
+  --ledger /private/tmp/wiki-doc-transform-qa/events.jsonl
+```
+
+Review that manifest before enabling writes. The execution pass requires exactly 20 sources in
+`both` mode, reads the application bearer token only from `WIKI_QA_ACCESS_TOKEN`, and requires
+`--execute --confirm-live-copy CREATE_20_PRIVATE_SIBLINGS`. Reuse the same seed, manifest, and ledger
+to resume; UUIDv5 idempotency keys prevent a crash before ledger append from creating a second
+output. The runner stops at the first failed invariant and retains successful labeled siblings for
+inspection. It never calls a Drive permission mutation.
+
+Before the corpus, plan a separate one-document manifest with `--count 1`, review it, then execute
+it with `--count 1 --canary --execute --confirm-live-copy CREATE_1_PRIVATE_CANARY`. The canary uses
+the same idempotent replay and source, output, permission, revision, semantic, and exact v2 brand
+digest gates as the full corpus. Keep its manifest and ledger paths separate from the 20-document
+run.
+
 ## License and security
 
 Released under the [MIT License](LICENSE). Report security concerns privately to the
