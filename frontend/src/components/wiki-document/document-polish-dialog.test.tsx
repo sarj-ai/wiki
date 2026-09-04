@@ -87,9 +87,14 @@ describe("DocumentPolishDialog", () => {
 
     completion.resolve({
       appliedPatchCount: 1,
+      brandProfileId: "sarj-2026-v2",
+      brandProfileSha256: "b".repeat(64),
+      deterministicPatchCount: 1,
       findings: [],
+      llmInvoked: false,
       mode: "unslop",
-      modelIds: ["gemini-flash"],
+      modelPatchCount: 0,
+      modelIds: [],
       needsReview: false,
       operationId: pending.id,
       outputFile: {

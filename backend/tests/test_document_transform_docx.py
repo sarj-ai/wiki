@@ -8,6 +8,7 @@ from defusedxml.ElementTree import fromstring
 from docx import Document as WordDocument
 import pytest
 
+from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.docx_renderer import render_markdown_docx
 from app.document_transform.errors import UnsupportedSourceError
 
@@ -79,7 +80,8 @@ def test_render_preserves_native_structure_and_inline_formatting(rendered: bytes
     assert document.find(f".//{W}b") is not None
     assert document.find(f".//{W}i") is not None
     assert document.find(f".//{W}hyperlink") is not None
-    assert document.find(f".//{W}shd[@{W}fill='F4F3F6']") is not None
+    subtle = CURRENT_BRAND_MANIFEST.colors.subtle.removeprefix("#")
+    assert document.find(f".//{W}shd[@{W}fill='{subtle}']") is not None
     targets = [item.attrib.get("Target") for item in relationships]
     assert "https://sarj.ai" in targets
     checklist_markers = [node.get(f"{W}val") for node in numbering.findall(f".//{W}lvlText")]
@@ -100,7 +102,8 @@ def test_sarj_brand_styles_header_logo_and_footer_page_number(rendered: bytes) -
     title_fonts = title_style.find(f".//{W}rFonts")
     assert title_fonts is not None
     assert title_fonts.get(f"{W}ascii") == "Nunito"
-    assert styles.find(f".//{W}color[@{W}val='2B165E']") is not None
+    primary = CURRENT_BRAND_MANIFEST.colors.primary.removeprefix("#")
+    assert styles.find(f".//{W}color[@{W}val='{primary}']") is not None
     assert header.find(".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip") is not None
     header_alignment = header.find(f".//{W}jc")
     assert header_alignment is not None

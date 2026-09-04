@@ -440,12 +440,33 @@
             "title": "Applied Patch Count",
             "type": "integer"
           },
+          "brand_profile_id": {
+            "default": "sarj-2026-v2",
+            "title": "Brand Profile Id",
+            "type": "string"
+          },
+          "brand_profile_sha256": {
+            "default": "8824cf836c053056cbe9a3f195944d4720897804264790da750e3c74101654d8",
+            "title": "Brand Profile Sha256",
+            "type": "string"
+          },
+          "deterministic_patch_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Deterministic Patch Count",
+            "type": "integer"
+          },
           "findings": {
             "items": {
               "$ref": "#/components/schemas/TransformFinding"
             },
             "title": "Findings",
             "type": "array"
+          },
+          "llm_invoked": {
+            "default": false,
+            "title": "Llm Invoked",
+            "type": "boolean"
           },
           "mode": {
             "$ref": "#/components/schemas/TransformMode"
@@ -456,6 +477,12 @@
             },
             "title": "Model Ids",
             "type": "array"
+          },
+          "model_patch_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Model Patch Count",
+            "type": "integer"
           },
           "needs_review": {
             "title": "Needs Review",

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import re
@@ -12,7 +11,8 @@ from app.document_transform.unslop import UnslopCandidate, scan_unslop_candidate
 
 
 _PROTECTED_TOKEN = re.compile(
-    r"```[\s\S]*?```|`[^`\n]+`|https?://[^\s)>]+|\b\d+(?:[.,:/-]\d+)*(?:%|[A-Za-z]{1,5})?\b"
+    r"```[\s\S]*?```|`[^`\n]+`|https?://[^\s)>]+|"
+    r"(?<![\w])(?:[$€£¥]\s*)?\d+(?:[.,:/-]\d+)*(?:\s?(?:%|[A-Za-z]{1,5}))?(?![\w])"
     r"|\[[^\]\n]+\]\([^)\n]+\)|\[[0-9,\- ]+\]",
     re.MULTILINE,
 )
@@ -20,18 +20,25 @@ _FORCE_WORD = re.compile(
     r"\b(?:must|shall|should|may|might|cannot|can't|can|will|won't|not|never|no)\b",
     re.IGNORECASE,
 )
-_WORD = re.compile(r"\b[\w'-]+\b", re.UNICODE)
-_QUOTED_SPAN = re.compile(r'"[^"\n]+"|“[^”\n]+”|‘[^’\n]+’|\'[^\'\n]+\'')
+_QUOTED_SPAN = re.compile(r'"[^"\n]+"|“[^”\n]+”')
 _PROPER_NOUN = re.compile(r"\b(?:[A-Z][a-z]+|[A-Z]{2,}|[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*)\b")
 _SENTENCE = re.compile(r".*?(?:[.!?]+(?=\s+|$)|$)", re.DOTALL)
-_ALLOWED_GLUE_WORDS = frozenset({"a", "an", "and", "but", "for", "of", "or", "the", "to"})
 _MAX_CHANGE_RATIO = MappingProxyType({TransformPhase.UNSLOP: 0.35, TransformPhase.FORMAT: 0.70})
+_CAPITALIZABLE_START_WORDS = frozenset(
+    {"a", "an", "he", "it", "our", "she", "that", "the", "they", "this", "we", "you", "your"}
+)
 
 
 @dataclass(frozen=True, slots=True)
 class PatchDecision:
     accepted: dict[str, str]
     findings: tuple[TransformFinding, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DeletionSpan:
+    start: int
+    end: int
 
 
 def validate_patches(
@@ -75,13 +82,18 @@ def _rejection_code(
         return "unknown_block"
     if patch.expected_sha256 != block.sha256:
         return "stale_block"
-    if not block.editable or block.kind in {BlockKind.CODE, BlockKind.TABLE, BlockKind.BLANK}:
+    if not block.editable or block.kind in {
+        BlockKind.BLANK,
+        BlockKind.CODE,
+        BlockKind.QUOTE,
+        BlockKind.TABLE,
+    }:
         return "protected_block"
     if not patch.replacement.strip():
         return "empty_replacement"
-    if Counter(_protected_tokens(block.text)) != Counter(_protected_tokens(patch.replacement)):
+    if _protected_tokens(block.text) != _protected_tokens(patch.replacement):
         return "protected_content_changed"
-    if Counter(_force_words(block.text)) != Counter(_force_words(patch.replacement)):
+    if _force_words(block.text) != _force_words(patch.replacement):
         return "force_language_changed"
     if phase is TransformPhase.UNSLOP:
         locality_code = _unslop_locality_code(block, patch.replacement)
@@ -119,24 +131,8 @@ def _unslop_locality_code(block: TextBlock, replacement: str) -> str | None:
         return "proper_noun_changed"
     if not _unchanged_sentences_are_exact(block.text, replacement, candidates):
         return "sentence_locality_changed"
-    source_words = [match.group(0).casefold() for match in _WORD.finditer(block.text)]
-    replacement_words = [match.group(0).casefold() for match in _WORD.finditer(replacement)]
-    outside_words = [
-        match.group(0).casefold()
-        for match in _WORD.finditer(block.text)
-        if not any(
-            match.start() < candidate.end and match.end() > candidate.start
-            for candidate in candidates
-        )
-    ]
-    if not _is_subsequence(outside_words, replacement_words):
+    if not _is_candidate_deletion_only(block.text, replacement, candidates):
         return "noncandidate_content_changed"
-    source_vocabulary = set(source_words)
-    if any(
-        word not in source_vocabulary and word not in _ALLOWED_GLUE_WORDS
-        for word in replacement_words
-    ):
-        return "new_content_introduced"
     return None
 
 
@@ -179,6 +175,79 @@ def _unchanged_sentences_are_exact(
     return True
 
 
-def _is_subsequence(required: list[str], observed: list[str]) -> bool:
-    iterator = iter(observed)
-    return all(any(candidate == word for candidate in iterator) for word in required)
+def _is_candidate_deletion_only(
+    source: str,
+    replacement: str,
+    candidates: tuple[UnslopCandidate, ...],
+) -> bool:
+    comparison = replacement
+    first_source = next((index for index, char in enumerate(source) if char.isalpha()), None)
+    first_replacement = next(
+        (index for index, char in enumerate(replacement) if char.isalpha()), None
+    )
+    if (
+        first_source is not None
+        and first_replacement is not None
+        and any(candidate.start <= first_source < candidate.end for candidate in candidates)
+    ):
+        source_survivor = next(
+            (
+                index
+                for index in range(first_source, len(source))
+                if source[index].isalpha()
+                and not any(candidate.start <= index < candidate.end for candidate in candidates)
+            ),
+            None,
+        )
+        if (
+            source_survivor is not None
+            and source[source_survivor].casefold() == replacement[first_replacement].casefold()
+        ):
+            survivor_word = re.match(r"[A-Za-z]+", source[source_survivor:])
+            if (
+                survivor_word is None
+                or survivor_word.group(0).casefold() not in _CAPITALIZABLE_START_WORDS
+            ):
+                return False
+            comparison = (
+                replacement[:first_replacement]
+                + source[source_survivor]
+                + replacement[first_replacement + 1 :]
+            )
+
+    allowed_indexes = {
+        index
+        for span in (_allowed_deletion_span(source, candidate) for candidate in candidates)
+        for index in range(span.start, span.end)
+    }
+    source_index = 0
+    replacement_index = 0
+    deleted = False
+    while source_index < len(source) and replacement_index < len(comparison):
+        if source[source_index] == comparison[replacement_index]:
+            source_index += 1
+            replacement_index += 1
+            continue
+        if source_index not in allowed_indexes:
+            return False
+        source_index += 1
+        deleted = True
+    if replacement_index != len(comparison):
+        return False
+    while source_index < len(source):
+        if source_index not in allowed_indexes:
+            return False
+        source_index += 1
+        deleted = True
+    return deleted
+
+
+def _allowed_deletion_span(source: str, candidate: UnslopCandidate) -> DeletionSpan:
+    start = candidate.start
+    end = candidate.end
+    while end < len(source) and source[end] in " \t,:;—–-":
+        end += 1
+    if start > 0 and end == len(source):
+        while start > 0 and source[start - 1] in " \t,:;—–-":
+            start -= 1
+    return DeletionSpan(start, end)

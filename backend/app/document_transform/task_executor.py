@@ -3,10 +3,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import timedelta
+import hashlib
+import time
 from typing import Protocol, override
 import uuid
 
 import httpx
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.google_tokens import (
@@ -15,12 +18,13 @@ from app.auth.google_tokens import (
     GoogleTokenUnavailableError,
 )
 from app.cache.service import CacheService
+from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import (
     DocumentGatewayError,
     DocumentTransformError,
     ModelUnavailableError,
 )
-from app.document_transform.executor import DocumentTransformExecutor
+from app.document_transform.executor import PIPELINE_VERSION, DocumentTransformExecutor
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.models import PatchGenerator
 from app.document_transform.schemas import (
@@ -226,13 +230,19 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         )
 
     async def _load_logo(self) -> bytes | None:
+        if self._logo_uri != CURRENT_BRAND_MANIFEST.assets.logo_uri:
+            return None
         try:
             response = await self._http.get(self._logo_uri)
             response.raise_for_status()
         except httpx.HTTPError:
             return None
         content = response.content
-        if not content.startswith(b"\x89PNG\r\n\x1a\n") or len(content) > _MAX_LOGO_BYTES:
+        if (
+            not content.startswith(b"\x89PNG\r\n\x1a\n")
+            or len(content) > _MAX_LOGO_BYTES
+            or hashlib.sha256(content).hexdigest() != CURRENT_BRAND_MANIFEST.assets.logo_sha256
+        ):
             return None
         return content
 
@@ -245,9 +255,28 @@ async def _execute_claimed(
     claim: TaskClaim,
     payload: DocumentTransformRequest,
 ) -> TaskRead:
+    started_at = time.perf_counter()
+    source_kind = payload.source.kind
+    logger.info(
+        "document transform started task_id={task_id} attempt={attempt} source_kind={source_kind} "
+        "mode={mode} pipeline={pipeline} brand_profile={brand_profile}",
+        task_id=task_id,
+        attempt=claim.task.attempt_count,
+        source_kind=source_kind,
+        mode=payload.mode.value,
+        pipeline=PIPELINE_VERSION,
+        brand_profile=CURRENT_BRAND_MANIFEST.profile_id,
+    )
     try:
         result = await transform.execute(operation_id=task_id, request=payload)
     except ProviderDeadlineError as exc:
+        _log_transform_failure(
+            task_id=task_id,
+            claim=claim,
+            payload=payload,
+            error_code=DocumentGatewayError.code,
+            started_at=started_at,
+        )
         return await defer_or_fail_retryable_task(
             task_id,
             tasks=tasks,
@@ -257,6 +286,13 @@ async def _execute_claimed(
             cause=exc,
         )
     except (DocumentGatewayError, ModelUnavailableError) as exc:
+        _log_transform_failure(
+            task_id=task_id,
+            claim=claim,
+            payload=payload,
+            error_code=exc.code,
+            started_at=started_at,
+        )
         return await defer_or_fail_retryable_task(
             task_id,
             tasks=tasks,
@@ -266,6 +302,13 @@ async def _execute_claimed(
             cause=exc,
         )
     except DocumentTransformError as exc:
+        _log_transform_failure(
+            task_id=task_id,
+            claim=claim,
+            payload=payload,
+            error_code=exc.code,
+            started_at=started_at,
+        )
         return await tasks.fail(
             task_id,
             lease_token=claim.lease_token,
@@ -277,10 +320,49 @@ async def _execute_claimed(
         lease_token=claim.lease_token,
         resource_id=result.output.file_id,
     )
-    return await tasks.succeed(
+    completed = await tasks.succeed(
         task_id,
         lease_token=claim.lease_token,
         result=result,
+    )
+    logger.info(
+        "document transform succeeded task_id={task_id} attempt={attempt} source_kind={source_kind} "
+        "mode={mode} pipeline={pipeline} brand_profile={brand_profile} llm_invoked={llm_invoked} "
+        "deterministic_patches={deterministic_patches} model_patches={model_patches} "
+        "findings={findings} duration_ms={duration_ms}",
+        task_id=task_id,
+        attempt=claim.task.attempt_count,
+        source_kind=source_kind,
+        mode=payload.mode.value,
+        pipeline=result.pipeline_version,
+        brand_profile=result.brand_profile_id,
+        llm_invoked=result.llm_invoked,
+        deterministic_patches=result.deterministic_patch_count,
+        model_patches=result.model_patch_count,
+        findings=sorted({finding.code for finding in result.findings}),
+        duration_ms=round((time.perf_counter() - started_at) * 1000),
+    )
+    return completed
+
+
+def _log_transform_failure(
+    *,
+    task_id: TaskId,
+    claim: TaskClaim,
+    payload: DocumentTransformRequest,
+    error_code: str,
+    started_at: float,
+) -> None:
+    logger.warning(
+        "document transform interrupted task_id={task_id} attempt={attempt} source_kind={source_kind} "
+        "mode={mode} brand_profile={brand_profile} error_code={error_code} duration_ms={duration_ms}",
+        task_id=task_id,
+        attempt=claim.task.attempt_count,
+        source_kind=payload.source.kind,
+        mode=payload.mode.value,
+        brand_profile=CURRENT_BRAND_MANIFEST.profile_id,
+        error_code=error_code,
+        duration_ms=round((time.perf_counter() - started_at) * 1000),
     )
 
 

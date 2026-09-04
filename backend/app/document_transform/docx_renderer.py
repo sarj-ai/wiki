@@ -24,16 +24,17 @@ from docx.table import Table, _Cell
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
+from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import UnsupportedSourceError
 
 
 _CONTENT_WIDTH_DXA: Final = 9_360
-_SARJ_PURPLE: Final = "2B165E"
-_SARJ_PURPLE_LIGHT: Final = "EDE9F6"
-_INK: Final = "17151C"
-_MUTED: Final = "66616F"
-_BORDER: Final = "D9D5E2"
-_CODE_FILL: Final = "F4F3F6"
+_SARJ_PURPLE: Final = CURRENT_BRAND_MANIFEST.colors.primary.removeprefix("#")
+_SARJ_PURPLE_LIGHT: Final = CURRENT_BRAND_MANIFEST.colors.primary_tint.removeprefix("#")
+_INK: Final = CURRENT_BRAND_MANIFEST.colors.ink.removeprefix("#")
+_MUTED: Final = CURRENT_BRAND_MANIFEST.colors.muted.removeprefix("#")
+_BORDER: Final = CURRENT_BRAND_MANIFEST.colors.border.removeprefix("#")
+_CODE_FILL: Final = CURRENT_BRAND_MANIFEST.colors.subtle.removeprefix("#")
 _FIXED_TIMESTAMP: Final = datetime(2000, 1, 1, tzinfo=UTC)
 _INLINE_PATTERN = re.compile(
     r"(`[^`\n]+`|\[([^\]]+)\]\(([^\s)]+)\)|\*\*([^*\n]+)\*\*|"

@@ -18,8 +18,13 @@ export type DocumentTransformSource =
 
 export interface DocumentTransformResult {
   appliedPatchCount: number;
+  brandProfileId: string;
+  brandProfileSha256: string;
+  deterministicPatchCount: number;
   findings: DocumentTransformFinding[];
   mode: DocumentTransformMode;
+  llmInvoked: boolean;
+  modelPatchCount: number;
   modelIds: string[];
   needsReview: boolean;
   operationId: string;

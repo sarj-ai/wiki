@@ -22,8 +22,13 @@ const ZMessage = z
   .passthrough();
 const ZResult = z.object({
   applied_patch_count: z.int().nonnegative(),
+  brand_profile_id: z.string().default("sarj-legacy-v1"),
+  brand_profile_sha256: z.string().default("legacy-unrecorded"),
+  deterministic_patch_count: z.int().nonnegative().default(0),
   findings: z.array(ZMessage),
   mode: ZMode,
+  llm_invoked: z.boolean().default(true),
+  model_patch_count: z.int().nonnegative().default(0),
   model_ids: z.array(z.string()),
   needs_review: z.boolean(),
   operation_id: z.uuid(),
@@ -144,12 +149,17 @@ function parseTask(task: z.infer<typeof ZTask>): DocumentTransformTask {
 function parseResult(result: z.infer<typeof ZResult>): DocumentTransformResult {
   return {
     appliedPatchCount: result.applied_patch_count,
+    brandProfileId: result.brand_profile_id,
+    brandProfileSha256: result.brand_profile_sha256,
+    deterministicPatchCount: result.deterministic_patch_count,
     findings: result.findings.map((finding) => ({
       blockId: finding.block_id,
       code: finding.code,
       detail: finding.detail,
     })),
     mode: result.mode,
+    llmInvoked: result.llm_invoked,
+    modelPatchCount: result.model_patch_count,
     modelIds: result.model_ids,
     needsReview: result.needs_review,
     operationId: result.operation_id,
