@@ -80,6 +80,21 @@ const ZTask = z.discriminatedUnion("status", [
 const DEFAULT_TASK_POLL_MS = 1_000;
 const DEFAULT_MAX_TASK_POLLS = 900;
 const MAX_TRANSIENT_POLL_FAILURES = 5;
+const REDACTED_TASK_FAILURE_DETAIL = "Task could not be completed";
+const TASK_FAILURE_FALLBACKS: Readonly<Record<string, string>> = {
+  google_auth_required: "Reconnect Google Drive, then start the document polish again.",
+  header_conflict: "Review the document header before applying Sarj branding again.",
+  incompatible_pending_output:
+    "An incomplete result from an earlier polish needs review before you try again.",
+  in_place_not_allowed:
+    "This document is no longer eligible for safe in-place polishing. Reload it or create a review copy.",
+  needs_review:
+    "Sarj stopped at a safety check. Review the document and its Drive version history before trying again.",
+  output_verification_failed:
+    "The polished result did not pass safety verification. Review the document before trying again.",
+  source_changed:
+    "The document changed after polishing started. Reload and review the latest version before trying again.",
+};
 
 export const documentTransformApi = {
   capabilities: async () => {
@@ -144,12 +159,20 @@ async function waitForTask(
       case "failed":
         if (current.errorCode === "needs_review") {
           throw new DocumentTransformNeedsReviewError(
-            current.errorDetail ?? "The result needs review before it can be opened.",
+            taskFailureDetail(
+              current.errorCode,
+              current.errorDetail,
+              "The result needs review before it can be opened.",
+            ),
           );
         }
         throw new DocumentTransformTerminalError(
           current.errorCode,
-          current.errorDetail ?? `Document polish failed (${current.errorCode})`,
+          taskFailureDetail(
+            current.errorCode,
+            current.errorDetail,
+            `Document polish failed (${current.errorCode})`,
+          ),
         );
       case "succeeded":
         if (current.result.needsReview) {
@@ -177,6 +200,15 @@ async function waitForTask(
         }
     }
   }
+}
+
+function taskFailureDetail(
+  errorCode: string,
+  errorDetail: string | undefined,
+  fallback: string,
+): string {
+  if (errorDetail && errorDetail !== REDACTED_TASK_FAILURE_DETAIL) return errorDetail;
+  return TASK_FAILURE_FALLBACKS[errorCode] ?? fallback;
 }
 
 function parseTask(task: z.infer<typeof ZTask>): DocumentTransformTask {

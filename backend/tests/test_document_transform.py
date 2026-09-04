@@ -1588,6 +1588,76 @@ def test_post_write_brand_verification_requires_canonical_logo_source() -> None:
     )
 
 
+def test_brand_verification_diagnostics_are_bounded_and_granular() -> None:
+    document = _branded_google_document()
+    parsed = parse_google_document(document, title="Decision")
+
+    checks = google_gateway_module._brand_application_diagnostics(document, parsed)
+
+    assert checks == {
+        "tabs_present": True,
+        "tab_count": 1,
+        "margins": True,
+        "header_shape": True,
+        "header_paragraph_style": True,
+        "header_title": True,
+        "header_text_style": True,
+        "logo_count": True,
+        "logo_asset": True,
+        "paragraph_ranges": True,
+        "paragraph_named_styles": True,
+        "paragraph_layout": True,
+        "paragraph_text_styles": True,
+        "paragraph_count": 1,
+    }
+    changed = deepcopy(document)
+    changed["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["elements"][0]["textRun"][
+        "textStyle"
+    ]["weightedFontFamily"]["fontFamily"] = "Arial"
+
+    changed_checks = google_gateway_module._brand_application_diagnostics(
+        changed,
+        parse_google_document(changed, title="Decision"),
+    )
+
+    assert changed_checks["paragraph_text_styles"] is False
+    assert set(changed_checks) == set(checks)
+
+
+async def test_in_place_non_brand_verification_preserves_brand_short_circuit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = _in_place_document("Decision")
+    parsed = parse_google_document(document, title="Decision")
+
+    def unexpected_brand_verification(_document: object, _parsed: object) -> bool:
+        msg = "brand verification must stay short-circuited"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(
+        google_gateway_module,
+        "verify_brand_application",
+        unexpected_brand_verification,
+    )
+
+    result = await object.__new__(GoogleDocumentGateway).verify_in_place(
+        document=document,
+        title="Decision",
+        expected=parsed,
+        structural_sha256=google_gateway_module._inventory_sha256(
+            google_gateway_module._structural_inventory(document)
+        ),
+        protected_structure_sha256=google_gateway_module._inventory_sha256(
+            google_gateway_module._protected_structure_inventory(document)
+        ),
+        verify_brand=False,
+    )
+
+    assert result.content_preserved is True
+    assert result.structure_preserved is True
+    assert result.brand_applied is True
+
+
 def test_copy_branding_styles_header_deterministically() -> None:
     document = DocumentIR(
         title="Decision",

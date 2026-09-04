@@ -400,7 +400,9 @@ describe("DocumentPolishDialog", () => {
       status: "pending",
     });
     vi.spyOn(documentTransformApi, "waitForCompletion").mockRejectedValue(
-      new DocumentTransformNeedsReviewError("A protected block needs review"),
+      new DocumentTransformNeedsReviewError(
+        "Sarj stopped at a safety check. Review the document and its Drive version history before trying again.",
+      ),
     );
     renderDialog(root, {
       allowInPlace: false,
@@ -413,7 +415,9 @@ describe("DocumentPolishDialog", () => {
 
     clickButton(findButtonNow("Create polished copy"));
     await vi.waitFor(() => {
-      expect(document.body).toHaveTextContent("A protected block needs review");
+      expect(document.body).toHaveTextContent(
+        "Review the document and its Drive version history before trying again.",
+      );
       expect(findButtonNow("Create polished copy")).toBeDisabled();
     });
     clickButton(findButtonNow("Create polished copy"));

@@ -16,6 +16,7 @@ from googleapiclient.discovery_cache import get_static_doc
 from googleapiclient.errors import HttpError
 from googleapiclient.http import HttpRequest, MediaIoBaseDownload, MediaIoBaseUpload
 import httplib2
+from loguru import logger
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST, normalize_header_title
 from app.document_transform.docx_renderer import markdown_import_manifest
@@ -234,14 +235,25 @@ class GoogleDocumentGateway(DocumentGateway):
         verify_brand: bool,
     ) -> OutputVerification:
         parsed = parse_google_document(document, title=title)
+        content_preserved = parsed.semantic_sha256 == expected.semantic_sha256
+        structure_preserved = (
+            _inventory_sha256(_structural_inventory(document)) == structural_sha256
+            and _inventory_sha256(_protected_structure_inventory(document))
+            == protected_structure_sha256
+        )
+        brand_applied = not verify_brand or verify_brand_application(document, parsed)
+        if not (content_preserved and structure_preserved and brand_applied):
+            logger.warning(
+                "in-place verification failed content_preserved={content_preserved} "
+                "structure_preserved={structure_preserved} brand_applied={brand_applied}",
+                content_preserved=content_preserved,
+                structure_preserved=structure_preserved,
+                brand_applied=brand_applied,
+            )
         return OutputVerification(
-            content_preserved=parsed.semantic_sha256 == expected.semantic_sha256,
-            structure_preserved=(
-                _inventory_sha256(_structural_inventory(document)) == structural_sha256
-                and _inventory_sha256(_protected_structure_inventory(document))
-                == protected_structure_sha256
-            ),
-            brand_applied=not verify_brand or verify_brand_application(document, parsed),
+            content_preserved=content_preserved,
+            structure_preserved=structure_preserved,
+            brand_applied=brand_applied,
             revision_id=DocsRevisionId(_required_string(document, "revisionId")),
         )
 
@@ -1500,7 +1512,7 @@ def _strip_location_fields(value: object) -> object:
 
 def verify_brand_application(document: dict[str, Any], parsed: DocumentIR) -> bool:
     tabs = tuple(_document_tabs(document))
-    if not tabs or not all(
+    applied = bool(tabs) and all(
         _tab_shell_is_branded(
             document,
             document_tab,
@@ -1508,9 +1520,47 @@ def verify_brand_application(document: dict[str, Any], parsed: DocumentIR) -> bo
             allow_legacy_inline_objects=len(tabs) == 1,
         )
         for _, document_tab in tabs
-    ):
-        return False
+    )
     paragraphs = _paragraphs_by_range(tabs)
+    if applied:
+        for block in parsed.blocks:
+            source_range = block.source_range
+            if source_range is None or not block.editable or block.kind is BlockKind.BLANK:
+                continue
+            paragraph = paragraphs.get(
+                ParagraphRangeKey(
+                    tab_id=source_range.tab_id,
+                    start_index=source_range.start_index,
+                    end_index=source_range.end_index,
+                )
+            )
+            if paragraph is None or not _paragraph_has_brand(paragraph, block):
+                applied = False
+                break
+    if not applied:
+        checks = _brand_application_diagnostics(document, parsed)
+        logger.warning("document brand verification failed checks={checks}", checks=checks)
+    return applied
+
+
+def _brand_application_diagnostics(
+    document: dict[str, Any],
+    parsed: DocumentIR,
+) -> dict[str, bool | int]:
+    tabs = tuple(_document_tabs(document))
+    tab_checks: list[dict[str, bool]] = []
+    for _, document_tab in tabs:
+        tab_checks.append(
+            _tab_brand_diagnostics(
+                document,
+                document_tab,
+                expected_title=parsed.title,
+                allow_legacy_inline_objects=len(tabs) == 1,
+            )
+        )
+    paragraphs = _paragraphs_by_range(tabs)
+    paragraph_range_checks: list[bool] = []
+    paragraph_checks: list[dict[str, bool]] = []
     for block in parsed.blocks:
         source_range = block.source_range
         if source_range is None or not block.editable or block.kind is BlockKind.BLANK:
@@ -1522,9 +1572,180 @@ def verify_brand_application(document: dict[str, Any], parsed: DocumentIR) -> bo
                 end_index=source_range.end_index,
             )
         )
-        if paragraph is None or not _paragraph_has_brand(paragraph, block):
-            return False
-    return True
+        paragraph_range_checks.append(paragraph is not None)
+        paragraph_checks.append(
+            _paragraph_brand_diagnostics(paragraph, block)
+            if paragraph is not None
+            else {"named_style": False, "layout": False, "text_style": False}
+        )
+    checks: dict[str, bool | int] = {
+        "tabs_present": bool(tabs),
+        "tab_count": len(tabs),
+        "margins": bool(tabs) and all(item["margins"] for item in tab_checks),
+        "header_shape": bool(tabs) and all(item["header_shape"] for item in tab_checks),
+        "header_paragraph_style": bool(tabs)
+        and all(item["header_paragraph_style"] for item in tab_checks),
+        "header_title": bool(tabs) and all(item["header_title"] for item in tab_checks),
+        "header_text_style": bool(tabs) and all(item["header_text_style"] for item in tab_checks),
+        "logo_count": bool(tabs) and all(item["logo_count"] for item in tab_checks),
+        "logo_asset": bool(tabs) and all(item["logo_asset"] for item in tab_checks),
+        "paragraph_ranges": all(paragraph_range_checks),
+        "paragraph_named_styles": all(item["named_style"] for item in paragraph_checks),
+        "paragraph_layout": all(item["layout"] for item in paragraph_checks),
+        "paragraph_text_styles": all(item["text_style"] for item in paragraph_checks),
+        "paragraph_count": len(paragraph_checks),
+    }
+    return checks
+
+
+def _tab_brand_diagnostics(
+    document: dict[str, Any],
+    document_tab: dict[str, Any],
+    *,
+    expected_title: str,
+    allow_legacy_inline_objects: bool,
+) -> dict[str, bool]:
+    style = document_tab.get("documentStyle")
+    expected_margin = CURRENT_BRAND_MANIFEST.document.horizontal_margin_pt
+    expected_vertical = CURRENT_BRAND_MANIFEST.document.vertical_margin_pt
+    margin_ok = (
+        isinstance(style, dict)
+        and _dimension_matches(style.get("marginLeft"), expected_margin)
+        and _dimension_matches(style.get("marginRight"), expected_margin)
+        and _dimension_matches(style.get("marginTop"), expected_vertical)
+        and _dimension_matches(style.get("marginBottom"), expected_vertical)
+    )
+    header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
+    headers = document_tab.get("headers")
+    header = (
+        headers.get(header_id) if isinstance(headers, dict) and isinstance(header_id, str) else None
+    )
+    header_checks = _header_brand_diagnostics(
+        header if isinstance(header, dict) else None,
+        expected_title=expected_title,
+    )
+    object_ids = _values_for_key(header, "inlineObjectId") if isinstance(header, dict) else ()
+    logo_count_ok = len(object_ids) == 1
+    inline_objects = document_tab.get("inlineObjects")
+    if not isinstance(inline_objects, dict) and allow_legacy_inline_objects:
+        inline_objects = document.get("inlineObjects")
+    logo_asset_ok = (
+        isinstance(inline_objects, dict)
+        and logo_count_ok
+        and _inline_object_uses_canonical_logo(inline_objects.get(object_ids[0]))
+    )
+    return {
+        "margins": margin_ok,
+        **header_checks,
+        "logo_count": logo_count_ok,
+        "logo_asset": logo_asset_ok,
+    }
+
+
+def _header_brand_diagnostics(
+    header: dict[str, Any] | None,
+    *,
+    expected_title: str,
+) -> dict[str, bool]:
+    header_tokens = CURRENT_BRAND_MANIFEST.document.header
+    content = header.get("content") if isinstance(header, dict) else None
+    element = content[0] if isinstance(content, list) and len(content) == 1 else None
+    paragraph = element.get("paragraph") if isinstance(element, dict) else None
+    paragraph_style = paragraph.get("paragraphStyle") if isinstance(paragraph, dict) else None
+    elements = paragraph.get("elements") if isinstance(paragraph, dict) else None
+    shape_ok = (
+        header_tokens is not None
+        and isinstance(element, dict)
+        and not set(element) - {"startIndex", "endIndex", "paragraph"}
+        and isinstance(paragraph_style, dict)
+        and isinstance(elements, list)
+    )
+    typed_elements = elements if isinstance(elements, list) else []
+    logo_positions = [
+        index
+        for index, item in enumerate(typed_elements)
+        if isinstance(item, dict) and isinstance(item.get("inlineObjectElement"), dict)
+    ]
+    title_elements = typed_elements[: logo_positions[0]] if len(logo_positions) == 1 else []
+    text_runs = [
+        item["textRun"]
+        for item in title_elements
+        if isinstance(item, dict) and isinstance(item.get("textRun"), dict)
+    ]
+    normalized_title = (
+        normalize_header_title(expected_title, max_chars=header_tokens.max_title_chars)
+        if header_tokens is not None
+        else ""
+    )
+    return {
+        "header_shape": shape_ok and len(logo_positions) == 1 and bool(title_elements),
+        "header_paragraph_style": bool(
+            header_tokens is not None
+            and isinstance(paragraph_style, dict)
+            and paragraph_style.get("namedStyleType") == "NORMAL_TEXT"
+            and paragraph_style.get("alignment") == header_tokens.alignment
+            and paragraph_style.get("lineSpacing") == header_tokens.line_spacing_percent
+            and _dimension_matches(paragraph_style.get("spaceAbove"), header_tokens.space_above_pt)
+            and _dimension_matches(paragraph_style.get("spaceBelow"), header_tokens.space_below_pt)
+            and paragraph_style.get("keepWithNext") is False
+        ),
+        "header_title": bool(text_runs)
+        and len(text_runs) == len(title_elements)
+        and all(isinstance(run.get("content"), str) for run in text_runs)
+        and "".join(run["content"] for run in text_runs) == f"{normalized_title}\t",
+        "header_text_style": bool(text_runs)
+        and all(_header_text_run_has_brand(run) for run in text_runs),
+    }
+
+
+def _paragraph_brand_diagnostics(
+    paragraph: dict[str, Any],
+    block: TextBlock,
+) -> dict[str, bool]:
+    elements = paragraph.get("elements")
+    paragraph_style = paragraph.get("paragraphStyle")
+    if not isinstance(elements, list) or not isinstance(paragraph_style, dict):
+        return {"named_style": False, "layout": False, "text_style": False}
+    expected_named_style = (
+        f"HEADING_{block.level}"
+        if block.kind is BlockKind.HEADING and block.level in {1, 2, 3, 4, 5, 6}
+        else "NORMAL_TEXT"
+    )
+    text_runs = [
+        item["textRun"]
+        for item in elements
+        if isinstance(item, dict)
+        and isinstance(item.get("textRun"), dict)
+        and isinstance(item["textRun"].get("content"), str)
+        and item["textRun"]["content"].strip()
+    ]
+    expected_color = (
+        CURRENT_BRAND_MANIFEST.colors.primary
+        if block.kind is BlockKind.HEADING
+        else CURRENT_BRAND_MANIFEST.colors.ink
+    )
+    return {
+        "named_style": paragraph_style.get("namedStyleType") == expected_named_style,
+        "layout": bool(
+            paragraph_style.get("alignment") == "START"
+            and paragraph_style.get("lineSpacing")
+            == CURRENT_BRAND_MANIFEST.document.line_spacing_percent
+            and _dimension_matches(
+                paragraph_style.get("spaceAbove"),
+                CURRENT_BRAND_MANIFEST.document.paragraph_space_above_pt,
+            )
+            and _dimension_matches(
+                paragraph_style.get("spaceBelow"),
+                CURRENT_BRAND_MANIFEST.document.paragraph_space_below_pt,
+            )
+            and paragraph_style.get("keepWithNext") is (block.kind is BlockKind.HEADING)
+        ),
+        "text_style": bool(text_runs)
+        and all(
+            _text_run_has_brand(run, _brand_font_size(block), expected_color, block)
+            for run in text_runs
+        ),
+    }
 
 
 def _tab_shell_is_branded(
