@@ -1228,7 +1228,7 @@ def _inline_object_uses_canonical_logo(value: object) -> bool:
 
 
 def _fitted_logo_size_matches(
-    size: dict[str, Any],
+    size: object,
     *,
     pixel_width: int,
     pixel_height: int,
@@ -1236,6 +1236,8 @@ def _fitted_logo_size_matches(
     box_height: int,
     tolerance: float,
 ) -> bool:
+    if not isinstance(size, dict):
+        return False
     width = _point_magnitude(size.get("width"))
     height = _point_magnitude(size.get("height"))
     if width is None or height is None:
