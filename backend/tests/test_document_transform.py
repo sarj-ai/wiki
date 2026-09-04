@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 from typing import Any, NamedTuple, override
 import uuid
 
 import pytest
 
+from app.document_transform import google_gateway as google_gateway_module
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
 from app.document_transform.errors import (
+    CheckpointTooLargeError,
     IncompatiblePendingOutputError,
     SourceTooLargeError,
     UnsupportedSourceError,
@@ -15,6 +18,8 @@ from app.document_transform.errors import (
 from app.document_transform.executor import DocumentTransformExecutor
 from app.document_transform.gateway import (
     DocumentGateway,
+    InPlaceInspection,
+    InPlaceStageResult,
     OutputDraft,
     OutputVerification,
     SourceSnapshot,
@@ -37,13 +42,16 @@ from app.document_transform.schemas import (
     DocumentOutput,
     DocumentTransformRequest,
     DriveFileSource,
+    InPlaceCheckpoint,
     MarkdownSource,
+    OutputStrategy,
     TextPatch,
     TransformMode,
     TransformPhase,
 )
 from app.document_transform.unslop import scan_unslop_candidates
-from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId
+from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId, TaskId
+from app.tasks import service as task_service_module
 
 
 class _Generator(PatchGenerator):
@@ -1367,3 +1375,368 @@ def _branded_google_document() -> dict[str, Any]:
             }
         ],
     }
+
+
+def _in_place_document(text: str, *, revision: str = "revision-1") -> dict[str, Any]:
+    content = f"{text}\n"
+    return {
+        "documentId": "source",
+        "revisionId": revision,
+        "tabs": [
+            {
+                "tabProperties": {"tabId": "tab-1"},
+                "documentTab": {
+                    "body": {
+                        "content": [
+                            {
+                                "startIndex": 1,
+                                "endIndex": 1 + utf16_length(content),
+                                "paragraph": {
+                                    "paragraphStyle": {},
+                                    "elements": [{"textRun": {"content": content}}],
+                                },
+                            }
+                        ]
+                    }
+                },
+                "childTabs": [],
+            }
+        ],
+    }
+
+
+class _CheckpointStore:
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+        self.generation = 0
+        self.checkpoints: list[InPlaceCheckpoint] = []
+
+    async def save_document_transform_checkpoint(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        expected_generation: int,
+        checkpoint: InPlaceCheckpoint,
+    ) -> int:
+        del task_id, lease_token
+        assert expected_generation == self.generation
+        self.events.append(f"checkpoint:{checkpoint.stage}")
+        self.checkpoints.append(checkpoint)
+        self.generation += 1
+        return self.generation
+
+
+class _InPlaceGateway(_Gateway):
+    def __init__(self, text: str, *, missing_header: bool = False) -> None:
+        document = _in_place_document(text)
+        super().__init__(
+            SourceSnapshot(
+                title="Source",
+                parent_folder_id=FileId("folder"),
+                modified_time="2026-09-03T00:00:00Z",
+                revision_id=DocsRevisionId("revision-1"),
+                media_type="application/vnd.google-apps.document",
+                google_document=document,
+                owned_by_me=True,
+                can_edit=True,
+                is_personal_drive=True,
+                web_url="https://docs.google.com/document/d/source/edit",
+            )
+        )
+        self.document = document
+        self.missing_header = missing_header
+        self.header_created = False
+        self.events: list[str] = []
+
+    @override
+    async def inspect_in_place(self, *, snapshot: SourceSnapshot, title: str) -> InPlaceInspection:
+        del title
+        headers = (
+            ()
+            if self.missing_header and not self.header_created
+            else (TabHeader(tab_id=DocsTabId("tab-1"), header_id=DocsSegmentId("header-1")),)
+        )
+        return InPlaceInspection(
+            output=DocumentOutput(
+                file_id=FileId("source"),
+                name="Source",
+                parent_folder_id=FileId("folder"),
+            ),
+            headers=headers,
+            missing_header_tab_ids=(DocsTabId("tab-1"),) if not headers else (),
+            unknown_header_tab_ids=(),
+            marker_range={"startIndex": 20, "endIndex": 21, "tabId": "tab-1"},
+            logo_uri="https://assets.example.test/logo.png",
+            structural_sha256="structure",
+            protected_structure_sha256="protected",
+            body_sha256="body",
+            header_safe_sha256="header-safe",
+        )
+
+    @override
+    async def apply_in_place_stage(
+        self,
+        *,
+        document_id: FileId,
+        required_revision_id: DocsRevisionId,
+        marker_name: str,
+        marker_range: dict[str, Any],
+        requests: list[dict[str, Any]],
+    ) -> InPlaceStageResult:
+        del document_id, required_revision_id, marker_name, marker_range
+        self.events.append("apply")
+        if any("createHeader" in request for request in requests):
+            self.header_created = True
+            revision = "revision-2"
+        else:
+            source = parse_google_document(self.document, title="Source")
+            replacement = next(
+                (
+                    request["insertText"]["text"]
+                    for request in requests
+                    if "insertText" in request
+                    and request["insertText"].get("location", {}).get("segmentId") is None
+                ),
+                source.blocks[0].text,
+            )
+            self.document = _in_place_document(replacement, revision="revision-3")
+            revision = "revision-3"
+        self.document["revisionId"] = revision
+        return InPlaceStageResult(
+            revision_id=DocsRevisionId(revision),
+            document=deepcopy(self.document),
+        )
+
+    @override
+    async def verify_in_place(
+        self,
+        *,
+        document: dict[str, Any],
+        title: str,
+        expected: DocumentIR,
+        structural_sha256: str,
+        protected_structure_sha256: str,
+        verify_brand: bool,
+    ) -> OutputVerification:
+        del document, title, expected, structural_sha256, protected_structure_sha256, verify_brand
+        return OutputVerification(
+            content_preserved=True, structure_preserved=True, brand_applied=True
+        )
+
+
+def _in_place_request(mode: TransformMode) -> DocumentTransformRequest:
+    return DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("source"),
+            expected_modified_time="2026-09-03T00:00:00Z",
+        ),
+        mode=mode,
+        output_strategy=OutputStrategy.IN_PLACE,
+    )
+
+
+async def test_in_place_unslop_checkpoints_before_mutation_and_reports_revisions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = _InPlaceGateway("Moreover, we approved the plan.")
+    store = _CheckpointStore(gateway.events)
+    result = await DocumentTransformExecutor(
+        gateway=gateway,
+        generator=_Generator(),
+        checkpoint_store=store,
+        task_id=TaskId(uuid.uuid7()),
+        lease_token=uuid.uuid7(),
+    ).execute(operation_id=uuid.uuid7(), request=_in_place_request(TransformMode.UNSLOP))
+
+    assert gateway.events[:2] == ["checkpoint:content", "apply"]
+    assert result.output.file_id == "source"
+    assert result.output_strategy is OutputStrategy.IN_PLACE
+    assert result.changed is True
+    assert result.source_revision_id == "revision-1"
+    assert result.output_revision_id == "revision-3"
+    persisted = task_service_module._serialize_checkpoint(store.checkpoints[0])
+    assert "Moreover, we approved the plan." not in json.dumps(persisted)
+    assert set(persisted) >= {"plan_ciphertext", "stage", "source_sha256"}
+    monkeypatch.setattr(task_service_module, "_MAX_CHECKPOINT_PLAN_BYTES", 1)
+    with pytest.raises(CheckpointTooLargeError):
+        task_service_module._serialize_checkpoint(store.checkpoints[0])
+
+
+async def test_in_place_clean_unslop_is_zero_batch_noop() -> None:
+    gateway = _InPlaceGateway("The team approved the plan.")
+    store = _CheckpointStore(gateway.events)
+    result = await DocumentTransformExecutor(
+        gateway=gateway,
+        generator=_Generator(),
+        checkpoint_store=store,
+        task_id=TaskId(uuid.uuid7()),
+        lease_token=uuid.uuid7(),
+    ).execute(operation_id=uuid.uuid7(), request=_in_place_request(TransformMode.UNSLOP))
+
+    assert "apply" not in gateway.events
+    assert result.changed is False
+    assert result.source_revision_id == result.output_revision_id == "revision-1"
+
+
+async def test_in_place_format_checkpoints_header_then_content() -> None:
+    gateway = _InPlaceGateway("Quarterly review", missing_header=True)
+    store = _CheckpointStore(gateway.events)
+    result = await DocumentTransformExecutor(
+        gateway=gateway,
+        generator=_Generator(),
+        checkpoint_store=store,
+        task_id=TaskId(uuid.uuid7()),
+        lease_token=uuid.uuid7(),
+    ).execute(operation_id=uuid.uuid7(), request=_in_place_request(TransformMode.FORMAT))
+
+    assert gateway.events[:4] == [
+        "checkpoint:headers",
+        "apply",
+        "checkpoint:content",
+        "apply",
+    ]
+    assert result.changed is True
+    assert result.output_revision_id == "revision-3"
+
+
+def test_in_place_request_rejects_markdown_and_output_name() -> None:
+    with pytest.raises(ValueError, match="native Google Doc"):
+        DocumentTransformRequest(
+            source=MarkdownSource(
+                kind="markdown",
+                content="Draft",
+                name="Draft",
+                destination_folder_id=FileId("folder"),
+            ),
+            mode=TransformMode.UNSLOP,
+            output_strategy=OutputStrategy.IN_PLACE,
+        )
+    with pytest.raises(ValueError, match="output_name"):
+        DocumentTransformRequest(
+            source=DriveFileSource(
+                kind="drive_file",
+                file_id=FileId("source"),
+                expected_modified_time="time",
+            ),
+            mode=TransformMode.UNSLOP,
+            output_name="Fork",
+            output_strategy=OutputStrategy.IN_PLACE,
+        )
+
+
+def test_copy_request_keeps_legacy_canonical_payload_hash_shape() -> None:
+    request = DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("source"),
+            expected_modified_time="time",
+        ),
+        mode=TransformMode.UNSLOP,
+    )
+
+    serialized = task_service_module._serialize(request)
+
+    assert "output_strategy" not in serialized
+    assert serialized["output_name"] is None
+
+
+def test_in_place_drive_id_is_bounded_and_google_safe() -> None:
+    opaque = DriveFileSource(
+        kind="drive_file",
+        file_id=FileId("opaque/id:still-accepted-for-copy"),
+        expected_modified_time="time",
+    )
+    assert opaque.file_id == "opaque/id:still-accepted-for-copy"
+    with pytest.raises(ValueError, match="between 1 and 128"):
+        DocumentTransformRequest(
+            source=DriveFileSource(
+                kind="drive_file",
+                file_id=FileId("a" * 129),
+                expected_modified_time="time",
+            ),
+            mode=TransformMode.UNSLOP,
+            output_strategy=OutputStrategy.IN_PLACE,
+        )
+
+
+def test_in_place_marker_reconciliation_is_exact_and_tab_scoped() -> None:
+    expected = {"startIndex": 10, "endIndex": 11, "tabId": "tab-1"}
+    marker = "sarj-transform-operation-content-hash"
+    document = _in_place_document("Source")
+    document["tabs"][0]["documentTab"]["namedRanges"] = {
+        marker: {"namedRanges": [{"name": marker, "namedRangeId": "range-1", "ranges": [expected]}]}
+    }
+
+    assert google_gateway_module._has_exact_named_range(document, marker, expected)
+    wrong_tab = {**expected, "tabId": "tab-2"}
+    assert not google_gateway_module._has_exact_named_range(document, marker, wrong_tab)
+    document["tabs"][0]["documentTab"]["namedRanges"][marker]["namedRanges"].append(
+        {"name": marker, "namedRangeId": "range-2", "ranges": [expected]}
+    )
+    assert not google_gateway_module._has_exact_named_range(document, marker, expected)
+
+
+def test_in_place_rejects_active_suggestion_metadata() -> None:
+    assert google_gateway_module._has_active_suggestions(
+        {"paragraph": {"suggestedParagraphStyleChanges": {"suggestion-1": {}}}}
+    )
+
+
+def test_google_in_place_lost_response_reconciles_atomic_tab_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = "sarj-transform-operation-headers-hash"
+    marker_range = {"startIndex": 10, "endIndex": 11, "tabId": "tab-1"}
+    document = _in_place_document("Source", revision="revision-2")
+    document["tabs"][0]["documentTab"]["namedRanges"] = {
+        marker: {
+            "namedRanges": [{"name": marker, "namedRangeId": "range-1", "ranges": [marker_range]}]
+        }
+    }
+    captured: dict[str, Any] = {}
+
+    class _Documents:
+        def batchUpdate(self, **kwargs: Any) -> object:  # ruff: ignore[invalid-function-name]
+            captured.update(kwargs)
+            return object()
+
+    class _Provider:
+        def documents(self) -> _Documents:
+            return _Documents()
+
+    provider = _Provider()
+    gateway = object.__new__(GoogleDocumentGateway)
+
+    def get_provider() -> _Provider:
+        return provider
+
+    def request_boundary(value: Any, **kwargs: Any) -> Any:
+        return value(**kwargs)
+
+    monkeypatch.setattr(gateway, "_docs", get_provider)
+    monkeypatch.setattr(google_gateway_module, "_google_http_request", request_boundary)
+
+    def lost_response(_request: object) -> dict[str, Any]:
+        raise google_gateway_module.DocumentGatewayError
+
+    def get_document(_document_id: FileId) -> dict[str, Any]:
+        return document
+
+    monkeypatch.setattr(gateway, "_execute_mutation_dict", lost_response)
+    monkeypatch.setattr(gateway, "_get_document_sync", get_document)
+
+    result = gateway._apply_in_place_stage_sync(
+        FileId("source"),
+        DocsRevisionId("revision-1"),
+        marker,
+        marker_range,
+        [{"createHeader": {"type": "DEFAULT"}}],
+    )
+
+    body = captured["body"]
+    assert body["writeControl"] == {"requiredRevisionId": "revision-1"}
+    assert body["requests"][0] == {"createNamedRange": {"name": marker, "range": marker_range}}
+    assert body["requests"][1] == {"createHeader": {"type": "DEFAULT"}}
+    assert result.revision_id == "revision-2"

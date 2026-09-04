@@ -9,9 +9,15 @@ import pytest
 from sqlalchemy import Table
 from sqlalchemy.sql.elements import ClauseElement
 
+from app.document_transform.schemas import (
+    DocumentTransformRequest,
+    DriveFileSource,
+    OutputStrategy,
+    TransformMode,
+)
 from app.identifiers import FileId, IdempotencyKey, TaskId
 from app.models.task import Task
-from app.tasks.errors import TaskIdempotencyConflictError, TaskLeaseLostError
+from app.tasks.errors import TaskIdempotencyConflictError, TaskLeaseLostError, TaskTargetBusyError
 from app.tasks.schemas import TaskKind, TaskStatus
 from app.tasks.service import PostgresTaskService
 
@@ -22,15 +28,15 @@ class _Payload(BaseModel):
 
 
 class _Result:
-    def __init__(self, row: Task | None) -> None:
+    def __init__(self, row: object) -> None:
         self._row = row
 
-    def scalar_one_or_none(self) -> Task | None:
+    def scalar_one_or_none(self) -> Any:
         return self._row
 
 
 class _Session:
-    def __init__(self, *rows: Task | None) -> None:
+    def __init__(self, *rows: object) -> None:
         self._rows = iter(rows)
         self.commits = 0
         self.rollbacks = 0
@@ -75,6 +81,52 @@ def _task(*, request_hash: str, status: TaskStatus = TaskStatus.PENDING) -> Task
 def _service(session: _Session) -> PostgresTaskService:
     db: Any = session
     return PostgresTaskService(db=db)
+
+
+def _in_place_payload() -> DocumentTransformRequest:
+    return DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("document-1"),
+            expected_modified_time="2026-09-03T00:00:00Z",
+        ),
+        mode=TransformMode.UNSLOP,
+        output_strategy=OutputStrategy.IN_PLACE,
+    )
+
+
+async def test_in_place_admission_reserves_target_before_queueing() -> None:
+    row = _task(request_hash="0" * 64)
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    session = _Session(None, None, 0, row)
+
+    reservation = await _service(session).create_or_replay(
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        owner_user_id=row.owner_user_id,
+        idempotency_key=row.idempotency_key,
+        payload=_in_place_payload(),
+    )
+
+    assert reservation.created is True
+    statements = "\n".join(str(statement) for statement in session.statements)
+    assert "pg_advisory_xact_lock" in statements
+    assert "in_place_target" in statements
+    assert session.commits == 1
+
+
+async def test_distinct_active_in_place_task_for_same_target_is_rejected() -> None:
+    row = _task(request_hash="0" * 64)
+    session = _Session(None, None, 0, None, None)
+
+    with pytest.raises(TaskTargetBusyError):
+        await _service(session).create_or_replay(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            owner_user_id=row.owner_user_id,
+            idempotency_key=row.idempotency_key,
+            payload=_in_place_payload(),
+        )
+
+    assert session.rollbacks == 1
 
 
 async def test_create_or_replay_creates_one_canonical_task() -> None:

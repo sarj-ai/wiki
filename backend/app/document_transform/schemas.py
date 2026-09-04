@@ -1,19 +1,27 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal, Self
 import uuid
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
     CURRENT_BRAND_PROFILE_ID,
 )
-from app.identifiers import BrandProfileId, FileId, ModelId
+from app.identifiers import BrandProfileId, DocsRevisionId, FileId, ModelId
 
 
 SourceKind = Literal["drive_file", "markdown"]
+_MAX_IN_PLACE_FILE_ID_LENGTH = 128
 
 
 class TransformMode(StrEnum):
@@ -27,12 +35,22 @@ class TransformPhase(StrEnum):
     UNSLOP = "unslop"
 
 
+class OutputStrategy(StrEnum):
+    COPY = "copy"
+    IN_PLACE = "in_place"
+
+
 MarkdownContent = Annotated[str, StringConstraints(min_length=1, max_length=524_288)]
 OutputName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
 
 
 class StrictTransformModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class DocumentTransformCapabilities(StrictTransformModel):
+    copy_supported: Literal[True] = Field(default=True, alias="copy")
+    in_place: bool
 
 
 class DriveFileSource(StrictTransformModel):
@@ -55,6 +73,22 @@ class DocumentTransformRequest(StrictTransformModel):
     source: TransformSource
     mode: TransformMode
     output_name: OutputName | None = None
+    output_strategy: OutputStrategy = OutputStrategy.COPY
+
+    @model_validator(mode="after")
+    def validate_output_strategy(self) -> Self:
+        if self.output_strategy is OutputStrategy.COPY:
+            return self
+        if not isinstance(self.source, DriveFileSource):
+            msg = "In-place transformation requires a native Google Doc source"
+            raise ValueError(msg)  # ruff: ignore[type-check-without-type-error] -- Pydantic treats ValueError as validation input
+        if not 1 <= len(self.source.file_id) <= _MAX_IN_PLACE_FILE_ID_LENGTH:
+            msg = "In-place Google Drive file_id must be between 1 and 128 characters"
+            raise ValueError(msg)
+        if self.output_name is not None:
+            msg = "output_name is not allowed for in-place transformation"
+            raise ValueError(msg)
+        return self
 
 
 class TextPatch(StrictTransformModel):
@@ -117,7 +151,51 @@ class DocumentTransformResult(StrictTransformModel):
     deterministic_patch_count: int = Field(default=0, ge=0)
     model_patch_count: int = Field(default=0, ge=0)
     llm_invoked: bool = False
+    output_strategy: OutputStrategy = OutputStrategy.COPY
+    changed: bool = True
+    source_revision_id: DocsRevisionId | None = None
+    output_revision_id: DocsRevisionId | None = None
 
     @property
     def file(self) -> DocumentOutput:
         return self.output
+
+
+class InPlaceCheckpointStage(StrEnum):
+    HEADERS = "headers"
+    CONTENT = "content"
+    COMPLETE = "complete"
+
+
+class InPlaceCheckpoint(StrictTransformModel):
+    version: Literal[1] = 1
+    document_id: FileId
+    source_sha256: str
+    source_modified_time: str
+    brand_profile_id: BrandProfileId
+    brand_profile_sha256: str
+    pipeline_version: str
+    request_builder_version: str
+    unslop_catalog_sha256: str
+    original_semantic_sha256: str
+    expected_semantic_sha256: str
+    structural_sha256: str
+    protected_structure_sha256: str
+    body_sha256: str
+    header_safe_sha256: str
+    source_revision_id: DocsRevisionId
+    current_revision_id: DocsRevisionId
+    stage: InPlaceCheckpointStage
+    marker_name: str | None = None
+    marker_range: dict[str, Any] | None = None
+    mutation_sha256: str | None = None
+    requests: list[dict[str, Any]] = Field(default_factory=list)
+    replacements: dict[str, str]
+    findings: list[TransformFinding]
+    applied_patch_count: int = Field(ge=0)
+    deterministic_patch_count: int = Field(ge=0)
+    model_patch_count: int = Field(ge=0)
+    llm_invoked: bool
+    model_ids: list[ModelId]
+    headers: dict[str, str] = Field(default_factory=dict)
+    changed: bool

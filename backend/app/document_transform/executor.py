@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Protocol
 import uuid
 
 from app.document_transform.brand import (
@@ -17,11 +17,21 @@ from app.document_transform.brand import (
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.docx_renderer import render_markdown_docx
 from app.document_transform.errors import (
+    DocumentGatewayError,
+    InPlaceNeedsReviewError,
+    InPlaceNotAllowedError,
     OutputConflictError,
     SourceChangedError,
     UnsupportedSourceError,
 )
-from app.document_transform.gateway import DocumentGateway, OutputDraft, SourceSnapshot, TabHeader
+from app.document_transform.gateway import (
+    DocumentGateway,
+    InPlaceInspection,
+    InPlaceStageResult,
+    OutputDraft,
+    SourceSnapshot,
+    TabHeader,
+)
 from app.document_transform.ir import (
     DocumentIR,
     parse_google_document,
@@ -31,9 +41,13 @@ from app.document_transform.ir import (
 from app.document_transform.models import PatchGenerator
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import (
+    DocumentOutput,
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
+    InPlaceCheckpoint,
+    InPlaceCheckpointStage,
+    OutputStrategy,
     TextPatch,
     TransformFinding,
     TransformMode,
@@ -48,10 +62,11 @@ from app.document_transform.unslop import (
     deterministic_unslop_replacement,
     scan_unslop_candidates,
 )
-from app.identifiers import DocsSegmentId, ModelId
+from app.identifiers import DocsRevisionId, DocsSegmentId, ModelId, TaskId
 
 
 PIPELINE_VERSION = "document-transform-v3"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v2"
 _OUTPUT_SUFFIX = MappingProxyType(
     {
         TransformMode.FORMAT: "Sarj formatted",
@@ -76,6 +91,17 @@ class AppliedValidation:
     protected_content_preserved: bool
     structure_preserved: bool
     findings: tuple[TransformFinding, ...]
+
+
+class InPlaceCheckpointStore(Protocol):
+    async def save_document_transform_checkpoint(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        expected_generation: int,
+        checkpoint: InPlaceCheckpoint,
+    ) -> int: ...
 
 
 def _deterministic_unslop_patches(
@@ -115,12 +141,22 @@ class DocumentTransformExecutor:
         brand: SarjBrandProfile | None = None,
         allow_format_text_edits: bool = False,
         logo_bytes: bytes | None = None,
+        checkpoint_store: InPlaceCheckpointStore | None = None,
+        task_id: TaskId | None = None,
+        lease_token: uuid.UUID | None = None,
+        checkpoint: InPlaceCheckpoint | None = None,
+        checkpoint_generation: int = 0,
     ) -> None:
         self._gateway = gateway
         self._generator = generator
         self._brand = brand or SarjBrandProfile()
         self._allow_format_text_edits = allow_format_text_edits
         self._logo_bytes = logo_bytes
+        self._checkpoint_store = checkpoint_store
+        self._task_id = task_id
+        self._lease_token = lease_token
+        self._checkpoint = checkpoint
+        self._checkpoint_generation = checkpoint_generation
 
     async def execute(
         self,
@@ -133,6 +169,8 @@ class DocumentTransformExecutor:
             or self._brand.sha256 != CURRENT_BRAND_MANIFEST.sha256
         ):
             raise UnsupportedSourceError
+        if request.output_strategy is OutputStrategy.IN_PLACE:
+            return await self._execute_in_place(operation_id=operation_id, request=request)
         snapshot = await self._load_source(request)
         original = _to_ir(snapshot)
         source_sha256 = _source_sha256(snapshot, original)
@@ -286,6 +324,350 @@ class DocumentTransformExecutor:
             result=result.model_dump(mode="json"),
         )
         return result
+
+    async def _execute_in_place(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+    ) -> DocumentTransformResult:
+        if not isinstance(request.source, DriveFileSource):
+            raise InPlaceNotAllowedError
+        if self._checkpoint_store is None or self._task_id is None or self._lease_token is None:
+            raise DocumentGatewayError
+
+        snapshot = await self._gateway.load_drive_source(request.source)
+        checkpoint = self._checkpoint
+        if checkpoint is None and snapshot.modified_time != request.source.expected_modified_time:
+            raise SourceChangedError
+        if checkpoint is not None:
+            if checkpoint.document_id != request.source.file_id:
+                raise OutputConflictError
+            checkpoint_contract = (
+                checkpoint.source_modified_time,
+                checkpoint.brand_profile_id,
+                checkpoint.brand_profile_sha256,
+                checkpoint.pipeline_version,
+                checkpoint.request_builder_version,
+                checkpoint.unslop_catalog_sha256,
+            )
+            current_contract = (
+                request.source.expected_modified_time,
+                CURRENT_BRAND_MANIFEST.profile_id,
+                CURRENT_BRAND_MANIFEST.sha256,
+                PIPELINE_VERSION,
+                REQUEST_BUILDER_VERSION,
+                UNSLOP_CATALOG_SHA256,
+            )
+            if checkpoint_contract != current_contract:
+                raise OutputConflictError
+            if checkpoint.stage is InPlaceCheckpointStage.COMPLETE:
+                return self._in_place_result(
+                    operation_id=operation_id,
+                    request=request,
+                    checkpoint=checkpoint,
+                    output=DocumentOutput(
+                        file_id=request.source.file_id,
+                        name=snapshot.title,
+                        parent_folder_id=snapshot.parent_folder_id,
+                        web_url=snapshot.web_url,
+                    ),
+                )
+        inspection = await self._gateway.inspect_in_place(snapshot=snapshot, title=snapshot.title)
+        if checkpoint is None:
+            checkpoint = await self._plan_initial_in_place(
+                operation_id=operation_id,
+                request=request,
+                snapshot=snapshot,
+                inspection=inspection,
+            )
+
+        if checkpoint.stage is InPlaceCheckpointStage.HEADERS:
+            stage_result = await self._apply_checkpoint_stage(checkpoint)
+            stage_snapshot = SourceSnapshot(
+                title=snapshot.title,
+                parent_folder_id=snapshot.parent_folder_id,
+                modified_time=snapshot.modified_time,
+                revision_id=stage_result.revision_id,
+                media_type=snapshot.media_type,
+                google_document=stage_result.document,
+                owned_by_me=snapshot.owned_by_me,
+                can_edit=snapshot.can_edit,
+                is_personal_drive=snapshot.is_personal_drive,
+                web_url=snapshot.web_url,
+            )
+            inspection = await self._gateway.inspect_in_place(
+                snapshot=stage_snapshot,
+                title=snapshot.title,
+            )
+            header_expected = _to_ir(stage_snapshot).replace_blocks({})
+            header_verification = await self._gateway.verify_in_place(
+                document=stage_result.document,
+                title=snapshot.title,
+                expected=header_expected,
+                structural_sha256=checkpoint.structural_sha256,
+                protected_structure_sha256=checkpoint.protected_structure_sha256,
+                verify_brand=False,
+            )
+            if not (
+                header_verification.content_preserved and header_verification.structure_preserved
+            ):
+                raise InPlaceNeedsReviewError
+            if (
+                header_expected.semantic_sha256 != checkpoint.original_semantic_sha256
+                or inspection.body_sha256 != checkpoint.body_sha256
+                or inspection.header_safe_sha256 != checkpoint.header_safe_sha256
+            ):
+                raise InPlaceNeedsReviewError
+            if inspection.missing_header_tab_ids or inspection.unknown_header_tab_ids:
+                raise InPlaceNeedsReviewError
+            snapshot = stage_snapshot
+            original = _to_ir(stage_snapshot)
+            transformed = original.replace_blocks(checkpoint.replacements)
+            requests = self._content_requests(
+                request=request,
+                original=original,
+                transformed=transformed,
+                inspection=inspection,
+            )
+            checkpoint = checkpoint.model_copy(
+                update={
+                    "stage": InPlaceCheckpointStage.CONTENT,
+                    "current_revision_id": stage_result.revision_id,
+                    "marker_name": _in_place_marker(operation_id, "content", requests),
+                    "marker_range": inspection.marker_range,
+                    "mutation_sha256": mutation_sha256(requests),
+                    "requests": requests,
+                    "headers": {
+                        str(header.tab_id): str(header.header_id) for header in inspection.headers
+                    },
+                }
+            )
+            checkpoint = await self._save_checkpoint(checkpoint)
+
+        if checkpoint.stage is not InPlaceCheckpointStage.CONTENT:
+            raise DocumentGatewayError
+        if not checkpoint.requests:
+            checkpoint = await self._save_checkpoint(
+                checkpoint.model_copy(update={"stage": InPlaceCheckpointStage.COMPLETE})
+            )
+            return self._in_place_result(
+                operation_id=operation_id,
+                request=request,
+                checkpoint=checkpoint,
+                output=inspection.output,
+            )
+        before_content = _to_ir(snapshot)
+        expected_content = before_content.replace_blocks(checkpoint.replacements)
+        stage_result = await self._apply_checkpoint_stage(checkpoint)
+        verification = await self._gateway.verify_in_place(
+            document=stage_result.document,
+            title=snapshot.title,
+            expected=expected_content,
+            structural_sha256=checkpoint.structural_sha256,
+            protected_structure_sha256=checkpoint.protected_structure_sha256,
+            verify_brand=request.mode is not TransformMode.UNSLOP,
+        )
+        if not (
+            verification.content_preserved
+            and verification.structure_preserved
+            and verification.brand_applied
+        ):
+            raise InPlaceNeedsReviewError
+        checkpoint = await self._save_checkpoint(
+            checkpoint.model_copy(
+                update={
+                    "stage": InPlaceCheckpointStage.COMPLETE,
+                    "current_revision_id": stage_result.revision_id,
+                    "requests": [],
+                    "marker_name": None,
+                    "marker_range": None,
+                    "mutation_sha256": None,
+                }
+            )
+        )
+        return self._in_place_result(
+            operation_id=operation_id,
+            request=request,
+            checkpoint=checkpoint,
+            output=inspection.output,
+        )
+
+    async def _plan_initial_in_place(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+        snapshot: SourceSnapshot,
+        inspection: InPlaceInspection,
+    ) -> InPlaceCheckpoint:
+        source = request.source
+        if not isinstance(source, DriveFileSource):
+            raise InPlaceNotAllowedError
+        if snapshot.revision_id is None:
+            raise InPlaceNotAllowedError
+        original = _to_ir(snapshot)
+        outcome = await self._transform(original, request)
+        _preflight_native_mutation_budget(
+            request=request,
+            snapshot=snapshot,
+            original=original,
+            transformed=outcome.document,
+            brand=self._brand,
+        )
+        if outcome.findings:
+            raise InPlaceNeedsReviewError
+        branded = request.mode is not TransformMode.UNSLOP
+        if branded and (inspection.unknown_header_tab_ids or not inspection.logo_uri):
+            raise InPlaceNeedsReviewError
+        replacements = {
+            block.id: transformed.text
+            for block, transformed in zip(original.blocks, outcome.document.blocks, strict=True)
+            if block.text != transformed.text
+        }
+        model_ids = (
+            [ModelId(value) for value in self._generator.model_ids] if outcome.llm_invoked else []
+        )
+        if branded and inspection.missing_header_tab_ids:
+            requests = [
+                {
+                    "createHeader": {
+                        "type": "DEFAULT",
+                        "sectionBreakLocation": {"index": 0, "tabId": tab_id},
+                    }
+                }
+                for tab_id in inspection.missing_header_tab_ids
+            ]
+            stage = InPlaceCheckpointStage.HEADERS
+        else:
+            requests = self._content_requests(
+                request=request,
+                original=original,
+                transformed=outcome.document,
+                inspection=inspection,
+            )
+            stage = InPlaceCheckpointStage.CONTENT
+        changed = bool(requests)
+        if requests and inspection.marker_range is None:
+            raise InPlaceNeedsReviewError
+        checkpoint = InPlaceCheckpoint(
+            document_id=source.file_id,
+            source_sha256=_source_sha256(snapshot, original),
+            source_modified_time=source.expected_modified_time,
+            brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
+            brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
+            pipeline_version=PIPELINE_VERSION,
+            request_builder_version=REQUEST_BUILDER_VERSION,
+            unslop_catalog_sha256=UNSLOP_CATALOG_SHA256,
+            original_semantic_sha256=original.semantic_sha256,
+            expected_semantic_sha256=outcome.document.semantic_sha256,
+            structural_sha256=inspection.structural_sha256,
+            protected_structure_sha256=inspection.protected_structure_sha256,
+            body_sha256=inspection.body_sha256,
+            header_safe_sha256=inspection.header_safe_sha256,
+            source_revision_id=snapshot.revision_id,
+            current_revision_id=snapshot.revision_id,
+            stage=stage,
+            marker_name=_in_place_marker(operation_id, stage.value, requests) if requests else None,
+            marker_range=inspection.marker_range if requests else None,
+            mutation_sha256=mutation_sha256(requests) if requests else None,
+            requests=requests,
+            replacements=replacements,
+            findings=[],
+            applied_patch_count=outcome.applied_count,
+            deterministic_patch_count=outcome.deterministic_count,
+            model_patch_count=outcome.model_count,
+            llm_invoked=outcome.llm_invoked,
+            model_ids=model_ids,
+            headers={str(header.tab_id): str(header.header_id) for header in inspection.headers},
+            changed=changed,
+        )
+        return await self._save_checkpoint(checkpoint)
+
+    def _content_requests(
+        self,
+        *,
+        request: DocumentTransformRequest,
+        original: DocumentIR,
+        transformed: DocumentIR,
+        inspection: InPlaceInspection,
+    ) -> list[dict[str, Any]]:
+        if request.mode is TransformMode.UNSLOP:
+            return build_copy_text_mutations(original, transformed)
+        return build_copy_mutations(
+            original,
+            transformed,
+            profile=self._brand,
+            headers=inspection.headers,
+            logo_uri=inspection.logo_uri,
+        )
+
+    async def _apply_checkpoint_stage(self, checkpoint: InPlaceCheckpoint) -> InPlaceStageResult:
+        if checkpoint.marker_name is None or checkpoint.marker_range is None:
+            raise DocumentGatewayError
+        if checkpoint.mutation_sha256 != mutation_sha256(checkpoint.requests):
+            raise OutputConflictError
+        return await self._gateway.apply_in_place_stage(
+            document_id=checkpoint.document_id,
+            required_revision_id=DocsRevisionId(checkpoint.current_revision_id),
+            marker_name=checkpoint.marker_name,
+            marker_range=checkpoint.marker_range,
+            requests=checkpoint.requests,
+        )
+
+    async def _save_checkpoint(self, checkpoint: InPlaceCheckpoint) -> InPlaceCheckpoint:
+        if self._checkpoint_store is None or self._task_id is None or self._lease_token is None:
+            raise DocumentGatewayError
+        self._checkpoint_generation = (
+            await self._checkpoint_store.save_document_transform_checkpoint(
+                self._task_id,
+                lease_token=self._lease_token,
+                expected_generation=self._checkpoint_generation,
+                checkpoint=checkpoint,
+            )
+        )
+        self._checkpoint = checkpoint
+        return checkpoint
+
+    @staticmethod
+    def _in_place_result(
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+        checkpoint: InPlaceCheckpoint,
+        output: DocumentOutput,
+    ) -> DocumentTransformResult:
+        return DocumentTransformResult(
+            operation_id=operation_id,
+            source_sha256=checkpoint.source_sha256,
+            output=output,
+            mode=request.mode,
+            applied_patch_count=checkpoint.applied_patch_count,
+            findings=checkpoint.findings,
+            validation=ValidationSummary(
+                source_unchanged=True,
+                protected_content_preserved=True,
+                structure_preserved=True,
+                unsafe_patch_count=0,
+            ),
+            model_ids=checkpoint.model_ids,
+            tool_versions={
+                "unslop_catalog_sha256": UNSLOP_CATALOG_SHA256,
+                "unslop_commit": UNSLOP_UPSTREAM_COMMIT,
+                "unslop_version": UNSLOP_UPSTREAM_VERSION,
+            },
+            pipeline_version=PIPELINE_VERSION,
+            needs_review=False,
+            brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
+            brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
+            deterministic_patch_count=checkpoint.deterministic_patch_count,
+            model_patch_count=checkpoint.model_patch_count,
+            llm_invoked=checkpoint.llm_invoked,
+            output_strategy=OutputStrategy.IN_PLACE,
+            changed=checkpoint.changed,
+            source_revision_id=checkpoint.source_revision_id,
+            output_revision_id=checkpoint.current_revision_id,
+        )
 
     async def _require_unchanged_drive_source(
         self,
@@ -521,6 +903,15 @@ def _to_ir(snapshot: SourceSnapshot) -> DocumentIR:
     if snapshot.markdown is None:
         raise UnsupportedSourceError
     return parse_markdown(snapshot.markdown, title=snapshot.title)
+
+
+def _in_place_marker(
+    operation_id: uuid.UUID,
+    stage: str,
+    requests: list[dict[str, Any]],
+) -> str:
+    digest = mutation_sha256(requests)[:20]
+    return f"sarj-transform-{operation_id.hex}-{stage}-{digest}"
 
 
 def _source_sha256(snapshot: SourceSnapshot, document: DocumentIR) -> str:

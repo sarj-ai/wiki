@@ -19,6 +19,22 @@ class TaskIdempotencyConflictError(TaskError):
         super().__init__("Idempotency key was already used for different input")
 
 
+class TaskTargetBusyError(TaskError):
+    code = "document_transform_target_busy"
+    http_status = 409
+
+    def __init__(self) -> None:
+        super().__init__("This document already has an active in-place transformation")
+
+
+class TaskAdmissionLimitError(TaskError):
+    code = "document_transform_admission_limit"
+    http_status = 429
+
+    def __init__(self) -> None:
+        super().__init__("Too many active in-place transformations")
+
+
 class TaskNotClaimableError(TaskError):
     code = "task_not_claimable"
     http_status = 409

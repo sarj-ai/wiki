@@ -12,13 +12,23 @@ from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.encryption import decrypt_cache, encrypt_cache
+from app.document_transform.errors import CheckpointTooLargeError
+from app.document_transform.schemas import (
+    DocumentTransformRequest,
+    DriveFileSource,
+    InPlaceCheckpoint,
+    OutputStrategy,
+)
 from app.identifiers import FileId, IdempotencyKey, TaskId
 from app.models.task import Task
 from app.tasks.errors import (
+    TaskAdmissionLimitError,
     TaskIdempotencyConflictError,
     TaskLeaseLostError,
     TaskNotClaimableError,
     TaskNotFoundError,
+    TaskTargetBusyError,
 )
 from app.tasks.schemas import (
     DocumentTransformTaskRecord,
@@ -37,6 +47,9 @@ _TASK_READ: TypeAdapter[TaskRead] = TypeAdapter(TaskRead)
 _DEFAULT_RETENTION = timedelta(days=7)
 _MAX_ERROR_DETAIL_LENGTH = 256
 _TASK_FAILURE_DETAIL = "Task could not be completed"
+_MAX_CHECKPOINT_PLAN_BYTES = 2 * 1024 * 1024
+_CHECKPOINT_PLAN_FIELDS = frozenset({"requests", "replacements", "findings", "headers"})
+_MAX_ACTIVE_IN_PLACE_TASKS_PER_OWNER = 10
 
 
 class TaskService(ABC):
@@ -99,6 +112,16 @@ class TaskService(ABC):
     async def load_document_transform(self, task_id: TaskId) -> DocumentTransformTaskRecord:
         raise NotImplementedError
 
+    async def save_document_transform_checkpoint(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        expected_generation: int,
+        checkpoint: InPlaceCheckpoint,
+    ) -> int:
+        raise NotImplementedError
+
 
 class PostgresTaskService(TaskService):
     def __init__(self, *, db: AsyncSession) -> None:
@@ -115,6 +138,41 @@ class PostgresTaskService(TaskService):
     ) -> TaskReservation:
         serialized = _serialize(payload)
         request_hash = _request_hash(serialized)
+        in_place_source = (
+            payload.source
+            if isinstance(payload, DocumentTransformRequest)
+            and payload.output_strategy is OutputStrategy.IN_PLACE
+            and isinstance(payload.source, DriveFileSource)
+            else None
+        )
+        if in_place_source is not None:
+            await self._db.execute(
+                select(func.pg_advisory_xact_lock(func.hashtextextended(str(owner_user_id), 0)))
+            )
+            existing = await self._maybe_existing(owner_user_id, kind, idempotency_key)
+            if existing is not None:
+                if existing.request_hash != request_hash:
+                    await self._db.rollback()
+                    raise TaskIdempotencyConflictError
+                await self._db.commit()
+                return TaskReservation(task=_to_read(existing), created=False)
+            active_count = (
+                await self._db.execute(
+                    select(func.count())
+                    .select_from(Task)
+                    .where(
+                        Task.owner_user_id == owner_user_id,
+                        Task.in_place_target.is_not(None),
+                        Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
+                    )
+                )
+            ).scalar_one_or_none()
+            if not isinstance(active_count, int):
+                msg = "Active in-place task count query returned an invalid value"
+                raise TypeError(msg)
+            if active_count >= _MAX_ACTIVE_IN_PLACE_TASKS_PER_OWNER:
+                await self._db.rollback()
+                raise TaskAdmissionLimitError
         now = datetime.now(UTC)
         statement = (
             pg_insert(Task)
@@ -124,11 +182,10 @@ class PostgresTaskService(TaskService):
                 idempotency_key=idempotency_key,
                 request_hash=request_hash,
                 payload=serialized,
+                in_place_target=(in_place_source.file_id if in_place_source else None),
                 expires_at=now + _DEFAULT_RETENTION,
             )
-            .on_conflict_do_nothing(
-                index_elements=[Task.owner_user_id, Task.kind, Task.idempotency_key]
-            )
+            .on_conflict_do_nothing()
             .returning(Task)
         )
         task = (await self._db.execute(statement)).scalar_one_or_none()
@@ -136,7 +193,10 @@ class PostgresTaskService(TaskService):
             await self._db.commit()
             return TaskReservation(task=_to_read(task), created=True)
 
-        existing = await self._existing(owner_user_id, kind, idempotency_key)
+        existing = await self._maybe_existing(owner_user_id, kind, idempotency_key)
+        if existing is None:
+            await self._db.rollback()
+            raise TaskTargetBusyError
         if existing.request_hash != request_hash:
             raise TaskIdempotencyConflictError
         return TaskReservation(task=_to_read(existing), created=False)
@@ -318,6 +378,39 @@ class PostgresTaskService(TaskService):
         )
 
     @override
+    async def save_document_transform_checkpoint(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        expected_generation: int,
+        checkpoint: InPlaceCheckpoint,
+    ) -> int:
+        statement = (
+            update(Task)
+            .where(
+                Task.id == task_id,
+                Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+                Task.status == TaskStatus.RUNNING,
+                Task.lease_token.is_not_distinct_from(lease_token),
+                Task.checkpoint_generation == expected_generation,
+            )
+            .values(
+                checkpoint=_serialize_checkpoint(checkpoint),
+                checkpoint_generation=Task.checkpoint_generation + 1,
+                resource_id=checkpoint.document_id,
+                updated_at=datetime.now(UTC),
+            )
+            .returning(Task.checkpoint_generation)
+        )
+        generation = (await self._db.execute(statement)).scalar_one_or_none()
+        if generation is None:
+            await self._db.rollback()
+            raise TaskLeaseLostError
+        await self._db.commit()
+        return int(generation)
+
+    @override
     async def load_document_transform(self, task_id: TaskId) -> DocumentTransformTaskRecord:
         task = await self._db.get(Task, task_id)
         if task is None or task.kind != TaskKind.FILE_DOCUMENT_TRANSFORM:
@@ -327,6 +420,12 @@ class PostgresTaskService(TaskService):
                 "owner_user_id": task.owner_user_id,
                 "task": _to_read(task),
                 "payload": task.payload,
+                "checkpoint": (
+                    _deserialize_checkpoint(task.checkpoint)
+                    if task.checkpoint is not None
+                    else None
+                ),
+                "checkpoint_generation": task.checkpoint_generation,
             }
         )
 
@@ -348,6 +447,22 @@ class PostgresTaskService(TaskService):
         if task is None:  # pragma: no cover — ON CONFLICT waits for the winning transaction
             raise TaskNotFoundError
         return task
+
+    async def _maybe_existing(
+        self,
+        owner_user_id: uuid.UUID,
+        kind: TaskKind,
+        idempotency_key: IdempotencyKey,
+    ) -> Task | None:
+        return (
+            await self._db.execute(
+                select(Task).where(
+                    Task.owner_user_id == owner_user_id,
+                    Task.kind == kind,
+                    Task.idempotency_key == idempotency_key,
+                )
+            )
+        ).scalar_one_or_none()
 
     async def _owned_lease_update(
         self,
@@ -375,7 +490,35 @@ class PostgresTaskService(TaskService):
 
 
 def _serialize(model: BaseModel) -> dict[str, JsonValue]:
-    return _JSON_OBJECT.validate_python(model.model_dump(mode="json"))
+    serialized = model.model_dump(mode="json")
+    # Preserve the pre-output_strategy payload and idempotency hash for legacy copy calls.
+    if isinstance(model, DocumentTransformRequest) and model.output_strategy is OutputStrategy.COPY:
+        serialized.pop("output_strategy", None)
+    return _JSON_OBJECT.validate_python(serialized)
+
+
+def _serialize_checkpoint(checkpoint: InPlaceCheckpoint) -> dict[str, JsonValue]:
+    serialized = checkpoint.model_dump(mode="json")
+    plan = {field: serialized.pop(field) for field in _CHECKPOINT_PLAN_FIELDS}
+    plaintext = json.dumps(plan, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    if len(plaintext.encode()) > _MAX_CHECKPOINT_PLAN_BYTES:
+        raise CheckpointTooLargeError
+    serialized["plan_ciphertext"] = encrypt_cache(plaintext)
+    return _JSON_OBJECT.validate_python(serialized)
+
+
+def _deserialize_checkpoint(raw: dict[str, object]) -> InPlaceCheckpoint:
+    metadata = dict(raw)
+    ciphertext = metadata.pop("plan_ciphertext", None)
+    if not isinstance(ciphertext, str):
+        msg = "Document transform checkpoint is missing encrypted plan"
+        raise TypeError(msg)
+    plan = json.loads(decrypt_cache(ciphertext))
+    if not isinstance(plan, dict) or set(plan) != _CHECKPOINT_PLAN_FIELDS:
+        msg = "Document transform checkpoint plan is invalid"
+        raise ValueError(msg)
+    metadata.update(plan)
+    return InPlaceCheckpoint.model_validate(metadata)
 
 
 def _persisted_error_detail(error_detail: str | None) -> str | None:

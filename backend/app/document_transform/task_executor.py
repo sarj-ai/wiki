@@ -30,6 +30,7 @@ from app.document_transform.models import PatchGenerator
 from app.document_transform.schemas import (
     DocumentTransformRequest,
     DocumentTransformResult,
+    InPlaceCheckpoint,
     TransformMode,
 )
 from app.drive.retry import ProviderDeadlineError
@@ -133,6 +134,7 @@ class QueuedDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             transform=self._transform,
             claim=claim,
             payload=record.payload,
+            checkpoint=record.checkpoint,
         )
 
 
@@ -169,7 +171,15 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         except TaskNotClaimableError as exc:
             raise TaskExecutionDeferredError from exc
         try:
-            runtime = await self._runtime(record.owner_user_id, record.payload)
+            claimed_record = await self._tasks.load_document_transform(task_id)
+            runtime = await self._runtime(
+                claimed_record.owner_user_id,
+                claimed_record.payload,
+                task_id=task_id,
+                lease_token=claim.lease_token,
+                checkpoint=claimed_record.checkpoint,
+                checkpoint_generation=claimed_record.checkpoint_generation,
+            )
         except GoogleReauthenticationRequiredError, GoogleTokenUnavailableError:
             return await self._tasks.fail(
                 task_id,
@@ -192,12 +202,18 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             task_id=task_id,
             claim=claim,
             payload=record.payload,
+            checkpoint=claimed_record.checkpoint,
         )
 
     async def _runtime(
         self,
         owner_user_id: uuid.UUID,
         payload: DocumentTransformRequest,
+        *,
+        task_id: TaskId,
+        lease_token: uuid.UUID,
+        checkpoint: InPlaceCheckpoint | None,
+        checkpoint_generation: int,
     ) -> DocumentTransformRuntime:
         user = await self._db.get(User, owner_user_id)
         if user is None:  # pragma: no cover - owner FK cascades task deletion
@@ -226,6 +242,11 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 gateway=gateway,
                 generator=self._generator,
                 logo_bytes=logo_bytes,
+                checkpoint_store=self._tasks,
+                task_id=task_id,
+                lease_token=lease_token,
+                checkpoint=checkpoint,
+                checkpoint_generation=checkpoint_generation,
             )
         )
 
@@ -254,16 +275,25 @@ async def _execute_claimed(
     transform: DocumentTransformRunner,
     claim: TaskClaim,
     payload: DocumentTransformRequest,
+    checkpoint: InPlaceCheckpoint | None = None,
 ) -> TaskRead:
     started_at = time.perf_counter()
     source_kind = payload.source.kind
     logger.info(
         "document transform started task_id={task_id} attempt={attempt} source_kind={source_kind} "
-        "mode={mode} pipeline={pipeline} brand_profile={brand_profile}",
+        "mode={mode} output_strategy={output_strategy} checkpoint_stage={checkpoint_stage} "
+        "mutation_sha256={mutation_sha256} pipeline={pipeline} brand_profile={brand_profile}",
         task_id=task_id,
         attempt=claim.task.attempt_count,
         source_kind=source_kind,
         mode=payload.mode.value,
+        output_strategy=payload.output_strategy.value,
+        checkpoint_stage=checkpoint.stage.value if checkpoint is not None else "none",
+        mutation_sha256=(
+            checkpoint.mutation_sha256
+            if checkpoint is not None and checkpoint.mutation_sha256 is not None
+            else "none"
+        ),
         pipeline=PIPELINE_VERSION,
         brand_profile=CURRENT_BRAND_MANIFEST.profile_id,
     )
@@ -327,13 +357,17 @@ async def _execute_claimed(
     )
     logger.info(
         "document transform succeeded task_id={task_id} attempt={attempt} source_kind={source_kind} "
-        "mode={mode} pipeline={pipeline} brand_profile={brand_profile} llm_invoked={llm_invoked} "
+        "mode={mode} output_strategy={output_strategy} checkpoint_stage={checkpoint_stage} "
+        "mutation_sha256=none pipeline={pipeline} brand_profile={brand_profile} "
+        "llm_invoked={llm_invoked} "
         "deterministic_patches={deterministic_patches} model_patches={model_patches} "
         "findings={findings} duration_ms={duration_ms}",
         task_id=task_id,
         attempt=claim.task.attempt_count,
         source_kind=source_kind,
         mode=payload.mode.value,
+        output_strategy=payload.output_strategy.value,
+        checkpoint_stage=("complete" if result.output_strategy.value == "in_place" else "none"),
         pipeline=result.pipeline_version,
         brand_profile=result.brand_profile_id,
         llm_invoked=result.llm_invoked,
@@ -355,11 +389,13 @@ def _log_transform_failure(
 ) -> None:
     logger.warning(
         "document transform interrupted task_id={task_id} attempt={attempt} source_kind={source_kind} "
-        "mode={mode} brand_profile={brand_profile} error_code={error_code} duration_ms={duration_ms}",
+        "mode={mode} output_strategy={output_strategy} brand_profile={brand_profile} "
+        "error_code={error_code} duration_ms={duration_ms}",
         task_id=task_id,
         attempt=claim.task.attempt_count,
         source_kind=payload.source.kind,
         mode=payload.mode.value,
+        output_strategy=payload.output_strategy.value,
         brand_profile=CURRENT_BRAND_MANIFEST.profile_id,
         error_code=error_code,
         duration_ms=round((time.perf_counter() - started_at) * 1000),

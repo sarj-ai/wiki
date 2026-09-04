@@ -4,10 +4,15 @@ from time import monotonic
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Body, Depends, Header, Response, status
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Response, status
 
 from app.auth.dependencies import get_current_user
-from app.document_transform.schemas import DocumentTransformRequest
+from app.config import settings
+from app.document_transform.schemas import (
+    DocumentTransformCapabilities,
+    DocumentTransformRequest,
+    OutputStrategy,
+)
 from app.identifiers import IdempotencyKey
 from app.models.user import User
 from app.openapi import authentication_responses
@@ -24,10 +29,26 @@ router = APIRouter(
 )
 
 
+@router.get(
+    "/capabilities",
+    operation_id="get_document_transform_capabilities",
+    status_code=status.HTTP_200_OK,
+)
+async def get_document_transform_capabilities(
+    _user: Annotated[User, Depends(get_current_user)],
+) -> DocumentTransformCapabilities:
+    return DocumentTransformCapabilities(in_place=settings.DOCUMENT_TRANSFORM_IN_PLACE_ENABLED)
+
+
 @router.post(
     "",
     status_code=status.HTTP_202_ACCEPTED,
     operation_id="create_document_transform",
+    responses={
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "description": "In-place document transformation is disabled"
+        }
+    },
 )
 async def create_document_transform(
     *,
@@ -38,6 +59,14 @@ async def create_document_transform(
     tasks: Annotated[TaskService, Depends(task_service_dep)],
     enqueuer: Annotated[TaskEnqueuer, Depends(task_enqueuer_dep)],
 ) -> TaskRead:
+    if (
+        payload.output_strategy is OutputStrategy.IN_PLACE
+        and not settings.DOCUMENT_TRANSFORM_IN_PLACE_ENABLED
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="In-place document transformation is disabled",
+        )
     started = monotonic()
     reservation = await tasks.create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,

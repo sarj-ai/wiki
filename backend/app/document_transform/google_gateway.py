@@ -20,10 +20,15 @@ from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST, normal
 from app.document_transform.errors import (
     DocumentGatewayError,
     IncompatiblePendingOutputError,
+    InPlaceNeedsReviewError,
+    InPlaceNotAllowedError,
+    SourceChangedError,
     UnsupportedSourceError,
 )
 from app.document_transform.gateway import (
     DocumentGateway,
+    InPlaceInspection,
+    InPlaceStageResult,
     OutputDraft,
     OutputVerification,
     SourceSnapshot,
@@ -31,7 +36,7 @@ from app.document_transform.gateway import (
 )
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, parse_google_document
 from app.document_transform.schemas import DocumentOutput, DriveFileSource, MarkdownSource
-from app.drive.retry import execute_mutation, execute_with_retry
+from app.drive.retry import ProviderDeadlineError, execute_mutation, execute_with_retry
 from app.drive.schemas import MIME_DOC
 from app.drive.service import (
     GoogleRefreshHandler,
@@ -123,17 +128,31 @@ class GoogleDocumentGateway(DocumentGateway):
         if file.parent_folder_id is None:
             raise UnsupportedSourceError
         if file.mime_type == MIME_DOC:
-            document = await asyncio.to_thread(self._get_document_sync, source.file_id)
+            document, metadata = await asyncio.gather(
+                asyncio.to_thread(self._get_document_sync, source.file_id),
+                asyncio.to_thread(self._files_get_sync, source.file_id),
+            )
             revision_id = document.get("revisionId")
-            if not isinstance(revision_id, str):
+            if not isinstance(revision_id, str) or metadata.get("mimeType") != MIME_DOC:
                 raise DocumentGatewayError
             return SourceSnapshot(
-                title=file.name,
-                parent_folder_id=file.parent_folder_id,
-                modified_time=file.modified_time,
+                title=_required_string(metadata, "name"),
+                parent_folder_id=_required_parent(metadata),
+                modified_time=_required_string(metadata, "modifiedTime"),
                 revision_id=DocsRevisionId(revision_id),
                 media_type=file.mime_type,
                 google_document=document,
+                owned_by_me=metadata.get("ownedByMe") is True,
+                can_edit=(
+                    isinstance(metadata.get("capabilities"), dict)
+                    and metadata["capabilities"].get("canEdit") is True
+                ),
+                is_personal_drive=metadata.get("driveId") is None,
+                web_url=(
+                    metadata.get("webViewLink")
+                    if isinstance(metadata.get("webViewLink"), str)
+                    else None
+                ),
             )
         if file.mime_type != "text/markdown":
             raise UnsupportedSourceError
@@ -145,6 +164,56 @@ class GoogleDocumentGateway(DocumentGateway):
             revision_id=None,
             media_type=file.mime_type,
             markdown=markdown,
+        )
+
+    @override
+    async def inspect_in_place(
+        self,
+        *,
+        snapshot: SourceSnapshot,
+        title: str,
+    ) -> InPlaceInspection:
+        return await asyncio.to_thread(self._inspect_in_place_sync, snapshot, title)
+
+    @override
+    async def apply_in_place_stage(
+        self,
+        *,
+        document_id: FileId,
+        required_revision_id: DocsRevisionId,
+        marker_name: str,
+        marker_range: dict[str, Any],
+        requests: list[dict[str, Any]],
+    ) -> InPlaceStageResult:
+        return await asyncio.to_thread(
+            self._apply_in_place_stage_sync,
+            document_id,
+            required_revision_id,
+            marker_name,
+            marker_range,
+            requests,
+        )
+
+    @override
+    async def verify_in_place(
+        self,
+        *,
+        document: dict[str, Any],
+        title: str,
+        expected: DocumentIR,
+        structural_sha256: str,
+        protected_structure_sha256: str,
+        verify_brand: bool,
+    ) -> OutputVerification:
+        parsed = parse_google_document(document, title=title)
+        return OutputVerification(
+            content_preserved=parsed.semantic_sha256 == expected.semantic_sha256,
+            structure_preserved=(
+                _inventory_sha256(_structural_inventory(document)) == structural_sha256
+                and _inventory_sha256(_protected_structure_inventory(document))
+                == protected_structure_sha256
+            ),
+            brand_applied=not verify_brand or verify_brand_application(document, parsed),
         )
 
     @override
@@ -314,6 +383,113 @@ class GoogleDocumentGateway(DocumentGateway):
         except DocumentGatewayError:
             return self._recover_ambiguous_create(operation_id, source_sha256)
         return self._draft_from_file(raw, source_sha256=source_sha256)
+
+    def _inspect_in_place_sync(
+        self,
+        snapshot: SourceSnapshot,
+        title: str,
+    ) -> InPlaceInspection:
+        document = snapshot.google_document
+        eligible = all(
+            (
+                document is not None,
+                snapshot.media_type == MIME_DOC,
+                snapshot.owned_by_me,
+                snapshot.can_edit,
+                snapshot.is_personal_drive,
+                snapshot.revision_id is not None,
+            )
+        )
+        if not eligible or document is None:
+            raise InPlaceNotAllowedError
+        if _has_active_suggestions(document):
+            raise InPlaceNeedsReviewError
+        headers: list[TabHeader] = []
+        missing: list[DocsTabId] = []
+        unknown: list[DocsTabId] = []
+        for raw_tab_id, document_tab in _document_tabs(document):
+            tab_id = DocsTabId(raw_tab_id)
+            style = document_tab.get("documentStyle", {})
+            header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
+            segments = document_tab.get("headers", {})
+            if not isinstance(header_id, str):
+                if isinstance(segments, dict) and segments:
+                    unknown.append(tab_id)
+                else:
+                    missing.append(tab_id)
+                continue
+            if isinstance(segments, dict) and any(
+                segment_id != header_id for segment_id in segments
+            ):
+                unknown.append(tab_id)
+                continue
+            if _segment_has_content(segments, header_id):
+                unknown.append(tab_id)
+                continue
+            headers.append(TabHeader(tab_id=tab_id, header_id=DocsSegmentId(header_id)))
+        parse_google_document(document, title=title)
+        marker_range = _terminal_body_marker_range(document)
+        return InPlaceInspection(
+            output=DocumentOutput(
+                file_id=FileId(_required_string(document, "documentId")),
+                name=snapshot.title,
+                parent_folder_id=snapshot.parent_folder_id,
+                web_url=snapshot.web_url,
+            ),
+            headers=tuple(headers),
+            missing_header_tab_ids=tuple(missing),
+            unknown_header_tab_ids=tuple(unknown),
+            marker_range=marker_range,
+            logo_uri=self._logo_uri,
+            structural_sha256=_inventory_sha256(_structural_inventory(document)),
+            protected_structure_sha256=_inventory_sha256(_protected_structure_inventory(document)),
+            body_sha256=_body_sha256(document),
+            header_safe_sha256=_header_safe_sha256(document),
+        )
+
+    def _apply_in_place_stage_sync(
+        self,
+        document_id: FileId,
+        required_revision_id: DocsRevisionId,
+        marker_name: str,
+        marker_range: dict[str, Any],
+        requests: list[dict[str, Any]],
+    ) -> InPlaceStageResult:
+        if not requests or not marker_name:
+            raise DocumentGatewayError
+        expected_marker_range = _post_mutation_marker_range(marker_range, requests)
+        atomic_requests = [
+            {"createNamedRange": {"name": marker_name, "range": marker_range}},
+            *requests,
+        ]
+        try:
+            self._execute_mutation_dict(
+                _google_http_request(
+                    _member(self._docs().documents(), "batchUpdate"),
+                    documentId=document_id,
+                    body={
+                        "requests": atomic_requests,
+                        "writeControl": {"requiredRevisionId": required_revision_id},
+                    },
+                )
+            )
+        except (DocumentGatewayError, ProviderDeadlineError) as exc:
+            document = self._get_document_sync(document_id)
+            if _has_exact_named_range(document, marker_name, expected_marker_range):
+                return InPlaceStageResult(
+                    revision_id=DocsRevisionId(_required_string(document, "revisionId")),
+                    document=document,
+                )
+            if document.get("revisionId") == required_revision_id:
+                raise
+            raise SourceChangedError from exc
+        document = self._get_document_sync(document_id)
+        if not _has_exact_named_range(document, marker_name, expected_marker_range):
+            raise DocumentGatewayError
+        return InPlaceStageResult(
+            revision_id=DocsRevisionId(_required_string(document, "revisionId")),
+            document=document,
+        )
 
     def _create_sync(
         self,
@@ -634,7 +810,10 @@ class GoogleDocumentGateway(DocumentGateway):
             .get(
                 fileId=file_id,
                 supportsAllDrives=True,
-                fields="id,name,parents,mimeType,modifiedTime,appProperties",
+                fields=(
+                    "id,name,parents,mimeType,modifiedTime,appProperties,ownedByMe,"
+                    "capabilities(canEdit),driveId,webViewLink"
+                ),
             )
         )
 
@@ -787,6 +966,192 @@ def _segment_has_text(segments: object, segment_id: str) -> bool:
         for item in content
         if isinstance(item, dict)
     )
+
+
+def _segment_has_content(segments: object, segment_id: str) -> bool:
+    if not isinstance(segments, dict):
+        return False
+    segment = segments.get(segment_id, {})
+    if not isinstance(segment, dict):
+        return False
+    content = segment.get("content", [])
+    if not isinstance(content, list):
+        return False
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        if _structural_text(item).strip():
+            return True
+        paragraph = item.get("paragraph")
+        if isinstance(paragraph, dict):
+            elements = paragraph.get("elements", [])
+            if isinstance(elements, list) and any(
+                isinstance(element, dict)
+                and any(key in element for key in ("inlineObjectElement", "person", "richLink"))
+                for element in elements
+            ):
+                return True
+        if any(key in item for key in ("table", "sectionBreak", "tableOfContents")):
+            return True
+    return False
+
+
+def _has_active_suggestions(value: object) -> bool:
+    match value:
+        case dict() as mapping:
+            return any(
+                (key.startswith("suggested") and child not in (None, False, "", [], {}))
+                or _has_active_suggestions(child)
+                for key, child in mapping.items()
+                if isinstance(key, str)
+            )
+        case list() as items:
+            return any(_has_active_suggestions(child) for child in items)
+        case _:
+            return False
+
+
+def _inventory_sha256(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()
+
+
+def _body_sha256(document: dict[str, Any]) -> str:
+    bodies = [
+        {"tab_id": tab_id, "body": document_tab.get("body")}
+        for tab_id, document_tab in _document_tabs(document)
+    ]
+    return _inventory_sha256(bodies)
+
+
+def _header_safe_sha256(document: dict[str, Any]) -> str:
+    def normalize(value: object) -> object:
+        if isinstance(value, list):
+            return [normalize(child) for child in value]
+        if not isinstance(value, dict):
+            return value
+        normalized: dict[str, object] = {}
+        for key, child in value.items():
+            if key in {"revisionId", "namedRanges", "headers"}:
+                continue
+            if key == "documentStyle" and isinstance(child, dict):
+                normalized[key] = {
+                    nested_key: normalize(nested_value)
+                    for nested_key, nested_value in child.items()
+                    if nested_key != "defaultHeaderId"
+                }
+            else:
+                normalized[key] = normalize(child)
+        return normalized
+
+    return _inventory_sha256(normalize(document))
+
+
+def _terminal_body_marker_range(document: dict[str, Any]) -> dict[str, Any] | None:
+    candidate: dict[str, Any] | None = None
+    for tab_id, document_tab in _document_tabs(document):
+        body = document_tab.get("body", {})
+        content = body.get("content", []) if isinstance(body, dict) else []
+        if not isinstance(content, list):
+            raise DocumentGatewayError
+        end_indexes: list[int] = []
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            end_index = item.get("endIndex")
+            if isinstance(end_index, int):
+                end_indexes.append(end_index)
+        if not end_indexes:
+            continue
+        end_index = max(end_indexes)
+        if end_index > 0:
+            candidate = {
+                "startIndex": end_index - 1,
+                "endIndex": end_index,
+                "tabId": tab_id,
+            }
+    return candidate
+
+
+def _post_mutation_marker_range(
+    marker_range: dict[str, Any],
+    requests: list[dict[str, Any]],
+) -> dict[str, Any]:
+    expected = dict(marker_range)
+    start = expected.get("startIndex")
+    end = expected.get("endIndex")
+    tab_id = expected.get("tabId")
+    if not isinstance(start, int) or not isinstance(end, int) or not isinstance(tab_id, str):
+        raise DocumentGatewayError
+    for request in requests:
+        deletion = request.get("deleteContentRange")
+        if isinstance(deletion, dict):
+            range_value = deletion.get("range")
+            if not isinstance(range_value, dict):
+                continue
+            deletion_start = range_value.get("startIndex")
+            deletion_end = range_value.get("endIndex")
+            if (
+                range_value.get("tabId") == tab_id
+                and range_value.get("segmentId") is None
+                and isinstance(deletion_start, int)
+                and isinstance(deletion_end, int)
+                and deletion_end <= start
+            ):
+                delta = deletion_end - deletion_start
+                start -= delta
+                end -= delta
+        insertion = request.get("insertText")
+        if isinstance(insertion, dict):
+            location = insertion.get("location")
+            text = insertion.get("text")
+            if not isinstance(location, dict) or not isinstance(text, str):
+                continue
+            insertion_index = location.get("index")
+            if (
+                location.get("tabId") == tab_id
+                and location.get("segmentId") is None
+                and isinstance(insertion_index, int)
+                and insertion_index <= start
+            ):
+                delta = len(text.encode("utf-16-le")) // 2
+                start += delta
+                end += delta
+    expected["startIndex"] = start
+    expected["endIndex"] = end
+    return expected
+
+
+def _has_exact_named_range(
+    document: dict[str, Any],
+    marker_name: str,
+    expected_range: dict[str, Any],
+) -> bool:
+    matches: list[dict[str, Any]] = []
+    expected_tab_id = expected_range.get("tabId")
+    for tab_id, document_tab in _document_tabs(document):
+        named_ranges = document_tab.get("namedRanges")
+        if not isinstance(named_ranges, dict):
+            continue
+        entry = named_ranges.get(marker_name)
+        if not isinstance(entry, dict):
+            continue
+        definitions = entry.get("namedRanges")
+        if not isinstance(definitions, list):
+            return False
+        for definition in definitions:
+            if isinstance(definition, dict) and definition.get("name") == marker_name:
+                ranges = definition.get("ranges")
+                if (
+                    tab_id != expected_tab_id
+                    or not isinstance(ranges, list)
+                    or len(ranges) != 1
+                    or ranges[0] != expected_range
+                ):
+                    return False
+                matches.append(definition)
+    return len(matches) == 1
 
 
 def _document_tabs(document: dict[str, Any]) -> Iterator[tuple[str, dict[str, Any]]]:

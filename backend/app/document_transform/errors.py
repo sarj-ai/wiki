@@ -41,3 +41,18 @@ class DocumentGatewayError(DocumentTransformError):
 class HeaderConflictError(DocumentTransformError):
     code = "header_conflict"
     public_detail = "The source header needs review before Sarj branding can be applied"
+
+
+class InPlaceNotAllowedError(DocumentTransformError):
+    code = "in_place_not_allowed"
+    public_detail = "This document is not eligible for safe in-place transformation"
+
+
+class InPlaceNeedsReviewError(DocumentTransformError):
+    code = "needs_review"
+    public_detail = "The source needs review before it can be changed in place"
+
+
+class CheckpointTooLargeError(DocumentTransformError):
+    code = "checkpoint_too_large"
+    public_detail = "The document transformation plan is too large to execute safely"

@@ -4,11 +4,22 @@ from datetime import UTC, datetime, timedelta
 from typing import override
 import uuid
 
-from fastapi import Response
+from fastapi import HTTPException, Response
 from pydantic import BaseModel
+import pytest
 
-from app.document_transform.router import create_document_transform
-from app.document_transform.schemas import DocumentTransformRequest, MarkdownSource, TransformMode
+from app.config import settings
+from app.document_transform.router import (
+    create_document_transform,
+    get_document_transform_capabilities,
+)
+from app.document_transform.schemas import (
+    DocumentTransformRequest,
+    DriveFileSource,
+    MarkdownSource,
+    OutputStrategy,
+    TransformMode,
+)
 from app.files.schemas import FileResponse
 from app.identifiers import FileId, IdempotencyKey, TaskId, UserId
 from app.models.user import User
@@ -265,3 +276,29 @@ async def test_document_transform_endpoint_creates_separate_queued_task() -> Non
     assert enqueuer.document_task_ids == [task.id]
     assert enqueuer.task_ids == []
     assert response.headers["Idempotency-Replayed"] == "false"
+
+
+async def test_document_transform_capability_and_kill_switch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_IN_PLACE_ENABLED", False)
+    capability = await get_document_transform_capabilities(_user())
+    assert capability.in_place is False
+    payload = DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("source"),
+            expected_modified_time="time",
+        ),
+        mode=TransformMode.UNSLOP,
+        output_strategy=OutputStrategy.IN_PLACE,
+    )
+    with pytest.raises(HTTPException, match="disabled"):
+        await create_document_transform(
+            payload=payload,
+            idempotency_key=uuid.uuid7(),
+            response=Response(),
+            user=_user(),
+            tasks=_Tasks(created=True),
+            enqueuer=_Enqueuer(),
+        )
