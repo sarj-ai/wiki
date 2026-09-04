@@ -126,11 +126,12 @@ header logo and footer page field before Google Docs conversion. The canonical l
 instead of fabricating a placeholder or failing the formatting batch.
 
 For presentations, the same manifest applies Nunito, role-specific sizes, and Sarj colors only to
-plain standard placeholders whose explicit style, safe font-size direction, disabled autofit, and
-light-background contrast can all be proven. Custom, inherited, dark, or fit-sensitive text is
-preserved with a review finding. The pinned black logo is placed only in a collision-free corner on
-a proven light background; otherwise it is skipped with a review finding. Formatting never asks a
-model to generate layout or Slides API operations.
+plain standard placeholders whose effective style, safe font-size direction, disabled autofit, and
+light-background contrast can all be proven. Native level-zero placeholder inheritance and theme
+colors are resolved deterministically; custom, ambiguous, dark, or fit-sensitive text is preserved
+with a review finding. The pinned black logo is placed only in a collision-free corner on a proven
+light background; inherited placeholder templates do not count as rendered content. Formatting
+never asks a model to generate layout or Slides API operations.
 
 Recovered Codex and Claude requests for headings, lists, checklists, tables, links, quotations, code
 blocks, dividers, centered logo, hierarchy, spacing, bold table headers, and visual QA are covered.

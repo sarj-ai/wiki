@@ -374,6 +374,34 @@ def test_logo_placement_avoids_inherited_layout_and_master_content() -> None:
     assert (transform["translateX"], transform["translateY"]) not in {(604, 64), (604, 317.143)}
 
 
+def test_inherited_placeholder_template_does_not_block_logo_placement() -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["slideProperties"] = {"layoutObjectId": "layout-1"}
+    presentation["layouts"] = [
+        {
+            "objectId": "layout-1",
+            "layoutProperties": {},
+            "pageElements": [
+                _text_shape(
+                    "layout-title",
+                    "Template title",
+                    placeholder_type="TITLE",
+                    left=590,
+                    top=50,
+                    width=100,
+                )
+            ],
+        }
+    ]
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    create = next(request["createImage"] for request in plan.requests if "createImage" in request)
+    transform = create["elementProperties"]["transform"]
+    assert (transform["translateX"], transform["translateY"]) == (604, 64)
+
+
 def test_caption_placeholder_uses_caption_size_and_muted_color() -> None:
     presentation = _presentation()
     presentation["slides"][0]["pageElements"].append(
@@ -614,6 +642,110 @@ def test_resolved_parent_placeholder_style_is_supported() -> None:
     }
 
 
+def test_canonical_nine_level_placeholder_style_table_resolves_level_zero() -> None:
+    presentation = _presentation_with_canonical_inherited_title(
+        master_level_zero_style={
+            "fontSize": {"magnitude": 60, "unit": "PT"},
+            "foregroundColor": {
+                "opaqueColor": {"rgbColor": {"red": 0.1, "green": 0.1, "blue": 0.1}}
+            },
+            "weightedFontFamily": {"fontFamily": "Arial", "weight": 700},
+        }
+    )
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    update = next(
+        request["updateTextStyle"]
+        for request in plan.requests
+        if request.get("updateTextStyle", {}).get("objectId") == "title-1"
+    )
+    assert update["style"]["weightedFontFamily"]["weight"] == 700
+    assert "slide_text_style_inherited_unresolved" not in {
+        finding.code for finding in plan.findings
+    }
+
+
+def test_split_parent_inheritance_uses_terminal_newline_style() -> None:
+    presentation = _presentation()
+    title = presentation["slides"][0]["pageElements"][0]
+    title["shape"]["placeholder"]["parentObjectId"] = "layout-title"
+    title["shape"]["text"]["textElements"][1]["textRun"]["style"] = {}
+    presentation["slides"][0]["slideProperties"] = {"layoutObjectId": "layout-1"}
+    layout_title = _text_shape(
+        "layout-title",
+        "Layout",
+        placeholder_type="TITLE",
+        left=24,
+        top=20,
+        width=400,
+    )
+    _use_native_split_terminal_newline(layout_title)
+    visible_style = layout_title["shape"]["text"]["textElements"][1]["textRun"]["style"]
+    visible_style["weightedFontFamily"]["weight"] = 300
+    terminal_style = layout_title["shape"]["text"]["textElements"][2]["textRun"]["style"]
+    terminal_style["weightedFontFamily"]["weight"] = 700
+    presentation["layouts"] = [
+        {
+            "objectId": "layout-1",
+            "layoutProperties": {},
+            "pageElements": [layout_title],
+        }
+    ]
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    update = next(
+        request["updateTextStyle"]
+        for request in plan.requests
+        if request.get("updateTextStyle", {}).get("objectId") == "title-1"
+    )
+    assert update["style"]["weightedFontFamily"]["weight"] == 700
+
+
+@pytest.mark.parametrize(
+    "malformation",
+    [
+        "boolean_bound",
+        "boolean_nesting",
+        "paragraph_bounds",
+        "paragraph_union",
+        "run_union",
+    ],
+)
+def test_malformed_placeholder_style_table_fails_closed(malformation: str) -> None:
+    presentation = _presentation_with_canonical_inherited_title(
+        master_level_zero_style={
+            "fontSize": {"magnitude": 60, "unit": "PT"},
+            "foregroundColor": {
+                "opaqueColor": {"rgbColor": {"red": 0.1, "green": 0.1, "blue": 0.1}}
+            },
+            "weightedFontFamily": {"fontFamily": "Arial", "weight": 700},
+        }
+    )
+    layout_elements = presentation["layouts"][0]["pageElements"][0]["shape"]["text"]["textElements"]
+    if malformation == "boolean_bound":
+        layout_elements[0]["startIndex"] = False
+    elif malformation == "boolean_nesting":
+        layout_elements[0]["paragraphMarker"]["bullet"]["nestingLevel"] = False
+    elif malformation == "paragraph_bounds":
+        layout_elements[0]["endIndex"] = 2
+    elif malformation == "paragraph_union":
+        layout_elements[0]["textRun"] = {"content": "\n", "style": {}}
+    else:
+        layout_elements[1]["paragraphMarker"] = {"style": {}}
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any(
+        request.get("updateTextStyle", {}).get("objectId") == "title-1" for request in plan.requests
+    )
+    assert "slide_text_style_inherited_unresolved" in {finding.code for finding in plan.findings}
+
+
 def test_centered_title_uses_cover_title_size() -> None:
     presentation = _presentation()
     title = presentation["slides"][0]["pageElements"][0]
@@ -833,7 +965,11 @@ def _text_shape(
         },
         "text": {
             "textElements": [
-                {"startIndex": 0, "endIndex": 0, "paragraphMarker": {"style": {}}},
+                {
+                    "startIndex": 0,
+                    "endIndex": len(text) + 1,
+                    "paragraphMarker": {"style": {}},
+                },
                 {
                     "startIndex": 0,
                     "endIndex": len(text) + 1,
@@ -903,6 +1039,75 @@ def _rich_bulleted_shape() -> dict[str, Any]:
         },
     ]
     return shape
+
+
+def _placeholder_style_table(level_zero_style: dict[str, Any]) -> list[dict[str, Any]]:
+    elements: list[dict[str, Any]] = []
+    for level in range(9):
+        bullet: dict[str, Any] = {"listId": "bodyPlaceholderListEntity", "glyph": " "}
+        if level:
+            bullet["nestingLevel"] = level
+        elements.extend(
+            (
+                {
+                    "startIndex": level,
+                    "endIndex": level + 1,
+                    "paragraphMarker": {"bullet": bullet, "style": {}},
+                },
+                {
+                    "startIndex": level,
+                    "endIndex": level + 1,
+                    "textRun": {
+                        "content": "\n",
+                        "style": level_zero_style if level == 0 else {},
+                    },
+                },
+            )
+        )
+    return elements
+
+
+def _presentation_with_canonical_inherited_title(
+    *,
+    master_level_zero_style: dict[str, Any],
+) -> dict[str, Any]:
+    presentation = _presentation()
+    title = presentation["slides"][0]["pageElements"][0]
+    title["shape"]["placeholder"]["parentObjectId"] = "layout-title"
+    title["shape"]["text"]["textElements"][1]["textRun"]["style"] = {}
+    presentation["slides"][0]["slideProperties"] = {"layoutObjectId": "layout-1"}
+    layout_title = _text_shape(
+        "layout-title",
+        "Layout",
+        placeholder_type="TITLE",
+        left=24,
+        top=20,
+        width=400,
+    )
+    layout_title["shape"]["placeholder"]["parentObjectId"] = "master-title"
+    layout_title["shape"]["text"]["textElements"] = _placeholder_style_table(
+        {"fontSize": {"magnitude": 60, "unit": "PT"}}
+    )
+    master_title = _text_shape(
+        "master-title",
+        "Master",
+        placeholder_type="TITLE",
+        left=24,
+        top=20,
+        width=400,
+    )
+    master_title["shape"]["text"]["textElements"] = _placeholder_style_table(
+        master_level_zero_style
+    )
+    presentation["layouts"] = [
+        {
+            "objectId": "layout-1",
+            "layoutProperties": {"masterObjectId": "master-1"},
+            "pageElements": [layout_title],
+        }
+    ]
+    presentation["masters"] = [{"objectId": "master-1", "pageElements": [master_title]}]
+    return presentation
 
 
 def _box(

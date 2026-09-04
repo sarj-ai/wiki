@@ -51,6 +51,7 @@ _SUPPORTED_PLACEHOLDER_TYPES = frozenset(
 )
 _MIN_TEXT_CONTRAST = 4.5
 _SRGB_LINEAR_THRESHOLD = 0.04045
+_PLACEHOLDER_STYLE_LEVELS = 9
 
 
 @dataclass(frozen=True, slots=True)
@@ -654,11 +655,172 @@ def _inherited_text_styles(
         shape = ancestor.get("shape")
         text = shape.get("text") if isinstance(shape, dict) else None
         elements = text.get("textElements") if isinstance(text, dict) else None
-        plain_text = parse_plain_slide_text(elements)
-        if plain_text is None or not isinstance(plain_text.style, dict):
+        style = _inherited_level_zero_style(elements)
+        if style is None:
             return None
-        styles.append({str(key): value for key, value in plain_text.style.items()})
+        styles.append(style)
     return tuple(styles)
+
+
+def _inherited_level_zero_style(value: object) -> dict[str, Any] | None:
+    single_paragraph_style = _single_paragraph_inherited_style(value)
+    if single_paragraph_style is not None:
+        return single_paragraph_style
+    if not isinstance(value, list) or len(value) != _PLACEHOLDER_STYLE_LEVELS * 2:
+        return None
+    level_zero_style: dict[str, Any] | None = None
+    for level in range(_PLACEHOLDER_STYLE_LEVELS):
+        paragraph_element = value[level * 2]
+        run_element = value[level * 2 + 1]
+        if not isinstance(paragraph_element, dict) or not isinstance(run_element, dict):
+            return None
+        paragraph_element = {str(key): child for key, child in paragraph_element.items()}
+        run_element = {str(key): child for key, child in run_element.items()}
+        paragraph = paragraph_element.get("paragraphMarker")
+        bullet = paragraph.get("bullet") if isinstance(paragraph, dict) else None
+        run = run_element.get("textRun")
+        if (
+            not _has_exact_text_element_kind(paragraph_element, "paragraphMarker")
+            or not _has_exact_text_element_kind(run_element, "textRun")
+            or not isinstance(bullet, dict)
+            or not isinstance(run, dict)
+        ):
+            return None
+        nesting_level = bullet.get("nestingLevel", 0)
+        if (
+            isinstance(nesting_level, bool)
+            or not isinstance(nesting_level, int)
+            or nesting_level != level
+            or run.get("content") != "\n"
+        ):
+            return None
+        style = run.get("style")
+        if (
+            not _style_table_run_bounds_are_valid(
+                paragraph_element,
+                expected_start=level,
+            )
+            or not _style_table_run_bounds_are_valid(
+                run_element,
+                expected_start=level,
+            )
+            or not isinstance(style, dict)
+        ):
+            return None
+        if level == 0:
+            level_zero_style = {str(key): child for key, child in style.items()}
+    return level_zero_style
+
+
+def _single_paragraph_inherited_style(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, list) or len(value) not in {2, 3}:
+        return None
+    paragraph_element, visible_element, *terminal_elements = value
+    if not isinstance(paragraph_element, dict) or not isinstance(visible_element, dict):
+        return None
+    paragraph_element = {str(key): child for key, child in paragraph_element.items()}
+    visible_element = {str(key): child for key, child in visible_element.items()}
+    paragraph = paragraph_element.get("paragraphMarker")
+    visible_run = visible_element.get("textRun")
+    if (
+        not _has_exact_text_element_kind(paragraph_element, "paragraphMarker")
+        or not _has_exact_text_element_kind(visible_element, "textRun")
+        or not isinstance(paragraph, dict)
+        or paragraph.get("bullet") is not None
+        or not isinstance(visible_run, dict)
+    ):
+        return None
+    visible_content = visible_run.get("content")
+    if not isinstance(visible_content, str):
+        return None
+    visible_start = visible_element.get("startIndex", 0)
+    visible_end = visible_element.get("endIndex")
+    if not isinstance(visible_start, int) or not isinstance(visible_end, int):
+        return None
+    if terminal_elements:
+        terminal_element = terminal_elements[0]
+        if not isinstance(terminal_element, dict):
+            return None
+        terminal_element = {str(key): child for key, child in terminal_element.items()}
+        terminal_run = terminal_element.get("textRun")
+        if "\n" in visible_content or "\r" in visible_content:
+            return None
+        if (
+            not _has_exact_text_element_kind(terminal_element, "textRun")
+            or not isinstance(terminal_run, dict)
+            or terminal_run.get("content") != "\n"
+            or not _text_element_bounds_are_valid(
+                terminal_element,
+                expected_start=visible_end,
+                expected_end=visible_end + 1,
+            )
+        ):
+            return None
+        terminal_style = terminal_run.get("style")
+        paragraph_end = visible_end + 1
+        if not isinstance(terminal_style, dict):
+            return None
+    else:
+        if (
+            not visible_content.endswith("\n")
+            or "\n" in visible_content[:-1]
+            or "\r" in visible_content
+        ):
+            return None
+        terminal_style = visible_run.get("style")
+        paragraph_end = visible_end
+        if not isinstance(terminal_style, dict):
+            return None
+    if (
+        not _text_element_bounds_are_valid(
+            visible_element,
+            expected_start=visible_start,
+            expected_end=visible_end,
+        )
+        or visible_end - visible_start != utf16_length(visible_content)
+        or not _text_element_bounds_are_valid(
+            paragraph_element,
+            expected_start=visible_start,
+            expected_end=paragraph_end,
+        )
+    ):
+        return None
+    return {str(key): child for key, child in terminal_style.items()}
+
+
+def _has_exact_text_element_kind(value: dict[str, object], expected: str) -> bool:
+    text_kinds = {"autoText", "paragraphMarker", "textRun"}
+    return set(value).intersection(text_kinds) == {expected}
+
+
+def _style_table_run_bounds_are_valid(
+    value: dict[str, object],
+    *,
+    expected_start: int,
+) -> bool:
+    return _text_element_bounds_are_valid(
+        value,
+        expected_start=expected_start,
+        expected_end=expected_start + 1,
+    )
+
+
+def _text_element_bounds_are_valid(
+    value: dict[str, object],
+    *,
+    expected_start: int,
+    expected_end: int,
+) -> bool:
+    start = value.get("startIndex", 0)
+    end = value.get("endIndex")
+    return (
+        isinstance(start, int)
+        and not isinstance(start, bool)
+        and isinstance(end, int)
+        and not isinstance(end, bool)
+        and start == expected_start
+        and end == expected_end
+    )
 
 
 def _inherited_shape_property(
@@ -1224,7 +1386,13 @@ def _inherited_page_elements(
         element
         for page in _page_chain(presentation, slide)[1:]
         for element in _top_level_elements(page)
+        if not _is_placeholder_template(element)
     )
+
+
+def _is_placeholder_template(element: dict[str, Any]) -> bool:
+    shape = element.get("shape")
+    return isinstance(shape, dict) and isinstance(shape.get("placeholder"), dict)
 
 
 def _page_by_id(raw: object, object_id: str) -> dict[str, Any]:
