@@ -6,13 +6,17 @@ import uuid
 
 import pytest
 
+from app.config import settings
 from app.document_transform.schemas import (
     DocumentTransformRequest,
+    DriveFileSource,
     MarkdownSource,
+    OutputStrategy,
     TransformMode,
 )
 from app.document_transform.task_executor import (
     DocumentTransformTaskExecutor,
+    DriveDocumentTransformTaskExecutor,
     QueuedDocumentTransformTaskExecutor,
     defer_or_fail_retryable_task,
 )
@@ -38,10 +42,17 @@ from app.tasks.schemas import (
 
 
 class _RetryTasks:
-    def __init__(self, *, attempt_count: int = 1) -> None:
+    def __init__(
+        self,
+        *,
+        attempt_count: int = 1,
+        payload: DocumentTransformRequest | None = None,
+    ) -> None:
         self.deferred = 0
         self.failed = 0
         self.attempt_count = attempt_count
+        self.payload = payload or _payload()
+        self.last_error_code: str | None = None
 
     async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
         self.deferred += 1
@@ -56,6 +67,7 @@ class _RetryTasks:
         error_detail: str | None,
     ) -> TaskRead:
         self.failed += 1
+        self.last_error_code = error_code
         now = datetime.now(UTC)
         return FailedTaskRead(
             id=task_id,
@@ -98,7 +110,7 @@ class _RetryTasks:
         return DocumentTransformTaskRecord(
             owner_user_id=uuid.uuid7(),
             task=_claim(task_id, attempt_count=self.attempt_count).task,
-            payload=_payload(),
+            payload=self.payload,
         )
 
     async def claim(self, task_id: TaskId, *, lease_duration: timedelta) -> TaskClaim:
@@ -215,6 +227,21 @@ async def test_internal_document_transform_gets_worker_provider_budget() -> None
     assert restored_budget <= interactive_budget
 
 
+async def test_worker_kill_switch_blocks_claimed_in_place_task_before_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_IN_PLACE_ENABLED", False)
+    tasks = _RetryTasks(payload=_in_place_payload())
+    executor = object.__new__(DriveDocumentTransformTaskExecutor)
+    monkeypatch.setattr(executor, "_tasks", tasks, raising=False)
+
+    result = await executor.execute(TaskId(uuid.uuid7()))
+
+    assert isinstance(result, FailedTaskRead)
+    assert tasks.last_error_code == "in_place_disabled"
+    assert tasks.failed == 1
+
+
 def _claim(task_id: TaskId, *, attempt_count: int) -> TaskClaim:
     now = datetime.now(UTC)
     return TaskClaim(
@@ -244,4 +271,16 @@ def _payload() -> DocumentTransformRequest:
             destination_folder_id=FileId("folder"),
         ),
         mode=TransformMode.BOTH,
+    )
+
+
+def _in_place_payload() -> DocumentTransformRequest:
+    return DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("source"),
+            expected_modified_time="2026-09-03T00:00:00Z",
+        ),
+        mode=TransformMode.FORMAT,
+        output_strategy=OutputStrategy.IN_PLACE,
     )

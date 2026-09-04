@@ -36,7 +36,12 @@ from app.cache.dependencies import cache_service_dep
 from app.config import settings
 from app.database import async_session
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
-from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
+from app.document_transform.errors import (
+    InPlaceNeedsReviewError,
+    InPlaceNotAllowedError,
+    SourceTooLargeError,
+    UnsupportedSourceError,
+)
 from app.document_transform.executor import PIPELINE_VERSION
 from app.document_transform.gateway import SourceSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway
@@ -53,7 +58,7 @@ from app.drive.retry import execute_with_retry
 from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.drive.service import GoogleDriveService
 from app.files.service import GoogleFilesService
-from app.identifiers import FileId, TaskId
+from app.identifiers import DocsTabId, FileId, TaskId
 from app.models.user import User
 from app.tasks.schemas import (
     FailedTaskRead,
@@ -900,6 +905,11 @@ async def _inspect_candidate(
             expected_modified_time=metadata.modified_time,
         )
     )
+    try:
+        inspection = await gateway.inspect_in_place(snapshot=snapshot, title=snapshot.title)
+    except InPlaceNeedsReviewError, InPlaceNotAllowedError:
+        _fail("copy_brand_preflight_failed")
+    _require_no_header_conflicts(inspection.unknown_header_tab_ids)
     document = _parse_snapshot(snapshot)
     operation_key = corpus_operation_key(
         expected_release_sha=expected_release_sha,
@@ -922,6 +932,11 @@ async def _inspect_candidate(
         operation_key=operation_key,
         output_name=_output_name(expected_release_sha, seed, ordinal, cohort=cohort),
     )
+
+
+def _require_no_header_conflicts(unknown_header_tab_ids: tuple[DocsTabId, ...]) -> None:
+    if unknown_header_tab_ids:
+        _fail("header_conflict")
 
 
 def seeded_order(candidates: Iterable[dict[str, Any]], seed: str) -> list[dict[str, Any]]:

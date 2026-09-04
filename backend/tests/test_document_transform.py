@@ -15,6 +15,7 @@ from app.document_transform.errors import (
     DocumentGatewayError,
     IncompatiblePendingOutputError,
     InPlaceNeedsReviewError,
+    OutputConflictError,
     SourceChangedError,
     SourceTooLargeError,
     UnsupportedSourceError,
@@ -54,6 +55,7 @@ from app.document_transform.schemas import (
     TransformPhase,
 )
 from app.document_transform.unslop import scan_unslop_candidates
+from app.files.schemas import FileResponse
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId, TaskId
 from app.tasks import service as task_service_module
 
@@ -1263,6 +1265,102 @@ def test_foreign_pending_mutation_fails_terminal_before_google_write() -> None:
         )
 
 
+def test_copy_lost_response_recovers_branded_headers_without_second_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = _branded_google_document()
+    gateway = object.__new__(GoogleDocumentGateway)
+    gateway._logo_uri = "https://assets.example.test/sarj-logo.png"
+    writes: list[object] = []
+    monkeypatch.setattr(gateway, "_get_document_sync", lambda _document_id: document)
+    monkeypatch.setattr(
+        gateway,
+        "_update_properties_sync",
+        lambda _document_id, properties: writes.append(properties),
+    )
+
+    def reject_duplicate_write(_request: object) -> dict[str, Any]:
+        pytest.fail("a committed copy mutation must not be written twice")
+
+    monkeypatch.setattr(gateway, "_execute_mutation_dict", reject_duplicate_write)
+    draft = OutputDraft(
+        output=DocumentOutput(
+            file_id=FileId("output"),
+            name="Output",
+            parent_folder_id=FileId("parent"),
+        ),
+        document_id=FileId("output"),
+        tab_id=DocsTabId("tab-a"),
+        revision_id=DocsRevisionId("revision-2"),
+        source_sha256="source-hash",
+        logo_uri=gateway._logo_uri,
+        pending_mutation_sha256="v3-mutation",
+        mutation_base_revision_sha256=google_gateway_module._revision_sha256(
+            DocsRevisionId("revision-1")
+        ),
+    )
+
+    prepared = gateway._prepare_brand_shell_sync(uuid.uuid7(), draft)
+    applied = gateway._apply_requests_sync(
+        prepared,
+        "v3-mutation",
+        [{"insertText": {"text": "already committed"}}],
+        DocsRevisionId("revision-2"),
+    )
+
+    assert len(prepared.headers) == 1
+    assert prepared.brand_warnings == ()
+    assert applied.applied_mutation_sha256 == "v3-mutation"
+    assert writes == [{"sarjTransformMutation": "v3-mutation"}]
+
+
+@pytest.mark.parametrize(
+    ("mime_type", "can_add_children"),
+    [
+        ("application/vnd.google-apps.document", True),
+        ("application/vnd.google-apps.folder", False),
+    ],
+)
+async def test_markdown_destination_is_revalidated_before_google_create(
+    monkeypatch: pytest.MonkeyPatch,
+    mime_type: str,
+    can_add_children: bool,
+) -> None:
+    class DestinationFiles:
+        async def get(self, file_id: FileId) -> FileResponse:
+            return FileResponse(
+                id=file_id,
+                name="Destination",
+                mime_type=mime_type,
+                parent_folder_id=None,
+                drive_id=None,
+                modified_time=None,
+                can_add_children=can_add_children,
+            )
+
+    gateway = object.__new__(GoogleDocumentGateway)
+    monkeypatch.setattr(gateway, "_files", DestinationFiles(), raising=False)
+
+    def reject_create(*_args: object) -> OutputDraft:
+        pytest.fail("invalid destination must fail before Google Drive create")
+
+    monkeypatch.setattr(gateway, "_create_sync", reject_create)
+    source = MarkdownSource(
+        kind="markdown",
+        content="Draft",
+        name="Decision",
+        destination_folder_id=FileId("folder"),
+    )
+
+    with pytest.raises(UnsupportedSourceError):
+        await gateway.create_from_markdown(
+            operation_id=uuid.uuid7(),
+            source=source,
+            source_sha256="source-hash",
+            output_name="Decision — Sarj formatted",
+        )
+
+
 def test_single_tab_brand_verification_supports_legacy_top_level_inline_objects() -> None:
     document = _branded_google_document()
     document["inlineObjects"] = document["tabs"][0]["documentTab"].pop("inlineObjects")
@@ -1652,6 +1750,8 @@ async def test_in_place_unslop_checkpoints_before_mutation_and_reports_revisions
     assert result.output_revision_id == "revision-3"
     persisted = task_service_module._serialize_checkpoint(store.checkpoints[0])
     assert "Moreover, we approved the plan." not in json.dumps(persisted)
+    assert "Source" not in json.dumps(persisted)
+    assert "source_title" not in persisted
     assert set(persisted) >= {"plan_ciphertext", "stage", "source_sha256"}
     monkeypatch.setattr(task_service_module, "_MAX_CHECKPOINT_PLAN_BYTES", 1)
     with pytest.raises(CheckpointTooLargeError):
@@ -1771,6 +1871,37 @@ async def test_in_place_content_replay_rejects_post_commit_collaborator_edit() -
 
     assert retry_generator.calls == []
     assert gateway.mutations == {"headers": 1, "content": 1}
+
+
+async def test_in_place_checkpoint_replay_rejects_source_title_drift() -> None:
+    operation_id = uuid.uuid7()
+    task_id = TaskId(uuid.uuid7())
+    gateway = _CrashReplayInPlaceGateway("Quarterly review", crash_stage="headers")
+    store = _CheckpointStore(gateway.events)
+
+    with pytest.raises(RuntimeError, match="simulated worker crash"):
+        await _replay_executor(
+            gateway=gateway,
+            generator=_Generator({TransformPhase.FORMAT: "Quarterly review refined."}),
+            store=store,
+            task_id=task_id,
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+
+    stale_title_checkpoint = store.checkpoints[-1].model_copy(
+        update={"source_title": "Former source title"}
+    )
+    retry_generator = _Generator({TransformPhase.FORMAT: "must never be generated"})
+    with pytest.raises(OutputConflictError):
+        await _replay_executor(
+            gateway=gateway,
+            generator=retry_generator,
+            store=store,
+            task_id=task_id,
+            checkpoint=stale_title_checkpoint,
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+
+    assert retry_generator.calls == []
+    assert gateway.mutations == {"headers": 1, "content": 0}
 
 
 def test_in_place_request_rejects_markdown_and_output_name() -> None:

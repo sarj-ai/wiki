@@ -32,7 +32,7 @@ class TaskAdmissionLimitError(TaskError):
     http_status = 429
 
     def __init__(self) -> None:
-        super().__init__("Too many active in-place transformations")
+        super().__init__("Too many active document transformations")
 
 
 class TaskNotClaimableError(TaskError):

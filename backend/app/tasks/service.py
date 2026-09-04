@@ -49,7 +49,10 @@ _DEFAULT_RETENTION = timedelta(days=7)
 _MAX_ERROR_DETAIL_LENGTH = 256
 _TASK_FAILURE_DETAIL = "Task could not be completed"
 _MAX_CHECKPOINT_PLAN_BYTES = 2 * 1024 * 1024
-_CHECKPOINT_PLAN_FIELDS = frozenset({"requests", "replacements", "findings", "headers"})
+_CHECKPOINT_PLAN_FIELDS = frozenset(
+    {"source_title", "requests", "replacements", "findings", "headers"}
+)
+_MAX_ACTIVE_DOCUMENT_TRANSFORMS_PER_OWNER = 20
 _MAX_ACTIVE_IN_PLACE_TASKS_PER_OWNER = 10
 
 
@@ -139,14 +142,20 @@ class PostgresTaskService(TaskService):
     ) -> TaskReservation:
         serialized = _serialize(payload)
         request_hash = _request_hash(serialized)
-        in_place_source = (
-            payload.source
-            if isinstance(payload, DocumentTransformRequest)
-            and payload.output_strategy is OutputStrategy.IN_PLACE
-            and isinstance(payload.source, DriveFileSource)
+        document_transform_payload = (
+            payload
+            if kind is TaskKind.FILE_DOCUMENT_TRANSFORM
+            and isinstance(payload, DocumentTransformRequest)
             else None
         )
-        if in_place_source is not None:
+        in_place_source = (
+            document_transform_payload.source
+            if document_transform_payload is not None
+            and document_transform_payload.output_strategy is OutputStrategy.IN_PLACE
+            and isinstance(document_transform_payload.source, DriveFileSource)
+            else None
+        )
+        if document_transform_payload is not None:
             await self._db.execute(
                 select(func.pg_advisory_xact_lock(func.hashtextextended(str(owner_user_id), 0)))
             )
@@ -163,17 +172,35 @@ class PostgresTaskService(TaskService):
                     .select_from(Task)
                     .where(
                         Task.owner_user_id == owner_user_id,
-                        Task.in_place_target.is_not(None),
+                        Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
                         Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
                     )
                 )
             ).scalar_one_or_none()
             if not isinstance(active_count, int):
-                msg = "Active in-place task count query returned an invalid value"
+                msg = "Active document-transform task count query returned an invalid value"
                 raise TypeError(msg)
-            if active_count >= _MAX_ACTIVE_IN_PLACE_TASKS_PER_OWNER:
+            if active_count >= _MAX_ACTIVE_DOCUMENT_TRANSFORMS_PER_OWNER:
                 await self._db.rollback()
                 raise TaskAdmissionLimitError
+            if in_place_source is not None:
+                active_in_place_count = (
+                    await self._db.execute(
+                        select(func.count())
+                        .select_from(Task)
+                        .where(
+                            Task.owner_user_id == owner_user_id,
+                            Task.in_place_target.is_not(None),
+                            Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
+                        )
+                    )
+                ).scalar_one_or_none()
+                if not isinstance(active_in_place_count, int):
+                    msg = "Active in-place task count query returned an invalid value"
+                    raise TypeError(msg)
+                if active_in_place_count >= _MAX_ACTIVE_IN_PLACE_TASKS_PER_OWNER:
+                    await self._db.rollback()
+                    raise TaskAdmissionLimitError
         now = datetime.now(UTC)
         statement = (
             pg_insert(Task)
@@ -429,25 +456,6 @@ class PostgresTaskService(TaskService):
                 "checkpoint_generation": task.checkpoint_generation,
             }
         )
-
-    async def _existing(
-        self,
-        owner_user_id: uuid.UUID,
-        kind: TaskKind,
-        idempotency_key: IdempotencyKey,
-    ) -> Task:
-        task = (
-            await self._db.execute(
-                select(Task).where(
-                    Task.owner_user_id == owner_user_id,
-                    Task.kind == kind,
-                    Task.idempotency_key == idempotency_key,
-                )
-            )
-        ).scalar_one_or_none()
-        if task is None:  # pragma: no cover — ON CONFLICT waits for the winning transaction
-            raise TaskNotFoundError
-        return task
 
     async def _maybe_existing(
         self,

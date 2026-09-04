@@ -344,6 +344,7 @@ class DocumentTransformExecutor:
             if checkpoint.document_id != request.source.file_id:
                 raise OutputConflictError
             checkpoint_contract = (
+                checkpoint.source_title,
                 checkpoint.source_modified_time,
                 checkpoint.brand_profile_id,
                 checkpoint.brand_profile_sha256,
@@ -352,6 +353,7 @@ class DocumentTransformExecutor:
                 checkpoint.unslop_catalog_sha256,
             )
             current_contract = (
+                snapshot.title,
                 request.source.expected_modified_time,
                 CURRENT_BRAND_MANIFEST.profile_id,
                 CURRENT_BRAND_MANIFEST.sha256,
@@ -554,6 +556,7 @@ class DocumentTransformExecutor:
             raise InPlaceNeedsReviewError
         checkpoint = InPlaceCheckpoint(
             document_id=source.file_id,
+            source_title=snapshot.title,
             source_sha256=_source_sha256(snapshot, original),
             source_modified_time=source.expected_modified_time,
             brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,

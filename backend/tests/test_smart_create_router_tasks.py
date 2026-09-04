@@ -20,6 +20,7 @@ from app.document_transform.schemas import (
     OutputStrategy,
     TransformMode,
 )
+from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
 from app.identifiers import FileId, IdempotencyKey, TaskId, UserId
 from app.models.user import User
@@ -108,6 +109,7 @@ class _Tasks(TaskService):
         self.created = created
         self.terminal = terminal
         self.requested_kind = TaskKind.FILE_SMART_CREATE
+        self.discarded: list[TaskId] = []
 
     @override
     async def create_or_replay(
@@ -155,7 +157,9 @@ class _Tasks(TaskService):
 
     @override
     async def discard_pending(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> bool:
-        raise NotImplementedError
+        del owner_user_id
+        self.discarded.append(task_id)
+        return True
 
     @override
     async def cancel(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> TaskRead:
@@ -188,10 +192,63 @@ class _Enqueuer(TaskEnqueuer):
         self.document_task_ids.append(task_id)
 
 
+class _DestinationFiles:
+    def __init__(self, destination: FileResponse) -> None:
+        self.destination = destination
+        self.requested: list[FileId] = []
+
+    async def get(self, file_id: FileId) -> FileResponse:
+        self.requested.append(file_id)
+        return self.destination
+
+
+class _UnexpectedDestinationRead:
+    async def get(self, file_id: FileId) -> FileResponse:
+        del file_id
+        pytest.fail("an idempotent replay must not revalidate its destination")
+
+
+def _destination_files(
+    *,
+    mime_type: str = "application/vnd.google-apps.folder",
+    can_add_children: bool = True,
+) -> _DestinationFiles:
+    return _DestinationFiles(
+        FileResponse(
+            id=FileId("folder"),
+            name="Folder",
+            mime_type=mime_type,
+            parent_folder_id=None,
+            drive_id=None,
+            modified_time=None,
+            can_add_children=can_add_children,
+        )
+    )
+
+
 def _user() -> User:
     user = User()
     user.id = UserId(uuid.uuid7())
     return user
+
+
+async def _create_transform(
+    payload: DocumentTransformRequest,
+    *,
+    tasks: _Tasks,
+    enqueuer: _Enqueuer,
+    files: _DestinationFiles | _UnexpectedDestinationRead,
+    response: Response | None = None,
+) -> TaskRead:
+    return await create_document_transform(
+        payload=payload,
+        idempotency_key=uuid.uuid7(),
+        response=response or Response(),
+        user=_user(),
+        tasks=tasks,
+        enqueuer=enqueuer,
+        files=files,
+    )
 
 
 async def test_new_task_returns_pending_immediately_and_enqueues() -> None:
@@ -212,6 +269,69 @@ async def test_new_task_returns_pending_immediately_and_enqueues() -> None:
     assert enqueuer.task_ids == [task.id]
     assert response.headers["Idempotency-Replayed"] == "false"
     assert response.headers["Retry-After"] == "1"
+
+
+@pytest.mark.parametrize(
+    ("mime_type", "can_add_children"),
+    [
+        ("application/vnd.google-apps.document", True),
+        ("application/vnd.google-apps.folder", False),
+    ],
+)
+async def test_markdown_transform_rejects_invalid_destination_before_task_creation(
+    mime_type: str,
+    can_add_children: bool,
+) -> None:
+    tasks = _Tasks(created=True)
+    payload = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content="Draft",
+            name="Decision",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.FORMAT,
+    )
+
+    files = _destination_files(
+        mime_type=mime_type,
+        can_add_children=can_add_children,
+    )
+    with pytest.raises(FileNotInScopeError, match="Destination does not accept new files"):
+        await _create_transform(
+            payload,
+            tasks=tasks,
+            enqueuer=_Enqueuer(),
+            files=files,
+        )
+
+    assert tasks.requested_kind is TaskKind.FILE_DOCUMENT_TRANSFORM
+    assert tasks.discarded == [tasks.task_id]
+    assert files.requested == [FileId("folder")]
+
+
+async def test_markdown_transform_replay_skips_changed_destination_validation() -> None:
+    tasks = _Tasks(created=False)
+    enqueuer = _Enqueuer()
+    payload = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content="Draft",
+            name="Decision",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.FORMAT,
+    )
+
+    task = await _create_transform(
+        payload,
+        tasks=tasks,
+        enqueuer=enqueuer,
+        files=_UnexpectedDestinationRead(),
+    )
+
+    assert task.id == tasks.task_id
+    assert enqueuer.document_task_ids == [task.id]
 
 
 async def test_pending_replay_reenqueues_deterministically() -> None:
@@ -262,13 +382,12 @@ async def test_document_transform_endpoint_creates_separate_queued_task() -> Non
         mode=TransformMode.FORMAT,
     )
 
-    task = await create_document_transform(
-        payload=payload,
-        idempotency_key=uuid.uuid7(),
-        response=response,
-        user=_user(),
+    task = await _create_transform(
+        payload,
         tasks=tasks,
         enqueuer=enqueuer,
+        files=_destination_files(),
+        response=response,
     )
 
     assert task.kind is TaskKind.FILE_DOCUMENT_TRANSFORM
@@ -294,11 +413,9 @@ async def test_document_transform_capability_and_kill_switch(
         output_strategy=OutputStrategy.IN_PLACE,
     )
     with pytest.raises(HTTPException, match="disabled"):
-        await create_document_transform(
-            payload=payload,
-            idempotency_key=uuid.uuid7(),
-            response=Response(),
-            user=_user(),
+        await _create_transform(
+            payload,
             tasks=_Tasks(created=True),
             enqueuer=_Enqueuer(),
+            files=_destination_files(),
         )

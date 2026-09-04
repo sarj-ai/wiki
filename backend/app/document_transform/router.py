@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from time import monotonic
-from typing import Annotated
+from typing import Annotated, Protocol
 import uuid
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Response, status
@@ -11,9 +11,14 @@ from app.config import settings
 from app.document_transform.schemas import (
     DocumentTransformCapabilities,
     DocumentTransformRequest,
+    MarkdownSource,
     OutputStrategy,
 )
-from app.identifiers import IdempotencyKey
+from app.drive.schemas import MIME_FOLDER
+from app.files.dependencies import files_service_dep
+from app.files.errors import FileNotInScopeError, FilesError
+from app.files.schemas import FileResponse
+from app.identifiers import FileId, IdempotencyKey
 from app.models.user import User
 from app.openapi import authentication_responses
 from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
@@ -27,6 +32,10 @@ router = APIRouter(
     tags=["document-transforms"],
     responses=authentication_responses(),
 )
+
+
+class DestinationFileReader(Protocol):
+    async def get(self, file_id: FileId) -> FileResponse: ...
 
 
 @router.get(
@@ -58,6 +67,7 @@ async def create_document_transform(
     user: Annotated[User, Depends(get_current_user)],
     tasks: Annotated[TaskService, Depends(task_service_dep)],
     enqueuer: Annotated[TaskEnqueuer, Depends(task_enqueuer_dep)],
+    files: Annotated[DestinationFileReader, Depends(files_service_dep)],
 ) -> TaskRead:
     if (
         payload.output_strategy is OutputStrategy.IN_PLACE
@@ -74,6 +84,15 @@ async def create_document_transform(
         idempotency_key=IdempotencyKey(idempotency_key),
         payload=payload,
     )
+    if reservation.created and isinstance(payload.source, MarkdownSource):
+        try:
+            destination = await files.get(payload.source.destination_folder_id)
+            if destination.mime_type != MIME_FOLDER or not destination.can_add_children:
+                message = "Destination does not accept new files"
+                raise FileNotInScopeError(message)
+        except FilesError:
+            await tasks.discard_pending(reservation.task.id, owner_user_id=user.id)
+            raise
     if isinstance(reservation.task, PendingTaskRead | RunningTaskRead):
         await enqueuer.enqueue_document_transform(reservation.task.id)
     response.headers["Idempotency-Replayed"] = str(not reservation.created).lower()

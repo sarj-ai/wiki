@@ -17,7 +17,13 @@ from app.document_transform.schemas import (
 )
 from app.identifiers import FileId, IdempotencyKey, TaskId
 from app.models.task import Task
-from app.tasks.errors import TaskIdempotencyConflictError, TaskLeaseLostError, TaskTargetBusyError
+from app.tasks import service as task_service_module
+from app.tasks.errors import (
+    TaskAdmissionLimitError,
+    TaskIdempotencyConflictError,
+    TaskLeaseLostError,
+    TaskTargetBusyError,
+)
 from app.tasks.schemas import TaskKind, TaskStatus
 from app.tasks.service import PostgresTaskService
 
@@ -98,7 +104,7 @@ def _in_place_payload() -> DocumentTransformRequest:
 async def test_in_place_admission_reserves_target_before_queueing() -> None:
     row = _task(request_hash="0" * 64)
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, 0, row)
+    session = _Session(None, None, 0, 0, row)
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -116,7 +122,7 @@ async def test_in_place_admission_reserves_target_before_queueing() -> None:
 
 async def test_distinct_active_in_place_task_for_same_target_is_rejected() -> None:
     row = _task(request_hash="0" * 64)
-    session = _Session(None, None, 0, None, None)
+    session = _Session(None, None, 0, 0, None, None)
 
     with pytest.raises(TaskTargetBusyError):
         await _service(session).create_or_replay(
@@ -127,6 +133,48 @@ async def test_distinct_active_in_place_task_for_same_target_is_rejected() -> No
         )
 
     assert session.rollbacks == 1
+
+
+async def test_document_transform_admission_caps_all_active_owner_tasks() -> None:
+    row = _task(request_hash="0" * 64)
+    payload = DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("document-1"),
+            expected_modified_time="2026-09-03T00:00:00Z",
+        ),
+        mode=TransformMode.UNSLOP,
+    )
+    session = _Session(None, None, 20)
+
+    with pytest.raises(TaskAdmissionLimitError):
+        await _service(session).create_or_replay(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            owner_user_id=row.owner_user_id,
+            idempotency_key=row.idempotency_key,
+            payload=payload,
+        )
+
+    assert session.rollbacks == 1
+
+
+async def test_document_transform_admission_replay_precedes_owner_cap() -> None:
+    payload = _in_place_payload()
+    serialized = task_service_module._serialize(payload)
+    row = _task(request_hash=task_service_module._request_hash(serialized))
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    session = _Session(None, row)
+
+    reservation = await _service(session).create_or_replay(
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        owner_user_id=row.owner_user_id,
+        idempotency_key=row.idempotency_key,
+        payload=payload,
+    )
+
+    assert reservation.created is False
+    assert reservation.task.id == row.id
+    assert len(session.statements) == 2
 
 
 async def test_create_or_replay_creates_one_canonical_task() -> None:

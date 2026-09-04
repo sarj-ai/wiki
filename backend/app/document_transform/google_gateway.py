@@ -37,12 +37,13 @@ from app.document_transform.gateway import (
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, parse_google_document
 from app.document_transform.schemas import DocumentOutput, DriveFileSource, MarkdownSource
 from app.drive.retry import ProviderDeadlineError, execute_mutation, execute_with_retry
-from app.drive.schemas import MIME_DOC
+from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.drive.service import (
     GoogleRefreshHandler,
     build_google_credentials,
     reuse_drive_client,
 )
+from app.files.errors import FileNotInScopeError, FilesError
 from app.files.service import FilesService
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId
 from app.models.user import User
@@ -284,6 +285,14 @@ class GoogleDocumentGateway(DocumentGateway):
         output_name: str,
         imported_docx: bytes | None = None,
     ) -> OutputDraft:
+        try:
+            destination = await self._files.get(source.destination_folder_id)
+        except FileNotInScopeError as exc:
+            raise UnsupportedSourceError from exc
+        except FilesError as exc:
+            raise DocumentGatewayError from exc
+        if destination.mime_type != MIME_FOLDER or not destination.can_add_children:
+            raise UnsupportedSourceError
         return await asyncio.to_thread(
             self._create_sync,
             operation_id,
@@ -618,12 +627,18 @@ class GoogleDocumentGateway(DocumentGateway):
         tabs = tuple(_document_tabs(document))
         requests: list[dict[str, object]] = []
         warnings: list[str] = [] if self._logo_uri else ["logo_unavailable"]
+        pending_write_may_have_committed = bool(
+            draft.pending_mutation_sha256
+            and draft.mutation_base_revision_sha256
+            and _revision_sha256(draft.revision_id) != draft.mutation_base_revision_sha256
+        )
         for tab_id, document_tab in tabs:
             style = document_tab.get("documentStyle", {})
             header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
             headers = document_tab.get("headers", {})
             if (
                 draft.applied_mutation_sha256 is None
+                and not pending_write_may_have_committed
                 and isinstance(header_id, str)
                 and _segment_has_text(headers, header_id)
             ):
@@ -660,7 +675,11 @@ class GoogleDocumentGateway(DocumentGateway):
                     continue
                 raise DocumentGatewayError
             headers = document_tab.get("headers", {})
-            if draft.applied_mutation_sha256 is None and _segment_has_text(headers, header_id):
+            if (
+                draft.applied_mutation_sha256 is None
+                and not pending_write_may_have_committed
+                and _segment_has_text(headers, header_id)
+            ):
                 if f"header_conflict:{tab_id}" not in warnings:
                     warnings.append(f"header_conflict:{tab_id}")
                 continue

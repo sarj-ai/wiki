@@ -18,6 +18,7 @@ from app.auth.google_tokens import (
     GoogleTokenUnavailableError,
 )
 from app.cache.service import CacheService
+from app.config import settings
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import (
     DocumentGatewayError,
@@ -31,6 +32,7 @@ from app.document_transform.schemas import (
     DocumentTransformRequest,
     DocumentTransformResult,
     InPlaceCheckpoint,
+    OutputStrategy,
     TransformMode,
 )
 from app.drive.retry import ProviderDeadlineError
@@ -172,6 +174,16 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             raise TaskExecutionDeferredError from exc
         try:
             claimed_record = await self._tasks.load_document_transform(task_id)
+            if (
+                claimed_record.payload.output_strategy is OutputStrategy.IN_PLACE
+                and not settings.DOCUMENT_TRANSFORM_IN_PLACE_ENABLED
+            ):
+                return await self._tasks.fail(
+                    task_id,
+                    lease_token=claim.lease_token,
+                    error_code="in_place_disabled",
+                    error_detail="In-place document transformation is disabled",
+                )
             runtime = await self._runtime(
                 claimed_record.owner_user_id,
                 claimed_record.payload,

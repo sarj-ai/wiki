@@ -172,8 +172,9 @@ class InPlaceCheckpointStage(StrEnum):
 
 
 class InPlaceCheckpoint(StrictTransformModel):
-    version: Literal[1] = 1
+    version: Literal[2] = 2
     document_id: FileId
+    source_title: str
     source_sha256: str
     source_modified_time: str
     brand_profile_id: BrandProfileId

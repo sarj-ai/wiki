@@ -22,7 +22,7 @@ from app.document_transform.schemas import (
     TransformMode,
     ValidationSummary,
 )
-from app.identifiers import FileId, TaskId
+from app.identifiers import DocsTabId, FileId, TaskId
 from scripts.qa_document_transform_corpus import (
     ArtifactFile,
     EvidenceManifest,
@@ -48,6 +48,7 @@ from scripts.qa_document_transform_corpus import (
     _render_pdf,
     _require_artifact_file,
     _require_manifest_invariants,
+    _require_no_header_conflicts,
     _require_private_file,
     _require_private_permissions,
     _require_result_binding,
@@ -76,6 +77,13 @@ def test_seeded_order_is_stable_across_drive_page_order() -> None:
         item["id"] for item in seeded_order(reverse, "release-seed")
     ]
     assert seeded_order(forward, "release-seed") != seeded_order(forward, "another-seed")
+
+
+def test_copy_corpus_preflight_rejects_existing_header_content() -> None:
+    with pytest.raises(QaError, match="header_conflict"):
+        _require_no_header_conflicts((DocsTabId("tab-with-header"),))
+
+    _require_no_header_conflicts(())
 
 
 def test_uuid5_operation_key_is_stable_and_scoped() -> None:
