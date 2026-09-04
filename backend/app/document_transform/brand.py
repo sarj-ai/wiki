@@ -267,34 +267,6 @@ def _style_requests(
             "endIndex": source_range.end_index,
             "tabId": source_range.tab_id,
         }
-        size = _font_size(block, profile)
-        if branded:
-            text_style: dict[str, Any] = {
-                "weightedFontFamily": {"fontFamily": profile.font_family},
-                "fontSize": {"magnitude": size, "unit": "PT"},
-                "foregroundColor": {
-                    "color": {
-                        "rgbColor": _rgb_color(
-                            profile.primary_color
-                            if block.kind == BlockKind.HEADING
-                            else profile.ink_color
-                        )
-                    }
-                },
-            }
-            fields = "weightedFontFamily,fontSize,foregroundColor"
-            if block.kind == BlockKind.HEADING:
-                text_style["bold"] = True
-                fields += ",bold"
-            requests.append(
-                {
-                    "updateTextStyle": {
-                        "range": range_value,
-                        "textStyle": text_style,
-                        "fields": fields,
-                    }
-                }
-            )
         if block.kind in {BlockKind.LIST_ITEM, BlockKind.CHECKLIST}:
             requests.append(
                 {
@@ -332,6 +304,35 @@ def _style_requests(
                 }
             }
         )
+        # Named styles can affect inherited text appearance. Apply the explicit
+        # brand overrides after selecting the paragraph's named style.
+        if branded:
+            text_style: dict[str, Any] = {
+                "weightedFontFamily": {"fontFamily": profile.font_family},
+                "fontSize": {"magnitude": _font_size(block, profile), "unit": "PT"},
+                "foregroundColor": {
+                    "color": {
+                        "rgbColor": _rgb_color(
+                            profile.primary_color
+                            if block.kind == BlockKind.HEADING
+                            else profile.ink_color
+                        )
+                    }
+                },
+            }
+            fields = "weightedFontFamily,fontSize,foregroundColor"
+            if block.kind == BlockKind.HEADING:
+                text_style["bold"] = True
+                fields += ",bold"
+            requests.append(
+                {
+                    "updateTextStyle": {
+                        "range": range_value,
+                        "textStyle": text_style,
+                        "fields": fields,
+                    }
+                }
+            )
     return requests
 
 
@@ -436,23 +437,6 @@ def _brand_shell_requests(
         requests.extend(
             [
                 {
-                    "updateTextStyle": {
-                        "range": text_range,
-                        "textStyle": {
-                            "weightedFontFamily": {"fontFamily": profile.header_font_family},
-                            "fontSize": {
-                                "magnitude": profile.header_size_pt,
-                                "unit": "PT",
-                            },
-                            "foregroundColor": {
-                                "color": {"rgbColor": _rgb_color(profile.header_color)}
-                            },
-                            "bold": profile.header_bold,
-                        },
-                        "fields": "weightedFontFamily,fontSize,foregroundColor,bold",
-                    }
-                },
-                {
                     "updateParagraphStyle": {
                         "range": paragraph_range,
                         "paragraphStyle": {
@@ -473,6 +457,23 @@ def _brand_shell_requests(
                             "alignment,lineSpacing,spaceAbove,spaceBelow,"
                             "keepWithNext,namedStyleType"
                         ),
+                    }
+                },
+                {
+                    "updateTextStyle": {
+                        "range": text_range,
+                        "textStyle": {
+                            "weightedFontFamily": {"fontFamily": profile.header_font_family},
+                            "fontSize": {
+                                "magnitude": profile.header_size_pt,
+                                "unit": "PT",
+                            },
+                            "foregroundColor": {
+                                "color": {"rgbColor": _rgb_color(profile.header_color)}
+                            },
+                            "bold": profile.header_bold,
+                        },
+                        "fields": "weightedFontFamily,fontSize,foregroundColor,bold",
                     }
                 },
             ]

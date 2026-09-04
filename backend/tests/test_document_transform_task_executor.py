@@ -463,6 +463,31 @@ async def test_internal_document_transform_gets_worker_provider_budget() -> None
     assert restored_budget <= interactive_budget
 
 
+@pytest.mark.parametrize("in_place", [False, True])
+async def test_crashed_worker_retry_cap_precedes_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    in_place: bool,
+) -> None:
+    tasks = _RetryTasks(
+        attempt_count=11,
+        payload=_in_place_payload() if in_place else _drive_payload(),
+    )
+    executor = object.__new__(DriveDocumentTransformTaskExecutor)
+    monkeypatch.setattr(executor, "_tasks", tasks, raising=False)
+
+    async def forbidden_runtime(*args: object, **kwargs: object) -> Never:
+        del args, kwargs
+        pytest.fail("exhausted claims must not initialize provider or model runtime")
+
+    monkeypatch.setattr(DriveDocumentTransformTaskExecutor, "_runtime", forbidden_runtime)
+    result = await executor.execute(TaskId(uuid.uuid7()))
+
+    assert isinstance(result, FailedTaskRead)
+    assert tasks.last_error_code == ("needs_review" if in_place else "execution_attempts_exhausted")
+    assert tasks.failed == 1
+
+
 async def test_worker_kill_switch_blocks_claimed_in_place_task_before_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

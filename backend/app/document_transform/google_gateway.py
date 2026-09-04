@@ -475,6 +475,7 @@ class GoogleDocumentGateway(DocumentGateway):
         if _has_active_suggestions(document):
             raise InPlaceNeedsReviewError
         headers: list[TabHeader] = []
+        preserved_headers: list[TabHeader] = []
         missing: list[DocsTabId] = []
         unknown: list[DocsTabId] = []
         for raw_tab_id, document_tab in _document_tabs(document):
@@ -494,7 +495,17 @@ class GoogleDocumentGateway(DocumentGateway):
                 unknown.append(tab_id)
                 continue
             if _segment_has_content(segments, header_id):
-                unknown.append(tab_id)
+                if _tab_header_is_branded(
+                    document,
+                    document_tab,
+                    expected_title=title,
+                    allow_legacy_inline_objects=len(tuple(_document_tabs(document))) == 1,
+                ):
+                    preserved_headers.append(
+                        TabHeader(tab_id=tab_id, header_id=DocsSegmentId(header_id))
+                    )
+                else:
+                    unknown.append(tab_id)
                 continue
             headers.append(TabHeader(tab_id=tab_id, header_id=DocsSegmentId(header_id)))
         parse_google_document(document, title=title)
@@ -507,6 +518,9 @@ class GoogleDocumentGateway(DocumentGateway):
                 web_url=snapshot.web_url,
             ),
             headers=tuple(headers),
+            preserved_headers=tuple(preserved_headers),
+            fully_branded=not (missing or unknown or headers)
+            and verify_brand_application(document, parse_google_document(document, title=title)),
             missing_header_tab_ids=tuple(missing),
             unknown_header_tab_ids=tuple(unknown),
             marker_range=marker_range,
@@ -709,7 +723,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 draft.applied_mutation_sha256 is None
                 and not pending_write_may_have_committed
                 and isinstance(header_id, str)
-                and _segment_has_text(headers, header_id)
+                and _segment_has_content(headers, header_id)
             ):
                 warnings.append(f"header_conflict:{tab_id}")
                 continue
@@ -747,7 +761,7 @@ class GoogleDocumentGateway(DocumentGateway):
             if (
                 draft.applied_mutation_sha256 is None
                 and not pending_write_may_have_committed
-                and _segment_has_text(headers, header_id)
+                and _segment_has_content(headers, header_id)
             ):
                 if f"header_conflict:{tab_id}" not in warnings:
                     warnings.append(f"header_conflict:{tab_id}")
@@ -1159,22 +1173,6 @@ def _first_tab_id(document: dict[str, Any]) -> DocsTabId:
     return DocsTabId(_required_string(properties, "tabId"))
 
 
-def _segment_has_text(segments: object, segment_id: str) -> bool:
-    if not isinstance(segments, dict):
-        return False
-    segment = segments.get(segment_id, {})
-    if not isinstance(segment, dict):
-        return False
-    content = segment.get("content", [])
-    if not isinstance(content, list):
-        return False
-    return any(
-        _structural_text({str(key): value for key, value in item.items()}).strip()
-        for item in content
-        if isinstance(item, dict)
-    )
-
-
 def _segment_has_content(segments: object, segment_id: str) -> bool:
     if not isinstance(segments, dict):
         return False
@@ -1477,6 +1475,9 @@ def _protected_structure_inventory(document: dict[str, Any]) -> tuple[tuple[str,
             for element in content
             if isinstance(element, dict) and not _is_plain_text_paragraph(element)
         ]
+        immutable = _immutable_tab_payload(document_tab, content)
+        if immutable:
+            protected.append(immutable)
         inventory.append(
             (
                 tab_id,
@@ -1484,6 +1485,128 @@ def _protected_structure_inventory(document: dict[str, Any]) -> tuple[tuple[str,
             )
         )
     return tuple(inventory)
+
+
+def _immutable_tab_payload(document_tab: dict[str, Any], content: list[Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    for key in ("footnotes", "footers"):
+        if document_tab.get(key):
+            payload[key] = _strip_location_fields(document_tab[key])
+    links = _paragraph_link_inventory(content)
+    if links:
+        payload["links"] = links
+    # Only referenced body/footnote/footer objects are protected here: branding
+    # intentionally adds a header logo. Signed contentUri values expire and are
+    # not image identity; retain the stable source URI and all other properties.
+    reference_scope = {"body": content, **payload}
+    for reference_key, definitions_key in (
+        ("inlineObjectId", "inlineObjects"),
+        ("positionedObjectIds", "positionedObjects"),
+        ("listId", "lists"),
+    ):
+        identifiers = _referenced_ids(reference_scope, reference_key)
+        definitions = document_tab.get(definitions_key, {})
+        if identifiers:
+            if not isinstance(definitions, dict):
+                raise DocumentGatewayError
+            payload[definitions_key] = {
+                identifier: _stable_object_payload(definitions.get(identifier))
+                for identifier in sorted(identifiers)
+            }
+    bullets = _bullet_inventory(content)
+    if bullets:
+        payload["bullets"] = bullets
+    return payload
+
+
+def _paragraph_link_inventory(value: object) -> list[object]:
+    links: list[object] = []
+    match value:
+        case list():
+            for child in value:
+                links.extend(_paragraph_link_inventory(child))
+            return links
+        case dict():
+            pass
+        case _:
+            return links
+    paragraph = value.get("paragraph")
+    if isinstance(paragraph, dict):
+        runs: list[dict[str, Any]] = []
+        elements = paragraph.get("elements", [])
+        if not isinstance(elements, list):
+            return links
+        for part in elements:
+            run = part.get("textRun", {}) if isinstance(part, dict) else {}
+            if not isinstance(run, dict):
+                continue
+            style = run.get("textStyle", {})
+            link = style.get("link") if isinstance(style, dict) else None
+            text = run.get("content", "")
+            if runs and runs[-1]["link"] == link:
+                runs[-1]["text"] += text
+            else:
+                runs.append({"text": text, "link": link})
+        if any(run["link"] is not None for run in runs):
+            links.append(runs)
+    else:
+        for child in value.values():
+            links.extend(_paragraph_link_inventory(child))
+    return links
+
+
+def _bullet_inventory(value: object) -> list[object]:
+    match value:
+        case dict():
+            bullet = value.get("bullet")
+            return (
+                [bullet]
+                if "bullet" in value
+                else [item for child in value.values() for item in _bullet_inventory(child)]
+            )
+        case list():
+            return [item for child in value for item in _bullet_inventory(child)]
+        case _:
+            return []
+
+
+def _referenced_ids(value: object, reference_key: str) -> set[str]:
+    identifiers: set[str] = set()
+    match value:
+        case dict():
+            reference = value.get(reference_key)
+            match reference:
+                case str():
+                    identifiers.add(reference)
+                case list():
+                    identifiers.update(item for item in reference if isinstance(item, str))
+                case _:
+                    pass
+            for child in value.values():
+                identifiers.update(_referenced_ids(child, reference_key))
+        case list():
+            for child in value:
+                identifiers.update(_referenced_ids(child, reference_key))
+        case _:
+            pass
+    return identifiers
+
+
+def _stable_object_payload(value: object) -> object:
+    match value:
+        case dict():
+            return {
+                key: (
+                    {field: item for field, item in child.items() if field != "contentUri"}
+                    if key == "imageProperties" and isinstance(child, dict)
+                    else _stable_object_payload(child)
+                )
+                for key, child in value.items()
+            }
+        case list():
+            return [_stable_object_payload(child) for child in value]
+        case _:
+            return value
 
 
 def _is_plain_text_paragraph(element: dict[str, Any]) -> bool:
@@ -1767,14 +1890,43 @@ def _tab_shell_is_branded(
         and _dimension_matches(style.get("marginBottom"), expected_vertical)
     ):
         return False
-    header_id = style.get("defaultHeaderId")
+    return _tab_header_is_branded(
+        document,
+        document_tab,
+        expected_title=expected_title,
+        allow_legacy_inline_objects=allow_legacy_inline_objects,
+    )
+
+
+def _tab_header_is_branded(
+    document: dict[str, Any],
+    document_tab: dict[str, Any],
+    *,
+    expected_title: str,
+    allow_legacy_inline_objects: bool,
+) -> bool:
+    style = document_tab.get("documentStyle", {})
+    header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
     headers = document_tab.get("headers")
     if not isinstance(header_id, str) or not isinstance(headers, dict):
+        return False
+    if set(headers) != {header_id}:
         return False
     header = headers.get(header_id)
     if not isinstance(header, dict) or not _segment_has_text(headers, header_id):
         return False
-    if not _header_has_brand(header, expected_title=expected_title):
+    if not isinstance(header.get("content"), list):
+        return False
+    effective_header = {
+        **header,
+        "content": [
+            {**item, "paragraph": _effective_paragraph(item["paragraph"], document_tab)}
+            if isinstance(item, dict) and isinstance(item.get("paragraph"), dict)
+            else item
+            for item in header.get("content", [])
+        ],
+    }
+    if not _header_has_brand(effective_header, expected_title=expected_title):
         return False
     object_ids = _values_for_key(header, "inlineObjectId")
     if len(object_ids) != 1:
@@ -1784,6 +1936,22 @@ def _tab_shell_is_branded(
         inline_objects = document.get("inlineObjects")
     return isinstance(inline_objects, dict) and _inline_object_uses_canonical_logo(
         inline_objects.get(object_ids[0])
+    )
+
+
+def _segment_has_text(segments: object, segment_id: str) -> bool:
+    if not isinstance(segments, dict):
+        return False
+    segment = segments.get(segment_id, {})
+    if not isinstance(segment, dict):
+        return False
+    content = segment.get("content", [])
+    if not isinstance(content, list):
+        return False
+    return any(
+        _structural_text({str(key): value for key, value in item.items()}).strip()
+        for item in content
+        if isinstance(item, dict)
     )
 
 
@@ -1890,8 +2058,49 @@ def _paragraphs_by_range(
                         start_index=start,
                         end_index=end - 1,
                     )
-                ] = element["paragraph"]
+                ] = _effective_paragraph(element["paragraph"], document_tab)
     return paragraphs
+
+
+def _effective_paragraph(paragraph: dict[str, Any], document_tab: dict[str, Any]) -> dict[str, Any]:
+    local = paragraph.get("paragraphStyle", {})
+    if not isinstance(local, dict):
+        return paragraph
+    named = document_tab.get("namedStyles", {})
+    styles = named.get("styles", []) if isinstance(named, dict) else []
+    by_name = (
+        {
+            name: style
+            for style in styles
+            if isinstance(style, dict) and isinstance(name := style.get("namedStyleType"), str)
+        }
+        if isinstance(styles, list)
+        else {}
+    )
+    paragraph_style: dict[str, Any] = {}
+    text_style: dict[str, Any] = {}
+    for name in ("NORMAL_TEXT", local.get("namedStyleType", "NORMAL_TEXT")):
+        parent = by_name.get(name, {})
+        for field, target in (("paragraphStyle", paragraph_style), ("textStyle", text_style)):
+            value = parent.get(field)
+            if isinstance(value, dict):
+                target.update(value)
+    paragraph_style.update(local)
+    elements = paragraph.get("elements", [])
+    if not isinstance(elements, list):
+        return paragraph
+    resolved = []
+    for element in elements:
+        if not isinstance(element, dict) or not isinstance(element.get("textRun"), dict):
+            resolved.append(element)
+            continue
+        run = element["textRun"]
+        local_text = run.get("textStyle", {})
+        if not isinstance(local_text, dict):
+            resolved.append(element)
+            continue
+        resolved.append({**element, "textRun": {**run, "textStyle": {**text_style, **local_text}}})
+    return {**paragraph, "paragraphStyle": paragraph_style, "elements": resolved}
 
 
 def _paragraph_has_brand(paragraph: dict[str, Any], block: TextBlock) -> bool:
@@ -1971,7 +2180,7 @@ def _dimension_matches(value: object, magnitude: int) -> bool:
     return (
         isinstance(value, dict)
         and value.get("unit") == "PT"
-        and value.get("magnitude") == magnitude
+        and value.get("magnitude", 0) == magnitude
     )
 
 
@@ -1983,7 +2192,7 @@ def _color_matches(value: object, expected_hex: str) -> bool:
     if not isinstance(rgb, dict):
         return False
     expected = tuple(int(expected_hex[index : index + 2], 16) / 255 for index in (1, 3, 5))
-    observed = tuple(rgb.get(channel) for channel in ("red", "green", "blue"))
+    observed = tuple(rgb.get(channel, 0) for channel in ("red", "green", "blue"))
     return all(
         isinstance(actual, int | float) and abs(actual - target) < _RGB_TOLERANCE
         for actual, target in zip(observed, expected, strict=True)

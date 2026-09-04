@@ -230,6 +230,7 @@ class InPlaceCheckpoint(StrictTransformModel):
     llm_invoked: bool
     model_ids: list[ModelId]
     headers: dict[str, str] = Field(default_factory=dict)
+    preserved_headers: dict[str, str] = Field(default_factory=dict)
     changed: bool
 
 
