@@ -187,6 +187,36 @@ describe("documentTransformApi", () => {
     );
   });
 
+  it("replaces a redacted review detail with safe, actionable guidance", async () => {
+    await expect(
+      documentTransformApi.waitForCompletion({
+        errorCode: "needs_review",
+        errorDetail: "Task could not be completed",
+        id: taskId,
+        status: "failed",
+      }),
+    ).rejects.toEqual(
+      new DocumentTransformNeedsReviewError(
+        "Sarj stopped at a safety check. Review the document and its Drive version history before trying again.",
+      ),
+    );
+  });
+
+  it("uses code-specific guidance when a terminal task has no detail", async () => {
+    await expect(
+      documentTransformApi.waitForCompletion({
+        errorCode: "source_changed",
+        id: taskId,
+        status: "failed",
+      }),
+    ).rejects.toMatchObject({
+      code: "source_changed",
+      message:
+        "The document changed after polishing started. Reload and review the latest version before trying again.",
+      name: "DocumentTransformTerminalError",
+    });
+  });
+
   it("stops polling instead of waiting forever", async () => {
     actionMocks.getTask.mockResolvedValue({
       data: JSON.stringify(task("pending")),
