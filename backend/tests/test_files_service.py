@@ -426,7 +426,12 @@ async def test_task_recovery_uses_user_corpus_for_my_drive(
     assert "driveId" not in list_params[0]
 
 
-async def test_move_reuses_prefetched_parent(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("already_moved", [False, True])
+async def test_move_reuses_prefetched_parent(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    already_moved: bool,
+) -> None:
     ops: list[dict[str, Any]] = []
 
     class _FakeFiles:
@@ -449,7 +454,7 @@ async def test_move_reuses_prefetched_parent(monkeypatch: pytest.MonkeyPatch) ->
                     "id": "f",
                     "name": "Doc",
                     "mimeType": "application/vnd.google-apps.document",
-                    "parents": ["old-parent"],
+                    "parents": ["new-parent" if already_moved else "old-parent"],
                     "driveId": "d1",
                 }
             return self
@@ -479,6 +484,10 @@ async def test_move_reuses_prefetched_parent(monkeypatch: pytest.MonkeyPatch) ->
     gets = [o for o in ops if o["_op"] == "get"]
     updates = [o for o in ops if o["_op"] == "update"]
     assert len(gets) == 2
+    if already_moved:
+        assert updates == []
+        assert result.moved == result.source
+        return
     assert len(updates) == 1
     assert updates[0]["removeParents"] == "old-parent"
     assert updates[0]["addParents"] == "new-parent"

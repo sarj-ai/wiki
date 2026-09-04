@@ -1743,12 +1743,12 @@ def test_copy_branding_normalizes_header_title_and_uses_utf16_indexes() -> None:
     assert [next(iter(request)) for request in header_requests] == [
         "insertText",
         "insertInlineImage",
-        "updateTextStyle",
         "updateParagraphStyle",
+        "updateTextStyle",
     ]
     assert header_requests[0]["insertText"]["text"] == "Decision 😀 Brief\t"
-    assert header_requests[2]["updateTextStyle"]["range"]["endIndex"] == 18
-    assert header_requests[3]["updateParagraphStyle"]["range"]["endIndex"] == 19
+    assert header_requests[3]["updateTextStyle"]["range"]["endIndex"] == 18
+    assert header_requests[2]["updateParagraphStyle"]["range"]["endIndex"] == 19
 
 
 @pytest.mark.parametrize(

@@ -156,6 +156,17 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         try:
             claimed_record = await self._tasks.load_document_transform(task_id)
             claimed_payload = _required_payload(claimed_record)
+            if claim.task.attempt_count > _MAX_TASK_ATTEMPTS:
+                return await self._tasks.fail(
+                    task_id,
+                    lease_token=claim.lease_token,
+                    error_code=(
+                        "needs_review"
+                        if claimed_payload.output_strategy is OutputStrategy.IN_PLACE
+                        else "execution_attempts_exhausted"
+                    ),
+                    error_detail="Execution retry limit reached; review the document before retrying",
+                )
             if (
                 claimed_payload.output_strategy is OutputStrategy.IN_PLACE
                 and not settings.DOCUMENT_TRANSFORM_IN_PLACE_ENABLED

@@ -269,6 +269,8 @@ class GoogleFilesService(FilesService):
             raise UnsupportedMimeError(msg)
         if not destination.can_add_children:
             raise DriveUpstreamError(403)
+        if source.parent_folder_id == new_parent_folder_id:
+            return MoveResult(source=source, moved=source)
         try:
             moved = await asyncio.to_thread(
                 self._move_sync,

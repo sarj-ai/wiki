@@ -64,7 +64,7 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, Task
 
 
 PIPELINE_VERSION = "document-transform-v3"
-REQUEST_BUILDER_VERSION = "google-docs-requests-v2"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v3"
 _OUTPUT_SUFFIX = MappingProxyType(
     {
         TransformMode.FORMAT: "Sarj formatted",
@@ -699,7 +699,10 @@ class DocumentTransformExecutor:
         model_ids = (
             [ModelId(value) for value in self._generator.model_ids] if outcome.llm_invoked else []
         )
-        if branded and inspection.missing_header_tab_ids:
+        if branded and inspection.fully_branded and not replacements:
+            requests = []
+            stage = InPlaceCheckpointStage.CONTENT
+        elif branded and inspection.missing_header_tab_ids:
             requests = [
                 {
                     "createHeader": {
@@ -752,6 +755,9 @@ class DocumentTransformExecutor:
             llm_invoked=outcome.llm_invoked,
             model_ids=model_ids,
             headers={str(header.tab_id): str(header.header_id) for header in inspection.headers},
+            preserved_headers={
+                str(header.tab_id): str(header.header_id) for header in inspection.preserved_headers
+            },
             changed=changed,
         )
         return await self._save_checkpoint(checkpoint)
@@ -1192,6 +1198,8 @@ def _matches_pre_header_checkpoint(
         and not inspection.unknown_header_tab_ids
         and tuple(str(tab_id) for tab_id in inspection.missing_header_tab_ids) == requested_tab_ids
         and current_headers == checkpoint.headers
+        and {str(header.tab_id): str(header.header_id) for header in inspection.preserved_headers}
+        == checkpoint.preserved_headers
         and inspection.marker_range == checkpoint.marker_range
     )
 

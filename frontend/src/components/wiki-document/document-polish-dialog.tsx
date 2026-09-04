@@ -31,7 +31,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FolderPickerDialog } from "@/components/wiki-sidebar/folder-picker-dialog";
 import { ApiError } from "@/lib/api-error";
+import { useBrowserUserId } from "@/lib/browser-user-context";
 import { documentTransformApi } from "@/lib/document-transform-client";
+import {
+  readTransformRecovery,
+  type TransformRecovery,
+  writeTransformRecovery,
+} from "@/lib/document-transform-recovery";
 import {
   type DocumentTransformMode,
   DocumentTransformNeedsReviewError,
@@ -107,6 +113,7 @@ export function DocumentPolishDialog({
   source,
 }: DocumentPolishDialogProps) {
   const queryClient = useQueryClient();
+  const owner = useBrowserUserId();
   const router = useRouter();
   const [mode, setMode] = useState<DocumentTransformMode>("both");
   const [outputStrategy, setOutputStrategy] = useState<DocumentTransformOutputStrategy>("copy");
@@ -152,6 +159,21 @@ export function DocumentPolishDialog({
   const capabilityFailed =
     source.kind === "drive_file" && source.allowInPlace && capabilities.isError;
   const sourceIdentity = source.kind === "drive_file" ? `drive:${source.fileId}` : "markdown";
+  const recoveryKey = ["document-transform-recovery", owner, sourceIdentity] as const;
+  const recovery = useQuery({
+    enabled: open,
+    initialData: owner ? undefined : null,
+    queryKey: recoveryKey,
+    queryFn: () => readTransformRecovery(owner, sourceIdentity),
+    retry: false,
+    staleTime: Infinity,
+  });
+  const unresolved = recovery.data ?? null;
+  const optionsLocked = submitting || unresolved !== null;
+  const saveRecovery = (operation: null | TransformRecovery) => {
+    writeTransformRecovery(owner, sourceIdentity, operation);
+    queryClient.setQueryData(recoveryKey, operation);
+  };
 
   useEffect(
     () => () => {
@@ -162,10 +184,11 @@ export function DocumentPolishDialog({
       idempotencyKey.current = null;
       refreshedDriveSource.current = null;
     },
-    [sourceIdentity],
+    [sourceIdentity, owner],
   );
 
   const resetRequest = () => {
+    if (unresolved) return;
     idempotencyKey.current = null;
     refreshedDriveSource.current = null;
     fileLoadGeneration.current += 1;
@@ -178,6 +201,12 @@ export function DocumentPolishDialog({
     abortRef.current?.abort();
     abortRef.current = null;
     submitLatch.current = false;
+    if (unresolved) {
+      setSubmitting(false);
+      setStage("idle");
+      onOpenChange(false);
+      return;
+    }
     idempotencyKey.current = null;
     refreshedDriveSource.current = null;
     fileLoadGeneration.current += 1;
@@ -239,8 +268,13 @@ export function DocumentPolishDialog({
   };
 
   const create = async () => {
-    let transformSource = inputSource();
-    if (!transformSource || submitLatch.current) return;
+    let transformSource = unresolved?.source ?? inputSource();
+    if (!transformSource && unresolved?.taskId) {
+      // A known task needs no source content; this placeholder is never submitted.
+      transformSource = { kind: "markdown", content: "", name: "", destinationFolderId: "" };
+    }
+    if ((!transformSource && !unresolved?.taskId) || submitLatch.current) return;
+    if (!transformSource) return;
     submitLatch.current = true;
     setSubmitting(true);
     setStage("starting");
@@ -259,7 +293,9 @@ export function DocumentPolishDialog({
     };
     abortRef.current?.abort();
     abortRef.current = controller;
-    if (transformSource.kind === "drive_file" && refreshedDriveSource.current) {
+    if (unresolved) {
+      // Replay the exact admitted payload, never refreshed metadata under the same key.
+    } else if (transformSource.kind === "drive_file" && refreshedDriveSource.current) {
       transformSource = refreshedDriveSource.current;
     } else if (transformSource.kind === "drive_file" && source.kind === "drive_file") {
       try {
@@ -279,19 +315,34 @@ export function DocumentPolishDialog({
       finishSubmission();
       return;
     }
-    const requestIdempotencyKey = (idempotencyKey.current ??= crypto.randomUUID());
+    const requestIdempotencyKey =
+      unresolved?.key ?? (idempotencyKey.current ??= crypto.randomUUID());
+    const operation: TransformRecovery = unresolved ?? {
+      createdAt: Date.now(),
+      key: requestIdempotencyKey,
+      mode,
+      outputStrategy: effectiveOutputStrategy,
+      source: transformSource.kind === "drive_file" ? transformSource : null,
+      taskId: null,
+    };
     try {
-      const task = await documentTransformApi.create(
-        transformSource,
-        mode,
-        requestIdempotencyKey,
-        effectiveOutputStrategy,
-      );
+      saveRecovery(operation);
+      assertRecoveryReplaySafe(operation, unresolved !== null, markdown);
+      const task = operation.taskId
+        ? await documentTransformApi.getTask(operation.taskId, controller.signal)
+        : await documentTransformApi.create(
+            transformSource,
+            operation.mode,
+            requestIdempotencyKey,
+            operation.outputStrategy,
+          );
+      saveRecovery({ ...operation, taskId: task.id });
       controller.signal.throwIfAborted();
       if (!isCurrent()) return;
       setStage("transforming");
       const result = await documentTransformApi.waitForCompletion(task, controller.signal);
       if (!isCurrent()) return;
+      saveRecovery(null);
       if (result.outputStrategy === "in_place") {
         await queryClient.invalidateQueries({ queryKey: wikiKeys.file(result.outputFile.id) });
         if (!isCurrent()) return;
@@ -306,6 +357,7 @@ export function DocumentPolishDialog({
     } catch (error: unknown) {
       if (error instanceof DocumentTransformNeedsReviewError) {
         if (!isCurrent()) return;
+        saveRecovery(null);
         setReviewMessage(error.message);
         setReviewResult(error.result ?? null);
         if (error.result?.outputStrategy === "in_place") {
@@ -320,7 +372,10 @@ export function DocumentPolishDialog({
         toast.warning(`The ${artifactNoun} needs review`);
       } else if (!(error instanceof DOMException && error.name === "AbortError")) {
         if (!isCurrent()) return;
-        if (error instanceof DocumentTransformTerminalError) setTerminalMessage(error.message);
+        if (error instanceof DocumentTransformTerminalError) {
+          saveRecovery(null);
+          setTerminalMessage(error.message);
+        }
         toast.error(errorMessage(error, `Couldn’t polish ${artifactNoun}`));
       }
     } finally {
@@ -365,12 +420,27 @@ export function DocumentPolishDialog({
           </div>
 
           <div className="space-y-5 overflow-y-auto p-5 sm:px-6">
+            {unresolved ? (
+              <p className="text-sm" role="status">
+                A polish operation is already reserved for this document. Resume checking its
+                status; closing this dialog does not cancel it.
+                {unresolved.taskId
+                  ? ` Task: ${unresolved.taskId}`
+                  : " Its submission is being recovered."}
+              </p>
+            ) : null}
+            {recovery.isError ? (
+              <p role="alert">
+                Couldn’t safely restore polish status. Restore browser storage access before
+                starting another operation.
+              </p>
+            ) : null}
             {source.kind === "markdown" ? (
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="polish-markdown-name">Document name</Label>
                   <Input
-                    disabled={submitting}
+                    disabled={optionsLocked}
                     id="polish-markdown-name"
                     maxLength={255}
                     onChange={(event) => {
@@ -386,7 +456,7 @@ export function DocumentPolishDialog({
                   <input
                     accept=".md, text/markdown, text/plain"
                     className="sr-only"
-                    disabled={submitting}
+                    disabled={optionsLocked}
                     onChange={(event) => {
                       const file = event.target.files?.item(0);
                       if (file) void loadMarkdownFile(file);
@@ -397,7 +467,7 @@ export function DocumentPolishDialog({
                   <Button
                     aria-label="Markdown file drop zone"
                     className="bg-muted/25 h-auto w-full flex-wrap justify-start border-dashed p-3 whitespace-normal"
-                    disabled={submitting}
+                    disabled={optionsLocked}
                     onClick={() => fileInputRef.current?.click()}
                     onDragOver={(event) => {
                       event.preventDefault();
@@ -427,7 +497,7 @@ export function DocumentPolishDialog({
                   </div>
                   <Textarea
                     className="min-h-44 resize-y font-mono text-xs leading-relaxed"
-                    disabled={submitting}
+                    disabled={optionsLocked}
                     id="polish-markdown-content"
                     onChange={(event) => {
                       fileLoadGeneration.current += 1;
@@ -449,7 +519,7 @@ export function DocumentPolishDialog({
                   <Label>Destination</Label>
                   <Button
                     className="h-auto w-full justify-between px-3 py-2 text-left"
-                    disabled={submitting}
+                    disabled={optionsLocked}
                     onClick={() => {
                       setDestinationOpen(true);
                     }}
@@ -485,7 +555,7 @@ export function DocumentPolishDialog({
                           ? "border-primary bg-primary/5 shadow-sm"
                           : "border-border hover:bg-muted/50",
                       )}
-                      disabled={submitting}
+                      disabled={optionsLocked}
                       key={option.value}
                       onClick={() => {
                         setMode(option.value);
@@ -525,7 +595,7 @@ export function DocumentPolishDialog({
                         ? "border-primary bg-primary/5 shadow-sm"
                         : "border-border hover:bg-muted/50",
                     )}
-                    disabled={submitting}
+                    disabled={optionsLocked}
                     onClick={() => {
                       setOutputStrategy("copy");
                       resetRequest();
@@ -551,7 +621,7 @@ export function DocumentPolishDialog({
                         ? "border-primary bg-primary/5 shadow-sm"
                         : "border-border hover:bg-muted/50",
                     )}
-                    disabled={submitting}
+                    disabled={optionsLocked}
                     onClick={() => {
                       setOutputStrategy("in_place");
                       resetRequest();
@@ -683,11 +753,12 @@ export function DocumentPolishDialog({
               className="w-full sm:w-auto"
               disabled={
                 submitting ||
-                capabilityPending ||
-                capabilityFailed ||
+                recovery.isPending ||
+                recovery.isError ||
+                (!unresolved && (capabilityPending || capabilityFailed)) ||
                 reviewMessage !== null ||
                 terminalMessage !== null ||
-                !valid
+                (!valid && !unresolved?.taskId)
               }
               onClick={() => void create()}
               type="button"
@@ -701,13 +772,15 @@ export function DocumentPolishDialog({
                 ? source.kind === "markdown"
                   ? "Importing…"
                   : "Polishing…"
-                : capabilityPending
-                  ? "Checking edit options…"
-                  : effectiveOutputStrategy === "in_place"
-                    ? "Polish original"
-                    : source.kind === "markdown"
-                      ? "Import Google Doc"
-                      : "Create polished copy"}
+                : unresolved
+                  ? "Resume checking"
+                  : capabilityPending
+                    ? "Checking edit options…"
+                    : effectiveOutputStrategy === "in_place"
+                      ? "Polish original"
+                      : source.kind === "markdown"
+                        ? "Import Google Doc"
+                        : "Create polished copy"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -724,6 +797,24 @@ export function DocumentPolishDialog({
       ) : null}
     </>
   );
+}
+
+function assertRecoveryReplaySafe(
+  operation: TransformRecovery,
+  recovering: boolean,
+  markdown: string,
+): void {
+  // Backend replay retention is seven days; leave a one-day safety margin.
+  if (!operation.taskId && Date.now() - operation.createdAt >= 6 * 24 * 60 * 60 * 1000) {
+    throw new Error(
+      "This submission is too old to replay safely. Ask an administrator to check its task status before starting another polish.",
+    );
+  }
+  if (recovering && !operation.source && !operation.taskId && !markdown.trim()) {
+    throw new Error(
+      "The previous import may still be running. Keep this operation reserved and check task status before starting another import.",
+    );
+  }
 }
 
 function errorMessage(error: unknown, fallback: string): string {

@@ -2,7 +2,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
+import { BrowserUserContext } from "@/lib/browser-user-context";
 import { documentTransformApi } from "@/lib/document-transform-client";
+import { writeTransformRecovery } from "@/lib/document-transform-recovery";
 import {
   DocumentTransformNeedsReviewError,
   type DocumentTransformResult,
@@ -29,6 +31,7 @@ describe("DocumentPolishDialog", () => {
     document.body.append(host);
     root = createRoot(host);
     vi.clearAllMocks();
+    window.sessionStorage.clear();
     vi.spyOn(documentTransformApi, "capabilities").mockResolvedValue({
       copy: true,
       inPlace: false,
@@ -205,9 +208,10 @@ describe("DocumentPolishDialog", () => {
     clickButton(findButtonNow("Create polished copy"));
     await vi.waitFor(() => {
       expect(create).toHaveBeenCalledTimes(1);
-      expect(findButtonNow("Create polished copy")).toBeEnabled();
+      expect(findButtonNow("Resume checking")).toBeEnabled();
+      expect(findButtonNow("Formatting")).toBeDisabled();
     });
-    clickButton(findButtonNow("Create polished copy"));
+    clickButton(findButtonNow("Resume checking"));
 
     await vi.waitFor(() => {
       expect(create).toHaveBeenCalledTimes(2);
@@ -215,6 +219,49 @@ describe("DocumentPolishDialog", () => {
     expect(refreshExpectedModifiedTime).toHaveBeenCalledTimes(1);
     expect(create.mock.calls[1]?.[0]).toEqual(create.mock.calls[0]?.[0]);
     expect(create.mock.calls[1]?.[2]).toBe(create.mock.calls[0]?.[2]);
+  });
+
+  it("recovers a known task after remount without creating another operation", async () => {
+    const source = {
+      allowInPlace: false,
+      expectedModifiedTime: "revision",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+    } as const;
+    const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
+    writeTransformRecovery("owner-1", "drive:source-1", {
+      createdAt: Date.now(),
+      key: "66666666-6666-4666-8666-666666666666",
+      mode: "format",
+      outputStrategy: "copy",
+      source: {
+        kind: "drive_file",
+        fileId: source.fileId,
+        name: source.name,
+        expectedModifiedTime: "revision",
+      },
+      taskId: pending.id,
+    });
+    const create = vi.spyOn(documentTransformApi, "create");
+    vi.spyOn(documentTransformApi, "getTask").mockResolvedValue(pending);
+    vi.spyOn(documentTransformApi, "waitForCompletion").mockRejectedValue(
+      new Error("Network unavailable"),
+    );
+    renderDialog(root, source, undefined, "owner-1");
+    await vi.waitFor(() => expect(findButtonNow("Resume checking")).toBeEnabled());
+    clickButton(findButtonNow("Resume checking"));
+    await vi.waitFor(() =>
+      expect(documentTransformApi.getTask).toHaveBeenCalledWith(
+        pending.id,
+        expect.any(AbortSignal),
+      ),
+    );
+    await vi.waitFor(() => expect(findButtonNow("Resume checking")).toBeEnabled());
+    expect(create).not.toHaveBeenCalled();
+    expect(findButtonNow("Formatting")).toBeDisabled();
+    expect(document.body).toHaveTextContent(pending.id);
   });
 
   it("does not create a task when unmounted during the metadata refresh", async () => {
@@ -556,7 +603,12 @@ type DialogTestSource =
       refreshExpectedModifiedTime?: () => Promise<string>;
     });
 
-function renderDialog(root: Root, source: DialogTestSource, onInPlaceComplete?: () => void) {
+function renderDialog(
+  root: Root,
+  source: DialogTestSource,
+  onInPlaceComplete?: () => void,
+  owner: null | string = null,
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   let normalizedSource: DocumentPolishSource;
   if (source.kind === "drive_file") {
@@ -577,12 +629,14 @@ function renderDialog(root: Root, source: DialogTestSource, onInPlaceComplete?: 
   flushSync(() => {
     root.render(
       <QueryClientProvider client={queryClient}>
-        <DocumentPolishDialog
-          onOpenChange={vi.fn()}
-          open
-          source={normalizedSource}
-          {...(onInPlaceComplete === undefined ? {} : { onInPlaceComplete })}
-        />
+        <BrowserUserContext value={owner}>
+          <DocumentPolishDialog
+            onOpenChange={vi.fn()}
+            open
+            source={normalizedSource}
+            {...(onInPlaceComplete === undefined ? {} : { onInPlaceComplete })}
+          />
+        </BrowserUserContext>
       </QueryClientProvider>,
     );
   });

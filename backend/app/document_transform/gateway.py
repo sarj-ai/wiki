@@ -70,6 +70,8 @@ class InPlaceInspection:
     protected_structure_sha256: str
     body_sha256: str
     header_safe_sha256: str
+    preserved_headers: tuple[TabHeader, ...] = ()
+    fully_branded: bool = False
 
 
 @dataclass(frozen=True, slots=True)
