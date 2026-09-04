@@ -14,7 +14,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ import {
   type DocumentTransformOutputStrategy,
   type DocumentTransformResult,
   type DocumentTransformSource,
+  DocumentTransformTerminalError,
 } from "@/lib/document-transform-types";
 import {
   MARKDOWN_LIMIT_BYTES,
@@ -126,7 +127,9 @@ export function DocumentPolishDialog({
   const outputNoun = isPresentation ? "Google Slides presentation" : "Google Doc";
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const fileLoadGeneration = useRef(0);
   const idempotencyKey = useRef<null | string>(null);
+  const lifecycleGeneration = useRef(0);
   const submitLatch = useRef(false);
   const capabilities = useQuery({
     enabled: open && source.kind === "drive_file" && source.allowInPlace,
@@ -138,9 +141,25 @@ export function DocumentPolishDialog({
     source.kind === "drive_file" && source.allowInPlace && capabilities.data?.inPlace === true
       ? outputStrategy
       : "copy";
+  const capabilityPending =
+    source.kind === "drive_file" && source.allowInPlace && capabilities.isPending;
+  const capabilityFailed =
+    source.kind === "drive_file" && source.allowInPlace && capabilities.isError;
+  const sourceIdentity = source.kind === "drive_file" ? `drive:${source.fileId}` : "markdown";
+
+  useEffect(
+    () => () => {
+      lifecycleGeneration.current += 1;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      submitLatch.current = false;
+    },
+    [sourceIdentity],
+  );
 
   const resetRequest = () => {
     idempotencyKey.current = null;
+    fileLoadGeneration.current += 1;
     setReviewMessage(null);
     setReviewResult(null);
   };
@@ -150,6 +169,7 @@ export function DocumentPolishDialog({
     abortRef.current = null;
     submitLatch.current = false;
     idempotencyKey.current = null;
+    fileLoadGeneration.current += 1;
     setMode("both");
     setOutputStrategy("copy");
     setMarkdown("");
@@ -183,16 +203,25 @@ export function DocumentPolishDialog({
   };
 
   const loadMarkdownFile = async (file: File) => {
+    const generation = fileLoadGeneration.current + 1;
+    fileLoadGeneration.current = generation;
     try {
       const imported = await readMarkdownFile(file);
+      if (fileLoadGeneration.current !== generation) return;
       setMarkdown(imported.content);
       setName(imported.name);
       setMarkdownError(markdownTextError(imported.content));
-      resetRequest();
+      idempotencyKey.current = null;
+      setReviewMessage(null);
+      setReviewResult(null);
     } catch (error: unknown) {
-      setMarkdownError(errorMessage(error, "Couldn’t read the Markdown file"));
+      if (fileLoadGeneration.current === generation) {
+        setMarkdownError(errorMessage(error, "Couldn’t read the Markdown file"));
+      }
     } finally {
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (fileLoadGeneration.current === generation && fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   };
 
@@ -206,6 +235,9 @@ export function DocumentPolishDialog({
     setReviewResult(null);
     idempotencyKey.current ??= crypto.randomUUID();
     const controller = new AbortController();
+    const generation = lifecycleGeneration.current;
+    const isCurrent = () =>
+      lifecycleGeneration.current === generation && !controller.signal.aborted;
     const finishSubmission = () => {
       if (abortRef.current !== controller) return;
       abortRef.current = null;
@@ -223,10 +255,13 @@ export function DocumentPolishDialog({
         effectiveOutputStrategy,
       );
       controller.signal.throwIfAborted();
+      if (!isCurrent()) return;
       setStage("transforming");
       const result = await documentTransformApi.waitForCompletion(task, controller.signal);
+      if (!isCurrent()) return;
       if (result.outputStrategy === "in_place") {
         await queryClient.invalidateQueries({ queryKey: wikiKeys.file(result.outputFile.id) });
+        if (!isCurrent()) return;
         onInPlaceComplete?.();
         toast.success(result.changed ? `Updated “${result.outputFile.name}”` : "No changes needed");
       } else {
@@ -237,18 +272,22 @@ export function DocumentPolishDialog({
       router.push(`/d/${encodeURIComponent(result.outputFile.id)}`);
     } catch (error: unknown) {
       if (error instanceof DocumentTransformNeedsReviewError) {
+        if (!isCurrent()) return;
         setReviewMessage(error.message);
         setReviewResult(error.result ?? null);
         if (error.result?.outputStrategy === "in_place") {
           await queryClient.invalidateQueries({
             queryKey: wikiKeys.file(error.result.outputFile.id),
           });
+          if (!isCurrent()) return;
           onInPlaceComplete?.();
         } else if (error.result) {
           injectNewFileIntoCaches(queryClient, error.result.outputFile);
         }
         toast.warning(`The ${artifactNoun} needs review`);
       } else if (!(error instanceof DOMException && error.name === "AbortError")) {
+        if (!isCurrent()) return;
+        if (error instanceof DocumentTransformTerminalError) resetIdempotencyKey(idempotencyKey);
         toast.error(errorMessage(error, `Couldn’t polish ${artifactNoun}`));
       }
     } finally {
@@ -271,7 +310,14 @@ export function DocumentPolishDialog({
         }}
         open={open}
       >
-        <DialogContent className="max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-xl">
+        <DialogContent
+          aria-busy={submitting}
+          className="max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-xl"
+          onEscapeKeyDown={(event) => {
+            if (submitting) event.preventDefault();
+          }}
+          showCloseButton={!submitting}
+        >
           <div className="border-b px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
             <DialogHeader>
               <DialogTitle>
@@ -295,6 +341,7 @@ export function DocumentPolishDialog({
                     id="polish-markdown-name"
                     maxLength={255}
                     onChange={(event) => {
+                      fileLoadGeneration.current += 1;
                       setName(event.target.value);
                       resetRequest();
                     }}
@@ -316,7 +363,7 @@ export function DocumentPolishDialog({
                   />
                   <Button
                     aria-label="Markdown file drop zone"
-                    className="bg-muted/25 h-auto w-full justify-start border-dashed p-3"
+                    className="bg-muted/25 h-auto w-full flex-wrap justify-start border-dashed p-3 whitespace-normal"
                     disabled={submitting}
                     onClick={() => fileInputRef.current?.click()}
                     onDragOver={(event) => {
@@ -350,6 +397,7 @@ export function DocumentPolishDialog({
                     disabled={submitting}
                     id="polish-markdown-content"
                     onChange={(event) => {
+                      fileLoadGeneration.current += 1;
                       const value = event.target.value;
                       setMarkdown(value);
                       setMarkdownError(markdownTextError(value));
@@ -489,6 +537,29 @@ export function DocumentPolishDialog({
               </fieldset>
             ) : null}
 
+            {capabilityPending ? (
+              <div aria-live="polite" className="text-muted-foreground text-xs">
+                Checking whether this document can be safely edited in place…
+              </div>
+            ) : null}
+            {capabilityFailed ? (
+              <div className="space-y-2 text-xs" role="alert">
+                <p className="text-muted-foreground">
+                  Edit options could not be checked. No polish will start until you retry.
+                </p>
+                <Button
+                  onClick={() => {
+                    void capabilities.refetch();
+                  }}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Retry edit options
+                </Button>
+              </div>
+            ) : null}
+
             <div className="bg-muted/45 flex items-center gap-3 rounded-lg border p-3">
               <span aria-hidden className="flex shrink-0 items-center gap-1.5">
                 <FileText className="text-muted-foreground size-4" />
@@ -508,6 +579,7 @@ export function DocumentPolishDialog({
               <div
                 aria-live="polite"
                 className="border-primary/20 bg-primary/5 flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm"
+                role="status"
               >
                 <Loader2 className="text-primary size-4 shrink-0 animate-spin" />
                 <span>
@@ -515,7 +587,11 @@ export function DocumentPolishDialog({
                     ? source.kind === "markdown"
                       ? "Starting Markdown import…"
                       : `Starting ${artifactNoun} polish…`
-                    : `Creating and checking the new ${artifactNoun}… Keep this window open.`}
+                    : source.kind === "markdown"
+                      ? "Importing and checking the new document… Keep this window open."
+                      : effectiveOutputStrategy === "in_place"
+                        ? `Updating and checking the original ${artifactNoun}… Keep this window open.`
+                        : `Creating and checking the new ${artifactNoun}… Keep this window open.`}
                 </span>
               </div>
             ) : null}
@@ -552,19 +628,27 @@ export function DocumentPolishDialog({
             <Button disabled={submitting} onClick={close} type="button" variant="ghost">
               Cancel
             </Button>
-            <Button disabled={submitting || !valid} onClick={() => void create()} type="button">
+            <Button
+              disabled={submitting || capabilityPending || capabilityFailed || !valid}
+              onClick={() => void create()}
+              type="button"
+            >
               {submitting ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 <Sparkles className="size-4" />
               )}
               {submitting
-                ? "Polishing…"
-                : effectiveOutputStrategy === "in_place"
-                  ? "Polish original"
-                  : source.kind === "markdown"
-                    ? "Import Google Doc"
-                    : "Create polished copy"}
+                ? source.kind === "markdown"
+                  ? "Importing…"
+                  : "Polishing…"
+                : capabilityPending
+                  ? "Checking edit options…"
+                  : effectiveOutputStrategy === "in_place"
+                    ? "Polish original"
+                    : source.kind === "markdown"
+                      ? "Import Google Doc"
+                      : "Create polished copy"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -585,4 +669,8 @@ export function DocumentPolishDialog({
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError || error instanceof Error ? error.message : fallback;
+}
+
+function resetIdempotencyKey(keyRef: { current: null | string }): void {
+  keyRef.current = null;
 }

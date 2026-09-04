@@ -148,7 +148,7 @@ export function WikiToolbar({
             onOpenChange={setPolishOpen}
             open={polishOpen}
             source={{
-              allowInPlace: mimeType === MIME_DOC,
+              allowInPlace: canEdit && mimeType === MIME_DOC,
               expectedModifiedTime: modifiedTime,
               fileId,
               kind: "drive_file",
@@ -182,7 +182,7 @@ export function WikiToolbar({
         )}
       </div>
       <Button asChild size="xs" variant="outline">
-        <a href={openUrl} rel="noopener noreferrer" target="_blank">
+        <a aria-label={openLabel} href={openUrl} rel="noopener noreferrer" target="_blank">
           <ExternalLink className="size-3.5" />
           <span className="hidden md:inline">{openLabel}</span>
         </a>

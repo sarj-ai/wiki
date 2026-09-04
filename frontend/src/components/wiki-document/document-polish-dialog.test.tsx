@@ -75,7 +75,12 @@ describe("DocumentPolishDialog", () => {
       name: "Architecture review",
     });
     clickButton(findButtonNow("Unslop"));
-    clickButton(findButtonNow("Create polished copy"));
+    await vi.waitFor(() => {
+      expect(findButtonNow("Create polished copy")).toBeEnabled();
+    });
+    const submit = findButtonNow("Create polished copy");
+    clickButton(submit);
+    clickButton(submit);
 
     await vi.waitFor(() => {
       expect(document.body).toHaveTextContent("Creating and checking the new document");
@@ -92,6 +97,7 @@ describe("DocumentPolishDialog", () => {
       expect.any(String),
       "copy",
     );
+    expect(documentTransformApi.create).toHaveBeenCalledTimes(1);
     expect(documentTransformApi.waitForCompletion).toHaveBeenCalledWith(
       pending,
       expect.any(AbortSignal),
@@ -171,6 +177,61 @@ describe("DocumentPolishDialog", () => {
       expect(onInPlaceComplete).toHaveBeenCalledOnce();
       expect(NavigationMock.push).toHaveBeenCalledWith("/d/source-1");
     });
+  });
+
+  it("does not submit until in-place capabilities resolve", async () => {
+    const capabilityResult =
+      Promise.withResolvers<Awaited<ReturnType<typeof documentTransformApi.capabilities>>>();
+    vi.mocked(documentTransformApi.capabilities).mockReturnValue(capabilityResult.promise);
+    const create = vi.spyOn(documentTransformApi, "create");
+
+    renderDialog(root, {
+      allowInPlace: true,
+      expectedModifiedTime: "2026-09-03T12:00:00Z",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+    });
+
+    expect(document.body).toHaveTextContent("Checking whether this document can be safely edited");
+    const pendingButton = findButtonNow("Checking edit options…");
+    expect(pendingButton).toBeDisabled();
+    clickButton(pendingButton);
+    expect(create).not.toHaveBeenCalled();
+
+    capabilityResult.resolve({
+      copy: true,
+      inPlace: true,
+      presentationCopy: true,
+      presentationInPlace: false,
+    });
+    await vi.waitFor(() => {
+      expect(findButtonNow("Create polished copy")).toBeEnabled();
+      expect(document.body).toHaveTextContent("Edit original");
+    });
+  });
+
+  it("fails closed and offers retry when edit capabilities cannot be checked", async () => {
+    vi.mocked(documentTransformApi.capabilities).mockRejectedValue(new Error("offline"));
+    const create = vi.spyOn(documentTransformApi, "create");
+
+    renderDialog(root, {
+      allowInPlace: true,
+      expectedModifiedTime: "2026-09-03T12:00:00Z",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+    });
+
+    await vi.waitFor(() => {
+      expect(document.body).toHaveTextContent("No polish will start until you retry");
+      expect(findButtonNow("Create polished copy")).toBeDisabled();
+      expect(findButtonNow("Retry edit options")).toBeEnabled();
+    });
+    clickButton(findButtonNow("Create polished copy"));
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("never offers in-place for a Drive-hosted Markdown file", async () => {

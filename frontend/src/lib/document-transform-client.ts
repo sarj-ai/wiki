@@ -5,9 +5,11 @@ import {
   getDocumentTransformCapabilitiesAction,
   getSmartCreateTaskAction,
 } from "@/app/actions/smart-create-actions";
+import { ApiError } from "@/lib/api-error";
 import { runAction } from "@/lib/action-client";
 import {
   DocumentTransformNeedsReviewError,
+  DocumentTransformTerminalError,
   type DocumentTransformOutputStrategy,
   type DocumentTransformResult,
   type DocumentTransformSource,
@@ -77,6 +79,7 @@ const ZTask = z.discriminatedUnion("status", [
 
 const DEFAULT_TASK_POLL_MS = 1_000;
 const DEFAULT_MAX_TASK_POLLS = 900;
+const MAX_TRANSIENT_POLL_FAILURES = 5;
 
 export const documentTransformApi = {
   capabilities: async () => {
@@ -133,17 +136,21 @@ async function waitForTask(
   maxPolls: number,
 ): Promise<DocumentTransformResult> {
   let current = task;
+  let transientFailures = 0;
   for (let poll = 0; ; poll += 1) {
     switch (current.status) {
       case "cancelled":
-        throw new Error("Document polish was cancelled");
+        throw new DocumentTransformTerminalError("cancelled", "Document polish was cancelled");
       case "failed":
         if (current.errorCode === "needs_review") {
           throw new DocumentTransformNeedsReviewError(
             current.errorDetail ?? "The result needs review before it can be opened.",
           );
         }
-        throw new Error(current.errorDetail ?? `Document polish failed (${current.errorCode})`);
+        throw new DocumentTransformTerminalError(
+          current.errorCode,
+          current.errorDetail ?? `Document polish failed (${current.errorCode})`,
+        );
       case "succeeded":
         if (current.result.needsReview) {
           throw new DocumentTransformNeedsReviewError(
@@ -158,7 +165,16 @@ async function waitForTask(
           throw new Error("Document polish timed out; check its task status before retrying");
         }
         await abortableDelay(pollIntervalMs, signal);
-        current = await documentTransformApi.getTask(current.id, signal);
+        try {
+          current = await documentTransformApi.getTask(current.id, signal);
+          transientFailures = 0;
+        } catch (error: unknown) {
+          if (!isTransientPollError(error) || transientFailures >= MAX_TRANSIENT_POLL_FAILURES) {
+            throw error;
+          }
+          transientFailures += 1;
+          await abortableDelay(pollIntervalMs * 2 ** transientFailures, signal);
+        }
     }
   }
 }
@@ -243,18 +259,25 @@ function serializeSource(source: DocumentTransformSource): Record<string, string
 
 async function abortableDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const timeout = window.setTimeout(resolve, milliseconds);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        window.clearTimeout(timeout);
-        reject(
-          signal.reason instanceof Error
-            ? signal.reason
-            : new DOMException("The operation was aborted", "AbortError"),
-        );
-      },
-      { once: true },
-    );
+    const onAbort = () => {
+      window.clearTimeout(timeout);
+      reject(
+        signal?.reason instanceof Error
+          ? signal.reason
+          : new DOMException("The operation was aborted", "AbortError"),
+      );
+    };
+    const timeout = window.setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+function isTransientPollError(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (error.status === 408 || error.status === 429 || error.status >= 500)
+  );
 }
