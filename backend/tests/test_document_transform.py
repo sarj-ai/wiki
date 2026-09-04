@@ -2638,6 +2638,82 @@ class _CrashReplayInPlaceGateway(_InPlaceGateway):
         return result
 
 
+class _PreMutationRevisionDriftGateway(_InPlaceGateway):
+    def __init__(self, text: str, *, drift: str = "revision") -> None:
+        super().__init__(text, missing_header=True)
+        self.drift = drift
+        self.failed = False
+        self.required_revisions: list[DocsRevisionId] = []
+        self.mutations = {"headers": 0, "content": 0}
+
+    @override
+    async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot:
+        del source
+        return SourceSnapshot(
+            title="Source",
+            parent_folder_id=FileId("folder"),
+            modified_time="2026-09-03T00:00:00Z",
+            revision_id=DocsRevisionId(self.document["revisionId"]),
+            media_type="application/vnd.google-apps.document",
+            google_document=deepcopy(self.document),
+            owned_by_me=True,
+            can_edit=True,
+            is_personal_drive=True,
+            web_url="https://docs.google.com/document/d/source/edit",
+        )
+
+    @override
+    async def inspect_in_place(self, *, snapshot: SourceSnapshot, title: str) -> InPlaceInspection:
+        inspection = await super().inspect_in_place(snapshot=snapshot, title=title)
+        if not self.failed:
+            return inspection
+        changed_fields = {
+            "structure": {"structural_sha256": "changed-structure"},
+            "protected": {"protected_structure_sha256": "changed-protected"},
+            "body_hash": {"body_sha256": "changed-body"},
+            "header_safe": {"header_safe_sha256": "changed-header-safe"},
+            "marker": {"marker_range": {"startIndex": 21, "endIndex": 22, "tabId": "tab-1"}},
+        }
+        updates = changed_fields.get(self.drift)
+        return replace(inspection, **updates) if updates is not None else inspection
+
+    @override
+    async def apply_in_place_stage(
+        self,
+        *,
+        document_id: FileId,
+        required_revision_id: DocsRevisionId,
+        marker_name: str,
+        marker_range: dict[str, Any],
+        requests: list[dict[str, Any]],
+    ) -> InPlaceStageResult:
+        self.required_revisions.append(required_revision_id)
+        is_header = any("createHeader" in request for request in requests)
+        if is_header and not self.failed:
+            self.failed = True
+            if self.drift == "body":
+                self.document = _in_place_document(
+                    "Collaborator edit",
+                    revision="revision-metadata-only",
+                )
+            else:
+                self.document["revisionId"] = "revision-metadata-only"
+                if self.drift == "header":
+                    self.header_created = True
+            raise DocumentGatewayError
+        if required_revision_id != self.document["revisionId"]:
+            raise SourceChangedError
+        result = await super().apply_in_place_stage(
+            document_id=document_id,
+            required_revision_id=required_revision_id,
+            marker_name=marker_name,
+            marker_range=marker_range,
+            requests=requests,
+        )
+        self.mutations["headers" if is_header else "content"] += 1
+        return result
+
+
 def _replay_executor(
     *,
     gateway: _InPlaceGateway,
@@ -2770,6 +2846,70 @@ async def test_in_place_persisted_checkpoint_replay_skips_model_and_duplicate_ba
     assert result.output_strategy is OutputStrategy.IN_PLACE
     assert result.changed is True
     assert result.output_revision_id == "revision-3"
+
+
+async def test_in_place_header_retry_rebases_metadata_only_revision_drift() -> None:
+    operation_id = uuid.uuid7()
+    task_id = TaskId(uuid.uuid7())
+    gateway = _PreMutationRevisionDriftGateway("Quarterly review")
+    store = _CheckpointStore(gateway.events)
+    first_generator = _Generator({TransformPhase.FORMAT: "Quarterly review refined."})
+
+    with pytest.raises(DocumentGatewayError):
+        await _replay_executor(
+            gateway=gateway,
+            generator=first_generator,
+            store=store,
+            task_id=task_id,
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+
+    persisted = store.checkpoints[-1]
+    retry_generator = _Generator({TransformPhase.FORMAT: "must never be generated"})
+    result = await _replay_executor(
+        gateway=gateway,
+        generator=retry_generator,
+        store=store,
+        task_id=task_id,
+        checkpoint=persisted,
+    ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+
+    assert first_generator.calls == [TransformPhase.FORMAT]
+    assert retry_generator.calls == []
+    assert gateway.required_revisions[:2] == ["revision-1", "revision-metadata-only"]
+    assert gateway.mutations == {"headers": 1, "content": 1}
+    assert result.output_revision_id == "revision-3"
+
+
+@pytest.mark.parametrize(
+    "drift",
+    ["body", "header", "structure", "protected", "body_hash", "header_safe", "marker"],
+)
+async def test_in_place_header_retry_does_not_rebase_user_visible_drift(drift: str) -> None:
+    operation_id = uuid.uuid7()
+    task_id = TaskId(uuid.uuid7())
+    gateway = _PreMutationRevisionDriftGateway("Quarterly review", drift=drift)
+    store = _CheckpointStore(gateway.events)
+
+    with pytest.raises(DocumentGatewayError):
+        await _replay_executor(
+            gateway=gateway,
+            generator=_Generator(),
+            store=store,
+            task_id=task_id,
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+
+    persisted = store.checkpoints[-1]
+    with pytest.raises(SourceChangedError):
+        await _replay_executor(
+            gateway=gateway,
+            generator=_Generator({TransformPhase.FORMAT: "must never be generated"}),
+            store=store,
+            task_id=task_id,
+            checkpoint=persisted,
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+
+    assert gateway.required_revisions == ["revision-1", "revision-1"]
+    assert gateway.mutations == {"headers": 0, "content": 0}
 
 
 async def test_in_place_content_replay_rejects_post_commit_collaborator_edit() -> None:
