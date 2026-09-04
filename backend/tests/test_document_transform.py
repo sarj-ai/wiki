@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+from types import SimpleNamespace
 from typing import Any, NamedTuple, override
 import uuid
 
@@ -13,6 +14,7 @@ from app.document_transform.errors import (
     CheckpointTooLargeError,
     DocumentGatewayError,
     IncompatiblePendingOutputError,
+    InPlaceNeedsReviewError,
     SourceChangedError,
     SourceTooLargeError,
     UnsupportedSourceError,
@@ -1597,6 +1599,26 @@ class _CrashReplayInPlaceGateway(_InPlaceGateway):
         return result
 
 
+def _replay_executor(
+    *,
+    gateway: _InPlaceGateway,
+    generator: _Generator,
+    store: _CheckpointStore,
+    task_id: TaskId,
+    checkpoint: InPlaceCheckpoint | None = None,
+) -> DocumentTransformExecutor:
+    return DocumentTransformExecutor(
+        gateway=gateway,
+        generator=generator,
+        allow_format_text_edits=True,
+        checkpoint_store=store,
+        task_id=task_id,
+        lease_token=uuid.uuid7(),
+        checkpoint=checkpoint,
+        checkpoint_generation=store.generation,
+    )
+
+
 def _in_place_request(mode: TransformMode) -> DocumentTransformRequest:
     return DocumentTransformRequest(
         source=DriveFileSource(
@@ -1684,27 +1706,22 @@ async def test_in_place_persisted_checkpoint_replay_skips_model_and_duplicate_ba
     first_generator = _Generator({TransformPhase.FORMAT: "Quarterly review refined."})
 
     with pytest.raises(RuntimeError, match="simulated worker crash"):
-        await DocumentTransformExecutor(
+        await _replay_executor(
             gateway=gateway,
             generator=first_generator,
-            allow_format_text_edits=True,
-            checkpoint_store=store,
+            store=store,
             task_id=task_id,
-            lease_token=uuid.uuid7(),
         ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
 
     assert first_generator.calls == [TransformPhase.FORMAT]
     persisted = store.checkpoints[-1]
     retry_generator = _Generator({TransformPhase.FORMAT: "must never be generated"})
-    result = await DocumentTransformExecutor(
+    result = await _replay_executor(
         gateway=gateway,
         generator=retry_generator,
-        allow_format_text_edits=True,
-        checkpoint_store=store,
+        store=store,
         task_id=task_id,
-        lease_token=uuid.uuid7(),
         checkpoint=persisted,
-        checkpoint_generation=store.generation,
     ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
 
     assert retry_generator.calls == []
@@ -1712,6 +1729,48 @@ async def test_in_place_persisted_checkpoint_replay_skips_model_and_duplicate_ba
     assert result.output_strategy is OutputStrategy.IN_PLACE
     assert result.changed is True
     assert result.output_revision_id == "revision-3"
+
+
+async def test_in_place_content_replay_rejects_post_commit_collaborator_edit() -> None:
+    operation_id = uuid.uuid7()
+    task_id = TaskId(uuid.uuid7())
+    gateway = _CrashReplayInPlaceGateway("Quarterly review", crash_stage="content")
+    store = _CheckpointStore(gateway.events)
+
+    with pytest.raises(RuntimeError, match="simulated worker crash"):
+        await _replay_executor(
+            gateway=gateway,
+            generator=_Generator({TransformPhase.FORMAT: "Quarterly review refined."}),
+            store=store,
+            task_id=task_id,
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+
+    body = gateway.document["tabs"][0]["documentTab"]["body"]["content"]
+    collaborator_text = "Collaborator edit\n"
+    body.append(
+        {
+            "startIndex": body[-1]["endIndex"],
+            "endIndex": body[-1]["endIndex"] + utf16_length(collaborator_text),
+            "paragraph": {"elements": [{"textRun": {"content": collaborator_text}}]},
+        }
+    )
+    gateway.document["revisionId"] = "collaborator-revision"
+    persisted = task_service_module._deserialize_checkpoint(
+        task_service_module._serialize_checkpoint(store.checkpoints[-1])
+    )
+    retry_generator = _Generator({TransformPhase.FORMAT: "must never be generated"})
+
+    with pytest.raises(InPlaceNeedsReviewError):
+        await _replay_executor(
+            gateway=gateway,
+            generator=retry_generator,
+            store=store,
+            task_id=task_id,
+            checkpoint=persisted,
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+
+    assert retry_generator.calls == []
+    assert gateway.mutations == {"headers": 1, "content": 1}
 
 
 def test_in_place_request_rejects_markdown_and_output_name() -> None:
@@ -1810,19 +1869,16 @@ def test_google_in_place_lost_response_reconciles_atomic_tab_marker(
     }
     captured: dict[str, Any] = {}
 
-    class _Documents:
-        def batchUpdate(self, **kwargs: Any) -> object:  # ruff: ignore[invalid-function-name]
-            captured.update(kwargs)
-            return object()
+    def batch_update(**kwargs: Any) -> object:
+        captured.update(kwargs)
+        return object()
 
-    class _Provider:
-        def documents(self) -> _Documents:
-            return _Documents()
-
-    provider = _Provider()
+    provider = SimpleNamespace(
+        documents=lambda: SimpleNamespace(batchUpdate=batch_update),
+    )
     gateway = object.__new__(GoogleDocumentGateway)
 
-    def get_provider() -> _Provider:
+    def get_provider() -> Any:
         return provider
 
     def request_boundary(value: Any, **kwargs: Any) -> Any:
@@ -1875,19 +1931,14 @@ def test_google_in_place_lost_response_reconciles_utf16_shifted_marker(
     }
     captured: dict[str, Any] = {}
 
-    class _Documents:
-        def batchUpdate(self, **kwargs: Any) -> object:  # ruff: ignore[invalid-function-name]
-            captured.update(kwargs)
-            return object()
-
-    class _Provider:
-        def documents(self) -> _Documents:
-            return _Documents()
-
     gateway = object.__new__(GoogleDocumentGateway)
 
-    def get_provider() -> _Provider:
-        return _Provider()
+    def batch_update(**kwargs: Any) -> object:
+        captured.update(kwargs)
+        return object()
+
+    def get_provider() -> Any:
+        return SimpleNamespace(documents=lambda: SimpleNamespace(batchUpdate=batch_update))
 
     def lost_response(_request: object) -> dict[str, Any]:
         raise DocumentGatewayError
@@ -1933,19 +1984,12 @@ def test_google_in_place_lost_response_without_marker_fails_closed(
     marker_range = {"startIndex": 10, "endIndex": 11, "tabId": "tab-1"}
     document = _in_place_document("Source", revision=observed_revision)
 
-    class _Documents:
-        def batchUpdate(self, **kwargs: Any) -> object:  # ruff: ignore[invalid-function-name]
-            del kwargs
-            return object()
-
-    class _Provider:
-        def documents(self) -> _Documents:
-            return _Documents()
-
     gateway = object.__new__(GoogleDocumentGateway)
 
-    def get_provider() -> _Provider:
-        return _Provider()
+    def get_provider() -> Any:
+        return SimpleNamespace(
+            documents=lambda: SimpleNamespace(batchUpdate=lambda **_kwargs: object())
+        )
 
     def lost_response(_request: object) -> dict[str, Any]:
         raise DocumentGatewayError

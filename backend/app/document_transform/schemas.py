@@ -12,6 +12,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic_core import PydanticCustomError
 
 from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
@@ -80,14 +81,17 @@ class DocumentTransformRequest(StrictTransformModel):
         if self.output_strategy is OutputStrategy.COPY:
             return self
         if not isinstance(self.source, DriveFileSource):
+            code = "in_place_source"
             msg = "In-place transformation requires a native Google Doc source"
-            raise ValueError(msg)  # ruff: ignore[type-check-without-type-error] -- Pydantic treats ValueError as validation input
+            raise PydanticCustomError(code, msg)
         if not 1 <= len(self.source.file_id) <= _MAX_IN_PLACE_FILE_ID_LENGTH:
+            code = "in_place_file_id"
             msg = "In-place Google Drive file_id must be between 1 and 128 characters"
-            raise ValueError(msg)
+            raise PydanticCustomError(code, msg)
         if self.output_name is not None:
+            code = "in_place_output_name"
             msg = "output_name is not allowed for in-place transformation"
-            raise ValueError(msg)
+            raise PydanticCustomError(code, msg)
         return self
 
 

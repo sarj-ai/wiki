@@ -1,6 +1,7 @@
 import type { FileResponse } from "@/types/wiki";
 
 export type DocumentTransformMode = "both" | "format" | "unslop";
+export type DocumentTransformOutputStrategy = "copy" | "in_place";
 
 export type DocumentTransformSource =
   | {
@@ -28,9 +29,13 @@ export interface DocumentTransformResult {
   modelIds: string[];
   needsReview: boolean;
   operationId: string;
+  outputStrategy: DocumentTransformOutputStrategy;
   outputFile: FileResponse;
   outputWebUrl: null | string;
   pipelineVersion: string;
+  changed: boolean;
+  outputRevisionId: null | string;
+  sourceRevisionId: null | string;
   sourceSha256: string;
   toolVersions: Record<string, string>;
   validation: DocumentTransformValidation;

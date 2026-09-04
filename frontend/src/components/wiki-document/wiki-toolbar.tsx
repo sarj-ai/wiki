@@ -137,9 +137,11 @@ export function WikiToolbar({
           </Button>
           <DocumentPolishDialog
             key={fileId}
+            onInPlaceComplete={onReload}
             onOpenChange={setPolishOpen}
             open={polishOpen}
             source={{
+              allowInPlace: mimeType === MIME_DOC,
               expectedModifiedTime: modifiedTime,
               fileId,
               kind: "drive_file",

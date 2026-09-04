@@ -2,17 +2,21 @@ import * as z from "zod";
 
 import {
   createDocumentTransformAction,
+  getDocumentTransformCapabilitiesAction,
   getSmartCreateTaskAction,
 } from "@/app/actions/smart-create-actions";
 import { runAction } from "@/lib/action-client";
 import {
   DocumentTransformNeedsReviewError,
+  type DocumentTransformOutputStrategy,
   type DocumentTransformResult,
   type DocumentTransformSource,
   type DocumentTransformTask,
 } from "@/lib/document-transform-types";
 
 const ZMode = z.enum(["format", "unslop", "both"]);
+const ZOutputStrategy = z.enum(["copy", "in_place"]);
+const ZCapabilities = z.object({ copy: z.literal(true), in_place: z.boolean() });
 const ZMessage = z
   .object({
     block_id: z.string().nullable(),
@@ -32,6 +36,7 @@ const ZResult = z.object({
   model_ids: z.array(z.string()),
   needs_review: z.boolean(),
   operation_id: z.uuid(),
+  output_strategy: ZOutputStrategy.default("copy"),
   output: z.object({
     file_id: z.string(),
     name: z.string(),
@@ -39,7 +44,10 @@ const ZResult = z.object({
     web_url: z.string().nullable(),
   }),
   pipeline_version: z.string(),
+  changed: z.boolean().default(true),
+  output_revision_id: z.string().nullable().default(null),
   source_sha256: z.string(),
+  source_revision_id: z.string().nullable().default(null),
   tool_versions: z.record(z.string(), z.string()),
   validation: z.object({
     protected_content_preserved: z.boolean(),
@@ -63,12 +71,26 @@ const DEFAULT_TASK_POLL_MS = 1_000;
 const DEFAULT_MAX_TASK_POLLS = 900;
 
 export const documentTransformApi = {
+  capabilities: async () => {
+    const responseBody = await runAction(
+      async () => await getDocumentTransformCapabilitiesAction(),
+    );
+    const capabilities = ZCapabilities.parse(JSON.parse(responseBody));
+    return { copy: capabilities.copy, inPlace: capabilities.in_place } as const;
+  },
+
   create: async (
     source: DocumentTransformSource,
     mode: "both" | "format" | "unslop",
     idempotencyKey: string,
+    outputStrategy: DocumentTransformOutputStrategy = "copy",
   ): Promise<DocumentTransformTask> => {
-    const body = JSON.stringify({ mode, output_name: null, source: serializeSource(source) });
+    const body = JSON.stringify({
+      mode,
+      output_name: null,
+      output_strategy: outputStrategy,
+      source: serializeSource(source),
+    });
     const responseBody = await runAction(
       async () => await createDocumentTransformAction(body, idempotencyKey),
     );
@@ -120,7 +142,7 @@ async function waitForTask(
       case "pending":
       case "running":
         if (poll >= maxPolls) {
-          throw new Error("Document polish timed out; the source remains unchanged");
+          throw new Error("Document polish timed out; check its task status before retrying");
         }
         await abortableDelay(pollIntervalMs, signal);
         current = await documentTransformApi.getTask(current.id, signal);
@@ -163,6 +185,7 @@ function parseResult(result: z.infer<typeof ZResult>): DocumentTransformResult {
     modelIds: result.model_ids,
     needsReview: result.needs_review,
     operationId: result.operation_id,
+    outputStrategy: result.output_strategy,
     outputFile: {
       canEdit: true,
       driveId: undefined,
@@ -174,7 +197,10 @@ function parseResult(result: z.infer<typeof ZResult>): DocumentTransformResult {
     },
     outputWebUrl: result.output.web_url,
     pipelineVersion: result.pipeline_version,
+    changed: result.changed,
+    outputRevisionId: result.output_revision_id,
     sourceSha256: result.source_sha256,
+    sourceRevisionId: result.source_revision_id,
     toolVersions: result.tool_versions,
     validation: {
       protectedContentPreserved: result.validation.protected_content_preserved,

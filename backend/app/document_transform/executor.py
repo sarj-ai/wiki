@@ -459,6 +459,8 @@ class DocumentTransformExecutor:
             )
         before_content = _to_ir(snapshot)
         expected_content = before_content.replace_blocks(checkpoint.replacements)
+        if expected_content.semantic_sha256 != checkpoint.expected_semantic_sha256:
+            raise InPlaceNeedsReviewError
         stage_result = await self._apply_checkpoint_stage(checkpoint)
         verification = await self._gateway.verify_in_place(
             document=stage_result.document,

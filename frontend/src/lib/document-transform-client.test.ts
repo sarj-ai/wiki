@@ -1,12 +1,14 @@
 // @vitest-environment happy-dom
 
 const actionMocks = vi.hoisted(() => ({
+  capabilities: vi.fn(),
   create: vi.fn(),
   getTask: vi.fn(),
 }));
 
 vi.mock("@/app/actions/smart-create-actions", () => ({
   createDocumentTransformAction: actionMocks.create,
+  getDocumentTransformCapabilitiesAction: actionMocks.capabilities,
   getSmartCreateTaskAction: actionMocks.getTask,
 }));
 
@@ -17,6 +19,18 @@ const taskId = "55555555-5555-4555-8555-555555555555";
 describe("documentTransformApi", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("parses the server-gated in-place capability", async () => {
+    actionMocks.capabilities.mockResolvedValue({
+      data: JSON.stringify({ copy: true, in_place: true }),
+      ok: true,
+    });
+
+    await expect(documentTransformApi.capabilities()).resolves.toEqual({
+      copy: true,
+      inPlace: true,
+    });
   });
 
   it("serializes a revision-locked Drive source and creates no in-place output", async () => {
@@ -42,6 +56,7 @@ describe("documentTransformApi", () => {
       JSON.stringify({
         mode: "both",
         output_name: null,
+        output_strategy: "copy",
         source: {
           expected_modified_time: "2026-09-03T12:00:00Z",
           file_id: "doc-1",
@@ -72,12 +87,37 @@ describe("documentTransformApi", () => {
     expect(JSON.parse(actionMocks.create.mock.calls[0]?.[0] as string)).toMatchObject({
       mode: "format",
       output_name: null,
+      output_strategy: "copy",
       source: {
         content: "# Launch",
         destination_folder_id: "folder-1",
         kind: "markdown",
         name: "Launch brief",
       },
+    });
+  });
+
+  it("sends in-place as an explicit request strategy", async () => {
+    actionMocks.create.mockResolvedValue({
+      data: JSON.stringify(task("pending")),
+      ok: true,
+    });
+
+    await documentTransformApi.create(
+      {
+        expectedModifiedTime: "2026-09-03T12:00:00Z",
+        fileId: "doc-1",
+        kind: "drive_file",
+        name: "Source",
+      },
+      "both",
+      "66666666-6666-4666-8666-666666666666",
+      "in_place",
+    );
+
+    expect(JSON.parse(actionMocks.create.mock.calls[0]?.[0] as string)).toMatchObject({
+      output_name: null,
+      output_strategy: "in_place",
     });
   });
 
@@ -144,7 +184,7 @@ describe("documentTransformApi", () => {
 
     await expect(
       documentTransformApi.waitForCompletion({ id: taskId, status: "running" }, undefined, 0, 1),
-    ).rejects.toThrow("Document polish timed out; the source remains unchanged");
+    ).rejects.toThrow("Document polish timed out; check its task status before retrying");
     expect(actionMocks.getTask).toHaveBeenCalledTimes(1);
   });
 });

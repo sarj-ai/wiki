@@ -387,6 +387,26 @@
         "title": "DocumentOutput",
         "type": "object"
       },
+      "DocumentTransformCapabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "copy": {
+            "const": true,
+            "default": true,
+            "title": "Copy",
+            "type": "boolean"
+          },
+          "in_place": {
+            "title": "In Place",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "in_place"
+        ],
+        "title": "DocumentTransformCapabilities",
+        "type": "object"
+      },
       "DocumentTransformRequest": {
         "additionalProperties": false,
         "properties": {
@@ -405,6 +425,10 @@
               }
             ],
             "title": "Output Name"
+          },
+          "output_strategy": {
+            "$ref": "#/components/schemas/OutputStrategy",
+            "default": "copy"
           },
           "source": {
             "discriminator": {
@@ -449,6 +473,11 @@
             "default": "4a21dfdc50faa2b1e59d3f6a3397b5a0b6fb248aab4abcfde742e58476321589",
             "title": "Brand Profile Sha256",
             "type": "string"
+          },
+          "changed": {
+            "default": true,
+            "title": "Changed",
+            "type": "boolean"
           },
           "deterministic_patch_count": {
             "default": 0,
@@ -496,9 +525,35 @@
           "output": {
             "$ref": "#/components/schemas/DocumentOutput"
           },
+          "output_revision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Revision Id"
+          },
+          "output_strategy": {
+            "$ref": "#/components/schemas/OutputStrategy",
+            "default": "copy"
+          },
           "pipeline_version": {
             "title": "Pipeline Version",
             "type": "string"
+          },
+          "source_revision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Revision Id"
           },
           "source_sha256": {
             "title": "Source Sha256",
@@ -1278,6 +1333,14 @@
         ],
         "title": "MarkdownSource",
         "type": "object"
+      },
+      "OutputStrategy": {
+        "enum": [
+          "copy",
+          "in_place"
+        ],
+        "title": "OutputStrategy",
+        "type": "string"
       },
       "PendingTaskRead": {
         "properties": {
@@ -2901,6 +2964,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "description": "In-place document transformation is disabled"
           }
         },
         "security": [
@@ -2912,6 +2978,45 @@
           }
         ],
         "summary": "Create Document Transform",
+        "tags": [
+          "document-transforms"
+        ]
+      }
+    },
+    "/document-transforms/capabilities": {
+      "get": {
+        "operationId": "get_document_transform_capabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTransformCapabilities"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Document Transform Capabilities",
         "tags": [
           "document-transforms"
         ]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
@@ -507,7 +508,7 @@ def _serialize_checkpoint(checkpoint: InPlaceCheckpoint) -> dict[str, JsonValue]
     return _JSON_OBJECT.validate_python(serialized)
 
 
-def _deserialize_checkpoint(raw: dict[str, object]) -> InPlaceCheckpoint:
+def _deserialize_checkpoint(raw: Mapping[str, object]) -> InPlaceCheckpoint:
     metadata = dict(raw)
     ciphertext = metadata.pop("plan_ciphertext", None)
     if not isinstance(ciphertext, str):

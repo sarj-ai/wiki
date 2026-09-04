@@ -1,10 +1,12 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   BrushCleaning,
+  Copy,
   FileCheck2,
+  FilePenLine,
   FileText,
   Loader2,
   Paintbrush,
@@ -32,12 +34,14 @@ import { documentTransformApi } from "@/lib/document-transform-client";
 import {
   type DocumentTransformMode,
   DocumentTransformNeedsReviewError,
+  type DocumentTransformOutputStrategy,
   type DocumentTransformResult,
   type DocumentTransformSource,
 } from "@/lib/document-transform-types";
 import type { SmartDestination } from "@/lib/smart-create-types";
 import { cn } from "@/lib/utils";
 import { injectNewFileIntoCaches } from "@/lib/wiki-cache";
+import { wikiKeys } from "@/lib/wiki-keys";
 
 const MARKDOWN_LIMIT = 512 * 1024;
 
@@ -69,6 +73,7 @@ const MODES = [
 
 export type DocumentPolishSource =
   | {
+      allowInPlace: boolean;
       expectedModifiedTime: string;
       fileId: string;
       kind: "drive_file";
@@ -80,15 +85,22 @@ export type DocumentPolishSource =
     };
 
 interface DocumentPolishDialogProps {
+  onInPlaceComplete?: () => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   source: DocumentPolishSource;
 }
 
-export function DocumentPolishDialog({ onOpenChange, open, source }: DocumentPolishDialogProps) {
+export function DocumentPolishDialog({
+  onInPlaceComplete,
+  onOpenChange,
+  open,
+  source,
+}: DocumentPolishDialogProps) {
   const queryClient = useQueryClient();
   const router = useRouter();
   const [mode, setMode] = useState<DocumentTransformMode>("both");
+  const [outputStrategy, setOutputStrategy] = useState<DocumentTransformOutputStrategy>("copy");
   const [markdown, setMarkdown] = useState("");
   const [name, setName] = useState("Untitled document");
   const [destination, setDestination] = useState<null | SmartDestination>(
@@ -102,6 +114,16 @@ export function DocumentPolishDialog({ onOpenChange, open, source }: DocumentPol
   const abortRef = useRef<AbortController | null>(null);
   const idempotencyKey = useRef<null | string>(null);
   const submitLatch = useRef(false);
+  const capabilities = useQuery({
+    enabled: open && source.kind === "drive_file" && source.allowInPlace,
+    queryFn: documentTransformApi.capabilities,
+    queryKey: ["document-transform", "capabilities"],
+    staleTime: 60_000,
+  });
+  const effectiveOutputStrategy: DocumentTransformOutputStrategy =
+    source.kind === "drive_file" && source.allowInPlace && capabilities.data?.inPlace === true
+      ? outputStrategy
+      : "copy";
 
   const resetRequest = () => {
     idempotencyKey.current = null;
@@ -115,6 +137,7 @@ export function DocumentPolishDialog({ onOpenChange, open, source }: DocumentPol
     submitLatch.current = false;
     idempotencyKey.current = null;
     setMode("both");
+    setOutputStrategy("copy");
     setMarkdown("");
     setName("Untitled document");
     setDestination(source.kind === "markdown" ? source.initialDestination : null);
@@ -127,7 +150,14 @@ export function DocumentPolishDialog({ onOpenChange, open, source }: DocumentPol
   };
 
   const inputSource = (): DocumentTransformSource | null => {
-    if (source.kind === "drive_file") return source;
+    if (source.kind === "drive_file") {
+      return {
+        expectedModifiedTime: source.expectedModifiedTime,
+        fileId: source.fileId,
+        kind: source.kind,
+        name: source.name,
+      };
+    }
     if (!destination || !name.trim() || !markdown.trim()) return null;
     return {
       content: markdown,
@@ -157,19 +187,37 @@ export function DocumentPolishDialog({ onOpenChange, open, source }: DocumentPol
     abortRef.current?.abort();
     abortRef.current = controller;
     try {
-      const task = await documentTransformApi.create(transformSource, mode, idempotencyKey.current);
+      const task = await documentTransformApi.create(
+        transformSource,
+        mode,
+        idempotencyKey.current,
+        effectiveOutputStrategy,
+      );
       controller.signal.throwIfAborted();
       setStage("transforming");
       const result = await documentTransformApi.waitForCompletion(task, controller.signal);
-      injectNewFileIntoCaches(queryClient, result.outputFile);
-      toast.success(`Created “${result.outputFile.name}”`);
+      if (result.outputStrategy === "in_place") {
+        await queryClient.invalidateQueries({ queryKey: wikiKeys.file(result.outputFile.id) });
+        onInPlaceComplete?.();
+        toast.success(result.changed ? `Updated “${result.outputFile.name}”` : "No changes needed");
+      } else {
+        injectNewFileIntoCaches(queryClient, result.outputFile);
+        toast.success(`Created “${result.outputFile.name}”`);
+      }
       close();
       router.push(`/d/${encodeURIComponent(result.outputFile.id)}`);
     } catch (error: unknown) {
       if (error instanceof DocumentTransformNeedsReviewError) {
         setReviewMessage(error.message);
         setReviewResult(error.result ?? null);
-        if (error.result) injectNewFileIntoCaches(queryClient, error.result.outputFile);
+        if (error.result?.outputStrategy === "in_place") {
+          await queryClient.invalidateQueries({
+            queryKey: wikiKeys.file(error.result.outputFile.id),
+          });
+          onInPlaceComplete?.();
+        } else if (error.result) {
+          injectNewFileIntoCaches(queryClient, error.result.outputFile);
+        }
         toast.warning("The document needs review");
       } else if (!(error instanceof DOMException && error.name === "AbortError")) {
         toast.error(errorMessage(error, "Couldn’t polish document"));
@@ -198,7 +246,9 @@ export function DocumentPolishDialog({ onOpenChange, open, source }: DocumentPol
           <div className="border-b px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
             <DialogHeader>
               <DialogTitle>Polish document</DialogTitle>
-              <DialogDescription>Choose how Sarj Wiki should refine this copy.</DialogDescription>
+              <DialogDescription>
+                Choose how Sarj Wiki should refine this document.
+              </DialogDescription>
             </DialogHeader>
           </div>
 
@@ -304,6 +354,65 @@ export function DocumentPolishDialog({ onOpenChange, open, source }: DocumentPol
               </div>
             </fieldset>
 
+            {source.kind === "drive_file" &&
+            source.allowInPlace &&
+            capabilities.data?.inPlace === true ? (
+              <fieldset className="space-y-2">
+                <legend className="mb-2 text-sm font-medium">Save result</legend>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    aria-pressed={outputStrategy === "copy"}
+                    className={cn(
+                      "focus-visible:ring-ring/50 rounded-lg border p-3 text-left outline-none focus-visible:ring-[3px] disabled:opacity-50",
+                      outputStrategy === "copy"
+                        ? "border-primary bg-primary/5 shadow-sm"
+                        : "border-border hover:bg-muted/50",
+                    )}
+                    disabled={submitting}
+                    onClick={() => {
+                      setOutputStrategy("copy");
+                      resetRequest();
+                    }}
+                    type="button"
+                  >
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      <Copy className="size-4" />
+                      Create review copy
+                    </span>
+                    <span className="text-muted-foreground mt-2 block text-xs leading-relaxed">
+                      Keep the original untouched and create a sibling Google Doc.
+                    </span>
+                    <span className="text-primary mt-2 block text-[10px] font-semibold tracking-wide uppercase">
+                      Recommended
+                    </span>
+                  </button>
+                  <button
+                    aria-pressed={outputStrategy === "in_place"}
+                    className={cn(
+                      "focus-visible:ring-ring/50 rounded-lg border p-3 text-left outline-none focus-visible:ring-[3px] disabled:opacity-50",
+                      outputStrategy === "in_place"
+                        ? "border-primary bg-primary/5 shadow-sm"
+                        : "border-border hover:bg-muted/50",
+                    )}
+                    disabled={submitting}
+                    onClick={() => {
+                      setOutputStrategy("in_place");
+                      resetRequest();
+                    }}
+                    type="button"
+                  >
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      <FilePenLine className="size-4" />
+                      Edit original
+                    </span>
+                    <span className="text-muted-foreground mt-2 block text-xs leading-relaxed">
+                      Amend this Google Doc; Drive version history remains available.
+                    </span>
+                  </button>
+                </div>
+              </fieldset>
+            ) : null}
+
             <div className="bg-muted/45 flex items-center gap-3 rounded-lg border p-3">
               <span aria-hidden className="flex shrink-0 items-center gap-1.5">
                 <FileText className="text-muted-foreground size-4" />
@@ -312,7 +421,9 @@ export function DocumentPolishDialog({ onOpenChange, open, source }: DocumentPol
               </span>
               <p className="text-muted-foreground text-xs leading-relaxed">
                 {source.kind === "drive_file"
-                  ? `“${source.name}” stays unchanged. A new Google Doc will be created next to it.`
+                  ? effectiveOutputStrategy === "in_place"
+                    ? `“${source.name}” will be amended only after revision and safety checks pass.`
+                    : `“${source.name}” stays unchanged. A new Google Doc will be created next to it.`
                   : "Your Markdown stays unchanged. A new Google Doc will be created in the selected folder."}
               </p>
             </div>
@@ -350,7 +461,9 @@ export function DocumentPolishDialog({ onOpenChange, open, source }: DocumentPol
                     type="button"
                     variant="link"
                   >
-                    Open review copy
+                    {reviewResult.outputStrategy === "in_place"
+                      ? "Open original document"
+                      : "Open review copy"}
                   </Button>
                 ) : null}
               </div>
@@ -367,7 +480,11 @@ export function DocumentPolishDialog({ onOpenChange, open, source }: DocumentPol
               ) : (
                 <Sparkles className="size-4" />
               )}
-              {submitting ? "Polishing…" : "Create polished copy"}
+              {submitting
+                ? "Polishing…"
+                : effectiveOutputStrategy === "in_place"
+                  ? "Polish original"
+                  : "Create polished copy"}
             </Button>
           </DialogFooter>
         </DialogContent>

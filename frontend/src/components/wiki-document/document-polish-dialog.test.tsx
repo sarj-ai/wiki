@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
 import { documentTransformApi } from "@/lib/document-transform-client";
+import type { DocumentTransformResult } from "@/lib/document-transform-types";
 import { MIME_DOC } from "@/types/wiki";
 
 import { DocumentPolishDialog, type DocumentPolishSource } from "./document-polish-dialog";
@@ -24,6 +25,10 @@ describe("DocumentPolishDialog", () => {
     document.body.append(host);
     root = createRoot(host);
     vi.clearAllMocks();
+    vi.spyOn(documentTransformApi, "capabilities").mockResolvedValue({
+      copy: true,
+      inPlace: false,
+    });
   });
 
   afterEach(() => {
@@ -36,6 +41,7 @@ describe("DocumentPolishDialog", () => {
 
   it("always asks for a mode and discloses the untouched source copy", () => {
     renderDialog(root, {
+      allowInPlace: true,
       expectedModifiedTime: "2026-09-03T12:00:00Z",
       fileId: "source-1",
       kind: "drive_file",
@@ -58,6 +64,7 @@ describe("DocumentPolishDialog", () => {
     vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(completion.promise);
 
     renderDialog(root, {
+      allowInPlace: true,
       expectedModifiedTime: "2026-09-03T12:00:00Z",
       fileId: "source-1",
       kind: "drive_file",
@@ -79,47 +86,116 @@ describe("DocumentPolishDialog", () => {
       },
       "unslop",
       expect.any(String),
+      "copy",
     );
     expect(documentTransformApi.waitForCompletion).toHaveBeenCalledWith(
       pending,
       expect.any(AbortSignal),
     );
 
-    completion.resolve({
-      appliedPatchCount: 1,
-      brandProfileId: "sarj-2026-v2",
-      brandProfileSha256: "b".repeat(64),
-      deterministicPatchCount: 1,
-      findings: [],
-      llmInvoked: false,
-      mode: "unslop",
-      modelPatchCount: 0,
-      modelIds: [],
-      needsReview: false,
-      operationId: pending.id,
-      outputFile: {
-        canEdit: true,
-        driveId: "drive-1",
-        id: "output-1",
-        mimeType: MIME_DOC,
-        modifiedTime: "2026-09-03T12:01:00Z",
-        name: "Architecture review — Unslopped",
-        parentFolderId: "folder-1",
-      },
-      outputWebUrl: "https://docs.google.com/document/d/output-1/edit",
-      pipelineVersion: "sarj-v1",
-      sourceSha256: "a".repeat(64),
-      toolVersions: { unslop: "d81f519" },
-      validation: {
-        protectedContentPreserved: true,
-        sourceUnchanged: true,
-        structurePreserved: true,
-        unsafePatchCount: 0,
-      },
-    });
+    completion.resolve(transformResult());
 
     await vi.waitFor(() => {
       expect(NavigationMock.push).toHaveBeenCalledWith("/d/output-1");
+    });
+  });
+
+  it("offers server-gated in-place editing while defaulting to a review copy", async () => {
+    vi.mocked(documentTransformApi.capabilities).mockResolvedValue({ copy: true, inPlace: true });
+    vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+      id: "55555555-5555-4555-8555-555555555555",
+      status: "pending",
+    });
+    const completion =
+      Promise.withResolvers<Awaited<ReturnType<typeof documentTransformApi.waitForCompletion>>>();
+    vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(completion.promise);
+    const onInPlaceComplete = vi.fn();
+
+    const { queryClient } = renderDialog(
+      root,
+      {
+        allowInPlace: true,
+        expectedModifiedTime: "2026-09-03T12:00:00Z",
+        fileId: "source-1",
+        kind: "drive_file",
+        name: "Architecture review",
+      },
+      onInPlaceComplete,
+    );
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+    await vi.waitFor(() => {
+      expect(findButtonNow("Create review copy")).toHaveAttribute("aria-pressed", "true");
+    });
+    clickButton(findButtonNow("Edit original"));
+    expect(document.body).toHaveTextContent(
+      "will be amended only after revision and safety checks",
+    );
+    clickButton(findButtonNow("Polish original"));
+
+    await vi.waitFor(() => {
+      expect(documentTransformApi.create).toHaveBeenCalledWith(
+        {
+          expectedModifiedTime: "2026-09-03T12:00:00Z",
+          fileId: "source-1",
+          kind: "drive_file",
+          name: "Architecture review",
+        },
+        "both",
+        expect.any(String),
+        "in_place",
+      );
+    });
+    completion.resolve(
+      transformResult({
+        outputFileId: "source-1",
+        outputFileName: "Architecture review",
+        outputRevisionId: "revision-2",
+        outputStrategy: "in_place",
+        sourceRevisionId: "revision-1",
+      }),
+    );
+
+    await vi.waitFor(() => {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["wiki", "file", "source-1"] });
+      expect(onInPlaceComplete).toHaveBeenCalledOnce();
+      expect(NavigationMock.push).toHaveBeenCalledWith("/d/source-1");
+    });
+  });
+
+  it("never offers in-place for a Drive-hosted Markdown file", async () => {
+    vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+      id: "55555555-5555-4555-8555-555555555555",
+      status: "pending",
+    });
+    vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(
+      Promise.withResolvers<DocumentTransformResult>().promise,
+    );
+
+    renderDialog(root, {
+      allowInPlace: false,
+      expectedModifiedTime: "2026-09-03T12:00:00Z",
+      fileId: "markdown-1",
+      kind: "drive_file",
+      name: "Notes.md",
+    });
+
+    await Promise.resolve();
+    expect(documentTransformApi.capabilities).not.toHaveBeenCalled();
+    expect(document.body).not.toHaveTextContent("Edit original");
+    clickButton(findButtonNow("Create polished copy"));
+    await vi.waitFor(() => {
+      expect(documentTransformApi.create).toHaveBeenCalledWith(
+        {
+          expectedModifiedTime: "2026-09-03T12:00:00Z",
+          fileId: "markdown-1",
+          kind: "drive_file",
+          name: "Notes.md",
+        },
+        "both",
+        expect.any(String),
+        "copy",
+      );
     });
   });
 
@@ -157,20 +233,27 @@ describe("DocumentPolishDialog", () => {
         },
         "format",
         expect.any(String),
+        "copy",
       );
     });
   });
 });
 
-function renderDialog(root: Root, source: DocumentPolishSource) {
+function renderDialog(root: Root, source: DocumentPolishSource, onInPlaceComplete?: () => void) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   flushSync(() => {
     root.render(
       <QueryClientProvider client={queryClient}>
-        <DocumentPolishDialog onOpenChange={vi.fn()} open source={source} />
+        <DocumentPolishDialog
+          onOpenChange={vi.fn()}
+          open
+          source={source}
+          {...(onInPlaceComplete === undefined ? {} : { onInPlaceComplete })}
+        />
       </QueryClientProvider>,
     );
   });
+  return { queryClient };
 }
 
 function clickButton(button: HTMLButtonElement) {
@@ -186,6 +269,55 @@ function findButtonNow(text: string): HTMLButtonElement {
   );
   if (button === undefined) throw new Error(`Button not found: ${text}`);
   return button;
+}
+
+interface TransformResultOverrides {
+  outputFileId?: string;
+  outputFileName?: string;
+  outputRevisionId?: null | string;
+  outputStrategy?: "copy" | "in_place";
+  sourceRevisionId?: null | string;
+}
+
+function transformResult(overrides: TransformResultOverrides = {}): DocumentTransformResult {
+  const outputFileId = overrides.outputFileId ?? "output-1";
+  const outputFileName = overrides.outputFileName ?? "Architecture review — Unslopped";
+  return {
+    appliedPatchCount: 1,
+    brandProfileId: "sarj-2026-v3",
+    brandProfileSha256: "b".repeat(64),
+    changed: true,
+    deterministicPatchCount: 1,
+    findings: [],
+    llmInvoked: false,
+    mode: "unslop",
+    modelPatchCount: 0,
+    modelIds: [],
+    needsReview: false,
+    operationId: "55555555-5555-4555-8555-555555555555",
+    outputFile: {
+      canEdit: true,
+      driveId: "drive-1",
+      id: outputFileId,
+      mimeType: MIME_DOC,
+      modifiedTime: "2026-09-03T12:01:00Z",
+      name: outputFileName,
+      parentFolderId: "folder-1",
+    },
+    outputRevisionId: overrides.outputRevisionId ?? null,
+    outputStrategy: overrides.outputStrategy ?? "copy",
+    outputWebUrl: `https://docs.google.com/document/d/${outputFileId}/edit`,
+    pipelineVersion: "document-transform-v3",
+    sourceRevisionId: overrides.sourceRevisionId ?? null,
+    sourceSha256: "a".repeat(64),
+    toolVersions: { unslop: "d81f519" },
+    validation: {
+      protectedContentPreserved: true,
+      sourceUnchanged: true,
+      structurePreserved: true,
+      unsafePatchCount: 0,
+    },
+  };
 }
 
 function typeTextarea(value: string) {
