@@ -16,8 +16,12 @@ from googleapiclient.discovery_cache import get_static_doc
 from googleapiclient.errors import HttpError
 from googleapiclient.http import HttpRequest, MediaIoBaseUpload
 
-from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
-from app.document_transform.errors import DocumentGatewayError, UnsupportedSourceError
+from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST, normalize_header_title
+from app.document_transform.errors import (
+    DocumentGatewayError,
+    IncompatiblePendingOutputError,
+    UnsupportedSourceError,
+)
 from app.document_transform.gateway import (
     DocumentGateway,
     OutputDraft,
@@ -512,7 +516,7 @@ class GoogleDocumentGateway(DocumentGateway):
         required_revision_id: DocsRevisionId,
     ) -> OutputDraft:
         if draft.pending_mutation_sha256 not in {None, mutation_sha256}:
-            raise DocumentGatewayError
+            raise IncompatiblePendingOutputError
         if (
             draft.pending_mutation_sha256 == mutation_sha256
             and draft.mutation_base_revision_sha256 is not None
@@ -910,7 +914,13 @@ def _strip_location_fields(value: object) -> object:
 def verify_brand_application(document: dict[str, Any], parsed: DocumentIR) -> bool:
     tabs = tuple(_document_tabs(document))
     if not tabs or not all(
-        _tab_shell_is_branded(document, document_tab) for _, document_tab in tabs
+        _tab_shell_is_branded(
+            document,
+            document_tab,
+            expected_title=parsed.title,
+            allow_legacy_inline_objects=len(tabs) == 1,
+        )
+        for _, document_tab in tabs
     ):
         return False
     paragraphs = _paragraphs_by_range(tabs)
@@ -930,7 +940,13 @@ def verify_brand_application(document: dict[str, Any], parsed: DocumentIR) -> bo
     return True
 
 
-def _tab_shell_is_branded(document: dict[str, Any], document_tab: dict[str, Any]) -> bool:
+def _tab_shell_is_branded(
+    document: dict[str, Any],
+    document_tab: dict[str, Any],
+    *,
+    expected_title: str,
+    allow_legacy_inline_objects: bool,
+) -> bool:
     style = document_tab.get("documentStyle")
     if not isinstance(style, dict):
         return False
@@ -950,11 +966,98 @@ def _tab_shell_is_branded(document: dict[str, Any], document_tab: dict[str, Any]
     header = headers.get(header_id)
     if not isinstance(header, dict) or not _segment_has_text(headers, header_id):
         return False
+    if not _header_has_brand(header, expected_title=expected_title):
+        return False
     object_ids = _values_for_key(header, "inlineObjectId")
-    inline_objects = document.get("inlineObjects")
-    return isinstance(inline_objects, dict) and any(
-        _inline_object_uses_canonical_logo(inline_objects.get(object_id))
-        for object_id in object_ids
+    if len(object_ids) != 1:
+        return False
+    inline_objects = document_tab.get("inlineObjects")
+    if not isinstance(inline_objects, dict) and allow_legacy_inline_objects:
+        inline_objects = document.get("inlineObjects")
+    return isinstance(inline_objects, dict) and _inline_object_uses_canonical_logo(
+        inline_objects.get(object_ids[0])
+    )
+
+
+def _header_has_brand(header: dict[str, Any], *, expected_title: str) -> bool:
+    header_tokens = CURRENT_BRAND_MANIFEST.document.header
+    if header_tokens is None:
+        return False
+    content = header.get("content")
+    if not isinstance(content, list):
+        return False
+    if len(content) != 1 or not isinstance(content[0], dict):
+        return False
+    structural_element = content[0]
+    if set(structural_element) - {"startIndex", "endIndex", "paragraph"}:
+        return False
+    paragraph = structural_element.get("paragraph")
+    if not isinstance(paragraph, dict):
+        return False
+    paragraph_style = paragraph.get("paragraphStyle")
+    elements = paragraph.get("elements")
+    if not isinstance(paragraph_style, dict) or not isinstance(elements, list):
+        return False
+    logo_positions = [
+        index
+        for index, element in enumerate(elements)
+        if isinstance(element, dict) and isinstance(element.get("inlineObjectElement"), dict)
+    ]
+    if len(logo_positions) != 1:
+        return False
+    logo_position = logo_positions[0]
+    title_elements = elements[:logo_position]
+    trailing_elements = elements[logo_position + 1 :]
+    if not title_elements or not all(
+        isinstance(element, dict) and isinstance(element.get("textRun"), dict)
+        for element in title_elements
+    ):
+        return False
+    if not all(
+        isinstance(element, dict)
+        and isinstance(element.get("textRun"), dict)
+        and isinstance(element["textRun"].get("content"), str)
+        and not element["textRun"]["content"].strip()
+        for element in trailing_elements
+    ):
+        return False
+    if not all(
+        (
+            paragraph_style.get("namedStyleType") == "NORMAL_TEXT",
+            paragraph_style.get("alignment") == header_tokens.alignment,
+            paragraph_style.get("lineSpacing") == header_tokens.line_spacing_percent,
+            _dimension_matches(paragraph_style.get("spaceAbove"), header_tokens.space_above_pt),
+            _dimension_matches(paragraph_style.get("spaceBelow"), header_tokens.space_below_pt),
+            paragraph_style.get("keepWithNext") is False,
+        )
+    ):
+        return False
+    text_runs = [element["textRun"] for element in title_elements]
+    if not all(isinstance(run.get("content"), str) for run in text_runs):
+        return False
+    normalized_title = normalize_header_title(
+        expected_title,
+        max_chars=header_tokens.max_title_chars,
+    )
+    if "".join(run["content"] for run in text_runs) != f"{normalized_title}\t":
+        return False
+    return bool(text_runs) and all(_header_text_run_has_brand(run) for run in text_runs)
+
+
+def _header_text_run_has_brand(text_run: dict[str, Any]) -> bool:
+    header_tokens = CURRENT_BRAND_MANIFEST.document.header
+    if header_tokens is None:
+        return False
+    style = text_run.get("textStyle")
+    if not isinstance(style, dict):
+        return False
+    family = style.get("weightedFontFamily")
+    return (
+        isinstance(family, dict)
+        and family.get("fontFamily") == header_tokens.font_family
+        and _dimension_matches(style.get("fontSize"), header_tokens.size_pt)
+        and _color_matches(style.get("foregroundColor"), header_tokens.color)
+        and style.get("bold") is header_tokens.bold
     )
 
 
@@ -1102,6 +1205,50 @@ def _inline_object_uses_canonical_logo(value: object) -> bool:
     properties = value.get("inlineObjectProperties")
     embedded = properties.get("embeddedObject") if isinstance(properties, dict) else None
     image = embedded.get("imageProperties") if isinstance(embedded, dict) else None
+    size = embedded.get("size") if isinstance(embedded, dict) else None
+    header_tokens = CURRENT_BRAND_MANIFEST.document.header
+    asset_width = CURRENT_BRAND_MANIFEST.assets.logo_pixel_width
+    asset_height = CURRENT_BRAND_MANIFEST.assets.logo_pixel_height
     return (
-        isinstance(image, dict) and image.get("sourceUri") == CURRENT_BRAND_MANIFEST.assets.logo_uri
+        header_tokens is not None
+        and asset_width is not None
+        and asset_height is not None
+        and isinstance(image, dict)
+        and image.get("sourceUri") == CURRENT_BRAND_MANIFEST.assets.logo_uri
+        and isinstance(size, dict)
+        and _fitted_logo_size_matches(
+            size,
+            pixel_width=asset_width,
+            pixel_height=asset_height,
+            box_width=header_tokens.logo_width_pt,
+            box_height=header_tokens.logo_height_pt,
+            tolerance=header_tokens.logo_size_tolerance_pt,
+        )
     )
+
+
+def _fitted_logo_size_matches(
+    size: dict[str, Any],
+    *,
+    pixel_width: int,
+    pixel_height: int,
+    box_width: int,
+    box_height: int,
+    tolerance: float,
+) -> bool:
+    width = _point_magnitude(size.get("width"))
+    height = _point_magnitude(size.get("height"))
+    if width is None or height is None:
+        return False
+    scale = min(box_width / pixel_width, box_height / pixel_height)
+    return (
+        abs(width - pixel_width * scale) <= tolerance
+        and abs(height - pixel_height * scale) <= tolerance
+    )
+
+
+def _point_magnitude(value: object) -> float | None:
+    if not isinstance(value, dict) or value.get("unit") != "PT":
+        return None
+    magnitude = value.get("magnitude")
+    return float(magnitude) if isinstance(magnitude, int | float) else None

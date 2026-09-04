@@ -5,7 +5,11 @@ import hashlib
 import json
 from typing import Any
 
-from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
+from app.document_transform.brand_manifest import (
+    CURRENT_BRAND_MANIFEST,
+    DocumentHeaderBrandTokens,
+    normalize_header_title,
+)
 from app.document_transform.errors import SourceTooLargeError
 from app.document_transform.gateway import TabHeader
 from app.document_transform.ir import BlockKind, DocumentIR, SourceRange, TextBlock, utf16_length
@@ -13,6 +17,17 @@ from app.identifiers import DocsTabId
 
 
 SARJ_PURPLE = CURRENT_BRAND_MANIFEST.colors.primary
+
+
+def _current_header_tokens() -> DocumentHeaderBrandTokens:
+    tokens = CURRENT_BRAND_MANIFEST.document.header
+    if tokens is None:  # pragma: no cover - immutable manifest invariant
+        msg = "Current Sarj brand profile must define document header tokens"
+        raise RuntimeError(msg)
+    return tokens
+
+
+CURRENT_HEADER_TOKENS = _current_header_tokens()
 MAX_DOCS_MUTATION_REQUESTS = 2_500
 MAX_DOCS_MUTATION_BYTES = 5 * 1024 * 1024
 type DocsRequest = dict[str, Any]
@@ -38,6 +53,17 @@ class SarjBrandProfile:
     paragraph_space_below_pt: int = CURRENT_BRAND_MANIFEST.document.paragraph_space_below_pt
     horizontal_margin_pt: int = CURRENT_BRAND_MANIFEST.document.horizontal_margin_pt
     vertical_margin_pt: int = CURRENT_BRAND_MANIFEST.document.vertical_margin_pt
+    header_font_family: str = CURRENT_HEADER_TOKENS.font_family
+    header_size_pt: int = CURRENT_HEADER_TOKENS.size_pt
+    header_color: str = CURRENT_HEADER_TOKENS.color
+    header_bold: bool = CURRENT_HEADER_TOKENS.bold
+    header_alignment: str = CURRENT_HEADER_TOKENS.alignment
+    header_line_spacing_percent: int = CURRENT_HEADER_TOKENS.line_spacing_percent
+    header_space_above_pt: int = CURRENT_HEADER_TOKENS.space_above_pt
+    header_space_below_pt: int = CURRENT_HEADER_TOKENS.space_below_pt
+    header_logo_width_pt: int = CURRENT_HEADER_TOKENS.logo_width_pt
+    header_logo_height_pt: int = CURRENT_HEADER_TOKENS.logo_height_pt
+    header_max_title_chars: int = CURRENT_HEADER_TOKENS.max_title_chars
 
     def __post_init__(self) -> None:
         expected = {
@@ -59,6 +85,17 @@ class SarjBrandProfile:
             "paragraph_space_below_pt": (CURRENT_BRAND_MANIFEST.document.paragraph_space_below_pt),
             "horizontal_margin_pt": CURRENT_BRAND_MANIFEST.document.horizontal_margin_pt,
             "vertical_margin_pt": CURRENT_BRAND_MANIFEST.document.vertical_margin_pt,
+            "header_font_family": CURRENT_HEADER_TOKENS.font_family,
+            "header_size_pt": CURRENT_HEADER_TOKENS.size_pt,
+            "header_color": CURRENT_HEADER_TOKENS.color,
+            "header_bold": CURRENT_HEADER_TOKENS.bold,
+            "header_alignment": CURRENT_HEADER_TOKENS.alignment,
+            "header_line_spacing_percent": CURRENT_HEADER_TOKENS.line_spacing_percent,
+            "header_space_above_pt": CURRENT_HEADER_TOKENS.space_above_pt,
+            "header_space_below_pt": CURRENT_HEADER_TOKENS.space_below_pt,
+            "header_logo_width_pt": CURRENT_HEADER_TOKENS.logo_width_pt,
+            "header_logo_height_pt": CURRENT_HEADER_TOKENS.logo_height_pt,
+            "header_max_title_chars": CURRENT_HEADER_TOKENS.max_title_chars,
         }
         if any(getattr(self, name) != value for name, value in expected.items()):
             msg = "Sarj brand tokens must match the pinned manifest"
@@ -358,11 +395,12 @@ def _brand_shell_requests(
             "segmentId": header.header_id,
             "tabId": header.tab_id,
         }
+        header_text = f"{normalize_header_title(title, max_chars=profile.header_max_title_chars)}\t"
         requests.append(
             {
                 "insertText": {
                     "endOfSegmentLocation": location,
-                    "text": f"{title}\t",
+                    "text": header_text,
                 }
             }
         )
@@ -373,12 +411,72 @@ def _brand_shell_requests(
                         "endOfSegmentLocation": location,
                         "uri": logo_uri,
                         "objectSize": {
-                            "width": {"magnitude": 52, "unit": "PT"},
-                            "height": {"magnitude": 28, "unit": "PT"},
+                            "width": {
+                                "magnitude": profile.header_logo_width_pt,
+                                "unit": "PT",
+                            },
+                            "height": {
+                                "magnitude": profile.header_logo_height_pt,
+                                "unit": "PT",
+                            },
                         },
                     }
                 }
             )
+        header_text_end = utf16_length(header_text)
+        text_range = {
+            "startIndex": 0,
+            "endIndex": header_text_end,
+            **location,
+        }
+        paragraph_range = {
+            **text_range,
+            "endIndex": header_text_end + (1 if logo_uri else 0),
+        }
+        requests.extend(
+            [
+                {
+                    "updateTextStyle": {
+                        "range": text_range,
+                        "textStyle": {
+                            "weightedFontFamily": {"fontFamily": profile.header_font_family},
+                            "fontSize": {
+                                "magnitude": profile.header_size_pt,
+                                "unit": "PT",
+                            },
+                            "foregroundColor": {
+                                "color": {"rgbColor": _rgb_color(profile.header_color)}
+                            },
+                            "bold": profile.header_bold,
+                        },
+                        "fields": "weightedFontFamily,fontSize,foregroundColor,bold",
+                    }
+                },
+                {
+                    "updateParagraphStyle": {
+                        "range": paragraph_range,
+                        "paragraphStyle": {
+                            "alignment": profile.header_alignment,
+                            "lineSpacing": profile.header_line_spacing_percent,
+                            "spaceAbove": {
+                                "magnitude": profile.header_space_above_pt,
+                                "unit": "PT",
+                            },
+                            "spaceBelow": {
+                                "magnitude": profile.header_space_below_pt,
+                                "unit": "PT",
+                            },
+                            "keepWithNext": False,
+                            "namedStyleType": "NORMAL_TEXT",
+                        },
+                        "fields": (
+                            "alignment,lineSpacing,spaceAbove,spaceBelow,"
+                            "keepWithNext,namedStyleType"
+                        ),
+                    }
+                },
+            ]
+        )
     return requests
 
 

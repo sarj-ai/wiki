@@ -7,7 +7,11 @@ import uuid
 import pytest
 
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
-from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
+from app.document_transform.errors import (
+    IncompatiblePendingOutputError,
+    SourceTooLargeError,
+    UnsupportedSourceError,
+)
 from app.document_transform.executor import DocumentTransformExecutor
 from app.document_transform.gateway import (
     DocumentGateway,
@@ -16,7 +20,7 @@ from app.document_transform.gateway import (
     SourceSnapshot,
     TabHeader,
 )
-from app.document_transform.google_gateway import verify_brand_application
+from app.document_transform.google_gateway import GoogleDocumentGateway, verify_brand_application
 from app.document_transform.ir import (
     BlockKind,
     DocumentIR,
@@ -911,7 +915,9 @@ def test_copy_styles_use_post_edit_utf16_ranges_for_two_changed_paragraphs() -> 
         logo_uri="https://assets.example.test/sarj-logo.png",
     )
     style_ranges = [
-        request["updateTextStyle"]["range"] for request in requests if "updateTextStyle" in request
+        request["updateTextStyle"]["range"]
+        for request in requests
+        if "updateTextStyle" in request and "segmentId" not in request["updateTextStyle"]["range"]
     ]
 
     assert style_ranges == [
@@ -1009,9 +1015,9 @@ def test_post_write_brand_verification_requires_paragraph_spacing(
 
 def test_post_write_brand_verification_requires_canonical_logo_source() -> None:
     document = _branded_google_document()
-    document["inlineObjects"]["logo-1"]["inlineObjectProperties"]["embeddedObject"][
-        "imageProperties"
-    ]["sourceUri"] = "https://example.test/wrong.png"
+    document["tabs"][0]["documentTab"]["inlineObjects"]["logo-1"]["inlineObjectProperties"][
+        "embeddedObject"
+    ]["imageProperties"]["sourceUri"] = "https://example.test/wrong.png"
 
     assert (
         verify_brand_application(document, parse_google_document(document, title="Decision"))
@@ -1019,24 +1025,250 @@ def test_post_write_brand_verification_requires_canonical_logo_source() -> None:
     )
 
 
-def _branded_google_document() -> dict[str, Any]:
-    return {
-        "revisionId": "revision-2",
-        "inlineObjects": {
-            "logo-1": {
-                "inlineObjectProperties": {
-                    "embeddedObject": {
-                        "imageProperties": {
-                            "sourceUri": "https://wiki.sarj.ai/brand/sarj-logo-light.png"
-                        }
-                    }
+def test_copy_branding_styles_header_deterministically() -> None:
+    document = DocumentIR(
+        title="Decision",
+        blocks=(),
+        source_format="google_doc",
+        tab_ids=(DocsTabId("tab-a"),),
+    )
+
+    requests = build_copy_mutations(
+        document,
+        document,
+        profile=SarjBrandProfile(),
+        headers=(TabHeader(tab_id=DocsTabId("tab-a"), header_id=DocsSegmentId("header-a")),),
+        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
+    )
+
+    header_text_style = next(
+        request["updateTextStyle"]
+        for request in requests
+        if "updateTextStyle" in request
+        and request["updateTextStyle"]["range"].get("segmentId") == "header-a"
+    )
+    assert header_text_style["range"] == {
+        "startIndex": 0,
+        "endIndex": 9,
+        "segmentId": "header-a",
+        "tabId": "tab-a",
+    }
+    assert header_text_style["textStyle"] == {
+        "weightedFontFamily": {"fontFamily": "Nunito"},
+        "fontSize": {"magnitude": 9, "unit": "PT"},
+        "foregroundColor": {
+            "color": {
+                "rgbColor": {
+                    "red": 115 / 255,
+                    "green": 115 / 255,
+                    "blue": 115 / 255,
                 }
             }
         },
+        "bold": True,
+    }
+    header_paragraph_style = next(
+        request["updateParagraphStyle"]
+        for request in requests
+        if "updateParagraphStyle" in request
+        and request["updateParagraphStyle"]["range"].get("segmentId") == "header-a"
+    )
+    assert header_paragraph_style["range"]["endIndex"] == 10
+    assert header_paragraph_style["paragraphStyle"] == {
+        "alignment": "END",
+        "lineSpacing": 100,
+        "spaceAbove": {"magnitude": 0, "unit": "PT"},
+        "spaceBelow": {"magnitude": 0, "unit": "PT"},
+        "keepWithNext": False,
+        "namedStyleType": "NORMAL_TEXT",
+    }
+
+
+def test_copy_branding_normalizes_header_title_and_uses_utf16_indexes() -> None:
+    document = DocumentIR(
+        title="Decision 😀\nBrief",
+        blocks=(),
+        source_format="google_doc",
+        tab_ids=(DocsTabId("tab-a"),),
+    )
+
+    requests = build_copy_mutations(
+        document,
+        document,
+        profile=SarjBrandProfile(),
+        headers=(TabHeader(tab_id=DocsTabId("tab-a"), header_id=DocsSegmentId("header-a")),),
+        logo_uri="https://wiki.sarj.ai/brand/sarj-logo-light.png",
+    )
+
+    header_requests = [
+        request
+        for request in requests
+        if next(iter(request.values())).get("endOfSegmentLocation", {}).get("segmentId")
+        == "header-a"
+        or next(iter(request.values())).get("range", {}).get("segmentId") == "header-a"
+    ]
+    assert [next(iter(request)) for request in header_requests] == [
+        "insertText",
+        "insertInlineImage",
+        "updateTextStyle",
+        "updateParagraphStyle",
+    ]
+    assert header_requests[0]["insertText"]["text"] == "Decision 😀 Brief\t"
+    assert header_requests[2]["updateTextStyle"]["range"]["endIndex"] == 18
+    assert header_requests[3]["updateParagraphStyle"]["range"]["endIndex"] == 19
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    [
+        ("alignment", "START"),
+        ("lineSpacing", 115),
+        ("spaceBelow", {"magnitude": 6, "unit": "PT"}),
+    ],
+)
+def test_post_write_brand_verification_requires_header_paragraph_style(
+    field: str,
+    invalid_value: object,
+) -> None:
+    document = _branded_google_document()
+    changed = deepcopy(document)
+    changed["tabs"][0]["documentTab"]["headers"]["header-a"]["content"][0]["paragraph"][
+        "paragraphStyle"
+    ][field] = invalid_value
+
+    assert verify_brand_application(document, parse_google_document(document, title="Decision"))
+    assert not verify_brand_application(changed, parse_google_document(changed, title="Decision"))
+
+
+def test_post_write_brand_verification_requires_header_text_style_and_title() -> None:
+    document = _branded_google_document()
+    wrong_style = deepcopy(document)
+    text_run = wrong_style["tabs"][0]["documentTab"]["headers"]["header-a"]["content"][0][
+        "paragraph"
+    ]["elements"][0]["textRun"]
+    text_run["textStyle"]["weightedFontFamily"]["fontFamily"] = "Arial"
+    wrong_title = deepcopy(document)
+    wrong_title["tabs"][0]["documentTab"]["headers"]["header-a"]["content"][0]["paragraph"][
+        "elements"
+    ][0]["textRun"]["content"] = "Other\t"
+
+    assert not verify_brand_application(
+        wrong_style, parse_google_document(wrong_style, title="Decision")
+    )
+    assert not verify_brand_application(
+        wrong_title, parse_google_document(wrong_title, title="Decision")
+    )
+
+
+def test_multi_tab_brand_verification_never_uses_top_level_inline_objects() -> None:
+    document = _branded_google_document()
+    second = deepcopy(document["tabs"][0])
+    second["tabProperties"]["tabId"] = "tab-b"
+    second_tab = second["documentTab"]
+    second_tab["documentStyle"]["defaultHeaderId"] = "header-b"
+    second_tab["headers"] = {"header-b": second_tab["headers"].pop("header-a")}
+    second_tab.pop("inlineObjects")
+    document["tabs"].append(second)
+    document["inlineObjects"] = deepcopy(document["tabs"][0]["documentTab"]["inlineObjects"])
+
+    assert not verify_brand_application(document, parse_google_document(document, title="Decision"))
+
+
+def test_post_write_brand_verification_rejects_extra_or_wrong_size_logo() -> None:
+    document = _branded_google_document()
+    extra_logo = deepcopy(document)
+    elements = extra_logo["tabs"][0]["documentTab"]["headers"]["header-a"]["content"][0][
+        "paragraph"
+    ]["elements"]
+    elements.append({"inlineObjectElement": {"inlineObjectId": "logo-2"}})
+    wrong_size = deepcopy(document)
+    wrong_size["tabs"][0]["documentTab"]["inlineObjects"]["logo-1"]["inlineObjectProperties"][
+        "embeddedObject"
+    ]["size"]["width"] = {"magnitude": 40, "unit": "PT"}
+
+    assert not verify_brand_application(
+        extra_logo, parse_google_document(extra_logo, title="Decision")
+    )
+    assert not verify_brand_application(
+        wrong_size, parse_google_document(wrong_size, title="Decision")
+    )
+
+
+def test_post_write_brand_verification_rejects_table_or_reversed_header() -> None:
+    document = _branded_google_document()
+    extra_table = deepcopy(document)
+    extra_table["tabs"][0]["documentTab"]["headers"]["header-a"]["content"].append(
+        {"table": {"rows": 1, "columns": 1}}
+    )
+    reversed_header = deepcopy(document)
+    elements = reversed_header["tabs"][0]["documentTab"]["headers"]["header-a"]["content"][0][
+        "paragraph"
+    ]["elements"]
+    elements[0], elements[1] = elements[1], elements[0]
+
+    assert not verify_brand_application(
+        extra_table, parse_google_document(extra_table, title="Decision")
+    )
+    assert not verify_brand_application(
+        reversed_header, parse_google_document(reversed_header, title="Decision")
+    )
+
+
+def test_foreign_pending_mutation_fails_terminal_before_google_write() -> None:
+    gateway = object.__new__(GoogleDocumentGateway)
+    draft = OutputDraft(
+        output=DocumentOutput(
+            file_id=FileId("output"),
+            name="Output",
+            parent_folder_id=FileId("parent"),
+        ),
+        document_id=FileId("output"),
+        tab_id=DocsTabId("tab-a"),
+        revision_id=DocsRevisionId("revision-2"),
+        source_sha256="source-hash",
+        pending_mutation_sha256="v2-mutation",
+    )
+
+    with pytest.raises(IncompatiblePendingOutputError):
+        gateway._apply_requests_sync(
+            draft,
+            "v3-mutation",
+            [{"insertText": {"text": "unsafe"}}],
+            DocsRevisionId("revision-2"),
+        )
+
+
+def test_single_tab_brand_verification_supports_legacy_top_level_inline_objects() -> None:
+    document = _branded_google_document()
+    document["inlineObjects"] = document["tabs"][0]["documentTab"].pop("inlineObjects")
+
+    assert verify_brand_application(document, parse_google_document(document, title="Decision"))
+
+
+def _branded_google_document() -> dict[str, Any]:
+    return {
+        "revisionId": "revision-2",
         "tabs": [
             {
                 "tabProperties": {"tabId": "tab-a"},
                 "documentTab": {
+                    "inlineObjects": {
+                        "logo-1": {
+                            "inlineObjectProperties": {
+                                "embeddedObject": {
+                                    "imageProperties": {
+                                        "sourceUri": (
+                                            "https://wiki.sarj.ai/brand/sarj-logo-light.png"
+                                        )
+                                    },
+                                    "size": {
+                                        "width": {"magnitude": 52, "unit": "PT"},
+                                        "height": {"magnitude": 28, "unit": "PT"},
+                                    },
+                                }
+                            }
+                        }
+                    },
                     "documentStyle": {
                         "marginLeft": {"magnitude": 72, "unit": "PT"},
                         "marginRight": {"magnitude": 72, "unit": "PT"},
@@ -1049,10 +1281,41 @@ def _branded_google_document() -> dict[str, Any]:
                             "content": [
                                 {
                                     "paragraph": {
+                                        "paragraphStyle": {
+                                            "namedStyleType": "NORMAL_TEXT",
+                                            "alignment": "END",
+                                            "lineSpacing": 100,
+                                            "spaceAbove": {"magnitude": 0, "unit": "PT"},
+                                            "spaceBelow": {"magnitude": 0, "unit": "PT"},
+                                            "keepWithNext": False,
+                                        },
                                         "elements": [
-                                            {"textRun": {"content": "Decision\t"}},
+                                            {
+                                                "textRun": {
+                                                    "content": "Decision\t",
+                                                    "textStyle": {
+                                                        "weightedFontFamily": {
+                                                            "fontFamily": "Nunito"
+                                                        },
+                                                        "fontSize": {
+                                                            "magnitude": 9,
+                                                            "unit": "PT",
+                                                        },
+                                                        "foregroundColor": {
+                                                            "color": {
+                                                                "rgbColor": {
+                                                                    "red": 115 / 255,
+                                                                    "green": 115 / 255,
+                                                                    "blue": 115 / 255,
+                                                                }
+                                                            }
+                                                        },
+                                                        "bold": True,
+                                                    },
+                                                }
+                                            },
                                             {"inlineObjectElement": {"inlineObjectId": "logo-1"}},
-                                        ]
+                                        ],
                                     }
                                 }
                             ]

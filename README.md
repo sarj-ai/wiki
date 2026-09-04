@@ -101,7 +101,7 @@ patch proposals, `gemini-2.5-flash-lite` as the stable fallback, and `gemini-3.8
 higher-reasoning escalation. Visual restyling is deterministic so clean prose is not rewritten
 without a factual-equivalence proof.
 
-The brand layer uses the immutable, hashed `sarj-2026-v2` manifest distilled from the canonical Sarj
+The brand layer uses the immutable, hashed `sarj-2026-v3` manifest distilled from the canonical Sarj
 design skill. It applies Nunito typography, Sarj heading sizes, the current `#392868` purple,
 left-aligned body text, margins, and consistent paragraph rhythm. Existing Docs headers, logos,
 footers, tabs, page numbers, and rich objects are preserved. Markdown imports receive a native DOCX

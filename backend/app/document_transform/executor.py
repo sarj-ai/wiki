@@ -51,7 +51,7 @@ from app.document_transform.unslop import (
 from app.identifiers import DocsSegmentId, ModelId
 
 
-PIPELINE_VERSION = "document-transform-v2"
+PIPELINE_VERSION = "document-transform-v3"
 _OUTPUT_SUFFIX = MappingProxyType(
     {
         TransformMode.FORMAT: "Sarj formatted",

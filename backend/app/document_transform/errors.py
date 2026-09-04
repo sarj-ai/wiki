@@ -23,6 +23,11 @@ class OutputConflictError(DocumentTransformError):
     public_detail = "The existing output belongs to a different source revision"
 
 
+class IncompatiblePendingOutputError(DocumentTransformError):
+    code = "incompatible_pending_output"
+    public_detail = "An incomplete output from an older transform needs review"
+
+
 class ModelUnavailableError(DocumentTransformError):
     code = "model_unavailable"
     public_detail = "The document transformation model is temporarily unavailable"
