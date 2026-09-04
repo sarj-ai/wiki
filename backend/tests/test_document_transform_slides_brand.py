@@ -70,6 +70,27 @@ def test_unslop_plan_emits_reverse_exact_deletes_and_case_only_insertion() -> No
     }
 
 
+def test_both_styles_before_deletion_and_brand_fingerprint_matches_shorter_text() -> None:
+    presentation = _presentation()
+    parsed = parse_google_presentation(presentation, title="Review")
+    body = parsed.document.blocks[1]
+    transformed = parsed.document.replace_blocks({body.id: "Results improved"})
+
+    plan = build_slides_mutation_plan(
+        presentation,
+        parsed=parsed,
+        transformed=transformed,
+        mode=TransformMode.BOTH,
+        logo_uri=CURRENT_BRAND_MANIFEST.assets.logo_uri,
+    )
+
+    keys = [next(iter(request)) for request in plan.requests]
+    assert keys.index("updateTextStyle") < keys.index("deleteText")
+    branded = deepcopy(presentation)
+    _apply_brand_requests(branded, plan.requests)
+    assert presentation_fingerprint(branded, "Review").brand_sha256 == plan.expected_brand_sha256
+
+
 def test_unslop_rejects_non_deletion_non_case_rewrite() -> None:
     presentation = _presentation()
     parsed = parse_google_presentation(presentation, title="Review")
@@ -162,7 +183,14 @@ def test_unsupported_visible_text_target_produces_honest_finding(
     expected_code: str,
 ) -> None:
     presentation = _presentation()
-    target = _text_shape("unsupported-1", "Visible", left=24, top=230, width=200)
+    target = _text_shape(
+        "unsupported-1",
+        "Visible",
+        placeholder_type="BODY",
+        left=24,
+        top=230,
+        width=200,
+    )
     mutate(target)
     presentation["slides"][0]["pageElements"].append(target)
     parsed = parse_google_presentation(presentation, title="Review")
@@ -299,10 +327,11 @@ def test_element_group_shape_is_a_style_target() -> None:
 
     plan = _format_plan(presentation, parsed=parsed)
 
-    assert any(
+    assert not any(
         request.get("updateTextStyle", {}).get("objectId") == "grouped-text"
         for request in plan.requests
     )
+    assert "slide_text_role_unresolved" in {finding.code for finding in plan.findings}
 
 
 def test_logo_collision_fails_open_to_review_without_covering_content() -> None:
@@ -372,6 +401,340 @@ def test_caption_placeholder_uses_caption_size_and_muted_color() -> None:
     }
 
 
+def test_dark_slide_skips_dark_brand_text_and_black_logo() -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageProperties"] = {
+        "pageBackgroundFill": {
+            "solidFill": {"color": {"rgbColor": {"red": 0.04, "green": 0.04, "blue": 0.04}}}
+        }
+    }
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any("updateTextStyle" in request for request in plan.requests)
+    assert not any("createImage" in request for request in plan.requests)
+    assert {finding.code for finding in plan.findings} == {
+        "slide_logo_contrast_unresolved",
+        "slide_text_contrast_unresolved",
+    }
+
+
+def test_theme_colors_resolve_through_slide_layout_master_chain() -> None:
+    presentation = _presentation_with_theme_background("LIGHT1")
+    title_style = presentation["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1][
+        "textRun"
+    ]["style"]
+    title_style["foregroundColor"] = {"opaqueColor": {"themeColor": "DARK1"}}
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert plan.findings == ()
+    assert sum("updateTextStyle" in request for request in plan.requests) == 2
+    assert sum("createImage" in request for request in plan.requests) == 1
+    branded = deepcopy(presentation)
+    _apply_brand_requests(branded, plan.requests)
+    assert presentation_fingerprint(branded, "Review").brand_sha256 == plan.expected_brand_sha256
+
+
+def test_dark_theme_background_fails_closed() -> None:
+    presentation = _presentation_with_theme_background("DARK1")
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any("updateTextStyle" in request for request in plan.requests)
+    assert not any("createImage" in request for request in plan.requests)
+    assert {finding.code for finding in plan.findings} == {
+        "slide_logo_contrast_unresolved",
+        "slide_text_contrast_unresolved",
+    }
+
+
+def test_inherited_placeholder_style_is_preserved_for_review() -> None:
+    presentation = _presentation()
+    title = presentation["slides"][0]["pageElements"][0]
+    title["shape"]["placeholder"]["parentObjectId"] = "layout-title"
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any(
+        request.get("updateTextStyle", {}).get("objectId") == "title-1" for request in plan.requests
+    )
+    assert "slide_text_style_inherited_unresolved" in {finding.code for finding in plan.findings}
+
+
+def test_autofit_text_is_preserved_for_review() -> None:
+    presentation = _presentation()
+    body = presentation["slides"][0]["pageElements"][1]
+    body["shape"]["shapeProperties"]["autofit"]["autofitType"] = "TEXT_AUTOFIT"
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any(
+        request.get("updateTextStyle", {}).get("objectId") == "body-1" for request in plan.requests
+    )
+    assert "slide_text_fit_unresolved" in {finding.code for finding in plan.findings}
+
+
+def test_text_highlight_contrast_blocks_brand_recoloring() -> None:
+    presentation = _presentation()
+    title_style = presentation["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1][
+        "textRun"
+    ]["style"]
+    title_style["backgroundColor"] = {
+        "opaqueColor": {"rgbColor": {"red": 0, "green": 0, "blue": 0}}
+    }
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any(
+        request.get("updateTextStyle", {}).get("objectId") == "title-1" for request in plan.requests
+    )
+    assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
+
+
+def test_visual_underlay_blocks_all_text_recoloring() -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageElements"].insert(
+        0,
+        {
+            **_box("background-image", left=0, top=0, width=720, height=405),
+            "image": {"sourceUrl": "https://example.invalid/background.png"},
+        },
+    )
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any("updateTextStyle" in request for request in plan.requests)
+    assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
+
+
+@pytest.mark.parametrize("kind", ["line", "sheetsChart", "wordArt"])
+def test_native_visual_underlay_blocks_text_recoloring(kind: str) -> None:
+    presentation = _presentation()
+    payload: dict[str, Any] = {"renderedText": "Backdrop"} if kind == "wordArt" else {}
+    presentation["slides"][0]["pageElements"].insert(
+        0,
+        {
+            **_box("visual-underlay", left=0, top=0, width=720, height=405),
+            kind: payload,
+        },
+    )
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any("updateTextStyle" in request for request in plan.requests)
+    assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
+
+
+def test_filled_text_shape_is_treated_as_a_visual_underlay() -> None:
+    presentation = _presentation()
+    underlay = _text_shape("filled-underlay", "Backdrop", left=0, top=0, width=720)
+    underlay["size"]["height"]["magnitude"] = 405
+    underlay["shape"]["shapeProperties"]["shapeBackgroundFill"] = {
+        "propertyState": "RENDERED",
+        "solidFill": {"color": {"rgbColor": {}}, "alpha": 1},
+    }
+    presentation["slides"][0]["pageElements"].insert(0, underlay)
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any("updateTextStyle" in request for request in plan.requests)
+    assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
+
+
+def test_font_weight_is_preserved_and_verified() -> None:
+    presentation = _presentation()
+    title_style = presentation["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1][
+        "textRun"
+    ]["style"]
+    title_style["weightedFontFamily"]["weight"] = 700
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+    update = next(
+        request["updateTextStyle"]
+        for request in plan.requests
+        if request.get("updateTextStyle", {}).get("objectId") == "title-1"
+    )
+
+    assert update["style"]["weightedFontFamily"]["weight"] == 700
+    branded = deepcopy(presentation)
+    _apply_brand_requests(branded, plan.requests)
+    branded["slides"][0]["pageElements"][0]["shape"]["text"]["textElements"][1]["textRun"]["style"][
+        "weightedFontFamily"
+    ]["weight"] = 400
+    assert presentation_fingerprint(branded, "Review").brand_sha256 != plan.expected_brand_sha256
+
+
+def test_resolved_parent_placeholder_style_is_supported() -> None:
+    presentation = _presentation()
+    title = presentation["slides"][0]["pageElements"][0]
+    title["shape"]["placeholder"]["parentObjectId"] = "layout-title"
+    title["shape"]["text"]["textElements"][1]["textRun"]["style"] = {}
+    title["shape"]["shapeProperties"] = {}
+    presentation["slides"][0]["slideProperties"] = {"layoutObjectId": "layout-1"}
+    presentation["layouts"] = [
+        {
+            "objectId": "layout-1",
+            "layoutProperties": {},
+            "pageElements": [
+                _text_shape(
+                    "layout-title",
+                    "Title placeholder",
+                    placeholder_type="TITLE",
+                    left=24,
+                    top=20,
+                    width=400,
+                )
+            ],
+        }
+    ]
+    _use_native_split_terminal_newline(title)
+    layout_title = presentation["layouts"][0]["pageElements"][0]
+    assert isinstance(layout_title, dict)
+    _use_native_split_terminal_newline(layout_title)
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert any(
+        request.get("updateTextStyle", {}).get("objectId") == "title-1" for request in plan.requests
+    )
+    assert "slide_text_style_inherited_unresolved" not in {
+        finding.code for finding in plan.findings
+    }
+
+
+def test_centered_title_uses_cover_title_size() -> None:
+    presentation = _presentation()
+    title = presentation["slides"][0]["pageElements"][0]
+    title["shape"]["placeholder"]["type"] = "CENTERED_TITLE"
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    update = next(
+        request["updateTextStyle"]
+        for request in plan.requests
+        if request.get("updateTextStyle", {}).get("objectId") == "title-1"
+    )
+    assert update["style"]["fontSize"] == {
+        "magnitude": CURRENT_BRAND_MANIFEST.slides.deck_title_size_pt,
+        "unit": "PT",
+    }
+
+
+def test_native_split_terminal_newline_and_omitted_zero_index_are_supported() -> None:
+    presentation = _presentation()
+    body = presentation["slides"][0]["pageElements"][1]
+    _use_native_split_terminal_newline(body)
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert [block.text for block in parsed.document.blocks] == [
+        "Quarterly review",
+        "Moreover, results improved",
+    ]
+    update = next(
+        request["updateTextStyle"]
+        for request in plan.requests
+        if request.get("updateTextStyle", {}).get("objectId") == "body-1"
+    )
+    assert update["textRange"] == {
+        "type": "FIXED_RANGE",
+        "startIndex": 0,
+        "endIndex": len("Moreover, results improved"),
+    }
+    branded = deepcopy(presentation)
+    _apply_brand_requests(branded, plan.requests)
+    assert presentation_fingerprint(branded, "Review").brand_sha256 == plan.expected_brand_sha256
+
+
+def test_existing_logo_remains_idempotent_when_an_earlier_corner_becomes_free() -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["pageElements"].append(
+        _box("top-right-occupant", left=590, top=50, width=100, height=80)
+    )
+    first = _format_plan(
+        presentation,
+        parsed=parse_google_presentation(presentation, title="Review"),
+    )
+    branded = deepcopy(presentation)
+    _apply_brand_requests(branded, first.requests)
+    branded["slides"][0]["pageElements"] = [
+        element
+        for element in branded["slides"][0]["pageElements"]
+        if element.get("objectId") != "top-right-occupant"
+    ]
+
+    second = _format_plan(
+        branded,
+        parsed=parse_google_presentation(branded, title="Review"),
+    )
+
+    assert not any("createImage" in request for request in second.requests)
+    assert "slide_logo_id_collision" not in {finding.code for finding in second.findings}
+    assert presentation_fingerprint(branded, "Review").brand_sha256 == second.expected_brand_sha256
+
+
+def test_inherited_page_fill_does_not_trust_stale_child_solid_fill() -> None:
+    presentation = _presentation()
+    presentation["slides"][0]["slideProperties"] = {"layoutObjectId": "layout-1"}
+    presentation["slides"][0]["pageProperties"] = {
+        "pageBackgroundFill": {
+            "propertyState": "INHERIT",
+            "solidFill": {
+                "color": {"rgbColor": {"red": 1, "green": 1, "blue": 1}},
+                "alpha": 1,
+            },
+        }
+    }
+    presentation["layouts"] = [
+        {
+            "objectId": "layout-1",
+            "layoutProperties": {},
+            "pageProperties": {
+                "pageBackgroundFill": {
+                    "propertyState": "RENDERED",
+                    "solidFill": {"color": {"rgbColor": {}}, "alpha": 1},
+                }
+            },
+        }
+    ]
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any("updateTextStyle" in request for request in plan.requests)
+    assert not any("createImage" in request for request in plan.requests)
+    assert "slide_text_contrast_unresolved" in {finding.code for finding in plan.findings}
+
+
+def test_rgb_missing_zero_channels_is_canonicalized() -> None:
+    presentation = _presentation()
+    style = presentation["slides"][0]["pageElements"][1]["shape"]["text"]["textElements"][1][
+        "textRun"
+    ]["style"]
+    style["foregroundColor"] = {"opaqueColor": {"rgbColor": {"blue": 1}}}
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert any(
+        request.get("updateTextStyle", {}).get("objectId") == "body-1" for request in plan.requests
+    )
+
+
 def _format_plan(presentation: dict[str, Any], *, parsed: Any) -> Any:
     return build_slides_mutation_plan(
         presentation,
@@ -405,6 +768,7 @@ def _presentation() -> dict[str, Any]:
                     _text_shape(
                         "body-1",
                         "Moreover, results improved",
+                        placeholder_type="BODY",
                         left=24,
                         top=140,
                         width=500,
@@ -413,6 +777,40 @@ def _presentation() -> dict[str, Any]:
             }
         ],
     }
+
+
+def _presentation_with_theme_background(theme_type: str) -> dict[str, Any]:
+    presentation = _presentation()
+    presentation["slides"][0]["slideProperties"] = {"layoutObjectId": "layout-1"}
+    presentation["layouts"] = [
+        {
+            "objectId": "layout-1",
+            "layoutProperties": {"masterObjectId": "master-1"},
+            "pageProperties": {"pageBackgroundFill": {"propertyState": "INHERIT"}},
+            "pageElements": [],
+        }
+    ]
+    presentation["masters"] = [
+        {
+            "objectId": "master-1",
+            "pageProperties": {
+                "pageBackgroundFill": {
+                    "solidFill": {"alpha": 1, "color": {"themeColor": theme_type}}
+                },
+                "colorScheme": {
+                    "colors": [
+                        {"type": "DARK1", "color": {}},
+                        {
+                            "type": "LIGHT1",
+                            "color": {"red": 1, "green": 1, "blue": 1},
+                        },
+                    ]
+                },
+            },
+            "pageElements": [],
+        }
+    ]
+    return presentation
 
 
 def _text_shape(
@@ -424,15 +822,31 @@ def _text_shape(
     top: float,
     width: float,
 ) -> dict[str, Any]:
+    size = 60 if placeholder_type in {"TITLE", "CENTERED_TITLE"} else 20
+    if placeholder_type in {"DATE_AND_TIME", "FOOTER", "HEADER", "SLIDE_NUMBER"}:
+        size = 12
     shape: dict[str, Any] = {
         "shapeType": "TEXT_BOX",
+        "shapeProperties": {
+            "autofit": {"autofitType": "NONE"},
+            "shapeBackgroundFill": {"propertyState": "NOT_RENDERED"},
+        },
         "text": {
             "textElements": [
                 {"startIndex": 0, "endIndex": 0, "paragraphMarker": {"style": {}}},
                 {
                     "startIndex": 0,
                     "endIndex": len(text) + 1,
-                    "textRun": {"content": f"{text}\n", "style": {}},
+                    "textRun": {
+                        "content": f"{text}\n",
+                        "style": {
+                            "weightedFontFamily": {"fontFamily": "Arial"},
+                            "fontSize": {"magnitude": size, "unit": "PT"},
+                            "foregroundColor": {
+                                "opaqueColor": {"rgbColor": {"red": 0.1, "green": 0.1, "blue": 0.1}}
+                            },
+                        },
+                    },
                 },
             ]
         },
@@ -443,6 +857,24 @@ def _text_shape(
         **_box(object_id, left=left, top=top, width=width, height=60),
         "shape": shape,
     }
+
+
+def _use_native_split_terminal_newline(element: dict[str, Any]) -> None:
+    text_elements = element["shape"]["text"]["textElements"]
+    visible = text_elements[1]
+    run = visible["textRun"]
+    content = run["content"]
+    assert content.endswith("\n")
+    run["content"] = content[:-1]
+    visible.pop("startIndex")
+    visible["endIndex"] -= 1
+    text_elements.append(
+        {
+            "startIndex": visible["endIndex"],
+            "endIndex": visible["endIndex"] + 1,
+            "textRun": {"content": "\n", "style": deepcopy(run["style"])},
+        }
+    )
 
 
 def _rich_bulleted_shape() -> dict[str, Any]:
@@ -513,6 +945,21 @@ def _apply_brand_requests(
                 run = text_element.get("textRun")
                 if isinstance(run, dict):
                     run["style"].update(update["style"])
+        if delete := request.get("deleteText"):
+            text_elements = by_id[delete["objectId"]]["shape"]["text"]["textElements"]
+            run_element = next(element for element in text_elements if "textRun" in element)
+            run = run_element["textRun"]
+            start = delete["textRange"]["startIndex"]
+            end = delete["textRange"]["endIndex"]
+            run["content"] = run["content"][:start] + run["content"][end:]
+            run_element["endIndex"] -= end - start
+        if insert := request.get("insertText"):
+            text_elements = by_id[insert["objectId"]]["shape"]["text"]["textElements"]
+            run_element = next(element for element in text_elements if "textRun" in element)
+            run = run_element["textRun"]
+            index = insert["insertionIndex"]
+            run["content"] = run["content"][:index] + insert["text"] + run["content"][index:]
+            run_element["endIndex"] += len(insert["text"])
         if create := request.get("createImage"):
             properties = create["elementProperties"]
             slide = slides[properties["pageObjectId"]]

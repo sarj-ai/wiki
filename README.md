@@ -84,10 +84,11 @@ file with an expected modification time or pasted Markdown with a destination fo
 authenticated API infers the source type from current server-side Drive metadata rather than
 trusting a client-supplied type.
 
-The copy-on-write pipeline applies fixed, deterministic deletion recipes first, then uses pinned
-model IDs only for remaining contextual candidates. It verifies source block hashes, protects facts
-and syntax, and applies Google Docs mutations against a required revision.
-Unsafe suggestions are skipped and surfaced as review findings. The high-signal detector pack is
+The copy-on-write pipeline applies only fixed, deterministic deletion recipes. Remaining contextual
+candidates are preserved and surfaced as review findings; models are reserved for offline QA judging
+until a deterministic grammar and factual-equivalence gate can prove their edits safe. The pipeline
+verifies source block hashes, protects facts and syntax, and applies Google Docs mutations against a
+required revision. The high-signal detector pack is
 derived from `theclaymethod/unslop` version 2.3.0 at commit
 `d81f5196167ded24f46fced04958c0c12d681798`; scanner hits are only candidates, and accepted edits
 cannot alter names, numbers, dates, citations, links, code, units, scope, negation, or force-bearing
@@ -112,10 +113,9 @@ service never changes permissions or calls an inherited copy private. Slides in-
 Slides-to-PowerPoint export remain disabled until their revision and round-trip guarantees pass
 dedicated production canaries.
 
-The production model policy uses Vertex AI in `global`: `gemini-3.1-flash-lite` for conservative
-patch proposals, `gemini-2.5-flash-lite` as the stable fallback, and `gemini-3.8-flash` as the final
-higher-reasoning escalation. Visual restyling is deterministic so clean prose is not rewritten
-without a factual-equivalence proof.
+The production QA policy uses Vertex AI in `global` with pinned Gemini models as visual and semantic
+judges. Their verdicts can fail a canary but cannot mutate user prose. Visual restyling and accepted
+text edits are deterministic, so clean prose is not rewritten without a factual-equivalence proof.
 
 The brand layer uses the immutable, hashed `sarj-2026-v3` manifest distilled from the canonical Sarj
 design skill. It applies Nunito typography, Sarj heading sizes, the current `#392868` purple,
@@ -125,11 +125,12 @@ header logo and footer page field before Google Docs conversion. The canonical l
 `/brand/sarj-logo-light.png`; if unavailable, the task returns a `logo_unavailable` review finding
 instead of fabricating a placeholder or failing the formatting batch.
 
-For presentations, the same manifest deterministically applies Nunito, role-specific title/body
-sizes, and Sarj colors to safely editable shapes. It places the pinned logo in the first
-collision-free safe corner on each slide; if every corner is occupied, it leaves the content
-unobscured and returns a `slide_logo_collision` review finding. Formatting never asks a model to
-generate layout or Slides API operations.
+For presentations, the same manifest applies Nunito, role-specific sizes, and Sarj colors only to
+plain standard placeholders whose explicit style, safe font-size direction, disabled autofit, and
+light-background contrast can all be proven. Custom, inherited, dark, or fit-sensitive text is
+preserved with a review finding. The pinned black logo is placed only in a collision-free corner on
+a proven light background; otherwise it is skipped with a review finding. Formatting never asks a
+model to generate layout or Slides API operations.
 
 Recovered Codex and Claude requests for headings, lists, checklists, tables, links, quotations, code
 blocks, dividers, centered logo, hierarchy, spacing, bold table headers, and visual QA are covered.
@@ -158,7 +159,7 @@ uv run python scripts/qa_document_transform_corpus.py \
   --expected-release-sha 0123456789abcdef0123456789abcdef01234567 \
   --manifest /private/tmp/wiki-doc-transform-qa/canary/manifest.json \
   --ledger /private/tmp/wiki-doc-transform-qa/canary/events.jsonl \
-  --judge-model gemini-2.5-flash-001 \
+  --judge-model gemini-3.8-flash \
   --count 1 \
   --canary
 ```
@@ -174,7 +175,7 @@ uv run python scripts/qa_document_transform_corpus.py \
   --ledger /private/tmp/wiki-doc-transform-qa/canary/events.jsonl \
   --artifacts-dir /private/tmp/wiki-doc-transform-qa/canary/artifacts \
   --pdftoppm-version 25.06.0 \
-  --judge-model gemini-2.5-flash-001 \
+  --judge-model gemini-3.8-flash \
   --count 1 \
   --canary \
   --execute \
@@ -194,7 +195,7 @@ uv run python scripts/qa_document_transform_corpus.py \
   --canary-manifest /private/tmp/wiki-doc-transform-qa/canary/manifest.json \
   --canary-ledger /private/tmp/wiki-doc-transform-qa/canary/events.jsonl \
   --canary-artifacts-dir /private/tmp/wiki-doc-transform-qa/canary/artifacts \
-  --judge-model gemini-2.5-flash-001
+  --judge-model gemini-3.8-flash
 ```
 
 Review the 20 selected sources, then repeat that command with a private corpus `--artifacts-dir`,

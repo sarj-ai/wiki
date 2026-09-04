@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from types import MappingProxyType
-from typing import Any, NewType
+from typing import Any, NamedTuple, NewType
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
@@ -87,6 +87,19 @@ class _EditableShape:
     start_index: int
     end_index: int
     placeholder_type: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class PlainSlideText:
+    text: str
+    start_index: int
+    end_index: int
+    style: object
+
+
+class _TextRunBounds(NamedTuple):
+    start: int
+    end: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,43 +297,86 @@ def _editable_shape(element: dict[str, Any]) -> _EditableShape | None:
     text = shape.get("text")
     if not isinstance(text, dict):
         return None
-    text_elements = text.get("textElements")
-    if not isinstance(text_elements, list) or len(text_elements) != _PLAIN_TEXT_ELEMENT_COUNT:
+    plain_text = parse_plain_slide_text(text.get("textElements"))
+    if plain_text is None:
         return None
-    paragraph_marker, text_run_element = text_elements
-    if not isinstance(paragraph_marker, dict) or not isinstance(text_run_element, dict):
+    style = plain_text.style
+    if not isinstance(style, dict) or style.get("link") is not None:
         return None
-    paragraph = paragraph_marker.get("paragraphMarker")
-    text_run = text_run_element.get("textRun")
-    if not isinstance(paragraph, dict) or not isinstance(text_run, dict):
-        return None
-    if paragraph.get("bullet") is not None:
-        return None
-    content = text_run.get("content")
-    style = text_run.get("style", {})
-    if not isinstance(content, str) or not isinstance(style, dict) or style.get("link") is not None:
-        return None
-    if not content.endswith("\n") or "\n" in content[:-1] or "\r" in content:
-        return None
-    visible_text = content[:-1]
-    if not visible_text.strip():
-        return None
-    start = text_run_element.get("startIndex")
-    end = text_run_element.get("endIndex")
-    if not isinstance(start, int) or not isinstance(end, int) or start < 0 or end <= start:
-        return None
-    if end - start != utf16_length(content):
+    if not plain_text.text.strip():
         return None
     placeholder = shape.get("placeholder")
     placeholder_type = placeholder.get("type") if isinstance(placeholder, dict) else None
     if placeholder_type is not None and not isinstance(placeholder_type, str):
         return None
     return _EditableShape(
-        text=visible_text,
-        start_index=start,
-        end_index=end - 1,
+        text=plain_text.text,
+        start_index=plain_text.start_index,
+        end_index=plain_text.end_index,
         placeholder_type=placeholder_type,
     )
+
+
+def parse_plain_slide_text(value: object) -> PlainSlideText | None:
+    if not isinstance(value, list) or len(value) not in {_PLAIN_TEXT_ELEMENT_COUNT, 3}:
+        return None
+    paragraph_element, visible_element, *terminal_elements = value
+    if not isinstance(paragraph_element, dict) or not isinstance(visible_element, dict):
+        return None
+    visible_element = {str(key): child for key, child in visible_element.items()}
+    paragraph = paragraph_element.get("paragraphMarker")
+    visible_run = visible_element.get("textRun")
+    if not isinstance(paragraph, dict) or paragraph.get("bullet") is not None:
+        return None
+    if not isinstance(visible_run, dict):
+        return None
+    content = visible_run.get("content")
+    if not isinstance(content, str):
+        return None
+    visible_bounds = _text_run_bounds(visible_element, content=content)
+    if visible_bounds is None:
+        return None
+    start, end = visible_bounds
+    if terminal_elements:
+        terminal_element = terminal_elements[0]
+        if not isinstance(terminal_element, dict):
+            return None
+        terminal_element = {str(key): child for key, child in terminal_element.items()}
+        terminal_run = terminal_element.get("textRun")
+        terminal_bounds = _text_run_bounds(terminal_element, content="\n")
+        if (
+            not isinstance(terminal_run, dict)
+            or terminal_run.get("content") != "\n"
+            or terminal_bounds != (end, end + 1)
+            or "\n" in content
+            or "\r" in content
+        ):
+            return None
+        visible_text = content
+        visible_end = end
+    else:
+        if not content.endswith("\n") or "\n" in content[:-1] or "\r" in content:
+            return None
+        visible_text = content[:-1]
+        visible_end = end - 1
+    if not visible_text or visible_end <= start:
+        return None
+    return PlainSlideText(
+        text=visible_text,
+        start_index=start,
+        end_index=visible_end,
+        style=visible_run.get("style"),
+    )
+
+
+def _text_run_bounds(element: dict[str, Any], *, content: str) -> _TextRunBounds | None:
+    start = element.get("startIndex", 0)
+    end = element.get("endIndex")
+    if not isinstance(start, int) or not isinstance(end, int):
+        return None
+    if start < 0 or end <= start or end - start != utf16_length(content):
+        return None
+    return _TextRunBounds(start, end)
 
 
 def _normalize_slide(
@@ -380,7 +436,7 @@ def _normalize_value(
         raw_shape = value.get("shape")
         raw_text = raw_shape.get("text") if isinstance(raw_shape, dict) else None
         raw_elements = raw_text.get("textElements") if isinstance(raw_text, dict) else None
-        if isinstance(raw_elements, list) and len(raw_elements) == _PLAIN_TEXT_ELEMENT_COUNT:
+        if isinstance(raw_elements, list) and raw_elements:
             paragraph = raw_elements[0]
             normalized_shape["text"] = {
                 "editableBlockId": block_id,

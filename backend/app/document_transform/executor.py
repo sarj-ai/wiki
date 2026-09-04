@@ -33,6 +33,7 @@ from app.document_transform.gateway import (
     TabHeader,
 )
 from app.document_transform.ir import (
+    BlockKind,
     DocumentIR,
     parse_google_document,
     parse_markdown,
@@ -151,9 +152,8 @@ class DocumentTransformExecutor:
 
         outcome = await self._planner.transform(original, request)
         findings = list(outcome.findings)
-        if request.mode is TransformMode.UNSLOP:
+        if snapshot.markdown is not None:
             findings.extend(_markdown_fidelity_findings(snapshot))
-        elif snapshot.markdown is not None:
             findings.append(
                 TransformFinding(
                     code="structure_verification_required",
@@ -163,7 +163,7 @@ class DocumentTransformExecutor:
                     ),
                 )
             )
-            if self._logo_bytes is None:
+            if request.mode is not TransformMode.UNSLOP and self._logo_bytes is None:
                 findings.append(
                     TransformFinding(
                         code="logo_unavailable",
@@ -870,14 +870,16 @@ def _markdown_fidelity_findings(snapshot: SourceSnapshot) -> list[TransformFindi
     if markdown is None:
         return []
     findings: list[TransformFinding] = []
-    if any(line.startswith("|") and line.endswith("|") for line in markdown.splitlines()):
+    parsed = parse_markdown(markdown, title=snapshot.title)
+    if any(block.kind is BlockKind.TABLE for block in parsed.blocks):
         findings.append(
             TransformFinding(
                 code="markdown_table_preserved_as_text",
                 detail="Markdown tables remain pipe-delimited text",
             )
         )
-    if any(token in markdown for token in ("**", "__", "](")):
+    has_inline_markup = any(token in markdown for token in ("**", "__", "](", "~~", "`"))
+    if has_inline_markup:
         findings.append(
             TransformFinding(
                 code="markdown_inline_markup_preserved_as_text",

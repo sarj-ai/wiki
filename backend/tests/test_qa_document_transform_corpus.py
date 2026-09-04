@@ -132,7 +132,7 @@ def test_live_execution_is_hard_gated_to_twenty_both_mode_copies() -> None:
         "canary_manifest": Path("canary.json"),
         "canary_ledger": Path("canary.jsonl"),
         "canary_artifacts_dir": Path("canary-artifacts"),
-        "judge_model": "gemini-2.5-flash-001",
+        "judge_model": "gemini-3.8-flash",
     }
     _validate_arguments(argparse.Namespace(**common))
 
@@ -156,7 +156,7 @@ def test_canary_execution_has_distinct_one_document_gate() -> None:
         "mode": "both",
         "artifacts_dir": Path("artifacts"),
         "pdftoppm_version": "25.06.0",
-        "judge_model": "gemini-2.5-flash-001",
+        "judge_model": "gemini-3.8-flash",
     }
     _validate_arguments(argparse.Namespace(**common))
 
@@ -378,7 +378,7 @@ def test_ledger_is_bound_to_immutable_manifest_plan(tmp_path: Path) -> None:
 
 def test_verified_canary_attestation_is_bound_to_release_and_ledger(tmp_path: Path) -> None:
     expected_release_sha = "a" * 40
-    judge_model = "gemini-2.5-flash-001"
+    judge_model = "gemini-3.8-flash"
     seed = "canary-seed"
     source = _source_evidence(
         expected_release_sha=expected_release_sha,

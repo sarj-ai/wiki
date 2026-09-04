@@ -7,7 +7,11 @@ from types import MappingProxyType
 
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.schemas import TextPatch, TransformFinding, TransformPhase
-from app.document_transform.unslop import UnslopCandidate, scan_unslop_candidates
+from app.document_transform.unslop import (
+    UnslopCandidate,
+    expanded_deletion_span,
+    scan_unslop_candidates,
+)
 
 
 _PROTECTED_TOKEN = re.compile(
@@ -33,12 +37,6 @@ _CAPITALIZABLE_START_WORDS = frozenset(
 class PatchDecision:
     accepted: dict[str, str]
     findings: tuple[TransformFinding, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class DeletionSpan:
-    start: int
-    end: int
 
 
 def validate_patches(
@@ -115,15 +113,20 @@ def _force_words(value: str) -> list[str]:
 
 
 def _unslop_locality_code(block: TextBlock, replacement: str) -> str | None:
-    candidates = tuple(
+    scanned_candidates = tuple(
         candidate
         for candidate in scan_unslop_candidates(
             DocumentIR(title="", blocks=(block,), source_format="safety")
         )
         if candidate.block_id == block.id
     )
-    if not candidates:
+    if not scanned_candidates:
         return "unconfirmed_unslop_edit"
+    candidates = tuple(
+        candidate for candidate in scanned_candidates if candidate.has_fixed_deletion
+    )
+    if not candidates:
+        return "contextual_unslop_review_required"
     if _quoted_spans(block.text) != _quoted_spans(replacement):
         return "quoted_content_changed"
     protected_names = _proper_nouns_outside_candidates(block.text, candidates)
@@ -159,18 +162,24 @@ def _unchanged_sentences_are_exact(
 ) -> bool:
     source_sentences = tuple(match for match in _SENTENCE.finditer(source) if match.group(0))
     replacement_sentences = tuple(
-        sentence_text
+        sentence_text.strip()
         for match in _SENTENCE.finditer(replacement)
-        if (sentence_text := match.group(0))
+        if (sentence_text := match.group(0)) and sentence_text.strip()
     )
-    if len(source_sentences) != len(replacement_sentences):
-        return False
-    for index, sentence in enumerate(source_sentences):
-        contains_candidate = any(
+    unchanged = tuple(
+        sentence_text
+        for sentence in source_sentences
+        if (sentence_text := sentence.group(0).strip())
+        and not any(
             sentence.start() < candidate.end and sentence.end() > candidate.start
             for candidate in candidates
         )
-        if not contains_candidate and sentence.group(0) != replacement_sentences[index]:
+    )
+    cursor = 0
+    for sentence in unchanged:
+        try:
+            cursor = replacement_sentences.index(sentence, cursor) + 1
+        except ValueError:
             return False
     return True
 
@@ -202,6 +211,7 @@ def _is_candidate_deletion_only(
         if (
             source_survivor is not None
             and source[source_survivor].casefold() == replacement[first_replacement].casefold()
+            and source[source_survivor] != replacement[first_replacement]
         ):
             survivor_word = re.match(r"[A-Za-z]+", source[source_survivor:])
             if (
@@ -217,37 +227,29 @@ def _is_candidate_deletion_only(
 
     allowed_indexes = {
         index
-        for span in (_allowed_deletion_span(source, candidate) for candidate in candidates)
+        for span in (
+            expanded_deletion_span(source, candidate.start, candidate.end)
+            for candidate in candidates
+        )
         for index in range(span.start, span.end)
     }
-    source_index = 0
-    replacement_index = 0
+    source_index = len(source) - 1
+    replacement_index = len(comparison) - 1
     deleted = False
-    while source_index < len(source) and replacement_index < len(comparison):
+    while source_index >= 0 and replacement_index >= 0:
         if source[source_index] == comparison[replacement_index]:
-            source_index += 1
-            replacement_index += 1
+            source_index -= 1
+            replacement_index -= 1
             continue
         if source_index not in allowed_indexes:
             return False
-        source_index += 1
+        source_index -= 1
         deleted = True
-    if replacement_index != len(comparison):
+    if replacement_index >= 0:
         return False
-    while source_index < len(source):
+    while source_index >= 0:
         if source_index not in allowed_indexes:
             return False
-        source_index += 1
+        source_index -= 1
         deleted = True
     return deleted
-
-
-def _allowed_deletion_span(source: str, candidate: UnslopCandidate) -> DeletionSpan:
-    start = candidate.start
-    end = candidate.end
-    while end < len(source) and source[end] in " \t,:;—–-":
-        end += 1
-    if start > 0 and end == len(source):
-        while start > 0 and source[start - 1] in " \t,:;—–-":
-            start -= 1
-    return DeletionSpan(start, end)

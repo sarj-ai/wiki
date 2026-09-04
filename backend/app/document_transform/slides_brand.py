@@ -15,8 +15,10 @@ from app.document_transform.presentation_gateway import PresentationFingerprints
 from app.document_transform.schemas import TransformFinding, TransformMode
 from app.document_transform.slides_ir import (
     ParsedPresentation,
+    PlainSlideText,
     SlideTextLocator,
     parse_google_presentation,
+    parse_plain_slide_text,
     sarj_logo_object_id,
 )
 
@@ -25,6 +27,7 @@ MAX_SLIDES_MUTATION_REQUESTS = 1_000
 MAX_SLIDES_MUTATION_BYTES = 1_000_000
 _EMU_PER_POINT = 12_700
 _PRESERVED_TEXT_STYLE_FIELDS = (
+    "backgroundColor",
     "baselineOffset",
     "bold",
     "italic",
@@ -33,7 +36,21 @@ _PRESERVED_TEXT_STYLE_FIELDS = (
     "strikethrough",
     "underline",
 )
-_PLAIN_TEXT_ELEMENT_COUNT = 2
+_SUPPORTED_PLACEHOLDER_TYPES = frozenset(
+    {
+        "BODY",
+        "CENTERED_TITLE",
+        "DATE_AND_TIME",
+        "FOOTER",
+        "HEADER",
+        "OBJECT",
+        "SLIDE_NUMBER",
+        "SUBTITLE",
+        "TITLE",
+    }
+)
+_MIN_TEXT_CONTRAST = 4.5
+_SRGB_LINEAR_THRESHOLD = 0.04045
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,15 +74,17 @@ class _Affine:
 @dataclass(frozen=True, slots=True)
 class _StyleRun:
     ordinal: int
+    start_index: int
+    end_index: int
     preserved_style_json: str
     brand_style_json: str
+    font_weight: int
 
 
 @dataclass(frozen=True, slots=True)
 class _StyleTarget:
     object_id: str
     placeholder_type: str | None
-    slide_index: int
     runs: tuple[_StyleRun, ...]
 
 
@@ -99,9 +118,20 @@ class _StyleDecision(NamedTuple):
     finding: TransformFinding | None
 
 
-class _ValidatedTextRun(NamedTuple):
-    content: str
-    style: dict[str, Any]
+class _StyleEligibility(NamedTuple):
+    placeholder_type: str
+    desired_style: dict[str, Any]
+    background: str
+
+
+class _StyleEligibilityDecision(NamedTuple):
+    eligibility: _StyleEligibility | None
+    finding: TransformFinding | None
+
+
+class _StyleRunDecision(NamedTuple):
+    run: _StyleRun | None
+    finding: TransformFinding | None
 
 
 class _LogoPlan(NamedTuple):
@@ -137,18 +167,14 @@ def build_slides_mutation_plan(
     mode: TransformMode,
     logo_uri: str,
 ) -> SlideMutationPlan:
-    transformed_by_id = {block.id: block for block in transformed.blocks}
-    requests: list[dict[str, Any]] = []
-    for block in reversed(parsed.document.blocks):
-        locator = parsed.locators[block.id]
-        replacement = transformed_by_id[block.id].text
-        if replacement != block.text:
-            requests.extend(_text_delta_requests(block, replacement=replacement, locator=locator))
+    text_requests = _presentation_text_requests(parsed=parsed, transformed=transformed)
 
+    requests: list[dict[str, Any]] = []
     findings: list[TransformFinding] = []
     style_targets: tuple[_StyleTarget, ...] = ()
     logo_rects: dict[str, _Rect] = {}
     if mode is TransformMode.UNSLOP:
+        requests.extend(text_requests)
         _, scan_findings = _style_targets(presentation)
         findings.extend(
             finding for finding in scan_findings if finding.code == "slide_text_target_unsupported"
@@ -163,6 +189,8 @@ def build_slides_mutation_plan(
         )
         requests.extend(logo_requests)
         findings.extend(logo_findings)
+        # Style the original visible range before safe deletion/case deltas shorten it.
+        requests.extend(text_requests)
     digest = slides_mutation_sha256(requests)
     expected_brand = (
         None
@@ -175,6 +203,26 @@ def build_slides_mutation_plan(
         mutation_sha256=digest,
         expected_brand_sha256=expected_brand,
     )
+
+
+def _presentation_text_requests(
+    *,
+    parsed: ParsedPresentation,
+    transformed: DocumentIR,
+) -> list[dict[str, Any]]:
+    transformed_by_id = {block.id: block for block in transformed.blocks}
+    requests: list[dict[str, Any]] = []
+    for block in reversed(parsed.document.blocks):
+        replacement = transformed_by_id[block.id].text
+        if replacement != block.text:
+            requests.extend(
+                _text_delta_requests(
+                    block,
+                    replacement=replacement,
+                    locator=parsed.locators[block.id],
+                )
+            )
+    return requests
 
 
 def _text_delta_requests(
@@ -328,14 +376,18 @@ def _text_style_requests(
     for target in targets:
         style, fields = _desired_style(
             placeholder_type=target.placeholder_type,
-            slide_index=target.slide_index,
+            font_weight=target.runs[0].font_weight,
         )
         requests.append(
             {
                 "updateTextStyle": {
                     "objectId": target.object_id,
                     "style": style,
-                    "textRange": {"type": "ALL"},
+                    "textRange": {
+                        "type": "FIXED_RANGE",
+                        "startIndex": target.runs[0].start_index,
+                        "endIndex": target.runs[0].end_index,
+                    },
                     "fields": fields,
                 }
             }
@@ -346,7 +398,7 @@ def _text_style_requests(
 def _desired_style(
     *,
     placeholder_type: str | None,
-    slide_index: int,
+    font_weight: int = 400,
 ) -> _DesiredTextStyle:
     manifest = CURRENT_BRAND_MANIFEST
     slides = manifest.slides
@@ -354,12 +406,17 @@ def _desired_style(
     title = placeholder_type in {"TITLE", "CENTERED_TITLE"}
     subtitle = placeholder_type == "SUBTITLE"
     caption = placeholder_type in {"DATE_AND_TIME", "FOOTER", "HEADER", "SLIDE_NUMBER"}
-    size = slides.deck_title_size_pt if title and slide_index == 0 else slides.title_size_pt
+    size = (
+        slides.deck_title_size_pt if placeholder_type == "CENTERED_TITLE" else slides.title_size_pt
+    )
     if not title:
         size = slides.caption_size_pt if caption else slides.body_size_pt
     color = colors.primary_dark if title else colors.muted if subtitle or caption else colors.ink
     style: dict[str, Any] = {
-        "weightedFontFamily": {"fontFamily": manifest.document.font_family},
+        "weightedFontFamily": {
+            "fontFamily": manifest.document.font_family,
+            "weight": font_weight,
+        },
         "fontSize": {"magnitude": size, "unit": "PT"},
         "foregroundColor": {"opaqueColor": {"rgbColor": _rgb(color)}},
     }
@@ -371,9 +428,19 @@ def _style_targets(
 ) -> _StyleScan:
     targets: list[_StyleTarget] = []
     findings: list[TransformFinding] = []
-    for slide_index, slide in enumerate(_slides(presentation)):
+    object_ids = _object_id_occurrences(presentation)
+    for slide in _slides(presentation):
+        theme_colors = _effective_theme_colors(presentation, slide)
+        page_background = _effective_page_background(presentation, slide)
+        if _has_visual_underlay(presentation, slide):
+            page_background = None
         for element in _walk_elements(slide.get("pageElements", [])):
-            target, finding = _style_target(element, slide_index=slide_index)
+            target, finding = _style_target(
+                element,
+                page_background=page_background,
+                theme_colors=theme_colors,
+                object_ids=object_ids,
+            )
             if target is not None:
                 targets.append(target)
             if finding is not None:
@@ -384,7 +451,9 @@ def _style_targets(
 def _style_target(
     element: dict[str, Any],
     *,
-    slide_index: int,
+    page_background: str | None,
+    theme_colors: dict[str, str] | None,
+    object_ids: dict[str, tuple[dict[str, Any], ...]],
 ) -> _StyleDecision:
     object_id = _required_string(element, "objectId")
     shape = element.get("shape")
@@ -396,61 +465,139 @@ def _style_target(
         return _StyleDecision(None, None)
     if not isinstance(text, dict) or not isinstance(text.get("textElements"), list):
         return _StyleDecision(None, _unsupported_text_finding(object_id))
-    text_elements = text["textElements"]
-    if len(text_elements) != _PLAIN_TEXT_ELEMENT_COUNT:
+    plain_text = parse_plain_slide_text(text["textElements"])
+    if plain_text is None:
         return _StyleDecision(None, _unsupported_text_finding(object_id))
-    paragraph_element, run_element = text_elements
-    if not isinstance(paragraph_element, dict) or not isinstance(run_element, dict):
-        return _StyleDecision(None, _unsupported_text_finding(object_id))
-    paragraph = paragraph_element.get("paragraphMarker")
-    if not isinstance(paragraph, dict) or paragraph.get("bullet") is not None:
-        return _StyleDecision(None, _unsupported_text_finding(object_id))
-    if not isinstance(run_element.get("textRun"), dict):
-        return _StyleDecision(None, _unsupported_text_finding(object_id))
-    runs: list[_StyleRun] = []
-    for text_element in text_elements:
-        if not isinstance(text_element, dict):
-            return _StyleDecision(None, _unsupported_text_finding(object_id))
-        run = text_element.get("textRun")
-        if run is None:
-            if "paragraphMarker" in text_element:
-                continue
-            if _has_visible_text(text_element):
-                return _StyleDecision(None, _unsupported_text_finding(object_id))
-            continue
-        if not isinstance(run, dict):
-            return _StyleDecision(None, _unsupported_text_finding(object_id))
-        content = run.get("content")
-        start = text_element.get("startIndex")
-        end = text_element.get("endIndex")
-        style = run.get("style")
-        validated = _validated_text_run(content=content, start=start, end=end, style=style)
-        if validated is None:
-            return _StyleDecision(None, _unresolved_style_finding(object_id))
-        content, style = validated
-        if not content.endswith("\n") or "\n" in content[:-1] or "\r" in content:
-            return _StyleDecision(None, _unsupported_text_finding(object_id))
-        if style.get("link") is not None:
-            return _StyleDecision(None, _unsupported_text_finding(object_id))
-        if not content.strip():
-            continue
-        runs.append(
-            _StyleRun(
-                ordinal=len(runs),
-                preserved_style_json=_canonical_json(
-                    {key: style[key] for key in _PRESERVED_TEXT_STYLE_FIELDS if key in style}
-                ),
-                brand_style_json=_canonical_json(_canonical_style(style)),
-            )
-        )
-    if not runs:
-        return _StyleDecision(None, None)
+    ancestors = _placeholder_ancestors(shape, object_ids=object_ids)
+    if ancestors is None:
+        return _StyleDecision(None, _inherited_style_finding(object_id))
+    inherited_styles = _inherited_text_styles(ancestors)
+    if inherited_styles is None:
+        return _StyleDecision(None, _inherited_style_finding(object_id))
+    eligibility, finding = _style_eligibility(
+        element,
+        shape=shape,
+        object_id=object_id,
+        page_background=page_background,
+        theme_colors=theme_colors,
+        ancestors=ancestors,
+    )
+    if eligibility is None:
+        return _StyleDecision(None, finding)
+    run, finding = _target_style_run(
+        plain_text,
+        object_id=object_id,
+        desired_style=eligibility.desired_style,
+        background=eligibility.background,
+        theme_colors=theme_colors,
+        inherited_styles=inherited_styles,
+    )
+    if run is None:
+        return _StyleDecision(None, finding)
     return _StyleDecision(
         _StyleTarget(
             object_id=object_id,
-            placeholder_type=_placeholder_type(shape),
-            slide_index=slide_index,
-            runs=tuple(runs),
+            placeholder_type=eligibility.placeholder_type,
+            runs=(run,),
+        ),
+        None,
+    )
+
+
+def _style_eligibility(
+    element: dict[str, Any],
+    *,
+    shape: dict[str, Any],
+    object_id: str,
+    page_background: str | None,
+    theme_colors: dict[str, str] | None,
+    ancestors: tuple[dict[str, Any], ...],
+) -> _StyleEligibilityDecision:
+    placeholder_type = _placeholder_type(shape)
+    if placeholder_type not in _SUPPORTED_PLACEHOLDER_TYPES:
+        return _StyleEligibilityDecision(None, _role_unresolved_finding(object_id))
+    autofit = _inherited_shape_property(element, ancestors=ancestors, key="autofit")
+    if not isinstance(autofit, dict) or autofit.get("autofitType") != "NONE":
+        return _StyleEligibilityDecision(None, _fit_unresolved_finding(object_id))
+    desired_style, _ = _desired_style(
+        placeholder_type=placeholder_type,
+    )
+    background = _effective_shape_background(
+        element,
+        ancestors=ancestors,
+        page_background=page_background,
+        theme_colors=theme_colors,
+    )
+    desired_color = _canonical_style(desired_style)["color"]
+    if (
+        background is None
+        or not isinstance(desired_color, str)
+        or _contrast_ratio(desired_color, background) < _MIN_TEXT_CONTRAST
+    ):
+        return _StyleEligibilityDecision(None, _contrast_unresolved_finding(object_id))
+    return _StyleEligibilityDecision(
+        _StyleEligibility(placeholder_type, desired_style, background),
+        None,
+    )
+
+
+def _target_style_run(
+    plain_text: PlainSlideText,
+    *,
+    object_id: str,
+    desired_style: dict[str, Any],
+    background: str,
+    theme_colors: dict[str, str] | None,
+    inherited_styles: tuple[dict[str, Any], ...],
+) -> _StyleRunDecision:
+    if not isinstance(plain_text.style, dict):
+        return _StyleRunDecision(None, _unresolved_style_finding(object_id))
+    explicit_style = {str(key): value for key, value in plain_text.style.items()}
+    style = _effective_text_style(explicit_style, inherited_styles=inherited_styles)
+    if style.get("link") is not None:
+        return _StyleRunDecision(None, _unsupported_text_finding(object_id))
+    if not plain_text.text.strip():
+        return _StyleRunDecision(None, None)
+    observed_brand = _canonical_style(style, theme_colors=theme_colors)
+    if any(observed_brand[key] is None for key in ("fontFamily", "fontSizePt", "color")):
+        return _StyleRunDecision(None, _inherited_style_finding(object_id))
+    desired_size = _canonical_style(desired_style)["fontSizePt"]
+    observed_size = observed_brand["fontSizePt"]
+    if (
+        not isinstance(desired_size, int | float)
+        or not isinstance(observed_size, int | float)
+        or desired_size > observed_size
+    ):
+        return _StyleRunDecision(None, _fit_unresolved_finding(object_id))
+    text_background = _text_background(
+        style,
+        fallback=background,
+        theme_colors=theme_colors,
+    )
+    desired_color = _canonical_style(desired_style)["color"]
+    if (
+        text_background is None
+        or not isinstance(desired_color, str)
+        or _contrast_ratio(desired_color, text_background) < _MIN_TEXT_CONTRAST
+    ):
+        return _StyleRunDecision(None, _contrast_unresolved_finding(object_id))
+    weight = observed_brand["fontWeight"]
+    if not isinstance(weight, int):
+        return _StyleRunDecision(None, _inherited_style_finding(object_id))
+    return _StyleRunDecision(
+        _StyleRun(
+            ordinal=0,
+            start_index=plain_text.start_index,
+            end_index=plain_text.end_index,
+            preserved_style_json=_canonical_json(
+                {
+                    key: explicit_style[key]
+                    for key in _PRESERVED_TEXT_STYLE_FIELDS
+                    if key in explicit_style
+                }
+            ),
+            brand_style_json=_canonical_json(observed_brand),
+            font_weight=weight,
         ),
         None,
     )
@@ -462,6 +609,103 @@ def _placeholder_type(shape: dict[str, Any]) -> str | None:
     if value is not None and not isinstance(value, str):
         raise UnsupportedSourceError
     return value
+
+
+def _placeholder_ancestors(
+    shape: dict[str, Any],
+    *,
+    object_ids: dict[str, tuple[dict[str, Any], ...]],
+) -> tuple[dict[str, Any], ...] | None:
+    placeholder = shape.get("placeholder")
+    if placeholder is None:
+        return ()
+    if not isinstance(placeholder, dict):
+        return None
+    parent_id = placeholder.get("parentObjectId")
+    ancestors: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    while parent_id is not None:
+        if not isinstance(parent_id, str) or parent_id in seen:
+            return None
+        seen.add(parent_id)
+        occurrences = object_ids.get(parent_id, ())
+        if len(occurrences) != 1:
+            return None
+        parent = occurrences[0]
+        parent_shape = parent.get("shape")
+        if not isinstance(parent_shape, dict):
+            return None
+        ancestors.append(parent)
+        parent_placeholder = parent_shape.get("placeholder")
+        if parent_placeholder is None:
+            parent_id = None
+        elif isinstance(parent_placeholder, dict):
+            parent_id = parent_placeholder.get("parentObjectId")
+        else:
+            return None
+    return tuple(ancestors)
+
+
+def _inherited_text_styles(
+    ancestors: tuple[dict[str, Any], ...],
+) -> tuple[dict[str, Any], ...] | None:
+    styles: list[dict[str, Any]] = []
+    for ancestor in ancestors:
+        shape = ancestor.get("shape")
+        text = shape.get("text") if isinstance(shape, dict) else None
+        elements = text.get("textElements") if isinstance(text, dict) else None
+        plain_text = parse_plain_slide_text(elements)
+        if plain_text is None or not isinstance(plain_text.style, dict):
+            return None
+        styles.append({str(key): value for key, value in plain_text.style.items()})
+    return tuple(styles)
+
+
+def _inherited_shape_property(
+    element: dict[str, Any],
+    *,
+    ancestors: tuple[dict[str, Any], ...],
+    key: str,
+) -> object:
+    for candidate in (element, *ancestors):
+        shape = candidate.get("shape")
+        properties = shape.get("shapeProperties") if isinstance(shape, dict) else None
+        if isinstance(properties, dict) and key in properties:
+            return properties[key]
+    return None
+
+
+def _effective_text_style(
+    explicit: dict[str, Any],
+    *,
+    inherited_styles: tuple[dict[str, Any], ...],
+) -> dict[str, Any]:
+    effective: dict[str, Any] = {}
+    for style in (*reversed(inherited_styles), explicit):
+        for key, value in style.items():
+            existing = effective.get(key)
+            if isinstance(existing, dict) and isinstance(value, dict):
+                effective[key] = {**existing, **value}
+            else:
+                effective[key] = value
+    return effective
+
+
+def _text_background(
+    style: dict[str, Any],
+    *,
+    fallback: str,
+    theme_colors: dict[str, str] | None,
+) -> str | None:
+    background = style.get("backgroundColor")
+    if background is None:
+        return fallback
+    if not isinstance(background, dict):
+        return None
+    opaque = background.get("opaqueColor")
+    if not isinstance(opaque, dict):
+        return None
+    return _hex_from_opaque_color(opaque, theme_colors=theme_colors)
 
 
 def _has_visible_text(value: object) -> bool:
@@ -492,20 +736,258 @@ def _unresolved_style_finding(object_id: str) -> TransformFinding:
     )
 
 
-def _validated_text_run(
+def _role_unresolved_finding(object_id: str) -> TransformFinding:
+    return TransformFinding(
+        code="slide_text_role_unresolved",
+        block_id=object_id,
+        detail="Visible custom text was preserved because its semantic role could not be proven",
+    )
+
+
+def _inherited_style_finding(object_id: str) -> TransformFinding:
+    return TransformFinding(
+        code="slide_text_style_inherited_unresolved",
+        block_id=object_id,
+        detail="Visible text was preserved because its effective inherited style was not explicit",
+    )
+
+
+def _fit_unresolved_finding(object_id: str) -> TransformFinding:
+    return TransformFinding(
+        code="slide_text_fit_unresolved",
+        block_id=object_id,
+        detail="Visible text was preserved because a typography change could not prove safe fit",
+    )
+
+
+def _contrast_unresolved_finding(object_id: str) -> TransformFinding:
+    return TransformFinding(
+        code="slide_text_contrast_unresolved",
+        block_id=object_id,
+        detail="Visible text was preserved because brand-color contrast could not be proven",
+    )
+
+
+def _effective_page_background(
+    presentation: dict[str, Any],
+    slide: dict[str, Any],
+) -> str | None:
+    try:
+        pages = _page_chain(presentation, slide)
+    except UnsupportedSourceError:
+        return None
+    for page in pages:
+        page_properties = page.get("pageProperties")
+        if page_properties is None:
+            continue
+        if not isinstance(page_properties, dict):
+            return None
+        fill = page_properties.get("pageBackgroundFill")
+        if fill is not None:
+            if not isinstance(fill, dict):
+                return None
+            state = fill.get("propertyState")
+            if state == "INHERIT":
+                continue
+            if state not in {None, "RENDERED"}:
+                return None
+            return _opaque_solid_color(
+                fill,
+                theme_colors=_theme_colors_from_pages(pages),
+            )
+    return CURRENT_BRAND_MANIFEST.colors.paper
+
+
+def _effective_theme_colors(
+    presentation: dict[str, Any],
+    slide: dict[str, Any],
+) -> dict[str, str] | None:
+    try:
+        return _theme_colors_from_pages(_page_chain(presentation, slide))
+    except UnsupportedSourceError:
+        return None
+
+
+def _theme_colors_from_pages(
+    pages: tuple[dict[str, Any], ...],
+) -> dict[str, str] | None:
+    for page in pages:
+        page_properties = page.get("pageProperties")
+        if page_properties is None:
+            continue
+        if not isinstance(page_properties, dict):
+            return None
+        scheme = page_properties.get("colorScheme")
+        if scheme is None:
+            continue
+        return _theme_color_map(scheme)
+    return {}
+
+
+def _theme_color_map(value: object) -> dict[str, str] | None:
+    if not isinstance(value, dict):
+        return None
+    colors = value.get("colors")
+    if not isinstance(colors, list):
+        return None
+    result: dict[str, str] = {}
+    for pair in colors:
+        if not isinstance(pair, dict):
+            return None
+        theme_type = pair.get("type")
+        concrete = _hex_from_rgb(pair.get("color"))
+        if (
+            not isinstance(theme_type, str)
+            or theme_type == "THEME_COLOR_TYPE_UNSPECIFIED"
+            or concrete is None
+            or theme_type in result
+        ):
+            return None
+        result[theme_type] = concrete
+    return result
+
+
+def _page_chain(
+    presentation: dict[str, Any],
+    slide: dict[str, Any],
+) -> tuple[dict[str, Any], ...]:
+    properties = slide.get("slideProperties")
+    if properties is None:
+        return (slide,)
+    if not isinstance(properties, dict):
+        raise UnsupportedSourceError
+    layout_id = properties.get("layoutObjectId")
+    if layout_id is None:
+        return (slide,)
+    if not isinstance(layout_id, str):
+        raise UnsupportedSourceError
+    layout = _page_by_id(presentation.get("layouts"), layout_id)
+    layout_properties = layout.get("layoutProperties")
+    if not isinstance(layout_properties, dict):
+        raise UnsupportedSourceError
+    master_id = layout_properties.get("masterObjectId")
+    if master_id is None:
+        return slide, layout
+    if not isinstance(master_id, str):
+        raise UnsupportedSourceError
+    master = _page_by_id(presentation.get("masters"), master_id)
+    return slide, layout, master
+
+
+def _effective_shape_background(
+    element: dict[str, Any],
     *,
-    content: object,
-    start: object,
-    end: object,
-    style: object,
-) -> _ValidatedTextRun | None:
-    if not isinstance(content, str) or not isinstance(style, dict):
+    ancestors: tuple[dict[str, Any], ...],
+    page_background: str | None,
+    theme_colors: dict[str, str] | None,
+) -> str | None:
+    for candidate in (element, *ancestors):
+        shape = candidate.get("shape")
+        properties = shape.get("shapeProperties") if isinstance(shape, dict) else None
+        if not isinstance(properties, dict) or "shapeBackgroundFill" not in properties:
+            continue
+        fill = properties["shapeBackgroundFill"]
+        if not isinstance(fill, dict):
+            return None
+        state = fill.get("propertyState")
+        if state == "INHERIT":
+            continue
+        if state == "NOT_RENDERED":
+            return page_background
+        if state not in {None, "RENDERED"}:
+            return None
+        return _opaque_solid_color(fill, theme_colors=theme_colors)
+    return page_background
+
+
+def _has_visual_underlay(
+    presentation: dict[str, Any],
+    slide: dict[str, Any],
+) -> bool:
+    try:
+        pages = _page_chain(presentation, slide)
+    except UnsupportedSourceError:
+        return True
+    expected_logo_id = sarj_logo_object_id(_required_string(slide, "objectId"))
+    object_ids = _object_id_occurrences(presentation)
+    for page in pages:
+        for element in _walk_elements(page.get("pageElements", [])):
+            if element.get("objectId") == expected_logo_id:
+                continue
+            if any(
+                kind in element
+                for kind in (
+                    "image",
+                    "line",
+                    "sheetsChart",
+                    "speakerSpotlight",
+                    "table",
+                    "video",
+                    "wordArt",
+                )
+            ):
+                return True
+            shape = element.get("shape")
+            if not isinstance(shape, dict):
+                continue
+            ancestors = _placeholder_ancestors(shape, object_ids=object_ids)
+            if ancestors is None or _shape_has_rendered_fill(element, ancestors=ancestors):
+                return True
+    return False
+
+
+def _shape_has_rendered_fill(
+    element: dict[str, Any],
+    *,
+    ancestors: tuple[dict[str, Any], ...],
+) -> bool:
+    for candidate in (element, *ancestors):
+        shape = candidate.get("shape")
+        properties = shape.get("shapeProperties") if isinstance(shape, dict) else None
+        if not isinstance(properties, dict) or "shapeBackgroundFill" not in properties:
+            continue
+        fill = properties["shapeBackgroundFill"]
+        if not isinstance(fill, dict):
+            return True
+        state = fill.get("propertyState")
+        if state == "INHERIT":
+            continue
+        if state == "NOT_RENDERED":
+            return False
+        return state in {None, "RENDERED"}
+    return False
+
+
+def _opaque_solid_color(
+    fill: object,
+    *,
+    theme_colors: dict[str, str] | None,
+) -> str | None:
+    if not isinstance(fill, dict):
         return None
-    if not isinstance(start, int) or not isinstance(end, int):
+    solid = fill.get("solidFill")
+    if not isinstance(solid, dict):
         return None
-    if end <= start or end - start != utf16_length(content):
+    alpha = solid.get("alpha", 1)
+    color = solid.get("color")
+    if not isinstance(alpha, int | float) or alpha != 1 or not isinstance(color, dict):
         return None
-    return _ValidatedTextRun(content, {str(key): value for key, value in style.items()})
+    return _hex_from_opaque_color(color, theme_colors=theme_colors)
+
+
+def _contrast_ratio(foreground: str, background: str) -> float:
+    lighter = max(_relative_luminance(foreground), _relative_luminance(background))
+    darker = min(_relative_luminance(foreground), _relative_luminance(background))
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def _relative_luminance(color: str) -> float:
+    channels = tuple(int(color[index : index + 2], 16) / 255 for index in (1, 3, 5))
+    linear = tuple(
+        channel / 12.92 if channel <= _SRGB_LINEAR_THRESHOLD else ((channel + 0.055) / 1.055) ** 2.4
+        for channel in channels
+    )
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
 
 
 def _logo_requests(
@@ -538,6 +1020,10 @@ def _logo_requests(
     findings: list[TransformFinding] = []
     object_ids = _object_id_occurrences(presentation)
     for slide in slides:
+        background = _effective_page_background(presentation, slide)
+        if background is None or _contrast_ratio("#000000", background) < _MIN_TEXT_CONTRAST:
+            findings.append(_logo_contrast_finding(_required_string(slide, "objectId")))
+            continue
         try:
             inherited_elements = _inherited_page_elements(presentation, slide)
         except UnsupportedSourceError:
@@ -623,9 +1109,19 @@ def _logo_request_for_slide(
     ):
         return _LogoDecision(None, None, _unsafe_geometry_finding(slide_id))
     if existing:
-        if not _existing_logo_is_exact(existing[0], logo_uri=logo_uri, placement=placement):
+        existing_bounds = _element_bounds(existing[0])
+        if (
+            existing_bounds is None
+            or not any(_rect_close(existing_bounds, candidate) for candidate in layout.candidates)
+            or any(_overlaps(existing_bounds, box) for box in occupied)
+            or not _existing_logo_is_exact(
+                existing[0],
+                logo_uri=logo_uri,
+                placement=existing_bounds,
+            )
+        ):
             return _LogoDecision(None, None, _logo_id_collision_finding(slide_id))
-        return _LogoDecision(None, placement, None)
+        return _LogoDecision(None, existing_bounds, None)
     return _LogoDecision(
         _create_logo_request(
             logo_id=logo_id,
@@ -724,28 +1220,11 @@ def _inherited_page_elements(
     presentation: dict[str, Any],
     slide: dict[str, Any],
 ) -> tuple[dict[str, Any], ...]:
-    properties = slide.get("slideProperties")
-    if properties is None:
-        return ()
-    if not isinstance(properties, dict):
-        raise UnsupportedSourceError
-    layout_id = properties.get("layoutObjectId")
-    if layout_id is None:
-        return ()
-    if not isinstance(layout_id, str):
-        raise UnsupportedSourceError
-    layout = _page_by_id(presentation.get("layouts"), layout_id)
-    inherited = list(_top_level_elements(layout))
-    layout_properties = layout.get("layoutProperties")
-    if not isinstance(layout_properties, dict):
-        raise UnsupportedSourceError
-    master_id = layout_properties.get("masterObjectId")
-    if master_id is None:
-        return tuple(inherited)
-    if not isinstance(master_id, str):
-        raise UnsupportedSourceError
-    inherited.extend(_top_level_elements(_page_by_id(presentation.get("masters"), master_id)))
-    return tuple(inherited)
+    return tuple(
+        element
+        for page in _page_chain(presentation, slide)[1:]
+        for element in _top_level_elements(page)
+    )
 
 
 def _page_by_id(raw: object, object_id: str) -> dict[str, Any]:
@@ -816,7 +1295,7 @@ def _expected_brand_sha256(
 def _expected_style(target: _StyleTarget) -> dict[str, Any]:
     desired, _ = _desired_style(
         placeholder_type=target.placeholder_type,
-        slide_index=target.slide_index,
+        font_weight=target.runs[0].font_weight,
     )
     branded = _canonical_style(desired)
     return _canonical_style_target(target, brand_style_json=_canonical_json(branded))
@@ -844,16 +1323,20 @@ def _canonical_style_target(
     }
 
 
-def _canonical_style(style: dict[str, Any]) -> dict[str, Any]:
+def _canonical_style(
+    style: dict[str, Any],
+    *,
+    theme_colors: dict[str, str] | None = None,
+) -> dict[str, Any]:
     family = style.get("weightedFontFamily")
     size = style.get("fontSize")
     foreground = style.get("foregroundColor")
     opaque = foreground.get("opaqueColor") if isinstance(foreground, dict) else None
-    rgb = opaque.get("rgbColor") if isinstance(opaque, dict) else None
     result: dict[str, Any] = {
         "fontFamily": family.get("fontFamily") if isinstance(family, dict) else None,
+        "fontWeight": family.get("weight", 400) if isinstance(family, dict) else None,
         "fontSizePt": _dimension_points(size),
-        "color": _hex_from_rgb(rgb),
+        "color": _hex_from_opaque_color(opaque, theme_colors=theme_colors),
     }
     return result
 
@@ -1096,6 +1579,14 @@ def _logo_collision_finding(slide_id: str) -> TransformFinding:
     )
 
 
+def _logo_contrast_finding(slide_id: str) -> TransformFinding:
+    return TransformFinding(
+        code="slide_logo_contrast_unresolved",
+        block_id=slide_id,
+        detail="The black Sarj logo was skipped because background contrast could not be proven",
+    )
+
+
 def _canonical_json(value: object) -> str:
     try:
         return json.dumps(
@@ -1119,16 +1610,38 @@ def _rgb(hex_color: str) -> dict[str, float]:
 def _hex_from_rgb(value: object) -> str | None:
     if not isinstance(value, dict):
         return None
-    red = value.get("red")
-    green = value.get("green")
-    blue = value.get("blue")
-    if (
-        not isinstance(red, int | float)
-        or not isinstance(green, int | float)
-        or not isinstance(blue, int | float)
-    ):
+    channels: list[float] = []
+    for name in ("red", "green", "blue"):
+        channel = value.get(name, 0)
+        if (
+            isinstance(channel, bool)
+            or not isinstance(channel, int | float)
+            or not math.isfinite(channel)
+            or not 0 <= channel <= 1
+        ):
+            return None
+        channels.append(float(channel))
+    return "#" + "".join(f"{round(channel * 255):02X}" for channel in channels)
+
+
+def _hex_from_opaque_color(
+    value: object,
+    *,
+    theme_colors: dict[str, str] | None,
+) -> str | None:
+    if not isinstance(value, dict):
         return None
-    return "#" + "".join(f"{round(channel * 255):02X}" for channel in (red, green, blue))
+    color = {str(key): child for key, child in value.items()}
+    has_rgb = "rgbColor" in color
+    has_theme = "themeColor" in color
+    if has_rgb == has_theme:
+        return None
+    if has_rgb:
+        return _hex_from_rgb(color.get("rgbColor"))
+    theme = color.get("themeColor")
+    if not isinstance(theme, str) or theme_colors is None:
+        return None
+    return theme_colors.get(theme)
 
 
 def _required_string(mapping: dict[str, Any], key: str) -> str:

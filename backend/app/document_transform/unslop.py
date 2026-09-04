@@ -14,11 +14,15 @@ MAX_MODEL_EDITABLE_BLOCK_CHARS = 32_768
 _CAPITALIZABLE_START_WORDS = frozenset(
     {"a", "an", "he", "it", "our", "she", "that", "the", "they", "this", "we", "you", "your"}
 )
+_SENTENCE_PUNCTUATION = ".!?…"
 
 _CANDIDATE_PATTERNS = (
     (
         "canned_intro",
-        re.compile(r"\b(?:in today's fast-paced|in the ever-evolving)\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:in today['’]s fast[\u2011 -]paced|in the ever[\u2011 -]evolving)\b",
+            re.IGNORECASE,
+        ),
     ),
     (
         "meta_note",
@@ -48,7 +52,7 @@ _CANDIDATE_PATTERNS = (
             re.IGNORECASE,
         ),
     ),
-    ("throat_clearing", re.compile(r"^here's the thing:\s*", re.IGNORECASE)),
+    ("throat_clearing", re.compile(r"^here['’]s the thing:\s*", re.IGNORECASE)),
     (
         "significance_inflation",
         re.compile(r"\bunderscore(?:s|d)? the importance(?: of)?\b", re.IGNORECASE),
@@ -59,7 +63,7 @@ _CANDIDATE_PATTERNS = (
         "assistant_artifact",
         re.compile(r"\b(?:as an ai language model|i hope this helps)\b", re.IGNORECASE),
     ),
-    ("jargon", re.compile(r"\b(?:game[ -]changer|synergy)\b", re.IGNORECASE)),
+    ("jargon", re.compile(r"\b(?:game[\u2011 -]changer|synergy)\b", re.IGNORECASE)),
     ("filler", re.compile(r"\bat the end of the day\b", re.IGNORECASE)),
     ("knowledge_cutoff", re.compile(r"\bas of my last\b", re.IGNORECASE)),
     ("rhetorical_question", re.compile(r"\bwhy should you care\??", re.IGNORECASE)),
@@ -157,7 +161,7 @@ def deterministic_unslop_replacement(text: str, candidates: tuple[UnslopCandidat
         return text
     result = text
     for candidate in sorted(eligible, key=lambda item: (item.start, item.end), reverse=True):
-        span = _expand_deletion_span(text, candidate.start, candidate.end)
+        span = expanded_deletion_span(text, candidate.start, candidate.end)
         result = result[: span.start] + result[span.end :]
     trimmed = result
     if eligible and min(candidate.start for candidate in eligible) == 0:
@@ -167,8 +171,11 @@ def deterministic_unslop_replacement(text: str, candidates: tuple[UnslopCandidat
     if not trimmed.strip():
         return text
     if eligible and min(candidate.start for candidate in eligible) == 0:
+        first_nonspace = next((char for char in trimmed if not char.isspace()), None)
+        if first_nonspace is not None and first_nonspace in _SENTENCE_PUNCTUATION:
+            return text
         first_alpha = next((index for index, char in enumerate(trimmed) if char.isalpha()), None)
-        if first_alpha is not None:
+        if first_alpha is not None and trimmed[first_alpha].islower():
             word = re.match(r"[A-Za-z]+", trimmed[first_alpha:])
             if word is None or word.group(0).casefold() not in _CAPITALIZABLE_START_WORDS:
                 return text
@@ -178,9 +185,18 @@ def deterministic_unslop_replacement(text: str, candidates: tuple[UnslopCandidat
     return trimmed
 
 
-def _expand_deletion_span(text: str, start: int, end: int) -> DeletionSpan:
+def expanded_deletion_span(text: str, start: int, end: int) -> DeletionSpan:
     while end < len(text) and text[end] in " \t,:;—–-":
         end += 1
+    punctuation_end = end
+    while punctuation_end < len(text) and text[punctuation_end] in _SENTENCE_PUNCTUATION:
+        punctuation_end += 1
+    if punctuation_end > end and (
+        punctuation_end == len(text) or text[punctuation_end] in " \t\r\n"
+    ):
+        end = punctuation_end
+        while end < len(text) and text[end] in " \t":
+            end += 1
     if start > 0 and end == len(text):
         while start > 0 and text[start - 1] in " \t,:;—–-":
             start -= 1

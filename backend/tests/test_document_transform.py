@@ -42,6 +42,7 @@ from app.document_transform.ir import (
     utf16_length,
 )
 from app.document_transform.models import PatchGenerator
+from app.document_transform.planner import TextTransformPlanner
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import (
     DocumentOutput,
@@ -54,7 +55,11 @@ from app.document_transform.schemas import (
     TransformMode,
     TransformPhase,
 )
-from app.document_transform.unslop import scan_unslop_candidates
+from app.document_transform.unslop import (
+    MAX_MODEL_EDITABLE_BLOCK_CHARS,
+    deterministic_unslop_replacement,
+    scan_unslop_candidates,
+)
 from app.files.schemas import FileResponse
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId, TaskId
 from app.tasks import service as task_service_module
@@ -150,6 +155,110 @@ def test_unslop_accepts_candidate_only_deletion(source: str, replacement: str) -
     decision = validate_patches(document, [patch], phase=TransformPhase.UNSLOP)
 
     assert decision.accepted == {"b0": replacement}
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Moreover. We approved the plan.",
+        "It is worth noting. We approved the plan.",
+        "Furthermore! We approved the plan.",
+        "Moreover… We approved the plan.",
+    ],
+)
+def test_fixed_standalone_sentence_removes_terminal_punctuation(source: str) -> None:
+    document = parse_markdown(source, title="Safety")
+    candidates = scan_unslop_candidates(document)
+
+    replacement = deterministic_unslop_replacement(document.blocks[0].text, candidates)
+    decision = validate_patches(
+        document,
+        [
+            TextPatch(
+                block_id="b0",
+                expected_sha256=document.blocks[0].sha256,
+                replacement=replacement,
+            )
+        ],
+        phase=TransformPhase.UNSLOP,
+    )
+
+    assert replacement == "We approved the plan."
+    assert decision.accepted == {"b0": replacement}
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("Moreover, Alice approved.", "Alice approved."),
+        ("Moreover, SARJ approved.", "SARJ approved."),
+        ("Moreover, eBay approved.", "Moreover, eBay approved."),
+    ],
+)
+def test_fixed_prefix_preserves_existing_name_capitalization(source: str, expected: str) -> None:
+    document = parse_markdown(source, title="Safety")
+
+    replacement = deterministic_unslop_replacement(
+        document.blocks[0].text,
+        scan_unslop_candidates(document),
+    )
+
+    assert replacement == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "replacement"),
+    [
+        ("This is a game changer.", "This is a ."),
+        ("These results speak for themselves.", "These results ."),
+        ("We launched Game Changer yesterday.", "We launched  yesterday."),
+        ("The team uses Synergy for payroll.", "The team uses  for payroll."),
+    ],
+)
+def test_contextual_unslop_is_review_only(source: str, replacement: str) -> None:
+    document, patch = _unslop_patch(source, replacement)
+
+    decision = validate_patches(document, [patch], phase=TransformPhase.UNSLOP)
+
+    assert decision.accepted == {}
+    assert decision.findings[0].code == "contextual_unslop_review_required"
+
+
+async def test_planner_reports_native_rich_text_and_oversized_unslop_blocks() -> None:
+    document = DocumentIR(
+        title="Safety",
+        source_format="google_doc",
+        blocks=(
+            TextBlock(
+                id="rich", kind=BlockKind.PARAGRAPH, text="Visible rich text", editable=False
+            ),
+            TextBlock(
+                id="large",
+                kind=BlockKind.PARAGRAPH,
+                text="Moreover, " + "x" * MAX_MODEL_EDITABLE_BLOCK_CHARS,
+            ),
+            TextBlock(id="contextual", kind=BlockKind.PARAGRAPH, text="This is synergy."),
+        ),
+    )
+    request = DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("source"),
+            expected_modified_time="2026-09-03T00:00:00Z",
+        ),
+        mode=TransformMode.BOTH,
+    )
+    generator = _Generator({TransformPhase.UNSLOP: "unsafe model rewrite"})
+
+    result = await TextTransformPlanner(generator=generator).transform(document, request)
+
+    assert generator.calls == []
+    assert {finding.code for finding in result.findings} == {
+        "contextual_unslop_review_required",
+        "google_doc_text_target_unsupported",
+        "unslop_block_too_large",
+    }
+    assert result.document == document
 
 
 @pytest.mark.parametrize(
@@ -314,6 +423,52 @@ def test_native_google_doc_block_count_is_bounded_before_output_creation() -> No
         parse_google_document(document, title="Too many blocks")
 
 
+def test_native_mixed_text_paragraph_is_preserved_as_uneditable_for_review() -> None:
+    document = {
+        "revisionId": "revision-1",
+        "tabs": [
+            {
+                "tabProperties": {"tabId": "tab-a"},
+                "documentTab": {
+                    "body": {
+                        "content": [
+                            {
+                                "startIndex": 1,
+                                "endIndex": 14,
+                                "paragraph": {
+                                    "elements": [
+                                        {
+                                            "startIndex": 1,
+                                            "endIndex": 8,
+                                            "textRun": {"content": "Visible"},
+                                        },
+                                        {
+                                            "startIndex": 8,
+                                            "endIndex": 13,
+                                            "inlineObjectElement": {"inlineObjectId": "image-1"},
+                                        },
+                                        {
+                                            "startIndex": 13,
+                                            "endIndex": 14,
+                                            "textRun": {"content": "\n"},
+                                        },
+                                    ]
+                                },
+                            }
+                        ]
+                    }
+                },
+                "childTabs": [],
+            }
+        ],
+    }
+
+    parsed = parse_google_document(document, title="Mixed")
+
+    assert parsed.blocks[0].text == "Visible"
+    assert parsed.blocks[0].editable is False
+
+
 async def test_native_mutation_budget_is_checked_before_copy_creation() -> None:
     content: list[dict[str, Any]] = []
     cursor = 1
@@ -376,6 +531,19 @@ def test_unslop_scanner_catches_high_signal_upstream_phrases() -> None:
     codes = {candidate.code for candidate in scan_unslop_candidates(document)}
 
     assert {"throat_clearing", "filler", "jargon"} <= codes
+
+
+def test_unslop_scanner_handles_native_docs_typography() -> None:
+    document = parse_markdown(
+        "Here’s the thing: in today’s fast‑paced market, this is a game‑changer.",
+        title="Draft",
+    )
+
+    assert {candidate.code for candidate in scan_unslop_candidates(document)} == {
+        "canned_intro",
+        "jargon",
+        "throat_clearing",
+    }
 
 
 class _Gateway(DocumentGateway):
@@ -674,7 +842,8 @@ async def test_force_language_change_is_rejected_and_requires_review() -> None:
 
     assert result.applied_patch_count == 0
     assert result.needs_review is True
-    assert result.findings[0].code == "force_language_changed"
+    assert generator.calls == []
+    assert result.findings[0].code == "contextual_unslop_review_required"
     assert "must encrypt" in str(gateway.requests[0])
 
 

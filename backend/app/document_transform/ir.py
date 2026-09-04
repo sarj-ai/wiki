@@ -364,10 +364,12 @@ def _parse_structural_element(
     if not isinstance(elements, list):
         raise UnsupportedSourceError
     runs: list[tuple[str, bool]] = []
+    contains_non_text = False
     for part in elements:
         text_run = part.get("textRun") if isinstance(part, dict) else None
         if not isinstance(text_run, dict):
-            return None
+            contains_non_text = True
+            continue
         content = text_run.get("content")
         if not isinstance(content, str):
             raise UnsupportedSourceError
@@ -375,6 +377,8 @@ def _parse_structural_element(
         locked = _text_run_is_locked(part, style)
         runs.append((content, locked))
     text = "".join(run[0] for run in runs).removesuffix("\n")
+    if not text and contains_non_text:
+        text = "\ufffc"
     if not text:
         return None
     start = element.get("startIndex")
@@ -385,7 +389,7 @@ def _parse_structural_element(
     if not isinstance(paragraph_style, dict):
         raise UnsupportedSourceError
     classification = _classify_block(paragraph_style)
-    editable = _paragraph_is_editable(runs, paragraph_data)
+    editable = not contains_non_text and _paragraph_is_editable(runs, paragraph_data)
     return TextBlock(
         id=f"b{ordinal}",
         kind=classification.kind,

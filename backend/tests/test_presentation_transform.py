@@ -373,6 +373,11 @@ def _presentation(presentation_id: str, revision_id: str) -> dict[str, Any]:
                         },
                         "shape": {
                             "shapeType": "TEXT_BOX",
+                            "placeholder": {"type": "BODY"},
+                            "shapeProperties": {
+                                "autofit": {"autofitType": "NONE"},
+                                "shapeBackgroundFill": {"propertyState": "NOT_RENDERED"},
+                            },
                             "text": {
                                 "textElements": [
                                     {
@@ -383,7 +388,22 @@ def _presentation(presentation_id: str, revision_id: str) -> dict[str, Any]:
                                     {
                                         "startIndex": 0,
                                         "endIndex": len(text) + 1,
-                                        "textRun": {"content": f"{text}\n", "style": {}},
+                                        "textRun": {
+                                            "content": f"{text}\n",
+                                            "style": {
+                                                "weightedFontFamily": {"fontFamily": "Arial"},
+                                                "fontSize": {"magnitude": 20, "unit": "PT"},
+                                                "foregroundColor": {
+                                                    "opaqueColor": {
+                                                        "rgbColor": {
+                                                            "red": 0.1,
+                                                            "green": 0.1,
+                                                            "blue": 0.1,
+                                                        }
+                                                    }
+                                                },
+                                            },
+                                        },
                                     },
                                 ]
                             },

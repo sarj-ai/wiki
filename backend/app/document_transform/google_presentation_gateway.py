@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from functools import cache
 import hashlib
+from http import HTTPStatus
 from io import BytesIO
 import json
 from pathlib import PurePosixPath
@@ -63,10 +64,10 @@ _FORBIDDEN_PPTX_PARTS = (
     "vbaproject.bin",
 )
 _FORBIDDEN_CONTENT_TYPE_MARKERS = (
-    b"macroenabled",
-    b"vbaproject",
-    b"activex",
-    b"oleobject",
+    "macroenabled",
+    "vbaproject",
+    "activex",
+    "oleobject",
 )
 _TERMINAL_SCOPE_ERROR_MARKERS = (
     b"access_token_scope_insufficient",
@@ -75,9 +76,17 @@ _TERMINAL_SCOPE_ERROR_MARKERS = (
     b"insufficientpermissions",
 )
 _MAX_RELATIONSHIP_BYTES = 1 * 1024 * 1024
+_MAX_CONTENT_TYPES_BYTES = 1 * 1024 * 1024
+_MAX_PRESENTATION_XML_BYTES = 5 * 1024 * 1024
 _MAX_HYPERLINK_TARGET_LENGTH = 2_048
 _ASCII_CONTROL_LIMIT = 32
 _ALLOWED_EXTERNAL_HYPERLINK_SCHEMES = frozenset({"http", "https", "mailto", "tel"})
+_ALLOWED_EXTERNAL_HYPERLINK_RELATIONSHIP_TYPES = frozenset(
+    {
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+        "http://purl.oclc.org/ooxml/officeDocument/relationships/hyperlink",
+    }
+)
 
 _PROP_OPERATION = "sarjTransformOperation"
 _PROP_SOURCE_HASH = "sarjTransformSourceHash"
@@ -110,6 +119,13 @@ class _DriveProvider(Protocol):
 @runtime_checkable
 class _SlidesProvider(Protocol):
     def presentations(self) -> object: ...
+
+
+class _XmlElement(Protocol):
+    tag: str
+    attrib: dict[str, str]
+
+    def iter(self) -> Iterator[_XmlElement]: ...
 
 
 def _member(owner: object, name: str) -> object:
@@ -379,7 +395,7 @@ class GooglePresentationGateway(PresentationGateway):
             raise UnsupportedSourceError
         if pptx is None:
             raise DocumentGatewayError
-        return self._execute_mutation_dict(
+        return self._execute_import_mutation_dict(
             _request(
                 _member(self._drive().files(), "create"),
                 body=body,
@@ -826,6 +842,21 @@ class GooglePresentationGateway(PresentationGateway):
         return {str(key): value for key, value in raw.items()}
 
     @staticmethod
+    def _execute_import_mutation_dict(request: HttpRequest) -> dict[str, Any]:
+        try:
+            raw: object = execute_mutation(request)
+        except HttpError as exc:
+            if (
+                _is_terminal_scope_error(exc)
+                or getattr(exc.resp, "status", None) == HTTPStatus.BAD_REQUEST
+            ):
+                raise UnsupportedSourceError from exc
+            raise DocumentGatewayError from exc
+        if not isinstance(raw, dict):
+            raise DocumentGatewayError
+        return {str(key): value for key, value in raw.items()}
+
+    @staticmethod
     def _execute_bytes(request: HttpRequest) -> bytes:
         try:
             raw: object = execute_with_retry(request)
@@ -1009,8 +1040,24 @@ def _validate_zip_entries(archive: ZipFile) -> None:
         names.add(normalized)
     if "[Content_Types].xml" not in names or "ppt/presentation.xml" not in names:
         raise UnsupportedSourceError
-    content_types = archive.read("[Content_Types].xml").lower()
-    if any(marker in content_types for marker in _FORBIDDEN_CONTENT_TYPE_MARKERS):
+    content_types = _read_xml_root(
+        archive,
+        "[Content_Types].xml",
+        maximum_bytes=_MAX_CONTENT_TYPES_BYTES,
+        expected_root="Types",
+    )
+    _read_xml_root(
+        archive,
+        "ppt/presentation.xml",
+        maximum_bytes=_MAX_PRESENTATION_XML_BYTES,
+        expected_root="presentation",
+    )
+    if any(
+        marker in value.casefold()
+        for element in content_types.iter()
+        for value in element.attrib.values()
+        for marker in _FORBIDDEN_CONTENT_TYPE_MARKERS
+    ):
         raise UnsupportedSourceError
     for name in names:
         if name.casefold().endswith(".rels"):
@@ -1018,26 +1065,52 @@ def _validate_zip_entries(archive: ZipFile) -> None:
 
 
 def _validate_relationships(archive: ZipFile, name: str) -> None:
-    raw = archive.read(name)
-    upper = raw.upper()
-    if len(raw) > _MAX_RELATIONSHIP_BYTES or b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
-        raise UnsupportedSourceError
-    try:
-        root = ElementTree.fromstring(raw)
-    except (ElementTree.ParseError, DefusedXmlException) as exc:
-        raise UnsupportedSourceError from exc
+    root = _read_xml_root(
+        archive,
+        name,
+        maximum_bytes=_MAX_RELATIONSHIP_BYTES,
+        expected_root="Relationships",
+    )
     for relationship in root.iter():
-        if relationship.attrib.get("TargetMode", "").casefold() != "external":
+        target_mode = relationship.attrib.get("TargetMode")
+        if target_mode is None or target_mode == "Internal":
             continue
+        if target_mode != "External":
+            raise UnsupportedSourceError
         relationship_type = relationship.attrib.get("Type", "")
         target = relationship.attrib.get("Target", "")
         if (
-            not relationship_type.casefold().endswith("/hyperlink")
+            relationship_type not in _ALLOWED_EXTERNAL_HYPERLINK_RELATIONSHIP_TYPES
             or len(target) > _MAX_HYPERLINK_TARGET_LENGTH
             or any(ord(character) < _ASCII_CONTROL_LIMIT for character in target)
             or urlsplit(target).scheme.casefold() not in _ALLOWED_EXTERNAL_HYPERLINK_SCHEMES
         ):
             raise UnsupportedSourceError
+
+
+def _read_xml_root(
+    archive: ZipFile,
+    name: str,
+    *,
+    maximum_bytes: int,
+    expected_root: str,
+) -> _XmlElement:
+    entry = archive.getinfo(name)
+    if entry.file_size > maximum_bytes:
+        raise UnsupportedSourceError
+    raw = archive.read(entry)
+    if len(raw) > maximum_bytes:
+        raise UnsupportedSourceError
+    upper = raw.upper()
+    if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
+        raise UnsupportedSourceError
+    try:
+        root: _XmlElement = ElementTree.fromstring(raw)
+    except (ElementTree.ParseError, DefusedXmlException) as exc:
+        raise UnsupportedSourceError from exc
+    if str(root.tag).rsplit("}", 1)[-1] != expected_root:
+        raise UnsupportedSourceError
+    return root
 
 
 def _zip_entry_is_unsafe(entry: ZipInfo, normalized: str, names: set[str]) -> bool:

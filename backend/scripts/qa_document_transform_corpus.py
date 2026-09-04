@@ -97,6 +97,7 @@ _MAX_SCREENSHOT_BYTES = 25 * 1024 * 1024
 _MAX_RENDERED_BYTES = 250 * 1024 * 1024
 _CLOUD_RUN_JOB_ENV = "CLOUD_RUN_JOB"
 _DURABLE_ARTIFACT_ROOT_ENV = "WIKI_QA_DURABLE_ARTIFACT_ROOT"
+_APPROVED_JUDGE_MODELS = frozenset({"gemini-3.8-flash"})
 
 type QaCohort = Literal["canary", "corpus"]
 
@@ -2086,7 +2087,7 @@ def _safe_rejection(exc: Exception) -> str:
 
 
 def _is_pinned_judge_model(model: str) -> bool:
-    return bool(re.fullmatch(r"gemini-[a-z0-9.-]+-\d{3}", model))
+    return model in _APPROVED_JUDGE_MODELS
 
 
 def _is_sha256(value: str | None) -> bool:

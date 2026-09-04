@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.document_transform.ir import DocumentIR
+from app.document_transform.ir import BlockKind, DocumentIR
 from app.document_transform.models import PatchGenerator
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import (
@@ -13,6 +13,7 @@ from app.document_transform.schemas import (
     TransformPhase,
 )
 from app.document_transform.unslop import (
+    MAX_MODEL_EDITABLE_BLOCK_CHARS,
     UnslopCandidate,
     deterministic_unslop_replacement,
     scan_unslop_candidates,
@@ -63,7 +64,7 @@ class TextTransformPlanner:
         *,
         generator: PatchGenerator,
         allow_format_text_edits: bool = False,
-        allow_unslop_model: bool = True,
+        allow_unslop_model: bool = False,
     ) -> None:
         self._generator = generator
         self._allow_format_text_edits = allow_format_text_edits
@@ -80,6 +81,7 @@ class TextTransformPlanner:
         deterministic_count = 0
         model_count = 0
         llm_invoked = False
+        findings.extend(_unprocessed_findings(original, request=request))
         if request.mode is TransformMode.FORMAT:
             phases: tuple[TransformPhase, ...] = (TransformPhase.FORMAT,)
         elif request.mode is TransformMode.UNSLOP:
@@ -138,3 +140,35 @@ class TextTransformPlanner:
             model_count,
             llm_invoked,
         )
+
+
+def _unprocessed_findings(
+    document: DocumentIR,
+    *,
+    request: DocumentTransformRequest,
+) -> tuple[TransformFinding, ...]:
+    findings: list[TransformFinding] = []
+    if document.source_format == "google_doc":
+        findings.extend(
+            TransformFinding(
+                code="google_doc_text_target_unsupported",
+                block_id=block.id,
+                detail=(
+                    "Visible native Docs text was preserved but not transformed because its "
+                    "rich structure is unsupported"
+                ),
+            )
+            for block in document.blocks
+            if block.text.strip() and not block.editable and block.kind is not BlockKind.BLANK
+        )
+    if request.mode in {TransformMode.UNSLOP, TransformMode.BOTH}:
+        findings.extend(
+            TransformFinding(
+                code="unslop_block_too_large",
+                block_id=block.id,
+                detail="The text block exceeded the deterministic Unslop scan limit",
+            )
+            for block in document.blocks
+            if block.editable and len(block.text) > MAX_MODEL_EDITABLE_BLOCK_CHARS
+        )
+    return tuple(findings)

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import hashlib
+from http import HTTPStatus
 from io import BytesIO
 from typing import Any, override
 import uuid
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
+from googleapiclient.errors import HttpError
 from googleapiclient.http import HttpRequest
+from httplib2 import Response
 import pytest
 
 from app.document_transform.errors import (
@@ -41,6 +44,7 @@ class _Request(HttpRequest):
         self._callback = callback
         self.headers = {}
 
+    @override
     def execute(self, http: object = None, num_retries: int = 0) -> object:
         del http, num_retries
         return self._callback()
@@ -96,6 +100,11 @@ class _FilesBoundary:
         self._state.create_calls.append(kwargs)
 
         def execute() -> object:
+            if self._state.import_http_error_status is not None:
+                raise HttpError(
+                    Response({"status": str(self._state.import_http_error_status)}),
+                    b"invalid presentation",
+                )
             body = kwargs["body"]
             assert isinstance(body, dict)
             output = self._state.add_output("source", body)
@@ -254,6 +263,7 @@ class _GoogleState:
         self.copy_loses_response = False
         self.batch_loses_response = False
         self.import_supported = True
+        self.import_http_error_status: int | None = None
         self.fail_mutation_property_updates = False
         self.out_of_scope: set[str] = set()
         self.insufficient_scope: set[str] = set()
@@ -412,11 +422,21 @@ def _set_attribute(instance: object, attribute: str, value: object) -> None:
     setattr(instance, attribute, value)
 
 
-def _pptx(*, extra_name: str | None = None, extra_payload: bytes = b"bad") -> bytes:
+def _pptx(
+    *,
+    content_types: bytes = (
+        b'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>'
+    ),
+    presentation: bytes = (
+        b'<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"/>'
+    ),
+    extra_name: str | None = None,
+    extra_payload: bytes = b"bad",
+) -> bytes:
     target = BytesIO()
     with ZipFile(target, "w", ZIP_DEFLATED) as archive:
-        archive.writestr("[Content_Types].xml", b"types")
-        archive.writestr("ppt/presentation.xml", b"presentation")
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("ppt/presentation.xml", presentation)
         if extra_name is not None:
             archive.writestr(extra_name, extra_payload)
     return target.getvalue()
@@ -653,10 +673,36 @@ async def test_pptx_import_requires_drive_conversion_support_before_download() -
         _pptx(extra_name="ppt/vbaProject.bin"),
         _pptx(
             extra_name="ppt/_rels/presentation.xml.rels",
-            extra_payload=b'<Relationship TargetMode="External" Target="https://bad.example"/>',
+            extra_payload=(
+                b'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/'
+                b'relationships"><Relationship Id="rId1" '
+                b'Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+                b'relationships/image" TargetMode="External" '
+                b'Target="https://bad.example/tracker.png"/></Relationships>'
+            ),
+        ),
+        _pptx(content_types=b"not xml"),
+        _pptx(presentation=b"not xml"),
+        _pptx(
+            content_types=(
+                '<?xml version="1.0" encoding="UTF-16"?>'
+                '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                '<Override PartName="/ppt/presentation.xml" '
+                'ContentType="application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml"/>'
+                "</Types>"
+            ).encode("utf-16")
         ),
     ],
-    ids=["not-zip", "parent-traversal", "absolute-path", "macro", "external-media"],
+    ids=[
+        "not-zip",
+        "parent-traversal",
+        "absolute-path",
+        "macro-part",
+        "external-media",
+        "malformed-content-types",
+        "malformed-presentation",
+        "utf16-macro-content-type",
+    ],
 )
 async def test_pptx_archive_rejects_unsafe_content_through_public_import(raw: bytes) -> None:
     state = _GoogleState(mime_type=PPTX_MIME_TYPE, media=raw)
@@ -671,6 +717,44 @@ async def test_pptx_archive_rejects_unsafe_content_through_public_import(raw: by
             output_name="Unsafe",
         )
 
+    assert state.create_calls == []
+
+
+async def test_oversized_relationship_is_rejected_before_decompression(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = _pptx(
+        extra_name="ppt/slides/_rels/slide1.xml.rels",
+        extra_payload=b" " * (1024 * 1024 + 1),
+    )
+    original_read = ZipFile.read
+    relationship_read = False
+
+    def guarded_read(
+        archive: ZipFile,
+        member: str | ZipInfo,
+        pwd: bytes | None = None,
+    ) -> bytes:
+        nonlocal relationship_read
+        name = member.filename if isinstance(member, ZipInfo) else member
+        if name.endswith(".rels"):
+            relationship_read = True
+        return original_read(archive, member, pwd)
+
+    monkeypatch.setattr(ZipFile, "read", guarded_read)
+    state = _GoogleState(mime_type=PPTX_MIME_TYPE, media=raw)
+    gateway = _gateway(state)
+    source = await gateway.load_source(_source_request())
+
+    with pytest.raises(UnsupportedSourceError):
+        await gateway.create_copy(
+            operation_id=uuid.uuid7(),
+            source=source,
+            source_sha256="pptx-hash",
+            output_name="Compressed bomb",
+        )
+
+    assert not relationship_read
     assert state.create_calls == []
 
 
@@ -691,13 +775,23 @@ async def test_pptx_archive_rejects_unsupported_compression_as_unsupported_sourc
     assert state.create_calls == []
 
 
-async def test_pptx_archive_allows_standard_https_hyperlinks() -> None:
-    relationships = b"""<?xml version="1.0" encoding="UTF-8"?>
+@pytest.mark.parametrize(
+    "relationship_type",
+    [
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+        "http://purl.oclc.org/ooxml/officeDocument/relationships/hyperlink",
+    ],
+    ids=["transitional", "strict"],
+)
+async def test_pptx_archive_allows_standard_https_hyperlinks(
+    relationship_type: str,
+) -> None:
+    relationships = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1"
-    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+    Type="{relationship_type}"
     Target="https://sarj.ai/review" TargetMode="External"/>
-</Relationships>"""
+</Relationships>""".encode()
     raw = _pptx(
         extra_name="ppt/slides/_rels/slide1.xml.rels",
         extra_payload=relationships,
@@ -714,6 +808,60 @@ async def test_pptx_archive_allows_standard_https_hyperlinks() -> None:
     )
 
     assert draft.file_id == "output"
+    assert len(state.create_calls) == 1
+
+
+@pytest.mark.parametrize(
+    "relationships",
+    [
+        (
+            b'<Relationships><Relationship Type="https://attacker.invalid/custom/hyperlink" '
+            b'TargetMode="External" Target="https://example.com"/></Relationships>'
+        ),
+        (
+            b'<Relationships><Relationship Type="http://schemas.openxmlformats.org/'
+            b'officeDocument/2006/relationships/image" TargetMode=" External " '
+            b'Target="https://example.com/tracker.png"/></Relationships>'
+        ),
+    ],
+    ids=["invented-hyperlink-type", "invalid-target-mode"],
+)
+async def test_pptx_archive_rejects_relationship_allowlist_bypasses(
+    relationships: bytes,
+) -> None:
+    raw = _pptx(
+        extra_name="ppt/slides/_rels/slide1.xml.rels",
+        extra_payload=relationships,
+    )
+    state = _GoogleState(mime_type=PPTX_MIME_TYPE, media=raw)
+    gateway = _gateway(state)
+    source = await gateway.load_source(_source_request())
+
+    with pytest.raises(UnsupportedSourceError):
+        await gateway.create_copy(
+            operation_id=uuid.uuid7(),
+            source=source,
+            source_sha256="pptx-hash",
+            output_name="Unsafe relationship",
+        )
+
+    assert state.create_calls == []
+
+
+async def test_pptx_import_bad_request_is_terminal_unsupported() -> None:
+    state = _GoogleState(mime_type=PPTX_MIME_TYPE, media=_pptx())
+    state.import_http_error_status = HTTPStatus.BAD_REQUEST
+    gateway = _gateway(state)
+    source = await gateway.load_source(_source_request())
+
+    with pytest.raises(UnsupportedSourceError):
+        await gateway.create_copy(
+            operation_id=uuid.uuid7(),
+            source=source,
+            source_sha256="pptx-hash",
+            output_name="Invalid import",
+        )
+
     assert len(state.create_calls) == 1
 
 
