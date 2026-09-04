@@ -86,6 +86,7 @@ export type DocumentPolishSource =
       kind: "drive_file";
       mimeType: string;
       name: string;
+      refreshExpectedModifiedTime: () => Promise<string>;
     }
   | {
       initialDestination: SmartDestination;
@@ -130,6 +131,10 @@ export function DocumentPolishDialog({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const fileLoadGeneration = useRef(0);
   const idempotencyKey = useRef<null | string>(null);
+  const refreshedDriveSource = useRef<Extract<
+    DocumentTransformSource,
+    { kind: "drive_file" }
+  > | null>(null);
   const lifecycleGeneration = useRef(0);
   const submitLatch = useRef(false);
   const capabilities = useQuery({
@@ -154,12 +159,15 @@ export function DocumentPolishDialog({
       abortRef.current?.abort();
       abortRef.current = null;
       submitLatch.current = false;
+      idempotencyKey.current = null;
+      refreshedDriveSource.current = null;
     },
     [sourceIdentity],
   );
 
   const resetRequest = () => {
     idempotencyKey.current = null;
+    refreshedDriveSource.current = null;
     fileLoadGeneration.current += 1;
     setReviewMessage(null);
     setReviewResult(null);
@@ -171,6 +179,7 @@ export function DocumentPolishDialog({
     abortRef.current = null;
     submitLatch.current = false;
     idempotencyKey.current = null;
+    refreshedDriveSource.current = null;
     fileLoadGeneration.current += 1;
     setMode("both");
     setOutputStrategy("copy");
@@ -230,14 +239,13 @@ export function DocumentPolishDialog({
   };
 
   const create = async () => {
-    const transformSource = inputSource();
+    let transformSource = inputSource();
     if (!transformSource || submitLatch.current) return;
     submitLatch.current = true;
     setSubmitting(true);
     setStage("starting");
     setReviewMessage(null);
     setReviewResult(null);
-    idempotencyKey.current ??= crypto.randomUUID();
     const controller = new AbortController();
     const generation = lifecycleGeneration.current;
     const isCurrent = () =>
@@ -251,11 +259,32 @@ export function DocumentPolishDialog({
     };
     abortRef.current?.abort();
     abortRef.current = controller;
+    if (transformSource.kind === "drive_file" && refreshedDriveSource.current) {
+      transformSource = refreshedDriveSource.current;
+    } else if (transformSource.kind === "drive_file" && source.kind === "drive_file") {
+      try {
+        const expectedModifiedTime = await source.refreshExpectedModifiedTime();
+        controller.signal.throwIfAborted();
+        transformSource = { ...transformSource, expectedModifiedTime };
+        cacheRefreshedDriveSource(refreshedDriveSource, transformSource);
+      } catch (error: unknown) {
+        if (!(error instanceof DOMException && error.name === "AbortError") && isCurrent()) {
+          toast.error(errorMessage(error, "Couldn’t verify the latest document revision"));
+        }
+        finishSubmission();
+        return;
+      }
+    }
+    if (!isCurrent()) {
+      finishSubmission();
+      return;
+    }
+    const requestIdempotencyKey = (idempotencyKey.current ??= crypto.randomUUID());
     try {
       const task = await documentTransformApi.create(
         transformSource,
         mode,
-        idempotencyKey.current,
+        requestIdempotencyKey,
         effectiveOutputStrategy,
       );
       controller.signal.throwIfAborted();
@@ -699,4 +728,11 @@ export function DocumentPolishDialog({
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError || error instanceof Error ? error.message : fallback;
+}
+
+function cacheRefreshedDriveSource(
+  target: { current: Extract<DocumentTransformSource, { kind: "drive_file" }> | null },
+  source: Extract<DocumentTransformSource, { kind: "drive_file" }>,
+): void {
+  target.current = source;
 }
