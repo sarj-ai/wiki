@@ -6,6 +6,7 @@ import uuid
 
 import pytest
 
+from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import InPlaceNotAllowedError, SourceTooLargeError
 from app.document_transform.google_presentation_gateway import PPTX_MIME_TYPE
 from app.document_transform.models import PatchGenerator
@@ -391,7 +392,9 @@ def _presentation(presentation_id: str, revision_id: str) -> dict[str, Any]:
                                         "textRun": {
                                             "content": f"{text}\n",
                                             "style": {
-                                                "weightedFontFamily": {"fontFamily": "Arial"},
+                                                "weightedFontFamily": {
+                                                    "fontFamily": CURRENT_BRAND_MANIFEST.document.font_family
+                                                },
                                                 "fontSize": {"magnitude": 20, "unit": "PT"},
                                                 "foregroundColor": {
                                                     "opaqueColor": {

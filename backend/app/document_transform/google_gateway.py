@@ -14,15 +14,18 @@ import uuid
 from googleapiclient import discovery
 from googleapiclient.discovery_cache import get_static_doc
 from googleapiclient.errors import HttpError
-from googleapiclient.http import HttpRequest, MediaIoBaseUpload
+from googleapiclient.http import HttpRequest, MediaIoBaseDownload, MediaIoBaseUpload
+import httplib2
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST, normalize_header_title
+from app.document_transform.docx_renderer import markdown_import_manifest
 from app.document_transform.errors import (
     DocumentGatewayError,
     IncompatiblePendingOutputError,
     InPlaceNeedsReviewError,
     InPlaceNotAllowedError,
     SourceChangedError,
+    SourceTooLargeError,
     UnsupportedSourceError,
 )
 from app.document_transform.gateway import (
@@ -34,9 +37,25 @@ from app.document_transform.gateway import (
     SourceSnapshot,
     TabHeader,
 )
-from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, parse_google_document
+from app.document_transform.ir import (
+    BlockKind,
+    DocumentIR,
+    TextBlock,
+    parse_google_document,
+    parse_markdown,
+    rewrite_markdown,
+)
+from app.document_transform.limits import MAX_MARKDOWN_BYTES
+from app.document_transform.markdown_import import verify_markdown_import
 from app.document_transform.schemas import DocumentOutput, DriveFileSource, MarkdownSource
-from app.drive.retry import ProviderDeadlineError, execute_mutation, execute_with_retry
+from app.drive.retry import (
+    ProviderDeadlineError,
+    execute_download_chunk_with_retry,
+    execute_mutation,
+    execute_with_retry,
+    is_retryable_provider_status,
+    provider_http_status,
+)
 from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.drive.service import (
     GoogleRefreshHandler,
@@ -63,15 +82,17 @@ if TYPE_CHECKING:
     from googleapiclient._apis.drive.v3.resources import DriveResource
 
 
-_MAX_MARKDOWN_BYTES = 2 * 1024 * 1024
 _PROP_OPERATION = "sarjTransformOperation"
 _PROP_SOURCE_HASH = "sarjTransformSourceHash"
 _PROP_STATE = "sarjTransformState"
 _PROP_MUTATION = "sarjTransformMutation"
 _PROP_PENDING_MUTATION = "sarjTransformPendingMutation"
 _PROP_MUTATION_BASE_REVISION_HASH = "sarjTransformMutationBaseHash"
+_PROP_RESULT_HASH = "sarjTransformResultHash"
+_PROP_VERIFIED_REVISION_HASH = "sarjTransformVerifiedRevisionHash"
 _STATE_INCOMPLETE = "incomplete"
 _STATE_COMPLETE = "complete"
+_MARKDOWN_DOWNLOAD_CHUNK_BYTES = 64 * 1024
 
 
 @runtime_checkable
@@ -125,7 +146,13 @@ class GoogleDocumentGateway(DocumentGateway):
 
     @override
     async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot:
-        file = await self._files.get(source.file_id)
+        try:
+            file = await self._files.get(source.file_id)
+        except FilesError as exc:
+            raise DocumentGatewayError(
+                retryable=is_retryable_provider_status(exc.http_status),
+                http_status=exc.http_status,
+            ) from exc
         if file.parent_folder_id is None:
             raise UnsupportedSourceError
         if file.mime_type == MIME_DOC:
@@ -215,6 +242,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 == protected_structure_sha256
             ),
             brand_applied=not verify_brand or verify_brand_application(document, parsed),
+            revision_id=DocsRevisionId(_required_string(document, "revisionId")),
         )
 
     @override
@@ -228,9 +256,18 @@ class GoogleDocumentGateway(DocumentGateway):
         *,
         expected_modified_time: str,
         expected_revision_id: DocsRevisionId | None,
+        expected_parent_folder_id: FileId,
     ) -> bool:
-        file = await self._files.get(source.file_id)
+        try:
+            file = await self._files.get(source.file_id)
+        except FilesError as exc:
+            raise DocumentGatewayError(
+                retryable=is_retryable_provider_status(exc.http_status),
+                http_status=exc.http_status,
+            ) from exc
         if file.modified_time != expected_modified_time:
+            return False
+        if file.parent_folder_id != expected_parent_folder_id:
             return False
         if expected_revision_id is None:
             return True
@@ -290,7 +327,10 @@ class GoogleDocumentGateway(DocumentGateway):
         except FileNotInScopeError as exc:
             raise UnsupportedSourceError from exc
         except FilesError as exc:
-            raise DocumentGatewayError from exc
+            raise DocumentGatewayError(
+                retryable=is_retryable_provider_status(exc.http_status),
+                http_status=exc.http_status,
+            ) from exc
         if destination.mime_type != MIME_FOLDER or not destination.can_add_children:
             raise UnsupportedSourceError
         return await asyncio.to_thread(
@@ -357,11 +397,16 @@ class GoogleDocumentGateway(DocumentGateway):
         draft: OutputDraft,
         result: dict[str, Any],
     ) -> None:
-        del operation_id, result
+        del operation_id
+        result_sha256 = _json_sha256(result)
         await asyncio.to_thread(
             self._update_properties_sync,
             draft.document_id,
-            {_PROP_STATE: _STATE_COMPLETE},
+            {
+                _PROP_STATE: _STATE_COMPLETE,
+                _PROP_RESULT_HASH: result_sha256,
+                _PROP_VERIFIED_REVISION_HASH: _revision_sha256(draft.revision_id),
+            },
         )
 
     def _copy_sync(
@@ -389,8 +434,12 @@ class GoogleDocumentGateway(DocumentGateway):
                     fields="id,name,parents,webViewLink,appProperties",
                 )
             )
-        except DocumentGatewayError:
-            return self._recover_ambiguous_create(operation_id, source_sha256)
+        except DocumentGatewayError as exc:
+            return self._recover_ambiguous_create(
+                operation_id,
+                source_sha256,
+                original_error=exc,
+            )
         return self._draft_from_file(raw, source_sha256=source_sha256)
 
     def _inspect_in_place_sync(
@@ -536,18 +585,24 @@ class GoogleDocumentGateway(DocumentGateway):
                     fields="id,name,parents,webViewLink,appProperties",
                 )
             )
-        except DocumentGatewayError:
-            return self._recover_ambiguous_create(operation_id, source_sha256)
+        except DocumentGatewayError as exc:
+            return self._recover_ambiguous_create(
+                operation_id,
+                source_sha256,
+                original_error=exc,
+            )
         return self._draft_from_file(raw, source_sha256=source_sha256)
 
     def _recover_ambiguous_create(
         self,
         operation_id: uuid.UUID,
         source_sha256: str,
+        *,
+        original_error: DocumentGatewayError,
     ) -> OutputDraft:
         recovered = self._recover_output_sync(operation_id)
         if recovered is None:
-            raise DocumentGatewayError
+            raise original_error
         if recovered.source_sha256 != source_sha256:
             raise DocumentGatewayError
         return recovered
@@ -612,6 +667,8 @@ class GoogleDocumentGateway(DocumentGateway):
                 properties, _PROP_MUTATION_BASE_REVISION_HASH
             ),
             completed=properties.get(_PROP_STATE) == _STATE_COMPLETE,
+            result_sha256=_optional_property(properties, _PROP_RESULT_HASH),
+            verified_revision_sha256=_optional_property(properties, _PROP_VERIFIED_REVISION_HASH),
             brand_warnings=(),
         )
 
@@ -700,6 +757,8 @@ class GoogleDocumentGateway(DocumentGateway):
             mutation_base_revision_sha256=draft.mutation_base_revision_sha256,
             completed=draft.completed,
             result=draft.result,
+            result_sha256=draft.result_sha256,
+            verified_revision_sha256=draft.verified_revision_sha256,
             brand_warnings=tuple(warnings),
         )
 
@@ -712,17 +771,32 @@ class GoogleDocumentGateway(DocumentGateway):
     ) -> OutputDraft:
         if draft.pending_mutation_sha256 not in {None, mutation_sha256}:
             raise IncompatiblePendingOutputError
-        if (
-            draft.pending_mutation_sha256 == mutation_sha256
-            and draft.mutation_base_revision_sha256 is not None
-            and _revision_sha256(draft.revision_id) != draft.mutation_base_revision_sha256
-        ):
-            self._update_properties_sync(
-                draft.document_id,
-                {_PROP_MUTATION: mutation_sha256},
-            )
-            return self._draft_with_mutation(draft, mutation_sha256)
+        marker_name = f"sarj-transform-copy-{mutation_sha256}"
+        document = self._get_document_sync(draft.document_id)
+        current_revision = DocsRevisionId(_required_string(document, "revisionId"))
+        if draft.pending_mutation_sha256 == mutation_sha256:
+            marker_range = _terminal_body_marker_range(document)
+            if marker_range is not None and _has_exact_named_range(
+                document, marker_name, marker_range
+            ):
+                self._update_properties_sync(
+                    draft.document_id,
+                    {_PROP_MUTATION: mutation_sha256},
+                )
+                return self._draft_with_mutation(
+                    draft,
+                    mutation_sha256,
+                    revision_id=current_revision,
+                )
+            if current_revision != required_revision_id:
+                raise SourceChangedError
         if requests:
+            if current_revision != required_revision_id:
+                raise SourceChangedError
+            marker_range = _terminal_body_marker_range(document)
+            if marker_range is None:
+                raise DocumentGatewayError(retryable=False)
+            expected_marker_range = _post_mutation_marker_range(marker_range, requests)
             self._update_properties_sync(
                 draft.document_id,
                 {
@@ -730,21 +804,39 @@ class GoogleDocumentGateway(DocumentGateway):
                     _PROP_MUTATION_BASE_REVISION_HASH: _revision_sha256(required_revision_id),
                 },
             )
-            self._execute_mutation_dict(
-                _google_http_request(
-                    _member(self._docs().documents(), "batchUpdate"),
-                    documentId=draft.document_id,
-                    body={
-                        "requests": requests,
-                        "writeControl": {"requiredRevisionId": required_revision_id},
-                    },
+            try:
+                self._execute_mutation_dict(
+                    _google_http_request(
+                        _member(self._docs().documents(), "batchUpdate"),
+                        documentId=draft.document_id,
+                        body={
+                            "requests": [
+                                {"createNamedRange": {"name": marker_name, "range": marker_range}},
+                                *requests,
+                            ],
+                            "writeControl": {"requiredRevisionId": required_revision_id},
+                        },
+                    )
                 )
-            )
+            except (DocumentGatewayError, ProviderDeadlineError) as exc:
+                document = self._get_document_sync(draft.document_id)
+                if _has_exact_named_range(document, marker_name, expected_marker_range):
+                    pass
+                elif document.get("revisionId") == required_revision_id:
+                    raise
+                else:
+                    raise SourceChangedError from exc
         self._update_properties_sync(
             draft.document_id,
             {_PROP_MUTATION: mutation_sha256},
         )
         document = self._get_document_sync(draft.document_id)
+        if requests and not _has_exact_named_range(
+            document,
+            marker_name,
+            _terminal_body_marker_range(document) or {},
+        ):
+            raise DocumentGatewayError
         return OutputDraft(
             output=draft.output,
             document_id=draft.document_id,
@@ -770,6 +862,26 @@ class GoogleDocumentGateway(DocumentGateway):
         verify_brand: bool,
     ) -> OutputVerification:
         output_document = self._get_document_sync(draft.document_id)
+        if source.markdown is not None:
+            rendered_markdown = rewrite_markdown(
+                source.markdown,
+                parse_markdown(source.markdown, title=source.title),
+                expected,
+            )
+            verification = verify_markdown_import(
+                output_document,
+                markdown_import_manifest(
+                    rendered_markdown,
+                    title=source.title,
+                    branded=verify_brand,
+                ),
+            )
+            return OutputVerification(
+                content_preserved=verification.content_preserved,
+                structure_preserved=verification.structure_preserved,
+                brand_applied=verification.brand_applied,
+                revision_id=DocsRevisionId(_required_string(output_document, "revisionId")),
+            )
         parsed = parse_google_document(output_document, title=expected.title)
         source_document = source.google_document
         structure_preserved = source_document is None or (
@@ -781,15 +893,21 @@ class GoogleDocumentGateway(DocumentGateway):
             content_preserved=parsed.semantic_sha256 == expected.semantic_sha256,
             structure_preserved=structure_preserved,
             brand_applied=not verify_brand or verify_brand_application(output_document, parsed),
+            revision_id=DocsRevisionId(_required_string(output_document, "revisionId")),
         )
 
     @staticmethod
-    def _draft_with_mutation(draft: OutputDraft, mutation_sha256: str) -> OutputDraft:
+    def _draft_with_mutation(
+        draft: OutputDraft,
+        mutation_sha256: str,
+        *,
+        revision_id: DocsRevisionId | None = None,
+    ) -> OutputDraft:
         return OutputDraft(
             output=draft.output,
             document_id=draft.document_id,
             tab_id=draft.tab_id,
-            revision_id=draft.revision_id,
+            revision_id=revision_id or draft.revision_id,
             source_sha256=draft.source_sha256,
             headers=draft.headers,
             logo_uri=draft.logo_uri,
@@ -799,20 +917,25 @@ class GoogleDocumentGateway(DocumentGateway):
             brand_warnings=draft.brand_warnings,
             completed=draft.completed,
             result=draft.result,
+            result_sha256=draft.result_sha256,
+            verified_revision_sha256=draft.verified_revision_sha256,
         )
 
     def _download_markdown_sync(self, file_id: FileId) -> str:
-        raw = self._execute_bytes(
-            self._drive().files().get_media(fileId=file_id, supportsAllDrives=True)
+        raw = self._execute_bounded_bytes(
+            self._drive().files().get_media(fileId=file_id, supportsAllDrives=True),
+            max_bytes=MAX_MARKDOWN_BYTES,
         )
-        if len(raw) > _MAX_MARKDOWN_BYTES:
-            raise UnsupportedSourceError
         try:
             return raw.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise UnsupportedSourceError from exc
 
     def _get_document_sync(self, file_id: FileId) -> dict[str, Any]:
+        # google-api-python-client materializes JSON responses before returning
+        # them and offers no streaming hook for documents.get. Keep the request
+        # field-complete for structural verification, then apply the strict tab,
+        # block, and UTF-16 limits in parse_google_document immediately.
         return self._execute_dict(
             _google_http_request(
                 _member(self._docs().documents(), "get"),
@@ -892,8 +1015,12 @@ class GoogleDocumentGateway(DocumentGateway):
     def _execute_dict(request: HttpRequest) -> dict[str, Any]:
         try:
             raw: object = execute_with_retry(request)
+        except ProviderDeadlineError:
+            raise
         except HttpError as exc:
-            raise DocumentGatewayError from exc
+            raise _gateway_error(exc) from exc
+        except (TimeoutError, ConnectionError, httplib2.ServerNotFoundError) as exc:
+            raise DocumentGatewayError(retryable=True) from exc
         if isinstance(raw, dict):
             return {str(key): value for key, value in raw.items()}
         raise DocumentGatewayError
@@ -902,8 +1029,12 @@ class GoogleDocumentGateway(DocumentGateway):
     def _execute_mutation_dict(request: HttpRequest) -> dict[str, Any]:
         try:
             raw: object = execute_mutation(request)
+        except ProviderDeadlineError:
+            raise
         except HttpError as exc:
-            raise DocumentGatewayError from exc
+            raise _gateway_error(exc) from exc
+        except (TimeoutError, ConnectionError, httplib2.ServerNotFoundError) as exc:
+            raise DocumentGatewayError(retryable=True) from exc
         if isinstance(raw, dict):
             return {str(key): value for key, value in raw.items()}
         raise DocumentGatewayError
@@ -912,11 +1043,51 @@ class GoogleDocumentGateway(DocumentGateway):
     def _execute_bytes(request: HttpRequest) -> bytes:
         try:
             raw: object = execute_with_retry(request)
+        except ProviderDeadlineError:
+            raise
         except HttpError as exc:
-            raise DocumentGatewayError from exc
+            raise _gateway_error(exc) from exc
+        except (TimeoutError, ConnectionError, httplib2.ServerNotFoundError) as exc:
+            raise DocumentGatewayError(retryable=True) from exc
         if isinstance(raw, bytes):
             return raw
         raise DocumentGatewayError
+
+    @staticmethod
+    def _execute_bounded_bytes(request: HttpRequest, *, max_bytes: int) -> bytes:
+        destination = BytesIO()
+        download = MediaIoBaseDownload(
+            destination,
+            request,
+            chunksize=_MARKDOWN_DOWNLOAD_CHUNK_BYTES,
+        )
+        done = False
+        while not done:
+            try:
+                status, done = execute_download_chunk_with_retry(download)
+            except ProviderDeadlineError:
+                raise
+            except HttpError as exc:
+                raise _gateway_error(exc) from exc
+            except (TimeoutError, ConnectionError, httplib2.ServerNotFoundError) as exc:
+                raise DocumentGatewayError(retryable=True) from exc
+            except ValueError as exc:
+                # Invalid Content-Length or Content-Range from the provider.
+                raise DocumentGatewayError(retryable=False) from exc
+            total_size = status.total_size if status is not None else None
+            if isinstance(total_size, int) and total_size > max_bytes:
+                raise SourceTooLargeError
+            if destination.tell() > max_bytes:
+                raise SourceTooLargeError
+        return destination.getvalue()
+
+
+def _gateway_error(exc: HttpError) -> DocumentGatewayError:
+    status = provider_http_status(exc)
+    return DocumentGatewayError(
+        retryable=status is None or is_retryable_provider_status(status),
+        http_status=status,
+    )
 
 
 @cache
@@ -959,6 +1130,11 @@ def _optional_property(properties: dict[str, Any], key: str) -> str | None:
 
 def _revision_sha256(revision_id: DocsRevisionId) -> str:
     return hashlib.sha256(revision_id.encode()).hexdigest()
+
+
+def _json_sha256(value: dict[str, Any]) -> str:
+    encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(encoded.encode()).hexdigest()
 
 
 def _first_tab_id(document: dict[str, Any]) -> DocsTabId:

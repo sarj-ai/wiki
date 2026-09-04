@@ -23,6 +23,11 @@ class OutputConflictError(DocumentTransformError):
     public_detail = "The existing output belongs to a different source revision"
 
 
+class OutputVerificationError(DocumentTransformError):
+    code = "output_verification_failed"
+    public_detail = "The transformed output did not pass lossless verification"
+
+
 class IncompatiblePendingOutputError(DocumentTransformError):
     code = "incompatible_pending_output"
     public_detail = "An incomplete output from an older transform needs review"
@@ -36,6 +41,16 @@ class ModelUnavailableError(DocumentTransformError):
 class DocumentGatewayError(DocumentTransformError):
     code = "document_provider_unavailable"
     public_detail = "Google Drive or Docs could not complete the transformation"
+
+    def __init__(
+        self,
+        *,
+        retryable: bool = True,
+        http_status: int | None = None,
+    ) -> None:
+        super().__init__(self.public_detail)
+        self.retryable = retryable
+        self.http_status = http_status
 
 
 class HeaderConflictError(DocumentTransformError):

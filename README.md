@@ -66,10 +66,11 @@ previous immutable Dammam image revision; a data rollback uses Dammam PITR or th
 export. Database migrations must remain backward compatible because the deployment workflow runs
 them before switching Cloud Run traffic.
 
-## Document Polish
+## Document Transform and Markdown Import
 
-Document Polish creates a branded Google Doc or Google Slides sibling from an existing Drive file
-or pasted Markdown. Copy mode is the default and never edits the source. Native Google Docs may
+Document Transform creates a branded Google Doc or Google Slides sibling from an existing Drive
+file. Import Markdown accepts pasted Markdown or a local UTF-8 `.md` file and creates a native
+Google Doc in the selected folder. Copy mode is the default and never edits the source. Native Google Docs may
 also be amended in place when the independently gated server capability is enabled; Drive version
 history remains available. Native Slides and PowerPoint are copy-only. Every run explicitly selects
 one of three modes:
@@ -94,12 +95,19 @@ derived from `theclaymethod/unslop` version 2.3.0 at commit
 cannot alter names, numbers, dates, citations, links, code, units, scope, negation, or force-bearing
 language.
 
-Inputs are bounded to 512 KiB of pasted Markdown, 500,000 UTF-16 text units, 750 blocks, and 50
-Google Docs tabs. Mutation plans are also bounded by request count and serialized bytes. Drive
+Inputs are bounded to exactly 512 KiB of UTF-8 Markdown bytes and 500,000 UTF-16 text units. Google Docs and
+Markdown allow at most 750 blocks and 50 Google Docs tabs; native Slides allow at most 2,000
+editable text shapes, 10,000 total elements, and 200 slides. Mutation plans are also bounded by
+request count and serialized bytes. Drive
 copies preserve unsupported rich structures. Markdown images, raw HTML, footnotes,
-strikethrough, nested quotations, and tilde code fences are rejected before output creation because
-the native converter cannot yet prove preservation. Markdown imports remain marked
-`structure_verification_required`. Native Google Doc outputs are re-read after mutation and checked
+strikethrough, nested quotations, and tilde code fences are rejected because the native converter
+cannot prove preservation; pasted Markdown is rejected before task creation, and Drive-hosted
+Markdown is rejected before output creation. Every Markdown mode first renders native headings,
+lists, tables, links, emphasis, quotations, code, and dividers into DOCX. Unslop-only uses a neutral
+unbranded theme, while `format` and `both` use the pinned Sarj theme. The converted Google Doc is
+re-read and checked against a normalized semantic import manifest; content, structure, list
+restarts, and branding mismatches become explicit review findings. Native Google Doc outputs are
+re-read after mutation and checked
 against the validated text plus a deterministic structural inventory before success is recorded.
 Native Slides use the same bounded text planner, but only plain single-run text shapes are editable.
 Bullets, links, mixed text runs, speaker notes, tables, charts, images, video, groups, masters,
@@ -117,11 +125,14 @@ The production QA policy uses Vertex AI in `global` with pinned Gemini models as
 judges. Their verdicts can fail a canary but cannot mutate user prose. Visual restyling and accepted
 text edits are deterministic, so clean prose is not rewritten without a factual-equivalence proof.
 
-The brand layer uses the immutable, hashed `sarj-2026-v3` manifest distilled from the canonical Sarj
+The brand layer uses the immutable, hashed `sarj-2026-v4` manifest distilled from the canonical Sarj
 design skill. It applies Nunito typography, Sarj heading sizes, the current `#392868` purple,
 left-aligned body text, margins, and consistent paragraph rhythm. Existing Docs headers, logos,
 footers, tabs, page numbers, and rich objects are preserved. Markdown imports receive a native DOCX
-header logo and footer page field before Google Docs conversion. The canonical logo is served from
+header logo and footer page field before Google Docs conversion. That DOCX is an intermediate Google
+import artifact: it declares the manifest's Nunito Latin font and Arial complex-script fallback but
+does not embed font binaries, so exact local PDF typography is not a supported portability claim. The
+canonical logo is served from
 `/brand/sarj-logo-light.png`; if unavailable, the task returns a `logo_unavailable` review finding
 instead of fabricating a placeholder or failing the formatting batch.
 
@@ -129,9 +140,13 @@ For presentations, the same manifest applies Nunito, role-specific sizes, and Sa
 plain standard placeholders whose effective style, safe font-size direction, disabled autofit, and
 light-background contrast can all be proven. Native level-zero placeholder inheritance and theme
 colors are resolved deterministically; custom, ambiguous, dark, or fit-sensitive text is preserved
-with a review finding. The pinned black logo is placed only in a collision-free corner on a proven
-light background; inherited placeholder templates do not count as rendered content. Formatting
-never asks a model to generate layout or Slides API operations.
+with a review finding. A non-Nunito effective font family is preserved rather than substituted.
+Master and layout identity, mixed text runs, charts and their data colors, imagery, object geometry,
+and slide order remain unchanged. Resolved, single-style BODY or OBJECT narrative text with at least
+80 normalized characters is flagged for visual review below the conservative 12 pt floor; that
+advisory never changes its font size. The pinned black logo is placed only in a collision-free corner
+on a proven light background; inherited placeholder templates do not count as rendered content.
+Formatting never asks a model to generate layout or Slides API operations.
 
 Recovered Codex and Claude requests for headings, lists, checklists, tables, links, quotations, code
 blocks, dividers, centered logo, hierarchy, spacing, bold table headers, and visual QA are covered.

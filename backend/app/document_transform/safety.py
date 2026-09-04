@@ -8,6 +8,10 @@ from types import MappingProxyType
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.schemas import TextPatch, TransformFinding, TransformPhase
 from app.document_transform.unslop import (
+    CUSTOM_URI_PATTERN,
+    HTML_ENTITY_PATTERN,
+    RFCISH_EMAIL_PATTERN,
+    SINGLE_QUOTED_SPAN_PATTERN,
     UnslopCandidate,
     expanded_deletion_span,
     scan_unslop_candidates,
@@ -15,8 +19,10 @@ from app.document_transform.unslop import (
 
 
 _PROTECTED_TOKEN = re.compile(
-    r"```[\s\S]*?```|`[^`\n]+`|https?://[^\s)>]+|"
+    r"```[\s\S]*?```|`[^`\n]+`|"
+    rf"{RFCISH_EMAIL_PATTERN}|{CUSTOM_URI_PATTERN}|"
     r"(?<![\w])(?:[$€£¥]\s*)?\d+(?:[.,:/-]\d+)*(?:\s?(?:%|[A-Za-z]{1,5}))?(?![\w])"
+    rf"|{HTML_ENTITY_PATTERN}"
     r"|\[[^\]\n]+\]\([^)\n]+\)|\[[0-9,\- ]+\]",
     re.MULTILINE,
 )
@@ -24,7 +30,7 @@ _FORCE_WORD = re.compile(
     r"\b(?:must|shall|should|may|might|cannot|can't|can|will|won't|not|never|no)\b",
     re.IGNORECASE,
 )
-_QUOTED_SPAN = re.compile(r'"[^"\n]+"|“[^”\n]+”')
+_QUOTED_SPAN = re.compile(rf'"[^"\n]+"|“[^”\n]+”|{SINGLE_QUOTED_SPAN_PATTERN}')
 _PROPER_NOUN = re.compile(r"\b(?:[A-Z][a-z]+|[A-Z]{2,}|[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*)\b")
 _SENTENCE = re.compile(r".*?(?:[.!?]+(?=\s+|$)|$)", re.DOTALL)
 _MAX_CHANGE_RATIO = MappingProxyType({TransformPhase.UNSLOP: 0.35, TransformPhase.FORMAT: 0.70})

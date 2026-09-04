@@ -8,6 +8,9 @@ from fastapi import APIRouter, Body, Depends, Header, HTTPException, Response, s
 
 from app.auth.dependencies import get_current_user
 from app.config import settings
+from app.document_transform.docx_renderer import validate_markdown_import
+from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
+from app.document_transform.ir import parse_markdown
 from app.document_transform.schemas import (
     DocumentTransformCapabilities,
     DocumentTransformRequest,
@@ -55,6 +58,9 @@ async def get_document_transform_capabilities(
     status_code=status.HTTP_202_ACCEPTED,
     operation_id="create_document_transform",
     responses={
+        status.HTTP_413_CONTENT_TOO_LARGE: {
+            "description": "Markdown input exceeds a bounded conversion limit"
+        },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": "In-place transformation is limited to native Google Docs"
         },
@@ -81,6 +87,17 @@ async def create_document_transform(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="In-place document transformation is disabled",
         )
+    if isinstance(payload.source, MarkdownSource):
+        try:
+            parse_markdown(payload.source.content, title=payload.source.name)
+            validate_markdown_import(payload.source.content, title=payload.source.name)
+        except SourceTooLargeError as exc:
+            raise HTTPException(status_code=413, detail=exc.public_detail) from exc
+        except UnsupportedSourceError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=exc.public_detail,
+            ) from exc
     started = monotonic()
     reservation = await tasks.create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,

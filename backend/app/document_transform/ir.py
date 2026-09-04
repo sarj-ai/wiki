@@ -9,13 +9,13 @@ import re
 from typing import Any
 
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
+from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.identifiers import DocsSegmentId, DocsTabId
 
 
 MAX_DOC_UTF16_UNITS = 500_000
 MAX_DOC_TABS = 50
 MAX_DOCUMENT_BLOCKS = 750
-MAX_DRIVE_MARKDOWN_BYTES = 2 * 1024 * 1024
 _MIN_TABLE_COLUMNS = 2
 
 
@@ -131,7 +131,11 @@ _LIST = re.compile(r"^\s*(?:[-*+] |\d+[.)] )(.*)$")
 
 
 def parse_markdown(content: str, *, title: str) -> DocumentIR:
-    if len(content.encode()) > MAX_DRIVE_MARKDOWN_BYTES:
+    try:
+        encoded = content.encode("utf-8", errors="strict")
+    except UnicodeEncodeError as exc:
+        raise UnsupportedSourceError from exc
+    if len(encoded) > MAX_MARKDOWN_BYTES:
         raise SourceTooLargeError
     lines = content.splitlines()
     if any(_looks_like_raw_html(line) for line in lines):

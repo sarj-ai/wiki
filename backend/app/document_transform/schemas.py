@@ -18,6 +18,7 @@ from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
     CURRENT_BRAND_PROFILE_ID,
 )
+from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.identifiers import BrandProfileId, DocsRevisionId, FileId, ModelId
 
 
@@ -43,7 +44,10 @@ class OutputStrategy(StrEnum):
     IN_PLACE = "in_place"
 
 
-MarkdownContent = Annotated[str, StringConstraints(min_length=1, max_length=524_288)]
+MarkdownContent = Annotated[
+    str,
+    StringConstraints(min_length=1, max_length=MAX_MARKDOWN_BYTES),
+]
 OutputName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
 
 
@@ -69,6 +73,21 @@ class MarkdownSource(StrictTransformModel):
     content: MarkdownContent
     name: OutputName
     destination_folder_id: FileId
+
+    @field_validator("content")
+    @classmethod
+    def bound_utf8_content(cls, value: str) -> str:
+        try:
+            size = len(value.encode("utf-8", errors="strict"))
+        except UnicodeEncodeError as exc:
+            code = "markdown_utf8"
+            msg = "Markdown must be valid UTF-8 text"
+            raise PydanticCustomError(code, msg) from exc
+        if size > MAX_MARKDOWN_BYTES:
+            code = "markdown_bytes"
+            msg = "Markdown must not exceed {limit} UTF-8 bytes"
+            raise PydanticCustomError(code, msg, {"limit": MAX_MARKDOWN_BYTES})
+        return value
 
 
 TransformSource = Annotated[DriveFileSource | MarkdownSource, Field(discriminator="kind")]
@@ -180,6 +199,7 @@ class InPlaceCheckpointStage(StrEnum):
 
 class InPlaceCheckpoint(StrictTransformModel):
     version: Literal[2] = 2
+    kind: Literal["in_place"] = "in_place"
     document_id: FileId
     source_title: str
     source_sha256: str
@@ -211,3 +231,69 @@ class InPlaceCheckpoint(StrictTransformModel):
     model_ids: list[ModelId]
     headers: dict[str, str] = Field(default_factory=dict)
     changed: bool
+
+
+class CopyCheckpointStage(StrEnum):
+    PLANNED = "planned"
+    CREATING = "creating"
+    CREATED = "created"
+    VERIFIED = "verified"
+
+
+class CopyCheckpoint(StrictTransformModel):
+    """Durable copy plan and output attestation.
+
+    A ``creating`` checkpoint is deliberately ambiguous: retries may recover its
+    output, but must never issue another create whose first outcome is unknown.
+    """
+
+    version: Literal[1] = 1
+    kind: Literal["copy"] = "copy"
+    source_title: str
+    source_sha256: str
+    source_modified_time: str | None
+    source_revision_id: DocsRevisionId | None
+    source_parent_folder_id: FileId
+    brand_profile_id: BrandProfileId
+    brand_profile_sha256: str
+    pipeline_version: str
+    request_builder_version: str
+    unslop_catalog_sha256: str
+    original_semantic_sha256: str
+    expected_semantic_sha256: str
+    plan_sha256: str
+    manifest_sha256: str
+    logo_sha256: str | None
+    output_name: OutputName
+    replacements: dict[str, str]
+    findings: list[TransformFinding]
+    applied_patch_count: int = Field(ge=0)
+    deterministic_patch_count: int = Field(ge=0)
+    model_patch_count: int = Field(ge=0)
+    llm_invoked: bool
+    model_ids: list[ModelId]
+    stage: CopyCheckpointStage
+    output: DocumentOutput | None = None
+    output_revision_id: DocsRevisionId | None = None
+    result: DocumentTransformResult | None = None
+
+    @model_validator(mode="after")
+    def validate_stage(self) -> Self:
+        has_output = self.output is not None and self.output_revision_id is not None
+        if self.stage in {CopyCheckpointStage.CREATED, CopyCheckpointStage.VERIFIED}:
+            if not has_output:
+                msg = "created copy checkpoint requires an output and revision"
+                raise ValueError(msg)
+        elif self.output is not None or self.output_revision_id is not None:
+            msg = "pre-create copy checkpoint cannot contain an output"
+            raise ValueError(msg)
+        if (self.stage is CopyCheckpointStage.VERIFIED) != (self.result is not None):
+            msg = "only a verified copy checkpoint contains a result"
+            raise ValueError(msg)
+        return self
+
+
+DocumentTransformCheckpoint = Annotated[
+    InPlaceCheckpoint | CopyCheckpoint,
+    Field(discriminator="kind"),
+]

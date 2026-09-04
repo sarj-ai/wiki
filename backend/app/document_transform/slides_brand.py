@@ -51,7 +51,12 @@ _SUPPORTED_PLACEHOLDER_TYPES = frozenset(
 )
 _MIN_TEXT_CONTRAST = 4.5
 _SRGB_LINEAR_THRESHOLD = 0.04045
-_PLACEHOLDER_STYLE_LEVELS = 9
+_PLACEHOLDER_STYLE_LEVEL_COUNTS = frozenset({8, 9})
+_CANVAS_ASPECT_REL_TOLERANCE = 1e-6
+# Advisory only: long narrative text below this floor warrants human review, never resizing.
+_MIN_NARRATIVE_TEXT_SIZE_PT = 12
+_MIN_NARRATIVE_TEXT_CHARS = 80
+_NARRATIVE_PLACEHOLDER_TYPES = frozenset({"BODY", "OBJECT"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +149,11 @@ class _LogoPlan(NamedTuple):
 class _LogoDecision(NamedTuple):
     request: dict[str, Any] | None
     placement: _Rect | None
+    finding: TransformFinding | None
+
+
+class _LogoRemovalDecision(NamedTuple):
+    request: dict[str, Any] | None
     finding: TransformFinding | None
 
 
@@ -446,6 +456,14 @@ def _style_targets(
                 targets.append(target)
             if finding is not None:
                 findings.append(finding)
+            small_text_finding = _small_narrative_text_finding(
+                element,
+                page_background=page_background,
+                theme_colors=theme_colors,
+                object_ids=object_ids,
+            )
+            if small_text_finding is not None:
+                findings.append(small_text_finding)
     return _StyleScan(tuple(targets), findings)
 
 
@@ -542,6 +560,71 @@ def _style_eligibility(
     )
 
 
+def _small_narrative_text_finding(
+    element: dict[str, Any],
+    *,
+    page_background: str | None,
+    theme_colors: dict[str, str] | None,
+    object_ids: dict[str, tuple[dict[str, Any], ...]],
+) -> TransformFinding | None:
+    object_id = _required_string(element, "objectId")
+    shape = element.get("shape")
+    if not isinstance(shape, dict) or _placeholder_type(shape) not in _NARRATIVE_PLACEHOLDER_TYPES:
+        return None
+    text = shape.get("text")
+    elements = text.get("textElements") if isinstance(text, dict) else None
+    if not isinstance(elements, list):
+        return None
+    plain_text = parse_plain_slide_text(elements)
+    if plain_text is None or len(" ".join(plain_text.text.split())) < _MIN_NARRATIVE_TEXT_CHARS:
+        return None
+    ancestors = _placeholder_ancestors(shape, object_ids=object_ids)
+    if ancestors is None:
+        return None
+    inherited_styles = _inherited_text_styles(ancestors)
+    if inherited_styles is None:
+        return None
+    autofit = _inherited_shape_property(element, ancestors=ancestors, key="autofit")
+    if not isinstance(autofit, dict) or autofit.get("autofitType") != "NONE":
+        return None
+    if not isinstance(plain_text.style, dict):
+        return None
+    style = _effective_text_style(
+        {str(key): value for key, value in plain_text.style.items()},
+        inherited_styles=inherited_styles,
+    )
+    if style.get("link") is not None:
+        return None
+    observed = _canonical_style(style, theme_colors=theme_colors)
+    font_family = observed["fontFamily"]
+    font_size = observed["fontSizePt"]
+    color = observed["color"]
+    if (
+        not isinstance(font_family, str)
+        or isinstance(font_size, bool)
+        or not isinstance(font_size, int | float)
+        or font_size >= _MIN_NARRATIVE_TEXT_SIZE_PT
+        or not isinstance(color, str)
+    ):
+        return None
+    background = _effective_shape_background(
+        element,
+        ancestors=ancestors,
+        page_background=page_background,
+        theme_colors=theme_colors,
+    )
+    if background is None:
+        return None
+    text_background = _text_background(
+        style,
+        fallback=background,
+        theme_colors=theme_colors,
+    )
+    if text_background is None or _contrast_ratio(color, text_background) < _MIN_TEXT_CONTRAST:
+        return None
+    return _small_text_finding(object_id)
+
+
 def _target_style_run(
     plain_text: PlainSlideText,
     *,
@@ -562,7 +645,16 @@ def _target_style_run(
     observed_brand = _canonical_style(style, theme_colors=theme_colors)
     if any(observed_brand[key] is None for key in ("fontFamily", "fontSizePt", "color")):
         return _StyleRunDecision(None, _inherited_style_finding(object_id))
-    desired_size = _canonical_style(desired_style)["fontSizePt"]
+    desired_brand = _canonical_style(desired_style)
+    desired_family = desired_brand["fontFamily"]
+    observed_family = observed_brand["fontFamily"]
+    if (
+        not isinstance(desired_family, str)
+        or not isinstance(observed_family, str)
+        or desired_family.casefold() != observed_family.casefold()
+    ):
+        return _StyleRunDecision(None, _fit_unresolved_finding(object_id))
+    desired_size = desired_brand["fontSizePt"]
     observed_size = observed_brand["fontSizePt"]
     if (
         not isinstance(desired_size, int | float)
@@ -666,10 +758,15 @@ def _inherited_level_zero_style(value: object) -> dict[str, Any] | None:
     single_paragraph_style = _single_paragraph_inherited_style(value)
     if single_paragraph_style is not None:
         return single_paragraph_style
-    if not isinstance(value, list) or len(value) != _PLACEHOLDER_STYLE_LEVELS * 2:
+    if (
+        not isinstance(value, list)
+        or len(value) % 2 != 0
+        or len(value) // 2 not in _PLACEHOLDER_STYLE_LEVEL_COUNTS
+    ):
         return None
+    level_count = len(value) // 2
     level_zero_style: dict[str, Any] | None = None
-    for level in range(_PLACEHOLDER_STYLE_LEVELS):
+    for level in range(level_count):
         paragraph_element = value[level * 2]
         run_element = value[level * 2 + 1]
         if not isinstance(paragraph_element, dict) or not isinstance(run_element, dict):
@@ -1184,7 +1281,18 @@ def _logo_requests(
     for slide in slides:
         background = _effective_page_background(presentation, slide)
         if background is None or _contrast_ratio("#000000", background) < _MIN_TEXT_CONTRAST:
-            findings.append(_logo_contrast_finding(_required_string(slide, "objectId")))
+            slide_id = _required_string(slide, "objectId")
+            removal, removal_finding = _unsafe_contrast_logo_removal(
+                slide,
+                logo_uri=logo_uri,
+                layout=layout,
+                object_ids=object_ids,
+            )
+            if removal is not None:
+                requests.append(removal)
+            if removal_finding is not None:
+                findings.append(removal_finding)
+            findings.append(_logo_contrast_finding(slide_id))
             continue
         try:
             inherited_elements = _inherited_page_elements(presentation, slide)
@@ -1207,25 +1315,69 @@ def _logo_requests(
     return _LogoPlan(requests, placements, findings)
 
 
+def _unsafe_contrast_logo_removal(
+    slide: dict[str, Any],
+    *,
+    logo_uri: str,
+    layout: _LogoLayout,
+    object_ids: dict[str, tuple[dict[str, Any], ...]],
+) -> _LogoRemovalDecision:
+    slide_id = _required_string(slide, "objectId")
+    logo_id = sarj_logo_object_id(slide_id)
+    existing = [
+        element for element in _top_level_elements(slide) if element.get("objectId") == logo_id
+    ]
+    occurrences = object_ids.get(logo_id, ())
+    if not occurrences:
+        return _LogoRemovalDecision(None, None)
+    if len(occurrences) != 1 or len(existing) != 1:
+        return _LogoRemovalDecision(None, _logo_id_collision_finding(slide_id))
+    if not _element_geometry_is_safe(existing[0], layout=layout):
+        return _LogoRemovalDecision(None, _unsafe_geometry_finding(slide_id))
+    bounds = _element_bounds(existing[0])
+    if (
+        bounds is None
+        or not any(_rect_close(bounds, candidate) for candidate in layout.candidates)
+        or not _existing_logo_is_exact(
+            existing[0],
+            logo_uri=logo_uri,
+            placement=bounds,
+        )
+    ):
+        return _LogoRemovalDecision(None, _logo_id_collision_finding(slide_id))
+    return _LogoRemovalDecision({"deleteObject": {"objectId": logo_id}}, None)
+
+
 def _logo_layout(presentation: dict[str, Any]) -> _LogoLayout:
     page_width, page_height = _page_size(presentation)
+    slides = CURRENT_BRAND_MANIFEST.slides
+    if not math.isclose(
+        page_width / page_height,
+        slides.canvas_width / slides.canvas_height,
+        rel_tol=_CANVAS_ASPECT_REL_TOLERANCE,
+        abs_tol=0,
+    ):
+        raise UnsupportedSourceError
     asset_width = CURRENT_BRAND_MANIFEST.assets.logo_pixel_width
     asset_height = CURRENT_BRAND_MANIFEST.assets.logo_pixel_height
-    if asset_width is None or asset_height is None:
+    header = CURRENT_BRAND_MANIFEST.document.header
+    if asset_width is None or asset_height is None or header is None:
         raise UnsupportedSourceError
-    width = 52.0
-    height = width * asset_height / asset_width
-    inset = float(CURRENT_BRAND_MANIFEST.slides.safe_inset)
+    logo_scale = min(header.logo_width_pt / asset_width, header.logo_height_pt / asset_height)
+    width = asset_width * logo_scale
+    height = asset_height * logo_scale
+    inset_x = slides.safe_inset * page_width / slides.canvas_width
+    inset_y = slides.safe_inset * page_height / slides.canvas_height
     return _LogoLayout(
         page_width=page_width,
         page_height=page_height,
         width=width,
         height=height,
         candidates=(
-            _Rect(page_width - inset - width, inset, width, height),
-            _Rect(page_width - inset - width, page_height - inset - height, width, height),
-            _Rect(inset, page_height - inset - height, width, height),
-            _Rect(inset, inset, width, height),
+            _Rect(page_width - inset_x - width, inset_y, width, height),
+            _Rect(page_width - inset_x - width, page_height - inset_y - height, width, height),
+            _Rect(inset_x, page_height - inset_y - height, width, height),
+            _Rect(inset_x, inset_y, width, height),
         ),
     )
 
@@ -1339,8 +1491,36 @@ def _existing_logo_is_exact(
         isinstance(image, dict)
         and image.get("sourceUrl") == logo_uri
         and _image_appearance_is_default(image.get("imageProperties"))
+        and _logo_transform_is_exact(element, placement=placement)
         and bounds is not None
         and _rect_close(bounds, placement)
+    )
+
+
+def _logo_transform_is_exact(element: dict[str, Any], *, placement: _Rect) -> bool:
+    size = element.get("size")
+    transform = element.get("transform")
+    if not isinstance(size, dict) or not isinstance(transform, dict):
+        return False
+    width = _dimension_points(size.get("width"))
+    height = _dimension_points(size.get("height"))
+    unit = transform.get("unit", "EMU")
+    factor = 1 / _EMU_PER_POINT if unit == "EMU" else 1.0 if unit == "PT" else None
+    affine = _transform_values(transform)
+    if width is None or height is None or factor is None or affine is None:
+        return False
+    unscaled = _Rect(
+        left=affine.translate_x * factor,
+        top=affine.translate_y * factor,
+        width=width,
+        height=height,
+    )
+    return (
+        math.isclose(affine.scale_x, 1.0, abs_tol=1e-9)
+        and math.isclose(affine.scale_y, 1.0, abs_tol=1e-9)
+        and math.isclose(affine.shear_x, 0.0, abs_tol=1e-9)
+        and math.isclose(affine.shear_y, 0.0, abs_tol=1e-9)
+        and _rect_close(unscaled, placement)
     )
 
 
@@ -1752,6 +1932,16 @@ def _logo_contrast_finding(slide_id: str) -> TransformFinding:
         code="slide_logo_contrast_unresolved",
         block_id=slide_id,
         detail="The black Sarj logo was skipped because background contrast could not be proven",
+    )
+
+
+def _small_text_finding(object_id: str) -> TransformFinding:
+    return TransformFinding(
+        code="slide_text_too_small",
+        block_id=object_id,
+        detail=(
+            "Long narrative text below 12 pt was preserved unchanged and flagged for visual review"
+        ),
     )
 
 

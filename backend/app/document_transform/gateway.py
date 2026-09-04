@@ -46,6 +46,8 @@ class OutputDraft:
     brand_warnings: tuple[str, ...] = ()
     completed: bool = False
     result: dict[str, Any] | None = None
+    result_sha256: str | None = None
+    verified_revision_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +55,7 @@ class OutputVerification:
     content_preserved: bool
     structure_preserved: bool
     brand_applied: bool = True
+    revision_id: DocsRevisionId | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +92,7 @@ class DocumentGateway(ABC):
         *,
         expected_modified_time: str,
         expected_revision_id: DocsRevisionId | None,
+        expected_parent_folder_id: FileId,
     ) -> bool: ...
 
     async def inspect_in_place(

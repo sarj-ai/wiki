@@ -408,6 +408,39 @@ def test_parser_enforces_slide_text_block_and_element_caps(
         parse_google_presentation(presentation, title="Too many elements")
 
 
+@pytest.mark.parametrize("block_count", [1_062, slides_ir.MAX_PRESENTATION_BLOCKS])
+def test_parser_accepts_dense_decks_within_the_editable_block_cap(block_count: int) -> None:
+    presentation = _presentation()
+    presentation["slides"] = [
+        {
+            "objectId": "dense-slide",
+            "pageElements": [
+                _text_shape(f"dense-text-{index}", "Dense cell") for index in range(block_count)
+            ],
+        }
+    ]
+
+    parsed = parse_google_presentation(presentation, title="Dense deck")
+
+    assert len(parsed.document.blocks) == block_count
+
+
+def test_parser_rejects_decks_over_the_editable_block_cap() -> None:
+    presentation = _presentation()
+    presentation["slides"] = [
+        {
+            "objectId": "over-limit-slide",
+            "pageElements": [
+                _text_shape(f"over-limit-text-{index}", "Dense cell")
+                for index in range(slides_ir.MAX_PRESENTATION_BLOCKS + 1)
+            ],
+        }
+    ]
+
+    with pytest.raises(SourceTooLargeError):
+        parse_google_presentation(presentation, title="Over-limit deck")
+
+
 def test_parser_rejects_duplicate_or_missing_native_ids() -> None:
     duplicate = _presentation()
     duplicate["slides"][1]["objectId"] = "slide-1"

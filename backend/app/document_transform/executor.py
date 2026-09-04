@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 import hashlib
 import json
 from types import MappingProxyType
@@ -11,16 +11,16 @@ from app.document_transform.brand import (
     SarjBrandProfile,
     build_copy_mutations,
     build_copy_text_mutations,
-    build_markdown_mutations,
     mutation_sha256,
 )
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
-from app.document_transform.docx_renderer import render_markdown_docx
+from app.document_transform.docx_renderer import markdown_import_manifest, render_markdown_docx
 from app.document_transform.errors import (
     DocumentGatewayError,
     InPlaceNeedsReviewError,
     InPlaceNotAllowedError,
     OutputConflictError,
+    OutputVerificationError,
     SourceChangedError,
     UnsupportedSourceError,
 )
@@ -33,16 +33,18 @@ from app.document_transform.gateway import (
     TabHeader,
 )
 from app.document_transform.ir import (
-    BlockKind,
     DocumentIR,
     parse_google_document,
     parse_markdown,
     rewrite_markdown,
 )
 from app.document_transform.models import PatchGenerator
-from app.document_transform.planner import TextTransformPlanner
+from app.document_transform.planner import TextTransformPlanner, TransformOutcome
 from app.document_transform.schemas import (
+    CopyCheckpoint,
+    CopyCheckpointStage,
     DocumentOutput,
+    DocumentTransformCheckpoint,
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
@@ -58,7 +60,7 @@ from app.document_transform.unslop import (
     UNSLOP_UPSTREAM_COMMIT,
     UNSLOP_UPSTREAM_VERSION,
 )
-from app.identifiers import DocsRevisionId, DocsSegmentId, ModelId, TaskId
+from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, TaskId
 
 
 PIPELINE_VERSION = "document-transform-v3"
@@ -77,17 +79,26 @@ class AppliedValidation:
     protected_content_preserved: bool
     structure_preserved: bool
     findings: tuple[TransformFinding, ...]
+    revision_id: DocsRevisionId
 
 
-class InPlaceCheckpointStore(Protocol):
+class DocumentTransformCheckpointStore(Protocol):
     async def save_document_transform_checkpoint(
         self,
         task_id: TaskId,
         *,
         lease_token: uuid.UUID,
         expected_generation: int,
-        checkpoint: InPlaceCheckpoint,
+        checkpoint: DocumentTransformCheckpoint,
     ) -> int: ...
+
+    async def record_resource(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        resource_id: FileId,
+    ) -> None: ...
 
 
 class DocumentTransformExecutor:
@@ -99,10 +110,10 @@ class DocumentTransformExecutor:
         brand: SarjBrandProfile | None = None,
         allow_format_text_edits: bool = False,
         logo_bytes: bytes | None = None,
-        checkpoint_store: InPlaceCheckpointStore | None = None,
+        checkpoint_store: DocumentTransformCheckpointStore | None = None,
         task_id: TaskId | None = None,
         lease_token: uuid.UUID | None = None,
-        checkpoint: InPlaceCheckpoint | None = None,
+        checkpoint: DocumentTransformCheckpoint | None = None,
         checkpoint_generation: int = 0,
     ) -> None:
         self._gateway = gateway
@@ -133,43 +144,91 @@ class DocumentTransformExecutor:
             raise UnsupportedSourceError
         if request.output_strategy is OutputStrategy.IN_PLACE:
             return await self._execute_in_place(operation_id=operation_id, request=request)
+        return await self._execute_copy(operation_id=operation_id, request=request)
+
+    async def _execute_copy(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+    ) -> DocumentTransformResult:
         snapshot = await self._load_source(request)
         original = _to_ir(snapshot)
         source_sha256 = _source_sha256(snapshot, original)
         recovered = await self._gateway.recover_output(operation_id)
-        if recovered is not None:
-            if recovered.source_sha256 != source_sha256:
+        checkpoint = self._copy_checkpoint_or_none()
+        if checkpoint is None:
+            if recovered is not None:
+                # Legacy/incomplete outputs without a durable plan cannot be
+                # re-attested safely and must never trigger a fresh model plan.
                 raise OutputConflictError
-            if recovered.completed:
-                if recovered.result is not None:
-                    return DocumentTransformResult.model_validate(recovered.result)
-                return self._recovered_completed_result(
-                    operation_id=operation_id,
+            outcome = await self._planner.transform(original, request)
+            checkpoint = await self._save_copy_checkpoint(
+                _new_copy_checkpoint(
                     request=request,
+                    snapshot=snapshot,
+                    original=original,
+                    outcome=outcome,
                     source_sha256=source_sha256,
-                    draft=recovered,
-                )
-
-        outcome = await self._planner.transform(original, request)
-        findings = list(outcome.findings)
-        if snapshot.markdown is not None:
-            findings.extend(_markdown_fidelity_findings(snapshot))
-            findings.append(
-                TransformFinding(
-                    code="structure_verification_required",
-                    detail=(
-                        "The native Google Doc was created, but Markdown import structure "
-                        "requires review until output round-trip verification is available"
+                    model_ids=(
+                        [ModelId(value) for value in self._generator.model_ids]
+                        if outcome.llm_invoked
+                        else []
+                    ),
+                    logo_sha256=(
+                        hashlib.sha256(self._logo_bytes).hexdigest()
+                        if self._logo_bytes is not None
+                        else None
                     ),
                 )
             )
-            if request.mode is not TransformMode.UNSLOP and self._logo_bytes is None:
-                findings.append(
-                    TransformFinding(
-                        code="logo_unavailable",
-                        detail="Typography and spacing were applied, but the Sarj logo was unavailable",
-                    )
+        else:
+            _validate_copy_checkpoint(
+                checkpoint,
+                request=request,
+                snapshot=snapshot,
+                original=original,
+                source_sha256=source_sha256,
+                current_logo_sha256=(
+                    hashlib.sha256(self._logo_bytes).hexdigest()
+                    if self._logo_bytes is not None
+                    else None
+                ),
+            )
+            outcome = _copy_checkpoint_outcome(checkpoint, original)
+
+        if recovered is not None and (
+            recovered.source_sha256 != source_sha256
+            or (
+                checkpoint.output is not None
+                and recovered.output.file_id != checkpoint.output.file_id
+            )
+        ):
+            raise OutputConflictError
+        if checkpoint.stage is CopyCheckpointStage.VERIFIED:
+            if recovered is None or checkpoint.result is None:
+                raise OutputConflictError
+            return await self._complete_verified_copy(
+                operation_id=operation_id,
+                request=request,
+                snapshot=snapshot,
+                expected=outcome.document,
+                checkpoint=checkpoint,
+                draft=recovered,
+            )
+
+        findings = list(outcome.findings)
+        if (
+            snapshot.markdown is not None
+            and request.mode is not TransformMode.UNSLOP
+            and self._logo_bytes is None
+        ):
+            findings.append(
+                TransformFinding(
+                    code="logo_unavailable",
+                    detail="Typography and spacing were applied, but the Sarj logo was unavailable",
                 )
+            )
         _preflight_native_mutation_budget(
             request=request,
             snapshot=snapshot,
@@ -178,31 +237,59 @@ class DocumentTransformExecutor:
             brand=self._brand,
         )
         await self._require_unchanged_drive_source(request, snapshot)
-        draft = recovered or await self._create_output(
-            operation_id=operation_id,
-            request=request,
-            snapshot=snapshot,
-            source_sha256=source_sha256,
-            original=original,
-            transformed=outcome.document,
-        )
-        if request.mode is TransformMode.UNSLOP:
-            prepared_draft = draft
-            mutations = (
-                build_copy_text_mutations(original, outcome.document)
-                if snapshot.media_type == "application/vnd.google-apps.document"
-                else build_markdown_mutations(
-                    outcome.document,
-                    tab_id=draft.tab_id,
-                    profile=self._brand,
-                    headers=(),
-                    logo_uri="",
-                    branded=False,
+        if recovered is None:
+            if checkpoint.stage is CopyCheckpointStage.CREATING:
+                # The preceding create may have committed even when Drive search has
+                # not indexed the operation property yet.  Never issue a second create.
+                raise DocumentGatewayError(retryable=True)
+            if checkpoint.stage is not CopyCheckpointStage.PLANNED:
+                raise OutputConflictError
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"stage": CopyCheckpointStage.CREATING})
+            )
+            draft = await self._create_output(
+                operation_id=operation_id,
+                request=request,
+                snapshot=snapshot,
+                source_sha256=source_sha256,
+                original=original,
+                transformed=outcome.document,
+                output_name=checkpoint.output_name,
+            )
+            await self._record_copy_resource(draft.output.file_id)
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(
+                    update={
+                        "stage": CopyCheckpointStage.CREATED,
+                        "output": draft.output,
+                        "output_revision_id": draft.revision_id,
+                    }
                 )
             )
-        elif snapshot.markdown is not None:
+        else:
+            draft = recovered
+            if checkpoint.stage not in {
+                CopyCheckpointStage.CREATING,
+                CopyCheckpointStage.CREATED,
+            }:
+                raise OutputConflictError
+            if checkpoint.stage is CopyCheckpointStage.CREATING:
+                await self._record_copy_resource(draft.output.file_id)
+                checkpoint = await self._save_copy_checkpoint(
+                    checkpoint.model_copy(
+                        update={
+                            "stage": CopyCheckpointStage.CREATED,
+                            "output": draft.output,
+                            "output_revision_id": draft.revision_id,
+                        }
+                    )
+                )
+        if snapshot.markdown is not None:
             prepared_draft = draft
             mutations = []
+        elif request.mode is TransformMode.UNSLOP:
+            prepared_draft = draft
+            mutations = build_copy_text_mutations(original, outcome.document)
         else:
             prepared_draft = await self._gateway.prepare_brand_shell(
                 operation_id=operation_id,
@@ -215,23 +302,12 @@ class DocumentTransformExecutor:
                 TransformFinding(code=code, detail=_brand_warning_detail(code))
                 for code in prepared_draft.brand_warnings
             )
-            mutations = (
-                build_copy_mutations(
-                    original,
-                    outcome.document,
-                    profile=self._brand,
-                    headers=prepared_draft.headers,
-                    logo_uri=prepared_draft.logo_uri,
-                )
-                if isinstance(request.source, DriveFileSource)
-                and snapshot.media_type == "application/vnd.google-apps.document"
-                else build_markdown_mutations(
-                    outcome.document,
-                    tab_id=prepared_draft.tab_id,
-                    profile=self._brand,
-                    headers=prepared_draft.headers,
-                    logo_uri=prepared_draft.logo_uri,
-                )
+            mutations = build_copy_mutations(
+                original,
+                outcome.document,
+                profile=self._brand,
+                headers=prepared_draft.headers,
+                logo_uri=prepared_draft.logo_uri,
             )
         applied = await self._gateway.apply_requests_once(
             operation_id=operation_id,
@@ -248,6 +324,7 @@ class DocumentTransformExecutor:
             draft=applied,
             transform_findings=outcome.findings,
         )
+        applied = replace(applied, revision_id=applied_validation.revision_id)
         findings.extend(applied_validation.findings)
         validation = ValidationSummary(
             source_unchanged=True,
@@ -263,9 +340,7 @@ class DocumentTransformExecutor:
             applied_patch_count=outcome.applied_count,
             findings=findings,
             validation=validation,
-            model_ids=[ModelId(value) for value in self._generator.model_ids]
-            if outcome.llm_invoked
-            else [],
+            model_ids=checkpoint.model_ids,
             tool_versions={
                 "unslop_catalog_sha256": UNSLOP_CATALOG_SHA256,
                 "unslop_commit": UNSLOP_UPSTREAM_COMMIT,
@@ -278,12 +353,130 @@ class DocumentTransformExecutor:
             deterministic_patch_count=outcome.deterministic_count,
             model_patch_count=outcome.model_count,
             llm_invoked=outcome.llm_invoked,
+            output_revision_id=applied.revision_id,
         )
-        await self._gateway.complete(
+        checkpoint = await self._save_copy_checkpoint(
+            checkpoint.model_copy(
+                update={
+                    "stage": CopyCheckpointStage.VERIFIED,
+                    "output": applied.output,
+                    "output_revision_id": applied.revision_id,
+                    "result": result,
+                }
+            )
+        )
+        return await self._complete_verified_copy(
             operation_id=operation_id,
+            request=request,
+            snapshot=snapshot,
+            expected=outcome.document,
+            checkpoint=checkpoint,
             draft=applied,
-            result=result.model_dump(mode="json"),
         )
+
+    def _copy_checkpoint_or_none(self) -> CopyCheckpoint | None:
+        checkpoint = self._checkpoint
+        if checkpoint is None:
+            return None
+        if not isinstance(checkpoint, CopyCheckpoint):
+            raise OutputConflictError
+        return checkpoint
+
+    async def _save_copy_checkpoint(self, checkpoint: CopyCheckpoint) -> CopyCheckpoint:
+        if self._checkpoint_store is None:
+            self._checkpoint = checkpoint
+            return checkpoint
+        if self._task_id is None or self._lease_token is None:
+            raise DocumentGatewayError
+        self._checkpoint_generation = (
+            await self._checkpoint_store.save_document_transform_checkpoint(
+                self._task_id,
+                lease_token=self._lease_token,
+                expected_generation=self._checkpoint_generation,
+                checkpoint=checkpoint,
+            )
+        )
+        self._checkpoint = checkpoint
+        return checkpoint
+
+    async def _record_copy_resource(self, resource_id: FileId) -> None:
+        if self._checkpoint_store is None:
+            return
+        if self._task_id is None or self._lease_token is None:
+            raise DocumentGatewayError
+        await self._checkpoint_store.record_resource(
+            self._task_id,
+            lease_token=self._lease_token,
+            resource_id=resource_id,
+        )
+
+    async def _complete_verified_copy(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+        snapshot: SourceSnapshot,
+        expected: DocumentIR,
+        checkpoint: CopyCheckpoint,
+        draft: OutputDraft,
+    ) -> DocumentTransformResult:
+        result = checkpoint.result
+        if (
+            checkpoint.stage is not CopyCheckpointStage.VERIFIED
+            or checkpoint.output is None
+            or checkpoint.output_revision_id is None
+            or result is None
+            or draft.output.file_id != checkpoint.output.file_id
+        ):
+            raise OutputConflictError
+        await self._require_unchanged_drive_source(request, snapshot)
+        verification = await self._gateway.verify_output(
+            draft=draft,
+            source=snapshot,
+            expected=expected,
+            verify_brand=request.mode is not TransformMode.UNSLOP,
+        )
+        revision_id = verification.revision_id or draft.revision_id
+        if (
+            not verification.content_preserved
+            or not verification.structure_preserved
+            or revision_id != checkpoint.output_revision_id
+        ):
+            raise OutputVerificationError
+        serialized_result = result.model_dump(mode="json")
+        expected_result_sha256 = _json_sha256(serialized_result)
+        expected_revision_sha256 = hashlib.sha256(revision_id.encode()).hexdigest()
+        if not draft.completed:
+            await self._gateway.complete(
+                operation_id=operation_id,
+                draft=replace(draft, revision_id=revision_id),
+                result=serialized_result,
+            )
+            recovered = await self._gateway.recover_output(operation_id)
+            if recovered is None or recovered.output.file_id != draft.output.file_id:
+                raise OutputConflictError
+            draft = recovered
+        durable = self._checkpoint_store is not None
+        digest_matches = (
+            draft.result_sha256 == expected_result_sha256
+            and draft.verified_revision_sha256 == expected_revision_sha256
+        )
+        legacy_fake_matches = draft.result == serialized_result
+        if not draft.completed or (not digest_matches and (durable or not legacy_fake_matches)):
+            raise OutputConflictError
+        final_verification = await self._gateway.verify_output(
+            draft=draft,
+            source=snapshot,
+            expected=expected,
+            verify_brand=request.mode is not TransformMode.UNSLOP,
+        )
+        final_revision = final_verification.revision_id or draft.revision_id
+        if (
+            not final_verification.content_preserved
+            or not final_verification.structure_preserved
+            or final_revision != checkpoint.output_revision_id
+        ):
+            raise OutputVerificationError
         return result
 
     async def _execute_in_place(
@@ -299,6 +492,8 @@ class DocumentTransformExecutor:
 
         snapshot = await self._gateway.load_drive_source(request.source)
         checkpoint = self._checkpoint
+        if checkpoint is not None and not isinstance(checkpoint, InPlaceCheckpoint):
+            raise OutputConflictError
         if checkpoint is None and snapshot.modified_time != request.source.expected_modified_time:
             raise SourceChangedError
         if checkpoint is not None:
@@ -325,6 +520,8 @@ class DocumentTransformExecutor:
             if checkpoint_contract != current_contract:
                 raise OutputConflictError
             if checkpoint.stage is InPlaceCheckpointStage.COMPLETE:
+                if snapshot.revision_id != checkpoint.current_revision_id:
+                    raise InPlaceNeedsReviewError
                 return self._in_place_result(
                     operation_id=operation_id,
                     request=request,
@@ -646,50 +843,10 @@ class DocumentTransformExecutor:
             request.source,
             expected_modified_time=request.source.expected_modified_time,
             expected_revision_id=snapshot.revision_id,
+            expected_parent_folder_id=snapshot.parent_folder_id,
         )
         if not unchanged:
             raise SourceChangedError
-
-    @staticmethod
-    def _recovered_completed_result(
-        *,
-        operation_id: uuid.UUID,
-        request: DocumentTransformRequest,
-        source_sha256: str,
-        draft: OutputDraft,
-    ) -> DocumentTransformResult:
-        finding = TransformFinding(
-            code="recovered_completed_output",
-            detail=(
-                "The completed sibling was recovered after task interruption; "
-                "review it because detailed patch telemetry was not persisted"
-            ),
-        )
-
-        return DocumentTransformResult(
-            operation_id=operation_id,
-            source_sha256=source_sha256,
-            output=draft.output,
-            mode=request.mode,
-            applied_patch_count=0,
-            findings=[finding],
-            validation=ValidationSummary(
-                source_unchanged=True,
-                protected_content_preserved=False,
-                structure_preserved=False,
-                unsafe_patch_count=1,
-            ),
-            model_ids=[],
-            tool_versions={
-                "unslop_catalog_sha256": UNSLOP_CATALOG_SHA256,
-                "unslop_commit": UNSLOP_UPSTREAM_COMMIT,
-                "unslop_version": UNSLOP_UPSTREAM_VERSION,
-            },
-            pipeline_version=PIPELINE_VERSION,
-            needs_review=True,
-            brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
-            brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
-        )
 
     async def _validate_applied_output(
         self,
@@ -700,36 +857,15 @@ class DocumentTransformExecutor:
         draft: OutputDraft,
         transform_findings: tuple[TransformFinding, ...],
     ) -> AppliedValidation:
-        if not (
-            isinstance(request.source, DriveFileSource)
-            and snapshot.media_type == "application/vnd.google-apps.document"
-        ):
-            return AppliedValidation(
-                protected_content_preserved=not transform_findings,
-                structure_preserved=snapshot.markdown is None,
-                findings=(),
-            )
         verification = await self._gateway.verify_output(
             draft=draft,
             source=snapshot,
             expected=expected,
             verify_brand=request.mode is not TransformMode.UNSLOP,
         )
+        if not verification.content_preserved or not verification.structure_preserved:
+            raise OutputVerificationError
         findings: list[TransformFinding] = []
-        if not verification.content_preserved:
-            findings.append(
-                TransformFinding(
-                    code="post_write_content_mismatch",
-                    detail="Output text did not match the validated transformation plan",
-                )
-            )
-        if not verification.structure_preserved:
-            findings.append(
-                TransformFinding(
-                    code="post_write_structure_mismatch",
-                    detail="Output structure did not match the source document inventory",
-                )
-            )
         if not verification.brand_applied:
             findings.append(
                 TransformFinding(
@@ -741,6 +877,7 @@ class DocumentTransformExecutor:
             protected_content_preserved=(not transform_findings and verification.content_preserved),
             structure_preserved=verification.structure_preserved,
             findings=tuple(findings),
+            revision_id=verification.revision_id or draft.revision_id,
         )
 
     async def _load_source(self, request: DocumentTransformRequest) -> SourceSnapshot:
@@ -768,17 +905,21 @@ class DocumentTransformExecutor:
         source_sha256: str,
         original: DocumentIR,
         transformed: DocumentIR,
+        output_name: str | None = None,
     ) -> OutputDraft:
-        output_name = request.output_name or f"{snapshot.title} — {_OUTPUT_SUFFIX[request.mode]}"
-        imported_docx = (
-            render_markdown_docx(
+        output_name = (
+            output_name
+            or request.output_name
+            or (f"{snapshot.title} — {_OUTPUT_SUFFIX[request.mode]}")
+        )
+        imported_docx = None
+        if snapshot.markdown is not None:
+            imported_docx = render_markdown_docx(
                 rewrite_markdown(snapshot.markdown, original, transformed),
                 title=snapshot.title,
                 logo_bytes=self._logo_bytes,
+                branded=request.mode is not TransformMode.UNSLOP,
             )
-            if snapshot.markdown is not None and request.mode is not TransformMode.UNSLOP
-            else None
-        )
         if isinstance(request.source, DriveFileSource):
             if snapshot.media_type != "application/vnd.google-apps.document":
                 return await self._gateway.create_from_drive_markdown(
@@ -802,6 +943,205 @@ class DocumentTransformExecutor:
             output_name=output_name,
             imported_docx=imported_docx,
         )
+
+
+def _new_copy_checkpoint(
+    *,
+    request: DocumentTransformRequest,
+    snapshot: SourceSnapshot,
+    original: DocumentIR,
+    outcome: TransformOutcome,
+    source_sha256: str,
+    model_ids: list[ModelId],
+    logo_sha256: str | None,
+) -> CopyCheckpoint:
+    replacements = {
+        before.id: after.text
+        for before, after in zip(original.blocks, outcome.document.blocks, strict=True)
+        if before.text != after.text
+    }
+    output_name = request.output_name or f"{snapshot.title} — {_OUTPUT_SUFFIX[request.mode]}"
+    plan_payload = _copy_plan_payload(
+        output_name=output_name,
+        replacements=replacements,
+        findings=list(outcome.findings),
+        applied_patch_count=outcome.applied_count,
+        deterministic_patch_count=outcome.deterministic_count,
+        model_patch_count=outcome.model_count,
+        llm_invoked=outcome.llm_invoked,
+        model_ids=model_ids,
+        expected_semantic_sha256=outcome.document.semantic_sha256,
+        logo_sha256=logo_sha256,
+    )
+    return CopyCheckpoint(
+        source_title=snapshot.title,
+        source_sha256=source_sha256,
+        source_modified_time=snapshot.modified_time,
+        source_revision_id=snapshot.revision_id,
+        source_parent_folder_id=snapshot.parent_folder_id,
+        brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
+        brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
+        pipeline_version=PIPELINE_VERSION,
+        request_builder_version=REQUEST_BUILDER_VERSION,
+        unslop_catalog_sha256=UNSLOP_CATALOG_SHA256,
+        original_semantic_sha256=original.semantic_sha256,
+        expected_semantic_sha256=outcome.document.semantic_sha256,
+        plan_sha256=_json_sha256(plan_payload),
+        manifest_sha256=_copy_manifest_sha256(
+            snapshot,
+            original,
+            outcome.document,
+            branded=request.mode is not TransformMode.UNSLOP,
+        ),
+        logo_sha256=logo_sha256,
+        output_name=output_name,
+        replacements=replacements,
+        findings=list(outcome.findings),
+        applied_patch_count=outcome.applied_count,
+        deterministic_patch_count=outcome.deterministic_count,
+        model_patch_count=outcome.model_count,
+        llm_invoked=outcome.llm_invoked,
+        model_ids=model_ids,
+        stage=CopyCheckpointStage.PLANNED,
+    )
+
+
+def _validate_copy_checkpoint(
+    checkpoint: CopyCheckpoint,
+    *,
+    request: DocumentTransformRequest,
+    snapshot: SourceSnapshot,
+    original: DocumentIR,
+    source_sha256: str,
+    current_logo_sha256: str | None,
+) -> None:
+    expected_contract = (
+        snapshot.title,
+        source_sha256,
+        snapshot.modified_time,
+        snapshot.revision_id,
+        snapshot.parent_folder_id,
+        CURRENT_BRAND_MANIFEST.profile_id,
+        CURRENT_BRAND_MANIFEST.sha256,
+        PIPELINE_VERSION,
+        REQUEST_BUILDER_VERSION,
+        UNSLOP_CATALOG_SHA256,
+        original.semantic_sha256,
+        request.output_name or f"{snapshot.title} — {_OUTPUT_SUFFIX[request.mode]}",
+        current_logo_sha256,
+    )
+    checkpoint_contract = (
+        checkpoint.source_title,
+        checkpoint.source_sha256,
+        checkpoint.source_modified_time,
+        checkpoint.source_revision_id,
+        checkpoint.source_parent_folder_id,
+        checkpoint.brand_profile_id,
+        checkpoint.brand_profile_sha256,
+        checkpoint.pipeline_version,
+        checkpoint.request_builder_version,
+        checkpoint.unslop_catalog_sha256,
+        checkpoint.original_semantic_sha256,
+        checkpoint.output_name,
+        checkpoint.logo_sha256,
+    )
+    if checkpoint_contract != expected_contract:
+        raise OutputConflictError
+    transformed = original.replace_blocks(checkpoint.replacements)
+    if transformed.semantic_sha256 != checkpoint.expected_semantic_sha256:
+        raise OutputConflictError
+    plan_payload = _copy_plan_payload(
+        output_name=checkpoint.output_name,
+        replacements=checkpoint.replacements,
+        findings=checkpoint.findings,
+        applied_patch_count=checkpoint.applied_patch_count,
+        deterministic_patch_count=checkpoint.deterministic_patch_count,
+        model_patch_count=checkpoint.model_patch_count,
+        llm_invoked=checkpoint.llm_invoked,
+        model_ids=checkpoint.model_ids,
+        expected_semantic_sha256=checkpoint.expected_semantic_sha256,
+        logo_sha256=checkpoint.logo_sha256,
+    )
+    if checkpoint.plan_sha256 != _json_sha256(plan_payload):
+        raise OutputConflictError
+    if checkpoint.manifest_sha256 != _copy_manifest_sha256(
+        snapshot,
+        original,
+        transformed,
+        branded=request.mode is not TransformMode.UNSLOP,
+    ):
+        raise OutputConflictError
+
+
+def _copy_checkpoint_outcome(
+    checkpoint: CopyCheckpoint,
+    original: DocumentIR,
+) -> TransformOutcome:
+    return TransformOutcome(
+        document=original.replace_blocks(checkpoint.replacements),
+        findings=tuple(checkpoint.findings),
+        applied_count=checkpoint.applied_patch_count,
+        deterministic_count=checkpoint.deterministic_patch_count,
+        model_count=checkpoint.model_patch_count,
+        llm_invoked=checkpoint.llm_invoked,
+    )
+
+
+def _copy_plan_payload(
+    *,
+    output_name: str,
+    replacements: dict[str, str],
+    findings: list[TransformFinding],
+    applied_patch_count: int,
+    deterministic_patch_count: int,
+    model_patch_count: int,
+    llm_invoked: bool,
+    model_ids: list[ModelId],
+    expected_semantic_sha256: str,
+    logo_sha256: str | None,
+) -> dict[str, Any]:
+    return {
+        "output_name": output_name,
+        "replacements": replacements,
+        "findings": [finding.model_dump(mode="json") for finding in findings],
+        "applied_patch_count": applied_patch_count,
+        "deterministic_patch_count": deterministic_patch_count,
+        "model_patch_count": model_patch_count,
+        "llm_invoked": llm_invoked,
+        "model_ids": list(model_ids),
+        "expected_semantic_sha256": expected_semantic_sha256,
+        "logo_sha256": logo_sha256,
+    }
+
+
+def _copy_manifest_sha256(
+    snapshot: SourceSnapshot,
+    original: DocumentIR,
+    transformed: DocumentIR,
+    *,
+    branded: bool,
+) -> str:
+    if snapshot.markdown is not None:
+        rendered = rewrite_markdown(snapshot.markdown, original, transformed)
+        manifest: object = asdict(
+            markdown_import_manifest(rendered, title=snapshot.title, branded=branded)
+        )
+    else:
+        manifest = {
+            "expected_semantic_sha256": transformed.semantic_sha256,
+            "source_format": transformed.source_format,
+            "tab_ids": list(transformed.tab_ids),
+            "branded": branded,
+        }
+    return hashlib.sha256(
+        json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()
+
+
+def _json_sha256(value: dict[str, Any]) -> str:
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()
 
 
 def _to_ir(snapshot: SourceSnapshot) -> DocumentIR:
@@ -863,30 +1203,6 @@ def _preflight_native_mutation_budget(
             logo_uri="https://assets.sarj.ai/preflight-logo.png",
         )
     mutation_sha256(requests)
-
-
-def _markdown_fidelity_findings(snapshot: SourceSnapshot) -> list[TransformFinding]:
-    markdown = snapshot.markdown
-    if markdown is None:
-        return []
-    findings: list[TransformFinding] = []
-    parsed = parse_markdown(markdown, title=snapshot.title)
-    if any(block.kind is BlockKind.TABLE for block in parsed.blocks):
-        findings.append(
-            TransformFinding(
-                code="markdown_table_preserved_as_text",
-                detail="Markdown tables remain pipe-delimited text",
-            )
-        )
-    has_inline_markup = any(token in markdown for token in ("**", "__", "](", "~~", "`"))
-    if has_inline_markup:
-        findings.append(
-            TransformFinding(
-                code="markdown_inline_markup_preserved_as_text",
-                detail="Inline links or emphasis remain Markdown text for lossless review",
-            )
-        )
-    return findings
 
 
 def _brand_warning_detail(code: str) -> str:

@@ -35,6 +35,7 @@ from app.document_transform.google_presentation_gateway import (
 from app.document_transform.models import PatchGenerator
 from app.document_transform.presentation_executor import PresentationTransformExecutor
 from app.document_transform.schemas import (
+    DocumentTransformCheckpoint,
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
@@ -112,47 +113,16 @@ class DocumentTransformRunner(Protocol):
     ) -> DocumentTransformResult: ...
 
 
-class DocumentTransformTaskStore(ClaimedTaskStore, Protocol):
-    async def load_document_transform(
-        self,
-        task_id: TaskId,
-    ) -> DocumentTransformTaskRecord: ...
-
-    async def claim(self, task_id: TaskId, *, lease_duration: timedelta) -> TaskClaim: ...
-
-
-class QueuedDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
-    def __init__(
-        self,
-        *,
-        tasks: DocumentTransformTaskStore,
-        transform: DocumentTransformRunner,
-    ) -> None:
-        self._tasks = tasks
-        self._transform = transform
-
-    @override
-    async def execute(self, task_id: TaskId) -> TaskRead:
-        record = await self._tasks.load_document_transform(task_id)
-        if isinstance(record.task, SucceededTaskRead | FailedTaskRead | CancelledTaskRead):
-            return record.task
-        try:
-            claim = await self._tasks.claim(task_id, lease_duration=_EXECUTION_LEASE)
-        except TaskNotClaimableError as exc:
-            raise TaskExecutionDeferredError from exc
-        return await _execute_claimed(
-            task_id,
-            tasks=self._tasks,
-            transform=self._transform,
-            claim=claim,
-            payload=record.payload,
-            checkpoint=record.checkpoint,
-        )
-
-
 @dataclass(frozen=True, slots=True)
 class DocumentTransformRuntime:
     transform: DocumentTransformRunner
+
+
+def _required_payload(record: DocumentTransformTaskRecord) -> DocumentTransformRequest:
+    if record.payload is None:
+        msg = "Active document-transform task is missing its payload"
+        raise RuntimeError(msg)
+    return record.payload
 
 
 class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
@@ -178,14 +148,16 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         record = await self._tasks.load_document_transform(task_id)
         if isinstance(record.task, SucceededTaskRead | FailedTaskRead | CancelledTaskRead):
             return record.task
+        _required_payload(record)
         try:
             claim = await self._tasks.claim(task_id, lease_duration=_EXECUTION_LEASE)
         except TaskNotClaimableError as exc:
             raise TaskExecutionDeferredError from exc
         try:
             claimed_record = await self._tasks.load_document_transform(task_id)
+            claimed_payload = _required_payload(claimed_record)
             if (
-                claimed_record.payload.output_strategy is OutputStrategy.IN_PLACE
+                claimed_payload.output_strategy is OutputStrategy.IN_PLACE
                 and not settings.DOCUMENT_TRANSFORM_IN_PLACE_ENABLED
             ):
                 return await self._tasks.fail(
@@ -196,7 +168,7 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 )
             runtime = await self._runtime(
                 claimed_record.owner_user_id,
-                claimed_record.payload,
+                claimed_payload,
                 task_id=task_id,
                 lease_token=claim.lease_token,
                 checkpoint=claimed_record.checkpoint,
@@ -210,6 +182,13 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 error_detail="Reconnect Google Drive, then start the document polish again",
             )
         except DocumentGatewayError as exc:
+            if not exc.retryable:
+                return await self._tasks.fail(
+                    task_id,
+                    lease_token=claim.lease_token,
+                    error_code=exc.code,
+                    error_detail=exc.public_detail,
+                )
             return await defer_or_fail_retryable_task(
                 task_id,
                 tasks=self._tasks,
@@ -225,7 +204,9 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 error_code=exc.code,
                 error_detail=exc.public_detail,
             )
-        except (RuntimeError, TypeError, ValueError) as exc:
+        except BaseException as exc:
+            if not isinstance(exc, Exception):
+                raise
             return await defer_or_fail_retryable_task(
                 task_id,
                 tasks=self._tasks,
@@ -239,7 +220,7 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             transform=runtime.transform,
             task_id=task_id,
             claim=claim,
-            payload=record.payload,
+            payload=claimed_payload,
             checkpoint=claimed_record.checkpoint,
         )
 
@@ -250,7 +231,7 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         *,
         task_id: TaskId,
         lease_token: uuid.UUID,
-        checkpoint: InPlaceCheckpoint | None,
+        checkpoint: DocumentTransformCheckpoint | None,
         checkpoint_generation: int,
     ) -> DocumentTransformRuntime:
         user = await self._db.get(User, owner_user_id)
@@ -315,11 +296,12 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         if self._logo_uri != CURRENT_BRAND_MANIFEST.assets.logo_uri:
             return None
         try:
-            response = await self._http.get(self._logo_uri)
-            response.raise_for_status()
+            async with self._http.stream("GET", self._logo_uri) as response:
+                content = await _bounded_logo_content(response)
         except httpx.HTTPError:
             return None
-        content = response.content
+        if content is None:
+            return None
         if (
             not content.startswith(b"\x89PNG\r\n\x1a\n")
             or len(content) > _MAX_LOGO_BYTES
@@ -329,6 +311,21 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         return content
 
 
+async def _bounded_logo_content(response: httpx.Response) -> bytes | None:
+    response.raise_for_status()
+    declared_size = response.headers.get("content-length")
+    if declared_size is not None and (
+        not declared_size.isdigit() or int(declared_size) > _MAX_LOGO_BYTES
+    ):
+        return None
+    collected = bytearray()
+    async for chunk in response.aiter_bytes():
+        if len(collected) + len(chunk) > _MAX_LOGO_BYTES:
+            return None
+        collected.extend(chunk)
+    return bytes(collected)
+
+
 async def _execute_claimed(
     task_id: TaskId,
     *,
@@ -336,7 +333,7 @@ async def _execute_claimed(
     transform: DocumentTransformRunner,
     claim: TaskClaim,
     payload: DocumentTransformRequest,
-    checkpoint: InPlaceCheckpoint | None = None,
+    checkpoint: DocumentTransformCheckpoint | None = None,
 ) -> TaskRead:
     started_at = time.perf_counter()
     source_kind = payload.source.kind
@@ -352,7 +349,7 @@ async def _execute_claimed(
         checkpoint_stage=checkpoint.stage.value if checkpoint is not None else "none",
         mutation_sha256=(
             checkpoint.mutation_sha256
-            if checkpoint is not None and checkpoint.mutation_sha256 is not None
+            if isinstance(checkpoint, InPlaceCheckpoint) and checkpoint.mutation_sha256 is not None
             else "none"
         ),
         pipeline=PIPELINE_VERSION,
@@ -384,6 +381,13 @@ async def _execute_claimed(
             error_code=exc.code,
             started_at=started_at,
         )
+        if isinstance(exc, DocumentGatewayError) and not exc.retryable:
+            return await tasks.fail(
+                task_id,
+                lease_token=claim.lease_token,
+                error_code=exc.code,
+                error_detail=exc.public_detail,
+            )
         return await defer_or_fail_retryable_task(
             task_id,
             tasks=tasks,
@@ -405,6 +409,24 @@ async def _execute_claimed(
             lease_token=claim.lease_token,
             error_code=exc.code,
             error_detail=exc.public_detail,
+        )
+    except BaseException as exc:
+        if not isinstance(exc, Exception):
+            raise
+        _log_transform_failure(
+            task_id=task_id,
+            claim=claim,
+            payload=payload,
+            error_code="document_transform_internal_error",
+            started_at=started_at,
+        )
+        return await defer_or_fail_retryable_task(
+            task_id,
+            tasks=tasks,
+            claim=claim,
+            error_code="document_transform_internal_error",
+            error_detail="The document transformation could not be completed",
+            cause=exc,
         )
     await tasks.record_resource(
         task_id,

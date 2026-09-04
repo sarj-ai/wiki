@@ -500,12 +500,12 @@
             "type": "string"
           },
           "brand_profile_id": {
-            "default": "sarj-2026-v3",
+            "default": "sarj-2026-v4",
             "title": "Brand Profile Id",
             "type": "string"
           },
           "brand_profile_sha256": {
-            "default": "4a21dfdc50faa2b1e59d3f6a3397b5a0b6fb248aab4abcfde742e58476321589",
+            "default": "bbc319b0152be2a645099c0d88516ebf13b375bdadb5b443ef7037da027dcb22",
             "title": "Brand Profile Sha256",
             "type": "string"
           },
@@ -2989,6 +2989,9 @@
               }
             },
             "description": "Authentication is required or the session is invalid."
+          },
+          "413": {
+            "description": "Markdown input exceeds a bounded conversion limit"
           },
           "422": {
             "description": "In-place transformation is limited to native Google Docs"

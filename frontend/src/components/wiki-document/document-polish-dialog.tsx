@@ -8,6 +8,7 @@ import {
   FileCheck2,
   FilePenLine,
   FileText,
+  FileUp,
   Loader2,
   Paintbrush,
   Sparkles,
@@ -38,13 +39,17 @@ import {
   type DocumentTransformResult,
   type DocumentTransformSource,
 } from "@/lib/document-transform-types";
+import {
+  MARKDOWN_LIMIT_BYTES,
+  markdownByteLength,
+  markdownTextError,
+  readMarkdownFile,
+} from "@/lib/markdown-import";
 import type { SmartDestination } from "@/lib/smart-create-types";
 import { cn } from "@/lib/utils";
 import { injectNewFileIntoCaches } from "@/lib/wiki-cache";
 import { wikiKeys } from "@/lib/wiki-keys";
 import { MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
-
-const MARKDOWN_LIMIT = 512 * 1024;
 
 const MODES = [
   {
@@ -104,6 +109,7 @@ export function DocumentPolishDialog({
   const [mode, setMode] = useState<DocumentTransformMode>("both");
   const [outputStrategy, setOutputStrategy] = useState<DocumentTransformOutputStrategy>("copy");
   const [markdown, setMarkdown] = useState("");
+  const [markdownError, setMarkdownError] = useState<null | string>(null);
   const [name, setName] = useState("Untitled document");
   const [destination, setDestination] = useState<null | SmartDestination>(
     source.kind === "markdown" ? source.initialDestination : null,
@@ -119,6 +125,7 @@ export function DocumentPolishDialog({
   const artifactNoun = isPresentation ? "presentation" : "document";
   const outputNoun = isPresentation ? "Google Slides presentation" : "Google Doc";
   const abortRef = useRef<AbortController | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const idempotencyKey = useRef<null | string>(null);
   const submitLatch = useRef(false);
   const capabilities = useQuery({
@@ -146,6 +153,7 @@ export function DocumentPolishDialog({
     setMode("both");
     setOutputStrategy("copy");
     setMarkdown("");
+    setMarkdownError(null);
     setName("Untitled document");
     setDestination(source.kind === "markdown" ? source.initialDestination : null);
     setDestinationOpen(false);
@@ -165,13 +173,27 @@ export function DocumentPolishDialog({
         name: source.name,
       };
     }
-    if (!destination || !name.trim() || !markdown.trim()) return null;
+    if (!destination || !name.trim() || !markdown.trim() || markdownError !== null) return null;
     return {
       content: markdown,
       destinationFolderId: destination.folderId,
       kind: "markdown",
       name: name.trim(),
     };
+  };
+
+  const loadMarkdownFile = async (file: File) => {
+    try {
+      const imported = await readMarkdownFile(file);
+      setMarkdown(imported.content);
+      setName(imported.name);
+      setMarkdownError(markdownTextError(imported.content));
+      resetRequest();
+    } catch (error: unknown) {
+      setMarkdownError(errorMessage(error, "Couldn’t read the Markdown file"));
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const create = async () => {
@@ -252,9 +274,13 @@ export function DocumentPolishDialog({
         <DialogContent className="max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-xl">
           <div className="border-b px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
             <DialogHeader>
-              <DialogTitle>Polish {artifactNoun}</DialogTitle>
+              <DialogTitle>
+                {source.kind === "markdown" ? "Import Markdown" : `Polish ${artifactNoun}`}
+              </DialogTitle>
               <DialogDescription>
-                Choose how Sarj Wiki should refine this {artifactNoun}.
+                {source.kind === "markdown"
+                  ? "Create a native Google Doc from pasted Markdown or a local .md file."
+                  : `Choose how Sarj Wiki should refine this ${artifactNoun}.`}
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -276,24 +302,67 @@ export function DocumentPolishDialog({
                   />
                 </div>
                 <div className="space-y-1.5">
+                  <Label>Markdown file</Label>
+                  <input
+                    accept=".md, text/markdown, text/plain"
+                    className="sr-only"
+                    disabled={submitting}
+                    onChange={(event) => {
+                      const file = event.target.files?.item(0);
+                      if (file) void loadMarkdownFile(file);
+                    }}
+                    ref={fileInputRef}
+                    type="file"
+                  />
+                  <Button
+                    aria-label="Markdown file drop zone"
+                    className="bg-muted/25 h-auto w-full justify-start border-dashed p-3"
+                    disabled={submitting}
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      const file = event.dataTransfer.files.item(0);
+                      if (file) void loadMarkdownFile(file);
+                    }}
+                    type="button"
+                    variant="outline"
+                  >
+                    <FileUp className="size-4" />
+                    <span className="text-sm font-medium">Choose .md file</span>
+                    <span className="text-muted-foreground text-xs">
+                      or drop one here · UTF-8 · 512 KiB max
+                    </span>
+                  </Button>
+                </div>
+                <div className="space-y-1.5">
                   <div className="flex items-baseline justify-between gap-3">
                     <Label htmlFor="polish-markdown-content">Markdown</Label>
                     <span className="text-muted-foreground text-xs tabular-nums">
-                      {markdown.length.toLocaleString()} / {MARKDOWN_LIMIT.toLocaleString()}
+                      {markdownByteLength(markdown).toLocaleString()} /{" "}
+                      {MARKDOWN_LIMIT_BYTES.toLocaleString()} bytes
                     </span>
                   </div>
                   <Textarea
                     className="min-h-44 resize-y font-mono text-xs leading-relaxed"
                     disabled={submitting}
                     id="polish-markdown-content"
-                    maxLength={MARKDOWN_LIMIT}
                     onChange={(event) => {
-                      setMarkdown(event.target.value);
+                      const value = event.target.value;
+                      setMarkdown(value);
+                      setMarkdownError(markdownTextError(value));
                       resetRequest();
                     }}
                     placeholder={"# Proposal\n\nPaste Markdown here…"}
                     value={markdown}
                   />
+                  {markdownError ? (
+                    <p className="text-destructive text-xs" role="alert">
+                      {markdownError}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="space-y-1.5">
                   <Label>Destination</Label>
@@ -321,7 +390,7 @@ export function DocumentPolishDialog({
             ) : null}
 
             <fieldset className="space-y-2">
-              <legend className="mb-2 text-sm font-medium">Polish method</legend>
+              <legend className="mb-2 text-sm font-medium">Transform method</legend>
               <div className="grid gap-2 sm:grid-cols-3">
                 {MODES.map((option) => {
                   const Icon = option.icon;
@@ -431,7 +500,7 @@ export function DocumentPolishDialog({
                   ? effectiveOutputStrategy === "in_place"
                     ? `“${source.name}” will be amended only after revision and safety checks pass.`
                     : `“${source.name}” stays unchanged. A new ${outputNoun} will be created next to it.`
-                  : "Your Markdown stays unchanged. A new Google Doc will be created in the selected folder."}
+                  : "Your local file and pasted Markdown stay unchanged. A new Google Doc will be created in the selected folder."}
               </p>
             </div>
 
@@ -443,7 +512,9 @@ export function DocumentPolishDialog({
                 <Loader2 className="text-primary size-4 shrink-0 animate-spin" />
                 <span>
                   {stage === "starting"
-                    ? `Starting ${artifactNoun} polish…`
+                    ? source.kind === "markdown"
+                      ? "Starting Markdown import…"
+                      : `Starting ${artifactNoun} polish…`
                     : `Creating and checking the new ${artifactNoun}… Keep this window open.`}
                 </span>
               </div>
@@ -491,7 +562,9 @@ export function DocumentPolishDialog({
                 ? "Polishing…"
                 : effectiveOutputStrategy === "in_place"
                   ? "Polish original"
-                  : "Create polished copy"}
+                  : source.kind === "markdown"
+                    ? "Import Google Doc"
+                    : "Create polished copy"}
             </Button>
           </DialogFooter>
         </DialogContent>

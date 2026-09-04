@@ -14,7 +14,9 @@ from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, utf16_le
 
 MAX_PRESENTATION_SLIDES = 200
 MAX_PRESENTATION_TEXT_UTF16_UNITS = 500_000
-MAX_PRESENTATION_BLOCKS = 750
+# Dense but ordinary decks can represent tables and timelines as one text shape per cell.
+# This remains subordinate to the independent text, element, slide, and group-depth caps.
+MAX_PRESENTATION_BLOCKS = 2_000
 MAX_PRESENTATION_ELEMENTS = 10_000
 MAX_GROUP_DEPTH = 20
 _MAX_OBJECT_ID_LENGTH = 128

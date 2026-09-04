@@ -15,6 +15,14 @@ _CAPITALIZABLE_START_WORDS = frozenset(
     {"a", "an", "he", "it", "our", "she", "that", "the", "they", "this", "we", "you", "your"}
 )
 _SENTENCE_PUNCTUATION = ".!?…"
+RFCISH_EMAIL_PATTERN = (
+    r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+    r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+    r"[A-Za-z]{2,63}"
+)
+SINGLE_QUOTED_SPAN_PATTERN = r"(?<!\w)'[^'\n]+'(?!\w)|‘[^’\n]+’"
+CUSTOM_URI_PATTERN = r"[A-Za-z][A-Za-z0-9+.-]*:(?://)?[^\s)>]+"
+HTML_ENTITY_PATTERN = r"&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);"
 
 _CANDIDATE_PATTERNS = (
     (
@@ -77,18 +85,39 @@ _AUTO_DELETE_CODES = frozenset(
     }
 )
 
-UNSLOP_CATALOG_SHA256 = hashlib.sha256(
-    json.dumps(
-        [(code, pattern.pattern, pattern.flags) for code, pattern in _CANDIDATE_PATTERNS],
-        separators=(",", ":"),
-    ).encode()
-).hexdigest()
-
 _IGNORED_SPAN = re.compile(
     r"```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]+`|\"[^\"]*\"|“[^”]*”|"
-    r"(?<!\w)'[^'\n]{2,}'(?!\w)|‘[^’\n]{2,}’|^>.*$",
+    rf"{SINGLE_QUOTED_SPAN_PATTERN}|^>.*$",
     re.MULTILINE,
 )
+_RECAP_PROTECTED_SPAN = re.compile(
+    rf"`[^`\n]+`|\"[^\"\n]*\"|“[^”\n]*”|{SINGLE_QUOTED_SPAN_PATTERN}|"
+    rf"\[[^\]\n]+\]\([^\n]+\)|{RFCISH_EMAIL_PATTERN}|{CUSTOM_URI_PATTERN}|"
+    rf"(?:[\w.-]+)?{HTML_ENTITY_PATTERN}"
+    r"(?:[\w.-]+)?"
+)
+_RECAP_PROTECTED_LEADING = frozenset("@/#_`'\"‘“[")
+
+UNSLOP_CATALOG_SHA256 = hashlib.sha256(
+    json.dumps(
+        {
+            "auto_delete_codes": sorted(_AUTO_DELETE_CODES),
+            "capitalizable_start_words": sorted(_CAPITALIZABLE_START_WORDS),
+            "candidate_patterns": [
+                (code, pattern.pattern, pattern.flags) for code, pattern in _CANDIDATE_PATTERNS
+            ],
+            "ignored_span": (_IGNORED_SPAN.pattern, _IGNORED_SPAN.flags),
+            "recap_protected_leading": sorted(_RECAP_PROTECTED_LEADING),
+            "recap_protected_span": (
+                _RECAP_PROTECTED_SPAN.pattern,
+                _RECAP_PROTECTED_SPAN.flags,
+            ),
+            "sentence_punctuation": _SENTENCE_PUNCTUATION,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,10 +208,21 @@ def deterministic_unslop_replacement(text: str, candidates: tuple[UnslopCandidat
             word = re.match(r"[A-Za-z]+", trimmed[first_alpha:])
             if word is None or word.group(0).casefold() not in _CAPITALIZABLE_START_WORDS:
                 return text
+            if _recapitalization_is_protected(trimmed, first_alpha):
+                return text
             trimmed = (
                 trimmed[:first_alpha] + trimmed[first_alpha].upper() + trimmed[first_alpha + 1 :]
             )
     return trimmed
+
+
+def _recapitalization_is_protected(value: str, first_alpha: int) -> bool:
+    if any(char in _RECAP_PROTECTED_LEADING for char in value[:first_alpha]):
+        return True
+    return any(
+        match.start() <= first_alpha < match.end()
+        for match in _RECAP_PROTECTED_SPAN.finditer(value)
+    )
 
 
 def expanded_deletion_span(text: str, start: int, end: int) -> DeletionSpan:

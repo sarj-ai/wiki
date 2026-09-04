@@ -4,21 +4,26 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 import hashlib
+import hmac
 import json
 from typing import override
 import uuid
 
 from pydantic import BaseModel, JsonValue, TypeAdapter
-from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy import and_, case, delete, func, literal, or_, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.encryption import decrypt_cache, encrypt_cache
 from app.document_transform.errors import CheckpointTooLargeError
 from app.document_transform.schemas import (
+    CopyCheckpoint,
+    DocumentTransformCheckpoint,
     DocumentTransformRequest,
     DriveFileSource,
     InPlaceCheckpoint,
+    MarkdownSource,
     OutputStrategy,
 )
 from app.identifiers import FileId, IdempotencyKey, TaskId
@@ -54,6 +59,13 @@ _CHECKPOINT_PLAN_FIELDS = frozenset(
 )
 _MAX_ACTIVE_DOCUMENT_TRANSFORMS_PER_OWNER = 20
 _MAX_ACTIVE_IN_PLACE_TASKS_PER_OWNER = 10
+_MARKDOWN_CIPHERTEXT_FIELD = "content_ciphertext"
+_MARKDOWN_SHA256_FIELD = "content_sha256"
+_MARKDOWN_ENCRYPTION_FIELD = "content_encryption"
+_MARKDOWN_ENCRYPTION_VERSION = "fernet-v1"
+_TERMINAL_REDACTED_PAYLOAD: dict[str, JsonValue] = {"redacted": True}
+_LEASE_RETENTION_GRACE = timedelta(minutes=10)
+_COPY_CHECKPOINT_CIPHERTEXT_FIELD = "checkpoint_ciphertext"
 
 
 class TaskService(ABC):
@@ -122,7 +134,7 @@ class TaskService(ABC):
         *,
         lease_token: uuid.UUID,
         expected_generation: int,
-        checkpoint: InPlaceCheckpoint,
+        checkpoint: DocumentTransformCheckpoint,
     ) -> int:
         raise NotImplementedError
 
@@ -142,6 +154,7 @@ class PostgresTaskService(TaskService):
     ) -> TaskReservation:
         serialized = _serialize(payload)
         request_hash = _request_hash(serialized)
+        persisted_payload = _payload_for_storage(kind=kind, payload=payload, serialized=serialized)
         document_transform_payload = (
             payload
             if kind is TaskKind.FILE_DOCUMENT_TRANSFORM
@@ -174,6 +187,7 @@ class PostgresTaskService(TaskService):
                         Task.owner_user_id == owner_user_id,
                         Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
                         Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
+                        Task.expires_at > func.now(),
                     )
                 )
             ).scalar_one_or_none()
@@ -192,6 +206,7 @@ class PostgresTaskService(TaskService):
                             Task.owner_user_id == owner_user_id,
                             Task.in_place_target.is_not(None),
                             Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
+                            Task.expires_at > func.now(),
                         )
                     )
                 ).scalar_one_or_none()
@@ -202,6 +217,17 @@ class PostgresTaskService(TaskService):
                     await self._db.rollback()
                     raise TaskAdmissionLimitError
         now = datetime.now(UTC)
+        expired = (
+            delete(Task)
+            .where(
+                Task.expires_at <= func.now(),
+                or_(
+                    Task.status != TaskStatus.RUNNING,
+                    Task.lease_expires_at <= func.now() - _LEASE_RETENTION_GRACE,
+                ),
+            )
+            .cte("delete_expired_tasks")
+        )
         statement = (
             pg_insert(Task)
             .values(
@@ -209,11 +235,12 @@ class PostgresTaskService(TaskService):
                 kind=kind,
                 idempotency_key=idempotency_key,
                 request_hash=request_hash,
-                payload=serialized,
+                payload=persisted_payload,
                 in_place_target=(in_place_source.file_id if in_place_source else None),
                 expires_at=now + _DEFAULT_RETENTION,
             )
             .on_conflict_do_nothing()
+            .add_cte(expired)
             .returning(Task)
         )
         task = (await self._db.execute(statement)).scalar_one_or_none()
@@ -240,6 +267,7 @@ class PostgresTaskService(TaskService):
             update(Task)
             .where(
                 Task.id == task_id,
+                Task.expires_at > func.now(),
                 or_(
                     Task.status == TaskStatus.PENDING,
                     and_(
@@ -253,6 +281,10 @@ class PostgresTaskService(TaskService):
                 started_at=now,
                 lease_token=lease_token,
                 lease_expires_at=now + lease_duration,
+                expires_at=func.greatest(
+                    Task.expires_at,
+                    now + lease_duration + _LEASE_RETENTION_GRACE,
+                ),
                 attempt_count=Task.attempt_count + 1,
                 updated_at=now,
             )
@@ -310,6 +342,7 @@ class PostgresTaskService(TaskService):
             values={
                 "status": TaskStatus.SUCCEEDED,
                 "result": _serialize(result),
+                "payload": _terminal_payload(),
                 "lease_token": None,
                 "lease_expires_at": None,
                 "finished_at": now,
@@ -337,11 +370,11 @@ class PostgresTaskService(TaskService):
                 "status": TaskStatus.FAILED,
                 "error_code": error_code,
                 "error_detail": _persisted_error_detail(error_detail),
+                "payload": _terminal_payload(),
                 "lease_token": None,
                 "lease_expires_at": None,
                 "finished_at": now,
                 "updated_at": now,
-                "expires_at": now + timedelta(days=30),
             },
         )
 
@@ -371,7 +404,12 @@ class PostgresTaskService(TaskService):
                 Task.owner_user_id == owner_user_id,
                 Task.status == TaskStatus.PENDING,
             )
-            .values(status=TaskStatus.CANCELLED, finished_at=now, updated_at=now)
+            .values(
+                status=TaskStatus.CANCELLED,
+                payload=_terminal_payload(),
+                finished_at=now,
+                updated_at=now,
+            )
             .returning(Task)
         )
         task = (await self._db.execute(statement)).scalar_one_or_none()
@@ -385,7 +423,11 @@ class PostgresTaskService(TaskService):
     async def get_for_owner(self, task_id: TaskId, owner_user_id: uuid.UUID) -> TaskRead:
         task = (
             await self._db.execute(
-                select(Task).where(Task.id == task_id, Task.owner_user_id == owner_user_id)
+                select(Task).where(
+                    Task.id == task_id,
+                    Task.owner_user_id == owner_user_id,
+                    Task.expires_at > func.now(),
+                )
             )
         ).scalar_one_or_none()
         if task is None:
@@ -394,7 +436,11 @@ class PostgresTaskService(TaskService):
 
     @override
     async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord:
-        task = await self._db.get(Task, task_id)
+        task = (
+            await self._db.execute(
+                select(Task).where(Task.id == task_id, Task.expires_at > func.now())
+            )
+        ).scalar_one_or_none()
         if task is None or task.kind != TaskKind.FILE_SMART_CREATE:
             raise TaskNotFoundError
         return SmartCreateTaskRecord.model_validate(
@@ -412,8 +458,17 @@ class PostgresTaskService(TaskService):
         *,
         lease_token: uuid.UUID,
         expected_generation: int,
-        checkpoint: InPlaceCheckpoint,
+        checkpoint: DocumentTransformCheckpoint,
     ) -> int:
+        values: dict[str, object] = {
+            "checkpoint": _serialize_checkpoint(checkpoint),
+            "checkpoint_generation": Task.checkpoint_generation + 1,
+            "updated_at": datetime.now(UTC),
+        }
+        if isinstance(checkpoint, InPlaceCheckpoint):
+            values["resource_id"] = checkpoint.document_id
+        elif checkpoint.output is not None:
+            values["resource_id"] = checkpoint.output.file_id
         statement = (
             update(Task)
             .where(
@@ -423,12 +478,7 @@ class PostgresTaskService(TaskService):
                 Task.lease_token.is_not_distinct_from(lease_token),
                 Task.checkpoint_generation == expected_generation,
             )
-            .values(
-                checkpoint=_serialize_checkpoint(checkpoint),
-                checkpoint_generation=Task.checkpoint_generation + 1,
-                resource_id=checkpoint.document_id,
-                updated_at=datetime.now(UTC),
-            )
+            .values(**values)
             .returning(Task.checkpoint_generation)
         )
         generation = (await self._db.execute(statement)).scalar_one_or_none()
@@ -440,14 +490,28 @@ class PostgresTaskService(TaskService):
 
     @override
     async def load_document_transform(self, task_id: TaskId) -> DocumentTransformTaskRecord:
-        task = await self._db.get(Task, task_id)
+        task = (
+            await self._db.execute(
+                select(Task).where(Task.id == task_id, Task.expires_at > func.now())
+            )
+        ).scalar_one_or_none()
         if task is None or task.kind != TaskKind.FILE_DOCUMENT_TRANSFORM:
             raise TaskNotFoundError
+        terminal = task.status in {
+            TaskStatus.SUCCEEDED,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+        }
+        payload = (
+            None
+            if terminal and task.payload == _TERMINAL_REDACTED_PAYLOAD
+            else _deserialize_document_transform_payload(task.payload)
+        )
         return DocumentTransformTaskRecord.model_validate(
             {
                 "owner_user_id": task.owner_user_id,
                 "task": _to_read(task),
-                "payload": task.payload,
+                "payload": payload,
                 "checkpoint": (
                     _deserialize_checkpoint(task.checkpoint)
                     if task.checkpoint is not None
@@ -469,6 +533,7 @@ class PostgresTaskService(TaskService):
                     Task.owner_user_id == owner_user_id,
                     Task.kind == kind,
                     Task.idempotency_key == idempotency_key,
+                    Task.expires_at > func.now(),
                 )
             )
         ).scalar_one_or_none()
@@ -506,8 +571,98 @@ def _serialize(model: BaseModel) -> dict[str, JsonValue]:
     return _JSON_OBJECT.validate_python(serialized)
 
 
-def _serialize_checkpoint(checkpoint: InPlaceCheckpoint) -> dict[str, JsonValue]:
+def _payload_for_storage(
+    *,
+    kind: TaskKind,
+    payload: BaseModel,
+    serialized: dict[str, JsonValue],
+) -> dict[str, JsonValue]:
+    if (
+        kind is not TaskKind.FILE_DOCUMENT_TRANSFORM
+        or not isinstance(payload, DocumentTransformRequest)
+        or not isinstance(payload.source, MarkdownSource)
+    ):
+        return serialized
+    source = serialized.get("source")
+    if not isinstance(source, dict):  # pragma: no cover - validated model invariant
+        msg = "Markdown task payload is missing its source object"
+        raise TypeError(msg)
+    content = source.get("content")
+    if not isinstance(content, str):  # pragma: no cover - validated model invariant
+        msg = "Markdown task payload is missing its content"
+        raise TypeError(msg)
+    protected_source = dict(source)
+    del protected_source["content"]
+    protected_source.update(
+        {
+            _MARKDOWN_CIPHERTEXT_FIELD: encrypt_cache(content),
+            _MARKDOWN_SHA256_FIELD: hashlib.sha256(content.encode()).hexdigest(),
+            _MARKDOWN_ENCRYPTION_FIELD: _MARKDOWN_ENCRYPTION_VERSION,
+        }
+    )
+    protected = dict(serialized)
+    protected["source"] = protected_source
+    return _JSON_OBJECT.validate_python(protected)
+
+
+def _deserialize_document_transform_payload(
+    raw: Mapping[str, object],
+) -> DocumentTransformRequest:
+    source = raw.get("source")
+    if not isinstance(source, dict) or source.get(_MARKDOWN_ENCRYPTION_FIELD) is None:
+        return DocumentTransformRequest.model_validate(raw)
+    if source.get(_MARKDOWN_ENCRYPTION_FIELD) != _MARKDOWN_ENCRYPTION_VERSION:
+        msg = "Markdown task payload uses an unsupported encryption version"
+        raise ValueError(msg)
+    ciphertext = source.get(_MARKDOWN_CIPHERTEXT_FIELD)
+    expected_sha256 = source.get(_MARKDOWN_SHA256_FIELD)
+    if (
+        "content" in source
+        or not isinstance(ciphertext, str)
+        or not isinstance(expected_sha256, str)
+    ):
+        msg = "Encrypted Markdown task payload is invalid"
+        raise ValueError(msg)
+    content = decrypt_cache(ciphertext)
+    if not hmac.compare_digest(hashlib.sha256(content.encode()).hexdigest(), expected_sha256):
+        msg = "Encrypted Markdown task payload hash does not match"
+        raise ValueError(msg)
+    plaintext_source = dict(source)
+    for field in (
+        _MARKDOWN_CIPHERTEXT_FIELD,
+        _MARKDOWN_SHA256_FIELD,
+        _MARKDOWN_ENCRYPTION_FIELD,
+    ):
+        del plaintext_source[field]
+    plaintext_source["content"] = content
+    plaintext = dict(raw)
+    plaintext["source"] = plaintext_source
+    return DocumentTransformRequest.model_validate(plaintext)
+
+
+def _terminal_payload() -> object:
+    return case(
+        (
+            Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+            literal(_TERMINAL_REDACTED_PAYLOAD, type_=JSONB),
+        ),
+        else_=Task.payload,
+    )
+
+
+def _serialize_checkpoint(checkpoint: DocumentTransformCheckpoint) -> dict[str, JsonValue]:
     serialized = checkpoint.model_dump(mode="json")
+    if isinstance(checkpoint, CopyCheckpoint):
+        plaintext = json.dumps(
+            serialized, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+        )
+        if len(plaintext.encode()) > _MAX_CHECKPOINT_PLAN_BYTES:
+            raise CheckpointTooLargeError
+        return {
+            "kind": "copy",
+            "version": 1,
+            _COPY_CHECKPOINT_CIPHERTEXT_FIELD: encrypt_cache(plaintext),
+        }
     plan = {field: serialized.pop(field) for field in _CHECKPOINT_PLAN_FIELDS}
     plaintext = json.dumps(plan, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     if len(plaintext.encode()) > _MAX_CHECKPOINT_PLAN_BYTES:
@@ -516,7 +671,17 @@ def _serialize_checkpoint(checkpoint: InPlaceCheckpoint) -> dict[str, JsonValue]
     return _JSON_OBJECT.validate_python(serialized)
 
 
-def _deserialize_checkpoint(raw: Mapping[str, object]) -> InPlaceCheckpoint:
+def _deserialize_checkpoint(raw: Mapping[str, object]) -> DocumentTransformCheckpoint:
+    if raw.get("kind") == "copy":
+        ciphertext = raw.get(_COPY_CHECKPOINT_CIPHERTEXT_FIELD)
+        if not isinstance(ciphertext, str):
+            msg = "Copy transform checkpoint is missing its encrypted payload"
+            raise TypeError(msg)
+        payload = json.loads(decrypt_cache(ciphertext))
+        if not isinstance(payload, dict):
+            msg = "Copy transform checkpoint payload is invalid"
+            raise ValueError(msg)
+        return CopyCheckpoint.model_validate(payload)
     metadata = dict(raw)
     ciphertext = metadata.pop("plan_ciphertext", None)
     if not isinstance(ciphertext, str):

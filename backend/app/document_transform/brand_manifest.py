@@ -12,11 +12,12 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 from app.identifiers import BrandProfileId
 
 
-CURRENT_BRAND_PROFILE_ID = BrandProfileId("sarj-2026-v3")
+CURRENT_BRAND_PROFILE_ID = BrandProfileId("sarj-2026-v4")
 BRAND_PROFILE_IDS = frozenset(
     {
         BrandProfileId("sarj-legacy-v1"),
         BrandProfileId("sarj-2026-v2"),
+        BrandProfileId("sarj-2026-v3"),
         CURRENT_BRAND_PROFILE_ID,
     }
 )
@@ -28,8 +29,11 @@ EXPECTED_BRAND_PROFILE_SHA256 = MappingProxyType(
         BrandProfileId("sarj-2026-v2"): (
             "8824cf836c053056cbe9a3f195944d4720897804264790da750e3c74101654d8"
         ),
-        CURRENT_BRAND_PROFILE_ID: (
+        BrandProfileId("sarj-2026-v3"): (
             "4a21dfdc50faa2b1e59d3f6a3397b5a0b6fb248aab4abcfde742e58476321589"
+        ),
+        CURRENT_BRAND_PROFILE_ID: (
+            "bbc319b0152be2a645099c0d88516ebf13b375bdadb5b443ef7037da027dcb22"
         ),
     }
 )
@@ -70,6 +74,7 @@ class DocumentHeaderBrandTokens(_ManifestModel):
 
 class DocumentBrandTokens(_ManifestModel):
     font_family: Literal["Nunito"]
+    complex_script_font_family: Literal["Arial"] | None = None
     body_size_pt: int = Field(ge=9, le=14)
     h1_size_pt: int = Field(ge=18, le=28)
     h2_size_pt: int = Field(ge=13, le=20)
@@ -150,6 +155,13 @@ def load_brand_manifest(profile_id: BrandProfileId) -> SarjBrandManifest:
 
 
 CURRENT_BRAND_MANIFEST = load_brand_manifest(CURRENT_BRAND_PROFILE_ID)
+
+
+def trusted_document_logo_description() -> str:
+    return (
+        f"Sarj logo sha256:{CURRENT_BRAND_MANIFEST.assets.logo_sha256} "
+        f"profile:{CURRENT_BRAND_MANIFEST.profile_id}"
+    )
 
 
 def normalize_header_title(title: str, *, max_chars: int) -> str:

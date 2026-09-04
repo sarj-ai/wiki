@@ -398,6 +398,29 @@ async def test_document_transform_endpoint_creates_separate_queued_task() -> Non
     assert response.headers["Idempotency-Replayed"] == "false"
 
 
+async def test_markdown_transform_rejects_unsupported_syntax_before_task_creation() -> None:
+    tasks = _Tasks(created=True)
+    enqueuer = _Enqueuer()
+    files = _destination_files()
+    payload = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content="![diagram](https://example.com/diagram.png)",
+            name="Unsupported",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.FORMAT,
+    )
+
+    with pytest.raises(HTTPException) as raised:
+        await _create_transform(payload, tasks=tasks, enqueuer=enqueuer, files=files)
+
+    assert raised.value.status_code == 422
+    assert tasks.requested_kind is TaskKind.FILE_SMART_CREATE
+    assert enqueuer.document_task_ids == []
+    assert files.requested == []
+
+
 async def test_document_transform_capability_and_kill_switch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -671,6 +671,9 @@ async def test_pptx_import_requires_drive_conversion_support_before_download() -
         _pptx(extra_name="../escape.xml"),
         _pptx(extra_name="/absolute.xml"),
         _pptx(extra_name="ppt/vbaProject.bin"),
+        _pptx(extra_name="activeX/activeX1.bin"),
+        _pptx(extra_name="ppt/slides/media/EmBeDdInGs/payload.bin"),
+        _pptx(extra_name="OLEOBJECTS/object.bin"),
         _pptx(
             extra_name="ppt/_rels/presentation.xml.rels",
             extra_payload=(
@@ -698,6 +701,9 @@ async def test_pptx_import_requires_drive_conversion_support_before_download() -
         "parent-traversal",
         "absolute-path",
         "macro-part",
+        "root-active-x-part",
+        "nested-mixed-case-embedding-part",
+        "root-mixed-case-ole-part",
         "external-media",
         "malformed-content-types",
         "malformed-presentation",

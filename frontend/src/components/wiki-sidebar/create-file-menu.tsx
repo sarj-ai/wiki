@@ -118,7 +118,7 @@ export function CreateFileMenu({ compact = true, driveId, parentFolderId }: Crea
             }}
           >
             <FileText className="size-4" />
-            Polish Markdown…
+            Import Markdown…
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           {CREATE_TYPES.map((type) => (

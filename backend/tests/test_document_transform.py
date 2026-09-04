@@ -1,21 +1,31 @@
 from __future__ import annotations
 
+from collections import UserDict
 from copy import deepcopy
+from dataclasses import replace
+from io import BytesIO
 import json
+from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, NamedTuple, override
+from typing import Any, NamedTuple, Never, override
 import uuid
 
+from docx import Document as WordDocument
+from docx.opc.constants import RELATIONSHIP_TYPE
+from googleapiclient.errors import HttpError
+from pydantic import ValidationError
 import pytest
 
 from app.document_transform import google_gateway as google_gateway_module
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
+from app.document_transform.docx_renderer import markdown_import_manifest, render_markdown_docx
 from app.document_transform.errors import (
     CheckpointTooLargeError,
     DocumentGatewayError,
     IncompatiblePendingOutputError,
     InPlaceNeedsReviewError,
     OutputConflictError,
+    OutputVerificationError,
     SourceChangedError,
     SourceTooLargeError,
     UnsupportedSourceError,
@@ -41,14 +51,19 @@ from app.document_transform.ir import (
     rewrite_markdown,
     utf16_length,
 )
+from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.document_transform.models import PatchGenerator
 from app.document_transform.planner import TextTransformPlanner
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import (
+    CopyCheckpoint,
+    CopyCheckpointStage,
     DocumentOutput,
+    DocumentTransformCheckpoint,
     DocumentTransformRequest,
     DriveFileSource,
     InPlaceCheckpoint,
+    InPlaceCheckpointStage,
     MarkdownSource,
     OutputStrategy,
     TextPatch,
@@ -60,9 +75,157 @@ from app.document_transform.unslop import (
     deterministic_unslop_replacement,
     scan_unslop_candidates,
 )
+from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId, TaskId
 from app.tasks import service as task_service_module
+from tests.support import dependency
+
+
+class _HttpErrorResponse(UserDict[str, str]):
+    def __init__(self, status: int) -> None:
+        super().__init__()
+        self.status = status
+        self.reason = "test"
+
+
+class _DownloadProgress(NamedTuple):
+    status: object
+    done: bool
+
+
+def _provider_http_error(status: int) -> HttpError:
+    return HttpError(dependency(_HttpErrorResponse(status)), b'{"error":"private detail"}')
+
+
+def test_markdown_source_limit_is_exactly_512_kib_of_strict_utf8() -> None:
+    content_schema = MarkdownSource.model_json_schema()["properties"]["content"]
+    assert content_schema["maxLength"] == MAX_MARKDOWN_BYTES
+
+    exact = "é" * (MAX_MARKDOWN_BYTES // 2)
+    source = MarkdownSource(
+        kind="markdown",
+        content=exact,
+        name="Exact",
+        destination_folder_id=FileId("folder"),
+    )
+    assert len(source.content.encode()) == MAX_MARKDOWN_BYTES
+
+    with pytest.raises(ValidationError, match="UTF-8 bytes"):
+        MarkdownSource(
+            kind="markdown",
+            content=f"{exact}a",
+            name="Too large",
+            destination_folder_id=FileId("folder"),
+        )
+    with pytest.raises(ValidationError, match="unicode"):
+        MarkdownSource(
+            kind="markdown",
+            content="bad\ud800text",
+            name="Invalid",
+            destination_folder_id=FileId("folder"),
+        )
+    with pytest.raises(ValidationError):
+        MarkdownSource(
+            kind="markdown",
+            content="a" * (MAX_MARKDOWN_BYTES + 1),
+            name="Too many characters",
+            destination_folder_id=FileId("folder"),
+        )
+
+
+def test_bounded_drive_markdown_download_rejects_declared_oversize_after_first_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    class FakeDownload:
+        def __init__(self, destination: BytesIO, _request: object, *, chunksize: int) -> None:
+            assert chunksize < MAX_MARKDOWN_BYTES
+            self.destination = destination
+
+        def next_chunk(self, *, num_retries: int) -> _DownloadProgress:
+            nonlocal calls
+            assert num_retries == 0
+            calls += 1
+            self.destination.write(b"x")
+            return _DownloadProgress(SimpleNamespace(total_size=MAX_MARKDOWN_BYTES + 1), False)
+
+    monkeypatch.setattr(google_gateway_module, "MediaIoBaseDownload", FakeDownload)
+
+    with pytest.raises(SourceTooLargeError):
+        GoogleDocumentGateway._execute_bounded_bytes(
+            dependency(object()),
+            max_bytes=MAX_MARKDOWN_BYTES,
+        )
+
+    assert calls == 1
+
+
+def test_bounded_drive_markdown_download_stops_when_unknown_total_crosses_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    class FakeDownload:
+        def __init__(self, destination: BytesIO, _request: object, *, chunksize: int) -> None:
+            self.destination = destination
+            self.chunksize = chunksize
+
+        def next_chunk(self, *, num_retries: int) -> _DownloadProgress:
+            nonlocal calls
+            assert num_retries == 0
+            calls += 1
+            self.destination.write(b"x" * self.chunksize)
+            return _DownloadProgress(SimpleNamespace(total_size=None), False)
+
+    monkeypatch.setattr(google_gateway_module, "MediaIoBaseDownload", FakeDownload)
+
+    with pytest.raises(SourceTooLargeError):
+        GoogleDocumentGateway._execute_bounded_bytes(
+            dependency(object()),
+            max_bytes=MAX_MARKDOWN_BYTES,
+        )
+
+    assert calls == MAX_MARKDOWN_BYTES // google_gateway_module._MARKDOWN_DOWNLOAD_CHUNK_BYTES + 1
+
+
+@pytest.mark.parametrize(
+    "method_name",
+    ["_execute_dict", "_execute_mutation_dict", "_execute_bytes"],
+)
+def test_google_gateway_normalizes_transport_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    method_name: str,
+) -> None:
+    boundary_name = (
+        "execute_mutation" if method_name == "_execute_mutation_dict" else "execute_with_retry"
+    )
+    private_detail = "private provider detail"
+
+    def timeout(_request: object) -> Never:
+        raise TimeoutError(private_detail)
+
+    monkeypatch.setattr(google_gateway_module, boundary_name, timeout)
+
+    with pytest.raises(DocumentGatewayError) as raised:
+        getattr(GoogleDocumentGateway, method_name)(dependency(object()))
+
+    assert raised.value.retryable
+    assert raised.value.http_status is None
+    assert private_detail not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    ("status", "retryable"),
+    [(400, False), (403, False), (429, True), (503, True)],
+)
+def test_google_gateway_preserves_provider_retryability(status: int, retryable: bool) -> None:
+    error = google_gateway_module._gateway_error(_provider_http_error(status))
+
+    assert error.http_status == status
+    assert error.retryable is retryable
+    assert "private detail" not in str(error)
 
 
 class _Generator(PatchGenerator):
@@ -204,6 +367,149 @@ def test_fixed_prefix_preserves_existing_name_capitalization(source: str, expect
     )
 
     assert replacement == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "docx_text", "expected_url"),
+    [
+        (
+            "Moreover, we@example.com is the alias.",
+            "Moreover, we@example.com is the alias.",
+            None,
+        ),
+        ("Moreover, 'we preserve this quote.'", "Moreover, 'we preserve this quote.'", None),
+        ("Moreover, ‘we preserve this quote.’", "Moreover, ‘we preserve this quote.’", None),
+        ('Moreover, "we preserve this quote."', 'Moreover, "we preserve this quote."', None),
+        ("Moreover, `we_keep_ID` is exact.", "Moreover, we_keep_ID is exact.", None),
+        (
+            "Moreover, [we use this label](https://example.com/a_(b)?x=1&y=2).",
+            "Moreover, we use this label.",
+            "https://example.com/a_(b)?x=1&y=2",
+        ),
+        ("Moreover, @we is the handle.", "Moreover, @we is the handle.", None),
+        ("Moreover, /we/path is literal.", "Moreover, /we/path is literal.", None),
+        ("Moreover, #we is the tag.", "Moreover, #we is the tag.", None),
+        ("Moreover, _we_var is exact.", "Moreover, _we_var is exact.", None),
+        ("Moreover, we://host is exact.", "Moreover, we://host is exact.", None),
+        ("Moreover, we:opaque-id is exact.", "Moreover, we:opaque-id is exact.", None),
+        ("Moreover, we&amp;they is literal.", "Moreover, we&they is literal.", None),
+    ],
+)
+async def test_unslop_planner_fails_closed_before_protected_recapitalization_in_docx(
+    source: str,
+    docx_text: str,
+    expected_url: str | None,
+) -> None:
+    document = parse_markdown(source, title="Protected recapitalization")
+    request = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content=source,
+            name="Protected recapitalization",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.UNSLOP,
+    )
+    generator = _Generator()
+
+    outcome = await TextTransformPlanner(generator=generator).transform(document, request)
+
+    assert outcome.document == document
+    assert outcome.applied_count == 0
+    assert outcome.deterministic_count == 0
+    assert not outcome.llm_invoked
+    assert generator.calls == []
+    assert {finding.code for finding in outcome.findings} == {"contextual_unslop_review_required"}
+    rendered = render_markdown_docx(
+        outcome.document.blocks[0].text,
+        title="",
+        branded=False,
+    )
+    imported = WordDocument(BytesIO(rendered))
+    assert "\n".join(paragraph.text for paragraph in imported.paragraphs) == docx_text
+    hyperlink_targets = {
+        relationship.target_ref
+        for relationship in imported.part.rels.values()
+        if relationship.reltype == RELATIONSHIP_TYPE.HYPERLINK
+    }
+    assert hyperlink_targets == ({expected_url} if expected_url is not None else set())
+
+
+async def test_unslop_planner_value_add_preserves_inline_topology_in_docx() -> None:
+    source = "Moreover, **we** approved [SARJ](https://sarj.ai) with `API_v2`."
+    expected = "**We** approved [SARJ](https://sarj.ai) with `API_v2`."
+    document = parse_markdown(source, title="Value-added recapitalization")
+    request = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content=source,
+            name="Value-added recapitalization",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.UNSLOP,
+    )
+    generator = _Generator()
+
+    outcome = await TextTransformPlanner(generator=generator).transform(document, request)
+
+    assert outcome.document.blocks[0].text == expected
+    assert outcome.applied_count == outcome.deterministic_count == 1
+    assert not outcome.llm_invoked
+    assert outcome.findings == ()
+    manifest = markdown_import_manifest(expected, title="", branded=False)
+    assert manifest.blocks[0].bold == ("We",)
+    assert manifest.blocks[0].inline_code == ("API_v2",)
+    assert manifest.blocks[0].links == (("SARJ", "https://sarj.ai"),)
+    imported = WordDocument(BytesIO(render_markdown_docx(expected, title="", branded=False)))
+    assert imported.paragraphs[0].text == "We approved SARJ with API_v2."
+    assert {
+        relationship.target_ref
+        for relationship in imported.part.rels.values()
+        if relationship.reltype == RELATIONSHIP_TYPE.HYPERLINK
+    } == {"https://sarj.ai"}
+
+
+@pytest.mark.parametrize(
+    ("source", "unsafe_replacement", "expected_code"),
+    [
+        (
+            "Moreover, we@example.com is the alias.",
+            "We@example.com is the alias.",
+            "protected_content_changed",
+        ),
+        (
+            "Moreover, 'we preserve this quote.'",
+            "'We preserve this quote.'",
+            "quoted_content_changed",
+        ),
+        (
+            "Moreover, ‘we preserve this quote.’",
+            "‘We preserve this quote.’",
+            "quoted_content_changed",
+        ),
+        (
+            "Moreover, we://host is exact.",
+            "Moreover, We://host is exact.",
+            "protected_content_changed",
+        ),
+        (
+            "Moreover, we&amp;they is literal.",
+            "Moreover, we&lt;they is literal.",
+            "protected_content_changed",
+        ),
+    ],
+)
+def test_unslop_safety_rejects_email_and_single_quote_recapitalization(
+    source: str,
+    unsafe_replacement: str,
+    expected_code: str,
+) -> None:
+    document, patch = _unslop_patch(source, unsafe_replacement)
+
+    decision = validate_patches(document, [patch], phase=TransformPhase.UNSLOP)
+
+    assert decision.accepted == {}
+    assert decision.findings[0].code == expected_code
 
 
 @pytest.mark.parametrize(
@@ -581,6 +887,7 @@ class _Gateway(DocumentGateway):
         *,
         expected_modified_time: str,
         expected_revision_id: DocsRevisionId | None,
+        expected_parent_folder_id: FileId,
     ) -> bool:
         return True
 
@@ -694,8 +1001,13 @@ class _Gateway(DocumentGateway):
         expected: DocumentIR,
         verify_brand: bool,
     ) -> OutputVerification:
-        del draft, source, expected, verify_brand
-        return self.verification
+        del source, expected, verify_brand
+        return OutputVerification(
+            content_preserved=self.verification.content_preserved,
+            structure_preserved=self.verification.structure_preserved,
+            brand_applied=self.verification.brand_applied,
+            revision_id=draft.revision_id,
+        )
 
     @override
     async def complete(
@@ -716,6 +1028,8 @@ class _Gateway(DocumentGateway):
             logo_uri=draft.logo_uri,
             completed=True,
             result=result,
+            result_sha256=google_gateway_module._json_sha256(result),
+            verified_revision_sha256=google_gateway_module._revision_sha256(draft.revision_id),
             brand_warnings=draft.brand_warnings,
         )
 
@@ -746,15 +1060,44 @@ async def test_markdown_both_runs_unslop_then_format_and_creates_sibling() -> No
     assert result.output.name == "Review — Sarj polished"
     assert result.applied_patch_count == 1
     assert result.tool_versions["unslop_version"] == "2.3.0"
-    assert result.validation.structure_preserved is False
-    assert {finding.code for finding in result.findings} == {
-        "logo_unavailable",
-        "structure_verification_required",
-    }
+    assert result.validation.structure_preserved is True
+    assert {finding.code for finding in result.findings} == {"logo_unavailable"}
     assert result.needs_review is True
     assert gateway.imported_docx is not None
     assert gateway.imported_docx.startswith(b"PK")
     assert gateway.requests == []
+
+
+async def test_markdown_docx_import_reports_unverified_brand_without_stale_fidelity_claims() -> (
+    None
+):
+    gateway = _Gateway()
+    logo_bytes = (
+        Path(__file__).parents[2] / "frontend/public/brand/sarj-logo-light.png"
+    ).read_bytes()
+    request = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content="**Decision**\n\n| Owner | Status |\n| --- | --- |\n| Wiki | Ready |",
+            name="Review",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.FORMAT,
+    )
+
+    result = await DocumentTransformExecutor(
+        gateway=gateway,
+        generator=_Generator(),
+        logo_bytes=logo_bytes,
+    ).execute(operation_id=uuid.uuid7(), request=request)
+
+    codes = {finding.code for finding in result.findings}
+    assert codes == set()
+    assert "markdown_table_preserved_as_text" not in codes
+    assert "markdown_inline_markup_preserved_as_text" not in codes
+    assert result.needs_review is False
+    assert result.validation.structure_preserved is True
+    assert gateway.imported_docx is not None
 
 
 async def test_unslop_clean_document_is_exact_content_noop_without_model_call() -> None:
@@ -776,7 +1119,13 @@ async def test_unslop_clean_document_is_exact_content_noop_without_model_call() 
 
     assert generator.calls == []
     assert result.applied_patch_count == 0
-    assert gateway.requests[0]["insertText"]["text"] == "The team approved the proposal.\n"
+    assert gateway.requests == []
+    assert gateway.imported_docx is not None
+    imported = WordDocument(BytesIO(gateway.imported_docx))
+    assert [paragraph.text for paragraph in imported.paragraphs] == [
+        "Decision",
+        "The team approved the proposal.",
+    ]
     assert gateway.brand_prepares == 0
     assert "updateDocumentStyle" not in str(gateway.requests)
     assert "insertInlineImage" not in str(gateway.requests)
@@ -809,16 +1158,14 @@ async def test_completed_output_recovery_never_reruns_model_or_mutations() -> No
     generator.calls.clear()
     gateway.applies = 0
 
-    result = await DocumentTransformExecutor(gateway=gateway, generator=generator).execute(
-        operation_id=operation_id,
-        request=request,
-    )
+    with pytest.raises(OutputConflictError):
+        await DocumentTransformExecutor(gateway=gateway, generator=generator).execute(
+            operation_id=operation_id,
+            request=request,
+        )
 
     assert generator.calls == []
     assert gateway.applies == 0
-    assert result.output.name == first.output.name
-    assert result.needs_review is True
-    assert result.findings[0].code == "recovered_completed_output"
 
 
 async def test_force_language_change_is_rejected_and_requires_review() -> None:
@@ -844,7 +1191,10 @@ async def test_force_language_change_is_rejected_and_requires_review() -> None:
     assert result.needs_review is True
     assert generator.calls == []
     assert result.findings[0].code == "contextual_unslop_review_required"
-    assert "must encrypt" in str(gateway.requests[0])
+    assert gateway.requests == []
+    assert gateway.imported_docx is not None
+    imported = WordDocument(BytesIO(gateway.imported_docx))
+    assert "must encrypt" in "\n".join(paragraph.text for paragraph in imported.paragraphs)
 
 
 async def test_completed_operation_is_replayed_without_second_mutation() -> None:
@@ -938,15 +1288,45 @@ async def test_native_doc_post_write_mismatch_is_reported_for_review(
         mode=mode,
     )
 
+    if not verification.content_preserved or not verification.structure_preserved:
+        with pytest.raises(OutputVerificationError):
+            await DocumentTransformExecutor(gateway=gateway, generator=_Generator()).execute(
+                operation_id=uuid.uuid7(),
+                request=request,
+            )
+        assert gateway.completed_result is None
+        return
+
     result = await DocumentTransformExecutor(gateway=gateway, generator=_Generator()).execute(
-        operation_id=uuid.uuid7(),
-        request=request,
+        operation_id=uuid.uuid7(), request=request
     )
 
     assert result.needs_review is True
     assert result.validation.protected_content_preserved is verification.content_preserved
     assert result.validation.structure_preserved is verification.structure_preserved
     assert {finding.code for finding in result.findings} == expected_codes
+
+
+async def test_markdown_import_readback_mismatch_is_reported_for_review() -> None:
+    gateway = _Gateway(
+        verification=OutputVerification(content_preserved=False, structure_preserved=False)
+    )
+    request = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content="# Decision\n\n1. First\n2. Second",
+            name="Review",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.UNSLOP,
+    )
+
+    with pytest.raises(OutputVerificationError):
+        await DocumentTransformExecutor(gateway=gateway, generator=_Generator()).execute(
+            operation_id=uuid.uuid7(),
+            request=request,
+        )
+    assert gateway.completed_result is None
 
 
 def test_google_doc_ir_uses_tab_ranges_and_locks_rich_text() -> None:
@@ -1434,7 +1814,29 @@ def test_foreign_pending_mutation_fails_terminal_before_google_write() -> None:
         )
 
 
-def test_copy_lost_response_recovers_branded_headers_without_second_write(
+def _pending_output_draft(
+    *,
+    pending_mutation_sha256: str,
+    mutation_base_revision_sha256: str,
+    logo_uri: str | None = None,
+) -> OutputDraft:
+    return OutputDraft(
+        output=DocumentOutput(
+            file_id=FileId("output"),
+            name="Output",
+            parent_folder_id=FileId("parent"),
+        ),
+        document_id=FileId("output"),
+        tab_id=DocsTabId("tab-a"),
+        revision_id=DocsRevisionId("revision-2"),
+        source_sha256="source-hash",
+        logo_uri=logo_uri,
+        pending_mutation_sha256=pending_mutation_sha256,
+        mutation_base_revision_sha256=mutation_base_revision_sha256,
+    )
+
+
+def test_copy_pending_mutation_does_not_treat_ambient_revision_as_commit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     document = _branded_google_document()
@@ -1452,16 +1854,7 @@ def test_copy_lost_response_recovers_branded_headers_without_second_write(
         pytest.fail("a committed copy mutation must not be written twice")
 
     monkeypatch.setattr(gateway, "_execute_mutation_dict", reject_duplicate_write)
-    draft = OutputDraft(
-        output=DocumentOutput(
-            file_id=FileId("output"),
-            name="Output",
-            parent_folder_id=FileId("parent"),
-        ),
-        document_id=FileId("output"),
-        tab_id=DocsTabId("tab-a"),
-        revision_id=DocsRevisionId("revision-2"),
-        source_sha256="source-hash",
+    draft = _pending_output_draft(
         logo_uri=gateway._logo_uri,
         pending_mutation_sha256="v3-mutation",
         mutation_base_revision_sha256=google_gateway_module._revision_sha256(
@@ -1470,17 +1863,83 @@ def test_copy_lost_response_recovers_branded_headers_without_second_write(
     )
 
     prepared = gateway._prepare_brand_shell_sync(uuid.uuid7(), draft)
+    with pytest.raises(SourceChangedError):
+        gateway._apply_requests_sync(
+            prepared,
+            "v3-mutation",
+            [{"insertText": {"text": "not known to be committed"}}],
+            DocsRevisionId("revision-1"),
+        )
+
+    assert len(prepared.headers) == 1
+    assert prepared.brand_warnings == ()
+    assert writes == []
+
+
+def test_copy_pending_mutation_recovers_only_with_exact_atomic_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = _branded_google_document()
+    digest = "a" * 64
+    marker_name = f"sarj-transform-copy-{digest}"
+    marker_range = google_gateway_module._terminal_body_marker_range(document)
+    assert marker_range is not None
+    document["tabs"][0]["documentTab"]["namedRanges"] = {
+        marker_name: {
+            "namedRanges": [
+                {"name": marker_name, "ranges": [marker_range]},
+            ]
+        }
+    }
+    gateway = object.__new__(GoogleDocumentGateway)
+    gateway._logo_uri = "https://assets.example.test/sarj-logo.png"
+    writes: list[object] = []
+    monkeypatch.setattr(gateway, "_get_document_sync", lambda _document_id: document)
+    monkeypatch.setattr(
+        gateway,
+        "_update_properties_sync",
+        lambda _document_id, properties: writes.append(properties),
+    )
+    monkeypatch.setattr(
+        gateway,
+        "_execute_mutation_dict",
+        lambda _request: pytest.fail("exact marker recovery must not write twice"),
+    )
+    draft = _pending_output_draft(
+        pending_mutation_sha256=digest,
+        mutation_base_revision_sha256=google_gateway_module._revision_sha256(
+            DocsRevisionId("revision-1")
+        ),
+    )
+
     applied = gateway._apply_requests_sync(
-        prepared,
-        "v3-mutation",
+        draft,
+        digest,
         [{"insertText": {"text": "already committed"}}],
         DocsRevisionId("revision-2"),
     )
 
-    assert len(prepared.headers) == 1
-    assert prepared.brand_warnings == ()
-    assert applied.applied_mutation_sha256 == "v3-mutation"
-    assert writes == [{"sarjTransformMutation": "v3-mutation"}]
+    assert applied.applied_mutation_sha256 == digest
+    assert applied.revision_id == "revision-2"
+    assert writes == [{google_gateway_module._PROP_MUTATION: digest}]
+
+
+def test_failed_ambiguous_create_preserves_terminal_conversion_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = object.__new__(GoogleDocumentGateway)
+    original = DocumentGatewayError(retryable=False, http_status=400)
+    monkeypatch.setattr(gateway, "_recover_output_sync", lambda _operation_id: None)
+
+    with pytest.raises(DocumentGatewayError) as raised:
+        gateway._recover_ambiguous_create(
+            uuid.uuid7(),
+            "source-hash",
+            original_error=original,
+        )
+
+    assert raised.value is original
+    assert not raised.value.retryable
 
 
 @pytest.mark.parametrize(
@@ -1528,6 +1987,63 @@ async def test_markdown_destination_is_revalidated_before_google_create(
             source_sha256="source-hash",
             output_name="Decision — Sarj formatted",
         )
+
+
+async def test_drive_markdown_parent_move_fails_source_fence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MovedFiles:
+        async def get(self, file_id: FileId) -> FileResponse:
+            return FileResponse(
+                id=file_id,
+                name="Decision.md",
+                mime_type="text/markdown",
+                parent_folder_id=FileId("new-parent"),
+                drive_id=None,
+                modified_time="2026-09-03T00:00:00Z",
+            )
+
+    gateway = object.__new__(GoogleDocumentGateway)
+    monkeypatch.setattr(gateway, "_files", MovedFiles(), raising=False)
+    unchanged = await gateway.source_is_unchanged(
+        DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("source"),
+            expected_modified_time="2026-09-03T00:00:00Z",
+        ),
+        expected_modified_time="2026-09-03T00:00:00Z",
+        expected_revision_id=None,
+        expected_parent_folder_id=FileId("old-parent"),
+    )
+
+    assert unchanged is False
+
+
+async def test_source_permission_loss_is_terminal_gateway_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MissingFiles:
+        async def get(self, file_id: FileId) -> FileResponse:
+            del file_id
+            msg = "not visible"
+            raise FileNotInScopeError(msg)
+
+    gateway = object.__new__(GoogleDocumentGateway)
+    monkeypatch.setattr(gateway, "_files", MissingFiles(), raising=False)
+    with pytest.raises(DocumentGatewayError) as raised:
+        await gateway.source_is_unchanged(
+            DriveFileSource(
+                kind="drive_file",
+                file_id=FileId("source"),
+                expected_modified_time="2026-09-03T00:00:00Z",
+            ),
+            expected_modified_time="2026-09-03T00:00:00Z",
+            expected_revision_id=None,
+            expected_parent_folder_id=FileId("parent"),
+        )
+
+    assert raised.value.http_status == 404
+    assert raised.value.retryable is False
 
 
 def test_single_tab_brand_verification_supports_legacy_top_level_inline_objects() -> None:
@@ -1694,6 +2210,7 @@ class _CheckpointStore:
         self.events = events
         self.generation = 0
         self.checkpoints: list[InPlaceCheckpoint] = []
+        self.resources: list[FileId] = []
 
     async def save_document_transform_checkpoint(
         self,
@@ -1701,14 +2218,269 @@ class _CheckpointStore:
         *,
         lease_token: uuid.UUID,
         expected_generation: int,
-        checkpoint: InPlaceCheckpoint,
+        checkpoint: DocumentTransformCheckpoint,
     ) -> int:
         del task_id, lease_token
         assert expected_generation == self.generation
+        assert isinstance(checkpoint, InPlaceCheckpoint)
         self.events.append(f"checkpoint:{checkpoint.stage}")
         self.checkpoints.append(checkpoint)
         self.generation += 1
         return self.generation
+
+    async def record_resource(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        resource_id: FileId,
+    ) -> None:
+        del task_id, lease_token
+        self.resources.append(resource_id)
+
+
+class _CopyCheckpointStore:
+    def __init__(self) -> None:
+        self.generation = 0
+        self.checkpoints: list[CopyCheckpoint] = []
+        self.resources: list[FileId] = []
+        self.events: list[str] = []
+
+    async def save_document_transform_checkpoint(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        expected_generation: int,
+        checkpoint: DocumentTransformCheckpoint,
+    ) -> int:
+        del task_id, lease_token
+        assert expected_generation == self.generation
+        assert isinstance(checkpoint, CopyCheckpoint)
+        self.checkpoints.append(checkpoint)
+        self.events.append(f"checkpoint:{checkpoint.stage.value}")
+        self.generation += 1
+        return self.generation
+
+    async def record_resource(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        resource_id: FileId,
+    ) -> None:
+        del task_id, lease_token
+        self.resources.append(resource_id)
+        self.events.append(f"resource:{resource_id}")
+
+
+def _copy_executor(
+    *,
+    gateway: _Gateway,
+    store: _CopyCheckpointStore,
+    task_id: TaskId,
+    checkpoint: CopyCheckpoint | None = None,
+) -> DocumentTransformExecutor:
+    return DocumentTransformExecutor(
+        gateway=gateway,
+        generator=_Generator(),
+        checkpoint_store=store,
+        task_id=task_id,
+        lease_token=uuid.uuid7(),
+        checkpoint=checkpoint,
+        checkpoint_generation=store.generation,
+    )
+
+
+async def test_copy_checkpoints_plan_before_create_and_resource_immediately_after() -> None:
+    gateway = _Gateway()
+    store = _CopyCheckpointStore()
+    task_id = TaskId(uuid.uuid7())
+    result = await DocumentTransformExecutor(
+        gateway=gateway,
+        generator=_Generator(),
+        checkpoint_store=store,
+        task_id=task_id,
+        lease_token=uuid.uuid7(),
+    ).execute(
+        operation_id=task_id,
+        request=DocumentTransformRequest(
+            source=MarkdownSource(
+                kind="markdown",
+                content="# Decision\n\nThe team approved the plan.",
+                name="Decision",
+                destination_folder_id=FileId("folder"),
+            ),
+            mode=TransformMode.UNSLOP,
+        ),
+    )
+
+    assert store.events == [
+        "checkpoint:planned",
+        "checkpoint:creating",
+        "resource:output",
+        "checkpoint:created",
+        "checkpoint:verified",
+    ]
+    verified = store.checkpoints[-1]
+    assert verified.stage is CopyCheckpointStage.VERIFIED
+    assert verified.result == result
+    assert verified.output_revision_id == result.output_revision_id
+    persisted = task_service_module._serialize_checkpoint(verified)
+    assert set(persisted) == {"kind", "version", "checkpoint_ciphertext"}
+    assert task_service_module._deserialize_checkpoint(persisted) == verified
+
+
+async def test_copy_readback_mismatch_fails_with_output_resource_tracked() -> None:
+    gateway = _Gateway(
+        verification=OutputVerification(content_preserved=False, structure_preserved=False)
+    )
+    store = _CopyCheckpointStore()
+    task_id = TaskId(uuid.uuid7())
+
+    with pytest.raises(OutputVerificationError):
+        await DocumentTransformExecutor(
+            gateway=gateway,
+            generator=_Generator(),
+            checkpoint_store=store,
+            task_id=task_id,
+            lease_token=uuid.uuid7(),
+        ).execute(
+            operation_id=task_id,
+            request=DocumentTransformRequest(
+                source=MarkdownSource(
+                    kind="markdown",
+                    content="Decision",
+                    name="Decision",
+                    destination_folder_id=FileId("folder"),
+                ),
+                mode=TransformMode.UNSLOP,
+            ),
+        )
+
+    assert store.resources == [FileId("output")]
+    assert store.checkpoints[-1].stage is CopyCheckpointStage.CREATED
+    assert gateway.completed_result is None
+
+
+async def test_ambiguous_copy_create_checkpoint_never_issues_second_create() -> None:
+    class AmbiguousGateway(_Gateway):
+        def __init__(self) -> None:
+            super().__init__()
+            self.creates = 0
+
+        async def create_from_markdown(
+            self,
+            *,
+            operation_id: uuid.UUID,
+            source: MarkdownSource,
+            source_sha256: str,
+            output_name: str,
+            imported_docx: bytes | None = None,
+        ) -> OutputDraft:
+            del operation_id, source, source_sha256, output_name, imported_docx
+            self.creates += 1
+            raise DocumentGatewayError(retryable=True)
+
+    gateway = AmbiguousGateway()
+    store = _CopyCheckpointStore()
+    task_id = TaskId(uuid.uuid7())
+    request = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content="Decision",
+            name="Decision",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.UNSLOP,
+    )
+    with pytest.raises(DocumentGatewayError):
+        await DocumentTransformExecutor(
+            gateway=gateway,
+            generator=_Generator(),
+            checkpoint_store=store,
+            task_id=task_id,
+            lease_token=uuid.uuid7(),
+        ).execute(operation_id=task_id, request=request)
+    assert store.checkpoints[-1].stage is CopyCheckpointStage.CREATING
+
+    with pytest.raises(DocumentGatewayError):
+        await _copy_executor(
+            gateway=gateway,
+            store=store,
+            task_id=task_id,
+            checkpoint=store.checkpoints[-1],
+        ).execute(operation_id=task_id, request=request)
+
+    assert gateway.creates == 1
+    assert [item.stage for item in store.checkpoints].count(CopyCheckpointStage.PLANNED) == 1
+
+
+async def test_completed_copy_recovery_rejects_revision_drift() -> None:
+    gateway = _Gateway()
+    store = _CopyCheckpointStore()
+    task_id = TaskId(uuid.uuid7())
+    request = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content="Decision",
+            name="Decision",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.UNSLOP,
+    )
+    await DocumentTransformExecutor(
+        gateway=gateway,
+        generator=_Generator(),
+        checkpoint_store=store,
+        task_id=task_id,
+        lease_token=uuid.uuid7(),
+    ).execute(operation_id=task_id, request=request)
+    assert gateway.draft is not None
+    gateway.draft = replace(
+        gateway.draft,
+        revision_id=DocsRevisionId("user-edit-revision"),
+    )
+
+    with pytest.raises(OutputVerificationError):
+        await _copy_executor(
+            gateway=gateway,
+            store=store,
+            task_id=task_id,
+            checkpoint=store.checkpoints[-1],
+        ).execute(operation_id=task_id, request=request)
+
+
+async def test_completed_copy_recovery_rejects_tampered_result_digest() -> None:
+    gateway = _Gateway()
+    store = _CopyCheckpointStore()
+    task_id = TaskId(uuid.uuid7())
+    request = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content="Decision",
+            name="Decision",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.UNSLOP,
+    )
+    await DocumentTransformExecutor(
+        gateway=gateway,
+        generator=_Generator(),
+        checkpoint_store=store,
+        task_id=task_id,
+        lease_token=uuid.uuid7(),
+    ).execute(operation_id=task_id, request=request)
+    assert gateway.draft is not None
+    gateway.draft = replace(gateway.draft, result_sha256="0" * 64)
+
+    with pytest.raises(OutputConflictError):
+        await _copy_executor(
+            gateway=gateway,
+            store=store,
+            task_id=task_id,
+            checkpoint=store.checkpoints[-1],
+        ).execute(operation_id=task_id, request=request)
 
 
 class _InPlaceGateway(_Gateway):
@@ -2027,6 +2799,7 @@ async def test_in_place_content_replay_rejects_post_commit_collaborator_edit() -
     persisted = task_service_module._deserialize_checkpoint(
         task_service_module._serialize_checkpoint(store.checkpoints[-1])
     )
+    assert isinstance(persisted, InPlaceCheckpoint)
     retry_generator = _Generator({TransformPhase.FORMAT: "must never be generated"})
 
     with pytest.raises(InPlaceNeedsReviewError):
@@ -2037,6 +2810,42 @@ async def test_in_place_content_replay_rejects_post_commit_collaborator_edit() -
             task_id=task_id,
             checkpoint=persisted,
         ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+
+    assert retry_generator.calls == []
+    assert gateway.mutations == {"headers": 1, "content": 1}
+
+
+async def test_in_place_complete_checkpoint_rejects_later_revision_without_mutation() -> None:
+    operation_id = uuid.uuid7()
+    task_id = TaskId(uuid.uuid7())
+    gateway = _CrashReplayInPlaceGateway("Quarterly review", crash_stage="never")
+    store = _CheckpointStore(gateway.events)
+    request = _in_place_request(TransformMode.FORMAT)
+
+    await _replay_executor(
+        gateway=gateway,
+        generator=_Generator(),
+        store=store,
+        task_id=task_id,
+    ).execute(operation_id=operation_id, request=request)
+
+    completed = store.checkpoints[-1]
+    assert completed.stage is InPlaceCheckpointStage.COMPLETE
+    assert gateway.mutations == {"headers": 1, "content": 1}
+    gateway.document = _in_place_document(
+        "Later collaborator edit",
+        revision="revision-after-complete",
+    )
+    retry_generator = _Generator({TransformPhase.FORMAT: "must never be generated"})
+
+    with pytest.raises(InPlaceNeedsReviewError):
+        await _replay_executor(
+            gateway=gateway,
+            generator=retry_generator,
+            store=store,
+            task_id=task_id,
+            checkpoint=completed,
+        ).execute(operation_id=operation_id, request=request)
 
     assert retry_generator.calls == []
     assert gateway.mutations == {"headers": 1, "content": 1}

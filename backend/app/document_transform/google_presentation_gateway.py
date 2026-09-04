@@ -57,11 +57,13 @@ _MAX_PPTX_BYTES = 25 * 1024 * 1024
 _MAX_ZIP_ENTRIES = 10_000
 _MAX_ZIP_ENTRY_BYTES = 50 * 1024 * 1024
 _MAX_ZIP_UNCOMPRESSED_BYTES = 250 * 1024 * 1024
-_FORBIDDEN_PPTX_PARTS = (
-    "/activex/",
-    "/embeddings/",
-    "/oleobjects/",
-    "vbaproject.bin",
+_FORBIDDEN_PPTX_PATH_COMPONENTS = frozenset(
+    {
+        "activex",
+        "embeddings",
+        "oleobjects",
+        "vbaproject.bin",
+    }
 )
 _FORBIDDEN_CONTENT_TYPE_MARKERS = (
     "macroenabled",
@@ -1115,7 +1117,7 @@ def _read_xml_root(
 
 def _zip_entry_is_unsafe(entry: ZipInfo, normalized: str, names: set[str]) -> bool:
     path = PurePosixPath(normalized)
-    normalized_lower = normalized.casefold()
+    path_components = {component.casefold() for component in path.parts}
     return any(
         (
             not normalized,
@@ -1126,7 +1128,7 @@ def _zip_entry_is_unsafe(entry: ZipInfo, normalized: str, names: set[str]) -> bo
             entry.compress_type not in {ZIP_STORED, ZIP_DEFLATED},
             entry.file_size > _MAX_ZIP_ENTRY_BYTES,
             stat.S_ISLNK(entry.external_attr >> 16),
-            any(marker in normalized_lower for marker in _FORBIDDEN_PPTX_PARTS),
+            bool(path_components & _FORBIDDEN_PPTX_PATH_COMPONENTS),
             normalized in names,
         )
     )

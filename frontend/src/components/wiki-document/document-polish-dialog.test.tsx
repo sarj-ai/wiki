@@ -244,11 +244,11 @@ describe("DocumentPolishDialog", () => {
       kind: "markdown",
     });
 
-    expect(findButtonNow("Create polished copy")).toBeDisabled();
+    expect(findButtonNow("Import Google Doc")).toBeDisabled();
     typeTextarea("# Launch\n\nA concise plan.");
-    expect(findButtonNow("Create polished copy")).toBeEnabled();
+    expect(findButtonNow("Import Google Doc")).toBeEnabled();
     clickButton(findButtonNow("Formatting"));
-    clickButton(findButtonNow("Create polished copy"));
+    clickButton(findButtonNow("Import Google Doc"));
 
     await vi.waitFor(() => {
       expect(documentTransformApi.create).toHaveBeenCalledWith(
@@ -262,6 +262,39 @@ describe("DocumentPolishDialog", () => {
         expect.any(String),
         "copy",
       );
+    });
+  });
+
+  it("loads dropped UTF-8 Markdown and derives the document name", async () => {
+    renderDialog(root, {
+      initialDestination: {
+        driveId: "drive-1",
+        driveName: "Current workspace",
+        folderId: "folder-1",
+        folderPath: ["Current folder"],
+      },
+      kind: "markdown",
+    });
+    const dropZone = document.body.querySelector<HTMLElement>(
+      '[aria-label="Markdown file drop zone"]',
+    );
+    if (dropZone === null) throw new Error("Markdown drop zone not found");
+    const file = new File(["# Imported\n\nBody."], "Architecture.md", {
+      type: "text/markdown",
+    });
+    const drop = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, "dataTransfer", {
+      value: { files: { item: () => file } },
+    });
+
+    dropZone.dispatchEvent(drop);
+
+    await vi.waitFor(() => {
+      expect(document.body.querySelector<HTMLInputElement>("#polish-markdown-name")).toHaveValue(
+        "Architecture",
+      );
+      expect(document.body.querySelector("textarea")).toHaveValue("# Imported\n\nBody.");
+      expect(findButtonNow("Import Google Doc")).toBeEnabled();
     });
   });
 });
@@ -313,7 +346,7 @@ function transformResult(overrides: TransformResultOverrides = {}): DocumentTran
     accessScope: "inherited",
     appliedPatchCount: 1,
     artifactKind: "document",
-    brandProfileId: "sarj-2026-v3",
+    brandProfileId: "sarj-2026-v4",
     brandProfileSha256: "b".repeat(64),
     changed: true,
     deterministicPatchCount: 1,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import math
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytest
 
@@ -17,6 +17,19 @@ from app.document_transform.slides_ir import (
     parse_google_presentation,
     sarj_logo_object_id,
 )
+
+
+_LONG_NARRATIVE = (
+    "Detailed implementation guidance explains the operating sequence, evidence requirements, "
+    "review controls, ownership boundaries, and expected decision points."
+)
+
+
+class _LogoGeometry(NamedTuple):
+    left: float
+    top: float
+    width: float
+    height: float
 
 
 def test_format_plan_preserves_text_and_has_verifiable_brand_fingerprint() -> None:
@@ -225,6 +238,35 @@ def test_exact_existing_logo_is_idempotent_and_fingerprint_includes_asset_identi
     )
 
 
+def test_logo_geometry_scales_manifest_canvas_and_fits_manifest_box() -> None:
+    presentation = _presentation()
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    create = next(request["createImage"] for request in plan.requests if "createImage" in request)
+    size = create["elementProperties"]["size"]
+    transform = create["elementProperties"]["transform"]
+    expected = _expected_top_right_logo(presentation)
+    assert size["width"]["magnitude"] == pytest.approx(expected.width)
+    assert size["height"]["magnitude"] == pytest.approx(expected.height)
+    assert transform["translateX"] == pytest.approx(expected.left)
+    assert transform["translateY"] == pytest.approx(expected.top)
+    assert expected.top == pytest.approx(36)
+
+
+def test_nonmatching_canvas_aspect_fails_closed_for_logo_only() -> None:
+    presentation = _presentation()
+    presentation["pageSize"]["height"]["magnitude"] = 540
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any("createImage" in request for request in plan.requests)
+    assert any("updateTextStyle" in request for request in plan.requests)
+    assert [finding.code for finding in plan.findings] == ["slide_geometry_unsafe"]
+
+
 def test_wrong_existing_logo_source_is_not_accepted_as_brand_success() -> None:
     presentation = _presentation()
     parsed = parse_google_presentation(presentation, title="Review")
@@ -371,7 +413,13 @@ def test_logo_placement_avoids_inherited_layout_and_master_content() -> None:
 
     create = next(request["createImage"] for request in plan.requests if "createImage" in request)
     transform = create["elementProperties"]["transform"]
-    assert (transform["translateX"], transform["translateY"]) not in {(604, 64), (604, 317.143)}
+    expected = _expected_top_right_logo(presentation)
+    bottom = presentation["pageSize"]["height"]["magnitude"] - expected.top - expected.height
+    actual = (transform["translateX"], transform["translateY"])
+    assert not any(
+        actual == pytest.approx(candidate)
+        for candidate in ((expected.left, expected.top), (expected.left, bottom))
+    )
 
 
 def test_inherited_placeholder_template_does_not_block_logo_placement() -> None:
@@ -399,7 +447,9 @@ def test_inherited_placeholder_template_does_not_block_logo_placement() -> None:
 
     create = next(request["createImage"] for request in plan.requests if "createImage" in request)
     transform = create["elementProperties"]["transform"]
-    assert (transform["translateX"], transform["translateY"]) == (604, 64)
+    expected = _expected_top_right_logo(presentation)
+    assert transform["translateX"] == pytest.approx(expected.left)
+    assert transform["translateY"] == pytest.approx(expected.top)
 
 
 def test_caption_placeholder_uses_caption_size_and_muted_color() -> None:
@@ -446,6 +496,92 @@ def test_dark_slide_skips_dark_brand_text_and_black_logo() -> None:
         "slide_logo_contrast_unresolved",
         "slide_text_contrast_unresolved",
     }
+
+
+@pytest.mark.parametrize(
+    "page_background_fill",
+    [
+        {"solidFill": {"color": {"rgbColor": {"red": 0.04, "green": 0.04, "blue": 0.04}}}},
+        {
+            "propertyState": "RENDERED",
+            "stretchedPictureFill": {"contentUrl": "https://example.invalid/background.png"},
+        },
+    ],
+    ids=["dark", "unresolved"],
+)
+def test_unsafe_background_removes_only_exact_existing_logo(
+    page_background_fill: dict[str, Any],
+) -> None:
+    presentation = _presentation()
+    first = _format_plan(
+        presentation,
+        parsed=parse_google_presentation(presentation, title="Review"),
+    )
+    branded = deepcopy(presentation)
+    _apply_brand_requests(branded, first.requests)
+    branded["slides"][0]["pageProperties"] = {
+        "pageBackgroundFill": page_background_fill,
+    }
+    parsed = parse_google_presentation(branded, title="Review")
+
+    second = _format_plan(branded, parsed=parsed)
+
+    logo_id = sarj_logo_object_id("slide-1")
+    assert [request for request in second.requests if "deleteObject" in request] == [
+        {"deleteObject": {"objectId": logo_id}}
+    ]
+    assert not any("createImage" in request for request in second.requests)
+    assert {finding.code for finding in second.findings} == {
+        "slide_logo_contrast_unresolved",
+        "slide_text_contrast_unresolved",
+    }
+    updated = deepcopy(branded)
+    _apply_brand_requests(updated, second.requests)
+    fingerprints = presentation_fingerprint(updated, "Review")
+    assert fingerprints.brand_sha256 == second.expected_brand_sha256
+    assert fingerprints.protected_structure_sha256 == parsed.protected_sha256
+
+
+def test_unsafe_background_does_not_delete_reserved_logo_collision() -> None:
+    presentation = _presentation()
+    parsed = parse_google_presentation(presentation, title="Review")
+    first = _format_plan(presentation, parsed=parsed)
+    branded = deepcopy(presentation)
+    _apply_brand_requests(branded, first.requests)
+    branded["slides"][0]["pageProperties"] = {
+        "pageBackgroundFill": {
+            "solidFill": {"color": {"rgbColor": {"red": 0.04, "green": 0.04, "blue": 0.04}}}
+        }
+    }
+    branded["slides"][0]["pageElements"][-1]["image"]["sourceUrl"] = (
+        "https://example.invalid/lookalike.png"
+    )
+
+    plan = _format_plan(branded, parsed=parsed)
+
+    assert not any("deleteObject" in request for request in plan.requests)
+    assert "slide_logo_id_collision" in {finding.code for finding in plan.findings}
+
+
+def test_unsafe_background_does_not_delete_mirrored_logo_collision() -> None:
+    presentation = _presentation()
+    parsed = parse_google_presentation(presentation, title="Review")
+    first = _format_plan(presentation, parsed=parsed)
+    branded = deepcopy(presentation)
+    _apply_brand_requests(branded, first.requests)
+    branded["slides"][0]["pageProperties"] = {
+        "pageBackgroundFill": {
+            "solidFill": {"color": {"rgbColor": {"red": 0.04, "green": 0.04, "blue": 0.04}}}
+        }
+    }
+    logo = branded["slides"][0]["pageElements"][-1]
+    logo["transform"]["scaleX"] = -1
+    logo["transform"]["translateX"] += logo["size"]["width"]["magnitude"]
+
+    plan = _format_plan(branded, parsed=parsed)
+
+    assert not any("deleteObject" in request for request in plan.requests)
+    assert "slide_logo_id_collision" in {finding.code for finding in plan.findings}
 
 
 def test_theme_colors_resolve_through_slide_layout_master_chain() -> None:
@@ -498,6 +634,182 @@ def test_autofit_text_is_preserved_for_review() -> None:
     presentation = _presentation()
     body = presentation["slides"][0]["pageElements"][1]
     body["shape"]["shapeProperties"]["autofit"]["autofitType"] = "TEXT_AUTOFIT"
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert not any(
+        request.get("updateTextStyle", {}).get("objectId") == "body-1" for request in plan.requests
+    )
+    assert "slide_text_fit_unresolved" in {finding.code for finding in plan.findings}
+
+
+@pytest.mark.parametrize("placeholder_type", ["BODY", "OBJECT"])
+def test_long_resolved_small_narrative_is_advisory_only(placeholder_type: str) -> None:
+    presentation = _presentation()
+    narrative = _text_shape(
+        "body-1",
+        _LONG_NARRATIVE,
+        placeholder_type=placeholder_type,
+        left=24,
+        top=140,
+        width=500,
+    )
+    narrative_style = narrative["shape"]["text"]["textElements"][1]["textRun"]["style"]
+    narrative_style["fontSize"]["magnitude"] = 11
+    presentation["slides"][0]["pageElements"][1] = narrative
+    floor_presentation = deepcopy(presentation)
+    floor_presentation["slides"][0]["pageElements"][1]["shape"]["text"]["textElements"][1][
+        "textRun"
+    ]["style"]["fontSize"]["magnitude"] = 12
+
+    plan = _format_plan(
+        presentation,
+        parsed=parse_google_presentation(presentation, title="Review"),
+    )
+    floor_plan = _format_plan(
+        floor_presentation,
+        parsed=parse_google_presentation(floor_presentation, title="Review"),
+    )
+
+    assert plan.requests == floor_plan.requests
+    assert [finding.code for finding in plan.findings].count("slide_text_too_small") == 1
+    assert "slide_text_too_small" not in {finding.code for finding in floor_plan.findings}
+
+
+@pytest.mark.parametrize(
+    "placeholder_type",
+    [
+        "TITLE",
+        "CENTERED_TITLE",
+        "SUBTITLE",
+        "HEADER",
+        "FOOTER",
+        "DATE_AND_TIME",
+        "SLIDE_NUMBER",
+        None,
+    ],
+)
+def test_small_non_narrative_text_is_not_flagged(placeholder_type: str | None) -> None:
+    presentation = _presentation()
+    element = _text_shape(
+        "non-narrative",
+        _LONG_NARRATIVE,
+        placeholder_type=placeholder_type,
+        left=24,
+        top=140,
+        width=500,
+    )
+    element["shape"]["text"]["textElements"][1]["textRun"]["style"]["fontSize"]["magnitude"] = 11
+    presentation["slides"][0]["pageElements"] = [element]
+
+    plan = _format_plan(
+        presentation,
+        parsed=parse_google_presentation(presentation, title="Review"),
+    )
+
+    assert "slide_text_too_small" not in {finding.code for finding in plan.findings}
+
+
+@pytest.mark.parametrize(("character_count", "expected"), [(79, False), (80, True)])
+def test_small_narrative_text_length_boundary(character_count: int, expected: bool) -> None:
+    presentation = _presentation()
+    body = _text_shape(
+        "body-1",
+        "x" * character_count,
+        placeholder_type="BODY",
+        left=24,
+        top=140,
+        width=500,
+    )
+    body["shape"]["text"]["textElements"][1]["textRun"]["style"]["fontSize"]["magnitude"] = 11
+    presentation["slides"][0]["pageElements"] = [body]
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert ("slide_text_too_small" in {finding.code for finding in plan.findings}) is expected
+
+
+def test_small_rich_table_and_chart_text_are_not_flagged() -> None:
+    presentation = _presentation()
+    rich = _rich_bulleted_shape()
+    rich["shape"]["placeholder"] = {"type": "BODY"}
+    rich["shape"]["text"]["textElements"][1]["textRun"]["content"] = _LONG_NARRATIVE
+    presentation["slides"][0]["pageElements"] = [
+        rich,
+        {
+            "objectId": "table-1",
+            "table": {
+                "tableRows": [
+                    {
+                        "tableCells": [
+                            {"text": {"textElements": rich["shape"]["text"]["textElements"]}}
+                        ]
+                    }
+                ]
+            },
+        },
+        {"objectId": "chart-1", "sheetsChart": {"spreadsheetId": "sheet-1", "chartId": 7}},
+    ]
+    parsed = parse_google_presentation(presentation, title="Review")
+
+    plan = _format_plan(presentation, parsed=parsed)
+
+    assert "slide_text_too_small" not in {finding.code for finding in plan.findings}
+
+
+@pytest.mark.parametrize(
+    "unsafe_state",
+    ["autofit", "inheritance", "style", "contrast", "background"],
+)
+def test_small_narrative_requires_resolved_fit_inheritance_and_contrast(
+    unsafe_state: str,
+) -> None:
+    presentation = _presentation()
+    narrative = _text_shape(
+        "body-1",
+        _LONG_NARRATIVE,
+        placeholder_type="BODY",
+        left=24,
+        top=140,
+        width=500,
+    )
+    run_style = narrative["shape"]["text"]["textElements"][1]["textRun"]["style"]
+    run_style["fontSize"]["magnitude"] = 11
+    presentation["slides"][0]["pageElements"] = [narrative]
+    if unsafe_state == "autofit":
+        narrative["shape"]["shapeProperties"]["autofit"]["autofitType"] = "TEXT_AUTOFIT"
+    elif unsafe_state == "inheritance":
+        narrative["shape"]["placeholder"]["parentObjectId"] = "missing-parent"
+    elif unsafe_state == "style":
+        run_style.pop("weightedFontFamily")
+    elif unsafe_state == "contrast":
+        run_style["foregroundColor"] = {
+            "opaqueColor": {"rgbColor": {"red": 1, "green": 1, "blue": 1}}
+        }
+    else:
+        presentation["slides"][0]["pageProperties"] = {
+            "pageBackgroundFill": {
+                "propertyState": "RENDERED",
+                "stretchedPictureFill": {"contentUrl": "https://example.invalid/background.png"},
+            }
+        }
+
+    plan = _format_plan(
+        presentation,
+        parsed=parse_google_presentation(presentation, title="Review"),
+    )
+
+    assert "slide_text_too_small" not in {finding.code for finding in plan.findings}
+
+
+def test_font_family_change_is_preserved_for_review() -> None:
+    presentation = _presentation()
+    body = presentation["slides"][0]["pageElements"][1]
+    body["shape"]["text"]["textElements"][1]["textRun"]["style"]["weightedFontFamily"] = {
+        "fontFamily": "Roboto Condensed"
+    }
     parsed = parse_google_presentation(presentation, title="Review")
 
     plan = _format_plan(presentation, parsed=parsed)
@@ -642,15 +954,22 @@ def test_resolved_parent_placeholder_style_is_supported() -> None:
     }
 
 
-def test_canonical_nine_level_placeholder_style_table_resolves_level_zero() -> None:
+@pytest.mark.parametrize("style_levels", [8, 9])
+def test_canonical_provider_placeholder_style_table_resolves_level_zero(
+    style_levels: int,
+) -> None:
     presentation = _presentation_with_canonical_inherited_title(
         master_level_zero_style={
             "fontSize": {"magnitude": 60, "unit": "PT"},
             "foregroundColor": {
                 "opaqueColor": {"rgbColor": {"red": 0.1, "green": 0.1, "blue": 0.1}}
             },
-            "weightedFontFamily": {"fontFamily": "Arial", "weight": 700},
-        }
+            "weightedFontFamily": {
+                "fontFamily": CURRENT_BRAND_MANIFEST.document.font_family,
+                "weight": 700,
+            },
+        },
+        style_levels=style_levels,
     )
     parsed = parse_google_presentation(presentation, title="Review")
 
@@ -722,7 +1041,10 @@ def test_malformed_placeholder_style_table_fails_closed(malformation: str) -> No
             "foregroundColor": {
                 "opaqueColor": {"rgbColor": {"red": 0.1, "green": 0.1, "blue": 0.1}}
             },
-            "weightedFontFamily": {"fontFamily": "Arial", "weight": 700},
+            "weightedFontFamily": {
+                "fontFamily": CURRENT_BRAND_MANIFEST.document.font_family,
+                "weight": 700,
+            },
         }
     )
     layout_elements = presentation["layouts"][0]["pageElements"][0]["shape"]["text"]["textElements"]
@@ -877,6 +1199,24 @@ def _format_plan(presentation: dict[str, Any], *, parsed: Any) -> Any:
     )
 
 
+def _expected_top_right_logo(presentation: dict[str, Any]) -> _LogoGeometry:
+    page_width = presentation["pageSize"]["width"]["magnitude"]
+    page_height = presentation["pageSize"]["height"]["magnitude"]
+    slides = CURRENT_BRAND_MANIFEST.slides
+    header = CURRENT_BRAND_MANIFEST.document.header
+    asset_width = CURRENT_BRAND_MANIFEST.assets.logo_pixel_width
+    asset_height = CURRENT_BRAND_MANIFEST.assets.logo_pixel_height
+    assert header is not None
+    assert asset_width is not None
+    assert asset_height is not None
+    scale = min(header.logo_width_pt / asset_width, header.logo_height_pt / asset_height)
+    width = asset_width * scale
+    height = asset_height * scale
+    inset_x = slides.safe_inset * page_width / slides.canvas_width
+    inset_y = slides.safe_inset * page_height / slides.canvas_height
+    return _LogoGeometry(page_width - inset_x - width, inset_y, width, height)
+
+
 def _presentation() -> dict[str, Any]:
     return {
         "presentationId": "deck-1",
@@ -976,7 +1316,9 @@ def _text_shape(
                     "textRun": {
                         "content": f"{text}\n",
                         "style": {
-                            "weightedFontFamily": {"fontFamily": "Arial"},
+                            "weightedFontFamily": {
+                                "fontFamily": CURRENT_BRAND_MANIFEST.document.font_family
+                            },
                             "fontSize": {"magnitude": size, "unit": "PT"},
                             "foregroundColor": {
                                 "opaqueColor": {"rgbColor": {"red": 0.1, "green": 0.1, "blue": 0.1}}
@@ -1041,9 +1383,13 @@ def _rich_bulleted_shape() -> dict[str, Any]:
     return shape
 
 
-def _placeholder_style_table(level_zero_style: dict[str, Any]) -> list[dict[str, Any]]:
+def _placeholder_style_table(
+    level_zero_style: dict[str, Any],
+    *,
+    style_levels: int = 8,
+) -> list[dict[str, Any]]:
     elements: list[dict[str, Any]] = []
-    for level in range(9):
+    for level in range(style_levels):
         bullet: dict[str, Any] = {"listId": "bodyPlaceholderListEntity", "glyph": " "}
         if level:
             bullet["nestingLevel"] = level
@@ -1070,6 +1416,7 @@ def _placeholder_style_table(level_zero_style: dict[str, Any]) -> list[dict[str,
 def _presentation_with_canonical_inherited_title(
     *,
     master_level_zero_style: dict[str, Any],
+    style_levels: int = 8,
 ) -> dict[str, Any]:
     presentation = _presentation()
     title = presentation["slides"][0]["pageElements"][0]
@@ -1086,7 +1433,8 @@ def _presentation_with_canonical_inherited_title(
     )
     layout_title["shape"]["placeholder"]["parentObjectId"] = "master-title"
     layout_title["shape"]["text"]["textElements"] = _placeholder_style_table(
-        {"fontSize": {"magnitude": 60, "unit": "PT"}}
+        {"fontSize": {"magnitude": 60, "unit": "PT"}},
+        style_levels=style_levels,
     )
     master_title = _text_shape(
         "master-title",
@@ -1097,7 +1445,8 @@ def _presentation_with_canonical_inherited_title(
         width=400,
     )
     master_title["shape"]["text"]["textElements"] = _placeholder_style_table(
-        master_level_zero_style
+        master_level_zero_style,
+        style_levels=style_levels,
     )
     presentation["layouts"] = [
         {
@@ -1145,6 +1494,15 @@ def _apply_brand_requests(
         for element in _walk_elements(slide["pageElements"])
     }
     for request in requests:
+        if delete_object := request.get("deleteObject"):
+            object_id = delete_object["objectId"]
+            for slide in slides.values():
+                slide["pageElements"] = [
+                    element
+                    for element in slide["pageElements"]
+                    if element.get("objectId") != object_id
+                ]
+            by_id.pop(object_id, None)
         if update := request.get("updateTextStyle"):
             for text_element in by_id[update["objectId"]]["shape"]["text"]["textElements"]:
                 run = text_element.get("textRun")
