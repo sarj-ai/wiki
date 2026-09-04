@@ -542,6 +542,15 @@ class DocumentTransformExecutor:
                 inspection=inspection,
             )
 
+        if (
+            checkpoint.stage is InPlaceCheckpointStage.HEADERS
+            and snapshot.revision_id != checkpoint.current_revision_id
+            and _matches_pre_header_checkpoint(snapshot, inspection, checkpoint)
+        ):
+            checkpoint = await self._save_checkpoint(
+                checkpoint.model_copy(update={"current_revision_id": snapshot.revision_id})
+            )
+
         if checkpoint.stage is InPlaceCheckpointStage.HEADERS:
             stage_result = await self._apply_checkpoint_stage(checkpoint)
             stage_snapshot = SourceSnapshot(
@@ -1161,6 +1170,48 @@ def _in_place_marker(
 ) -> str:
     digest = mutation_sha256(requests)[:20]
     return f"sarj-transform-{operation_id.hex}-{stage}-{digest}"
+
+
+def _matches_pre_header_checkpoint(
+    snapshot: SourceSnapshot,
+    inspection: InPlaceInspection,
+    checkpoint: InPlaceCheckpoint,
+) -> bool:
+    if snapshot.revision_id is None:
+        return False
+    requested_tab_ids = _header_request_tab_ids(checkpoint.requests)
+    if requested_tab_ids is None:
+        return False
+    current_headers = {str(header.tab_id): str(header.header_id) for header in inspection.headers}
+    return (
+        _to_ir(snapshot).semantic_sha256 == checkpoint.original_semantic_sha256
+        and inspection.structural_sha256 == checkpoint.structural_sha256
+        and inspection.protected_structure_sha256 == checkpoint.protected_structure_sha256
+        and inspection.body_sha256 == checkpoint.body_sha256
+        and inspection.header_safe_sha256 == checkpoint.header_safe_sha256
+        and not inspection.unknown_header_tab_ids
+        and tuple(str(tab_id) for tab_id in inspection.missing_header_tab_ids) == requested_tab_ids
+        and current_headers == checkpoint.headers
+        and inspection.marker_range == checkpoint.marker_range
+    )
+
+
+def _header_request_tab_ids(requests: list[dict[str, Any]]) -> tuple[str, ...] | None:
+    tab_ids: list[str] = []
+    for request in requests:
+        if set(request) != {"createHeader"}:
+            return None
+        creation = request.get("createHeader")
+        if not isinstance(creation, dict) or creation.get("type") != "DEFAULT":
+            return None
+        location = creation.get("sectionBreakLocation")
+        if not isinstance(location, dict) or location.get("index") != 0:
+            return None
+        tab_id = location.get("tabId")
+        if not isinstance(tab_id, str) or not tab_id or tab_id in tab_ids:
+            return None
+        tab_ids.append(tab_id)
+    return tuple(tab_ids) if tab_ids else None
 
 
 def _source_sha256(snapshot: SourceSnapshot, document: DocumentIR) -> str:
