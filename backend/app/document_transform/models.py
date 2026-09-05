@@ -151,7 +151,9 @@ def _prompt(document: DocumentIR, *, phase: TransformPhase) -> str:
         "delete only the supplied matched phrase and adjacent punctuation or whitespace; preserve "
         "all other words in their original order and do not introduce synonyms."
         if phase is TransformPhase.UNSLOP
-        else "Improve clarity and document structure with concise active prose. Preserve every claim."
+        else "Formatting preserves every character of the author's text, including whitespace "
+        'and punctuation. Do not propose text replacements. Return {"patches":[]}; '
+        "native formatting and structural changes are handled separately."
     )
     return "\n".join(
         (

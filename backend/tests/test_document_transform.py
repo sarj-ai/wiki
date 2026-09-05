@@ -3102,9 +3102,9 @@ async def test_in_place_persisted_checkpoint_replay_skips_model_and_duplicate_ba
 ) -> None:
     operation_id = uuid.uuid7()
     task_id = TaskId(uuid.uuid7())
-    gateway = _CrashReplayInPlaceGateway("Quarterly review", crash_stage=crash_stage)
+    gateway = _CrashReplayInPlaceGateway("Moreover, we approved the plan.", crash_stage=crash_stage)
     store = _CheckpointStore(gateway.events)
-    first_generator = _Generator({TransformPhase.FORMAT: "Quarterly review refined."})
+    first_generator = _Generator()
 
     with pytest.raises(RuntimeError, match="simulated worker crash"):
         await _replay_executor(
@@ -3112,7 +3112,7 @@ async def test_in_place_persisted_checkpoint_replay_skips_model_and_duplicate_ba
             generator=first_generator,
             store=store,
             task_id=task_id,
-        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
 
     assert first_generator.calls == [TransformPhase.FORMAT]
     persisted = store.checkpoints[-1]
@@ -3123,11 +3123,16 @@ async def test_in_place_persisted_checkpoint_replay_skips_model_and_duplicate_ba
         store=store,
         task_id=task_id,
         checkpoint=persisted,
-    ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+    ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
 
     assert retry_generator.calls == []
     assert gateway.mutations == {"headers": 1, "content": 1}
     assert result.output_strategy is OutputStrategy.IN_PLACE
+    assert result.applied_patch_count == 1
+    assert (
+        parse_google_document(gateway.document, title="Source").blocks[0].text
+        == "We approved the plan."
+    )
     assert result.changed is True
     assert result.output_revision_id == "revision-3"
 
@@ -3135,7 +3140,7 @@ async def test_in_place_persisted_checkpoint_replay_skips_model_and_duplicate_ba
 async def test_in_place_tab_checkpoint_resume_never_replays_content(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    gateway = _CrashReplayInPlaceGateway("Quarterly review", crash_stage="never")
+    gateway = _CrashReplayInPlaceGateway("Moreover, we approved the plan.", crash_stage="never")
     store = _CheckpointStore(gateway.events)
     operation_id = uuid.uuid7()
     task_id = TaskId(uuid.uuid7())
@@ -3165,10 +3170,10 @@ async def test_in_place_tab_checkpoint_resume_never_replays_content(
     with pytest.raises(DocumentGatewayError):
         await _replay_executor(
             gateway=gateway,
-            generator=_Generator({TransformPhase.FORMAT: "Quarterly review refined."}),
+            generator=_Generator(),
             store=store,
             task_id=task_id,
-        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
     assert store.checkpoints[-1].tab_naming is not None
     monkeypatch.setattr(gateway, "apply_in_place_stage", reject_content_replay)
     result = await _replay_executor(
@@ -3177,7 +3182,7 @@ async def test_in_place_tab_checkpoint_resume_never_replays_content(
         store=store,
         task_id=task_id,
         checkpoint=store.checkpoints[-1],
-    ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+    ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
     assert result.output_revision_id == "revision-4"
     assert len(calls) == 2
 
@@ -3185,9 +3190,9 @@ async def test_in_place_tab_checkpoint_resume_never_replays_content(
 async def test_in_place_header_retry_rebases_metadata_only_revision_drift() -> None:
     operation_id = uuid.uuid7()
     task_id = TaskId(uuid.uuid7())
-    gateway = _PreMutationRevisionDriftGateway("Quarterly review")
+    gateway = _PreMutationRevisionDriftGateway("Moreover, we approved the plan.")
     store = _CheckpointStore(gateway.events)
-    first_generator = _Generator({TransformPhase.FORMAT: "Quarterly review refined."})
+    first_generator = _Generator()
 
     with pytest.raises(DocumentGatewayError):
         await _replay_executor(
@@ -3195,7 +3200,7 @@ async def test_in_place_header_retry_rebases_metadata_only_revision_drift() -> N
             generator=first_generator,
             store=store,
             task_id=task_id,
-        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
 
     persisted = store.checkpoints[-1]
     retry_generator = _Generator({TransformPhase.FORMAT: "must never be generated"})
@@ -3205,12 +3210,17 @@ async def test_in_place_header_retry_rebases_metadata_only_revision_drift() -> N
         store=store,
         task_id=task_id,
         checkpoint=persisted,
-    ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+    ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
 
     assert first_generator.calls == [TransformPhase.FORMAT]
     assert retry_generator.calls == []
     assert gateway.required_revisions[:2] == ["revision-1", "revision-metadata-only"]
     assert gateway.mutations == {"headers": 1, "content": 1}
+    assert result.applied_patch_count == 1
+    assert (
+        parse_google_document(gateway.document, title="Source").blocks[0].text
+        == "We approved the plan."
+    )
     assert result.output_revision_id == "revision-3"
 
 
@@ -3249,16 +3259,16 @@ async def test_in_place_header_retry_does_not_rebase_user_visible_drift(drift: s
 async def test_in_place_content_replay_rejects_post_commit_collaborator_edit() -> None:
     operation_id = uuid.uuid7()
     task_id = TaskId(uuid.uuid7())
-    gateway = _CrashReplayInPlaceGateway("Quarterly review", crash_stage="content")
+    gateway = _CrashReplayInPlaceGateway("Moreover, we approved the plan.", crash_stage="content")
     store = _CheckpointStore(gateway.events)
 
     with pytest.raises(RuntimeError, match="simulated worker crash"):
         await _replay_executor(
             gateway=gateway,
-            generator=_Generator({TransformPhase.FORMAT: "Quarterly review refined."}),
+            generator=_Generator(),
             store=store,
             task_id=task_id,
-        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
 
     body = gateway.document["tabs"][0]["documentTab"]["body"]["content"]
     collaborator_text = "Collaborator edit\n"
@@ -3283,7 +3293,7 @@ async def test_in_place_content_replay_rejects_post_commit_collaborator_edit() -
             store=store,
             task_id=task_id,
             checkpoint=persisted,
-        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
 
     assert retry_generator.calls == []
     assert gateway.mutations == {"headers": 1, "content": 1}
@@ -3328,16 +3338,16 @@ async def test_in_place_complete_checkpoint_rejects_later_revision_without_mutat
 async def test_in_place_checkpoint_replay_rejects_source_title_drift() -> None:
     operation_id = uuid.uuid7()
     task_id = TaskId(uuid.uuid7())
-    gateway = _CrashReplayInPlaceGateway("Quarterly review", crash_stage="headers")
+    gateway = _CrashReplayInPlaceGateway("Moreover, we approved the plan.", crash_stage="headers")
     store = _CheckpointStore(gateway.events)
 
     with pytest.raises(RuntimeError, match="simulated worker crash"):
         await _replay_executor(
             gateway=gateway,
-            generator=_Generator({TransformPhase.FORMAT: "Quarterly review refined."}),
+            generator=_Generator(),
             store=store,
             task_id=task_id,
-        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
 
     stale_title_checkpoint = store.checkpoints[-1].model_copy(
         update={"source_title": "Former source title"}
@@ -3350,7 +3360,7 @@ async def test_in_place_checkpoint_replay_rejects_source_title_drift() -> None:
             store=store,
             task_id=task_id,
             checkpoint=stale_title_checkpoint,
-        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
 
     assert retry_generator.calls == []
     assert gateway.mutations == {"headers": 1, "content": 0}

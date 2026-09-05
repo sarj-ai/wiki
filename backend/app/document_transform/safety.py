@@ -93,6 +93,8 @@ def _rejection_code(
         BlockKind.TABLE,
     }:
         return "protected_block"
+    if phase is TransformPhase.FORMAT and patch.replacement != block.text:
+        return "format_text_changed"
     if not patch.replacement.strip():
         return "empty_replacement"
     if _protected_tokens(block.text) != _protected_tokens(patch.replacement):
