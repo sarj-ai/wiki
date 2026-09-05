@@ -686,6 +686,98 @@ describe("DocumentPolishDialog", () => {
     expect(documentTransformApi.create).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ["ready", "copy"],
+    ["unavailable", "copy"],
+    [undefined, "copy"],
+    ["ready", "in_place"],
+  ] as const)(
+    "shows persisted review reasons and %s links for %s",
+    async (linkStatus, strategy) => {
+      const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
+      const create = vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
+      const result: DocumentTransformResult = {
+        ...transformResult({ outputStrategy: strategy }),
+        needsReview: true,
+        shortLinkStatus: linkStatus ?? null,
+        shortLinkAlias: linkStatus === "ready" ? "review-copy" : null,
+        findings: [
+          {
+            blockId: "private-block-id",
+            code: "native_date_provider_rejected",
+            detail: "Dates were preserved as text.",
+          },
+          { blockId: null, code: "internal-code-2", detail: "Review the original header." },
+          { blockId: null, code: "internal-code-3", detail: "Check document spacing." },
+          {
+            blockId: null,
+            code: "internal-code-4",
+            detail: "<script>literal review note</script>",
+          },
+        ],
+      };
+      vi.spyOn(documentTransformApi, "waitForCompletion").mockRejectedValue(
+        new DocumentTransformNeedsReviewError("Automated safety checks require review.", result),
+      );
+      const copy = vi.fn().mockResolvedValue(undefined);
+      vi.stubGlobal("navigator", { clipboard: { writeText: copy }, locks: navigator.locks });
+      const onInPlaceComplete = vi.fn();
+      try {
+        renderDialog(
+          root,
+          {
+            allowInPlace: false,
+            expectedModifiedTime: "before",
+            fileId: "source-1",
+            kind: "drive_file",
+            mimeType: MIME_DOC,
+            name: "Architecture review",
+          },
+          onInPlaceComplete,
+        );
+        await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+        clickButton(findButtonNow("Create polished copy"));
+        await vi.waitFor(() =>
+          expect(document.body).toHaveTextContent("Dates were preserved as text."),
+        );
+        expect(document.body).toHaveTextContent(`Task reference: ${pending.id}`);
+        expect(document.body).not.toHaveTextContent("Polish complete");
+        expect(document.body).not.toHaveTextContent("private-block-id");
+        expect(document.body).not.toHaveTextContent("internal-code");
+        expect(document.querySelector("script")).toBeNull();
+        expect(document.body).toHaveTextContent("do not change who can access");
+        const more = document.querySelector("details");
+        expect(more).not.toHaveAttribute("open");
+        expect(more?.querySelector("summary")).toHaveTextContent("Show 1 more review note");
+        flushSync(() => more?.querySelector("summary")?.click());
+        expect(more).toHaveAttribute("open");
+        expect(more).toHaveTextContent("<script>literal review note</script>");
+        if (linkStatus === "ready") {
+          clickButton(findButtonNow("Copy short link"));
+        }
+        expect(document.querySelector('a[href="/go/review-copy"]')?.textContent).toBe(
+          linkStatus === "ready" ? "Open short link" : undefined,
+        );
+        expect(copy.mock.calls).toEqual(
+          linkStatus === "ready" ? [[`${window.location.origin}/go/review-copy`]] : [],
+        );
+        expect(document.body.textContent.includes("Copy short link")).toBe(linkStatus === "ready");
+        expect(document.body.textContent.includes("choose Short link")).toBe(
+          linkStatus !== "ready",
+        );
+        expect(findButtonNow("Create polished copy")).toBeDisabled();
+        expect(create).toHaveBeenCalledOnce();
+        expect(onInPlaceComplete).toHaveBeenCalledTimes(strategy === "in_place" ? 1 : 0);
+        clickButton(
+          findButtonNow(strategy === "in_place" ? "Open original document" : "Open review copy"),
+        );
+        expect(NavigationMock.push).toHaveBeenCalledWith("/d/output-1");
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
   it("never offers in-place for a Drive-hosted Markdown file", async () => {
     vi.spyOn(documentTransformApi, "create").mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",

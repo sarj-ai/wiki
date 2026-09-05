@@ -1,4 +1,6 @@
 from copy import deepcopy
+from dataclasses import replace
+import json
 from typing import Any
 
 import pytest
@@ -14,6 +16,66 @@ from app.document_transform.ir import parse_google_document
 from app.document_transform.schemas import DocumentOutput
 from app.drive.schemas import MIME_DOC
 from app.identifiers import DocsRevisionId, DocsTabId, FileId
+
+
+@pytest.mark.parametrize("field", ["bold", "italic", "underline"])
+@pytest.mark.parametrize(
+    ("before", "after", "direction"),
+    [
+        (None, True, "added_true"),
+        (None, False, "added_false"),
+        (True, None, "removed_true"),
+        (False, None, "removed_false"),
+        (True, False, "changed"),
+    ],
+)
+def test_emphasis_diagnostics_count_exact_direction_without_relaxing_verification(
+    field: str,
+    before: bool | None,
+    after: bool | None,
+    direction: str,
+) -> None:
+    original = _document()
+    actual = deepcopy(original)
+    for document, value in ((original, before), (actual, after)):
+        bullet = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["bullet"]
+        bullet["textStyle"] = {} if value is None else {field: value}
+    expected = parse_google_document(original, title="Private title")
+    # Font-only/noneditable means no authored-emphasis override is requested.
+    expected = replace(
+        expected, blocks=tuple(replace(block, editable=False) for block in expected.blocks)
+    )
+    counts = bullet_style_diagnostics(
+        parse_google_document(actual, title="Private title"), expected
+    )
+    assert counts[f"bullet_{field}_{direction}"] == 1
+    assert counts[f"bullet_{field}_request_present"] == 0
+    assert counts[f"bullet_{field}_request_expected_false"] == 0
+    assert counts["bullet_emphasis_mismatch"] == 1
+    assert all(type(value) is int for value in counts.values())
+    assert "Private" not in json.dumps(counts)
+    assert project_branded_bullet_styles(actual, expected) == actual
+
+
+def test_removed_false_records_exact_requested_false_without_acceptance() -> None:
+    original = _document()
+    bullet = original["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["bullet"]
+    bullet["textStyle"] = {"bold": False}
+    actual = deepcopy(original)
+    actual["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["bullet"]["textStyle"] = {}
+    expected = parse_google_document(original, title="Review")
+    expected = replace(
+        expected,
+        blocks=tuple(
+            replace(block, authored_emphasis=(("bold", False),)) for block in expected.blocks
+        ),
+    )
+    counts = bullet_style_diagnostics(parse_google_document(actual, title="Review"), expected)
+    assert counts["bullet_bold_removed_false"] == 1
+    assert counts["bullet_bold_request_present"] == 1
+    assert counts["bullet_bold_request_expected_false"] == 1
+    assert counts["bullet_projection_accepted"] == 0
+    assert project_branded_bullet_styles(actual, expected) == actual
 
 
 def _document() -> dict[str, Any]:

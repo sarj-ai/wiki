@@ -43,6 +43,21 @@ def test_only_static_typed_fields_are_emitted() -> None:
     assert "message" not in rows[0]
 
 
+def test_emphasis_breakdown_is_fixed_counter_allowlist() -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["extra"]["diagnostics"] = {
+        "bullet_bold_added_false": 3,
+        "bullet_italic_removed_true": 1,
+        "bullet_underline_request_expected_false": 2,
+        "bullet_private_style_changed": 1,
+    }
+    row = MODULE["sanitize"]([record], TASK)[0]
+    assert row["bullet_bold_added_false"] == 3
+    assert row["bullet_italic_removed_true"] == 1
+    assert row["bullet_underline_request_expected_false"] == 2
+    assert "bullet_private_style_changed" not in row
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [

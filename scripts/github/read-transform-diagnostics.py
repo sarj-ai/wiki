@@ -99,6 +99,19 @@ COUNT_FIELDS = frozenset(
         "attempt",
     ]
 )
+EMPHASIS_COUNT_FIELDS = frozenset(
+    f"bullet_{field}_{dimension}"
+    for field in ("bold", "italic", "underline")
+    for dimension in (
+        "added_true",
+        "added_false",
+        "removed_true",
+        "removed_false",
+        "changed",
+        "request_present",
+        "request_expected_false",
+    )
+)
 ERROR_CODES = frozenset(
     [
         "document_transform_failed",
@@ -159,7 +172,9 @@ def sanitize(
         if request_ids and extra.get("request_id") not in request_ids:
             raise ValueError
         timestamp = entry.get("timestamp")
-        if not isinstance(timestamp, str) or not re.fullmatch(r"[0-9T:.+Z-]{20,40}", timestamp):
+        if not isinstance(timestamp, str) or not re.fullmatch(
+            r"[0-9T:.+Z-]{20,40}", timestamp
+        ):
             raise ValueError
         parsed = datetime.fromisoformat(timestamp)
         if parsed.tzinfo is None:
@@ -170,7 +185,9 @@ def sanitize(
                 row["status"] = status
         if "request_id" in extra:
             request_id = extra["request_id"]
-            if not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f]{12,32}", request_id):
+            if not isinstance(request_id, str) or not re.fullmatch(
+                r"[0-9a-f]{12,32}", request_id
+            ):
                 raise ValueError
             row["request_id"] = request_id
         if "error_code" in extra:
@@ -189,7 +206,7 @@ def sanitize(
                     if type(value) is not bool:
                         raise ValueError
                     row[key] = value
-                elif key in COUNT_FIELDS:
+                elif key in COUNT_FIELDS or key in EMPHASIS_COUNT_FIELDS:
                     if type(value) is not int or not 0 <= value <= MAX_COUNT:
                         raise ValueError
                     row[key] = value
@@ -248,7 +265,8 @@ def run_read() -> int:
             raise ValueError
         rows.extend(sanitize(correlated, task_id, request_ids))
     sys.stdout.write(
-        json.dumps({"records": rows, "returned_count": len(rows)}, sort_keys=True) + "\n"
+        json.dumps({"records": rows, "returned_count": len(rows)}, sort_keys=True)
+        + "\n"
     )
     return 0
 
@@ -258,7 +276,9 @@ def main() -> int:
         return run_read()
     except READ_FAILURES:
         # Never echo subprocess output, exceptions, input or log messages.
-        sys.stderr.write("Diagnostic read rejected or unavailable; no raw logs emitted.\n")
+        sys.stderr.write(
+            "Diagnostic read rejected or unavailable; no raw logs emitted.\n"
+        )
         return 1
 
 
