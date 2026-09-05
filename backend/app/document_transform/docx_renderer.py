@@ -189,8 +189,7 @@ def render_markdown_docx(
     if branded:
         _configure_footer(document)
 
-    blocks = _without_duplicate_title(blocks, title)
-    if title.strip():
+    if _include_display_title(blocks, title):
         paragraph = document.add_paragraph(style="Sarj Title" if branded else "Title")
         _append_inlines(paragraph, _plain_inlines(title.strip()), branded=branded)
     _append_blocks(document, blocks, numbering, branded=branded)
@@ -285,7 +284,7 @@ def markdown_import_manifest(
 ) -> MarkdownImportManifest:
     parsed = _validated_blocks(markdown, title=title)
     blocks: list[MarkdownImportBlock] = []
-    if title.strip():
+    if _include_display_title(parsed, title):
         blocks.append(
             _manifest_block(
                 _Block(
@@ -299,7 +298,7 @@ def markdown_import_manifest(
         )
     active_ordered: dict[int, int] = {}
     next_list_group = 1
-    for block in _without_duplicate_title(parsed, title):
+    for block in parsed:
         list_group = 0
         start = block.start
         if block.kind == "list" and block.ordered:
@@ -1335,15 +1334,12 @@ def _inline_text(inlines: tuple[_Inline, ...]) -> str:
     return "".join(inline.text for inline in inlines)
 
 
-def _without_duplicate_title(blocks: tuple[_Block, ...], title: str) -> tuple[_Block, ...]:
-    if not blocks:
-        return blocks
-    first = blocks[0]
-    normalized_title = " ".join(title.split()).casefold()
-    normalized_heading = " ".join(first.text.split()).casefold()
-    if first.kind == "heading" and first.level == 1 and normalized_heading == normalized_title:
-        return blocks[1:]
-    return blocks
+def _include_display_title(blocks: tuple[_Block, ...], title: str) -> bool:
+    # An authored leading H1 owns the visible title hierarchy. File metadata
+    # remains independent; never replace authored text or inline formatting.
+    return bool(title.strip()) and not (
+        blocks and blocks[0].kind == "heading" and blocks[0].level == 1
+    )
 
 
 @dataclass(slots=True)
