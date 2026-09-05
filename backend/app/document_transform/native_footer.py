@@ -15,6 +15,7 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId
 
 MAX_FOOTER_URL_LENGTH = 200
 FIRST_PRINTABLE_CODEPOINT = 32
+FOOTER_LINK_CAPTION = "Open in Wiki"
 
 
 class FooterAction(StrEnum):
@@ -64,12 +65,17 @@ def plan_native_footer(
     tab_id: DocsTabId,
     revision_id: DocsRevisionId,
     short_link: str,
+    display_text: str | None = None,
     checkpoint: FooterCheckpoint | None = None,
 ) -> NativeFooterPlan:
     # Supply the complete documentTab, including footers, and an issued URL.
     # Persist the checkpoint before dispatching batch_body(); recover a lost
     # population reply by reading the exact content, never replacing custom text.
     _validate_inputs(tab_id=tab_id, revision_id=revision_id, short_link=short_link)
+    if display_text not in {None, FOOTER_LINK_CAPTION}:
+        msg = "Footer caption must use the pinned Wiki label"
+        raise ValueError(msg)
+    caption = display_text if display_text is not None else short_link
     checkpoint = checkpoint or FooterCheckpoint()
     style = document_tab.get("documentStyle")
     if not isinstance(style, dict):
@@ -100,7 +106,7 @@ def plan_native_footer(
     footers = document_tab.get("footers", {})
     footer = footers.get(footer_id) if isinstance(footers, dict) else None
     text = _plain_footer_text(footer)
-    if text == short_link + "\n":
+    if text == caption + "\n":
         return NativeFooterPlan(FooterAction.UNCHANGED, revision_id)
     if text != "\n":
         return NativeFooterPlan(FooterAction.PRESERVE, revision_id)
@@ -108,7 +114,10 @@ def plan_native_footer(
         FooterAction.POPULATE,
         revision_id,
         _population_requests(
-            tab_id=tab_id, footer_id=DocsSegmentId(footer_id), short_link=short_link
+            tab_id=tab_id,
+            footer_id=DocsSegmentId(footer_id),
+            short_link=short_link,
+            caption=caption,
         ),
     )
 
@@ -159,20 +168,20 @@ def _plain_footer_text(footer: object) -> str | None:
 
 
 def _population_requests(
-    *, tab_id: DocsTabId, footer_id: DocsSegmentId, short_link: str
+    *, tab_id: DocsTabId, footer_id: DocsSegmentId, short_link: str, caption: str
 ) -> tuple[DocsRequest, ...]:
     profile = SarjBrandProfile()
     range_value = {
         "tabId": tab_id,
         "segmentId": footer_id,
         "startIndex": 0,
-        "endIndex": utf16_length(short_link),
+        "endIndex": utf16_length(caption),
     }
     return (
         {
             "insertText": {
                 "location": {"tabId": tab_id, "segmentId": footer_id, "index": 0},
-                "text": short_link,
+                "text": caption,
             }
         },
         {

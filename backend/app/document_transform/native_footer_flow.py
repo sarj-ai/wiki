@@ -4,7 +4,7 @@ from copy import deepcopy
 from enum import StrEnum
 import hashlib
 import json
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict
 
@@ -25,6 +25,8 @@ class NativeFooterCheckpoint(BaseModel):
     stage: NativeFooterStage = NativeFooterStage.CREATE
     tab_id: DocsTabId
     url: str
+    # Missing on old durable checkpoints: retain their exact original payload.
+    display_text: Literal["Open in Wiki"] | None = None
     revision_id: DocsRevisionId
     create_marker: str
     populate_marker: str
@@ -90,7 +92,7 @@ def verified_footer_projection(
     if isinstance(footer, dict) and footer.get("footerId", footer_id) != footer_id:
         raise InPlaceNeedsReviewError
     if not isinstance(footer, dict) or not _footer_matches(
-        footer, checkpoint.url, populated=populated
+        footer, checkpoint.url, populated=populated, display_text=checkpoint.display_text
     ):
         raise InPlaceNeedsReviewError
     del footers[footer_id]
@@ -121,7 +123,9 @@ def _remove_footer_markers(value: object, markers: set[str]) -> None:
             pass
 
 
-def _footer_matches(footer: dict[str, Any], url: str, *, populated: bool) -> bool:
+def _footer_matches(
+    footer: dict[str, Any], url: str, *, populated: bool, display_text: str | None = None
+) -> bool:
     if set(footer) - {"footerId", "content"}:
         return False
     content = footer.get("content")
@@ -157,7 +161,8 @@ def _footer_matches(footer: dict[str, Any], url: str, *, populated: bool) -> boo
         style = paragraph.get("paragraphStyle", {})
         if style.get("alignment") != "END" or style.get("namedStyleType") != "NORMAL_TEXT":
             return False
-    return "".join(parts) == (url + "\n" if populated else "\n")
+    caption = display_text if display_text is not None else url
+    return "".join(parts) == (caption + "\n" if populated else "\n")
 
 
 def _link_style_matches(style: dict[str, Any], url: str) -> bool:

@@ -121,12 +121,13 @@ def build_copy_mutations(
     profile: SarjBrandProfile,
     headers: tuple[TabHeader, ...],
     logo_uri: str,
+    header_title: str | None = None,
 ) -> list[DocsRequest]:
     requests = build_copy_text_mutations(original, transformed)
     located = _post_edit_locations(original, transformed)
     requests.extend(
         _brand_shell_requests(
-            transformed.title,
+            transformed.title if header_title is None else header_title,
             profile=profile,
             tab_ids=_tab_ids(transformed),
             headers=headers,

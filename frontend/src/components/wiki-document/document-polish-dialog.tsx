@@ -133,6 +133,7 @@ export function DocumentPolishDialog({
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<"idle" | "starting" | "transforming">("idle");
   const [terminalMessage, setTerminalMessage] = useState<null | string>(null);
+  const [terminalTaskId, setTerminalTaskId] = useState<null | string>(null);
   const [retryMessage, setRetryMessage] = useState<null | string>(null);
   const [unverifiedOutputId, setUnverifiedOutputId] = useState<null | string>(null);
   const [reviewMessage, setReviewMessage] = useState<null | string>(null);
@@ -219,6 +220,7 @@ export function DocumentPolishDialog({
     setReviewMessage(null);
     setReviewResult(null);
     setTerminalMessage(null);
+    setTerminalTaskId(null);
     setUnverifiedOutputId(null);
   };
 
@@ -250,6 +252,7 @@ export function DocumentPolishDialog({
     setReviewMessage(null);
     setReviewResult(null);
     setTerminalMessage(null);
+    setTerminalTaskId(null);
     setUnverifiedOutputId(null);
     onOpenChange(false);
   };
@@ -285,6 +288,7 @@ export function DocumentPolishDialog({
       setReviewMessage(null);
       setReviewResult(null);
       setTerminalMessage(null);
+      setTerminalTaskId(null);
       setRetryMessage(null);
     } catch (error: unknown) {
       if (fileLoadGeneration.current === generation) {
@@ -362,6 +366,7 @@ export function DocumentPolishDialog({
       taskId: null,
     };
     let operation = candidateOperation;
+    let knownTaskId = operation.taskId;
     const reserve = async (candidate: TransformRecovery) => {
       const reserved = await claimTransformRecovery(owner, sourceIdentity, candidate);
       controller.signal.throwIfAborted();
@@ -401,9 +406,11 @@ export function DocumentPolishDialog({
     };
     const perform = async () => {
       operation = await reserve(candidateOperation);
+      knownTaskId = operation.taskId;
       const task = operation.taskId
         ? await documentTransformApi.getTask(operation.taskId, controller.signal)
         : await submitTask();
+      knownTaskId = task.id;
       saveRecovery({ ...operation, taskId: task.id });
       await recordTransformTask(owner, sourceIdentity, { ...operation, taskId: task.id });
       controller.signal.throwIfAborted();
@@ -460,6 +467,7 @@ export function DocumentPolishDialog({
           await completeTransformRecovery(owner, sourceIdentity, operation.key);
           saveRecovery(null);
           setTerminalMessage(error.message);
+          setTerminalTaskId(knownTaskId);
           setUnverifiedOutputId(error.unverifiedOutputId ?? null);
         } else {
           setRetryMessage(errorMessage(error, `Couldn’t polish ${artifactNoun}`));
@@ -511,6 +519,63 @@ export function DocumentPolishDialog({
           </div>
 
           <div className="space-y-5 overflow-y-auto p-5 sm:px-6">
+            {terminalMessage ? (
+              <div
+                className="border-destructive/30 bg-destructive/5 rounded-lg border px-3 py-2.5 text-sm"
+                role="alert"
+              >
+                <p className="font-medium">Polish did not complete</p>
+                <p className="text-muted-foreground mt-1 text-xs">{terminalMessage}</p>
+                {terminalTaskId ? (
+                  <p className="text-muted-foreground mt-2 text-xs">
+                    Task reference: <code className="break-all select-all">{terminalTaskId}</code>
+                  </p>
+                ) : null}
+                {unverifiedOutputId ? (
+                  <p className="mt-2 text-xs">
+                    This copy is incomplete and has not passed safety verification. Review it before
+                    using its content.{" "}
+                    <a
+                      className="underline"
+                      href={`/d/${encodeURIComponent(unverifiedOutputId)}`}
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      Open incomplete copy for review
+                    </a>
+                  </p>
+                ) : null}
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Change an option to start a deliberate new attempt.
+                </p>
+              </div>
+            ) : null}
+            {reviewMessage ? (
+              <div
+                className="border-border bg-muted/50 rounded-lg border px-3 py-2.5 text-sm"
+                role="alert"
+              >
+                <p className="font-medium">This {artifactNoun} needs review</p>
+                <p className="text-muted-foreground mt-1 text-xs">{reviewMessage}</p>
+                {reviewResult ? (
+                  <Button
+                    className="mt-2 px-0"
+                    onClick={() => {
+                      const fileId = reviewResult.outputFile.id;
+                      close();
+                      router.push(`/d/${encodeURIComponent(fileId)}`);
+                    }}
+                    size="xs"
+                    type="button"
+                    variant="link"
+                  >
+                    {reviewResult.outputStrategy === "in_place"
+                      ? "Open original document"
+                      : "Open review copy"}
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
             {completedResult ? (
               <div className="space-y-3" role="status">
                 <p className="text-lg font-semibold">
@@ -883,32 +948,6 @@ export function DocumentPolishDialog({
               </div>
             ) : null}
 
-            {reviewMessage ? (
-              <div
-                className="border-border bg-muted/50 rounded-lg border px-3 py-2.5 text-sm"
-                role="alert"
-              >
-                <p className="font-medium">This {artifactNoun} needs review</p>
-                <p className="text-muted-foreground mt-1 text-xs">{reviewMessage}</p>
-                {reviewResult ? (
-                  <Button
-                    className="mt-2 px-0"
-                    onClick={() => {
-                      const fileId = reviewResult.outputFile.id;
-                      close();
-                      router.push(`/d/${encodeURIComponent(fileId)}`);
-                    }}
-                    size="xs"
-                    type="button"
-                    variant="link"
-                  >
-                    {reviewResult.outputStrategy === "in_place"
-                      ? "Open original document"
-                      : "Open review copy"}
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
             {retryMessage ? (
               <div className="border-destructive/30 rounded-lg border p-3 text-sm" role="alert">
                 <p className="font-medium">Polish interrupted</p>
@@ -917,32 +956,6 @@ export function DocumentPolishDialog({
                   {unresolved
                     ? "Your existing operation is still reserved. Resume checking to recover its status; options remain locked to prevent duplicate work."
                     : "You can retry, change the options, or close this dialog."}
-                </p>
-              </div>
-            ) : null}
-            {terminalMessage ? (
-              <div
-                className="border-destructive/30 bg-destructive/5 rounded-lg border px-3 py-2.5 text-sm"
-                role="alert"
-              >
-                <p className="font-medium">Polish did not complete</p>
-                <p className="text-muted-foreground mt-1 text-xs">{terminalMessage}</p>
-                {unverifiedOutputId ? (
-                  <p className="mt-2 text-xs">
-                    This copy is incomplete and has not passed safety verification. Review it before
-                    using its content.{" "}
-                    <a
-                      className="underline"
-                      href={`/d/${encodeURIComponent(unverifiedOutputId)}`}
-                      rel="noopener noreferrer"
-                      target="_blank"
-                    >
-                      Open incomplete copy for review
-                    </a>
-                  </p>
-                ) : null}
-                <p className="text-muted-foreground mt-1 text-xs">
-                  Change an option to start a deliberate new attempt.
                 </p>
               </div>
             ) : null}

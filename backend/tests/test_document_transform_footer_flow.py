@@ -156,6 +156,53 @@ async def test_create_and_populate_recover_without_duplicate_writes(
     assert projected == before
     assert footer_id == "f1"
     assert complete.url == "https://wiki.sarj.ai/d/doc"
+    assert complete.display_text == "Open in Wiki"
+    run = document["tabs"][0]["documentTab"]["footers"]["f1"]["content"][0]["paragraph"][
+        "elements"
+    ][0]["textRun"]
+    assert run["content"] == "Open in Wiki\n"
+    assert run["textStyle"]["link"] == {"url": complete.url}
+
+
+@pytest.mark.asyncio
+async def test_legacy_footer_checkpoint_keeps_raw_url_and_replay_payload(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    document = _document()
+    gateway, initial, provider = await _plan(monkeypatch, document)
+    legacy_payload = initial.model_dump(mode="json")
+    legacy_payload.pop("display_text")
+    legacy = NativeFooterCheckpoint.model_validate(legacy_payload)
+    assert legacy.display_text is None
+    created = await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=legacy)
+    complete = await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=created)
+    assert (
+        await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=created)
+        == complete
+    )
+    run = document["tabs"][0]["documentTab"]["footers"]["f1"]["content"][0]["paragraph"][
+        "elements"
+    ][0]["textRun"]
+    assert run["content"] == legacy.url + "\n"
+    assert run["textStyle"]["link"] == {"url": legacy.url}
+    assert len(provider.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_caption_cannot_be_replaced_even_when_destination_is_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    document = _document()
+    gateway, initial, provider = await _plan(monkeypatch, document)
+    created = await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=initial)
+    complete = await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=created)
+    run = document["tabs"][0]["documentTab"]["footers"]["f1"]["content"][0]["paragraph"][
+        "elements"
+    ][0]["textRun"]
+    run["content"] = complete.url + "\n"
+    with pytest.raises(InPlaceNeedsReviewError):
+        verified_footer_projection(document, complete, populated=True)
+    assert len(provider.calls) == 2
 
 
 @pytest.mark.asyncio
