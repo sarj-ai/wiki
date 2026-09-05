@@ -1,4 +1,5 @@
 from copy import deepcopy
+from dataclasses import replace
 import json
 from typing import Any
 
@@ -37,7 +38,9 @@ def test_exact_header_accepts_legal_native_metadata(*, newline: bool, indices: s
         if indices in {"none", "start_only"}:
             wrapper.pop("endIndex")
     before = deepcopy(document)
-    manifest = markdown_import_manifest("Body", title="Import", branded=True)
+    manifest = replace(
+        markdown_import_manifest("Body", title="Import", branded=True), header_title=None
+    )
     result = verify_markdown_import(document, manifest)
     assert result.brand_applied
     assert result.content_preserved
@@ -112,7 +115,9 @@ def test_header_proof_never_accepts_extra_or_changed_logo_content(change: str) -
         runs.reverse()
     else:
         runs[0]["inlineObjectElement"]["unknown"] = {}
-    manifest = markdown_import_manifest("Body", title="Import", branded=True)
+    manifest = replace(
+        markdown_import_manifest("Body", title="Import", branded=True), header_title=None
+    )
     assert not verify_markdown_import(document, manifest).brand_applied
     checks = markdown_import_brand_diagnostics(document, manifest)
     assert all(type(value) is bool for value in checks.values())
@@ -121,7 +126,9 @@ def test_header_proof_never_accepts_extra_or_changed_logo_content(change: str) -
 
 def test_unchecked_diagnostics_are_omitted_not_claimed_as_failures() -> None:
     document = _header_document()
-    manifest = markdown_import_manifest("Body", title="Import", branded=True)
+    manifest = replace(
+        markdown_import_manifest("Body", title="Import", branded=True), header_title=None
+    )
     document["tabs"][0]["documentTab"]["headers"] = {}
     checks = markdown_import_brand_diagnostics(document, manifest)
     assert checks["import_header_shape"] is False
@@ -148,7 +155,9 @@ def test_diagnostics_preserve_logo_metadata_short_circuit(magnitude: object) -> 
     embedded = tab["inlineObjects"]["logo-1"]["inlineObjectProperties"]["embeddedObject"]
     embedded["description"] = "invalid"
     embedded["size"]["width"]["magnitude"] = magnitude
-    manifest = markdown_import_manifest("Body", title="Import", branded=True)
+    manifest = replace(
+        markdown_import_manifest("Body", title="Import", branded=True), header_title=None
+    )
     before = verify_markdown_import(document, manifest)
     checks = markdown_import_brand_diagnostics(document, manifest)
     assert not before.brand_applied
@@ -182,7 +191,9 @@ def test_logo_metadata_components_are_static_and_do_not_relax_proof(change: str)
             "foreign": "SECRET",
             "exact": CURRENT_BRAND_MANIFEST.assets.logo_uri,
         }[change]
-    manifest = markdown_import_manifest("Body", title="Import", branded=True)
+    manifest = replace(
+        markdown_import_manifest("Body", title="Import", branded=True), header_title=None
+    )
     checks = markdown_import_brand_diagnostics(document, manifest)
     expected = change in {"absent", "null", "exact"}
     assert checks["import_logo_metadata"] is expected

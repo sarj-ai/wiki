@@ -30,6 +30,7 @@ from markdown_it.token import Token
 from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
     DocumentHeaderBrandTokens,
+    normalize_header_title,
     trusted_document_logo_description,
 )
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
@@ -168,6 +169,7 @@ class MarkdownImportBlock:
 class MarkdownImportManifest:
     blocks: tuple[MarkdownImportBlock, ...]
     branded: bool
+    header_title: str | None = None
 
 
 def render_markdown_docx(
@@ -176,6 +178,7 @@ def render_markdown_docx(
     title: str,
     logo_bytes: bytes | None = None,
     branded: bool = True,
+    header_title: str | None = None,
 ) -> bytes:
     blocks = _validated_blocks(markdown, title=title)
 
@@ -185,7 +188,9 @@ def render_markdown_docx(
     _configure_styles(document, branded=branded)
     numbering = _configure_numbering(document, branded=branded)
     if branded and logo_bytes is not None:
-        _configure_header(document, logo_bytes)
+        _configure_header(
+            document, logo_bytes, title=title if header_title is None else header_title
+        )
     if branded:
         _configure_footer(document)
 
@@ -281,6 +286,7 @@ def markdown_import_manifest(
     *,
     title: str,
     branded: bool,
+    header_title: str | None = None,
 ) -> MarkdownImportManifest:
     parsed = _validated_blocks(markdown, title=title)
     blocks: list[MarkdownImportBlock] = []
@@ -318,7 +324,15 @@ def markdown_import_manifest(
         else:
             active_ordered.clear()
         blocks.append(_manifest_block(block, start=start, list_group=list_group))
-    return MarkdownImportManifest(blocks=tuple(blocks), branded=branded)
+    return MarkdownImportManifest(
+        blocks=tuple(blocks),
+        branded=branded,
+        header_title=normalize_header_title(
+            title if header_title is None else header_title, max_chars=_HEADER.max_title_chars
+        )
+        if branded
+        else None,
+    )
 
 
 def _manifest_block(
@@ -745,12 +759,23 @@ def _properties_element(owner: object, member_name: str, tag: str) -> BaseOxmlEl
     return properties
 
 
-def _configure_header(document: Document, logo_bytes: bytes) -> None:
+def _configure_header(document: Document, logo_bytes: bytes, *, title: str) -> None:
     paragraph = document.sections[0].header.paragraphs[0]
     paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     paragraph.paragraph_format.space_before = Pt(_HEADER.space_above_pt)
     paragraph.paragraph_format.space_after = Pt(_HEADER.space_below_pt)
     paragraph.paragraph_format.line_spacing = _HEADER.line_spacing_percent / 100
+    paragraph.paragraph_format.keep_with_next = False
+    title_run = paragraph.add_run(
+        normalize_header_title(title, max_chars=_HEADER.max_title_chars) + "\t"
+    )
+    _format_run(
+        title_run,
+        font=_HEADER.font_family,
+        size=_HEADER.size_pt,
+        color=_HEADER.color.removeprefix("#"),
+    )
+    title_run.bold = _HEADER.bold
     dimensions = _fitted_logo_dimensions()
     paragraph.add_run().add_picture(
         BytesIO(logo_bytes),

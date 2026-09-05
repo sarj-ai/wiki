@@ -43,6 +43,19 @@ def test_only_static_typed_fields_are_emitted() -> None:
     assert "message" not in rows[0]
 
 
+@pytest.mark.parametrize(
+    "value", [0, 1, "SECRET", None, {}], ids=["zero", "one", "string", "null", "object"]
+)
+def test_spacer_style_value_diagnostics_reject_nonboolean_values(value: object) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "document spacer eligibility"
+    record["jsonPayload"]["record"]["extra"]["diagnostics"] = {
+        "spacer_named_border_all_padding_zero": value,
+    }
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
+
+
 @pytest.mark.parametrize("invalid", [False, True])
 def test_native_import_diagnostics_expose_only_static_boolean_checks(*, invalid: bool) -> None:
     record = _record()
@@ -51,6 +64,7 @@ def test_native_import_diagnostics_expose_only_static_boolean_checks(*, invalid:
     )
     record["jsonPayload"]["record"]["extra"]["checks"] = {
         "import_header_shape": False,
+        "import_header_title_style": True,
         "import_logo_dimensions": True,
         "import_logo_title_exact": True,
         "import_logo_description_exact": False,
@@ -67,6 +81,7 @@ def test_native_import_diagnostics_expose_only_static_boolean_checks(*, invalid:
         return
     rows = MODULE["sanitize"]([record], TASK)
     assert rows[0]["import_header_shape"] is False
+    assert rows[0]["import_header_title_style"] is True
     assert rows[0]["import_logo_dimensions"] is True
     assert rows[0]["import_logo_metadata"] is False
     assert rows[0]["import_logo_title_exact"] is True

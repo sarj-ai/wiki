@@ -44,16 +44,20 @@ def test_generic_tabs_receive_source_grounded_native_names():
     document = _document("Risks and mitigations", "Project roadmap")
     tabs = _tabs("Tab 1", "Untitled tab")
     plan = plan_tab_names(document, tabs)
-    assert [rename.title for rename in plan.renames] == ["Risks and mitigations", "Project roadmap"]
+    assert [rename.title for rename in plan.renames] == [
+        "Risks and Mitigations",
+        "Project Roadmap",
+    ]
     assert plan.renames[0].request() == {
         "updateDocumentTabProperties": {
-            "tabProperties": {"tabId": "t0", "title": "Risks and mitigations"},
-            "fields": "title",
+            "tabProperties": {"tabId": "t0", "title": "Risks and Mitigations", "iconEmoji": "⚠️"},
+            "fields": "title,iconEmoji",
         },
     }
     assert plan.matches_preimage(tabs)
     result = tuple(
-        replace(tab, title=rename.title) for tab, rename in zip(tabs, plan.renames, strict=True)
+        replace(tab, title=rename.title, icon_emoji=rename.icon_emoji)
+        for tab, rename in zip(tabs, plan.renames, strict=True)
     )
     assert plan.matches_result(result)
     assert not plan.matches_preimage(result)
@@ -63,7 +67,7 @@ def test_generic_tabs_receive_source_grounded_native_names():
 def test_authored_titles_are_preserved_and_collisions_are_bounded():
     document = _document("Risks", "Risks", "RISKS")
     plan = plan_tab_names(document, _tabs("Risks", "Tab 2", "Tab 3"))
-    assert [rename.title for rename in plan.renames] == ["Risks (2)", "RISKS (3)"]
+    assert [rename.title for rename in plan.renames] == ["Risks", "Risks (2)", "RISKS (3)"]
 
 
 def test_nested_siblings_use_separate_title_namespaces():
@@ -84,7 +88,10 @@ def test_non_heading_content_and_dates_do_not_invent_tab_purpose():
             replace(document.blocks[2], level=2),
         ),
     )
-    assert plan_tab_names(document, _tabs("Tab 1", "Tab 2", "Tab 3")).renames == ()
+    assert [
+        rename.title
+        for rename in plan_tab_names(document, _tabs("Tab 1", "Tab 2", "Tab 3")).renames
+    ] == ["Tab 1", "Tab 2", "Tab 3"]
 
 
 def test_rtl_and_astral_titles_are_bounded_and_control_characters_removed():
@@ -92,14 +99,17 @@ def test_rtl_and_astral_titles_are_bounded_and_control_characters_removed():
     plan = plan_tab_names(document, _tabs("", "Tab 2", "Tab 3"))
     assert plan.renames[0].title == "خطة العمل"
     assert utf16_length(plan.renames[1].title) <= MAX_TAB_TITLE_UNITS
-    assert plan.renames[2].title == "Safe title name"
+    assert plan.renames[2].title == "Safe Title Name"
 
 
 def test_exact_result_verification_rejects_concurrent_rename_or_topology_change():
     document = _document("Roadmap", "Risk register")
     tabs = _tabs("Tab 1", "Existing author title")
     plan = plan_tab_names(document, tabs)
-    result = (replace(tabs[0], title="Roadmap"), tabs[1])
+    result = (
+        replace(tabs[0], title="Roadmap", icon_emoji="📄"),
+        replace(tabs[1], title="Existing author title", icon_emoji="📄"),
+    )
     assert plan.matches_result(result)
     assert not plan.matches_result((result[0], replace(result[1], title="User rename")))
     assert not plan.matches_result((replace(result[0], index=3), result[1]))
@@ -149,16 +159,16 @@ def test_single_headingless_tab_uses_original_title_without_body_edits_and_is_id
     document = _notes("Project follow-up")
     before = document
     plan = plan_tab_names(document, _tabs("Tab 1"))
-    assert [rename.title for rename in plan.renames] == ["Project follow-up"]
+    assert [rename.title for rename in plan.renames] == ["Project Follow-Up"]
     assert document == before
-    result = _tabs("Project follow-up")
+    result = (replace(_tabs("Project Follow-Up")[0], icon_emoji="📄"),)
     assert plan.matches_result(result)
     assert plan_tab_names(document, result).renames == ()
 
 
 def test_real_heading_then_first_authored_bold_lead_have_priority_over_document_title():
     document = _notes("Project follow-up", bold=True)
-    assert plan_tab_names(document, _tabs("Tab 1")).renames[0].title == "Delivery notes"
+    assert plan_tab_names(document, _tabs("Tab 1")).renames[0].title == "Delivery Notes"
     document = replace(
         document,
         blocks=(
@@ -177,25 +187,36 @@ def test_real_heading_then_first_authored_bold_lead_have_priority_over_document_
 
 @pytest.mark.parametrize("title", ["Document", "Untitled document", "Tab 1", "", "2026-09-04"])
 def test_no_purpose_is_invented_for_generic_or_numeric_source_title(title: str):
-    assert plan_tab_names(_notes(title), _tabs("Tab 1")).renames == ()
+    assert [rename.title for rename in plan_tab_names(_notes(title), _tabs("Tab 1")).renames] == [
+        "Tab 1"
+    ]
 
 
 def test_authored_tab_and_multiple_headingless_tabs_never_receive_document_title_fallback():
     document = _notes("Project follow-up")
-    assert plan_tab_names(document, _tabs("Personal decisions")).renames == ()
+    assert [
+        rename.title for rename in plan_tab_names(document, _tabs("Personal decisions")).renames
+    ] == ["Personal decisions"]
     document = replace(document, tab_ids=(DocsTabId("t0"), DocsTabId("t1")))
-    assert plan_tab_names(document, _tabs("Tab 1", "Tab 2")).renames == ()
+    assert [
+        rename.title for rename in plan_tab_names(document, _tabs("Tab 1", "Tab 2")).renames
+    ] == ["Tab 1", "Tab 2"]
 
 
 def test_later_bold_body_prose_and_long_or_protected_leads_are_not_tab_titles():
     document = _notes("Document")
     bold = replace(document.blocks[0], id="b1", authored_emphasis=(("bold", True),))
-    assert (
-        plan_tab_names(replace(document, blocks=(*document.blocks, bold)), _tabs("Tab 1")).renames
-        == ()
-    )
+    assert [
+        rename.title
+        for rename in plan_tab_names(
+            replace(document, blocks=(*document.blocks, bold)), _tabs("Tab 1")
+        ).renames
+    ] == ["Tab 1"]
     for block in (replace(bold, text="A long body sentence " * 8), replace(bold, editable=False)):
-        assert plan_tab_names(replace(document, blocks=(block,)), _tabs("Tab 1")).renames == ()
+        assert [
+            rename.title
+            for rename in plan_tab_names(replace(document, blocks=(block,)), _tabs("Tab 1")).renames
+        ] == ["Tab 1"]
 
 
 @pytest.mark.parametrize("title", ["خطة العمل", "🚀 Review " * 20, "Safe\u202e title"])
@@ -205,7 +226,13 @@ def test_original_title_fallback_preserves_unicode_and_bounds(title: str):
     assert len(plan.renames) == 1
     assert utf16_length(plan.renames[0].title) <= MAX_TAB_TITLE_UNITS
     assert "\u202e" not in plan.renames[0].title
-    assert plan_tab_names(document, _tabs(plan.renames[0].title)).renames == ()
+    assert (
+        plan_tab_names(
+            document,
+            (replace(_tabs(plan.renames[0].title)[0], icon_emoji=plan.renames[0].icon_emoji),),
+        ).renames
+        == ()
+    )
 
 
 async def test_copy_tab_naming_receives_original_title_not_generated_output_suffix():
@@ -241,5 +268,5 @@ async def test_copy_tab_naming_receives_original_title_not_generated_output_suff
             mode=TransformMode.FORMAT,
         ),
     )
-    assert result.output.name == "Project follow-up — Sarj formatted"
+    assert result.output.name == "Project Follow-Up — Sarj Formatted"
     assert seen == ["Project follow-up"]

@@ -137,11 +137,21 @@ PROVIDER_FIELDS = MappingProxyType(
 READ_FAILURES = (ValueError, TypeError, KeyError, OSError, subprocess.TimeoutExpired)
 BOOLEAN_FIELDS = frozenset(
     [
+        "spacer_named_values_first_entry_only",
+        "spacer_named_indent_schema_known",
+        "spacer_named_indent_all_zero",
+        "spacer_named_shading_schema_known",
+        "spacer_named_shading_explicit_transparent",
+        "spacer_named_border_schema_known",
+        "spacer_named_border_all_width_zero",
+        "spacer_named_border_all_padding_zero",
+        "spacer_named_border_all_transparent",
         "import_brand_requested",
         "import_single_tab",
         "import_block_count",
         "import_margins",
         "import_header_shape",
+        "import_header_title_style",
         "import_logo_object",
         "import_logo_metadata",
         "import_logo_title_exact",

@@ -68,7 +68,11 @@ def _output(checkpoint: StructureCheckpoint) -> dict[str, Any]:
             content.append(element)
         tabs.append(
             {
-                "tabProperties": {"tabId": tab_id, "title": section.title},
+                "tabProperties": {
+                    "tabId": tab_id,
+                    "title": section.title,
+                    **({"iconEmoji": section.icon_emoji} if section.icon_emoji is not None else {}),
+                },
                 "documentTab": {"body": {"content": content}},
             }
         )
@@ -188,18 +192,78 @@ def test_in_place_lists_and_unknown_style_fields_are_never_reconstructed():
     assert not executable_structure(plan, copy_mode=True)
 
 
-def test_atomic_creation_marker_recovers_ids_but_never_guesses_from_titles():
-    intent, _ = prepare_tab_creation(_checkpoint())
+def _created_document():
     moving, _ = _moving()
     created_document = _output(moving)
     original = _document()["tabs"][0]["documentTab"]["body"]
     created_document["tabs"][0]["documentTab"]["body"] = original
+    created_document["tabs"][0]["tabProperties"] = deepcopy(_document()["tabs"][0]["tabProperties"])
     for tab in created_document["tabs"][1:]:
         tab["documentTab"]["body"]["content"] = [
             {"endIndex": 1, "sectionBreak": {"sectionStyle": {}}},
             {"paragraph": {"elements": [{"textRun": {"content": "\n"}}]}},
         ]
     created_document["revisionId"] = "created"
+    return created_document
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("iconEmoji", "🚀"),
+        ("title", "Concurrent"),
+        ("parentTabId", "parent"),
+        ("index", 2),
+        ("nestingLevel", 1),
+        ("unknown", "private"),
+    ],
+)
+def test_creation_recovery_rejects_changed_source_preimage(field: str, value: object):
+    intent, _ = prepare_tab_creation(_checkpoint())
+    document = _created_document()
+    document["tabs"][0]["tabProperties"][field] = value
+    with pytest.raises(StructureStateError):
+        recover_created_tabs(intent, document)
+
+
+def test_creation_recovery_rejects_unknown_created_tab_properties():
+    intent, _ = prepare_tab_creation(_checkpoint())
+    document = _created_document()
+    document["tabs"][1]["tabProperties"]["unknown"] = "private"
+    with pytest.raises(StructureStateError):
+        recover_created_tabs(intent, document)
+    moving, _ = _moving()
+    output = _output(moving)
+    output["tabs"][1]["tabProperties"]["unknown"] = "private"
+    assert not verify_structure_content(moving, output)
+
+
+@pytest.mark.parametrize("icon", [None, "", "🚀"])
+def test_creation_recovery_retains_exact_authored_source_metadata(icon: str | None):
+    source = _document()
+    source["tabs"][0]["tabProperties"]["title"] = "📝 Authored Title"
+    if icon is not None:
+        source["tabs"][0]["tabProperties"]["iconEmoji"] = icon
+    plan = plan_tab_structure(source, comments_verified_absent=True)
+    assert plan is not None
+    intent, _ = prepare_tab_creation(StructureCheckpoint(plan))
+    document = _created_document()
+    document["tabs"][0]["tabProperties"] = deepcopy(source["tabs"][0]["tabProperties"])
+    # The ownership marker depends on the planned icons, not on the source title.
+    marker = "wiki.tab-structure." + plan.inventory_sha256
+    document["tabs"][0]["documentTab"]["namedRanges"] = {
+        marker: {"namedRanges": [{"name": marker, "ranges": [{"startIndex": 1, "endIndex": 2}]}]}
+    }
+    recovered = recover_created_tabs(intent, document)
+    assert recovered.revision_id == "created"
+    document["tabs"][0]["tabProperties"]["iconEmoji"] = "" if icon is None else "📄"
+    with pytest.raises(StructureStateError):
+        recover_created_tabs(intent, document)
+
+
+def test_atomic_creation_marker_recovers_ids_but_never_guesses_from_titles():
+    intent, _ = prepare_tab_creation(_checkpoint())
+    created_document = _created_document()
     recovered = recover_created_tabs(intent, created_document)
     assert recovered.created_tab_ids == ("delivery", "risks")
     assert recovered.revision_id == "created"
@@ -374,6 +438,7 @@ async def test_executor_persists_before_dispatch_and_recovers_without_duplicate_
         bound = replace(structure, created_tab_ids=("delivery", "risks"))
         current = _output(bound)
         if structure.stage is StructureStage.CREATING:
+            current["tabs"][0]["tabProperties"] = deepcopy(source["tabs"][0]["tabProperties"])
             current["tabs"][0]["documentTab"]["body"] = deepcopy(
                 source["tabs"][0]["documentTab"]["body"]
             )

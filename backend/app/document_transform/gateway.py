@@ -256,6 +256,7 @@ class DocumentGateway(ABC):
         source: SourceSnapshot,
         expected: DocumentIR,
         verify_brand: bool,
+        header_title: str | None = None,
     ) -> OutputVerification: ...
 
     @abstractmethod

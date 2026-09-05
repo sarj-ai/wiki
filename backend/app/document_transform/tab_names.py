@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import re
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 import unicodedata
 
 from app.document_transform.ir import BlockKind, DocumentIR, utf16_length
+from app.document_transform.naming import (
+    supported_tab_icon,
+    tab_icon_emoji,
+    title_case_document_name,
+)
 from app.identifiers import DocsTabId
 
 
@@ -19,12 +24,13 @@ _GENERIC_TITLE = re.compile(r"(?:tab\s*\d*|untitled(?:\s+tab)?(?:\s*\d*)?)", re.
 
 class _TabTitle(TypedDict):
     tabId: DocsTabId
-    title: str
+    title: NotRequired[str]
+    iconEmoji: NotRequired[str]
 
 
 class _UpdateTabProperties(TypedDict):
     tabProperties: _TabTitle
-    fields: Literal["title"]
+    fields: Literal["title", "iconEmoji", "title,iconEmoji"]
 
 
 class TabRenameRequest(TypedDict):
@@ -37,6 +43,7 @@ class NativeTabProperties:
     title: str
     parent_tab_id: DocsTabId | None = None
     index: int = 0
+    icon_emoji: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,12 +51,28 @@ class TabRename:
     tab_id: DocsTabId
     previous_title: str
     title: str
+    previous_icon_emoji: str | None = None
+    icon_emoji: str | None = None
 
     def request(self) -> TabRenameRequest:
+        properties: _TabTitle = {"tabId": self.tab_id}
+        title_changed = self.title != self.previous_title
+        icon_changed = self.icon_emoji != self.previous_icon_emoji
+        if title_changed:
+            properties["title"] = self.title
+        if icon_changed:
+            if self.icon_emoji is None:
+                message = "Tab icon clearing is not a planned enhancement"
+                raise ValueError(message)
+            properties["iconEmoji"] = self.icon_emoji
         return {
             "updateDocumentTabProperties": {
-                "tabProperties": {"tabId": self.tab_id, "title": self.title},
-                "fields": "title",
+                "tabProperties": properties,
+                "fields": "title,iconEmoji"
+                if title_changed and icon_changed
+                else "title"
+                if title_changed
+                else "iconEmoji",
             },
         }
 
@@ -63,9 +86,12 @@ class TabNamingPlan:
         return tabs == self.original_tabs
 
     def matches_result(self, tabs: tuple[NativeTabProperties, ...]) -> bool:
-        titles = {rename.tab_id: rename.title for rename in self.renames}
+        renames = {rename.tab_id: rename for rename in self.renames}
         expected = tuple(
-            replace(tab, title=titles.get(tab.tab_id, tab.title)) for tab in self.original_tabs
+            replace(tab, title=renames[tab.tab_id].title, icon_emoji=renames[tab.tab_id].icon_emoji)
+            if tab.tab_id in renames
+            else tab
+            for tab in self.original_tabs
         )
         return tabs == expected
 
@@ -80,12 +106,17 @@ def plan_tab_names(
         return TabNamingPlan(tabs, ())
     if len({tab.tab_id for tab in tabs}) != len(tabs):
         return TabNamingPlan(tabs, ())
+    if any(tab.icon_emoji is not None and not supported_tab_icon(tab.icon_emoji) for tab in tabs):
+        return TabNamingPlan(tabs, ())
     occupied: dict[DocsTabId | None, set[str]] = {}
     for tab in tabs:
         occupied.setdefault(tab.parent_tab_id, set()).add(_name_key(tab.title))
     renames: list[TabRename] = []
     for tab in tabs:
         if not _is_generic(tab.title):
+            icon = tab.icon_emoji or tab_icon_emoji(tab.title)
+            if icon is not None and icon != tab.icon_emoji:
+                renames.append(TabRename(tab.tab_id, tab.title, tab.title, tab.icon_emoji, icon))
             continue
         single_root_tab = len(tabs) == 1 and tab.parent_tab_id is None
         if prefer_document_title:
@@ -93,12 +124,24 @@ def plan_tab_names(
         else:
             candidate = _candidate_title(document, tab.tab_id, single_root_tab=single_root_tab)
         if not candidate:
+            candidate = _clean_title(tab.title) or "Tab"
+        candidate = _truncate(title_case_document_name(candidate), MAX_TAB_TITLE_UNITS)
+        if not candidate or not any(character.isalpha() for character in candidate):
             continue
         sibling_titles = occupied[tab.parent_tab_id]
-        title = _unique_title(candidate, sibling_titles)
+        title = candidate if candidate == tab.title else _unique_title(candidate, sibling_titles)
         sibling_titles.add(_name_key(title))
-        if title != tab.title:
-            renames.append(TabRename(tab.tab_id, tab.title, title))
+        icon = tab.icon_emoji or tab_icon_emoji(title)
+        if title != tab.title or (icon is not None and icon != tab.icon_emoji):
+            renames.append(
+                TabRename(
+                    tab.tab_id,
+                    tab.title,
+                    title,
+                    tab.icon_emoji,
+                    icon if icon is not None else tab.icon_emoji,
+                )
+            )
     return TabNamingPlan(tabs, tuple(renames))
 
 
@@ -176,9 +219,18 @@ def _clean_title(text: str) -> str:
 
 
 def _truncate(text: str, units: int) -> str:
+    return truncate_tab_title(text, units)
+
+
+def truncate_tab_title(text: str, units: int = MAX_TAB_TITLE_UNITS) -> str:
+    # Whole whitespace-delimited tokens are a conservative grapheme-safe
+    # boundary: do not split combining sequences, flags or ZWJ emoji to fit.
     while utf16_length(text) > units:
-        text = text[:-1]
-    return text.rstrip()
+        boundary = text.rfind(" ")
+        if boundary < 0:
+            return ""
+        text = text[:boundary].rstrip()
+    return text
 
 
 def _name_key(title: str) -> str:
