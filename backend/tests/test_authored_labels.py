@@ -73,6 +73,19 @@ def _snapshot(document: dict[str, Any]) -> SourceSnapshot:
     )
 
 
+def _with_native_title(document: dict[str, Any]) -> None:
+    content = document["tabs"][0]["documentTab"]["body"]["content"]
+    title = deepcopy(content[0])
+    title["paragraph"]["paragraphStyle"]["namedStyleType"] = "TITLE"
+    title["paragraph"]["elements"][0]["textRun"]["content"] = "Review\n"
+    for element in content:
+        element["startIndex"] += 7
+        element["endIndex"] += 7
+    title["startIndex"] = 1
+    title["endIndex"] = 8
+    content.insert(0, title)
+
+
 def test_role_plan_preserves_all_text_ranges_and_is_a_repeat_noop() -> None:
     original = parse_google_document(_document(), title="Review")
     roles = plan_authored_labels(original)
@@ -92,6 +105,35 @@ def test_role_plan_preserves_all_text_ranges_and_is_a_repeat_noop() -> None:
         == original.blocks
     )
     assert plan_authored_labels(transformed) == ()
+
+
+@pytest.mark.parametrize("style", ["TITLE", "HEADING_1", "SUBTITLE"])
+@pytest.mark.parametrize("position", [0, 2])
+def test_only_single_leading_native_title_can_precede_sections(style: str, position: int) -> None:
+    document = _document()
+    content = document["tabs"][0]["documentTab"]["body"]["content"]
+    title = deepcopy(content[0])
+    title["paragraph"]["paragraphStyle"]["namedStyleType"] = style
+    title["paragraph"]["elements"][0]["textRun"]["content"] = "Review\n"
+    content.insert(position, title)
+    start = 1
+    for element in content:
+        element["startIndex"] = start
+        start += len(element["paragraph"]["elements"][0]["textRun"]["content"])
+        element["endIndex"] = start
+    original = parse_google_document(document, title="Review")
+    roles = plan_authored_labels(original)
+    expected_count = 2 if style == "TITLE" and position == 0 else 0
+    assert len(roles) == expected_count
+    transformed = apply_authored_labels(original, roles)
+    assert transformed.blocks[position] == original.blocks[position]
+    assert plan_authored_labels(transformed) == ()
+
+
+def test_multiple_native_titles_do_not_enable_promotion() -> None:
+    original = parse_google_document(_document(), title="Review")
+    title = replace(original.blocks[0], kind=BlockKind.HEADING, source_named_style="TITLE")
+    assert plan_authored_labels(replace(original, blocks=(title, title, *original.blocks))) == ()
 
 
 @pytest.mark.parametrize(
@@ -163,13 +205,37 @@ def test_ambiguous_or_protected_documents_are_not_promoted(change: str) -> None:
 
 @pytest.mark.parametrize("mode", [TransformMode.FORMAT, TransformMode.BOTH, TransformMode.UNSLOP])
 @pytest.mark.parametrize("interruption", ["none", "planned", "old_builder", "missing_roles"])
+@pytest.mark.parametrize("native_title", [False, True])
 async def test_copy_roles_are_persisted_reconstructed_and_replayed(
     monkeypatch: pytest.MonkeyPatch,
     mode: TransformMode,
     interruption: str,
+    *,
+    native_title: bool,
 ) -> None:
     document = _document()
-    gateway = _Gateway(_snapshot(document))
+    if native_title:
+        _with_native_title(document)
+    original_document = deepcopy(document)
+    snapshot = _snapshot(document)
+    if native_title:
+        snapshot = replace(snapshot, title="Review — Unslopped")
+    gateway = _Gateway(snapshot)
+    naming_preferences: list[object] = []
+    tab_titles: list[str] = []
+
+    async def record_naming(**kwargs: object) -> None:
+        naming_preferences.append(kwargs["prefer_document_title"])
+        parsed = parse_google_document(document, title=snapshot.title)
+        expected = apply_authored_labels(parsed, plan_authored_labels(parsed))
+        naming = plan_tab_names(
+            expected,
+            (NativeTabProperties(DocsTabId("tab-1"), "Tab 1"),),
+            prefer_document_title=kwargs["prefer_document_title"] is True,
+        )
+        tab_titles.extend(rename.title for rename in naming.renames)
+
+    monkeypatch.setattr(gateway, "plan_tab_naming", record_naming)
     store = _CopyCheckpointStore()
     task_id = TaskId(uuid.uuid7())
     request = DocumentTransformRequest(
@@ -234,6 +300,8 @@ async def test_copy_roles_are_persisted_reconstructed_and_replayed(
     count = 0 if mode is TransformMode.UNSLOP else 2
     assert len(store.checkpoints[0].authored_labels) == count
     assert result.promoted_heading_count == count
+    assert naming_preferences == ([] if mode is TransformMode.UNSLOP else [not native_title])
+    assert tab_titles == ([] if mode is TransformMode.UNSLOP else ["Review"])
     requests = deepcopy(gateway.requests)
     replay = await _copy_executor(
         gateway=gateway, store=store, task_id=task_id, checkpoint=store.checkpoints[-1]
@@ -241,7 +309,7 @@ async def test_copy_roles_are_persisted_reconstructed_and_replayed(
     assert replay == result
     assert gateway.requests == requests
     assert gateway.applies == 1
-    assert document == _document()
+    assert document == original_document
 
 
 def test_modified_label_or_duplicate_role_is_rejected() -> None:

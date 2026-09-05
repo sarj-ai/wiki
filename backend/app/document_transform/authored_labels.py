@@ -40,19 +40,32 @@ def plan_authored_labels(document: DocumentIR) -> tuple[AuthoredLabelRole, ...]:
         return ()
     blocks = tuple(block for block in document.blocks if block.text.strip())
     if any(
-        block.kind != BlockKind.PARAGRAPH
+        not (
+            (
+                block.kind == BlockKind.PARAGRAPH
+                and block.source_named_style in {None, "NORMAL_TEXT"}
+            )
+            or (
+                index == 0
+                and block.kind == BlockKind.HEADING
+                and block.source_named_style == "TITLE"
+            )
+        )
         or not block.editable
         or block.native_content
         or block.native_bullet_json is not None
-        or block.source_named_style not in {None, "NORMAL_TEXT"}
         or block.source_range is None
         or block.source_range.segment_id is not None
-        for block in blocks
+        for index, block in enumerate(blocks)
     ):
         return ()
     roles: list[AuthoredLabelRole] = []
     for index, block in enumerate(blocks):
-        if not block.is_authored_lead_in or not block.text.endswith(":"):
+        if (
+            block.kind != BlockKind.PARAGRAPH
+            or not block.is_authored_lead_in
+            or not block.text.endswith(":")
+        ):
             continue
         label = block.text[:-1].casefold()
         if label not in _LABELS:

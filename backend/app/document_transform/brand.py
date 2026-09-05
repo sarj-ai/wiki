@@ -330,13 +330,23 @@ def _style_requests(
                             "magnitude": paragraph_spacing(block, profile).below if branded else 0,
                             "unit": "PT",
                         },
-                        "keepWithNext": block.kind == BlockKind.HEADING,
+                        "keepWithNext": paragraph_keep_with_next(block),
+                        **(
+                            {"keepLinesTogether": True}
+                            if block.pagination_keep_with_next is not None
+                            else {}
+                        ),
                         **(
                             {} if preserve_native_style else {"namedStyleType": _named_style(block)}
                         ),
                     },
                     "fields": (
                         "alignment,lineSpacing,spaceAbove,spaceBelow,keepWithNext"
+                        + (
+                            ",keepLinesTogether"
+                            if block.pagination_keep_with_next is not None
+                            else ""
+                        )
                         + ("" if preserve_native_style else ",namedStyleType")
                     ),
                 }
@@ -469,6 +479,14 @@ def paragraph_spacing(block: TextBlock, profile: SarjBrandProfile) -> ParagraphS
 
 def paragraph_named_style(block: TextBlock) -> str:
     return _named_style(block)
+
+
+def paragraph_keep_with_next(block: TextBlock) -> bool:
+    return (
+        block.kind is BlockKind.HEADING
+        if block.pagination_keep_with_next is None
+        else block.pagination_keep_with_next
+    )
 
 
 def paragraph_font_size(block: TextBlock, profile: SarjBrandProfile) -> int:
@@ -654,6 +672,7 @@ def _post_edit_locations(original: DocumentIR, transformed: DocumentIR) -> Docum
                 source_style_text_sha256=target.source_style_text_sha256,
                 native_bullet_json=target.native_bullet_json,
                 authored_emphasis=target.authored_emphasis,
+                pagination_keep_with_next=target.pagination_keep_with_next,
                 font_style_ranges=tuple(
                     replace(
                         item,

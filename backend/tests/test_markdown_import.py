@@ -363,6 +363,77 @@ def test_unexpected_google_doc_topology_fails_closed(extra_kind: str) -> None:
     assert verify_markdown_import(document, manifest).structure_preserved is False
 
 
+@pytest.mark.parametrize("indexed_run", [False, True])
+@pytest.mark.parametrize(
+    ("fields", "accepted"),
+    [
+        ({"startIndex": 1, "endIndex": 8}, True),
+        ({"endIndex": 8}, True),
+        ({"startIndex": 0, "endIndex": 8}, True),
+        ({"startIndex": True}, False),
+        ({"endIndex": "8"}, False),
+        ({"startIndex": -1}, False),
+        ({"startIndex": 8, "endIndex": 1}, False),
+        ({"startIndex": 8, "endIndex": 8}, False),
+        ({"suggestedInsertionIds": ["unexpected"]}, False),
+        ({"unknownSemanticField": {}}, False),
+    ],
+)
+def test_import_location_fields_are_typed_not_semantic_exceptions(
+    *, indexed_run: bool, fields: dict[str, Any], accepted: bool
+) -> None:
+    title = _paragraph([("Import\n", {})])
+    target = title["paragraph"]["elements"][0] if indexed_run else title
+    target.update(fields)
+    document = {"tabs": [{"documentTab": {"body": {"content": [title]}}}]}
+    result = verify_markdown_import(
+        document, markdown_import_manifest("", title="Import", branded=False)
+    )
+    assert result.content_preserved is True
+    assert result.structure_preserved is accepted
+
+
+@pytest.mark.parametrize("extra_cell_field", [False, True])
+def test_indexed_section_table_and_cell_paragraphs_preserve_semantic_checks(
+    *, extra_cell_field: bool
+) -> None:
+    title = _paragraph([("Import\n", {})])
+    title.update(startIndex=1, endIndex=8)
+    title["paragraph"]["elements"][0].update(startIndex=1, endIndex=8)
+    cell = _paragraph([("Body\n", {})])
+    cell.update(startIndex=11, endIndex=16)
+    cell["paragraph"]["elements"][0].update(startIndex=11, endIndex=16)
+    if extra_cell_field:
+        cell["unknownSemanticField"] = {}
+    document = {
+        "tabs": [
+            {
+                "documentTab": {
+                    "body": {
+                        "content": [
+                            {"endIndex": 1, "sectionBreak": {"sectionStyle": {}}},
+                            title,
+                            {
+                                "startIndex": 8,
+                                "endIndex": 17,
+                                "table": {
+                                    "tableRows": [{"tableCells": [{"content": [cell]}]}],
+                                },
+                            },
+                        ]
+                    }
+                }
+            }
+        ],
+    }
+    result = verify_markdown_import(
+        document,
+        markdown_import_manifest("| Body |\n| --- |", title="Import", branded=False),
+    )
+    assert result.content_preserved is True
+    assert result.structure_preserved is not extra_cell_field
+
+
 def test_checklist_state_is_part_of_the_exact_structure_signature() -> None:
     manifest = markdown_import_manifest("- [ ] Task", title="Import", branded=False)
 

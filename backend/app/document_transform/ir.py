@@ -72,6 +72,8 @@ class TextBlock:
     native_bullet_json: str | None = None
     # Uniform authored emphasis is independent of the document's heading tree.
     authored_emphasis: tuple[tuple[str, bool], ...] = ()
+    # Copy-only, durably attested layout expectation; never a semantic role.
+    pagination_keep_with_next: bool | None = None
 
     @property
     def is_authored_lead_in(self) -> bool:
