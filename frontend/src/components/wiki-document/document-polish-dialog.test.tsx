@@ -137,9 +137,8 @@ describe("DocumentPolishDialog", () => {
       expect(document.body).toHaveTextContent("Creating and checking the new document");
       expect(findButtonNow("Polishing…")).toBeDisabled();
     });
-    expect(document.body).toHaveTextContent(
-      "Polishing this document… Checking its status automatically.",
-    );
+    expect(document.body).toHaveTextContent("Checking its status automatically.");
+    expect(document.querySelectorAll('[role="status"]')).toHaveLength(1);
     expect(document.body).toHaveTextContent("Leaving this page does not cancel it.");
     expect(document.body).not.toHaveTextContent("Keep this window open");
     expect(document.body).toHaveTextContent(`Task: ${pending.id}`);
@@ -172,6 +171,71 @@ describe("DocumentPolishDialog", () => {
     clickButton(findButtonNow("Open polished document"));
     expect(NavigationMock.push).toHaveBeenCalledWith("/d/output-1");
   });
+
+  it.each(["failure", "review", "success", "no-op"] as const)(
+    "reveals a new %s outcome once without disturbing the Markdown draft",
+    async (outcome) => {
+      const source = {
+        initialDestination: {
+          driveId: "drive-1",
+          driveName: "Workspace",
+          folderId: "folder-1",
+          folderPath: ["Folder"],
+        },
+        kind: "markdown",
+      } satisfies DocumentPolishSource;
+      const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
+      const create = vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
+      const completion = deferred<DocumentTransformResult>();
+      vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(completion.promise);
+      renderDialog(root, source);
+      const body = document.querySelector<HTMLElement>("[data-polish-scroll-body]");
+      const textarea = document.querySelector("textarea");
+      if (!body || !textarea) throw new Error("Markdown dialog missing");
+      const scroll = vi.spyOn(body, "scrollTo");
+      const pageScroll = vi.spyOn(window, "scrollTo");
+      textarea.focus();
+      typeTextarea("# Draft\n\nExact original words.");
+      textarea.setSelectionRange(4, 4);
+      renderDialog(root, source);
+      expect(document.activeElement).toBe(textarea);
+      expect(textarea.selectionStart).toBe(4);
+      expect(scroll).not.toHaveBeenCalled();
+      body.scrollTop = 900;
+      await vi.waitFor(() => expect(findButtonNow("Import Google Doc")).toBeEnabled());
+      clickButton(findButtonNow("Import Google Doc"));
+      await vi.waitFor(() => expect(documentTransformApi.waitForCompletion).toHaveBeenCalledOnce());
+      expect(scroll).not.toHaveBeenCalled();
+      if (outcome === "failure") {
+        completion.reject(
+          new DocumentTransformTerminalError("transform_failed", "Safety check failed"),
+        );
+      } else if (outcome === "review") {
+        completion.reject(
+          new DocumentTransformNeedsReviewError("Review preserved dates", {
+            ...transformResult(),
+            needsReview: true,
+          }),
+        );
+      } else {
+        completion.resolve({ ...transformResult(), changed: outcome === "success" });
+      }
+      await vi.waitFor(() => {
+        expect(scroll).toHaveBeenCalledExactlyOnceWith({ top: 0, behavior: "instant" });
+        expect(document.activeElement).toBe(body.querySelector("h3"));
+      });
+      expect(document.body).toHaveTextContent(`Task reference: ${pending.id}`);
+      expect(textarea).toHaveValue("# Draft\n\nExact original words.");
+      findButtonNow(outcome === "success" || outcome === "no-op" ? "Done" : "Cancel").focus();
+      const focused = document.activeElement;
+      renderDialog(root, source);
+      expect(document.activeElement).toBe(focused);
+      expect(scroll).toHaveBeenCalledOnce();
+      expect(pageScroll).not.toHaveBeenCalled();
+      expect(create).toHaveBeenCalledOnce();
+      expect(NavigationMock.push).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(["ready", "unavailable"] as const)(
     "shows the %s link outcome without repolishing",

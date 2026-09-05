@@ -50,6 +50,22 @@ MESSAGE_TOPICS = MappingProxyType(
     }
 )
 ERROR_JSON = TypeAdapter(dict[str, Any])
+PROPERTY_TOPIC_PATTERNS = MappingProxyType(
+    {
+        topic: re.compile(
+            rf"\A(?:(?:the )?{noun} (?:is (?:invalid|missing|required|unsupported)|must (?:be|match))|must (?:specify|provide) (?:a |an |the )?(?:valid )?{noun})\b",
+            re.IGNORECASE,
+        )
+        for topic, noun in {
+            "locale": r"locale",
+            "date_format": r"(?:date format|dateFormat)",
+            "time_format": r"(?:time format|timeFormat)",
+            "time_zone": r"(?:time zone|timezone|timeZoneId)",
+            "timestamp": r"(?:timestamp|date timestamp)",
+            "location": r"(?:location|insertion index|index)",
+        }.items()
+    }
+)
 FIELD_PATH = re.compile(
     r"requests\[([0-9]{1,3})\]\.(insertDate|deleteContentRange|createNamedRange)"
     r"(?:\.(dateElementProperties|location|range)(?:\.([A-Za-z]+))?)?"
@@ -64,6 +80,11 @@ class FieldEvidence(NamedTuple):
     operation: str
     category: str
     leaf: str | None = None
+
+
+class MessageEvidence(NamedTuple):
+    topic: str
+    outcome: str
 
 
 def native_provider_diagnostics(
@@ -111,28 +132,33 @@ def native_provider_diagnostics(
     if leaves:
         result["provider_field"] = next(iter(leaves))
     if operation == "insertDate" and prefix is not None and isinstance(message, str):
-        result["provider_message_topic"] = _message_topic(message[prefix.end() :])
+        message_evidence = _message_topic(message[prefix.end() :])
+        result["provider_message_topic"] = message_evidence.topic
+        result["provider_message_outcome"] = message_evidence.outcome
     return result
 
 
-def _message_topic(tail: str) -> str:
+def _message_topic(tail: str) -> MessageEvidence:
     # Diagnostic vocabulary only, never policy. Do not inspect quoted values,
     # interpolate matched text, or log a message digest. Multiple leading
     # clauses are recognized only when none contains a quoted provider value.
     if len(tail) > MAX_TOPIC_CHARS:
-        return "unknown"
+        return MessageEvidence("unknown", "oversized")
     lead = re.split(r"[\"'`\u2018\u2019\u201c\u201d]", tail, maxsplit=1)[0]
-    if not any(pattern.match(lead.split(";", 1)[0].strip()) for pattern in MESSAGE_TOPICS.values()):
-        return "unknown"
+    if not lead.strip() and tail.strip():
+        return MessageEvidence("unknown", "quoted_lead")
+    patterns = (*MESSAGE_TOPICS.items(), *PROPERTY_TOPIC_PATTERNS.items())
+    if not any(pattern.match(lead.split(";", 1)[0].strip()) for _, pattern in patterns):
+        return MessageEvidence("unknown", "unrecognized_lead")
     topics = {
         topic
         for clause in lead.split(";")
-        for topic, pattern in MESSAGE_TOPICS.items()
+        for topic, pattern in patterns
         if pattern.match(clause.strip())
     }
     if len(topics) > 1:
-        return "ambiguous"
-    return next(iter(topics), "unknown")
+        return MessageEvidence("ambiguous", "ambiguous")
+    return MessageEvidence(next(iter(topics)), "matched")
 
 
 def _field_evidence(body: dict[str, Any]) -> list[FieldEvidence] | None:

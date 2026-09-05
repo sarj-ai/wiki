@@ -67,6 +67,7 @@ def test_prefix_discards_all_provider_description() -> None:
         "provider_request_ordinal": 2,
         "provider_operation": "insertDate",
         "provider_message_topic": "unknown",
+        "provider_message_outcome": "unrecognized_lead",
     }
 
 
@@ -202,6 +203,65 @@ def test_message_topics_are_bounded_hints_without_provider_values(tail: str, top
 
 
 @pytest.mark.parametrize(
+    ("noun", "topic"),
+    [
+        ("locale", "locale"),
+        ("dateFormat", "date_format"),
+        ("time format", "time_format"),
+        ("timeZoneId", "time_zone"),
+        ("timestamp", "timestamp"),
+        ("insertion index", "location"),
+    ],
+)
+@pytest.mark.parametrize(
+    "template",
+    [
+        "The {} is invalid: SECRET",
+        "{} must be valid: SECRET",
+        "Must specify a valid {}: SECRET",
+        "Must provide the {}: SECRET",
+    ],
+)
+def test_noun_first_and_required_property_templates_emit_static_topics(
+    noun: str, topic: str, template: str
+) -> None:
+    result = _diagnostics({"message": f"Invalid requests[2].insertDate: {template.format(noun)}"})
+    assert result["provider_message_topic"] == topic
+    assert result["provider_message_outcome"] == "matched"
+    assert "SECRET" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    ("tail", "topic", "outcome"),
+    [
+        ("The locale is invalid; Must specify timestamp", "ambiguous", "ambiguous"),
+        ("The locale is invalid 'SECRET'; Must specify timestamp", "locale", "matched"),
+        ('"Must specify timestamp SECRET"', "unknown", "quoted_lead"),
+        ("  ‘The locale is invalid SECRET’", "unknown", "quoted_lead"),
+        ("`SECRET` The locale is invalid", "unknown", "quoted_lead"),
+        ("Invalid value 'The locale is invalid SECRET'", "unknown", "unrecognized_lead"),
+        ("SECRET; The locale is invalid", "unknown", "unrecognized_lead"),
+        ("The locale is invalidated", "unknown", "unrecognized_lead"),
+        ("Must specify a valid localeExtra", "unknown", "unrecognized_lead"),
+        ("Must specify a valid SECRET", "unknown", "unrecognized_lead"),
+        ("Bad request", "unknown", "unrecognized_lead"),
+        ("", "unknown", "unrecognized_lead"),
+        ("The locale is invalid " + "x" * 2048, "unknown", "oversized"),
+        ('"' + "x" * 2048, "unknown", "oversized"),
+    ],
+)
+def test_classifier_outcomes_never_inspect_quoted_values_or_unbounded_tails(
+    tail: str, topic: str, outcome: str
+) -> None:
+    result = _diagnostics(
+        {"message": f"Invalid requests[2].insertDate: {tail}", "status": "SECRET"}
+    )
+    assert result["provider_message_topic"] == topic
+    assert result["provider_message_outcome"] == outcome
+    assert "SECRET" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
     "prefix",
     [
         "Invalid requests[1].insertDate:",
@@ -212,6 +272,21 @@ def test_message_topics_are_bounded_hints_without_provider_values(tail: str, top
 )
 def test_message_topics_require_exact_validated_insert_date_prefix(prefix: str) -> None:
     assert "provider_message_topic" not in _diagnostics({"message": f"{prefix} Permission denied"})
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "Invalid requests[1].insertDate:",
+        "Invalid requests[201].insertDate:",
+        "SECRET Invalid requests[2].insertDate:",
+        "Invalid requests[1].deleteContentRange:",
+    ],
+)
+def test_classifier_outcome_requires_validated_actual_insert_date(prefix: str) -> None:
+    result = _diagnostics({"message": f"{prefix} Must specify a valid locale"})
+    assert "provider_message_outcome" not in result
+    assert "provider_message_topic" not in result
 
 
 @pytest.mark.parametrize(
