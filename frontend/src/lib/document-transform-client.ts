@@ -57,6 +57,8 @@ const ZResult = z.object({
   changed: z.boolean().default(true),
   output_revision_id: z.string().nullable().default(null),
   source_sha256: z.string(),
+  short_link_alias: z.string().nullable().default(null),
+  short_link_status: z.enum(["ready", "unavailable"]).nullable().default(null),
   source_revision_id: z.string().nullable().default(null),
   tool_versions: z.record(z.string(), z.string()),
   validation: z.object({
@@ -73,6 +75,7 @@ const ZTask = z.discriminatedUnion("status", [
     error_detail: z.string().nullable(),
     id: z.uuid(),
     status: z.literal("failed"),
+    unverified_output: z.object({ file_id: z.string().min(1) }).nullish(),
   }),
   z.object({ id: z.uuid(), result: ZResult, status: z.literal("succeeded") }),
 ]);
@@ -115,10 +118,11 @@ export const documentTransformApi = {
     mode: "both" | "format" | "unslop",
     idempotencyKey: string,
     outputStrategy: DocumentTransformOutputStrategy = "copy",
+    outputName: null | string = null,
   ): Promise<DocumentTransformTask> => {
     const body = JSON.stringify({
       mode,
-      output_name: null,
+      output_name: outputName,
       output_strategy: outputStrategy,
       source: serializeSource(source),
     });
@@ -157,7 +161,7 @@ async function waitForTask(
       case "cancelled":
         throw new DocumentTransformTerminalError("cancelled", "Document polish was cancelled");
       case "failed":
-        if (current.errorCode === "needs_review") {
+        if (current.errorCode === "needs_review" && !current.unverifiedOutputId) {
           throw new DocumentTransformNeedsReviewError(
             taskFailureDetail(
               current.errorCode,
@@ -173,6 +177,7 @@ async function waitForTask(
             current.errorDetail,
             `Document polish failed (${current.errorCode})`,
           ),
+          current.unverifiedOutputId,
         );
       case "succeeded":
         if (current.result.needsReview) {
@@ -223,6 +228,7 @@ function parseTask(task: z.infer<typeof ZTask>): DocumentTransformTask {
         ...(task.error_detail === null ? {} : { errorDetail: task.error_detail }),
         id: task.id,
         status: "failed",
+        ...(task.unverified_output ? { unverifiedOutputId: task.unverified_output.file_id } : {}),
       };
     case "succeeded":
       return { id: task.id, result: parseResult(task.result), status: "succeeded" };
@@ -263,6 +269,8 @@ function parseResult(result: z.infer<typeof ZResult>): DocumentTransformResult {
     changed: result.changed,
     outputRevisionId: result.output_revision_id,
     sourceSha256: result.source_sha256,
+    shortLinkAlias: result.short_link_alias,
+    shortLinkStatus: result.short_link_status,
     sourceRevisionId: result.source_revision_id,
     toolVersions: result.tool_versions,
     validation: {

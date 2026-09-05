@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
+from datetime import date
 from enum import StrEnum
 import hashlib
 import json
 import re
 from typing import Any
+import unicodedata
 
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
@@ -17,6 +19,7 @@ MAX_DOC_UTF16_UNITS = 500_000
 MAX_DOC_TABS = 50
 MAX_DOCUMENT_BLOCKS = 750
 _MIN_TABLE_COLUMNS = 2
+_MAX_AUTHORED_LEAD_IN_LENGTH = 160
 
 
 class BlockKind(StrEnum):
@@ -39,6 +42,16 @@ class SourceRange:
 
 
 @dataclass(frozen=True, slots=True)
+class NativeContent:
+    # Offsets refer to displayed paragraph text, not Google Docs indexes.
+    # The exact non-style payload retains unknown properties and suggestions.
+    kind: str
+    text_offset: int
+    display_text: str
+    payload_json: str
+
+
+@dataclass(frozen=True, slots=True)
 class TextBlock:
     id: str
     kind: BlockKind
@@ -46,6 +59,22 @@ class TextBlock:
     level: int | None = None
     source_range: SourceRange | None = None
     editable: bool = True
+    # Formatting permission is independent from permission to replace prose.
+    # These ranges permit only a font-family override, never a text replacement.
+    font_style_ranges: tuple[SourceRange, ...] = ()
+    native_content: tuple[NativeContent, ...] = ()
+    native_named_style: str | None = None
+    native_bullet_json: str | None = None
+    # Uniform authored emphasis is independent of the document's heading tree.
+    authored_emphasis: tuple[tuple[str, bool], ...] = ()
+
+    @property
+    def is_authored_lead_in(self) -> bool:
+        return (
+            self.kind == BlockKind.PARAGRAPH
+            and len(self.text) <= _MAX_AUTHORED_LEAD_IN_LENGTH
+            and dict(self.authored_emphasis).get("bold") is True
+        )
 
     @property
     def sha256(self) -> str:
@@ -86,6 +115,7 @@ class DocumentIR:
                             else None
                         ),
                         "text": block.text,
+                        **_native_content_payload(block),
                     }
                     for block in self.blocks
                 ],
@@ -116,6 +146,7 @@ class DocumentIR:
                     "kind": block.kind,
                     "level": block.level,
                     "text": block.text,
+                    **_native_content_payload(block),
                 }
                 for block in self.blocks
             ],
@@ -128,6 +159,102 @@ class DocumentIR:
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 _LIST = re.compile(r"^\s*(?:[-*+] |\d+[.)] )(.*)$")
+
+
+def _native_content_payload(block: TextBlock) -> dict[str, Any]:
+    # Keep fingerprints of existing plain-text documents backward compatible.
+    style = {"native_named_style": block.native_named_style} if block.native_named_style else {}
+    if block.native_bullet_json is not None:
+        style["native_bullet_json"] = block.native_bullet_json
+    if not block.native_content:
+        return style
+    return {
+        **style,
+        "native_content": [
+            {
+                "kind": chip.kind,
+                "offset": chip.text_offset,
+                "display": chip.display_text,
+                "payload": chip.payload_json,
+            }
+            for chip in block.native_content
+        ],
+    }
+
+
+def verify_planned_date_conversions(
+    original: DocumentIR,
+    actual: DocumentIR,
+    *,
+    source_block_hashes: dict[str, str],
+) -> bool:
+    # Content-only check: callers still require revision, protected-object,
+    # topology and checkpoint checks. Generic hashes never equate text/chips.
+    if (
+        original.title != actual.title
+        or original.source_format != actual.source_format
+        or original.tab_ids != actual.tab_ids
+        or len(original.blocks) != len(actual.blocks)
+        or not source_block_hashes.keys() <= {block.id for block in original.blocks}
+    ):
+        return False
+    normalized: list[TextBlock] = []
+    for before, after in zip(original.blocks, actual.blocks, strict=True):
+        if before.id != after.id or before.kind != after.kind or before.level != after.level:
+            return False
+        if before.source_range is None or after.source_range is None:
+            return False
+        if (
+            before.source_range.tab_id != after.source_range.tab_id
+            or before.source_range.segment_id != after.source_range.segment_id
+        ):
+            return False
+        if before.id in source_block_hashes:
+            if before.sha256 != source_block_hashes[before.id] or not _is_exact_date_conversion(
+                before, after
+            ):
+                return False
+            normalized.append(replace(after, editable=before.editable, native_content=()))
+        else:
+            normalized.append(after)
+    return original.semantic_sha256 == replace(actual, blocks=tuple(normalized)).semantic_sha256
+
+
+def _is_exact_date_conversion(before: TextBlock, after: TextBlock) -> bool:
+    if (
+        not before.editable
+        or before.native_content
+        or before.kind != BlockKind.PARAGRAPH
+        or before.text != after.text
+        or len(after.native_content) != 1
+    ):
+        return False
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", before.text):
+        return False
+    try:
+        date.fromisoformat(before.text)
+    except ValueError:
+        return False
+    chip = after.native_content[0]
+    if chip.kind != "dateElement" or chip.text_offset != 0 or chip.display_text != before.text:
+        return False
+    payload = json.loads(chip.payload_json)
+    element = payload["element"]
+    properties = element.get("dateElementProperties", {})
+    return (
+        not payload["outer"]
+        and set(element) <= {"dateId", "dateElementProperties"}
+        and set(properties)
+        <= {"timestamp", "timeZoneId", "locale", "dateFormat", "timeFormat", "displayText"}
+        and isinstance(properties.get("timestamp"), str)
+        and re.fullmatch(re.escape(before.text) + r"T00:00:00(?:\.0+)?Z", properties["timestamp"])
+        is not None
+        and properties.get("timeZoneId") in {"Etc/UTC", "UTC"}
+        and properties.get("locale", "en") == "en"
+        and properties.get("dateFormat") == "DATE_FORMAT_ISO8601"
+        and properties.get("timeFormat", "TIME_FORMAT_DISABLED") == "TIME_FORMAT_DISABLED"
+        and properties.get("displayText") == before.text
+    )
 
 
 def parse_markdown(content: str, *, title: str) -> DocumentIR:
@@ -368,18 +495,12 @@ def _parse_structural_element(
     if not isinstance(elements, list):
         raise UnsupportedSourceError
     runs: list[tuple[str, bool]] = []
+    native_content: list[NativeContent] = []
     contains_non_text = False
     for part in elements:
-        text_run = part.get("textRun") if isinstance(part, dict) else None
-        if not isinstance(text_run, dict):
+        if not isinstance(part, dict) or not isinstance(part.get("textRun"), dict):
             contains_non_text = True
-            continue
-        content = text_run.get("content")
-        if not isinstance(content, str):
-            raise UnsupportedSourceError
-        style = text_run.get("textStyle", {})
-        locked = _text_run_is_locked(part, style)
-        runs.append((content, locked))
+        _append_paragraph_run(part, runs, native_content)
     text = "".join(run[0] for run in runs).removesuffix("\n")
     if not text and contains_non_text:
         text = "\ufffc"
@@ -393,6 +514,11 @@ def _parse_structural_element(
     if not isinstance(paragraph_style, dict):
         raise UnsupportedSourceError
     classification = _classify_block(paragraph_style)
+    bullet = paragraph_data.get("bullet")
+    if "bullet" in paragraph_data and not isinstance(bullet, dict):
+        raise UnsupportedSourceError
+    if isinstance(bullet, dict) and classification.kind == BlockKind.PARAGRAPH:
+        classification = BlockClassification(BlockKind.LIST_ITEM, None)
     editable = not contains_non_text and _paragraph_is_editable(runs, paragraph_data)
     return TextBlock(
         id=f"b{ordinal}",
@@ -405,6 +531,164 @@ def _parse_structural_element(
             tab_id=tab_id,
         ),
         editable=editable,
+        native_bullet_json=json.dumps(bullet, sort_keys=True) if isinstance(bullet, dict) else None,
+        native_content=tuple(native_content),
+        authored_emphasis=_uniform_authored_emphasis(elements),
+        native_named_style=(
+            str(paragraph_style["namedStyleType"])
+            if paragraph_style.get("namedStyleType") in {"TITLE", "SUBTITLE"}
+            else None
+        ),
+        font_style_ranges=_safe_font_ranges(
+            elements, paragraph_data, SourceRange(start, end - 1, tab_id)
+        ),
+    )
+
+
+def _uniform_authored_emphasis(elements: list[Any]) -> tuple[tuple[str, bool], ...]:
+    styles = [
+        part["textRun"].get("textStyle", {})
+        for part in elements
+        if isinstance(part, dict)
+        and isinstance(part.get("textRun"), dict)
+        and str(part["textRun"].get("content", "")).strip()
+    ]
+    return tuple(
+        (key, styles[0][key])
+        for key in ("bold", "italic", "underline")
+        if styles
+        and all(isinstance(style, dict) for style in styles)
+        and isinstance(styles[0].get(key), bool)
+        and all(style.get(key) is styles[0][key] for style in styles)
+    )
+
+
+def _append_paragraph_run(
+    part: object, runs: list[tuple[str, bool]], native_content: list[NativeContent]
+) -> None:
+    if not isinstance(part, dict):
+        raise UnsupportedSourceError
+    text_run = part.get("textRun")
+    if not isinstance(text_run, dict):
+        chip = _parse_native_content(part, sum(len(run[0]) for run in runs))
+        if chip is not None:
+            native_content.append(chip)
+            runs.append((chip.display_text, True))
+        return
+    content = text_run.get("content")
+    if not isinstance(content, str):
+        raise UnsupportedSourceError
+    locked = _text_run_is_locked(part, text_run.get("textStyle", {})) or not _font_run_is_safe(
+        part, text_run
+    )
+    runs.append((content, locked))
+
+
+def _parse_native_content(part: object, offset: int) -> NativeContent | None:
+    if not isinstance(part, dict):
+        raise UnsupportedSourceError
+    for kind, properties_key, display_keys in (
+        ("dateElement", "dateElementProperties", ("displayText",)),
+        ("person", "personProperties", ("name", "email")),
+        ("richLink", "richLinkProperties", ("title", "uri")),
+    ):
+        payload = part.get(kind)
+        if kind not in part:
+            continue
+        if not isinstance(payload, dict):
+            raise UnsupportedSourceError
+        properties = payload.get(properties_key)
+        if not isinstance(properties, dict):
+            raise UnsupportedSourceError
+        display = next((value for key in display_keys if (value := properties.get(key))), None)
+        if not isinstance(display, str):
+            raise UnsupportedSourceError
+        # Styling can legitimately change; identity, suggestions and all future
+        # unknown provider properties must survive byte-equivalently in JSON.
+        protected = {key: value for key, value in payload.items() if key != "textStyle"}
+        outer = {
+            key: value for key, value in part.items() if key not in {"startIndex", "endIndex", kind}
+        }
+        return NativeContent(
+            kind,
+            offset,
+            display,
+            json.dumps(
+                {"element": protected, "outer": outer}, sort_keys=True, separators=(",", ":")
+            ),
+        )
+    return None
+
+
+def _safe_font_ranges(
+    elements: list[Any], paragraph: dict[str, Any], paragraph_range: SourceRange
+) -> tuple[SourceRange, ...]:
+    if (
+        paragraph.get("suggestedParagraphStyleChanges")
+        or paragraph.get("suggestedBulletChanges")
+        or any(not isinstance(part, dict) or "textRun" not in part for part in elements)
+    ):
+        return ()
+    ranges: list[SourceRange] = []
+    for part in elements:
+        run = part.get("textRun", {})
+        if not isinstance(run, dict):
+            continue
+        content = run.get("content")
+        start = part.get("startIndex")
+        end = part.get("endIndex")
+        if not isinstance(content, str) or not isinstance(start, int) or not isinstance(end, int):
+            continue
+        if (
+            start < paragraph_range.start_index
+            or end > paragraph_range.end_index + 1
+            or end - start != utf16_length(content)
+            or not _font_run_is_safe(part, run)
+        ):
+            continue
+        # Do not include the paragraph terminator or let the range reach into
+        # the next paragraph. Provider offsets count UTF-16 units, not letters.
+        length = utf16_length(content.removesuffix("\n"))
+        if length:
+            ranges.append(SourceRange(start, start + length, paragraph_range.tab_id))
+    return tuple(ranges)
+
+
+def _font_run_is_safe(part: dict[Any, Any], run: dict[Any, Any]) -> bool:
+    style = run.get("textStyle", {})
+    if not isinstance(style, dict):
+        return False
+    if any(key.startswith("suggested") and value for key, value in part.items()):
+        return False
+    if any(key.startswith("suggested") and value for key, value in run.items()):
+        return False
+    family = style.get("weightedFontFamily", {})
+    font = str(family.get("fontFamily", "")) if isinstance(family, dict) else ""
+    if (
+        any(
+            token in font.casefold()
+            for token in (
+                "mono",
+                "courier",
+                "consolas",
+                "menlo",
+                "code",
+                "math",
+                "symbol",
+                "monaco",
+                "inconsolata",
+                "andale",
+                "lucida console",
+                "cascadia",
+            )
+        )
+        or style.get("baselineOffset", "NONE") != "NONE"
+    ):
+        return False
+    # Nunito's Latin branding must not replace a script-specific typeface.
+    return all(
+        not character.isalpha() or "LATIN" in unicodedata.name(character, "")
+        for character in str(run.get("content", ""))
     )
 
 

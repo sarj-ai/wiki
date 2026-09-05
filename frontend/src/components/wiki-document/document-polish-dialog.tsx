@@ -32,9 +32,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { FolderPickerDialog } from "@/components/wiki-sidebar/folder-picker-dialog";
 import { ApiError } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
+import { documentShortLink } from "@/lib/document-short-link";
 import { documentTransformApi } from "@/lib/document-transform-client";
 import {
+  claimTransformRecovery,
+  completeTransformRecovery,
   readTransformRecovery,
+  recordTransformTask,
   type TransformRecovery,
   writeTransformRecovery,
 } from "@/lib/document-transform-recovery";
@@ -120,6 +124,8 @@ export function DocumentPolishDialog({
   const [markdown, setMarkdown] = useState("");
   const [markdownError, setMarkdownError] = useState<null | string>(null);
   const [name, setName] = useState("Untitled document");
+  const [copyName, setCopyName] = useState("");
+  const [completedResult, setCompletedResult] = useState<DocumentTransformResult | null>(null);
   const [destination, setDestination] = useState<null | SmartDestination>(
     source.kind === "markdown" ? source.initialDestination : null,
   );
@@ -127,6 +133,7 @@ export function DocumentPolishDialog({
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<"idle" | "starting" | "transforming">("idle");
   const [terminalMessage, setTerminalMessage] = useState<null | string>(null);
+  const [unverifiedOutputId, setUnverifiedOutputId] = useState<null | string>(null);
   const [reviewMessage, setReviewMessage] = useState<null | string>(null);
   const [reviewResult, setReviewResult] = useState<DocumentTransformResult | null>(null);
   const isPresentation =
@@ -169,11 +176,25 @@ export function DocumentPolishDialog({
     staleTime: Infinity,
   });
   const unresolved = recovery.data ?? null;
-  const optionsLocked = submitting || unresolved !== null;
+  const optionsLocked = submitting || unresolved !== null || completedResult !== null;
   const saveRecovery = (operation: null | TransformRecovery) => {
     writeTransformRecovery(owner, sourceIdentity, operation);
     queryClient.setQueryData(recoveryKey, operation);
   };
+
+  useEffect(() => {
+    const refresh = () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["document-transform-recovery", owner, sourceIdentity],
+      });
+    };
+    window.addEventListener("storage", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [owner, sourceIdentity, queryClient]);
 
   useEffect(
     () => () => {
@@ -195,6 +216,7 @@ export function DocumentPolishDialog({
     setReviewMessage(null);
     setReviewResult(null);
     setTerminalMessage(null);
+    setUnverifiedOutputId(null);
   };
 
   const close = () => {
@@ -215,6 +237,8 @@ export function DocumentPolishDialog({
     setMarkdown("");
     setMarkdownError(null);
     setName("Untitled document");
+    setCopyName("");
+    setCompletedResult(null);
     setDestination(source.kind === "markdown" ? source.initialDestination : null);
     setDestinationOpen(false);
     setSubmitting(false);
@@ -222,6 +246,7 @@ export function DocumentPolishDialog({
     setReviewMessage(null);
     setReviewResult(null);
     setTerminalMessage(null);
+    setUnverifiedOutputId(null);
     onOpenChange(false);
   };
 
@@ -268,6 +293,7 @@ export function DocumentPolishDialog({
   };
 
   const create = async () => {
+    const startedAt = Date.now();
     let transformSource = unresolved?.source ?? inputSource();
     if (!transformSource && unresolved?.taskId) {
       // A known task needs no source content; this placeholder is never submitted.
@@ -317,32 +343,78 @@ export function DocumentPolishDialog({
     }
     const requestIdempotencyKey =
       unresolved?.key ?? (idempotencyKey.current ??= crypto.randomUUID());
-    const operation: TransformRecovery = unresolved ?? {
-      createdAt: Date.now(),
+    const candidateOperation: TransformRecovery = unresolved ?? {
+      createdAt: startedAt,
       key: requestIdempotencyKey,
       mode,
       outputStrategy: effectiveOutputStrategy,
+      outputName: effectiveOutputStrategy === "copy" ? copyName.trim() || null : null,
       source: transformSource.kind === "drive_file" ? transformSource : null,
       taskId: null,
     };
-    try {
-      saveRecovery(operation);
-      assertRecoveryReplaySafe(operation, unresolved !== null, markdown);
+    let operation = candidateOperation;
+    const reserve = async (candidate: TransformRecovery) => {
+      const reserved = await claimTransformRecovery(owner, sourceIdentity, candidate);
+      controller.signal.throwIfAborted();
+      saveRecovery(reserved);
+      assertRecoveryReplaySafe(reserved, unresolved !== null, markdown);
+      return reserved;
+    };
+    const clearRecovery = async () => {
+      await completeTransformRecovery(owner, sourceIdentity, operation.key);
+      saveRecovery(null);
+    };
+    const submitTask = async () => {
+      try {
+        return await documentTransformApi.create(
+          operation.source ?? transformSource,
+          operation.mode,
+          operation.key,
+          operation.outputStrategy,
+          ...(operation.outputName ? [operation.outputName] : []),
+        );
+      } catch (error: unknown) {
+        // Only a fresh, definitively rejected submission can release its claim.
+        // An adopted/replayed operation may already have been admitted by an
+        // earlier request, even if today's validation rejects its payload.
+        if (
+          error instanceof ApiError &&
+          error.status === 422 &&
+          unresolved === null &&
+          operation === candidateOperation &&
+          operation.taskId === null
+        ) {
+          await clearRecovery();
+          resetRequest();
+        }
+        throw error;
+      }
+    };
+    const perform = async () => {
+      operation = await reserve(candidateOperation);
       const task = operation.taskId
         ? await documentTransformApi.getTask(operation.taskId, controller.signal)
-        : await documentTransformApi.create(
-            transformSource,
-            operation.mode,
-            requestIdempotencyKey,
-            operation.outputStrategy,
-          );
+        : await submitTask();
       saveRecovery({ ...operation, taskId: task.id });
+      await recordTransformTask(owner, sourceIdentity, { ...operation, taskId: task.id });
       controller.signal.throwIfAborted();
       if (!isCurrent()) return;
       setStage("transforming");
-      const result = await documentTransformApi.waitForCompletion(task, controller.signal);
+      // POST replay can return a terminal task without its permission-checked
+      // incomplete-copy descriptor. Persist the task ID before this extra read
+      // so a failed read remains safely resumable without another submission.
+      const currentTask =
+        !operation.taskId && task.status === "failed"
+          ? await documentTransformApi.getTask(task.id, controller.signal)
+          : task;
+      const result = await documentTransformApi.waitForCompletion(currentTask, controller.signal);
       if (!isCurrent()) return;
-      saveRecovery(null);
+      await clearRecovery();
+      if (result.shortLinkStatus === "ready" && result.shortLinkAlias) {
+        queryClient.setQueryData(["document-alias", result.outputFile.id], {
+          alias: result.shortLinkAlias,
+        });
+      }
       if (result.outputStrategy === "in_place") {
         await queryClient.invalidateQueries({ queryKey: wikiKeys.file(result.outputFile.id) });
         if (!isCurrent()) return;
@@ -352,11 +424,14 @@ export function DocumentPolishDialog({
         injectNewFileIntoCaches(queryClient, result.outputFile);
         toast.success(`Created “${result.outputFile.name}”`);
       }
-      close();
-      router.push(`/d/${encodeURIComponent(result.outputFile.id)}`);
+      setCompletedResult(result);
+    };
+    try {
+      await perform();
     } catch (error: unknown) {
       if (error instanceof DocumentTransformNeedsReviewError) {
         if (!isCurrent()) return;
+        await completeTransformRecovery(owner, sourceIdentity, operation.key);
         saveRecovery(null);
         setReviewMessage(error.message);
         setReviewResult(error.result ?? null);
@@ -373,8 +448,10 @@ export function DocumentPolishDialog({
       } else if (!(error instanceof DOMException && error.name === "AbortError")) {
         if (!isCurrent()) return;
         if (error instanceof DocumentTransformTerminalError) {
+          await completeTransformRecovery(owner, sourceIdentity, operation.key);
           saveRecovery(null);
           setTerminalMessage(error.message);
+          setUnverifiedOutputId(error.unverifiedOutputId ?? null);
         }
         toast.error(errorMessage(error, `Couldn’t polish ${artifactNoun}`));
       }
@@ -384,6 +461,9 @@ export function DocumentPolishDialog({
   };
 
   const valid = inputSource() !== null;
+  const reviewNotes = new Map(
+    completedResult?.findings.map((finding) => [JSON.stringify(finding), finding]),
+  );
   const destinationLabel = destination
     ? destination.folderPath.length > 0
       ? destination.folderPath.join(" / ")
@@ -420,6 +500,61 @@ export function DocumentPolishDialog({
           </div>
 
           <div className="space-y-5 overflow-y-auto p-5 sm:px-6">
+            {completedResult ? (
+              <div className="space-y-3" role="status">
+                <p className="text-lg font-semibold">
+                  {completedResult.changed ? "Polish complete" : "No changes needed"}
+                </p>
+                <p className="font-medium break-words">{completedResult.outputFile.name}</p>
+                <p className="text-muted-foreground text-sm">
+                  {completedResult.mode === "format"
+                    ? "Formatting-only mode leaves wording unchanged."
+                    : `${completedResult.appliedPatchCount} writing edits applied.`}
+                  {completedResult.validation.protectedContentPreserved
+                    ? " Protected content checks passed."
+                    : " Review protected content before using this result."}
+                  {completedResult.outputStrategy === "in_place"
+                    ? " Updated the original; Drive version history is available."
+                    : " Your original is unchanged."}
+                </p>
+                {completedResult.findings.length > 0 ? (
+                  <div className="space-y-1 text-sm">
+                    <p className="font-medium">Review notes</p>
+                    <ul className="list-disc space-y-1 pl-5">
+                      {[...reviewNotes].map(([key, finding]) => (
+                        <li key={key}>{finding.detail}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {completedResult.shortLinkStatus === "ready" && completedResult.shortLinkAlias ? (
+                  <Button
+                    onClick={() => {
+                      const alias = completedResult.shortLinkAlias;
+                      if (!alias) return;
+                      void navigator.clipboard
+                        .writeText(documentShortLink(window.location.origin, alias))
+                        .then(() => toast.success("Short link copied"))
+                        .catch(() => toast.error("Couldn’t copy short link"));
+                    }}
+                    type="button"
+                    variant="outline"
+                  >
+                    <Copy className="size-4" /> Copy short link
+                  </Button>
+                ) : (
+                  <p className="text-muted-foreground text-sm">
+                    {completedResult.shortLinkStatus === "unavailable"
+                      ? "Polish succeeded, but the short link could not be created."
+                      : "No automatic short link is available for this result."}{" "}
+                    Open the document and choose Short link to create one without polishing again.
+                  </p>
+                )}
+                <p className="text-muted-foreground text-xs">
+                  Short links do not change who can access the document.
+                </p>
+              </div>
+            ) : null}
             {unresolved ? (
               <p className="text-sm" role="status">
                 A polish operation is already reserved for this document. Resume checking its
@@ -537,6 +672,26 @@ export function DocumentPolishDialog({
                     <span className="text-muted-foreground shrink-0 text-xs">Change</span>
                   </Button>
                 </div>
+              </div>
+            ) : null}
+
+            {source.kind === "drive_file" && effectiveOutputStrategy === "copy" ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="polish-copy-name">Copy name (optional)</Label>
+                <Input
+                  disabled={optionsLocked}
+                  id="polish-copy-name"
+                  maxLength={255}
+                  onChange={(event) => {
+                    setCopyName(event.target.value);
+                    resetRequest();
+                  }}
+                  placeholder="Use the automatic name"
+                  value={copyName}
+                />
+                <p className="text-muted-foreground text-xs">
+                  Leave blank for an automatic name. Editing the original keeps its current name.
+                </p>
               </div>
             ) : null}
 
@@ -732,6 +887,20 @@ export function DocumentPolishDialog({
               >
                 <p className="font-medium">Polish did not complete</p>
                 <p className="text-muted-foreground mt-1 text-xs">{terminalMessage}</p>
+                {unverifiedOutputId ? (
+                  <p className="mt-2 text-xs">
+                    This copy is incomplete and has not passed safety verification. Review it before
+                    using its content.{" "}
+                    <a
+                      className="underline"
+                      href={`/d/${encodeURIComponent(unverifiedOutputId)}`}
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      Open incomplete copy for review
+                    </a>
+                  </p>
+                ) : null}
                 <p className="text-muted-foreground mt-1 text-xs">
                   Change an option to start a deliberate new attempt.
                 </p>
@@ -747,7 +916,7 @@ export function DocumentPolishDialog({
               type="button"
               variant="ghost"
             >
-              Cancel
+              {completedResult ? "Done" : "Cancel"}
             </Button>
             <Button
               className="w-full sm:w-auto"
@@ -760,7 +929,15 @@ export function DocumentPolishDialog({
                 terminalMessage !== null ||
                 (!valid && !unresolved?.taskId)
               }
-              onClick={() => void create()}
+              onClick={() => {
+                if (completedResult) {
+                  const fileId = completedResult.outputFile.id;
+                  close();
+                  router.push(`/d/${encodeURIComponent(fileId)}`);
+                } else {
+                  void create();
+                }
+              }}
               type="button"
             >
               {submitting ? (
@@ -768,19 +945,21 @@ export function DocumentPolishDialog({
               ) : (
                 <Sparkles className="size-4" />
               )}
-              {submitting
-                ? source.kind === "markdown"
-                  ? "Importing…"
-                  : "Polishing…"
-                : unresolved
-                  ? "Resume checking"
-                  : capabilityPending
-                    ? "Checking edit options…"
-                    : effectiveOutputStrategy === "in_place"
-                      ? "Polish original"
-                      : source.kind === "markdown"
-                        ? "Import Google Doc"
-                        : "Create polished copy"}
+              {completedResult
+                ? "Open polished document"
+                : submitting
+                  ? source.kind === "markdown"
+                    ? "Importing…"
+                    : "Polishing…"
+                  : unresolved
+                    ? "Resume checking"
+                    : capabilityPending
+                      ? "Checking edit options…"
+                      : effectiveOutputStrategy === "in_place"
+                        ? "Polish original"
+                        : source.kind === "markdown"
+                          ? "Import Google Doc"
+                          : "Create polished copy"}
             </Button>
           </DialogFooter>
         </DialogContent>

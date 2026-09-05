@@ -6,7 +6,15 @@ from typing import Any
 import uuid
 
 from app.document_transform.ir import DocumentIR
-from app.document_transform.schemas import DocumentOutput, DriveFileSource, MarkdownSource
+from app.document_transform.native_date_flow import NativeDateCheckpoint
+from app.document_transform.native_footer_flow import NativeFooterCheckpoint
+from app.document_transform.schemas import (
+    DocumentOutput,
+    DriveFileSource,
+    MarkdownSource,
+    TabNamingCheckpoint,
+)
+from app.document_transform.tab_structure_execution import StructureProvider
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId
 
 
@@ -48,6 +56,8 @@ class OutputDraft:
     result: dict[str, Any] | None = None
     result_sha256: str | None = None
     verified_revision_sha256: str | None = None
+    native_footer: NativeFooterCheckpoint | None = None
+    native_dates: NativeDateCheckpoint | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +91,48 @@ class InPlaceStageResult:
 
 
 class DocumentGateway(ABC):
+    supports_native_footer = False
+    supports_native_dates = False
+    structure_provider: StructureProvider | None = None
+
+    async def plan_copy_dates(
+        self, *, draft: OutputDraft, operation_id: uuid.UUID
+    ) -> NativeDateCheckpoint | None:
+        raise NotImplementedError
+
+    async def apply_copy_dates(
+        self, *, document_id: FileId, checkpoint: NativeDateCheckpoint
+    ) -> NativeDateCheckpoint:
+        raise NotImplementedError
+
+    async def plan_copy_footer(
+        self, *, draft: OutputDraft, operation_id: uuid.UUID
+    ) -> NativeFooterCheckpoint | None:
+        raise NotImplementedError
+
+    async def apply_copy_footer_stage(
+        self, *, document_id: FileId, checkpoint: NativeFooterCheckpoint
+    ) -> NativeFooterCheckpoint:
+        raise NotImplementedError
+
+    async def plan_tab_naming(
+        self,
+        *,
+        document_id: FileId,
+        title: str,
+        operation_id: uuid.UUID,
+        required_revision_id: DocsRevisionId,
+    ) -> TabNamingCheckpoint | None:
+        raise NotImplementedError
+
+    async def apply_tab_naming(
+        self,
+        *,
+        document_id: FileId,
+        checkpoint: TabNamingCheckpoint,
+    ) -> DocsRevisionId:
+        raise NotImplementedError
+
     @abstractmethod
     async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot: ...
 

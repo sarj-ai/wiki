@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
+import { ApiError } from "@/lib/api-error";
 import { BrowserUserContext } from "@/lib/browser-user-context";
 import { documentTransformApi } from "@/lib/document-transform-client";
 import { writeTransformRecovery } from "@/lib/document-transform-recovery";
@@ -10,6 +11,7 @@ import {
   type DocumentTransformResult,
   DocumentTransformTerminalError,
 } from "@/lib/document-transform-types";
+import { installLocalStorage } from "@/test-stubs/local-storage";
 import { MIME_DOC, MIME_SLIDE } from "@/types/wiki";
 
 import { DocumentPolishDialog, type DocumentPolishSource } from "./document-polish-dialog";
@@ -32,6 +34,18 @@ describe("DocumentPolishDialog", () => {
     root = createRoot(host);
     vi.clearAllMocks();
     window.sessionStorage.clear();
+    installLocalStorage();
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: {
+        request: async (_name: string, callback: () => unknown) => {
+          await new Promise<void>((resolve) => {
+            queueMicrotask(resolve);
+          });
+          return callback();
+        },
+      },
+    });
     vi.spyOn(documentTransformApi, "capabilities").mockResolvedValue({
       copy: true,
       inPlace: false,
@@ -113,9 +127,57 @@ describe("DocumentPolishDialog", () => {
     completion.resolve(transformResult());
 
     await vi.waitFor(() => {
-      expect(NavigationMock.push).toHaveBeenCalledWith("/d/output-1");
+      expect(document.body).toHaveTextContent("Polish complete");
     });
+    expect(NavigationMock.push).not.toHaveBeenCalled();
+    expect(document.body).toHaveTextContent("choose Short link");
+    clickButton(findButtonNow("Open polished document"));
+    expect(NavigationMock.push).toHaveBeenCalledWith("/d/output-1");
   });
+
+  it.each(["ready", "unavailable"] as const)(
+    "shows the %s link outcome without repolishing",
+    async (shortLinkStatus) => {
+      const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
+      const create = vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
+      vi.spyOn(documentTransformApi, "waitForCompletion").mockResolvedValue({
+        ...transformResult(),
+        changed: false,
+        shortLinkAlias: shortLinkStatus === "ready" ? "architecture-review" : null,
+        shortLinkStatus,
+      });
+      const copy = vi.fn().mockResolvedValue(undefined);
+      vi.stubGlobal("navigator", { clipboard: { writeText: copy }, locks: navigator.locks });
+      try {
+        renderDialog(root, {
+          allowInPlace: false,
+          expectedModifiedTime: "2026-09-03T12:00:00Z",
+          fileId: "source-1",
+          kind: "drive_file",
+          mimeType: MIME_DOC,
+          name: "Architecture review",
+        });
+        await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+        clickButton(findButtonNow("Create polished copy"));
+        await vi.waitFor(() => expect(document.body).toHaveTextContent("No changes needed"));
+        expect(findButtonNow("Formatting")).toBeDisabled();
+        expect(document.body).toHaveTextContent("do not change who can access");
+        if (shortLinkStatus === "ready") {
+          clickButton(findButtonNow("Copy short link"));
+        }
+        expect(copy.mock.calls).toEqual(
+          shortLinkStatus === "ready" ? [[`${window.location.origin}/go/architecture-review`]] : [],
+        );
+        expect(document.body).toHaveTextContent(
+          shortLinkStatus === "ready" ? "Copy short link" : "short link could not be created",
+        );
+        expect(create).toHaveBeenCalledOnce();
+        expect(NavigationMock.push).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 
   it("refreshes Drive metadata before creating a transform", async () => {
     const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
@@ -356,8 +418,10 @@ describe("DocumentPolishDialog", () => {
     await vi.waitFor(() => {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ["wiki", "file", "source-1"] });
       expect(onInPlaceComplete).toHaveBeenCalledOnce();
-      expect(NavigationMock.push).toHaveBeenCalledWith("/d/source-1");
+      expect(document.body).toHaveTextContent("Polish complete");
     });
+    clickButton(findButtonNow("Open polished document"));
+    expect(NavigationMock.push).toHaveBeenCalledWith("/d/source-1");
   });
 
   it("does not submit until in-place capabilities resolve", async () => {
@@ -415,13 +479,43 @@ describe("DocumentPolishDialog", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { error: new ApiError(422, "Invalid input"), released: true },
+    { error: new ApiError(503, "Unavailable"), released: false },
+    { error: new Error("Network interruption"), released: false },
+  ])(
+    "only releases a definitive fresh rejection: $released $error.message",
+    async ({ error, released }) => {
+      const create = vi.spyOn(documentTransformApi, "create").mockRejectedValue(error);
+      renderDialog(root, {
+        allowInPlace: false,
+        expectedModifiedTime: "2026-09-03T12:00:00Z",
+        fileId: "source-1",
+        kind: "drive_file",
+        mimeType: MIME_DOC,
+        name: "Architecture review",
+      });
+      await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+      clickButton(findButtonNow("Create polished copy"));
+      await vi.waitFor(() => {
+        expect(create).toHaveBeenCalledTimes(1);
+        expect(findButtonNow(released ? "Create polished copy" : "Resume checking")).toBeEnabled();
+        expect(findButtonNow("Formatting").disabled).toBe(!released);
+      });
+    },
+  );
+
   it("blocks accidental resubmission after a terminal task failure", async () => {
     vi.spyOn(documentTransformApi, "create").mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
       status: "pending",
     });
     vi.spyOn(documentTransformApi, "waitForCompletion").mockRejectedValue(
-      new DocumentTransformTerminalError("transform_failed", "Safety verification failed"),
+      new DocumentTransformTerminalError(
+        "transform_failed",
+        "Safety verification failed",
+        "incomplete-copy",
+      ),
     );
     renderDialog(root, {
       allowInPlace: false,
@@ -432,14 +526,68 @@ describe("DocumentPolishDialog", () => {
       name: "Architecture review",
     });
 
+    await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
     clickButton(findButtonNow("Create polished copy"));
     await vi.waitFor(() => {
       expect(document.body).toHaveTextContent("Polish did not complete");
+      expect(document.body).toHaveTextContent("has not passed safety verification");
+      expect(document.querySelector('a[href="/d/incomplete-copy"]')).toHaveTextContent(
+        "Open incomplete copy for review",
+      );
       expect(findButtonNow("Create polished copy")).toBeDisabled();
     });
     clickButton(findButtonNow("Create polished copy"));
     expect(documentTransformApi.create).toHaveBeenCalledTimes(1);
   });
+
+  it.each([false, true])(
+    "enriches terminal create replay and retains its task when read fails=%s",
+    async (readFails) => {
+      const failed = {
+        id: "55555555-5555-4555-8555-555555555555",
+        status: "failed",
+        errorCode: "output_verification_failed",
+        errorDetail: "Task could not be completed",
+      } as const;
+      const enriched = { ...failed, unverifiedOutputId: "recovered-incomplete-copy" };
+      const create = vi.spyOn(documentTransformApi, "create").mockResolvedValue(failed);
+      const getTask = vi.spyOn(documentTransformApi, "getTask").mockResolvedValue(enriched);
+      if (readFails) getTask.mockRejectedValueOnce(new ApiError(422, "Task read rejected"));
+      const wait = vi
+        .spyOn(documentTransformApi, "waitForCompletion")
+        .mockRejectedValue(
+          new DocumentTransformTerminalError(
+            failed.errorCode,
+            "Safety verification failed",
+            enriched.unverifiedOutputId,
+          ),
+        );
+      const resume = async () => {
+        await vi.waitFor(() => expect(findButtonNow("Resume checking")).toBeEnabled());
+        expect(wait).not.toHaveBeenCalled();
+        clickButton(findButtonNow("Resume checking"));
+      };
+      renderDialog(root, {
+        allowInPlace: false,
+        expectedModifiedTime: "2026-09-03T12:00:00Z",
+        fileId: "source-1",
+        kind: "drive_file",
+        mimeType: MIME_DOC,
+        name: "Architecture review",
+      });
+      await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+      clickButton(findButtonNow("Create polished copy"));
+      if (readFails) await resume();
+      await vi.waitFor(() => {
+        expect(document.querySelector('a[href="/d/recovered-incomplete-copy"]')).toHaveTextContent(
+          "Open incomplete copy for review",
+        );
+      });
+      expect(wait).toHaveBeenCalledWith(enriched, expect.any(AbortSignal));
+      expect(getTask).toHaveBeenCalledWith(failed.id, expect.any(AbortSignal));
+      expect(create).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("blocks accidental resubmission after a needs-review outcome", async () => {
     vi.spyOn(documentTransformApi, "create").mockResolvedValue({
@@ -460,6 +608,7 @@ describe("DocumentPolishDialog", () => {
       name: "Architecture review",
     });
 
+    await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
     clickButton(findButtonNow("Create polished copy"));
     await vi.waitFor(() => {
       expect(document.body).toHaveTextContent(
@@ -492,6 +641,7 @@ describe("DocumentPolishDialog", () => {
     await Promise.resolve();
     expect(documentTransformApi.capabilities).not.toHaveBeenCalled();
     expect(document.body).not.toHaveTextContent("Edit original");
+    await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
     clickButton(findButtonNow("Create polished copy"));
     await vi.waitFor(() => {
       expect(documentTransformApi.create).toHaveBeenCalledWith(
@@ -544,7 +694,7 @@ describe("DocumentPolishDialog", () => {
 
     expect(findButtonNow("Import Google Doc")).toBeDisabled();
     typeTextarea("# Launch\n\nA concise plan.");
-    expect(findButtonNow("Import Google Doc")).toBeEnabled();
+    await vi.waitFor(() => expect(findButtonNow("Import Google Doc")).toBeEnabled());
     clickButton(findButtonNow("Formatting"));
     clickButton(findButtonNow("Import Google Doc"));
 
@@ -607,7 +757,7 @@ function renderDialog(
   root: Root,
   source: DialogTestSource,
   onInPlaceComplete?: () => void,
-  owner: null | string = null,
+  owner: null | string = "owner-1",
 ) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   let normalizedSource: DocumentPolishSource;

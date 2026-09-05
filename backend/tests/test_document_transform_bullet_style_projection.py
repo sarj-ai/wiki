@@ -1,0 +1,197 @@
+from copy import deepcopy
+from typing import Any
+
+import pytest
+
+from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
+from app.document_transform.bullet_style_projection import project_branded_bullet_styles
+from app.document_transform.gateway import OutputDraft, SourceSnapshot
+from app.document_transform.google_gateway import GoogleDocumentGateway
+from app.document_transform.ir import parse_google_document
+from app.document_transform.schemas import DocumentOutput
+from app.drive.schemas import MIME_DOC
+from app.identifiers import DocsRevisionId, DocsTabId, FileId
+
+
+def _document() -> dict[str, Any]:
+    return {
+        "documentId": "doc",
+        "revisionId": "r1",
+        "tabs": [
+            {
+                "tabProperties": {"tabId": "tab"},
+                "documentTab": {
+                    "body": {
+                        "content": [
+                            {
+                                "startIndex": 1,
+                                "endIndex": 6,
+                                "paragraph": {
+                                    "bullet": {"listId": "numbered", "nestingLevel": 0},
+                                    "elements": [
+                                        {
+                                            "startIndex": 1,
+                                            "endIndex": 6,
+                                            "textRun": {"content": "Body\n"},
+                                        }
+                                    ],
+                                },
+                            }
+                        ]
+                    },
+                    "lists": {
+                        "numbered": {
+                            "listProperties": {
+                                "nestingLevels": [
+                                    {
+                                        "glyphType": "DECIMAL",
+                                        "glyphFormat": "%0.",
+                                        "startNumber": 7,
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                },
+            }
+        ],
+    }
+
+
+def _apply_provider_styles(document: dict[str, Any]) -> dict[str, Any]:
+    expected = parse_google_document(document, title="Review")
+    actual = deepcopy(document)
+    paragraph = actual["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
+    for request in build_copy_mutations(
+        expected, expected, profile=SarjBrandProfile(), headers=(), logo_uri=""
+    ):
+        if "updateTextStyle" not in request:
+            continue
+        style = request["updateTextStyle"]["textStyle"]
+        paragraph["elements"][0]["textRun"].setdefault("textStyle", {}).update(style)
+        # Documented provider behavior omitted by the previous native-list fake:
+        # full paragraph styling also updates the bullet with matching fields.
+        paragraph["bullet"].setdefault("textStyle", {}).update(style)
+    return actual
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "planned",
+        "wrong_font",
+        "wrong_color",
+        "nesting",
+        "identity",
+        "unknown",
+        "link",
+        "numbering",
+    ],
+)
+async def test_in_place_accepts_only_exact_planned_bullet_style_side_effects(mutation: str) -> None:
+    original = _document()
+    expected = parse_google_document(original, title="Review")
+    actual = _apply_provider_styles(original)
+    tab = actual["tabs"][0]["documentTab"]
+    bullet = tab["body"]["content"][0]["paragraph"]["bullet"]
+    match mutation:
+        case "wrong_font":
+            bullet["textStyle"]["weightedFontFamily"] = {"fontFamily": "Arial"}
+        case "wrong_color":
+            bullet["textStyle"]["foregroundColor"] = {"color": {"rgbColor": {"red": 1}}}
+        case "nesting":
+            bullet["nestingLevel"] = 1
+        case "identity":
+            bullet["listId"] = "other"
+        case "unknown":
+            bullet["unknown"] = "changed"
+        case "link":
+            bullet["textStyle"]["link"] = {"url": "https://example.test/unsafe"}
+        case "numbering":
+            tab["lists"]["numbered"]["listProperties"]["nestingLevels"][0]["startNumber"] = 1
+        case "planned":
+            pass
+        case _:
+            raise AssertionError(mutation)
+    gateway = object.__new__(GoogleDocumentGateway)
+    gateway._logo_uri = "https://example.test/logo.png"
+    inspection = await gateway.inspect_in_place(
+        snapshot=SourceSnapshot(
+            title="Review",
+            parent_folder_id=FileId("folder"),
+            modified_time="now",
+            revision_id=DocsRevisionId("r1"),
+            media_type=MIME_DOC,
+            google_document=original,
+            owned_by_me=True,
+            can_edit=True,
+            is_personal_drive=True,
+        ),
+        title="Review",
+    )
+    verification = await gateway.verify_in_place(
+        document=actual,
+        title="Review",
+        expected=expected,
+        structural_sha256=inspection.structural_sha256,
+        protected_structure_sha256=inspection.protected_structure_sha256,
+        verify_brand=True,
+    )
+    assert verification.structure_preserved is (mutation == "planned")
+    if mutation == "planned":
+        assert verification.content_preserved
+        unchanged = deepcopy(actual)
+        projected = project_branded_bullet_styles(actual, expected)
+        assert actual == unchanged
+        assert project_branded_bullet_styles(projected, expected) == projected
+        strict = await gateway.verify_in_place(
+            document=actual,
+            title="Review",
+            expected=expected,
+            structural_sha256=inspection.structural_sha256,
+            protected_structure_sha256=inspection.protected_structure_sha256,
+            verify_brand=False,
+        )
+        assert not strict.structure_preserved
+
+
+@pytest.mark.parametrize("rename", [False, True])
+@pytest.mark.parametrize("tamper", [False, True])
+async def test_copy_verifies_exact_bullet_styles_with_independent_identity_proof(
+    monkeypatch: pytest.MonkeyPatch, rename: bool, tamper: bool
+) -> None:
+    original = _document()
+    expected = parse_google_document(original, title="Review")
+    actual = _apply_provider_styles(original)
+    tab = actual["tabs"][0]["documentTab"]
+    bullet = tab["body"]["content"][0]["paragraph"]["bullet"]
+    if rename:
+        bullet["listId"] = "copy-list"
+        tab["lists"]["copy-list"] = tab["lists"].pop("numbered")
+    if tamper:
+        bullet["textStyle"]["link"] = {"url": "https://example.test/changed"}
+    gateway = object.__new__(GoogleDocumentGateway)
+    monkeypatch.setattr(gateway, "_get_document_sync", lambda _: actual)
+    verification = await gateway.verify_output(
+        draft=OutputDraft(
+            output=DocumentOutput(
+                file_id=FileId("copy"), name="Copy", parent_folder_id=FileId("folder")
+            ),
+            document_id=FileId("copy"),
+            tab_id=DocsTabId("tab"),
+            revision_id=DocsRevisionId("r1"),
+            source_sha256="source",
+        ),
+        source=SourceSnapshot(
+            title="Review",
+            parent_folder_id=FileId("folder"),
+            modified_time="now",
+            revision_id=DocsRevisionId("r1"),
+            media_type=MIME_DOC,
+            google_document=original,
+        ),
+        expected=expected,
+        verify_brand=True,
+    )
+    assert verification.structure_preserved is not tamper
+    assert verification.content_preserved is not tamper

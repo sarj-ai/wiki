@@ -222,6 +222,38 @@ only after revalidating its release, source/output binding, permissions, and art
 runner stops at the first failed invariant, retains successful labeled siblings for inspection,
 renders every eligible page, and never calls a Drive permission mutation.
 
+## Document-transform dispatch recovery
+
+The Dammam Scheduler job calls the authenticated reconcile endpoint every five minutes.
+Each invocation considers at most 50 validated, unexpired pending intents older than two
+minutes. It reuses deterministic Cloud Task identities; it does not re-admit legacy rows,
+recover RUNNING leases, or resume paused queues. Its 120-second deadline and zero immediate
+retries bound traffic; a later scheduled run revisits partially processed batches.
+
+Deploy migrations `0010_transform_dispatch` and `0011_transform_replay_keys` with the backend
+before applying the scheduler. Review a fresh Terraform plan for unrelated drift, then verify
+the enabled state, schedule, URL, audience, and existing `sarj-wiki-task-invoker` identity.
+Verify an authenticated invocation and actual task transitions: HTTP 200 alone does not prove
+enqueue success. Inspect aggregate failures and pending-intent age alongside worker logs.
+
+The invoker has no Drive or database rights. The app verifies its Google-signed OIDC identity
+and exact transform audience. No project-wide token-creator role or application IAM grant is
+added. The Terraform operator needs Scheduler administration and `actAs` on the existing
+invoker; CI permissions are not silently expanded. Enabling the Scheduler API provisions its
+Google service agent. Repair a missing service-agent grant only through a separately reviewed
+change.
+
+`maintenance_mode` pauses this scheduler, not queued tasks or running document writes.
+The queue-pause and partial-dispatch alert policies report events, not continuous health;
+incident auto-close is not proof of recovery. A paused queue can still accept enqueue calls.
+Never automatically resume an intentional queue pause: inspect its audit actor and reason.
+Oldest eligible task age and missing scheduler executions still need operational monitoring.
+
+Rollback by pausing only the new scheduler or setting maintenance mode, then reverting its
+resource through a reviewed plan. Keep the additive schema and pending intents; do not
+blindly backfill legacy readiness timestamps. Plan-only Terraform recovery tests use the
+real provider and never substitute for production readback.
+
 ## License and security
 
 Released under the [MIT License](LICENSE). Report security concerns privately to the

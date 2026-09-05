@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 import hashlib
 from io import BytesIO
@@ -18,7 +18,22 @@ from googleapiclient.http import HttpRequest, MediaIoBaseDownload, MediaIoBaseUp
 import httplib2
 from loguru import logger
 
+from app.document_transform.brand import (
+    SarjBrandProfile,
+    paragraph_color,
+    paragraph_font_size,
+    paragraph_named_style,
+    paragraph_spacing,
+)
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST, normalize_header_title
+from app.document_transform.bullet_style_projection import (
+    align_branded_bullet_metadata,
+    project_branded_bullet_styles,
+)
+from app.document_transform.copy_identity import (
+    align_verified_copy_list_metadata,
+    normalize_copy_list_identity,
+)
 from app.document_transform.docx_renderer import markdown_import_manifest
 from app.document_transform.errors import (
     DocumentGatewayError,
@@ -48,7 +63,29 @@ from app.document_transform.ir import (
 )
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.document_transform.markdown_import import verify_markdown_import
-from app.document_transform.schemas import DocumentOutput, DriveFileSource, MarkdownSource
+from app.document_transform.native_date_flow import (
+    NativeDateCheckpoint,
+    date_invariant_sha256,
+    plan_copy_dates,
+    verified_date_projection,
+)
+from app.document_transform.native_footer import FooterAction, FooterCheckpoint, plan_native_footer
+from app.document_transform.native_footer_flow import (
+    NativeFooterCheckpoint,
+    NativeFooterStage,
+    footer_document_tab,
+    footer_invariant_sha256,
+    verified_footer_projection,
+)
+from app.document_transform.schemas import (
+    DocumentOutput,
+    DriveFileSource,
+    MarkdownSource,
+    TabNamingCheckpoint,
+)
+from app.document_transform.tab_metadata import native_tab_properties, tab_naming_invariant_sha256
+from app.document_transform.tab_names import plan_tab_names
+from app.document_transform.tab_structure_execution import StructureProvider
 from app.drive.retry import (
     ProviderDeadlineError,
     execute_download_chunk_with_retry,
@@ -130,6 +167,46 @@ def _google_http_request(candidate: object, **kwargs: object) -> HttpRequest:
 
 
 class GoogleDocumentGateway(DocumentGateway):
+    supports_native_footer = True
+    supports_native_dates = True
+
+    @override
+    async def plan_copy_dates(
+        self, *, draft: OutputDraft, operation_id: uuid.UUID
+    ) -> NativeDateCheckpoint | None:
+        document = await asyncio.to_thread(self._get_document_sync, draft.document_id)
+        if document.get("revisionId") != draft.revision_id:
+            raise InPlaceNeedsReviewError
+        return plan_copy_dates(document, operation_id=operation_id)
+
+    @override
+    async def apply_copy_dates(
+        self, *, document_id: FileId, checkpoint: NativeDateCheckpoint
+    ) -> NativeDateCheckpoint:
+        document = await asyncio.to_thread(self._get_document_sync, document_id)
+        if not _has_exact_named_range(document, checkpoint.marker_name, checkpoint.marker_range):
+            if (
+                checkpoint.complete
+                or document.get("revisionId") != checkpoint.revision_id
+                or date_invariant_sha256(document) != checkpoint.invariant_sha256
+            ):
+                raise InPlaceNeedsReviewError
+            result = await self.apply_in_place_stage(
+                document_id=document_id,
+                required_revision_id=checkpoint.revision_id,
+                marker_name=checkpoint.marker_name,
+                marker_range=checkpoint.marker_range,
+                requests=checkpoint.requests,
+            )
+            document = result.document
+        verified_date_projection(document, checkpoint)
+        return checkpoint.model_copy(
+            update={
+                "complete": True,
+                "revision_id": DocsRevisionId(_required_string(document, "revisionId")),
+            }
+        )
+
     def __init__(
         self,
         *,
@@ -138,6 +215,9 @@ class GoogleDocumentGateway(DocumentGateway):
         logo_uri: str,
         refresh_handler: GoogleRefreshHandler | None = None,
     ) -> None:
+        self.structure_provider = StructureProvider(
+            self._get_document_sync, self._write_copy_structure_sync, self._comments_absent_sync
+        )
         self._user = user
         self._files = files
         self._logo_uri = logo_uri
@@ -145,6 +225,44 @@ class GoogleDocumentGateway(DocumentGateway):
         self._drive_clients: dict[int, DriveResource] = {}
         self._docs_clients: dict[int, _DocumentsProvider] = {}
 
+    def _comments_absent_sync(self, source_id: FileId) -> bool:
+        token: str | None = None
+        seen: set[str] = set()
+        for _ in range(10):
+            try:
+                response = self._execute_dict(
+                    _google_http_request(
+                        _member(_call_boundary(_member(self._drive(), "comments")), "list"),
+                        fileId=source_id,
+                        fields="comments(id),nextPageToken",
+                        pageSize=100,
+                        includeDeleted=True,
+                        **({"pageToken": token} if token else {}),
+                    )
+                )
+            except DocumentGatewayError:
+                return False
+            if response.get("comments"):
+                return False
+            next_token: object = response.get("nextPageToken")
+            if not next_token:
+                return True
+            if not isinstance(next_token, str) or next_token in seen:
+                return False
+            token = next_token
+            seen.add(token)
+        return False
+
+    def _write_copy_structure_sync(self, document_id: FileId, body: dict[str, Any]) -> None:
+        self._execute_mutation_dict(
+            _google_http_request(
+                _member(self._docs().documents(), "batchUpdate"),
+                documentId=document_id,
+                body=body,
+            ),
+        )
+
+    @override
     @override
     async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot:
         try:
@@ -205,6 +323,143 @@ class GoogleDocumentGateway(DocumentGateway):
         return await asyncio.to_thread(self._inspect_in_place_sync, snapshot, title)
 
     @override
+    async def plan_tab_naming(
+        self,
+        *,
+        document_id: FileId,
+        title: str,
+        operation_id: uuid.UUID,
+        required_revision_id: DocsRevisionId,
+    ) -> TabNamingCheckpoint | None:
+        document = await asyncio.to_thread(self._get_document_sync, document_id)
+        if document.get("revisionId") != required_revision_id:
+            raise InPlaceNeedsReviewError
+        plan = plan_tab_names(
+            parse_google_document(document, title=title), native_tab_properties(document)
+        )
+        marker_range = _terminal_body_marker_range(document)
+        if not plan.renames or marker_range is None:
+            return None
+        digest = hashlib.sha256(
+            json.dumps([rename.request() for rename in plan.renames], sort_keys=True).encode()
+        ).hexdigest()
+        return TabNamingCheckpoint(
+            plan=plan,
+            revision_id=DocsRevisionId(_required_string(document, "revisionId")),
+            marker_name=f"sarj_tabs_{operation_id.hex}_{digest[:16]}",
+            marker_range=marker_range,
+            invariant_sha256=tab_naming_invariant_sha256(document),
+        )
+
+    @override
+    async def plan_copy_footer(
+        self, *, draft: OutputDraft, operation_id: uuid.UUID
+    ) -> NativeFooterCheckpoint | None:
+        document = await asyncio.to_thread(self._get_document_sync, draft.document_id)
+        if document.get("revisionId") != draft.revision_id:
+            raise InPlaceNeedsReviewError
+        tab = footer_document_tab(document, draft.tab_id)
+        # Existing footer segments, including blank custom ones, remain untouched.
+        if tab.get("footers") or tab.get("documentStyle", {}).get("defaultFooterId"):
+            return None
+        url = f"https://wiki.sarj.ai/d/{draft.document_id}"
+        plan = plan_native_footer(
+            tab, tab_id=draft.tab_id, revision_id=draft.revision_id, short_link=url
+        )
+        marker_range = _terminal_body_marker_range(document)
+        if plan.action is not FooterAction.CREATE or marker_range is None:
+            return None
+        return NativeFooterCheckpoint(
+            tab_id=draft.tab_id,
+            url=url,
+            revision_id=draft.revision_id,
+            create_marker=f"sarj_footer_create_{operation_id.hex}",
+            populate_marker=f"sarj_footer_populate_{operation_id.hex}",
+            marker_range=marker_range,
+            invariant_sha256=footer_invariant_sha256(document),
+        )
+
+    @override
+    async def apply_copy_footer_stage(
+        self, *, document_id: FileId, checkpoint: NativeFooterCheckpoint
+    ) -> NativeFooterCheckpoint:
+        document = await asyncio.to_thread(self._get_document_sync, document_id)
+        creating = checkpoint.stage is NativeFooterStage.CREATE
+        marker = checkpoint.create_marker if creating else checkpoint.populate_marker
+        if not _has_exact_named_range(document, marker, checkpoint.marker_range):
+            if document.get("revisionId") != checkpoint.revision_id:
+                raise InPlaceNeedsReviewError
+            if creating:
+                if footer_invariant_sha256(document) != checkpoint.invariant_sha256:
+                    raise InPlaceNeedsReviewError
+            else:
+                verified_footer_projection(document, checkpoint, populated=False)
+            plan = plan_native_footer(
+                footer_document_tab(document, checkpoint.tab_id),
+                tab_id=checkpoint.tab_id,
+                revision_id=checkpoint.revision_id,
+                short_link=checkpoint.url,
+                checkpoint=FooterCheckpoint(not creating, checkpoint.footer_id),
+            )
+            expected_action = FooterAction.CREATE if creating else FooterAction.POPULATE
+            if plan.action is not expected_action:
+                raise InPlaceNeedsReviewError
+            result = await self.apply_in_place_stage(
+                document_id=document_id,
+                required_revision_id=checkpoint.revision_id,
+                marker_name=marker,
+                marker_range=checkpoint.marker_range,
+                requests=list(plan.requests),
+            )
+            document = result.document
+        _, footer_id = verified_footer_projection(document, checkpoint, populated=not creating)
+        return checkpoint.model_copy(
+            update={
+                "stage": NativeFooterStage.POPULATE if creating else NativeFooterStage.COMPLETE,
+                "footer_id": footer_id,
+                "revision_id": DocsRevisionId(_required_string(document, "revisionId")),
+            }
+        )
+
+    @override
+    async def apply_tab_naming(
+        self,
+        *,
+        document_id: FileId,
+        checkpoint: TabNamingCheckpoint,
+    ) -> DocsRevisionId:
+        document = await asyncio.to_thread(self._get_document_sync, document_id)
+        if (
+            tab_naming_invariant_sha256(document, checkpoint.marker_name)
+            != checkpoint.invariant_sha256
+        ):
+            raise InPlaceNeedsReviewError
+        if _has_exact_named_range(document, checkpoint.marker_name, checkpoint.marker_range):
+            if not checkpoint.plan.matches_result(native_tab_properties(document)):
+                raise InPlaceNeedsReviewError
+            return DocsRevisionId(_required_string(document, "revisionId"))
+        if document.get(
+            "revisionId"
+        ) != checkpoint.revision_id or not checkpoint.plan.matches_preimage(
+            native_tab_properties(document)
+        ):
+            raise InPlaceNeedsReviewError
+        result = await self.apply_in_place_stage(
+            document_id=document_id,
+            required_revision_id=checkpoint.revision_id,
+            marker_name=checkpoint.marker_name,
+            marker_range=checkpoint.marker_range,
+            requests=[dict(rename.request()) for rename in checkpoint.plan.renames],
+        )
+        if tab_naming_invariant_sha256(
+            result.document, checkpoint.marker_name
+        ) != checkpoint.invariant_sha256 or not checkpoint.plan.matches_result(
+            native_tab_properties(result.document)
+        ):
+            raise InPlaceNeedsReviewError
+        return result.revision_id
+
+    @override
     async def apply_in_place_stage(
         self,
         *,
@@ -235,13 +490,20 @@ class GoogleDocumentGateway(DocumentGateway):
         verify_brand: bool,
     ) -> OutputVerification:
         parsed = parse_google_document(document, title=title)
-        content_preserved = parsed.semantic_sha256 == expected.semantic_sha256
+        content_preserved = _typography_content_preserved(
+            parsed, expected, verify_brand=verify_brand
+        )
+        structure_document = (
+            project_branded_bullet_styles(document, expected) if verify_brand else document
+        )
         structure_preserved = (
             _inventory_sha256(_structural_inventory(document)) == structural_sha256
-            and _inventory_sha256(_protected_structure_inventory(document))
+            and _inventory_sha256(_protected_structure_inventory(structure_document))
             == protected_structure_sha256
         )
-        brand_applied = not verify_brand or verify_brand_application(document, parsed)
+        brand_applied = not verify_brand or verify_brand_application(
+            document, _typography_verification_ir(parsed, expected)
+        )
         if not (content_preserved and structure_preserved and brand_applied):
             logger.warning(
                 "in-place verification failed content_preserved={content_preserved} "
@@ -905,6 +1167,12 @@ class GoogleDocumentGateway(DocumentGateway):
         verify_brand: bool,
     ) -> OutputVerification:
         output_document = self._get_document_sync(draft.document_id)
+        if draft.native_dates is not None:
+            output_document = verified_date_projection(output_document, draft.native_dates)
+        if draft.native_footer is not None:
+            output_document, _ = verified_footer_projection(
+                output_document, draft.native_footer, populated=True
+            )
         if source.markdown is not None:
             rendered_markdown = rewrite_markdown(
                 source.markdown,
@@ -925,17 +1193,60 @@ class GoogleDocumentGateway(DocumentGateway):
                 brand_applied=verification.brand_applied,
                 revision_id=DocsRevisionId(_required_string(output_document, "revisionId")),
             )
-        parsed = parse_google_document(output_document, title=expected.title)
-        source_document = source.google_document
-        structure_preserved = source_document is None or (
-            _structural_inventory(source_document) == _structural_inventory(output_document)
-            and _protected_structure_inventory(source_document)
-            == _protected_structure_inventory(output_document)
+        structure_document = (
+            project_branded_bullet_styles(output_document, expected)
+            if verify_brand
+            else output_document
         )
+        parsed = parse_google_document(structure_document, title=expected.title)
+        source_document = source.google_document
+        structural_preserved = source_document is None or (
+            _structural_inventory(source_document) == _structural_inventory(output_document)
+        )
+        protected_preserved = source_document is None or (
+            _protected_structure_inventory(source_document)
+            == _protected_structure_inventory(structure_document)
+        )
+        copy_list_identity_equivalent = False
+        if not protected_preserved and source_document is not None:
+            normalized_source = normalize_copy_list_identity(source_document)
+            normalized_output = normalize_copy_list_identity(structure_document)
+            copy_list_identity_equivalent = (
+                normalized_source is not None
+                and normalized_output is not None
+                and _protected_structure_inventory(normalized_source)
+                == _protected_structure_inventory(normalized_output)
+            )
+            protected_preserved = copy_list_identity_equivalent
+            if copy_list_identity_equivalent:
+                parsed = align_verified_copy_list_metadata(parsed, expected)
+        headers_preserved = source_document is None or _occupied_headers_preserved(
+            source_document, output_document
+        )
+        structure_preserved = structural_preserved and protected_preserved and headers_preserved
+        content_preserved = _typography_content_preserved(
+            parsed, expected, verify_brand=verify_brand
+        )
+        if not content_preserved or not structure_preserved:
+            logger.warning(
+                "document copy verification failed checks={checks}",
+                checks={
+                    "content_preserved": content_preserved,
+                    "structural_inventory_preserved": structural_preserved,
+                    "protected_inventory_preserved": protected_preserved,
+                    "copy_list_identity_equivalent": copy_list_identity_equivalent,
+                    "occupied_headers_preserved": headers_preserved,
+                },
+            )
+        elif copy_list_identity_equivalent:
+            logger.info("document copy verified with exact list identity equivalence")
         return OutputVerification(
-            content_preserved=parsed.semantic_sha256 == expected.semantic_sha256,
+            content_preserved=content_preserved,
             structure_preserved=structure_preserved,
-            brand_applied=not verify_brand or verify_brand_application(output_document, parsed),
+            brand_applied=not verify_brand
+            or verify_brand_application(
+                output_document, _typography_verification_ir(parsed, expected)
+            ),
             revision_id=DocsRevisionId(_required_string(output_document, "revisionId")),
         )
 
@@ -1564,6 +1875,45 @@ def _protected_structure_inventory(document: dict[str, Any]) -> tuple[tuple[str,
     return tuple(inventory)
 
 
+def _occupied_headers_preserved(original: dict[str, Any], actual: dict[str, Any]) -> bool:
+    actual_tabs = dict(_document_tabs(actual))
+    for tab_id, source_tab in _document_tabs(original):
+        source_headers = source_tab.get("headers", {})
+        if not isinstance(source_headers, dict):
+            return False
+        target_tab = actual_tabs.get(tab_id)
+        if target_tab is None:
+            return False
+        target_headers = target_tab.get("headers", {})
+        if not isinstance(target_headers, dict):
+            return False
+        for header_id, header in source_headers.items():
+            # New branding may fill an empty default segment, but it must never
+            # replace authored header text, tables, images, or their definitions.
+            if not _segment_has_content(source_headers, header_id):
+                continue
+            if _stable_object_payload(header) != _stable_object_payload(
+                target_headers.get(header_id)
+            ):
+                return False
+            for reference, definitions in (
+                ("inlineObjectId", "inlineObjects"),
+                ("positionedObjectIds", "positionedObjects"),
+                ("listId", "lists"),
+            ):
+                for identifier in _referenced_ids(header, reference):
+                    if _stable_object_payload(source_tab.get(definitions, {}).get(identifier)) != (
+                        _stable_object_payload(target_tab.get(definitions, {}).get(identifier))
+                    ):
+                        return False
+            for binding in ("defaultHeaderId", "firstPageHeaderId", "evenPageHeaderId"):
+                if source_tab.get("documentStyle", {}).get(binding) == header_id and (
+                    target_tab.get("documentStyle", {}).get(binding) != header_id
+                ):
+                    return False
+    return True
+
+
 def _immutable_tab_payload(document_tab: dict[str, Any], content: list[Any]) -> dict[str, Any]:
     payload: dict[str, Any] = {}
     for key in ("footnotes", "footers"):
@@ -1710,6 +2060,91 @@ def _strip_location_fields(value: object) -> object:
             return value
 
 
+def _typography_content_preserved(
+    actual: DocumentIR, expected: DocumentIR, *, verify_brand: bool
+) -> bool:
+    if verify_brand:
+        actual = align_branded_bullet_metadata(actual, expected)
+    if actual.semantic_sha256 == expected.semantic_sha256:
+        return True
+    if not verify_brand or len(actual.blocks) != len(expected.blocks):
+        return False
+    # Font-only changes can make the provider coalesce adjacent text runs.
+    # Allow only that capability transition; persisted checkpoint hashes and
+    # independent protected-content/structure verification remain unchanged.
+    return all(
+        (observed.kind, observed.level, observed.text)
+        == (planned.kind, planned.level, planned.text)
+        and observed.native_content == planned.native_content
+        and observed.native_named_style == planned.native_named_style
+        and observed.native_bullet_json == planned.native_bullet_json
+        and (
+            observed.editable == planned.editable
+            or (not planned.editable and observed.editable and bool(planned.font_style_ranges))
+        )
+        for observed, planned in zip(actual.blocks, expected.blocks, strict=True)
+    )
+
+
+def _typography_verification_ir(actual: DocumentIR, expected: DocumentIR) -> DocumentIR:
+    if len(actual.blocks) != len(expected.blocks):
+        return actual
+    blocks = []
+    for observed, planned in zip(actual.blocks, expected.blocks, strict=True):
+        if (
+            planned.editable
+            or not planned.font_style_ranges
+            or planned.source_range is None
+            or observed.source_range is None
+        ):
+            blocks.append(observed)
+            continue
+        delta = observed.source_range.start_index - planned.source_range.start_index
+        blocks.append(
+            replace(
+                observed,
+                editable=False,
+                font_style_ranges=tuple(
+                    replace(
+                        item, start_index=item.start_index + delta, end_index=item.end_index + delta
+                    )
+                    for item in planned.font_style_ranges
+                ),
+            )
+        )
+    return replace(actual, blocks=tuple(blocks))
+
+
+def _font_only_has_brand(paragraph: dict[str, Any], block: TextBlock) -> bool:
+    elements = paragraph.get("elements", [])
+    if not isinstance(elements, list):
+        return False
+    for source in block.font_style_ranges:
+        cursor = source.start_index
+        for part in elements:
+            if not isinstance(part, dict):
+                continue
+            start, end = part.get("startIndex"), part.get("endIndex")
+            if not isinstance(start, int) or not isinstance(end, int) or end <= cursor:
+                continue
+            if start > cursor:
+                return False
+            run = part.get("textRun", {})
+            style = run.get("textStyle", {}) if isinstance(run, dict) else {}
+            family = style.get("weightedFontFamily", {}) if isinstance(style, dict) else {}
+            if (
+                not isinstance(family, dict)
+                or family.get("fontFamily") != CURRENT_BRAND_MANIFEST.document.font_family
+            ):
+                return False
+            cursor = min(end, source.end_index)
+            if cursor == source.end_index:
+                break
+        if cursor != source.end_index:
+            return False
+    return True
+
+
 def verify_brand_application(document: dict[str, Any], parsed: DocumentIR) -> bool:
     tabs = tuple(_document_tabs(document))
     applied = bool(tabs) and all(
@@ -1725,7 +2160,9 @@ def verify_brand_application(document: dict[str, Any], parsed: DocumentIR) -> bo
     if applied:
         for block in parsed.blocks:
             source_range = block.source_range
-            if source_range is None or not block.editable or block.kind is BlockKind.BLANK:
+            if source_range is None or block.kind is BlockKind.BLANK:
+                continue
+            if not block.editable and not block.font_style_ranges:
                 continue
             paragraph = paragraphs.get(
                 ParagraphRangeKey(
@@ -1734,7 +2171,11 @@ def verify_brand_application(document: dict[str, Any], parsed: DocumentIR) -> bo
                     end_index=source_range.end_index,
                 )
             )
-            if paragraph is None or not _paragraph_has_brand(paragraph, block):
+            if paragraph is None or not (
+                _paragraph_has_brand(paragraph, block)
+                if block.editable
+                else _font_only_has_brand(paragraph, block)
+            ):
                 applied = False
                 break
     if not applied:
@@ -1761,9 +2202,12 @@ def _brand_application_diagnostics(
     paragraphs = _paragraphs_by_range(tabs)
     paragraph_range_checks: list[bool] = []
     paragraph_checks: list[dict[str, bool]] = []
+    font_only_checks: list[bool] = []
     for block in parsed.blocks:
         source_range = block.source_range
-        if source_range is None or not block.editable or block.kind is BlockKind.BLANK:
+        if source_range is None or block.kind is BlockKind.BLANK:
+            continue
+        if not block.editable and not block.font_style_ranges:
             continue
         paragraph = paragraphs.get(
             ParagraphRangeKey(
@@ -1772,6 +2216,11 @@ def _brand_application_diagnostics(
                 end_index=source_range.end_index,
             )
         )
+        if not block.editable:
+            font_only_checks.append(
+                paragraph is not None and _font_only_has_brand(paragraph, block)
+            )
+            continue
         paragraph_range_checks.append(paragraph is not None)
         paragraph_checks.append(
             _paragraph_brand_diagnostics(paragraph, block)
@@ -1795,6 +2244,9 @@ def _brand_application_diagnostics(
         "paragraph_text_styles": all(item["text_style"] for item in paragraph_checks),
         "paragraph_count": len(paragraph_checks),
     }
+    if font_only_checks:
+        checks["paragraph_font_only_styles"] = all(font_only_checks)
+        checks["paragraph_font_only_count"] = len(font_only_checks)
     return checks
 
 
@@ -1906,11 +2358,8 @@ def _paragraph_brand_diagnostics(
     paragraph_style = paragraph.get("paragraphStyle")
     if not isinstance(elements, list) or not isinstance(paragraph_style, dict):
         return {"named_style": False, "layout": False, "text_style": False}
-    expected_named_style = (
-        f"HEADING_{block.level}"
-        if block.kind is BlockKind.HEADING and block.level in {1, 2, 3, 4, 5, 6}
-        else "NORMAL_TEXT"
-    )
+    expected_named_style = paragraph_named_style(block)
+    spacing = paragraph_spacing(block, SarjBrandProfile())
     text_runs = [
         item["textRun"]
         for item in elements
@@ -1919,11 +2368,7 @@ def _paragraph_brand_diagnostics(
         and isinstance(item["textRun"].get("content"), str)
         and item["textRun"]["content"].strip()
     ]
-    expected_color = (
-        CURRENT_BRAND_MANIFEST.colors.primary
-        if block.kind is BlockKind.HEADING
-        else CURRENT_BRAND_MANIFEST.colors.ink
-    )
+    expected_color = paragraph_color(block, SarjBrandProfile())
     return {
         "named_style": paragraph_style.get("namedStyleType") == expected_named_style,
         "layout": bool(
@@ -1932,11 +2377,11 @@ def _paragraph_brand_diagnostics(
             == CURRENT_BRAND_MANIFEST.document.line_spacing_percent
             and _dimension_matches(
                 paragraph_style.get("spaceAbove"),
-                CURRENT_BRAND_MANIFEST.document.paragraph_space_above_pt,
+                spacing.above,
             )
             and _dimension_matches(
                 paragraph_style.get("spaceBelow"),
-                CURRENT_BRAND_MANIFEST.document.paragraph_space_below_pt,
+                spacing.below,
             )
             and paragraph_style.get("keepWithNext") is (block.kind is BlockKind.HEADING)
         ),
@@ -2185,33 +2630,26 @@ def _paragraph_has_brand(paragraph: dict[str, Any], block: TextBlock) -> bool:
     paragraph_style = paragraph.get("paragraphStyle", {})
     if not isinstance(elements, list) or not isinstance(paragraph_style, dict):
         return False
-    expected_named_style = (
-        f"HEADING_{block.level}"
-        if block.kind is BlockKind.HEADING and block.level in {1, 2, 3, 4, 5, 6}
-        else "NORMAL_TEXT"
-    )
+    expected_named_style = paragraph_named_style(block)
+    spacing = paragraph_spacing(block, SarjBrandProfile())
     style_checks = (
         paragraph_style.get("namedStyleType") == expected_named_style,
         paragraph_style.get("alignment") == "START",
         paragraph_style.get("lineSpacing") == CURRENT_BRAND_MANIFEST.document.line_spacing_percent,
         _dimension_matches(
             paragraph_style.get("spaceAbove"),
-            CURRENT_BRAND_MANIFEST.document.paragraph_space_above_pt,
+            spacing.above,
         ),
         _dimension_matches(
             paragraph_style.get("spaceBelow"),
-            CURRENT_BRAND_MANIFEST.document.paragraph_space_below_pt,
+            spacing.below,
         ),
         paragraph_style.get("keepWithNext") is (block.kind is BlockKind.HEADING),
     )
     if not all(style_checks):
         return False
     expected_size = _brand_font_size(block)
-    expected_color = (
-        CURRENT_BRAND_MANIFEST.colors.primary
-        if block.kind is BlockKind.HEADING
-        else CURRENT_BRAND_MANIFEST.colors.ink
-    )
+    expected_color = paragraph_color(block, SarjBrandProfile())
     return all(
         _text_run_has_brand(part["textRun"], expected_size, expected_color, block)
         for part in elements
@@ -2238,19 +2676,19 @@ def _text_run_has_brand(
         and family.get("fontFamily") == CURRENT_BRAND_MANIFEST.document.font_family
         and _dimension_matches(style.get("fontSize"), expected_size)
         and _color_matches(color, expected_color)
-        and (block.kind is not BlockKind.HEADING or style.get("bold") is True)
+        and (
+            block.kind is BlockKind.HEADING
+            or all(style.get(key, False) is value for key, value in block.authored_emphasis)
+        )
+        and (
+            block.kind is not BlockKind.HEADING
+            or style.get("bold", False) is (block.native_named_style != "SUBTITLE")
+        )
     )
 
 
 def _brand_font_size(block: TextBlock) -> int:
-    document = CURRENT_BRAND_MANIFEST.document
-    if block.level is None:
-        return document.body_size_pt
-    return {
-        1: document.h1_size_pt,
-        2: document.h2_size_pt,
-        3: document.h3_size_pt,
-    }.get(block.level, document.body_size_pt)
+    return paragraph_font_size(block, SarjBrandProfile())
 
 
 def _dimension_matches(value: object, magnitude: int) -> bool:

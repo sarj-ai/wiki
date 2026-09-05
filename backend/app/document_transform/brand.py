@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 from typing import Any
@@ -10,7 +10,7 @@ from app.document_transform.brand_manifest import (
     DocumentHeaderBrandTokens,
     normalize_header_title,
 )
-from app.document_transform.errors import SourceTooLargeError
+from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
 from app.document_transform.gateway import TabHeader
 from app.document_transform.ir import BlockKind, DocumentIR, SourceRange, TextBlock, utf16_length
 from app.identifiers import DocsTabId
@@ -106,6 +106,12 @@ class SarjBrandProfile:
 class MaterializedMarkdown:
     text: str
     document: DocumentIR
+
+
+@dataclass(frozen=True, slots=True)
+class ParagraphSpacing:
+    above: int
+    below: int
 
 
 def build_copy_mutations(
@@ -242,6 +248,9 @@ def _materialize_markdown(
                 level=block.level,
                 source_range=SourceRange(index, index + length, tab_id),
                 editable=block.editable,
+                native_named_style=block.native_named_style,
+                native_bullet_json=block.native_bullet_json,
+                authored_emphasis=block.authored_emphasis,
             )
         )
         index += length
@@ -260,14 +269,21 @@ def _style_requests(
     requests: list[DocsRequest] = []
     for block in document.blocks:
         source_range = block.source_range
-        if source_range is None or block.kind == BlockKind.BLANK or not block.editable:
+        if source_range is None or block.kind == BlockKind.BLANK:
+            continue
+        if not block.editable:
+            if branded:
+                requests.extend(_font_only_requests(block, profile))
             continue
         range_value = {
             "startIndex": source_range.start_index,
             "endIndex": source_range.end_index,
             "tabId": source_range.tab_id,
         }
-        if block.kind in {BlockKind.LIST_ITEM, BlockKind.CHECKLIST}:
+        if (
+            block.kind in {BlockKind.LIST_ITEM, BlockKind.CHECKLIST}
+            and block.native_bullet_json is None
+        ):
             requests.append(
                 {
                     "createParagraphBullets": {
@@ -288,11 +304,11 @@ def _style_requests(
                         "alignment": "START",
                         "lineSpacing": profile.line_spacing_percent if branded else 100,
                         "spaceAbove": {
-                            "magnitude": profile.paragraph_space_above_pt if branded else 0,
+                            "magnitude": paragraph_spacing(block, profile).above if branded else 0,
                             "unit": "PT",
                         },
                         "spaceBelow": {
-                            "magnitude": profile.paragraph_space_below_pt if branded else 0,
+                            "magnitude": paragraph_spacing(block, profile).below if branded else 0,
                             "unit": "PT",
                         },
                         "keepWithNext": block.kind == BlockKind.HEADING,
@@ -311,19 +327,18 @@ def _style_requests(
                 "weightedFontFamily": {"fontFamily": profile.font_family},
                 "fontSize": {"magnitude": _font_size(block, profile), "unit": "PT"},
                 "foregroundColor": {
-                    "color": {
-                        "rgbColor": _rgb_color(
-                            profile.primary_color
-                            if block.kind == BlockKind.HEADING
-                            else profile.ink_color
-                        )
-                    }
+                    "color": {"rgbColor": _rgb_color(paragraph_color(block, profile))}
                 },
             }
             fields = "weightedFontFamily,fontSize,foregroundColor"
             if block.kind == BlockKind.HEADING:
-                text_style["bold"] = True
+                text_style["bold"] = block.native_named_style != "SUBTITLE"
                 fields += ",bold"
+            else:
+                # Explicitly retain authored body emphasis across named-style
+                # selection. Never synthesize emphasis for ordinary prose.
+                text_style.update(block.authored_emphasis)
+                fields += "".join(f",{key}" for key, _value in block.authored_emphasis)
             requests.append(
                 {
                     "updateTextStyle": {
@@ -336,6 +351,25 @@ def _style_requests(
     return requests
 
 
+def _font_only_requests(block: TextBlock, profile: SarjBrandProfile) -> list[DocsRequest]:
+    # Preserve links, emphasis and paragraph semantics while styling safe prose runs.
+    return [
+        {
+            "updateTextStyle": {
+                "range": {
+                    "startIndex": source.start_index,
+                    "endIndex": source.end_index,
+                    "tabId": source.tab_id,
+                    **({"segmentId": source.segment_id} if source.segment_id else {}),
+                },
+                "textStyle": {"weightedFontFamily": {"fontFamily": profile.font_family}},
+                "fields": "weightedFontFamily.fontFamily",
+            }
+        }
+        for source in block.font_style_ranges
+    ]
+
+
 def _rgb_color(value: str) -> dict[str, float]:
     normalized = value.removeprefix("#")
     return {
@@ -346,6 +380,10 @@ def _rgb_color(value: str) -> dict[str, float]:
 
 
 def _font_size(block: TextBlock, profile: SarjBrandProfile) -> int:
+    if block.native_named_style == "TITLE":
+        return profile.h1_size_pt + profile.paragraph_space_below_pt
+    if block.native_named_style == "SUBTITLE":
+        return profile.h3_size_pt
     if block.kind != BlockKind.HEADING:
         return profile.body_size_pt
     heading_sizes = {
@@ -361,9 +399,46 @@ def _font_size(block: TextBlock, profile: SarjBrandProfile) -> int:
 
 
 def _named_style(block: TextBlock) -> str:
+    if block.native_named_style in {"TITLE", "SUBTITLE"}:
+        return block.native_named_style
     if block.kind == BlockKind.HEADING and block.level in {1, 2, 3, 4, 5, 6}:
         return f"HEADING_{block.level}"
     return "NORMAL_TEXT"
+
+
+def paragraph_spacing(block: TextBlock, profile: SarjBrandProfile) -> ParagraphSpacing:
+    # Derive role rhythm from pinned tokens; never infer new headings from prose.
+    above = profile.paragraph_space_above_pt
+    below = profile.paragraph_space_below_pt
+    if block.native_named_style == "TITLE":
+        return ParagraphSpacing(0, below * 2)
+    if block.native_named_style == "SUBTITLE":
+        return ParagraphSpacing(0, below * 2)
+    if block.kind == BlockKind.HEADING:
+        return ParagraphSpacing(above + below * (2 if block.level in {1, 2} else 1), below)
+    if block.kind in {BlockKind.LIST_ITEM, BlockKind.CHECKLIST}:
+        return ParagraphSpacing(0, above)
+    if block.is_authored_lead_in:
+        return ParagraphSpacing(above, above)
+    return ParagraphSpacing(above, below)
+
+
+def paragraph_named_style(block: TextBlock) -> str:
+    return _named_style(block)
+
+
+def paragraph_font_size(block: TextBlock, profile: SarjBrandProfile) -> int:
+    return _font_size(block, profile)
+
+
+def paragraph_color(block: TextBlock, profile: SarjBrandProfile) -> str:
+    if block.native_named_style == "SUBTITLE":
+        return profile.muted_color
+    return (
+        profile.primary_color
+        if block.kind == BlockKind.HEADING or block.is_authored_lead_in
+        else profile.ink_color
+    )
 
 
 def _brand_shell_requests(
@@ -510,6 +585,12 @@ def _post_edit_locations(original: DocumentIR, transformed: DocumentIR) -> Docum
         start = source_range.start_index + delta
         old_length = source_range.end_index - source_range.start_index
         new_length = utf16_length(target.text)
+        if block.native_content:
+            if target.native_content != block.native_content or target.text != block.text:
+                raise UnsupportedSourceError
+            # A native chip occupies provider indexes independently of the
+            # length of its displayed name/date/resource title.
+            new_length = old_length
         located.append(
             TextBlock(
                 id=target.id,
@@ -523,6 +604,18 @@ def _post_edit_locations(original: DocumentIR, transformed: DocumentIR) -> Docum
                     source_range.segment_id,
                 ),
                 editable=target.editable,
+                native_content=target.native_content,
+                native_named_style=target.native_named_style,
+                native_bullet_json=target.native_bullet_json,
+                authored_emphasis=target.authored_emphasis,
+                font_style_ranges=tuple(
+                    replace(
+                        item,
+                        start_index=item.start_index + delta,
+                        end_index=item.end_index + delta,
+                    )
+                    for item in target.font_style_ranges
+                ),
             )
         )
         deltas[source_range.tab_id] = delta + new_length - old_length

@@ -14,11 +14,16 @@ from pydantic import (
 )
 from pydantic_core import PydanticCustomError
 
+from app.aliases.schemas import DocumentAliasValue
 from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
     CURRENT_BRAND_PROFILE_ID,
 )
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
+from app.document_transform.native_date_flow import NativeDateCheckpoint
+from app.document_transform.native_footer_flow import NativeFooterCheckpoint
+from app.document_transform.tab_names import TabNamingPlan
+from app.document_transform.tab_structure_execution import StructureCheckpoint
 from app.identifiers import BrandProfileId, DocsRevisionId, FileId, ModelId
 
 
@@ -185,10 +190,20 @@ class DocumentTransformResult(StrictTransformModel):
     output_revision_id: DocsRevisionId | None = None
     artifact_kind: ArtifactKind = "document"
     access_scope: AccessScope = "inherited"
+    short_link_alias: DocumentAliasValue | None = None
+    short_link_status: Literal["ready", "unavailable"] | None = None
 
     @property
     def file(self) -> DocumentOutput:
         return self.output
+
+
+class TabNamingCheckpoint(StrictTransformModel):
+    plan: TabNamingPlan
+    revision_id: DocsRevisionId
+    marker_name: str
+    marker_range: dict[str, Any]
+    invariant_sha256: str
 
 
 class InPlaceCheckpointStage(StrEnum):
@@ -232,6 +247,7 @@ class InPlaceCheckpoint(StrictTransformModel):
     headers: dict[str, str] = Field(default_factory=dict)
     preserved_headers: dict[str, str] = Field(default_factory=dict)
     changed: bool
+    tab_naming: TabNamingCheckpoint | None = None
 
 
 class CopyCheckpointStage(StrEnum):
@@ -277,6 +293,10 @@ class CopyCheckpoint(StrictTransformModel):
     output: DocumentOutput | None = None
     output_revision_id: DocsRevisionId | None = None
     result: DocumentTransformResult | None = None
+    tab_naming: TabNamingCheckpoint | None = None
+    native_footer: NativeFooterCheckpoint | None = None
+    native_dates: NativeDateCheckpoint | None = None
+    tab_structure: StructureCheckpoint | None = None
 
     @model_validator(mode="after")
     def validate_stage(self) -> Self:

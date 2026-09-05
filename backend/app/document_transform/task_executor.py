@@ -12,6 +12,8 @@ import httpx
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.aliases.schemas import DocumentAliasRead, DocumentAliasValue
+from app.aliases.service import PostgresAliasService
 from app.auth.google_tokens import (
     GoogleReauthenticationRequiredError,
     GoogleTokenManager,
@@ -33,6 +35,7 @@ from app.document_transform.google_presentation_gateway import (
     GooglePresentationGateway,
 )
 from app.document_transform.models import PatchGenerator
+from app.document_transform.naming import polish_alias_candidates
 from app.document_transform.presentation_executor import PresentationTransformExecutor
 from app.document_transform.schemas import (
     DocumentTransformCheckpoint,
@@ -113,9 +116,45 @@ class DocumentTransformRunner(Protocol):
     ) -> DocumentTransformResult: ...
 
 
+class PolishShortLinks(Protocol):
+    async def ensure(self, output_id: FileId, title: str) -> DocumentAliasValue | None: ...
+
+
+class AutomaticAliasStore(Protocol):
+    async def ensure_for_file(
+        self, file_id: FileId, candidates: tuple[DocumentAliasValue, ...]
+    ) -> DocumentAliasRead: ...
+
+
+class TransactionReset(Protocol):
+    async def rollback(self) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class _AutomaticShortLinks:
+    aliases: AutomaticAliasStore
+    db: TransactionReset
+
+    async def ensure(self, output_id: FileId, title: str) -> DocumentAliasValue | None:
+        try:
+            link = await self.aliases.ensure_for_file(
+                output_id, polish_alias_candidates(output_id, title)
+            )
+        except BaseException as exc:
+            if not isinstance(exc, Exception):
+                raise
+            # A link outage must not replay successful provider mutations. Reset
+            # a failed alias transaction before persisting the successful result.
+            await self.db.rollback()
+            logger.warning("document transform automatic short link unavailable")
+            return None
+        return link.alias
+
+
 @dataclass(frozen=True, slots=True)
 class DocumentTransformRuntime:
     transform: DocumentTransformRunner
+    short_links: PolishShortLinks | None = None
 
 
 def _required_payload(record: DocumentTransformTaskRecord) -> DocumentTransformRequest:
@@ -233,6 +272,7 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             claim=claim,
             payload=claimed_payload,
             checkpoint=claimed_record.checkpoint,
+            short_links=runtime.short_links,
         )
 
     async def _runtime(
@@ -256,6 +296,10 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             refresh_handler=prepared.refresh_handler,
         )
         files = GoogleFilesService(user=prepared.user, drive=drive)
+        short_links = _AutomaticShortLinks(
+            aliases=PostgresAliasService(db=self._db, files=files, user=prepared.user),
+            db=self._db,
+        )
         logo_bytes: bytes | None = None
         logo_uri = self._logo_uri
         if payload.mode is not TransformMode.UNSLOP:
@@ -278,11 +322,12 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                     fingerprint=presentation_fingerprint,
                 )
                 return DocumentTransformRuntime(
+                    short_links=short_links,
                     transform=PresentationTransformExecutor(
                         gateway=presentation_gateway,
                         generator=self._generator,
                         logo_uri=logo_uri,
-                    )
+                    ),
                 )
         document_gateway = GoogleDocumentGateway(
             user=prepared.user,
@@ -291,6 +336,7 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             refresh_handler=prepared.refresh_handler,
         )
         return DocumentTransformRuntime(
+            short_links=short_links,
             transform=DocumentTransformExecutor(
                 gateway=document_gateway,
                 generator=self._generator,
@@ -300,7 +346,7 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 lease_token=lease_token,
                 checkpoint=checkpoint,
                 checkpoint_generation=checkpoint_generation,
-            )
+            ),
         )
 
     async def _load_logo(self) -> bytes | None:
@@ -345,6 +391,7 @@ async def _execute_claimed(
     claim: TaskClaim,
     payload: DocumentTransformRequest,
     checkpoint: DocumentTransformCheckpoint | None = None,
+    short_links: PolishShortLinks | None = None,
 ) -> TaskRead:
     started_at = time.perf_counter()
     source_kind = payload.source.kind
@@ -438,6 +485,14 @@ async def _execute_claimed(
             error_code="document_transform_internal_error",
             error_detail="The document transformation could not be completed",
             cause=exc,
+        )
+    if short_links is not None and not result.needs_review:
+        alias = await short_links.ensure(result.output.file_id, result.output.name)
+        result = result.model_copy(
+            update={
+                "short_link_alias": alias,
+                "short_link_status": "ready" if alias is not None else "unavailable",
+            }
         )
     await tasks.record_resource(
         task_id,
