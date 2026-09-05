@@ -591,7 +591,7 @@ class DocumentTransformExecutor:
         if checkpoint.tab_naming is None:
             tab_naming = await self._gateway.plan_tab_naming(
                 document_id=draft.document_id,
-                title=draft.output.name,
+                title=checkpoint.source_title,
                 operation_id=operation_id,
                 required_revision_id=draft.revision_id,
             )

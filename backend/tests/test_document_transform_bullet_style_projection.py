@@ -4,7 +4,10 @@ from typing import Any
 import pytest
 
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
-from app.document_transform.bullet_style_projection import project_branded_bullet_styles
+from app.document_transform.bullet_style_projection import (
+    bullet_style_diagnostics,
+    project_branded_bullet_styles,
+)
 from app.document_transform.gateway import OutputDraft, SourceSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_google_document
@@ -79,6 +82,10 @@ def _apply_provider_styles(document: dict[str, Any]) -> dict[str, Any]:
     "mutation",
     [
         "planned",
+        "provider_defaults",
+        "wrong_weight",
+        "unknown_font_field",
+        "unknown_color_field",
         "wrong_font",
         "wrong_color",
         "nesting",
@@ -95,6 +102,20 @@ async def test_in_place_accepts_only_exact_planned_bullet_style_side_effects(mut
     tab = actual["tabs"][0]["documentTab"]
     bullet = tab["body"]["content"][0]["paragraph"]["bullet"]
     match mutation:
+        case "provider_defaults":
+            bullet["textStyle"]["weightedFontFamily"]["weight"] = 400
+            rgb = bullet["textStyle"]["foregroundColor"]["color"]["rgbColor"]
+            for channel, value in tuple(rgb.items()):
+                if value == 0:
+                    del rgb[channel]
+                else:
+                    rgb[channel] = value + 0.00000001
+        case "wrong_weight":
+            bullet["textStyle"]["weightedFontFamily"]["weight"] = 700
+        case "unknown_font_field":
+            bullet["textStyle"]["weightedFontFamily"]["unknown"] = True
+        case "unknown_color_field":
+            bullet["textStyle"]["foregroundColor"]["color"]["rgbColor"]["alpha"] = 1
         case "wrong_font":
             bullet["textStyle"]["weightedFontFamily"] = {"fontFamily": "Arial"}
         case "wrong_color":
@@ -137,8 +158,8 @@ async def test_in_place_accepts_only_exact_planned_bullet_style_side_effects(mut
         protected_structure_sha256=inspection.protected_structure_sha256,
         verify_brand=True,
     )
-    assert verification.structure_preserved is (mutation == "planned")
-    if mutation == "planned":
+    assert verification.structure_preserved is (mutation in {"planned", "provider_defaults"})
+    if mutation in {"planned", "provider_defaults"}:
         assert verification.content_preserved
         unchanged = deepcopy(actual)
         projected = project_branded_bullet_styles(actual, expected)
@@ -157,14 +178,17 @@ async def test_in_place_accepts_only_exact_planned_bullet_style_side_effects(mut
 
 @pytest.mark.parametrize("rename", [False, True])
 @pytest.mark.parametrize("tamper", [False, True])
+@pytest.mark.parametrize("provider_defaults", [False, True])
 async def test_copy_verifies_exact_bullet_styles_with_independent_identity_proof(
-    monkeypatch: pytest.MonkeyPatch, rename: bool, tamper: bool
+    monkeypatch: pytest.MonkeyPatch, rename: bool, tamper: bool, provider_defaults: bool
 ) -> None:
     original = _document()
     expected = parse_google_document(original, title="Review")
     actual = _apply_provider_styles(original)
     tab = actual["tabs"][0]["documentTab"]
     bullet = tab["body"]["content"][0]["paragraph"]["bullet"]
+    if provider_defaults:
+        bullet["textStyle"]["weightedFontFamily"]["weight"] = 400
     if rename:
         bullet["listId"] = "copy-list"
         tab["lists"]["copy-list"] = tab["lists"].pop("numbered")
@@ -195,3 +219,20 @@ async def test_copy_verifies_exact_bullet_styles_with_independent_identity_proof
     )
     assert verification.structure_preserved is not tamper
     assert verification.content_preserved is not tamper
+
+
+def test_bullet_diagnostics_emit_only_static_counts_without_document_content():
+    original = _document()
+    actual = _apply_provider_styles(original)
+    bullet = actual["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["bullet"]
+    bullet["textStyle"]["link"] = {"url": "https://private.example/secret"}
+    counts = bullet_style_diagnostics(
+        parse_google_document(actual, title="Private title"),
+        parse_google_document(original, title="Private title"),
+    )
+    assert counts["bullet_link_mismatch"] == 1
+    assert counts["bullet_projection_accepted"] == 0
+    assert all(type(value) is int for value in counts.values())
+    assert "private" not in repr(counts).lower()
+    assert "secret" not in repr(counts).lower()
+    assert "numbered" not in repr(counts)
