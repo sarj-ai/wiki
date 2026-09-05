@@ -55,6 +55,7 @@ from app.document_transform.ir import (
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.document_transform.models import PatchGenerator
 from app.document_transform.native_footer_flow import NativeFooterCheckpoint, NativeFooterStage
+from app.document_transform.native_table_font import TableFontPlan
 from app.document_transform.planner import TextTransformPlanner
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import (
@@ -2809,8 +2810,10 @@ class _InPlaceGateway(_Gateway):
         self.events: list[str] = []
 
     @override
-    async def inspect_in_place(self, *, snapshot: SourceSnapshot, title: str) -> InPlaceInspection:
-        del title
+    async def inspect_in_place(
+        self, *, snapshot: SourceSnapshot, title: str, table_font_plan: TableFontPlan | None = None
+    ) -> InPlaceInspection:
+        del title, table_font_plan
         headers = (
             ()
             if self.missing_header and not self.header_created
@@ -2878,8 +2881,9 @@ class _InPlaceGateway(_Gateway):
         protected_structure_sha256: str,
         verify_brand: bool,
         custom_furniture: tuple[CustomFurnitureBinding, ...] = (),
+        table_font_plan: TableFontPlan | None = None,
     ) -> OutputVerification:
-        del custom_furniture
+        del custom_furniture, table_font_plan
         del document, title, expected, structural_sha256, protected_structure_sha256, verify_brand
         return OutputVerification(
             content_preserved=True, structure_preserved=True, brand_applied=True
@@ -2968,8 +2972,12 @@ class _PreMutationRevisionDriftGateway(_InPlaceGateway):
         )
 
     @override
-    async def inspect_in_place(self, *, snapshot: SourceSnapshot, title: str) -> InPlaceInspection:
-        inspection = await super().inspect_in_place(snapshot=snapshot, title=title)
+    async def inspect_in_place(
+        self, *, snapshot: SourceSnapshot, title: str, table_font_plan: TableFontPlan | None = None
+    ) -> InPlaceInspection:
+        inspection = await super().inspect_in_place(
+            snapshot=snapshot, title=title, table_font_plan=table_font_plan
+        )
         if not self.failed:
             return inspection
         changed_fields = {

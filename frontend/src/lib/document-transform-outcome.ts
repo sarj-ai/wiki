@@ -11,7 +11,12 @@ export function preservedInPlaceOutcome(result: DocumentTransformResult | null |
     result.validation.unsafePatchCount !== 0 ||
     result.findings.length === 0 ||
     !result.findings.every(
-      ({ code }) => code === "native_rich_text_preserved" || code === "custom_furniture_preserved",
+      ({ code }) =>
+        code === "native_rich_text_preserved" ||
+        code === "custom_furniture_preserved" ||
+        code === "native_paragraph_layout_preserved" ||
+        code === "table_font_scope" ||
+        code === "table_font_preserved",
     )
   ) {
     return null;

@@ -30,6 +30,7 @@ from app.document_transform.errors import (
     OutputConflictError,
     OutputVerificationError,
     SourceChangedError,
+    SourceTooLargeError,
     UnsupportedSourceError,
 )
 from app.document_transform.gateway import (
@@ -51,6 +52,7 @@ from app.document_transform.ir import (
 )
 from app.document_transform.models import PatchGenerator
 from app.document_transform.naming import suggested_document_title, title_case_document_name
+from app.document_transform.native_font_noop import filter_redundant_native_fonts
 from app.document_transform.native_font_proof import (
     capture_native_font_proof,
     verify_native_font_proof,
@@ -62,7 +64,20 @@ from app.document_transform.native_pagination import (
     existing_native_pagination,
     plan_native_pagination,
 )
+from app.document_transform.native_paragraph_layout import (
+    apply_paragraph_layout,
+    capture_paragraph_layout,
+    paragraph_layout_requests_safe,
+    verify_paragraph_layout,
+)
 from app.document_transform.native_preservation import preserved_native_findings
+from app.document_transform.native_table_font import (
+    TableFontPlan,
+    plan_table_fonts,
+    project_table_fonts,
+    table_font_proof_matches,
+    table_font_requests,
+)
 from app.document_transform.planner import TextTransformPlanner, TransformOutcome
 from app.document_transform.schemas import (
     CopyCheckpoint,
@@ -95,8 +110,15 @@ from app.document_transform.unslop import (
 from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, TaskId
 
 
+class _TableFontScope(NamedTuple):
+    plan: TableFontPlan | None
+    protected_sha256: str
+    requests: list[dict[str, Any]]
+    findings: list[TransformFinding]
+
+
 PIPELINE_VERSION = "document-transform-v3"
-REQUEST_BUILDER_VERSION = "google-docs-requests-v21"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v24"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _MAX_GENERATED_NAME_SUFFIXES = 16
 _OUTPUT_SUFFIX = MappingProxyType(
@@ -879,6 +901,31 @@ class DocumentTransformExecutor:
             )
             if checkpoint_contract != current_contract:
                 raise OutputConflictError
+            if checkpoint.table_font_plan is not None:
+                if request.mode is not TransformMode.FORMAT or checkpoint.replacements:
+                    raise InPlaceNeedsReviewError
+                if snapshot.google_document is None:
+                    raise InPlaceNeedsReviewError
+                try:
+                    project_table_fonts(
+                        snapshot.google_document,
+                        checkpoint.table_font_plan,
+                        applied=checkpoint.stage is InPlaceCheckpointStage.COMPLETE,
+                    )
+                except (KeyError, IndexError, TypeError, ValueError, AttributeError) as error:
+                    raise InPlaceNeedsReviewError from error
+            elif any(finding.code == "table_font_scope" for finding in checkpoint.findings):
+                raise InPlaceNeedsReviewError
+            if {item.block_id for item in checkpoint.paragraph_layout} != {
+                finding.block_id
+                for finding in checkpoint.findings
+                if finding.code == "native_paragraph_layout_preserved"
+            } or not verify_paragraph_layout(
+                snapshot.google_document,
+                checkpoint.paragraph_layout,
+                applied=True if checkpoint.stage is InPlaceCheckpointStage.COMPLETE else None,
+            ):
+                raise InPlaceNeedsReviewError
             if checkpoint.native_font_proof is None and any(
                 finding.code == "native_rich_text_preserved" for finding in checkpoint.findings
             ):
@@ -914,7 +961,15 @@ class DocumentTransformExecutor:
                         web_url=snapshot.web_url,
                     ),
                 )
-        inspection = await self._gateway.inspect_in_place(snapshot=snapshot, title=snapshot.title)
+        inspection = await self._gateway.inspect_in_place(
+            snapshot=snapshot,
+            title=snapshot.title,
+            **(
+                {"table_font_plan": checkpoint.table_font_plan}
+                if checkpoint is not None and checkpoint.table_font_plan is not None
+                else {}
+            ),
+        )
         if checkpoint is not None and checkpoint.custom_furniture != inspection.custom_furniture:
             raise InPlaceNeedsReviewError
         if checkpoint is not None and checkpoint.header_identity != inspection.header_identity:
@@ -958,6 +1013,11 @@ class DocumentTransformExecutor:
             inspection = await self._gateway.inspect_in_place(
                 snapshot=stage_snapshot,
                 title=snapshot.title,
+                **(
+                    {"table_font_plan": checkpoint.table_font_plan}
+                    if checkpoint.table_font_plan is not None
+                    else {}
+                ),
             )
             header_expected = _to_ir(stage_snapshot).replace_blocks({})
             header_verification = await self._gateway.verify_in_place(
@@ -968,6 +1028,11 @@ class DocumentTransformExecutor:
                 protected_structure_sha256=checkpoint.protected_structure_sha256,
                 verify_brand=False,
                 custom_furniture=checkpoint.custom_furniture,
+                **(
+                    {"table_font_plan": checkpoint.table_font_plan}
+                    if checkpoint.table_font_plan is not None
+                    else {}
+                ),
             )
             if not (
                 header_verification.content_preserved and header_verification.structure_preserved
@@ -978,6 +1043,10 @@ class DocumentTransformExecutor:
                 checkpoint.native_font_proof,
                 preserved_block_ids=_preserved_block_ids(checkpoint),
                 diagnostic_stage="headers",
+            ):
+                raise InPlaceNeedsReviewError
+            if not verify_paragraph_layout(
+                stage_result.document, checkpoint.paragraph_layout, applied=False
             ):
                 raise InPlaceNeedsReviewError
             if (
@@ -991,14 +1060,20 @@ class DocumentTransformExecutor:
             if inspection.custom_furniture != checkpoint.custom_furniture:
                 raise InPlaceNeedsReviewError
             snapshot = stage_snapshot
-            original = apply_native_pagination(_to_ir(stage_snapshot), checkpoint.pagination)
+            original = apply_paragraph_layout(
+                apply_native_pagination(_to_ir(stage_snapshot), checkpoint.pagination),
+                checkpoint.paragraph_layout,
+            )
             transformed = original.replace_blocks(checkpoint.replacements)
             requests = self._content_requests(
                 request=request,
+                snapshot=stage_snapshot,
                 original=original,
                 transformed=transformed,
                 inspection=inspection,
             )
+            if checkpoint.table_font_plan is not None:
+                requests.extend(table_font_requests(checkpoint.table_font_plan))
             checkpoint = checkpoint.model_copy(
                 update={
                     "stage": InPlaceCheckpointStage.CONTENT,
@@ -1031,7 +1106,7 @@ class DocumentTransformExecutor:
                 checkpoint=checkpoint,
                 output=inspection.output,
             )
-        before_content = _to_ir(snapshot)
+        before_content = apply_paragraph_layout(_to_ir(snapshot), checkpoint.paragraph_layout)
         expected_content = apply_native_pagination(
             before_content.replace_blocks(checkpoint.replacements), checkpoint.pagination
         )
@@ -1051,11 +1126,24 @@ class DocumentTransformExecutor:
             protected_structure_sha256=checkpoint.protected_structure_sha256,
             verify_brand=request.mode is not TransformMode.UNSLOP,
             custom_furniture=checkpoint.custom_furniture,
+            **(
+                {"table_font_plan": checkpoint.table_font_plan}
+                if checkpoint.table_font_plan is not None
+                else {}
+            ),
         )
+        if checkpoint.table_font_plan is not None and not table_font_proof_matches(
+            stage_result.document, checkpoint.table_font_plan, applied=True
+        ):
+            raise InPlaceNeedsReviewError
         if not (
             verification.content_preserved
             and verification.structure_preserved
             and (verification.brand_applied or verification.supported_brand_applied)
+        ):
+            raise InPlaceNeedsReviewError
+        if not verify_paragraph_layout(
+            stage_result.document, checkpoint.paragraph_layout, applied=True
         ):
             raise InPlaceNeedsReviewError
         if checkpoint.native_font_proof is not None and not verify_native_font_proof(
@@ -1137,6 +1225,18 @@ class DocumentTransformExecutor:
         pagination = existing_native_pagination(snapshot.google_document, original)
         original = apply_native_pagination(original, pagination)
         outcome = await self._planner.transform(original, request)
+        try:
+            paragraph_layout = (
+                capture_paragraph_layout(snapshot.google_document, original, outcome.document)
+                if request.mode is not TransformMode.UNSLOP
+                else ()
+            )
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError) as error:
+            raise InPlaceNeedsReviewError from error
+        original = apply_paragraph_layout(original, paragraph_layout)
+        outcome = replace(
+            outcome, document=apply_paragraph_layout(outcome.document, paragraph_layout)
+        )
         if pagination:
             outcome = replace(
                 outcome, document=apply_native_pagination(outcome.document, pagination)
@@ -1176,9 +1276,7 @@ class DocumentTransformExecutor:
             for block, transformed in zip(original.blocks, outcome.document.blocks, strict=True)
             if block.text != transformed.text
         }
-        scope_applied = inspection.fully_branded or (
-            bool(inspection.custom_furniture) and inspection.supported_brand_applied
-        )
+        scope_applied = inspection.fully_branded or inspection.supported_brand_applied
         if pagination and (replacements or (branded and not scope_applied)):
             # Existing-only recognition is a no-op contract, not authority to
             # reinterpret a partially edited layout or move its spacer ranges.
@@ -1203,12 +1301,21 @@ class DocumentTransformExecutor:
         else:
             requests = self._content_requests(
                 request=request,
+                snapshot=snapshot,
                 original=original,
                 transformed=outcome.document,
                 inspection=inspection,
             )
             stage = InPlaceCheckpointStage.CONTENT
-        changed = bool(requests)
+        table_scope = await self._table_font_scope(
+            request=request,
+            snapshot=snapshot,
+            original=original,
+            transformed=outcome.document,
+            inspection=inspection,
+        )
+        if stage is InPlaceCheckpointStage.CONTENT:
+            requests.extend(table_scope.requests)
         if requests and inspection.marker_range is None:
             logger.info(
                 "document in-place preflight checks={checks}",
@@ -1220,6 +1327,8 @@ class DocumentTransformExecutor:
         except (KeyError, IndexError, TypeError, ValueError, AttributeError) as error:
             raise InPlaceNeedsReviewError from error
         checkpoint = InPlaceCheckpoint(
+            paragraph_layout=paragraph_layout,
+            table_font_plan=table_scope.plan,
             native_font_proof=native_font_proof,
             custom_furniture=inspection.custom_furniture,
             pagination=pagination,
@@ -1236,7 +1345,7 @@ class DocumentTransformExecutor:
             original_semantic_sha256=original.semantic_sha256,
             expected_semantic_sha256=outcome.document.semantic_sha256,
             structural_sha256=inspection.structural_sha256,
-            protected_structure_sha256=inspection.protected_structure_sha256,
+            protected_structure_sha256=table_scope.protected_sha256,
             body_sha256=inspection.body_sha256,
             header_safe_sha256=inspection.header_safe_sha256,
             source_revision_id=snapshot.revision_id,
@@ -1248,6 +1357,15 @@ class DocumentTransformExecutor:
             requests=requests,
             replacements=replacements,
             findings=list(preserved_findings)
+            + [
+                TransformFinding(
+                    code="native_paragraph_layout_preserved",
+                    block_id=item.block_id,
+                    detail="Authored non-start paragraph alignment, spacing, and layout were preserved; supported typography was checked. Full Sarj paragraph layout was not applied.",
+                )
+                for item in paragraph_layout
+            ]
+            + table_scope.findings
             + (
                 [
                     TransformFinding(
@@ -1267,14 +1385,86 @@ class DocumentTransformExecutor:
             preserved_headers={
                 str(header.tab_id): str(header.header_id) for header in inspection.preserved_headers
             },
-            changed=changed,
+            changed=bool(requests),
         )
         return await self._save_checkpoint(checkpoint)
+
+    async def _table_font_scope(
+        self,
+        *,
+        request: DocumentTransformRequest,
+        snapshot: SourceSnapshot,
+        original: DocumentIR,
+        transformed: DocumentIR,
+        inspection: InPlaceInspection,
+    ) -> _TableFontScope:
+        empty = _TableFontScope(None, inspection.protected_structure_sha256, [], [])
+        if request.mode is not TransformMode.FORMAT or snapshot.google_document is None:
+            return empty
+        try:
+            candidate = plan_table_fonts(snapshot.google_document)
+            if (candidate.targets or candidate.skipped_paragraphs) and (
+                original.tab_ids != transformed.tab_ids
+                or tuple((block.text, block.source_range) for block in original.blocks)
+                != tuple((block.text, block.source_range) for block in transformed.blocks)
+            ):
+                return empty._replace(
+                    findings=[
+                        TransformFinding(
+                            code="table_font_preserved",
+                            detail="Table typography was preserved unchanged because this operation also changes body text or source ranges.",
+                        )
+                    ]
+                )
+            extra = table_font_requests(candidate)
+            _preflight_native_mutation_budget(
+                request=request,
+                snapshot=snapshot,
+                original=original,
+                transformed=transformed,
+                brand=self._brand,
+                extra_requests=tuple(extra),
+            )
+        except KeyError, IndexError, TypeError, ValueError, AttributeError, SourceTooLargeError:
+            return empty._replace(
+                findings=[
+                    TransformFinding(
+                        code="table_font_preserved",
+                        detail="Table typography was preserved unchanged because its safety proof or operation budget could not be established.",
+                    )
+                ]
+            )
+        if candidate.targets:
+            scoped = await self._gateway.inspect_in_place(
+                snapshot=snapshot, title=snapshot.title, table_font_plan=candidate
+            )
+            return _TableFontScope(
+                candidate,
+                scoped.protected_structure_sha256,
+                extra,
+                [
+                    TransformFinding(
+                        code="table_font_scope",
+                        detail=f"Table font family was checked on {len(candidate.targets)} supported paragraphs; {candidate.skipped_paragraphs} other table paragraphs were preserved unchanged. Table geometry and non-font styling were preserved; visual page fit still needs review.",
+                    )
+                ],
+            )
+        if candidate.skipped_paragraphs:
+            return empty._replace(
+                findings=[
+                    TransformFinding(
+                        code="table_font_preserved",
+                        detail="Table typography was preserved unchanged because no supported font-only targets were found.",
+                    )
+                ]
+            )
+        return empty
 
     def _content_requests(
         self,
         *,
         request: DocumentTransformRequest,
+        snapshot: SourceSnapshot,
         original: DocumentIR,
         transformed: DocumentIR,
         inspection: InPlaceInspection,
@@ -1289,6 +1479,13 @@ class DocumentTransformExecutor:
             logo_uri=inspection.logo_uri,
         )
         preserved_tabs = {binding.tab_id for binding in inspection.custom_furniture}
+        requests = filter_redundant_native_fonts(
+            requests,
+            document=snapshot.google_document,
+            original=original,
+            transformed=transformed,
+            font_family=self._brand.font_family,
+        )
         return [
             item
             for item in requests
@@ -1296,6 +1493,8 @@ class DocumentTransformExecutor:
         ]
 
     async def _apply_checkpoint_stage(self, checkpoint: InPlaceCheckpoint) -> InPlaceStageResult:
+        if not paragraph_layout_requests_safe(checkpoint.requests, checkpoint.paragraph_layout):
+            raise OutputConflictError
         if not custom_furniture_requests_safe(checkpoint.requests, checkpoint.custom_furniture):
             raise OutputConflictError
         if checkpoint.marker_name is None or checkpoint.marker_range is None:
@@ -1838,6 +2037,7 @@ def _preflight_native_mutation_budget(
     original: DocumentIR,
     transformed: DocumentIR,
     brand: SarjBrandProfile,
+    extra_requests: tuple[dict[str, Any], ...] = (),
 ) -> None:
     if snapshot.media_type != "application/vnd.google-apps.document":
         return
@@ -1863,7 +2063,7 @@ def _preflight_native_mutation_budget(
                 else None
             ),
         )
-    mutation_sha256(requests)
+    mutation_sha256(requests + list(extra_requests))
 
 
 def _brand_warning_detail(code: str) -> str:

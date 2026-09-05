@@ -115,7 +115,13 @@ from app.document_transform.native_pagination import (
     apply_native_pagination,
     existing_native_pagination,
 )
+from app.document_transform.native_paragraph_layout import (
+    apply_paragraph_layout,
+    capture_paragraph_layout,
+    paragraph_layout_sha256,
+)
 from app.document_transform.native_safety_diagnostics import SafetyStage, native_safety_error
+from app.document_transform.native_table_font import TableFontPlan, project_table_fonts
 from app.document_transform.provider_diagnostics import native_provider_diagnostics
 from app.document_transform.schemas import (
     DocumentOutput,
@@ -390,8 +396,21 @@ class GoogleDocumentGateway(DocumentGateway):
         *,
         snapshot: SourceSnapshot,
         title: str,
+        table_font_plan: TableFontPlan | None = None,
     ) -> InPlaceInspection:
-        return await asyncio.to_thread(self._inspect_in_place_sync, snapshot, title)
+        inspection = await asyncio.to_thread(self._inspect_in_place_sync, snapshot, title)
+        if table_font_plan is None:
+            return inspection
+        if snapshot.google_document is None:
+            raise InPlaceNeedsReviewError
+        return replace(
+            inspection,
+            protected_structure_sha256=_inventory_sha256(
+                _protected_structure_inventory(
+                    project_table_fonts(snapshot.google_document, table_font_plan)
+                )
+            ),
+        )
 
     async def _capture_header_identity(
         self,
@@ -682,6 +701,7 @@ class GoogleDocumentGateway(DocumentGateway):
         protected_structure_sha256: str,
         verify_brand: bool,
         custom_furniture: tuple[CustomFurnitureBinding, ...] = (),
+        table_font_plan: TableFontPlan | None = None,
     ) -> OutputVerification:
         parsed = parse_google_document(document, title=title)
         content_preserved = _typography_content_preserved(
@@ -690,22 +710,35 @@ class GoogleDocumentGateway(DocumentGateway):
         structure_document = (
             project_branded_bullet_styles(document, expected) if verify_brand else document
         )
+        table_preserved = True
+        if table_font_plan is not None:
+            try:
+                structure_document = project_table_fonts(
+                    structure_document, table_font_plan, applied=verify_brand
+                )
+            except KeyError, IndexError, TypeError, ValueError, AttributeError:
+                table_preserved = False
         structure_preserved = (
-            _inventory_sha256(_structural_inventory(document)) == structural_sha256
+            table_preserved
+            and _inventory_sha256(_structural_inventory(document)) == structural_sha256
             and _inventory_sha256(_protected_structure_inventory(structure_document))
             == protected_structure_sha256
             and _custom_furniture_matches(document, custom_furniture)
         )
-        brand_applied = not verify_brand or verify_brand_application(
-            document,
-            _typography_verification_ir(parsed, expected),
-            expected_header_title=_trusted_header_identity_title(
-                document, getattr(self, "_header_identity", None)
-            ),
-            header_separator=_owned_header_separator(getattr(self, "_header_identity", None)),
+        preserved_layout = any(block.preserved_paragraph_style_sha256 for block in expected.blocks)
+        brand_applied = not verify_brand or (
+            not preserved_layout
+            and verify_brand_application(
+                document,
+                _typography_verification_ir(parsed, expected),
+                expected_header_title=_trusted_header_identity_title(
+                    document, getattr(self, "_header_identity", None)
+                ),
+                header_separator=_owned_header_separator(getattr(self, "_header_identity", None)),
+            )
         )
         supported_brand_applied = (
-            bool(custom_furniture)
+            (bool(custom_furniture) or preserved_layout)
             and structure_preserved
             and (
                 not verify_brand
@@ -1066,6 +1099,12 @@ class GoogleDocumentGateway(DocumentGateway):
         existing_layout = apply_native_pagination(
             parsed, existing_native_pagination(document, parsed)
         )
+        try:
+            existing_layout = apply_paragraph_layout(
+                existing_layout, capture_paragraph_layout(document, parsed, parsed)
+            )
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError) as error:
+            raise InPlaceNeedsReviewError from error
         logger.info(
             "document in-place preflight checks={checks}",
             checks={
@@ -1078,7 +1117,10 @@ class GoogleDocumentGateway(DocumentGateway):
         )
         return InPlaceInspection(
             custom_furniture=tuple(custom_furniture),
-            supported_brand_applied=bool(custom_furniture)
+            supported_brand_applied=bool(
+                custom_furniture
+                or any(block.preserved_paragraph_style_sha256 for block in existing_layout.blocks)
+            )
             and not (missing or unknown or headers)
             and verify_brand_application(
                 document,
@@ -1099,7 +1141,10 @@ class GoogleDocumentGateway(DocumentGateway):
             headers=tuple(headers),
             preserved_headers=tuple(preserved_headers),
             header_identity=getattr(self, "_header_identity", None),
-            fully_branded=not (missing or unknown or headers)
+            fully_branded=not any(
+                block.preserved_paragraph_style_sha256 for block in existing_layout.blocks
+            )
+            and not (missing or unknown or headers)
             and verify_brand_application(
                 document,
                 existing_layout,
@@ -2770,6 +2815,7 @@ def _typography_verification_ir(actual: DocumentIR, expected: DocumentIR) -> Doc
                     pagination_keep_with_next=planned.pagination_keep_with_next,
                     suppress_space_above=planned.suppress_space_above,
                     suppress_space_below=planned.suppress_space_below,
+                    preserved_paragraph_style_sha256=planned.preserved_paragraph_style_sha256,
                 )
                 if observed.sha256 == planned.sha256
                 else observed
@@ -3088,8 +3134,11 @@ def _paragraph_brand_diagnostics(
     ]
     expected_color = paragraph_color(block, SarjBrandProfile())
     return {
-        "named_style": paragraph_style.get("namedStyleType") == expected_named_style,
-        "layout": bool(
+        "named_style": _preserved_layout_matches(paragraph, block)
+        or paragraph_style.get("namedStyleType") == expected_named_style,
+        "layout": _preserved_layout_matches(paragraph, block)
+        if block.preserved_paragraph_style_sha256 is not None
+        else bool(
             paragraph_style.get("alignment") == "START"
             and paragraph_style.get("lineSpacing")
             == CURRENT_BRAND_MANIFEST.document.line_spacing_percent
@@ -3401,7 +3450,10 @@ def _paragraphs_by_range(
                         start_index=start,
                         end_index=end - 1,
                     )
-                ] = _effective_paragraph(element["paragraph"], document_tab)
+                ] = {
+                    **_effective_paragraph(element["paragraph"], document_tab),
+                    "_sourceParagraphStyleSha256": _paragraph_style_digest(element["paragraph"]),
+                }
     return paragraphs
 
 
@@ -3446,6 +3498,22 @@ def _effective_paragraph(paragraph: dict[str, Any], document_tab: dict[str, Any]
     return {**paragraph, "paragraphStyle": paragraph_style, "elements": resolved}
 
 
+def _paragraph_style_digest(paragraph: dict[str, Any]) -> str | None:
+    style = paragraph.get("paragraphStyle")
+    if not isinstance(style, dict):
+        return None
+    try:
+        return paragraph_layout_sha256(style)
+    except TypeError, ValueError:
+        return None
+
+
+def _preserved_layout_matches(paragraph: dict[str, Any], block: TextBlock) -> bool:
+    if block.preserved_paragraph_style_sha256 is None:
+        return False
+    return paragraph.get("_sourceParagraphStyleSha256") == block.preserved_paragraph_style_sha256
+
+
 def _paragraph_has_brand(paragraph: dict[str, Any], block: TextBlock) -> bool:
     elements = paragraph.get("elements", [])
     paragraph_style = paragraph.get("paragraphStyle", {})
@@ -3468,7 +3536,11 @@ def _paragraph_has_brand(paragraph: dict[str, Any], block: TextBlock) -> bool:
         paragraph_style.get("keepWithNext") is paragraph_keep_with_next(block),
         block.pagination_keep_with_next is None or paragraph_style.get("keepLinesTogether") is True,
     )
-    if not all(style_checks):
+    if not (
+        _preserved_layout_matches(paragraph, block)
+        if block.preserved_paragraph_style_sha256 is not None
+        else all(style_checks)
+    ):
         return False
     expected_size = _brand_font_size(block)
     expected_color = paragraph_color(block, SarjBrandProfile())

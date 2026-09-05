@@ -476,6 +476,47 @@ describe("DocumentPolishDialog", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("names save-result toggles independently of their icons and descriptions", async () => {
+    vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
+      copy: true,
+      inPlace: true,
+      presentationCopy: true,
+      presentationInPlace: false,
+    });
+    const create = vi.spyOn(documentTransformApi, "create");
+    renderDialog(root, {
+      allowInPlace: true,
+      expectedModifiedTime: "revision",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Notes",
+    });
+    await vi.waitFor(() => {
+      expect(findButtonNow("Create review copy")).toHaveAccessibleName("Create review copy");
+    });
+    const copy = findButtonNow("Create review copy");
+    const original = findButtonNow("Edit original");
+    expect(original).toHaveAccessibleName("Edit original");
+    expect(copy).toHaveAccessibleDescription(
+      "Keep the original untouched and create a sibling Google Doc.",
+    );
+    expect(original).toHaveAccessibleDescription(
+      "Amend this Google Doc; Drive version history remains available.",
+    );
+    expect(copy).toHaveAttribute("aria-pressed", "true");
+    expect(original).toHaveAttribute("aria-pressed", "false");
+    clickButton(original);
+    expect(original).toHaveAccessibleName("Edit original");
+    expect(original).toHaveAttribute("aria-pressed", "true");
+    expect(copy).toHaveAttribute("aria-pressed", "false");
+    clickButton(copy);
+    expect(copy).toHaveAccessibleName("Create review copy");
+    expect(copy).toHaveAttribute("aria-pressed", "true");
+    expect(original).toHaveAttribute("aria-pressed", "false");
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it.each([true, false])("reports in-place changed=%s accurately", async (changed) => {
     vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
       copy: true,
@@ -958,6 +999,39 @@ describe("DocumentPolishDialog", () => {
       clickButton(findButtonNow(changed ? "Open updated document" : "Open original document"));
       expect(NavigationMock.push).toHaveBeenCalledWith("/d/output-1");
       expect(documentTransformApi.create).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["native_paragraph_layout_preserved", "table_font_scope", "table_font_preserved"])(
+    "recognizes verified preservation notes without hiding other failures: %s",
+    (code) => {
+      const result: DocumentTransformResult = {
+        ...transformResult({ outputStrategy: "in_place" }),
+        changed: true,
+        mode: "format",
+        needsReview: true,
+        findings: [{ blockId: null, code, detail: "Review preserved formatting." }],
+      };
+      expect(preservedInPlaceOutcome(result)?.heading).toBe(
+        "Polish complete with preserved content",
+      );
+      expect(result.needsReview).toBe(true);
+      result.changed = false;
+      expect(preservedInPlaceOutcome(result)?.heading).toBe(
+        "No changes needed; review notes remain",
+      );
+      result.validation.structurePreserved = false;
+      expect(preservedInPlaceOutcome(result)).toBeNull();
+      result.validation.structurePreserved = true;
+      result.validation.protectedContentPreserved = false;
+      expect(preservedInPlaceOutcome(result)).toBeNull();
+      result.validation.protectedContentPreserved = true;
+      result.findings.push({
+        blockId: null,
+        code: "verification_failed",
+        detail: "Review required.",
+      });
+      expect(preservedInPlaceOutcome(result)).toBeNull();
     },
   );
 

@@ -41,7 +41,9 @@ def _bodies(document: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     return result
 
 
-def _paragraph_digest(element: dict[str, Any], *, preserve_font_family: bool = False) -> str:
+def native_paragraph_font_sha256(
+    element: dict[str, Any], *, preserve_font_family: bool = False
+) -> str:
     payload = deepcopy(element)
     start, end = payload.pop("startIndex"), payload.pop("endIndex")
     if type(start) is not int or type(end) is not int or not 0 <= start < end:
@@ -156,7 +158,7 @@ def capture_native_font_proof(
             NativeFontProof(
                 tab_id=source.tab_id,
                 body_ordinal=ordinal,
-                sha256=_paragraph_digest(element),
+                sha256=native_paragraph_font_sha256(element),
                 named_styles_sha256=_named_styles_digest(document, source.tab_id),
             )
         )
@@ -214,7 +216,7 @@ def _native_font_proof_matches(
         checks["font_proof_reason"] = "duplicate_binding"
         return False
     for ordinal, proof in enumerate(proofs):
-        if _paragraph_digest(bodies[proof.tab_id][proof.body_ordinal]) != proof.sha256:
+        if native_paragraph_font_sha256(bodies[proof.tab_id][proof.body_ordinal]) != proof.sha256:
             checks["font_proof_reason"] = "paragraph_payload"
             return False
         if _named_styles_digest(document, proof.tab_id) != proof.named_styles_sha256:
@@ -292,7 +294,9 @@ def _verify_native_unstyled_text(
         ):
             # Existing protected inventory binds the entire nonplain payload.
             continue
-        if _paragraph_digest(element, preserve_font_family=True) != _paragraph_digest(
+        if native_paragraph_font_sha256(
+            element, preserve_font_family=True
+        ) != native_paragraph_font_sha256(
             after_bodies[location.tab_id][ordinal], preserve_font_family=True
         ) or _named_styles_digest(source, location.tab_id) != _named_styles_digest(
             actual, location.tab_id
