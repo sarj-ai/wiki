@@ -16,6 +16,17 @@ MAX_REQUEST_ORDINAL = 200
 MAX_TOPIC_CHARS = 2_048
 MESSAGE_TOPICS = MappingProxyType(
     {
+        "locale": re.compile(
+            r"\A(?:invalid|unknown|unrecognized|unsupported) locale\b", re.IGNORECASE
+        ),
+        "date_format": re.compile(
+            r"\A(?:invalid|unknown|unrecognized|unsupported) (?:date format|dateFormat)\b",
+            re.IGNORECASE,
+        ),
+        "time_format": re.compile(
+            r"\A(?:invalid|unknown|unrecognized|unsupported) (?:time format|timeFormat)\b",
+            re.IGNORECASE,
+        ),
         "time_zone": re.compile(
             r"\A(?:invalid|unknown|unrecognized|unsupported) (?:time zone|timezone|timeZoneId)\b",
             re.IGNORECASE,
@@ -52,6 +63,7 @@ class FieldEvidence(NamedTuple):
     ordinal: int
     operation: str
     category: str
+    leaf: str | None = None
 
 
 def native_provider_diagnostics(
@@ -79,9 +91,10 @@ def native_provider_diagnostics(
         evidence.append(FieldEvidence(int(prefix[1]), prefix[2], "unknown"))
     if not evidence:
         return unknown
-    identities = {(ordinal, operation) for ordinal, operation, _ in evidence}
-    categories = {category for _, _, category in evidence if category != "unknown"}
-    if len(identities) != 1 or len(categories) > 1:
+    identities = {(item.ordinal, item.operation) for item in evidence}
+    categories = {item.category for item in evidence if item.category != "unknown"}
+    leaves = {item.leaf for item in evidence if item.leaf is not None}
+    if len(identities) != 1 or len(categories) > 1 or len(leaves) > 1:
         return unknown
     ordinal, operation = next(iter(identities))
     if (
@@ -95,6 +108,8 @@ def native_provider_diagnostics(
         "provider_request_ordinal": ordinal,
         "provider_operation": next(iter(requests[ordinal])),
     }
+    if leaves:
+        result["provider_field"] = next(iter(leaves))
     if operation == "insertDate" and prefix is not None and isinstance(message, str):
         result["provider_message_topic"] = _message_topic(message[prefix.end() :])
     return result
@@ -143,7 +158,7 @@ def _field_evidence(body: dict[str, Any]) -> list[FieldEvidence] | None:
             category = _field_category(operation, field, leaf)
             if category is None:
                 return None
-            evidence.append(FieldEvidence(int(ordinal), operation, category))
+            evidence.append(FieldEvidence(int(ordinal), operation, category, leaf))
     return evidence
 
 

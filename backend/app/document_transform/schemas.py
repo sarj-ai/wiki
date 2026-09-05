@@ -15,6 +15,7 @@ from pydantic import (
 from pydantic_core import PydanticCustomError
 
 from app.aliases.schemas import DocumentAliasValue
+from app.document_transform.authored_labels import AuthoredLabelRole
 from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
     CURRENT_BRAND_PROFILE_ID,
@@ -172,6 +173,7 @@ class DocumentOutput(StrictTransformModel):
 
 
 class DocumentTransformResult(StrictTransformModel):
+    promoted_heading_count: int = Field(default=0, ge=0, le=20)
     header_identity: HeaderIdentityEvidence | None = None
     operation_id: uuid.UUID
     source_sha256: str
@@ -264,6 +266,7 @@ class CopyCheckpointStage(StrEnum):
 
 
 class CopyCheckpoint(StrictTransformModel):
+    authored_labels: tuple[AuthoredLabelRole, ...] = Field(default=(), max_length=100)
     header_finalization: HeaderIdentityFinalization | None = None
     managed_headers: dict[str, str] | None = None
     """Durable copy plan and output attestation.

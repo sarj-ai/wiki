@@ -589,6 +589,13 @@
             "title": "Pipeline Version",
             "type": "string"
           },
+          "promoted_heading_count": {
+            "default": 0,
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Promoted Heading Count",
+            "type": "integer"
+          },
           "short_link_alias": {
             "anyOf": [
               {

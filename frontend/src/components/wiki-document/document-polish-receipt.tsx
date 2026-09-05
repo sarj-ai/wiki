@@ -18,6 +18,15 @@ export function DocumentPolishReceipt({ result }: { result: DocumentTransformRes
 
   return (
     <div className="mt-3 space-y-3">
+      {result.promotedHeadingCount > 0 ? (
+        <p className="text-muted-foreground text-sm">
+          Formatted {result.promotedHeadingCount} existing section{" "}
+          {result.promotedHeadingCount === 1
+            ? "label as a native heading"
+            : "labels as native headings"}
+          ; label wording is unchanged.
+        </p>
+      ) : null}
       {findings.length > 0 ? (
         <div className="space-y-1 text-sm">
           <p className="font-medium">Review notes</p>

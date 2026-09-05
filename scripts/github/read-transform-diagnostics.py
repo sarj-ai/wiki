@@ -58,10 +58,27 @@ PROVIDER_FIELDS = MappingProxyType(
                 "unknown",
                 "time_zone",
                 "timestamp",
+                "locale",
+                "date_format",
+                "time_format",
                 "location",
                 "capability",
                 "access",
                 "ambiguous",
+            }
+        ),
+        "provider_field": frozenset(
+            {
+                "timestamp",
+                "timeZoneId",
+                "locale",
+                "dateFormat",
+                "timeFormat",
+                "index",
+                "tabId",
+                "segmentId",
+                "startIndex",
+                "endIndex",
             }
         ),
         "bullet_stage": frozenset(

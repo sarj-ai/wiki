@@ -9,6 +9,11 @@ import uuid
 
 from loguru import logger
 
+from app.document_transform.authored_labels import (
+    AuthoredLabelRole,
+    apply_authored_labels,
+    plan_authored_labels,
+)
 from app.document_transform.brand import (
     SarjBrandProfile,
     build_copy_mutations,
@@ -78,7 +83,7 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, Task
 
 
 PIPELINE_VERSION = "document-transform-v3"
-REQUEST_BUILDER_VERSION = "google-docs-requests-v10"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v11"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _OUTPUT_SUFFIX = MappingProxyType(
     {
@@ -205,6 +210,13 @@ class DocumentTransformExecutor:
                 # re-attested safely and must never trigger a fresh model plan.
                 raise OutputConflictError
             outcome = await self._planner.transform(original, request)
+            if request.mode is not TransformMode.UNSLOP:
+                outcome = replace(
+                    outcome,
+                    document=apply_authored_labels(
+                        outcome.document, plan_authored_labels(original)
+                    ),
+                )
             checkpoint = await self._save_copy_checkpoint(
                 _new_copy_checkpoint(
                     request=request,
@@ -475,6 +487,7 @@ class DocumentTransformExecutor:
             unsafe_patch_count=len(outcome.findings),
         )
         result = DocumentTransformResult(
+            promoted_heading_count=len(checkpoint.authored_labels),
             header_identity=(
                 await self._gateway.capture_header_identity(
                     draft=applied,
@@ -645,6 +658,7 @@ class DocumentTransformExecutor:
                 title=checkpoint.source_title,
                 operation_id=operation_id,
                 required_revision_id=draft.revision_id,
+                prefer_document_title=bool(checkpoint.authored_labels),
             )
             if tab_naming is None:
                 return draft
@@ -1352,10 +1366,14 @@ def _new_copy_checkpoint(
         for before, after in zip(original.blocks, outcome.document.blocks, strict=True)
         if before.text != after.text
     }
+    authored_labels = (
+        plan_authored_labels(original) if request.mode is not TransformMode.UNSLOP else ()
+    )
     output_name = _copy_output_name(request, original)
     plan_payload = _copy_plan_payload(
         output_name=output_name,
         replacements=replacements,
+        authored_labels=authored_labels,
         findings=list(outcome.findings),
         applied_patch_count=outcome.applied_count,
         deterministic_patch_count=outcome.deterministic_count,
@@ -1366,6 +1384,7 @@ def _new_copy_checkpoint(
         logo_sha256=logo_sha256,
     )
     return CopyCheckpoint(
+        authored_labels=authored_labels,
         source_title=snapshot.title,
         source_sha256=source_sha256,
         source_modified_time=snapshot.modified_time,
@@ -1439,12 +1458,19 @@ def _validate_copy_checkpoint(
     )
     if checkpoint_contract != expected_contract:
         raise OutputConflictError
-    transformed = original.replace_blocks(checkpoint.replacements)
+    if checkpoint.authored_labels != (
+        plan_authored_labels(original) if request.mode is not TransformMode.UNSLOP else ()
+    ):
+        raise OutputConflictError
+    transformed = apply_authored_labels(
+        original.replace_blocks(checkpoint.replacements), checkpoint.authored_labels
+    )
     if transformed.semantic_sha256 != checkpoint.expected_semantic_sha256:
         raise OutputConflictError
     plan_payload = _copy_plan_payload(
         output_name=checkpoint.output_name,
         replacements=checkpoint.replacements,
+        authored_labels=checkpoint.authored_labels,
         findings=checkpoint.findings,
         applied_patch_count=checkpoint.applied_patch_count,
         deterministic_patch_count=checkpoint.deterministic_patch_count,
@@ -1470,7 +1496,9 @@ def _copy_checkpoint_outcome(
     original: DocumentIR,
 ) -> TransformOutcome:
     return TransformOutcome(
-        document=original.replace_blocks(checkpoint.replacements),
+        document=apply_authored_labels(
+            original.replace_blocks(checkpoint.replacements), checkpoint.authored_labels
+        ),
         findings=tuple(checkpoint.findings),
         applied_count=checkpoint.applied_patch_count,
         deterministic_count=checkpoint.deterministic_patch_count,
@@ -1483,6 +1511,7 @@ def _copy_plan_payload(
     *,
     output_name: str,
     replacements: dict[str, str],
+    authored_labels: tuple[AuthoredLabelRole, ...],
     findings: list[TransformFinding],
     applied_patch_count: int,
     deterministic_patch_count: int,
@@ -1495,6 +1524,7 @@ def _copy_plan_payload(
     return {
         "output_name": output_name,
         "replacements": replacements,
+        "authored_labels": [role.model_dump(mode="json") for role in authored_labels],
         "findings": [finding.model_dump(mode="json") for finding in findings],
         "applied_patch_count": applied_patch_count,
         "deterministic_patch_count": deterministic_patch_count,

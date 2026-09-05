@@ -49,11 +49,14 @@ def test_structured_fields_emit_only_finite_diagnostics(
             ]
         }
     )
-    assert result == {
+    expected: dict[str, str | int] = {
         "provider_category": category,
         "provider_request_ordinal": ordinal,
         "provider_operation": operation,
     }
+    if field.count(".") == 3:
+        expected["provider_field"] = field.rsplit(".", 1)[1]
+    assert result == expected
     assert "SECRET" not in json.dumps(result)
 
 
@@ -116,11 +119,70 @@ def test_no_provider_cause_is_unknown() -> None:
     }
 
 
+@pytest.mark.parametrize("leaf", ["timestamp", "timeZoneId", "locale", "dateFormat", "timeFormat"])
+def test_date_property_leaf_is_finite_and_bound_to_actual_operation(leaf: str) -> None:
+    result = _diagnostics(
+        {
+            "message": "Invalid requests[2].insertDate: SECRET",
+            "status": {"SECRET": "SECRET"},
+            "details": [
+                {
+                    "@type": "type.googleapis.com/google.rpc.BadRequest",
+                    "fieldViolations": [
+                        {"field": f"requests[2].insertDate.dateElementProperties.{leaf}"}
+                    ],
+                }
+            ],
+        }
+    )
+    assert result["provider_field"] == leaf
+    assert "SECRET" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        [
+            "requests[2].insertDate.dateElementProperties.locale",
+            "requests[2].insertDate.dateElementProperties.dateFormat",
+        ],
+        ["requests[1].insertDate.dateElementProperties.locale"],
+        ["requests[201].insertDate.dateElementProperties.locale"],
+        ["requests[2].insertDate.location.locale"],
+        ["requests[2].insertDate.dateElementProperties.SECRET"],
+    ],
+    ids=["conflicting-leaves", "wrong-ordinal", "ordinal-budget", "wrong-parent", "unknown-leaf"],
+)
+def test_conflicting_or_unvalidated_leaf_never_escapes(fields: list[str]) -> None:
+    assert _diagnostics(
+        {
+            "message": "Invalid requests[2].insertDate: Invalid locale SECRET",
+            "details": [
+                {
+                    "@type": "type.googleapis.com/google.rpc.BadRequest",
+                    "fieldViolations": [{"field": field} for field in fields],
+                }
+            ],
+        }
+    ) == {"provider_category": "unknown"}
+
+
 @pytest.mark.parametrize(
     ("tail", "topic"),
     [
         ("Invalid time zone 'SECRET permission denied'", "time_zone"),
         ("Invalid timestamp: SECRET", "timestamp"),
+        ("Invalid locale: SECRET", "locale"),
+        ("Unsupported date format: SECRET", "date_format"),
+        ("Unknown dateFormat: SECRET", "date_format"),
+        ("Invalid timeFormat: SECRET", "time_format"),
+        ("Unrecognized time format: SECRET", "time_format"),
+        ("Invalid locale; Invalid date format", "ambiguous"),
+        ("Invalid locale 'SECRET'; Invalid time format", "locale"),
+        ('"Invalid locale"', "unknown"),
+        ("Invalid value ‘Unsupported date format’", "unknown"),
+        ("Invalid localeExtra SECRET", "unknown"),
+        ("Invalid locale" + "x" * 3000, "unknown"),
         ("The insertion index must be inside a paragraph", "location"),
         ("This operation is not supported for this document", "capability"),
         ("Permission denied: SECRET", "access"),

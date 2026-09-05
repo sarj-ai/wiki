@@ -220,8 +220,9 @@ async def test_copy_tab_naming_receives_original_title_not_generated_output_suff
             title: str,
             operation_id: uuid.UUID,
             required_revision_id: DocsRevisionId,
+            prefer_document_title: bool = False,
         ) -> None:
-            del document_id, operation_id, required_revision_id
+            del document_id, operation_id, required_revision_id, prefer_document_title
             seen.append(title)
 
     gateway = Gateway()

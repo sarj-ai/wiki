@@ -28,6 +28,7 @@ export interface DocumentTransformResult {
   mode: DocumentTransformMode;
   llmInvoked: boolean;
   modelPatchCount: number;
+  promotedHeadingCount: number;
   modelIds: string[];
   needsReview: boolean;
   operationId: string;
