@@ -86,6 +86,23 @@ def _with_native_title(document: dict[str, Any]) -> None:
     content.insert(0, title)
 
 
+def _split_terminal_runs(document: dict[str, Any]) -> None:
+    for element in document["tabs"][0]["documentTab"]["body"]["content"]:
+        text_run = element["paragraph"]["elements"][0]["textRun"]
+        element["paragraph"]["elements"] = [
+            {
+                "startIndex": element["startIndex"],
+                "endIndex": element["endIndex"] - 1,
+                "textRun": {**text_run, "content": text_run["content"][:-1]},
+            },
+            {
+                "startIndex": element["endIndex"] - 1,
+                "endIndex": element["endIndex"],
+                "textRun": {"content": "\n", "textStyle": {"bold": False}},
+            },
+        ]
+
+
 def test_role_plan_preserves_all_text_ranges_and_is_a_repeat_noop() -> None:
     original = parse_google_document(_document(), title="Review")
     roles = plan_authored_labels(original)
@@ -206,16 +223,20 @@ def test_ambiguous_or_protected_documents_are_not_promoted(change: str) -> None:
 @pytest.mark.parametrize("mode", [TransformMode.FORMAT, TransformMode.BOTH, TransformMode.UNSLOP])
 @pytest.mark.parametrize("interruption", ["none", "planned", "old_builder", "missing_roles"])
 @pytest.mark.parametrize("native_title", [False, True])
+@pytest.mark.parametrize("terminal_runs", [False, True])
 async def test_copy_roles_are_persisted_reconstructed_and_replayed(
     monkeypatch: pytest.MonkeyPatch,
     mode: TransformMode,
     interruption: str,
     *,
     native_title: bool,
+    terminal_runs: bool,
 ) -> None:
     document = _document()
     if native_title:
         _with_native_title(document)
+    if terminal_runs:
+        _split_terminal_runs(document)
     original_document = deepcopy(document)
     snapshot = _snapshot(document)
     if native_title:
@@ -277,7 +298,7 @@ async def test_copy_roles_are_persisted_reconstructed_and_replayed(
         checkpoint = store.checkpoints[-1]
         if interruption == "old_builder":
             checkpoint = checkpoint.model_copy(
-                update={"request_builder_version": "google-docs-requests-v10"}
+                update={"request_builder_version": "google-docs-requests-v12"}
             )
         elif interruption == "missing_roles" and mode is not TransformMode.UNSLOP:
             checkpoint = checkpoint.model_copy(update={"authored_labels": ()})
