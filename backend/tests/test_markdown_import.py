@@ -171,11 +171,34 @@ Break
 """
     manifest = markdown_import_manifest(markdown, title="Import", branded=False)
 
-    verification = verify_markdown_import(_converted_document(), manifest)
+    document = _converted_document()
+    del document["tabs"][0]["documentTab"]["body"]["content"][0]
+    verification = verify_markdown_import(document, manifest)
 
     assert verification.content_preserved is True
     assert verification.structure_preserved is True
     assert verification.brand_applied is True
+
+
+@pytest.mark.parametrize("extra_title", [False, True])
+def test_authored_leading_heading_manifest_requires_exact_native_readback(
+    extra_title: bool,
+) -> None:
+    manifest = markdown_import_manifest(
+        "# *Authored*\n\nBody", title="Generated name", branded=False
+    )
+    content = [
+        _paragraph([("Authored", {"italic": True})], style={"namedStyleType": "HEADING_1"}),
+        _paragraph([("Body", {})]),
+    ]
+    if extra_title:
+        content.insert(0, _paragraph([("Generated name", {})]))
+    native = {
+        "tabs": [{"tabProperties": {"tabId": "tab"}, "documentTab": {"body": {"content": content}}}]
+    }
+    verified = verify_markdown_import(native, manifest)
+    assert verified.content_preserved is (not extra_title)
+    assert verified.structure_preserved is (not extra_title)
 
 
 def test_manifest_distinguishes_content_and_structure_mismatches() -> None:
@@ -313,6 +336,7 @@ Break
     extra_bold["tabs"][0]["documentTab"]["body"]["content"][2]["paragraph"]["elements"][1][
         "textRun"
     ]["textStyle"]["bold"] = True
+    del extra_bold["tabs"][0]["documentTab"]["body"]["content"][0]
     assert verify_markdown_import(extra_bold, manifest).structure_preserved is False
 
     fragmented = _converted_document()
@@ -325,6 +349,7 @@ Break
         {"textRun": {"content": "li", "textStyle": {"link": {"url": "https://sarj.ai"}}}},
         {"textRun": {"content": "nk", "textStyle": {"link": {"url": "https://sarj.ai"}}}},
     ]
+    del fragmented["tabs"][0]["documentTab"]["body"]["content"][0]
     verification = verify_markdown_import(fragmented, manifest)
     assert verification.content_preserved is True
     assert verification.structure_preserved is True

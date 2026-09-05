@@ -155,7 +155,8 @@ def test_plain_runs_inherit_bold_and_italic_from_paragraph_styles() -> None:
         title="Styled title",
     )
     document = WordDocument(BytesIO(rendered))
-    title, heading, quote, body = document.paragraphs
+    heading, quote, body = document.paragraphs
+    title = WordDocument(BytesIO(render_markdown_docx("Body", title="Styled title"))).paragraphs[0]
 
     assert title.style is not None
     assert title.style.font.bold is True
@@ -171,7 +172,7 @@ def test_plain_runs_inherit_bold_and_italic_from_paragraph_styles() -> None:
 
     with ZipFile(BytesIO(rendered)) as archive:
         document_xml = fromstring(archive.read("word/document.xml"))
-    styled_paragraphs = document_xml.findall(f".//{W}body/{W}p")[:3]
+    styled_paragraphs = document_xml.findall(f".//{W}body/{W}p")[:2]
     assert all(paragraph.find(f".//{W}b") is None for paragraph in styled_paragraphs)
     assert all(paragraph.find(f".//{W}i") is None for paragraph in styled_paragraphs)
 
@@ -380,12 +381,11 @@ def test_first_strong_rtl_sets_native_direction_without_changing_mixed_text() ->
     paragraphs = document.findall(f".//{W}body/{W}p")
     observed = {_xml_paragraph_text(paragraph): paragraph for paragraph in paragraphs}
     assert set(observed) == {
-        title,
         "عنوان عربي",
         "👩🏽‍💻 العربية with Latin.",
         "English before \u2067نص عربي ٤٥٦\u2069 after.",
     }
-    for text in (title, "عنوان عربي", "👩🏽‍💻 العربية with Latin."):
+    for text in ("عنوان عربي", "👩🏽‍💻 العربية with Latin."):
         paragraph = observed[text]
         bidi = paragraph.find(f"./{W}pPr/{W}bidi")
         alignment = paragraph.find(f"./{W}pPr/{W}jc")
@@ -446,7 +446,7 @@ def test_unbranded_render_preserves_structure_without_sarj_furniture() -> None:
     document = WordDocument(BytesIO(rendered))
 
     assert document.paragraphs[0].style is not None
-    assert document.paragraphs[0].style.name == "Title"
+    assert document.paragraphs[0].style.name == "Heading 1"
     with ZipFile(BytesIO(rendered)) as archive:
         assert not any(name.startswith("word/header") for name in archive.namelist())
         assert not any(name.startswith("word/footer") for name in archive.namelist())
@@ -537,6 +537,37 @@ def test_matching_leading_h1_does_not_duplicate_visible_title() -> None:
     assert [paragraph.text for paragraph in document.paragraphs].count("Technology review") == 1
 
 
+@pytest.mark.parametrize("title", ["Authored Ω", "Polish Authored Ω", "Different name", ""])
+@pytest.mark.parametrize("branded", [True, False])
+def test_authored_title_preserves_inline_semantics_and_independent_metadata(
+    title: str, branded: bool
+) -> None:
+    source = "# *Authored* [Ω](https://example.com)\n\nBody"
+    rendered = render_markdown_docx(source, title=title, branded=branded)
+    assert render_markdown_docx(source, title=title, branded=branded) == rendered
+    document = WordDocument(BytesIO(rendered))
+    assert document.core_properties.title == title
+    manifest = markdown_import_manifest(source, title=title, branded=branded)
+    assert [block.kind for block in manifest.blocks] == ["heading", "paragraph"]
+    assert manifest.blocks[0].text == "Authored Ω"
+    assert manifest.blocks[0].level == 1
+    assert manifest.blocks[0].links == (("Ω", "https://example.com"),)
+    with ZipFile(BytesIO(rendered)) as archive:
+        body = fromstring(archive.read("word/document.xml"))
+    paragraphs = body.findall(f".//{W}body/{W}p")
+    assert [_xml_paragraph_text(paragraph) for paragraph in paragraphs] == ["Authored Ω", "Body"]
+    assert paragraphs[0].find(f".//{W}i") is not None
+    assert paragraphs[0].find(f".//{W}hyperlink") is not None
+
+
+@pytest.mark.parametrize("source", ["Body\n\n# Later", "Body", ""])
+def test_nonleading_h1_keeps_generated_display_title(source: str) -> None:
+    manifest = markdown_import_manifest(source, title="Display", branded=False)
+    assert manifest.blocks[0].kind == "title"
+    document = WordDocument(BytesIO(render_markdown_docx(source, title="Display", branded=False)))
+    assert document.paragraphs[0].text == "Display"
+
+
 def test_separate_ordered_lists_restart_at_one() -> None:
     rendered = render_markdown_docx(
         "1. First\n2. Second\n\nParagraph\n\n1. Restarted",
@@ -619,7 +650,6 @@ def test_setext_headings_remain_headings_without_extra_rules() -> None:
         assert style.name is not None
         observed.append((paragraph.text, style.name))
     assert observed == [
-        ("Setext", "Sarj Title"),
         ("Primary heading", "Heading 1"),
         ("Secondary heading", "Heading 2"),
     ]
@@ -686,7 +716,7 @@ def test_valid_heading_hierarchy_matches_manifest_and_ooxml() -> None:
         ("Child two", "Heading2"),
         ("New root", "Heading1"),
     ]
-    assert [(block.text, block.level) for block in manifest.blocks[1:]] == [
+    assert [(block.text, block.level) for block in manifest.blocks] == [
         ("Root", 1),
         ("Child one", 2),
         ("Child two", 2),
@@ -793,9 +823,9 @@ def test_escaped_and_unspaced_atx_markers_follow_commonmark() -> None:
     manifest = markdown_import_manifest(markdown, title="ATX", branded=True)
     rendered = render_markdown_docx(markdown, title="ATX")
     document = WordDocument(BytesIO(rendered))
-    assert [paragraph.text for paragraph in document.paragraphs[1:]] == [
+    assert [paragraph.text for paragraph in document.paragraphs] == [
         "Heading #",
         "#Heading",
         "Heading###",
     ]
-    assert [block.kind for block in manifest.blocks[1:]] == ["heading", "paragraph", "heading"]
+    assert [block.kind for block in manifest.blocks] == ["heading", "paragraph", "heading"]

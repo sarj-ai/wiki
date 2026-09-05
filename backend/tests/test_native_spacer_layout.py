@@ -327,7 +327,7 @@ async def test_spacer_checkpoint_recomputes_proof_before_replay(tamper: str) -> 
         operation_id=task_id, request=request
     )
     checkpoint = store.checkpoints[-1]
-    assert checkpoint.request_builder_version == "google-docs-requests-v15"
+    assert checkpoint.request_builder_version == "google-docs-requests-v16"
     assert checkpoint.pagination[0].below_spacer_sha256 is not None
     if tamper == "old_version":
         checkpoint = checkpoint.model_copy(

@@ -2496,6 +2496,7 @@ async def test_copy_checkpoints_plan_before_create_and_resource_immediately_afte
         (True, "google-docs-requests-v7"),
         (True, "google-docs-requests-v8"),
         (True, "google-docs-requests-v9"),
+        (True, "google-docs-requests-v15"),
     ],
     ids=[
         "fresh-current",
@@ -2503,6 +2504,7 @@ async def test_copy_checkpoints_plan_before_create_and_resource_immediately_afte
         "reject-pending-v7-before-provider-write",
         "reject-pending-v8-before-provider-write",
         "reject-pending-v9-before-provider-write",
+        "reject-pending-v15-before-provider-write",
     ],
 )
 async def test_copy_native_footer_persists_each_stage_and_does_not_replay_body(
@@ -2647,7 +2649,10 @@ async def test_copy_readback_mismatch_fails_with_output_resource_tracked() -> No
     assert gateway.completed_result is None
 
 
-async def test_ambiguous_copy_create_checkpoint_never_issues_second_create() -> None:
+@pytest.mark.parametrize("mode", [TransformMode.FORMAT, TransformMode.BOTH, TransformMode.UNSLOP])
+async def test_ambiguous_copy_create_checkpoint_never_issues_second_create(
+    mode: TransformMode,
+) -> None:
     class AmbiguousGateway(_Gateway):
         def __init__(self) -> None:
             super().__init__()
@@ -2662,7 +2667,12 @@ async def test_ambiguous_copy_create_checkpoint_never_issues_second_create() -> 
             output_name: str,
             imported_docx: bytes | None = None,
         ) -> OutputDraft:
-            del operation_id, source, source_sha256, output_name, imported_docx
+            del operation_id, source, source_sha256, output_name
+            assert imported_docx is not None
+            document = WordDocument(BytesIO(imported_docx))
+            assert document.paragraphs[0].text == "Authored decision"
+            assert document.paragraphs[0].style is not None
+            assert document.paragraphs[0].style.name == "Heading 1"
             self.creates += 1
             raise DocumentGatewayError(retryable=True)
 
@@ -2672,11 +2682,11 @@ async def test_ambiguous_copy_create_checkpoint_never_issues_second_create() -> 
     request = DocumentTransformRequest(
         source=MarkdownSource(
             kind="markdown",
-            content="Decision",
+            content="# Authored decision\n\nBody",
             name="Decision",
             destination_folder_id=FileId("folder"),
         ),
-        mode=TransformMode.UNSLOP,
+        mode=mode,
     )
     with pytest.raises(DocumentGatewayError):
         await DocumentTransformExecutor(
