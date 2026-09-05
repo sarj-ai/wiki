@@ -34,6 +34,7 @@ from app.document_transform.gateway import (
     SourceSnapshot,
     TabHeader,
 )
+from app.document_transform.header_provenance import HeaderIdentityFinalization
 from app.document_transform.ir import (
     MAX_DOC_TABS,
     DocumentIR,
@@ -77,7 +78,7 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, Task
 
 
 PIPELINE_VERSION = "document-transform-v3"
-REQUEST_BUILDER_VERSION = "google-docs-requests-v9"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v10"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _OUTPUT_SUFFIX = MappingProxyType(
     {
@@ -366,6 +367,21 @@ class DocumentTransformExecutor:
                 operation_id=operation_id,
                 draft=draft,
             )
+            if checkpoint.managed_headers is None:
+                # Persist positive ownership before body/header population.
+                # Never infer ownership from an already-mutated recovered copy.
+                checkpoint = await self._save_copy_checkpoint(
+                    checkpoint.model_copy(
+                        update={
+                            "managed_headers": {}
+                            if (draft.applied_mutation_sha256 or draft.pending_mutation_sha256)
+                            else {
+                                str(header.tab_id): str(header.header_id)
+                                for header in prepared_draft.headers
+                            }
+                        }
+                    )
+                )
             if prepared_draft.logo_uri is None:
                 msg = "Brand shell did not provide a logo reference"
                 raise RuntimeError(msg)
@@ -460,6 +476,16 @@ class DocumentTransformExecutor:
             unsafe_patch_count=len(outcome.findings),
         )
         result = DocumentTransformResult(
+            header_identity=(
+                await self._gateway.capture_header_identity(
+                    draft=applied,
+                    operation_id=operation_id,
+                    managed_headers=checkpoint.managed_headers or {},
+                    title=suggested_document_title(original),
+                )
+                if self._gateway.capture_header_identity is not None
+                else None
+            ),
             operation_id=operation_id,
             source_sha256=source_sha256,
             output=applied.output,
@@ -745,6 +771,17 @@ class DocumentTransformExecutor:
             or final_revision != checkpoint.output_revision_id
         ):
             raise OutputVerificationError
+        if result.header_identity is not None:
+            await self._save_copy_checkpoint(
+                checkpoint.model_copy(
+                    update={
+                        "header_finalization": HeaderIdentityFinalization(
+                            result_sha256=expected_result_sha256,
+                            verified_revision_sha256=expected_revision_sha256,
+                        )
+                    }
+                )
+            )
         return result
 
     async def _execute_in_place(
@@ -802,6 +839,8 @@ class DocumentTransformExecutor:
                     ),
                 )
         inspection = await self._gateway.inspect_in_place(snapshot=snapshot, title=snapshot.title)
+        if checkpoint is not None and checkpoint.header_identity != inspection.header_identity:
+            raise OutputConflictError
         if checkpoint is None:
             checkpoint = await self._plan_initial_in_place(
                 operation_id=operation_id,
@@ -1054,6 +1093,7 @@ class DocumentTransformExecutor:
             )
             raise InPlaceNeedsReviewError
         checkpoint = InPlaceCheckpoint(
+            header_identity=inspection.header_identity,
             document_id=source.file_id,
             source_title=snapshot.title,
             source_sha256=_source_sha256(snapshot, original),

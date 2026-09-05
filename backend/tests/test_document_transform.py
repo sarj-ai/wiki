@@ -30,7 +30,7 @@ from app.document_transform.errors import (
     SourceTooLargeError,
     UnsupportedSourceError,
 )
-from app.document_transform.executor import DocumentTransformExecutor
+from app.document_transform.executor import REQUEST_BUILDER_VERSION, DocumentTransformExecutor
 from app.document_transform.gateway import (
     DocumentGateway,
     InPlaceInspection,
@@ -2478,12 +2478,19 @@ async def test_copy_checkpoints_plan_before_create_and_resource_immediately_afte
 
 @pytest.mark.parametrize(
     ("interrupt_population", "previous_builder"),
-    [(False, None), (True, None), (True, "v7"), (True, "v8")],
+    [
+        (False, None),
+        (True, None),
+        (True, "google-docs-requests-v7"),
+        (True, "google-docs-requests-v8"),
+        (True, "google-docs-requests-v9"),
+    ],
     ids=[
-        "fresh-v9",
-        "resume-v9",
+        "fresh-current",
+        "resume-current",
         "reject-pending-v7-before-provider-write",
         "reject-pending-v8-before-provider-write",
+        "reject-pending-v9-before-provider-write",
     ],
 )
 async def test_copy_native_footer_persists_each_stage_and_does_not_replay_body(
@@ -2568,14 +2575,12 @@ async def test_copy_native_footer_persists_each_stage_and_does_not_replay_body(
         with pytest.raises(DocumentGatewayError):
             await executor.execute(operation_id=task_id, request=request)
         pending = store.checkpoints[-1]
-        assert pending.request_builder_version == "google-docs-requests-v9"
+        assert pending.request_builder_version == REQUEST_BUILDER_VERSION
         assert pending.native_footer is not None
         assert pending.native_footer.coverage is None
         assert pending.native_footer.stage is NativeFooterStage.POPULATE
         if previous_builder:
-            pending = pending.model_copy(
-                update={"request_builder_version": f"google-docs-requests-{previous_builder}"}
-            )
+            pending = pending.model_copy(update={"request_builder_version": previous_builder})
         executor = _copy_executor(gateway=gateway, store=store, task_id=task_id, checkpoint=pending)
     if previous_builder:
         writes_before = (gateway.applies, gateway.brand_prepares, gateway.footer_dispatches)

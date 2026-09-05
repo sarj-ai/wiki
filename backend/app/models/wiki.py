@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
-from app.identifiers import DriveId, FileId, UserId
+from app.identifiers import DriveId, FileId, TaskId, UserId
 
 
 class CacheEntry(Base):
@@ -19,6 +19,23 @@ class CacheEntry(Base):
     key: Mapped[str] = mapped_column(Text, primary_key=True)
     value: Mapped[object] = mapped_column(JSONB, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DocumentHeaderProvenance(Base):
+    __tablename__ = "document_header_provenance"
+
+    owner_user_id: Mapped[UserId] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    file_id: Mapped[FileId] = mapped_column(Text, primary_key=True)
+    # Deliberately no task FK: historical ownership survives task retention.
+    producer_operation_id: Mapped[TaskId] = mapped_column(UUID(as_uuid=True), nullable=False)
+    evidence: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    result_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    verified_revision_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
 
 
 class DriveTreeCache(Base):
