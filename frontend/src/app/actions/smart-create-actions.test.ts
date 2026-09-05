@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   callApi: vi.fn(),
   cookies: vi.fn(),
   createLimit: vi.fn(),
+  createBindingAvailable: true,
   headers: vi.fn(),
   proposalLimit: vi.fn(),
   readApi: vi.fn(),
@@ -17,7 +18,9 @@ vi.mock("next/headers", () => ({
 vi.mock("@opennextjs/cloudflare", () => ({
   getCloudflareContext: () => ({
     env: {
-      SMART_CREATE_RATE_LIMITER: { limit: mocks.createLimit },
+      ...(mocks.createBindingAvailable
+        ? { SMART_CREATE_RATE_LIMITER: { limit: mocks.createLimit } }
+        : {}),
       SMART_PROPOSAL_RATE_LIMITER: { limit: mocks.proposalLimit },
     },
   }),
@@ -41,6 +44,7 @@ import {
 describe("Smart Create edge actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.createBindingAvailable = true;
     mocks.cookies.mockResolvedValue({ get: () => ({ value: "access-token" }) });
     mocks.headers.mockResolvedValue(new Headers({ "cf-connecting-ip": "203.0.113.10" }));
     mocks.createLimit.mockResolvedValue({ success: true });
@@ -48,6 +52,23 @@ describe("Smart Create edge actions", () => {
     mocks.callApi.mockResolvedValue({ body: "{}", ok: true, status: 200 });
     mocks.readApi.mockResolvedValue({ body: "{}", ok: true, status: 200 });
   });
+
+  it.each(["binding", "address"])(
+    "fails closed in production without trusted limiter %s",
+    async (missing) => {
+      vi.stubEnv("NODE_ENV", "production");
+      mocks.createBindingAvailable = missing !== "binding";
+      if (missing === "address") mocks.headers.mockResolvedValue(new Headers());
+      try {
+        await expect(
+          createDocumentTransformAction("{}", "55555555-5555-4555-8555-555555555555"),
+        ).resolves.toMatchObject({ ok: false, status: 503 });
+        expect(mocks.callApi).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
 
   it("limits proposals by the Cloudflare client address", async () => {
     await expect(proposeSmartFileAction('{"kind":"ai"}')).resolves.toEqual({

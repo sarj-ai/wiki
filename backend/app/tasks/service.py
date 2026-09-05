@@ -41,6 +41,7 @@ from app.tasks.errors import (
     TaskTargetBusyError,
 )
 from app.tasks.schemas import (
+    DocumentTransformAdmission,
     DocumentTransformTaskRecord,
     RunningTaskRead,
     SmartCreateTaskRecord,
@@ -74,6 +75,11 @@ _MAX_DISPATCH_RECONCILIATION_BATCH = 100
 
 
 class TaskService(ABC):
+    async def get_document_transform_admission(
+        self, owner_user_id: uuid.UUID, idempotency_key: IdempotencyKey
+    ) -> DocumentTransformAdmission:
+        raise NotImplementedError
+
     async def pending_document_transform_dispatches(self, *, limit: int = 50) -> list[TaskId]:
         raise NotImplementedError
 
@@ -628,6 +634,35 @@ class PostgresTaskService(TaskService):
                 )
             )
         ).scalar_one_or_none()
+
+    @override
+    async def get_document_transform_admission(
+        self, owner_user_id: uuid.UUID, idempotency_key: IdempotencyKey
+    ) -> DocumentTransformAdmission:
+        # Project only public admission identity in one retained-row read. Never
+        # load/decrypt payloads or checkpoints, nor renew retention or dispatch.
+        row = (
+            await self._db.execute(
+                select(Task.id, Task.status).where(
+                    Task.owner_user_id == owner_user_id,
+                    Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+                    Task.expires_at > func.now(),
+                    or_(
+                        Task.idempotency_key == idempotency_key,
+                        Task.id.in_(
+                            select(TaskReplayKey.task_id).where(
+                                TaskReplayKey.owner_user_id == owner_user_id,
+                                TaskReplayKey.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+                                TaskReplayKey.idempotency_key == idempotency_key,
+                            )
+                        ),
+                    ),
+                )
+            )
+        ).one_or_none()
+        if row is None:
+            raise TaskNotFoundError
+        return DocumentTransformAdmission(task_id=row.id, status=row.status)
 
     async def _owned_lease_update(
         self,

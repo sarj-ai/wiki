@@ -1,10 +1,6 @@
 import * as z from "zod";
 
-import {
-  createDocumentTransformAction,
-  getDocumentTransformCapabilitiesAction,
-  getSmartCreateTaskAction,
-} from "@/app/actions/smart-create-actions";
+import { transformHttp } from "@/lib/document-transform-http";
 import { ApiError } from "@/lib/api-error";
 import { runAction } from "@/lib/action-client";
 import {
@@ -101,10 +97,25 @@ const TASK_FAILURE_FALLBACKS: Readonly<Record<string, string>> = {
 };
 
 export const documentTransformApi = {
+  admission: async (key: string) => {
+    const id = z.uuid().parse(key);
+    try {
+      const raw = await runAction(
+        async () => await transformHttp(`/admissions/${encodeURIComponent(id)}`),
+      );
+      return z
+        .strictObject({
+          task_id: z.uuid(),
+          status: z.enum(["pending", "running", "succeeded", "failed", "cancelled"]),
+        })
+        .parse(JSON.parse(raw));
+    } catch (error: unknown) {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw error;
+    }
+  },
   capabilities: async () => {
-    const responseBody = await runAction(
-      async () => await getDocumentTransformCapabilitiesAction(),
-    );
+    const responseBody = await runAction(async () => await transformHttp("/capabilities"));
     const capabilities = ZCapabilities.parse(JSON.parse(responseBody));
     return {
       copy: capabilities.copy,
@@ -127,15 +138,15 @@ export const documentTransformApi = {
       output_strategy: outputStrategy,
       source: serializeSource(source),
     });
-    const responseBody = await runAction(
-      async () => await createDocumentTransformAction(body, idempotencyKey),
-    );
+    const responseBody = await runAction(async () => await transformHttp("", body, idempotencyKey));
     return parseTask(ZTask.parse(JSON.parse(responseBody)));
   },
 
   getTask: async (taskId: string, signal?: AbortSignal): Promise<DocumentTransformTask> => {
     signal?.throwIfAborted();
-    const responseBody = await runAction(async () => await getSmartCreateTaskAction(taskId));
+    const responseBody = await runAction(
+      async () => await transformHttp(`/tasks/${encodeURIComponent(taskId)}`),
+    );
     signal?.throwIfAborted();
     return parseTask(ZTask.parse(JSON.parse(responseBody)));
   },

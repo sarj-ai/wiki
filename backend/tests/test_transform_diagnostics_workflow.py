@@ -64,6 +64,32 @@ def test_native_safety_diagnostics_keep_only_finite_stage_reason(invalid: bool) 
         assert "SECRET" not in json.dumps(row)
 
 
+@pytest.mark.parametrize("invalid", [False, True])
+@pytest.mark.parametrize("invalid_field", ["footer_shape_check", "footer_shape_reason"])
+def test_footer_shape_diagnostics_are_finite_and_private(invalid: bool, invalid_field: str) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "document native safety stop stage=SECRET"
+    record["jsonPayload"]["record"]["extra"].update(
+        {
+            "safety_stage": "footer_projection_populated",
+            "safety_reason": "shape",
+            "footer_shape_check": "font_family",
+            "footer_shape_reason": "missing",
+            "actual_font": "SECRET",
+            "caption": "SECRET",
+        }
+    )
+    if invalid:
+        record["jsonPayload"]["record"]["extra"][invalid_field] = "SECRET"
+        with pytest.raises(ValueError, match=r"^$"):
+            MODULE["sanitize"]([record], TASK)
+    else:
+        row = MODULE["sanitize"]([record], TASK)[0]
+        assert row["footer_shape_check"] == "font_family"
+        assert row["footer_shape_reason"] == "missing"
+        assert "SECRET" not in json.dumps(row)
+
+
 def test_in_place_preflight_exposes_only_static_reasons_and_counts() -> None:
     record = _record()
     record["jsonPayload"]["record"]["message"] = "document in-place preflight checks=SECRET"

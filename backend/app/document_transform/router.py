@@ -4,7 +4,7 @@ from time import monotonic
 from typing import Annotated, Protocol
 import uuid
 
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Path, Response, status
 
 from app.auth.dependencies import get_current_user
 from app.config import settings
@@ -27,7 +27,13 @@ from app.models.user import User
 from app.openapi import authentication_responses
 from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
 from app.tasks.queue import TaskEnqueuer
-from app.tasks.schemas import PendingTaskRead, RunningTaskRead, TaskKind, TaskRead
+from app.tasks.schemas import (
+    DocumentTransformAdmission,
+    PendingTaskRead,
+    RunningTaskRead,
+    TaskKind,
+    TaskRead,
+)
 from app.tasks.service import TaskService
 
 
@@ -40,6 +46,22 @@ router = APIRouter(
 
 class DestinationFileReader(Protocol):
     async def get(self, file_id: FileId) -> FileResponse: ...
+
+
+@router.get(
+    "/admissions/{idempotency_key}",
+    status_code=status.HTTP_200_OK,
+    operation_id="get_document_transform_admission",
+    responses={404: {"description": "No retained admission for this owner and key"}},
+)
+async def get_document_transform_admission(
+    idempotency_key: Annotated[uuid.UUID, Path()],
+    response: Response,
+    user: Annotated[User, Depends(get_current_user)],
+    tasks: Annotated[TaskService, Depends(task_service_dep)],
+) -> DocumentTransformAdmission:
+    response.headers["Cache-Control"] = "no-store"
+    return await tasks.get_document_transform_admission(user.id, IdempotencyKey(idempotency_key))
 
 
 @router.get(

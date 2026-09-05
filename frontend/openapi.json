@@ -392,6 +392,25 @@
         "title": "DocumentOutput",
         "type": "object"
       },
+      "DocumentTransformAdmission": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "status"
+        ],
+        "title": "DocumentTransformAdmission",
+        "type": "object"
+      },
       "DocumentTransformCapabilities": {
         "additionalProperties": false,
         "properties": {
@@ -2292,6 +2311,17 @@
         "title": "TaskKind",
         "type": "string"
       },
+      "TaskStatus": {
+        "enum": [
+          "pending",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "TaskStatus",
+        "type": "string"
+      },
       "TemplateCatalogRead": {
         "properties": {
           "templates": {
@@ -3161,6 +3191,70 @@
           }
         ],
         "summary": "Create Document Transform",
+        "tags": [
+          "document-transforms"
+        ]
+      }
+    },
+    "/document-transforms/admissions/{idempotency_key}": {
+      "get": {
+        "operationId": "get_document_transform_admission",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idempotency_key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTransformAdmission"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "404": {
+            "description": "No retained admission for this owner and key"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Document Transform Admission",
         "tags": [
           "document-transforms"
         ]

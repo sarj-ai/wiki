@@ -11,6 +11,7 @@ import {
   type DocumentTransformResult,
   DocumentTransformTerminalError,
 } from "@/lib/document-transform-types";
+import { makeMarkdownRecovery, saveMarkdownRecovery } from "@/lib/markdown-transform-recovery";
 import { installLocalStorage } from "@/test-stubs/local-storage";
 import { MIME_DOC, MIME_SLIDE } from "@/types/wiki";
 
@@ -887,6 +888,80 @@ describe("DocumentPolishDialog", () => {
     expect(document.body).toHaveTextContent("new Google Slides presentation");
     expect(document.body).not.toHaveTextContent("Edit original");
     expect(documentTransformApi.capabilities).not.toHaveBeenCalled();
+  });
+
+  it("restores a reserved Markdown draft after reload and replays the exact original key", async () => {
+    const operation = {
+      createdAt: Date.now(),
+      key: "77777777-7777-4777-8777-777777777777",
+      mode: "unslop",
+      outputStrategy: "copy",
+      source: null,
+      taskId: null,
+    } as const;
+    const originalSource = {
+      kind: "markdown",
+      content: "# Exact original\n\n  Private 😀\r\n",
+      name: "Original name",
+      destinationFolderId: "original-folder",
+    } as const;
+    writeTransformRecovery("owner-1", "markdown", operation);
+    saveMarkdownRecovery(makeMarkdownRecovery("owner-1", operation, originalSource));
+    vi.spyOn(documentTransformApi, "admission").mockResolvedValue(null);
+    const create = vi
+      .spyOn(documentTransformApi, "create")
+      .mockResolvedValue({ id: "55555555-5555-4555-8555-555555555555", status: "pending" });
+    vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(
+      deferred<DocumentTransformResult>().promise,
+    );
+    renderDialog(root, {
+      kind: "markdown",
+      initialDestination: {
+        driveId: "drive-1",
+        driveName: "Current workspace",
+        folderId: "different-current-folder",
+        folderPath: [],
+      },
+    });
+    await vi.waitFor(() => expect(findButtonNow("Restore saved recovery draft")).toBeEnabled());
+    expect(findButtonNow("Resume checking")).toBeDisabled();
+    clickButton(findButtonNow("Restore saved recovery draft"));
+    await vi.waitFor(() => expect(findButtonNow("Resume checking")).toBeEnabled());
+    expect(create).not.toHaveBeenCalled();
+    clickButton(findButtonNow("Resume checking"));
+    await vi.waitFor(() =>
+      expect(create).toHaveBeenCalledExactlyOnceWith(
+        originalSource,
+        "unslop",
+        operation.key,
+        "copy",
+      ),
+    );
+  });
+
+  it("requires a secure owner for Markdown recovery and never auto-submits after identity returns", async () => {
+    const source: DialogTestSource = {
+      kind: "markdown",
+      initialDestination: {
+        driveId: "drive-1",
+        driveName: "Workspace",
+        folderId: "folder-1",
+        folderPath: [],
+      },
+    };
+    const create = vi.spyOn(documentTransformApi, "create").mockRejectedValue(new Error("offline"));
+    renderDialog(root, source, undefined, null);
+    typeTextarea("# Private draft");
+    expect(document.body).toHaveTextContent("Secure session identity unavailable");
+    expect(findButtonNow("Import Google Doc")).toBeDisabled();
+    clickButton(findButtonNow("Import Google Doc"));
+    expect(create).not.toHaveBeenCalled();
+    expect(window.sessionStorage.length).toBe(0);
+    renderDialog(root, source, undefined, "owner-1");
+    await vi.waitFor(() => expect(findButtonNow("Import Google Doc")).toBeEnabled());
+    expect(create).not.toHaveBeenCalled();
+    clickButton(findButtonNow("Import Google Doc"));
+    await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
   });
 
   it("requires pasted Markdown and sends the current folder destination", async () => {

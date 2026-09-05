@@ -53,6 +53,32 @@ PROVIDER_FIELDS = MappingProxyType(
                 "preimage",
             }
         ),
+        "footer_shape_check": frozenset(
+            {
+                "footer_container",
+                "footer_fields",
+                "content",
+                "paragraph_count",
+                "paragraph_container",
+                "paragraph_fields",
+                "runs",
+                "run_container",
+                "run_fields",
+                "text_run",
+                "text_run_fields",
+                "text_content",
+                "caption",
+                "text_style",
+                "link",
+                "font_family",
+                "font_size",
+                "bold",
+                "italic",
+                "alignment",
+                "named_style",
+            }
+        ),
+        "footer_shape_reason": frozenset({"missing", "mismatch"}),
         "provider_message_topic": frozenset(
             {
                 "unknown",

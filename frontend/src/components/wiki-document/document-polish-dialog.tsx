@@ -55,6 +55,10 @@ import {
   markdownTextError,
   readMarkdownFile,
 } from "@/lib/markdown-import";
+import {
+  clearMarkdownRecovery,
+  type MarkdownRecoveryBundle,
+} from "@/lib/markdown-transform-recovery";
 import type { SmartDestination } from "@/lib/smart-create-types";
 import { cn } from "@/lib/utils";
 import { injectNewFileIntoCaches } from "@/lib/wiki-cache";
@@ -62,6 +66,7 @@ import { wikiKeys } from "@/lib/wiki-keys";
 import { MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
 
 import { DocumentPolishReceipt } from "./document-polish-receipt";
+import { DocumentPolishRecovery } from "./document-polish-recovery";
 
 const MODES = [
   {
@@ -123,6 +128,11 @@ export function DocumentPolishDialog({
   const [mode, setMode] = useState<DocumentTransformMode>("both");
   const [outputStrategy, setOutputStrategy] = useState<DocumentTransformOutputStrategy>("copy");
   const [markdown, setMarkdown] = useState("");
+  const [restoredDraft, setRestoredDraft] = useState<{
+    owner: string;
+    key: string;
+    source: MarkdownRecoveryBundle["source"];
+  } | null>(null);
   const [markdownError, setMarkdownError] = useState<null | string>(null);
   const [name, setName] = useState("Untitled document");
   const [copyName, setCopyName] = useState("");
@@ -179,11 +189,13 @@ export function DocumentPolishDialog({
     staleTime: Infinity,
   });
   const unresolved = recovery.data ?? null;
-  const sessionIdentityUnavailable = source.kind === "drive_file" && !owner;
+  const sessionIdentityUnavailable = !owner;
   const optionsLocked = submitting || unresolved !== null || completedResult !== null;
   const saveRecovery = (operation: null | TransformRecovery) => {
     writeTransformRecovery(owner, sourceIdentity, operation);
     queryClient.setQueryData(recoveryKey, operation);
+    if (owner && sourceIdentity === "markdown" && (!operation || operation.taskId))
+      clearMarkdownRecovery(owner);
   };
 
   useEffect(() => {
@@ -259,6 +271,12 @@ export function DocumentPolishDialog({
   };
 
   const inputSource = (): DocumentTransformSource | null => {
+    if (
+      source.kind === "markdown" &&
+      restoredDraft?.owner === owner &&
+      restoredDraft.key === unresolved?.key
+    )
+      return restoredDraft.source;
     if (source.kind === "drive_file") {
       return {
         expectedModifiedTime: source.expectedModifiedTime,
@@ -372,7 +390,11 @@ export function DocumentPolishDialog({
       const reserved = await claimTransformRecovery(owner, sourceIdentity, candidate);
       controller.signal.throwIfAborted();
       saveRecovery(reserved);
-      assertRecoveryReplaySafe(reserved, unresolved !== null, markdown);
+      assertRecoveryReplaySafe(
+        reserved,
+        unresolved !== null,
+        transformSource.kind === "markdown" ? transformSource.content : markdown,
+      );
       return reserved;
     };
     const clearRecovery = async () => {
@@ -949,6 +971,19 @@ export function DocumentPolishDialog({
               </div>
             ) : null}
 
+            {source.kind === "markdown" && owner && unresolved && !submitting ? (
+              <DocumentPolishRecovery
+                key={`${owner}:${unresolved.key}`}
+                onRestore={(operation, recoveredSource) => {
+                  saveRecovery(operation);
+                  if (recoveredSource)
+                    setRestoredDraft({ owner, key: operation.key, source: recoveredSource });
+                }}
+                operation={unresolved}
+                owner={owner}
+                source={inputSource()}
+              />
+            ) : null}
             {retryMessage ? (
               <div className="border-destructive/30 rounded-lg border p-3 text-sm" role="alert">
                 <p className="font-medium">Polish interrupted</p>
