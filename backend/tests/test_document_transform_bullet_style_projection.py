@@ -18,6 +18,92 @@ from app.drive.schemas import MIME_DOC
 from app.identifiers import DocsRevisionId, DocsTabId, FileId
 
 
+@pytest.mark.parametrize("changed", [False, True])
+@pytest.mark.parametrize("named_style", [None, "NORMAL_TEXT", "HEADING_1", "UNKNOWN"])
+def test_matching_native_list_style_preserves_emphasis_without_reserialization(
+    changed: bool, named_style: str | None
+) -> None:
+    document = _document()
+    paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
+    paragraph["paragraphStyle"] = {} if named_style is None else {"namedStyleType": named_style}
+    paragraph["elements"][0]["textRun"]["textStyle"] = {
+        "bold": False,
+        "italic": True,
+        "underline": False,
+    }
+    original = parse_google_document(document, title="Review")
+    expected = replace(
+        original,
+        blocks=tuple(
+            replace(block, text="Changed text" if changed else block.text)
+            for block in original.blocks
+        ),
+    )
+    requests = build_copy_mutations(
+        original, expected, profile=SarjBrandProfile(), headers=(), logo_uri=""
+    )
+    paragraph_requests = [
+        request["updateParagraphStyle"] for request in requests if "updateParagraphStyle" in request
+    ]
+    style_request = paragraph_requests[-1]
+    preserve = named_style == "NORMAL_TEXT" and not changed
+    assert ("namedStyleType" not in style_request["paragraphStyle"]) == preserve
+    assert ("namedStyleType" not in style_request["fields"]) == preserve
+    text_requests = [
+        request["updateTextStyle"] for request in requests if "updateTextStyle" in request
+    ]
+    body_style = text_requests[-1]
+    omit_underline = preserve or named_style == "HEADING_1"
+    assert ("underline" not in body_style["textStyle"]) == omit_underline
+    assert ("underline" not in body_style["fields"]) == omit_underline
+    reconstructed = build_copy_mutations(
+        expected, expected, profile=SarjBrandProfile(), headers=(), logo_uri=""
+    )
+    reconstructed_styles = [
+        request["updateTextStyle"] for request in reconstructed if "updateTextStyle" in request
+    ]
+    assert reconstructed_styles[-1] == body_style
+    assert expected.blocks[0].source_style_text_sha256 == original.blocks[0].sha256
+
+
+def test_matching_style_does_not_normalize_missing_bullet_false() -> None:
+    document = _document()
+    paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
+    paragraph["paragraphStyle"] = {"namedStyleType": "NORMAL_TEXT"}
+    paragraph["bullet"]["textStyle"] = {"underline": False}
+    actual = deepcopy(document)
+    actual["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["bullet"]["textStyle"] = {}
+    expected = parse_google_document(document, title="Review")
+    assert project_branded_bullet_styles(actual, expected) == actual
+    assert (
+        bullet_style_diagnostics(parse_google_document(actual, title="Review"), expected)[
+            "bullet_underline_removed_false"
+        ]
+        == 1
+    )
+
+
+@pytest.mark.parametrize(
+    "missing", ["source_named_style", "source_style_text_sha256", "native_bullet_json"]
+)
+def test_matching_list_style_requires_complete_native_provenance(missing: str) -> None:
+    document = _document()
+    paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
+    paragraph["paragraphStyle"] = {"namedStyleType": "NORMAL_TEXT"}
+    original = parse_google_document(document, title="Review")
+    expected = replace(
+        original, blocks=tuple(replace(block, **{missing: None}) for block in original.blocks)
+    )
+    requests = build_copy_mutations(
+        expected, expected, profile=SarjBrandProfile(), headers=(), logo_uri=""
+    )
+    paragraph_styles = [
+        request["updateParagraphStyle"] for request in requests if "updateParagraphStyle" in request
+    ]
+    assert paragraph_styles[-1]["paragraphStyle"]["namedStyleType"] == "NORMAL_TEXT"
+    assert "namedStyleType" in paragraph_styles[-1]["fields"]
+
+
 @pytest.mark.parametrize("field", ["bold", "italic", "underline"])
 @pytest.mark.parametrize(
     ("before", "after", "direction"),
