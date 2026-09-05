@@ -3,6 +3,10 @@ from typing import Any
 from app.document_transform.ir import MAX_DOC_TABS, DocumentIR, TextBlock, utf16_length
 
 
+_MIN_FONT_WEIGHT = 100
+_MAX_FONT_WEIGHT = 900
+
+
 def filter_redundant_native_fonts(
     requests: list[dict[str, Any]],
     *,
@@ -137,8 +141,21 @@ def _explicit_family(element: dict[str, Any], block: TextBlock, family: str) -> 
             "link",
         }:
             return False
-        if style.get("weightedFontFamily") != {"fontFamily": family}:
+        if not _same_family(style.get("weightedFontFamily"), family):
             return False
         contents.append(text)
         cursor = end
     return cursor == source.end_index + 1 and "".join(contents) == block.text + "\n"
+
+
+def _same_family(value: object, family: str) -> bool:
+    if not isinstance(value, dict) or set(value) - {"fontFamily", "weight"}:
+        return False
+    if value.get("fontFamily") != family:
+        return False
+    weight = value.get("weight")
+    return "weight" not in value or (
+        type(weight) is int
+        and _MIN_FONT_WEIGHT <= weight <= _MAX_FONT_WEIGHT
+        and weight % _MIN_FONT_WEIGHT == 0
+    )

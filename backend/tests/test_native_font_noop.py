@@ -34,10 +34,14 @@ def _parts(document: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 @pytest.mark.parametrize("astral", [False, True])
+@pytest.mark.parametrize("weight", [None, 100, 400, 700, 900])
 def test_explicit_family_noops_removed_without_changing_other_requests_or_source(
-    *, astral: bool
+    *, astral: bool, weight: int | None
 ) -> None:
     document = _document()
+    if weight is not None:
+        for part in _parts(document):
+            part["textRun"]["textStyle"]["weightedFontFamily"]["weight"] = weight
     if astral:
         _parts(document)[0]["textRun"]["content"] = "😀pha "
     before = deepcopy(document)
@@ -55,6 +59,10 @@ def test_explicit_family_noops_removed_without_changing_other_requests_or_source
         if item.get("updateTextStyle", {}).get("fields") == "weightedFontFamily.fontFamily"
     ]
     assert len(families) == 2
+    assert all(
+        item["updateTextStyle"]["textStyle"] == {"weightedFontFamily": {"fontFamily": "Nunito"}}
+        for item in families
+    )
     filtered = filter_redundant_native_fonts(
         requests, document=document, original=original, transformed=original, font_family="Nunito"
     )
@@ -145,6 +153,68 @@ def test_ambiguous_or_changed_payload_keeps_all_requests(change: str) -> None:
             document=document,
             original=original,
             transformed=transformed,
+            font_family="Nunito",
+        )
+        == requests
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, True, False, 99, 150, 901, 400.0, "400", {}, []],
+    ids=[
+        "null",
+        "true",
+        "false",
+        "below",
+        "not-hundred",
+        "above",
+        "float",
+        "string",
+        "object",
+        "array",
+    ],
+)
+def test_invalid_explicit_weight_keeps_family_requests(value: object) -> None:
+    document = _document()
+    original = parse_google_document(document, title="Source")
+    requests = build_copy_mutations(
+        original,
+        original,
+        profile=SarjBrandProfile(),
+        headers=(),
+        logo_uri="https://example.test/logo.png",
+    )
+    _parts(document)[0]["textRun"]["textStyle"]["weightedFontFamily"]["weight"] = value
+    assert (
+        filter_redundant_native_fonts(
+            requests,
+            document=document,
+            original=original,
+            transformed=original,
+            font_family="Nunito",
+        )
+        == requests
+    )
+
+
+def test_unknown_family_property_keeps_family_requests() -> None:
+    document = _document()
+    original = parse_google_document(document, title="Source")
+    requests = build_copy_mutations(
+        original,
+        original,
+        profile=SarjBrandProfile(),
+        headers=(),
+        logo_uri="https://example.test/logo.png",
+    )
+    _parts(document)[0]["textRun"]["textStyle"]["weightedFontFamily"]["unknown"] = 400
+    assert (
+        filter_redundant_native_fonts(
+            requests,
+            document=document,
+            original=original,
+            transformed=original,
             font_family="Nunito",
         )
         == requests
