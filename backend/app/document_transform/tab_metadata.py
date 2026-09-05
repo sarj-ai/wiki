@@ -4,28 +4,63 @@ import hashlib
 import json
 from typing import Any
 
+from app.document_transform.errors import InPlaceNeedsReviewError
+from app.document_transform.naming import supported_tab_icon
 from app.document_transform.tab_names import NativeTabProperties
 from app.identifiers import DocsTabId
+
+
+_MAX_TAB_DEPTH = 2
 
 
 def native_tab_properties(document: dict[str, Any]) -> tuple[NativeTabProperties, ...]:
     result: list[NativeTabProperties] = []
 
-    def visit(tabs: list[dict[str, Any]], parent: DocsTabId | None) -> None:
+    def visit(tabs: object, parent: DocsTabId | None, depth: int = 0) -> None:
+        if not isinstance(tabs, list) or depth > _MAX_TAB_DEPTH:
+            raise InPlaceNeedsReviewError
         for index, tab in enumerate(tabs):
-            properties = tab.get("tabProperties", {})
+            if not isinstance(tab, dict):
+                raise InPlaceNeedsReviewError
+            raw_properties: Any = tab.get("tabProperties", {})
+            if not isinstance(raw_properties, dict) or set(raw_properties) - {
+                "tabId",
+                "title",
+                "parentTabId",
+                "index",
+                "nestingLevel",
+                "iconEmoji",
+            }:
+                raise InPlaceNeedsReviewError
+            properties: dict[str, Any] = dict(raw_properties)
+            if "iconEmoji" in properties and not supported_tab_icon(properties["iconEmoji"]):
+                raise InPlaceNeedsReviewError
             tab_id = properties.get("tabId")
             if not isinstance(tab_id, str) or not tab_id:
-                continue
+                raise InPlaceNeedsReviewError
+            if not isinstance(properties.get("title", ""), str):
+                raise InPlaceNeedsReviewError
+            for field, default in (("index", index), ("nestingLevel", depth)):
+                value = properties.get(field, default)
+                if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                    raise InPlaceNeedsReviewError
+            if properties.get("nestingLevel", depth) != depth:
+                raise InPlaceNeedsReviewError
+            explicit_parent = properties.get("parentTabId", parent)
+            if explicit_parent != parent and not (
+                parent is None and isinstance(explicit_parent, str) and not explicit_parent
+            ):
+                raise InPlaceNeedsReviewError
             result.append(
                 NativeTabProperties(
                     tab_id=DocsTabId(tab_id),
                     title=properties.get("title", ""),
                     parent_tab_id=properties.get("parentTabId") or parent,
                     index=properties.get("index", index),
+                    icon_emoji=properties.get("iconEmoji"),
                 )
             )
-            visit(tab.get("childTabs", []), DocsTabId(tab_id))
+            visit(tab.get("childTabs", []), DocsTabId(tab_id), depth + 1)
 
     visit(document.get("tabs", []), None)
     return tuple(result)
@@ -40,7 +75,7 @@ def tab_naming_invariant_sha256(document: dict[str, Any], marker_name: str = "")
                 result: dict[str, object] = {}
                 for key, item in value.items():
                     child = item
-                    if key == "revisionId" or (tab_properties and key == "title"):
+                    if key == "revisionId" or (tab_properties and key in {"title", "iconEmoji"}):
                         continue
                     if key == "namedRanges" and isinstance(item, dict):
                         child = {

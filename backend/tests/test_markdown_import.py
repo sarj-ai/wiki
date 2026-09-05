@@ -238,7 +238,49 @@ def _branded_document() -> dict[str, Any]:
                         "marginTop": {"magnitude": 72, "unit": "PT"},
                         "marginBottom": {"magnitude": 72, "unit": "PT"},
                     },
-                    "headers": {"header-1": {"content": [{"inlineObjectId": "logo-1"}]}},
+                    "headers": {
+                        "header-1": {
+                            "content": [
+                                {
+                                    "paragraph": {
+                                        "paragraphStyle": {
+                                            "namedStyleType": "NORMAL_TEXT",
+                                            "alignment": "END",
+                                            "lineSpacing": 100,
+                                            "spaceAbove": {"magnitude": 0, "unit": "PT"},
+                                            "spaceBelow": {"magnitude": 0, "unit": "PT"},
+                                            "keepWithNext": False,
+                                        },
+                                        "elements": [
+                                            {
+                                                "textRun": {
+                                                    "content": "Import\t",
+                                                    "textStyle": {
+                                                        "weightedFontFamily": {
+                                                            "fontFamily": "Nunito"
+                                                        },
+                                                        "fontSize": {"magnitude": 9, "unit": "PT"},
+                                                        "bold": True,
+                                                        "foregroundColor": {
+                                                            "color": {
+                                                                "rgbColor": {
+                                                                    "red": 115 / 255,
+                                                                    "green": 115 / 255,
+                                                                    "blue": 115 / 255,
+                                                                }
+                                                            }
+                                                        },
+                                                    },
+                                                }
+                                            },
+                                            {"inlineObjectElement": {"inlineObjectId": "logo-1"}},
+                                            {"textRun": {"content": "\n"}},
+                                        ],
+                                    }
+                                }
+                            ]
+                        }
+                    },
                     "inlineObjects": {
                         "logo-1": {
                             "inlineObjectProperties": {

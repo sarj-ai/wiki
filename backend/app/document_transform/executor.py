@@ -48,7 +48,7 @@ from app.document_transform.ir import (
     rewrite_markdown,
 )
 from app.document_transform.models import PatchGenerator
-from app.document_transform.naming import suggested_document_title
+from app.document_transform.naming import suggested_document_title, title_case_document_name
 from app.document_transform.native_footer_flow import footer_coverage_complete
 from app.document_transform.native_pagination import (
     NativePaginationRule,
@@ -89,8 +89,9 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, Task
 
 
 PIPELINE_VERSION = "document-transform-v3"
-REQUEST_BUILDER_VERSION = "google-docs-requests-v18"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v19"
 _MAX_OUTPUT_NAME_LENGTH = 255
+_MAX_GENERATED_NAME_SUFFIXES = 16
 _OUTPUT_SUFFIX = MappingProxyType(
     {
         TransformMode.FORMAT: "Sarj formatted",
@@ -420,7 +421,7 @@ class DocumentTransformExecutor:
                 profile=self._brand,
                 headers=prepared_draft.headers,
                 logo_uri=prepared_draft.logo_uri,
-                header_title=suggested_document_title(original),
+                header_title=checkpoint.output_name,
             )
         applied = prepared_draft
         if checkpoint.native_footer is None and checkpoint.native_dates is None:
@@ -437,6 +438,7 @@ class DocumentTransformExecutor:
             snapshot=snapshot,
             expected=outcome.document,
             draft=applied,
+            header_title=checkpoint.output_name,
         )
         applied = replace(applied, revision_id=applied_validation.revision_id)
         if (
@@ -509,7 +511,7 @@ class DocumentTransformExecutor:
                     draft=applied,
                     operation_id=operation_id,
                     managed_headers=checkpoint.managed_headers or {},
-                    title=suggested_document_title(original),
+                    title=checkpoint.output_name,
                 )
                 if self._gateway.capture_header_identity is not None
                 else None
@@ -756,6 +758,7 @@ class DocumentTransformExecutor:
             source=snapshot,
             expected=expected,
             verify_brand=request.mode is not TransformMode.UNSLOP,
+            header_title=checkpoint.output_name,
         )
         revision_id = verification.revision_id or draft.revision_id
         if (
@@ -794,6 +797,7 @@ class DocumentTransformExecutor:
             source=snapshot,
             expected=expected,
             verify_brand=request.mode is not TransformMode.UNSLOP,
+            header_title=checkpoint.output_name,
         )
         final_revision = final_verification.revision_id or draft.revision_id
         if (
@@ -1287,12 +1291,14 @@ class DocumentTransformExecutor:
         snapshot: SourceSnapshot,
         expected: DocumentIR,
         draft: OutputDraft,
+        header_title: str,
     ) -> AppliedValidation:
         verification = await self._gateway.verify_output(
             draft=draft,
             source=snapshot,
             expected=expected,
             verify_brand=request.mode is not TransformMode.UNSLOP,
+            header_title=header_title,
         )
         if not verification.content_preserved or not verification.structure_preserved:
             raise OutputVerificationError
@@ -1344,6 +1350,7 @@ class DocumentTransformExecutor:
             imported_docx = render_markdown_docx(
                 rewrite_markdown(snapshot.markdown, original, transformed),
                 title=snapshot.title,
+                header_title=output_name,
                 logo_bytes=self._logo_bytes,
                 branded=request.mode is not TransformMode.UNSLOP,
             )
@@ -1374,16 +1381,41 @@ class DocumentTransformExecutor:
 
 def _copy_output_name(request: DocumentTransformRequest, original: DocumentIR) -> str:
     if request.output_name is not None:
-        return request.output_name
+        return (
+            request.output_name
+            if request.mode is TransformMode.UNSLOP
+            else title_case_document_name(request.output_name)
+        )
     title = (
         original.title
         if request.mode is TransformMode.UNSLOP
-        else suggested_document_title(original)
+        else _strip_generated_copy_suffixes(suggested_document_title(original))
     )
     suffix = f" — {_OUTPUT_SUFFIX[request.mode]}"
     # COPY names share the request/checkpoint limit. Never truncate the source
     # metadata itself; reserve room for the review-copy suffix before persisting.
-    return f"{title.strip()[: _MAX_OUTPUT_NAME_LENGTH - len(suffix)].rstrip()}{suffix}"
+    base = title.strip()[: _MAX_OUTPUT_NAME_LENGTH - len(suffix)].rstrip()
+    if request.mode is not TransformMode.UNSLOP:
+        base = _strip_generated_copy_suffixes(base)
+    name = f"{base}{suffix}"
+    return name if request.mode is TransformMode.UNSLOP else title_case_document_name(name)
+
+
+def _strip_generated_copy_suffixes(title: str) -> str:
+    title = title.strip()
+    for _ in range(_MAX_GENERATED_NAME_SUFFIXES):
+        suffix = next(
+            (
+                value
+                for value in (" — Sarj formatted", " — Sarj polished")
+                if title.casefold().endswith(value.casefold())
+            ),
+            None,
+        )
+        if suffix is None:
+            break
+        title = title[: -len(suffix)].rstrip()
+    return title or "Untitled"
 
 
 def _new_copy_checkpoint(
@@ -1445,6 +1477,7 @@ def _new_copy_checkpoint(
             original,
             outcome.document,
             branded=request.mode is not TransformMode.UNSLOP,
+            header_title=output_name,
         ),
         logo_sha256=logo_sha256,
         output_name=output_name,
@@ -1537,6 +1570,7 @@ def _validate_copy_checkpoint(
         original,
         transformed,
         branded=request.mode is not TransformMode.UNSLOP,
+        header_title=checkpoint.output_name,
     ):
         raise OutputConflictError
 
@@ -1597,11 +1631,14 @@ def _copy_manifest_sha256(
     transformed: DocumentIR,
     *,
     branded: bool,
+    header_title: str,
 ) -> str:
     if snapshot.markdown is not None:
         rendered = rewrite_markdown(snapshot.markdown, original, transformed)
         manifest: object = asdict(
-            markdown_import_manifest(rendered, title=snapshot.title, branded=branded)
+            markdown_import_manifest(
+                rendered, title=snapshot.title, branded=branded, header_title=header_title
+            )
         )
     else:
         manifest = {
@@ -1609,6 +1646,7 @@ def _copy_manifest_sha256(
             "source_format": transformed.source_format,
             "tab_ids": list(transformed.tab_ids),
             "branded": branded,
+            "header_title": header_title if branded else None,
         }
     return hashlib.sha256(
         json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
@@ -1723,7 +1761,7 @@ def _preflight_native_mutation_budget(
             headers=headers,
             logo_uri="https://assets.sarj.ai/preflight-logo.png",
             header_title=(
-                suggested_document_title(original)
+                _copy_output_name(request, original)
                 if request.output_strategy is OutputStrategy.COPY
                 else None
             ),

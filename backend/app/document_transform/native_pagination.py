@@ -268,6 +268,7 @@ def _spacer_dependencies_known(
                         )
                     )
                     diagnostics["spacer_named_shading_present"] = "shading" in style
+                    diagnostics.update(_named_style_value_diagnostics(style))
                 return False
             if not _spacer_style_values_known(style):
                 diagnostics["spacer_named_paragraph_values_count"] = 1
@@ -277,6 +278,104 @@ def _spacer_dependencies_known(
                 diagnostics["spacer_named_text_style_count"] = 1
                 return False
     return True
+
+
+def _named_style_value_diagnostics(style: dict[str, Any]) -> dict[str, bool]:
+    # Describe only the first rejected dependency entry, never provider payloads.
+    # Missing fields inherit: they are not explicit zero or transparent values.
+    checks = {"spacer_named_values_first_entry_only": True}
+    indents = [
+        _dimension_state(style[field])
+        for field in ("indentStart", "indentEnd", "indentFirstLine")
+        if field in style
+    ]
+    if indents:
+        checks["spacer_named_indent_schema_known"] = "unknown" not in indents
+        if "unknown" not in indents:
+            checks["spacer_named_indent_all_zero"] = all(value == "zero" for value in indents)
+    if "shading" in style:
+        shading = style["shading"]
+        color = (
+            _color_state(shading["backgroundColor"])
+            if isinstance(shading, dict) and set(shading) == {"backgroundColor"}
+            else "unknown"
+        )
+        checks["spacer_named_shading_schema_known"] = color != "unknown"
+        if color != "unknown":
+            checks["spacer_named_shading_explicit_transparent"] = color == "transparent"
+    borders = [
+        style[field]
+        for field in ("borderTop", "borderBottom", "borderLeft", "borderRight", "borderBetween")
+        if field in style
+    ]
+    if borders:
+        known = all(_border_schema_known(border) for border in borders)
+        checks["spacer_named_border_schema_known"] = known
+        if known:
+            checks["spacer_named_border_all_width_zero"] = all(
+                _dimension_state(border["width"]) == "zero" for border in borders
+            )
+            checks["spacer_named_border_all_padding_zero"] = all(
+                _dimension_state(border["padding"]) == "zero" for border in borders
+            )
+            checks["spacer_named_border_all_transparent"] = all(
+                _color_state(border["color"]) == "transparent" for border in borders
+            )
+    return checks
+
+
+def _dimension_state(value: object) -> Literal["zero", "nonzero", "unknown"]:
+    if not isinstance(value, dict) or set(value) != {"magnitude", "unit"}:
+        return "unknown"
+    magnitude = value.get("magnitude")
+    # Bound before any float conversion; arbitrarily large JSON ints must not raise.
+    if (
+        not isinstance(magnitude, (int, float))
+        or isinstance(magnitude, bool)
+        or not -_MAX_SPACER_SPACE_PT <= magnitude <= _MAX_SPACER_SPACE_PT
+        or value.get("unit") != "PT"
+    ):
+        return "unknown"
+    return "zero" if magnitude == 0 else "nonzero"
+
+
+def _color_state(value: object) -> Literal["transparent", "opaque", "unknown"]:
+    if not isinstance(value, dict):
+        return "unknown"
+    if not value:
+        return "transparent"
+    if set(value) != {"color"}:
+        return "unknown"
+    color = value.get("color")
+    if not isinstance(color, dict) or set(color) != {"rgbColor"}:
+        return "unknown"
+    rgb = color.get("rgbColor")
+    if not isinstance(rgb, dict) or set(rgb) - {"red", "green", "blue"}:
+        return "unknown"
+    return (
+        "opaque"
+        if all(
+            isinstance(component, (int, float))
+            and not isinstance(component, bool)
+            and 0 <= component <= 1
+            for component in rgb.values()
+        )
+        else "unknown"
+    )
+
+
+def _border_schema_known(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    dash = value.get("dashStyle")
+    return (
+        set(value) == {"color", "width", "padding", "dashStyle"}
+        and _color_state(value.get("color")) != "unknown"
+        and _dimension_state(value.get("width")) != "unknown"
+        and _dimension_state(value.get("padding")) != "unknown"
+        and isinstance(dash, str)
+        and dash in {"SOLID", "DOT", "DASH"}
+    )
 
 
 def _spacer_named_styles_known(native: dict[str, Any], body: dict[str, Any]) -> bool:

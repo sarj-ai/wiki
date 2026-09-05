@@ -11,7 +11,6 @@ from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
 from app.document_transform.gateway import SourceSnapshot, TabHeader
 from app.document_transform.google_gateway import GoogleDocumentGateway, verify_brand_application
 from app.document_transform.ir import DocumentIR, parse_google_document
-from app.document_transform.naming import suggested_document_title
 from app.document_transform.schemas import DocumentTransformRequest, DriveFileSource, TransformMode
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId, TaskId
 from tests.test_document_transform import (
@@ -143,9 +142,10 @@ async def test_copy_auto_title_and_header_agree_and_retry_keeps_identity() -> No
     result = await _copy_executor(gateway=gateway, store=store, task_id=task_id).execute(
         operation_id=task_id, request=request
     )
-    title = suggested_document_title(parse_google_document(source, title="Untitled document"))
-    assert result.output.name.startswith(title)
+    title = "Platform Reliability Plan — Sarj Formatted"
+    assert result.output.name == title
     assert any(item.get("insertText", {}).get("text") == f"{title}\t" for item in gateway.requests)
+    assert set(gateway.verified_header_titles) == {title}
     assert {checkpoint.source_title for checkpoint in store.checkpoints} == {"Untitled document"}
     repeated = await _copy_executor(
         gateway=gateway, store=store, task_id=task_id, checkpoint=store.checkpoints[-1]
@@ -155,8 +155,10 @@ async def test_copy_auto_title_and_header_agree_and_retry_keeps_identity() -> No
     assert source == original
 
 
-async def test_copy_gateway_verifies_header_against_original_title_evidence(
+@pytest.mark.parametrize("header_title", [None, "Chosen Title — Sarj Formatted"])
+async def test_copy_gateway_verifies_header_against_supplied_durable_title(
     monkeypatch: pytest.MonkeyPatch,
+    header_title: str | None,
 ) -> None:
     document = _source()
     gateway = object.__new__(GoogleDocumentGateway)
@@ -179,7 +181,7 @@ async def test_copy_gateway_verifies_header_against_original_title_evidence(
         google_document=document,
     )
     expected = parse_google_document(document, title=source.title)
-    # A generated copy suffix must never leak into the native header expectation.
+    # A provider collision name cannot override the supplied durable header title.
     draft = _pending_output_draft(
         pending_mutation_sha256="hash", mutation_base_revision_sha256="hash"
     )
@@ -188,6 +190,10 @@ async def test_copy_gateway_verifies_header_against_original_title_evidence(
     )
     for _ in range(2):
         await gateway.verify_output(
-            draft=draft, source=source, expected=expected, verify_brand=True
+            draft=draft,
+            source=source,
+            expected=expected,
+            verify_brand=True,
+            header_title=header_title,
         )
-    assert observed == ["Platform reliability plan", "Platform reliability plan"]
+    assert observed == [header_title or "Platform reliability plan"] * 2

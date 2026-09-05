@@ -845,6 +845,7 @@ class GoogleDocumentGateway(DocumentGateway):
         source: SourceSnapshot,
         expected: DocumentIR,
         verify_brand: bool,
+        header_title: str | None = None,
     ) -> OutputVerification:
         return await asyncio.to_thread(
             self._verify_output_sync,
@@ -852,6 +853,7 @@ class GoogleDocumentGateway(DocumentGateway):
             source,
             expected,
             verify_brand=verify_brand,
+            header_title=header_title,
         )
 
     @override
@@ -1391,6 +1393,7 @@ class GoogleDocumentGateway(DocumentGateway):
         expected: DocumentIR,
         *,
         verify_brand: bool,
+        header_title: str | None = None,
     ) -> OutputVerification:
         output_document = self._get_document_sync(draft.document_id)
         if draft.native_dates is not None:
@@ -1406,7 +1409,10 @@ class GoogleDocumentGateway(DocumentGateway):
                 expected,
             )
             manifest = markdown_import_manifest(
-                rendered_markdown, title=source.title, branded=verify_brand
+                rendered_markdown,
+                title=source.title,
+                branded=verify_brand,
+                header_title=header_title,
             )
             verification = verify_markdown_import(output_document, manifest)
             logger.info(
@@ -1505,11 +1511,15 @@ class GoogleDocumentGateway(DocumentGateway):
                 output_document,
                 _typography_verification_ir(parsed, expected),
                 expected_header_title=(
-                    suggested_document_title(
-                        parse_google_document(source_document, title=source.title)
+                    header_title
+                    if header_title is not None
+                    else (
+                        suggested_document_title(
+                            parse_google_document(source_document, title=source.title)
+                        )
+                        if source_document is not None
+                        else expected.title
                     )
-                    if source_document is not None
-                    else expected.title
                 ),
             ),
             revision_id=DocsRevisionId(_required_string(output_document, "revisionId")),

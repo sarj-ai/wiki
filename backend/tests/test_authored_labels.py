@@ -358,7 +358,7 @@ def test_promoted_section_does_not_become_whole_document_tab_identity(title: str
     tabs = (NativeTabProperties(DocsTabId("tab-1"), "Tab 1"),)
     plan = plan_tab_names(expected, tabs, prefer_document_title=True)
     assert [rename.title for rename in plan.renames] == (
-        [title] if title == "Decision review" else []
+        ["Decision Review"] if title == "Decision review" else ["Tab 1"]
     )
 
 

@@ -30,7 +30,11 @@ _ORDERED_GLYPH_TYPES = frozenset(
 _CODE_FONTS = frozenset({"consolas", "courier new", "menlo", "monospace", "roboto mono"})
 _TOLERANCE = 1e-6
 _H2_LEVEL = 2
-_MAX_HEADER_ELEMENTS = 2
+_MAX_HEADER_ELEMENTS = 4
+_MAX_HEADER_NAMED_STYLES = 60
+_NORMAL_FONT_WEIGHT = 400
+_BOLD_FONT_WEIGHT = 700
+_FONT_WEIGHT_STEP = 100
 
 
 @dataclass(frozen=True, slots=True)
@@ -696,7 +700,7 @@ def _brand_matches(
         for tab in tabs
     ):
         return False
-    if not all(_tab_has_logo(document, tab) for tab in tabs):
+    if not all(_tab_has_logo(document, tab, header_title=expected.header_title) for tab in tabs):
         return False
     if not all(_segment_has_exact_footer(tab.get("footers")) for tab in tabs):
         return False
@@ -735,8 +739,10 @@ def markdown_import_brand_diagnostics(
     )
     if not checks["import_margins"]:
         return checks
-    checks["import_header_shape"] = len(_exact_header_logo_ids(tab.get("headers"))) == 1
-    embedded = _tab_logo_object(document, tab)
+    checks["import_header_shape"] = (
+        len(_exact_header_logo_ids(tab.get("headers"), header_title=expected.header_title)) == 1
+    )
+    embedded = _tab_logo_object(document, tab, header_title=expected.header_title)
     checks["import_logo_object"] = embedded is not None
     if embedded is None:
         return checks
@@ -757,6 +763,10 @@ def markdown_import_brand_diagnostics(
     checks["import_logo_dimensions"] = _logo_dimensions_match(embedded)
     if not checks["import_logo_dimensions"]:
         return checks
+    if expected.header_title is not None:
+        checks["import_header_title_style"] = _header_title_brand_matches(document, tab)
+        if not checks["import_header_title_style"]:
+            return checks
     checks["import_footer_shape"] = _segment_has_exact_footer(tab.get("footers"))
     if not checks["import_footer_shape"]:
         return checks
@@ -771,17 +781,148 @@ def _dimension_points(value: object) -> float:
     return float(magnitude) if isinstance(magnitude, int | float) else 0
 
 
-def _tab_has_logo(document: dict[str, Any], tab: dict[str, Any]) -> bool:
-    embedded = _tab_logo_object(document, tab)
+def _tab_has_logo(
+    document: dict[str, Any], tab: dict[str, Any], *, header_title: str | None = None
+) -> bool:
+    embedded = _tab_logo_object(document, tab, header_title=header_title)
     return (
         embedded is not None
         and _logo_metadata_matches(embedded)
         and _logo_dimensions_match(embedded)
+        and (header_title is None or _header_title_brand_matches(document, tab))
     )
 
 
-def _tab_logo_object(document: dict[str, Any], tab: dict[str, Any]) -> dict[str, Any] | None:
-    object_ids = _exact_header_logo_ids(tab.get("headers"))
+def _header_title_brand_matches(document: dict[str, Any], tab: dict[str, Any]) -> bool:
+    tokens = CURRENT_BRAND_MANIFEST.document.header
+    segment = _only_segment(tab.get("headers"))
+    if tokens is None or segment is None:
+        return False
+    content = segment.get("content")
+    if not isinstance(content, list) or len(content) != 1 or not isinstance(content[0], dict):
+        return False
+    paragraph = content[0].get("paragraph")
+    if not isinstance(paragraph, dict):
+        return False
+    style = paragraph.get("paragraphStyle")
+    if not isinstance(style, dict) or style.get("namedStyleType", "NORMAL_TEXT") != "NORMAL_TEXT":
+        return False
+    inherited = _header_named_style(document, tab)
+    if inherited is None:
+        return False
+    effective = inherited.paragraph | style
+    if not (
+        effective.get("alignment") == tokens.alignment
+        and effective.get("lineSpacing") == tokens.line_spacing_percent
+        and _header_dimension_exact(effective.get("spaceAbove"), tokens.space_above_pt)
+        and _header_dimension_exact(effective.get("spaceBelow"), tokens.space_below_pt)
+        and effective.get("keepWithNext") is False
+    ):
+        return False
+    title_runs = []
+    for element in paragraph.get("elements", []):
+        if "inlineObjectElement" in element:
+            break
+        title_runs.append(element["textRun"].get("textStyle", {}))
+    return bool(title_runs) and all(
+        _header_run_style_matches(run, inherited.text) for run in title_runs
+    )
+
+
+def _header_named_style(document: dict[str, Any], tab: dict[str, Any]) -> _NamedStyle | None:
+    if "namedStyles" not in tab and "namedStyles" not in document:
+        return _NamedStyle({}, {})
+    named = tab.get("namedStyles", document.get("namedStyles"))
+    styles = named.get("styles") if isinstance(named, dict) else None
+    if not isinstance(styles, list) or len(styles) > _MAX_HEADER_NAMED_STYLES:
+        return None
+    matches = [
+        style
+        for style in styles
+        if isinstance(style, dict) and style.get("namedStyleType") == "NORMAL_TEXT"
+    ]
+    if len(matches) != 1:
+        return None
+    text, paragraph = matches[0].get("textStyle", {}), matches[0].get("paragraphStyle", {})
+    return (
+        _NamedStyle(text, paragraph)
+        if isinstance(text, dict) and isinstance(paragraph, dict)
+        else None
+    )
+
+
+def _header_dimension_exact(value: object, expected: int) -> bool:
+    return (
+        isinstance(value, dict)
+        and set(value) == {"unit", "magnitude"}
+        and value.get("unit") == "PT"
+        and type(value.get("magnitude")) in {int, float}
+        and value.get("magnitude") == expected
+    )
+
+
+def _header_run_style_matches(style: object, inherited: dict[str, Any]) -> bool:
+    tokens = CURRENT_BRAND_MANIFEST.document.header
+    if tokens is None or not isinstance(style, dict):
+        return False
+    effective = inherited | style
+    if set(effective) - {
+        "weightedFontFamily",
+        "fontSize",
+        "foregroundColor",
+        "backgroundColor",
+        "bold",
+        "italic",
+        "underline",
+        "strikethrough",
+        "smallCaps",
+        "baselineOffset",
+    }:
+        return False
+    if "backgroundColor" in effective and effective["backgroundColor"] != {}:
+        return False
+    if any(
+        key in effective and effective[key] is not False
+        for key in ("italic", "underline", "strikethrough", "smallCaps")
+    ):
+        return False
+    if "baselineOffset" in effective and effective["baselineOffset"] != "NONE":
+        return False
+    family = effective.get("weightedFontFamily")
+    if not isinstance(family, dict) or set(family) - {"fontFamily", "weight"}:
+        return False
+    weight = family.get("weight", _NORMAL_FONT_WEIGHT)
+    if (
+        type(weight) is not int
+        or not _NORMAL_FONT_WEIGHT <= weight <= _BOLD_FONT_WEIGHT
+        or weight % _FONT_WEIGHT_STEP
+    ):
+        return False
+    color = effective.get("foregroundColor")
+    if not isinstance(color, dict) or set(color) != {"color"}:
+        return False
+    nested = color.get("color")
+    if not isinstance(nested, dict) or set(nested) != {"rgbColor"}:
+        return False
+    rgb = nested.get("rgbColor")
+    if (
+        not isinstance(rgb, dict)
+        or set(rgb) - {"red", "green", "blue"}
+        or any(type(value) not in {int, float} or not 0 <= value <= 1 for value in rgb.values())
+    ):
+        return False
+    return (
+        _font_family(effective) == tokens.font_family
+        and _header_dimension_exact(effective.get("fontSize"), tokens.size_pt)
+        and _color_matches(color, tokens.color)
+        and effective.get("bold") is tokens.bold
+    )
+
+
+def _tab_logo_object(
+    document: dict[str, Any], tab: dict[str, Any], *, header_title: str | None = None
+) -> dict[str, Any] | None:
+    object_ids = _exact_header_logo_ids(tab.get("headers"), header_title=header_title)
     if len(object_ids) != 1 or not isinstance(object_ids[0], str):
         return None
     inline_objects = tab.get("inlineObjects")
@@ -826,7 +967,9 @@ def _logo_dimensions_match(embedded: dict[str, Any]) -> bool:
     )
 
 
-def _exact_header_logo_ids(segments: object) -> tuple[object, ...]:
+def _exact_header_logo_ids(
+    segments: object, *, header_title: str | None = None
+) -> tuple[object, ...]:
     segment = _only_segment(segments)
     if segment is None:
         return ()
@@ -836,7 +979,7 @@ def _exact_header_logo_ids(segments: object) -> tuple[object, ...]:
     element = content[0]
     if not isinstance(element, dict):
         return ()
-    if set(element) == {"inlineObjectId"}:
+    if header_title is None and set(element) == {"inlineObjectId"}:
         return (element["inlineObjectId"],)
     if not _location_wrapper_matches(element, {"paragraph"}):
         return ()
@@ -849,26 +992,49 @@ def _exact_header_logo_ids(segments: object) -> tuple[object, ...]:
     identifiers = _values_for_key(elements, "inlineObjectId")
     return (
         identifiers
-        if len(identifiers) == 1 and _header_elements_are_exact(elements, outer=element)
+        if len(identifiers) == 1
+        and _header_elements_are_exact(elements, outer=element, header_title=header_title)
         else ()
     )
 
 
-def _header_elements_are_exact(elements: list[Any], *, outer: dict[str, Any] | None = None) -> bool:
+def _header_elements_are_exact(
+    elements: list[Any], *, outer: dict[str, Any] | None = None, header_title: str | None = None
+) -> bool:
     if not elements or len(elements) > _MAX_HEADER_ELEMENTS:
         return False
     cursor: int | None = outer.get("startIndex") if outer is not None else None
+    before_logo = ""
+    seen_logo = False
     for index, element in enumerate(elements):
-        variant = "inlineObjectElement" if index == 0 else "textRun"
+        variant = (
+            "inlineObjectElement"
+            if isinstance(element, dict) and "inlineObjectElement" in element
+            else "textRun"
+        )
         if not isinstance(element, dict) or not _location_wrapper_matches(element, {variant}):
             return False
         payload = element.get(variant)
-        field = "inlineObjectId" if index == 0 else "content"
+        field = "inlineObjectId" if variant == "inlineObjectElement" else "content"
         if not isinstance(payload, dict) or not _plain_segment_payload_known(payload, field):
             return False
         value = payload.get(field)
-        if not isinstance(value, str) or (not value if index == 0 else value != "\n"):
+        if not isinstance(value, str) or not value:
             return False
+        if variant == "inlineObjectElement":
+            if seen_logo or before_logo != (
+                header_title + "\t" if header_title is not None else ""
+            ):
+                return False
+            seen_logo = True
+            width = 1
+        else:
+            if seen_logo:
+                if value != "\n" or index != len(elements) - 1:
+                    return False
+            else:
+                before_logo += value
+            width = utf16_length(value)
         start, end = element.get("startIndex"), element.get("endIndex")
         if (start is not None and not isinstance(start, int)) or (
             end is not None and not isinstance(end, int)
@@ -877,13 +1043,17 @@ def _header_elements_are_exact(elements: list[Any], *, outer: dict[str, Any] | N
         if start is not None and cursor is not None and start != cursor:
             return False
         effective_start = start if start is not None else cursor
-        if end is not None and effective_start is not None and end != effective_start + 1:
+        if end is not None and effective_start is not None and end != effective_start + width:
             return False
         cursor = (
-            end if end is not None else effective_start + 1 if effective_start is not None else None
+            end
+            if end is not None
+            else effective_start + width
+            if effective_start is not None
+            else None
         )
     paragraph_end = outer.get("endIndex") if outer is not None else None
-    return paragraph_end is None or cursor is None or paragraph_end == cursor
+    return seen_logo and (paragraph_end is None or cursor is None or paragraph_end == cursor)
 
 
 def _segment_has_exact_footer(segments: object) -> bool:

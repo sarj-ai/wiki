@@ -76,6 +76,7 @@ async def _plan(monkeypatch: pytest.MonkeyPatch, document: dict[str, Any]) -> _P
 
 def _apply(document: dict[str, Any], checkpoint: TabNamingCheckpoint) -> None:
     document["tabs"][0]["tabProperties"]["title"] = "Roadmap"
+    document["tabs"][0]["tabProperties"]["iconEmoji"] = "📄"
     document["tabs"][0]["documentTab"]["namedRanges"] = {
         checkpoint.marker_name: {
             "namedRanges": [
@@ -104,8 +105,8 @@ async def test_native_tab_stage_commits_once_and_recovers_lost_response(
     assert stage.calls[0]["requests"] == [
         {
             "updateDocumentTabProperties": {
-                "tabProperties": {"tabId": "t1", "title": "Roadmap"},
-                "fields": "title",
+                "tabProperties": {"tabId": "t1", "title": "Roadmap", "iconEmoji": "📄"},
+                "fields": "title,iconEmoji",
             },
         }
     ]

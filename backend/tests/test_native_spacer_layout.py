@@ -11,6 +11,7 @@ from app.document_transform.executor import DocumentTransformExecutor
 from app.document_transform.gateway import InPlaceInspection, SourceSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway, verify_brand_application
 from app.document_transform.ir import parse_google_document, utf16_length
+from app.document_transform.naming import title_case_document_name
 from app.document_transform.native_pagination import apply_native_pagination, plan_native_pagination
 from app.document_transform.schemas import DocumentTransformRequest, DriveFileSource, TransformMode
 from app.identifiers import DocsRevisionId, FileId, TaskId
@@ -155,10 +156,18 @@ def test_inherited_custom_styles_block_spacers_without_changing_keep_groups(
 
 @pytest.mark.parametrize("tamper", ["none", "spacing", "custom_spacer", "body_font"])
 @pytest.mark.parametrize("unused_custom_style", [False, True])
+@pytest.mark.parametrize("branded_naming", [False, True])
 async def test_copy_to_in_place_is_noop_or_truthful_review_never_padding_reset(
-    tamper: str, monkeypatch: pytest.MonkeyPatch, unused_custom_style: bool
+    tamper: str, monkeypatch: pytest.MonkeyPatch, unused_custom_style: bool, branded_naming: bool
 ) -> None:
     document = _styled_document()
+    if branded_naming:
+        document["tabs"][0]["tabProperties"].update(
+            title=title_case_document_name("decision"), iconEmoji="⚖️"
+        )
+        document["tabs"][0]["documentTab"]["headers"]["header-a"]["content"][0]["paragraph"][
+            "elements"
+        ][0]["textRun"]["content"] = "Decision — Sarj Polished\t"
     if unused_custom_style:
         document["namedStyles"] = {
             "styles": [{"namedStyleType": "HEADING_6", "paragraphStyle": {"shading": {}}}]
@@ -176,7 +185,7 @@ async def test_copy_to_in_place_is_noop_or_truthful_review_never_padding_reset(
     before = deepcopy(document)
     snapshot = replace(
         _snapshot(document),
-        title="Decision",
+        title="Decision — Sarj Polished" if branded_naming else "Decision",
         modified_time="2026-09-03T00:00:00Z",
         revision_id=DocsRevisionId("revision-2"),
         owned_by_me=True,
@@ -332,11 +341,11 @@ async def test_spacer_checkpoint_recomputes_proof_before_replay(tamper: str) -> 
         operation_id=task_id, request=request
     )
     checkpoint = store.checkpoints[-1]
-    assert checkpoint.request_builder_version == "google-docs-requests-v18"
+    assert checkpoint.request_builder_version == "google-docs-requests-v19"
     assert checkpoint.pagination[0].below_spacer_sha256 is not None
     if tamper == "old_version":
         checkpoint = checkpoint.model_copy(
-            update={"request_builder_version": "google-docs-requests-v17"}
+            update={"request_builder_version": "google-docs-requests-v18"}
         )
     elif tamper != "none":
         checkpoint = checkpoint.model_copy(

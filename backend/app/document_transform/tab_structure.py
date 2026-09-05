@@ -1,13 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 from itertools import pairwise
 import json
 from typing import Any
 
 from app.document_transform.ir import utf16_length
-from app.document_transform.tab_names import MAX_TAB_TITLE_UNITS
+from app.document_transform.naming import (
+    supported_tab_icon,
+    tab_icon_emoji,
+    title_case_document_name,
+)
+from app.document_transform.tab_names import MAX_TAB_TITLE_UNITS, truncate_tab_title
 from app.identifiers import DocsRevisionId, DocsTabId
 
 
@@ -36,6 +41,7 @@ class TabSection:
     # Canonical snapshots preserve native runs, styles, bullets and list definitions.
     paragraphs: tuple[str, ...]
     text: str
+    icon_emoji: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +52,7 @@ class TabStructurePlan:
     lists_json: str
     inventory_sha256: str
     section_break_json: str = "{}"
+    source_tab_properties_json: str = "{}"
 
     def preserves_inventory(self, sections: tuple[TabSection, ...]) -> bool:
         # Exact ordered snapshots, not a normalized word count or semantic hash.
@@ -77,7 +84,16 @@ def plan_tab_structure(
         return None
     tab = tabs[0]
     properties = tab.get("tabProperties", {})
-    if not isinstance(properties, dict):
+    if not isinstance(properties, dict) or set(properties) - {
+        "tabId",
+        "title",
+        "parentTabId",
+        "index",
+        "nestingLevel",
+        "iconEmoji",
+    }:
+        return None
+    if "iconEmoji" in properties and not supported_tab_icon(properties["iconEmoji"]):
         return None
     tab_id = properties.get("tabId")
     native = tab.get("documentTab", {})
@@ -90,6 +106,10 @@ def plan_tab_structure(
     if not starts:
         return None
     sections = _sections(paragraphs, starts, tab_id, document["revisionId"])
+    if properties.get("iconEmoji") or (
+        "iconEmoji" in properties and sections[0].icon_emoji is None
+    ):
+        sections = (replace(sections[0], icon_emoji=properties["iconEmoji"]), *sections[1:])
     lists_json = _canonical(native.get("lists", {}))
     return TabStructurePlan(
         DocsTabId(tab_id),
@@ -98,6 +118,7 @@ def plan_tab_structure(
         lists_json,
         _inventory(sections, lists_json),
         _canonical(native["body"]["content"][0]),
+        _canonical(properties),
     )
 
 
@@ -241,17 +262,17 @@ def _sections(
             ),
             "Overview",
         )
-        title = " ".join(heading.split()) or "Overview"
-        while utf16_length(title) > MAX_TAB_TITLE_UNITS:
-            title = title[:-1]
+        title = truncate_tab_title(
+            title_case_document_name(" ".join(heading.split()) or "Overview")
+        )
+        if not any(character.isalpha() for character in title):
+            title = "Overview"
         base = title
         suffix = 1
         while title.casefold() in occupied:
             suffix += 1
             label = f" ({suffix})"
-            while utf16_length(base + label) > MAX_TAB_TITLE_UNITS:
-                base = base[:-1]
-            title = base + label
+            title = truncate_tab_title(base, MAX_TAB_TITLE_UNITS - utf16_length(label)) + label
         occupied.add(title.casefold())
         snapshots = tuple(_canonical(p) for p in selected)
         identity = _canonical([tab_id, revision, snapshots])
@@ -263,6 +284,7 @@ def _sections(
                 selected[-1]["endIndex"],
                 snapshots,
                 "".join(_text(p) for p in selected),
+                tab_icon_emoji(title),
             )
         )
     return tuple(output)
@@ -278,6 +300,7 @@ def _inventory(sections: tuple[TabSection, ...], lists_json: str) -> str:
             [
                 [
                     section.title,
+                    section.icon_emoji,
                     section.start_index,
                     section.end_index,
                     section.text,

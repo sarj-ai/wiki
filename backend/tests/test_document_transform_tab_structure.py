@@ -51,7 +51,11 @@ def test_sections_are_deterministic_and_preserve_exact_utf16_text_and_styles():
     plan = plan_tab_structure(document, comments_verified_absent=True)
     assert plan is not None
     assert plan == plan_tab_structure(document, comments_verified_absent=True)
-    assert [section.title for section in plan.sections] == ["Priorities", "Delivery", "Risks"]
+    assert [section.title for section in plan.sections] == [
+        "Priorities",
+        "Delivery",
+        "Risks",
+    ]
     assert plan.preserves_inventory(plan.sections)
     assert not plan.preserves_inventory(tuple(reversed(plan.sections)))
     assert document == before

@@ -901,6 +901,7 @@ class _Gateway(DocumentGateway):
         self.completed_result: dict[str, Any] | None = None
         self.brand_prepares = 0
         self.imported_docx: bytes | None = None
+        self.verified_header_titles: list[str | None] = []
 
     @override
     async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot:
@@ -1031,8 +1032,10 @@ class _Gateway(DocumentGateway):
         source: SourceSnapshot,
         expected: DocumentIR,
         verify_brand: bool,
+        header_title: str | None = None,
     ) -> OutputVerification:
         del source, expected, verify_brand
+        self.verified_header_titles.append(header_title)
         return OutputVerification(
             content_preserved=self.verification.content_preserved,
             structure_preserved=self.verification.structure_preserved,
@@ -1088,7 +1091,7 @@ async def test_markdown_both_runs_unslop_then_format_and_creates_sibling() -> No
     )
 
     assert generator.calls == []
-    assert result.output.name == "Review — Sarj polished"
+    assert result.output.name == "Review — Sarj Polished"
     assert result.applied_patch_count == 1
     assert result.tool_versions["unslop_version"] == "2.3.0"
     assert result.validation.structure_preserved is True
@@ -2407,12 +2410,12 @@ def _copy_executor(
 @pytest.mark.parametrize(
     ("source_name", "mode", "override", "expected_name"),
     [
-        ("Untitled", TransformMode.FORMAT, None, "Capacity review — Sarj formatted"),
-        ("Untitled", TransformMode.BOTH, None, "Capacity review — Sarj polished"),
+        ("Untitled", TransformMode.FORMAT, None, "Capacity Review — Sarj Formatted"),
+        ("Untitled", TransformMode.BOTH, None, "Capacity Review — Sarj Polished"),
         ("Untitled", TransformMode.UNSLOP, None, "Untitled — Unslopped"),
-        ("Board  Pack", TransformMode.FORMAT, None, "Board  Pack — Sarj formatted"),
-        ("Untitled", TransformMode.FORMAT, "Approved packet", "Approved packet"),
-        ("x" * 255, TransformMode.FORMAT, None, "x" * 238 + " — Sarj formatted"),
+        ("Board  Pack", TransformMode.FORMAT, None, "Board  Pack — Sarj Formatted"),
+        ("Untitled", TransformMode.FORMAT, "Approved packet", "Approved Packet"),
+        ("x" * 255, TransformMode.FORMAT, None, "X" + "x" * 237 + " — Sarj Formatted"),
     ],
 )
 async def test_copy_automatic_name_is_persisted_before_creation_and_retry_stable(
@@ -2439,6 +2442,7 @@ async def test_copy_automatic_name_is_persisted_before_creation_and_retry_stable
     )
     assert result.output.name == expected_name
     assert {checkpoint.output_name for checkpoint in store.checkpoints} == {expected_name}
+    assert set(gateway.verified_header_titles) == {expected_name}
     assert store.events.index("checkpoint:planned") < store.events.index("resource:output")
     applies = gateway.applies
     repeated = await _copy_executor(

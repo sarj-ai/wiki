@@ -258,7 +258,15 @@ def prepare_tab_creation(
     # be retried: Docs generates IDs and there is no documented idempotency key.
     intent = replace(checkpoint, stage=StructureStage.CREATING)
     requests: list[dict[str, Any]] = [
-        {"addDocumentTab": {"tabProperties": {"title": section.title, "index": index}}}
+        {
+            "addDocumentTab": {
+                "tabProperties": {
+                    "title": section.title,
+                    "index": index,
+                    **({"iconEmoji": section.icon_emoji} if section.icon_emoji is not None else {}),
+                }
+            }
+        }
         for index, section in enumerate(checkpoint.plan.sections[1:], start=1)
     ]
     requests.append(
@@ -291,7 +299,7 @@ def recover_created_tabs(
     if len(tabs) != len(checkpoint.plan.sections) or not _has_marker(checkpoint, document):
         raise StructureStateError
     source = tabs[0]
-    if source.get("tabProperties", {}).get("tabId") != checkpoint.plan.source_tab_id:
+    if source.get("tabProperties", {}) != json.loads(checkpoint.plan.source_tab_properties_json):
         raise StructureStateError
     actual = [
         element
@@ -308,7 +316,20 @@ def recover_created_tabs(
     ids = []
     for tab, section in zip(tabs[1:], checkpoint.plan.sections[1:], strict=True):
         properties = tab.get("tabProperties", {})
-        if tab.get("childTabs") or properties.get("title") != section.title:
+        if not isinstance(properties, dict) or set(properties) - {
+            "tabId",
+            "title",
+            "index",
+            "parentTabId",
+            "nestingLevel",
+            "iconEmoji",
+        }:
+            raise StructureStateError
+        if (
+            tab.get("childTabs")
+            or properties.get("title") != section.title
+            or properties.get("iconEmoji") != section.icon_emoji
+        ):
             raise StructureStateError
         native = tab.get("documentTab", {})
         if any(
@@ -410,8 +431,16 @@ def prepare_content_move(
     requests.append(
         {
             "updateDocumentTabProperties": {
-                "tabProperties": {"tabId": plan.source_tab_id, "title": plan.sections[0].title},
-                "fields": "title",
+                "tabProperties": {
+                    "tabId": plan.source_tab_id,
+                    "title": plan.sections[0].title,
+                    **(
+                        {"iconEmoji": plan.sections[0].icon_emoji}
+                        if plan.sections[0].icon_emoji is not None
+                        else {}
+                    ),
+                },
+                "fields": "title,iconEmoji" if plan.sections[0].icon_emoji is not None else "title",
             }
         }
     )
@@ -442,10 +471,20 @@ def verify_structure_content(checkpoint: StructureCheckpoint, document: dict[str
         return False
     for tab, tab_id, section in zip(tabs, expected_ids, checkpoint.plan.sections, strict=True):
         properties = tab.get("tabProperties", {})
+        if not isinstance(properties, dict) or set(properties) - {
+            "tabId",
+            "title",
+            "index",
+            "parentTabId",
+            "nestingLevel",
+            "iconEmoji",
+        }:
+            return False
         if (
             tab.get("childTabs")
             or properties.get("tabId") != tab_id
             or properties.get("title") != section.title
+            or properties.get("iconEmoji") != section.icon_emoji
         ):
             return False
         native = tab.get("documentTab", {})
@@ -567,7 +606,12 @@ def planned_structure_document(
         tab_native["body"] = {"content": body}
         tabs.append(
             {
-                "tabProperties": {"tabId": tab_id, "title": section.title, "index": index},
+                "tabProperties": {
+                    "tabId": tab_id,
+                    "title": section.title,
+                    "index": index,
+                    **({"iconEmoji": section.icon_emoji} if section.icon_emoji is not None else {}),
+                },
                 "documentTab": tab_native,
             }
         )
