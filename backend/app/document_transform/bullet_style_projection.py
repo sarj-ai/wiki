@@ -84,6 +84,24 @@ def bullet_style_diagnostics(actual: DocumentIR, expected: DocumentIR) -> dict[s
         ),
         0,
     )
+    counts.update(
+        dict.fromkeys(
+            (
+                f"bullet_{field}_{dimension}"
+                for field in ("bold", "italic", "underline")
+                for dimension in (
+                    "added_true",
+                    "added_false",
+                    "removed_true",
+                    "removed_false",
+                    "changed",
+                    "request_present",
+                    "request_expected_false",
+                )
+            ),
+            0,
+        )
+    )
     styles = _planned_styles(expected)
     for observed, planned in zip(actual.blocks, expected.blocks, strict=False):
         if observed.native_bullet_json is None or planned.native_bullet_json is None:
@@ -147,6 +165,17 @@ def bullet_style_diagnostics(actual: DocumentIR, expected: DocumentIR) -> dict[s
                 "link": "bullet_link_mismatch",
             }.get(field, "bullet_unknown_style_mismatch")
             counts[bucket] += 1
+            if field in {"bold", "italic", "underline"}:
+                counts[f"bullet_{field}_request_present"] += int(field in permitted)
+                counts[f"bullet_{field}_request_expected_false"] += int(
+                    permitted.get(field) is False
+                )
+                dimension = "changed"
+                if field not in before_style and type(after_style.get(field)) is bool:
+                    dimension = "added_true" if after_style[field] else "added_false"
+                elif field not in after_style and type(before_style.get(field)) is bool:
+                    dimension = "removed_true" if before_style[field] else "removed_false"
+                counts[f"bullet_{field}_{dimension}"] += 1
     return counts
 
 

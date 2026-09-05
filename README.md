@@ -109,6 +109,10 @@ re-read and checked against a normalized semantic import manifest; content, stru
 restarts, and branding mismatches become explicit review findings. Native Google Doc outputs are
 re-read after mutation and checked
 against the validated text plus a deterministic structural inventory before success is recorded.
+Completed outputs receive an idempotent Wiki short link only after both content and structure
+preservation pass. Non-destructive review findings remain visible and do not prevent a link;
+the link does not approve those findings or change Drive access. Failed preservation checks
+never create an automatic link. A link-service outage does not replay document mutations.
 Native Slides use the same bounded text planner, but only plain single-run text shapes are editable.
 Bullets, links, mixed text runs, speaker notes, tables, charts, images, video, groups, masters,
 layouts, geometry, and slide order are protected by a separate topology digest.
@@ -253,6 +257,17 @@ Rollback by pausing only the new scheduler or setting maintenance mode, then rev
 resource through a reviewed plan. Keep the additive schema and pending intents; do not
 blindly backfill legacy readiness timestamps. Plan-only Terraform recovery tests use the
 real provider and never substitute for production readback.
+
+For a task-scoped diagnostic read, run the manual workflow on `main`:
+
+```sh
+gh workflow run read-transform-diagnostics.yml --ref main -f task_id=TASK_UUID
+```
+
+It uses the existing deployment identity with no new IAM grants. The reader validates the UUID
+before authentication, limits queries to this backend and the last 24 hours, and follows at most
+three request IDs derived from the task. Its output contains only pinned diagnostic names with
+typed counts or booleans and validated references, never raw logs or document content.
 
 ## License and security
 

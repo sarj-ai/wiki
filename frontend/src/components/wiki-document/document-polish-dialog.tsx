@@ -32,7 +32,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { FolderPickerDialog } from "@/components/wiki-sidebar/folder-picker-dialog";
 import { ApiError } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
-import { documentShortLink } from "@/lib/document-short-link";
 import { documentTransformApi } from "@/lib/document-transform-client";
 import {
   claimTransformRecovery,
@@ -61,6 +60,8 @@ import { cn } from "@/lib/utils";
 import { injectNewFileIntoCaches } from "@/lib/wiki-cache";
 import { wikiKeys } from "@/lib/wiki-keys";
 import { MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
+
+import { DocumentPolishReceipt } from "./document-polish-receipt";
 
 const MODES = [
   {
@@ -450,6 +451,7 @@ export function DocumentPolishDialog({
         await completeTransformRecovery(owner, sourceIdentity, operation.key);
         saveRecovery(null);
         setReviewMessage(error.message);
+        setTerminalTaskId(knownTaskId);
         setReviewResult(error.result ?? null);
         if (error.result?.outputStrategy === "in_place") {
           await queryClient.invalidateQueries({
@@ -480,9 +482,6 @@ export function DocumentPolishDialog({
   };
 
   const valid = inputSource() !== null;
-  const reviewNotes = new Map(
-    completedResult?.findings.map((finding) => [JSON.stringify(finding), finding]),
-  );
   const destinationLabel = destination
     ? destination.folderPath.length > 0
       ? destination.folderPath.join(" / ")
@@ -557,6 +556,12 @@ export function DocumentPolishDialog({
               >
                 <p className="font-medium">This {artifactNoun} needs review</p>
                 <p className="text-muted-foreground mt-1 text-xs">{reviewMessage}</p>
+                {terminalTaskId ? (
+                  <p className="text-muted-foreground mt-2 text-xs">
+                    Task reference: <code className="break-all select-all">{terminalTaskId}</code>
+                  </p>
+                ) : null}
+                {reviewResult ? <DocumentPolishReceipt result={reviewResult} /> : null}
                 {reviewResult ? (
                   <Button
                     className="mt-2 px-0"
@@ -593,42 +598,7 @@ export function DocumentPolishDialog({
                     ? " Updated the original; Drive version history is available."
                     : " Your original is unchanged."}
                 </p>
-                {completedResult.findings.length > 0 ? (
-                  <div className="space-y-1 text-sm">
-                    <p className="font-medium">Review notes</p>
-                    <ul className="list-disc space-y-1 pl-5">
-                      {[...reviewNotes].map(([key, finding]) => (
-                        <li key={key}>{finding.detail}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                {completedResult.shortLinkStatus === "ready" && completedResult.shortLinkAlias ? (
-                  <Button
-                    onClick={() => {
-                      const alias = completedResult.shortLinkAlias;
-                      if (!alias) return;
-                      void navigator.clipboard
-                        .writeText(documentShortLink(window.location.origin, alias))
-                        .then(() => toast.success("Short link copied"))
-                        .catch(() => toast.error("Couldn’t copy short link"));
-                    }}
-                    type="button"
-                    variant="outline"
-                  >
-                    <Copy className="size-4" /> Copy short link
-                  </Button>
-                ) : (
-                  <p className="text-muted-foreground text-sm">
-                    {completedResult.shortLinkStatus === "unavailable"
-                      ? "Polish succeeded, but the short link could not be created."
-                      : "No automatic short link is available for this result."}{" "}
-                    Open the document and choose Short link to create one without polishing again.
-                  </p>
-                )}
-                <p className="text-muted-foreground text-xs">
-                  Short links do not change who can access the document.
-                </p>
+                <DocumentPolishReceipt result={completedResult} />
               </div>
             ) : null}
             {sessionIdentityUnavailable ? (

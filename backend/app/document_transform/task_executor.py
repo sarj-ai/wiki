@@ -486,7 +486,14 @@ async def _execute_claimed(
             error_detail="The document transformation could not be completed",
             cause=exc,
         )
-    if short_links is not None and not result.needs_review:
+    if (
+        short_links is not None
+        and result.validation.protected_content_preserved
+        and result.validation.structure_preserved
+    ):
+        # A completed, preserved output can still carry review findings (for
+        # example an unsupported date chip). Its private navigation link does
+        # not approve those findings or expand the output's permissions.
         alias = await short_links.ensure(result.output.file_id, result.output.name)
         result = result.model_copy(
             update={

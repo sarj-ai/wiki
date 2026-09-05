@@ -26,6 +26,7 @@ from app.document_transform.schemas import (
     DriveFileSource,
     MarkdownSource,
     OutputStrategy,
+    TransformFinding,
     TransformMode,
     ValidationSummary,
 )
@@ -183,6 +184,10 @@ class _SuccessTransform:
     def __init__(self) -> None:
         self.markdown: str | None = None
         self.needs_review = False
+        self.protected_content_preserved = True
+        self.structure_preserved = True
+        self.source_unchanged = True
+        self.calls = 0
 
     async def execute(
         self,
@@ -190,29 +195,40 @@ class _SuccessTransform:
         operation_id: uuid.UUID,
         request: DocumentTransformRequest,
     ) -> DocumentTransformResult:
-        assert isinstance(request.source, MarkdownSource)
-        self.markdown = request.source.content
+        self.calls += 1
+        if isinstance(request.source, MarkdownSource):
+            self.markdown = request.source.content
         return DocumentTransformResult(
             operation_id=operation_id,
             source_sha256="source",
             output=DocumentOutput(
-                file_id=FileId("output"),
+                file_id=request.source.file_id
+                if request.output_strategy is OutputStrategy.IN_PLACE
+                and isinstance(request.source, DriveFileSource)
+                else FileId("output"),
                 name="Output",
                 parent_folder_id=FileId("folder"),
             ),
             mode=request.mode,
             applied_patch_count=0,
-            findings=[],
+            findings=[
+                TransformFinding(
+                    code="native_date_provider_rejected", detail="Original date retained"
+                )
+            ]
+            if self.needs_review
+            else [],
             validation=ValidationSummary(
-                source_unchanged=True,
-                protected_content_preserved=True,
-                structure_preserved=True,
+                source_unchanged=self.source_unchanged,
+                protected_content_preserved=self.protected_content_preserved,
+                structure_preserved=self.structure_preserved,
                 unsafe_patch_count=0,
             ),
             model_ids=[],
             tool_versions={},
             pipeline_version=PIPELINE_VERSION,
             needs_review=self.needs_review,
+            output_strategy=request.output_strategy,
             brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
             brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
             deterministic_patch_count=0,
@@ -332,10 +348,13 @@ async def test_success_records_automatic_short_link_without_replaying_transform(
     assert tasks.failed == tasks.deferred == 0
 
 
-async def test_review_required_output_does_not_create_automatic_short_link() -> None:
+@pytest.mark.parametrize("alias", ["output-document", None])
+async def test_preserved_review_output_gets_automatic_link_without_approving_findings(
+    alias: str | None,
+) -> None:
     payload = _payload()
     task_id = TaskId(uuid.uuid7())
-    links = _ShortLinks("output-document")
+    links = _ShortLinks(alias)
     transform = _SuccessTransform()
     transform.needs_review = True
     completed = await task_executor_module._execute_claimed(
@@ -348,7 +367,81 @@ async def test_review_required_output_does_not_create_automatic_short_link() -> 
     )
     assert isinstance(completed, SucceededTaskRead)
     assert isinstance(completed.result, DocumentTransformResult)
+    assert completed.result.short_link_status == ("ready" if alias else "unavailable")
+    assert completed.result.short_link_alias == alias
+    assert completed.result.needs_review is True
+    assert completed.result.findings[0].code == "native_date_provider_rejected"
+    assert links.calls == [(FileId("output"), "Output")]
+    assert transform.calls == 1
+
+
+@pytest.mark.parametrize(("protected", "structure"), [(False, True), (True, False), (False, False)])
+async def test_unpreserved_review_output_never_gets_automatic_link(
+    protected: bool, structure: bool
+) -> None:
+    payload = _payload()
+    task_id = TaskId(uuid.uuid7())
+    transform = _SuccessTransform()
+    transform.needs_review = True
+    transform.protected_content_preserved = protected
+    transform.structure_preserved = structure
+    links = _ShortLinks("output-document")
+    completed = await task_executor_module._execute_claimed(
+        task_id,
+        tasks=_SuccessTasks(payload=payload),
+        transform=transform,
+        claim=_claim(task_id, attempt_count=1),
+        payload=payload,
+        short_links=links,
+    )
+    assert isinstance(completed, SucceededTaskRead)
+    assert isinstance(completed.result, DocumentTransformResult)
     assert completed.result.short_link_status is None
+    assert completed.result.needs_review is True
+    assert links.calls == []
+
+
+async def test_successful_in_place_output_links_despite_expected_source_change() -> None:
+    payload = DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("source"),
+            expected_modified_time="2026-09-04T00:00:00Z",
+        ),
+        mode=TransformMode.FORMAT,
+        output_strategy=OutputStrategy.IN_PLACE,
+    )
+    task_id = TaskId(uuid.uuid7())
+    transform = _SuccessTransform()
+    transform.source_unchanged = False
+    links = _ShortLinks("output-document")
+    completed = await task_executor_module._execute_claimed(
+        task_id,
+        tasks=_SuccessTasks(payload=payload),
+        transform=transform,
+        claim=_claim(task_id, attempt_count=1),
+        payload=payload,
+        short_links=links,
+    )
+    assert isinstance(completed, SucceededTaskRead)
+    assert isinstance(completed.result, DocumentTransformResult)
+    assert completed.result.validation.source_unchanged is False
+    assert completed.result.short_link_alias == "output-document"
+    assert links.calls == [(FileId("source"), "Output")]
+
+
+async def test_verification_exception_never_attempts_alias() -> None:
+    payload = _payload()
+    task_id = TaskId(uuid.uuid7())
+    links = _ShortLinks("output-document")
+    await task_executor_module._execute_claimed(
+        task_id,
+        tasks=_SuccessTasks(payload=payload),
+        transform=_VerificationFailureTransform(),
+        claim=_claim(task_id, attempt_count=1),
+        payload=payload,
+        short_links=links,
+    )
     assert links.calls == []
 
 
