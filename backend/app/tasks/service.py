@@ -213,49 +213,65 @@ class PostgresTaskService(TaskService):
                     raise TaskIdempotencyConflictError
                 await self._db.commit()
                 return TaskReservation(task=_to_read(existing), created=False)
-            if isinstance(document_transform_payload.source, DriveFileSource):
-                active = (
-                    await self._db.execute(
-                        select(Task)
-                        .where(
-                            Task.owner_user_id == owner_user_id,
-                            Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
-                            Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
-                            Task.payload["source"]["kind"].astext == "drive_file",
-                            Task.payload["source"]["file_id"].astext
-                            == document_transform_payload.source.file_id,
-                        )
-                        .order_by(Task.created_at, Task.id)
-                        .limit(1)
+            active_row = (
+                await self._db.execute(
+                    select(Task, (Task.expires_at <= func.now()).label("expired"))
+                    .where(
+                        Task.owner_user_id == owner_user_id,
+                        Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+                        Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
+                        or_(
+                            Task.expires_at > func.now(),
+                            and_(
+                                Task.status == TaskStatus.RUNNING,
+                                Task.lease_expires_at > func.now() - _LEASE_RETENTION_GRACE,
+                            ),
+                        ),
+                        (
+                            and_(
+                                Task.payload["source"]["kind"].astext == "drive_file",
+                                Task.payload["source"]["file_id"].astext
+                                == document_transform_payload.source.file_id,
+                            )
+                            if isinstance(document_transform_payload.source, DriveFileSource)
+                            else and_(
+                                Task.payload["source"]["kind"].astext == "markdown",
+                                Task.request_hash == request_hash,
+                            )
+                        ),
                     )
-                ).scalar_one_or_none()
-                if active is not None:
-                    # A new key is a fresh access request, unlike an exact-key
-                    # replay. Recheck scope before disclosing an active task.
-                    try:
-                        if admit is not None:
-                            await admit()
-                    except BaseException:
-                        await self._db.rollback()
-                        raise
-                    if active.request_hash != request_hash:
-                        await self._db.rollback()
-                        raise TaskTargetBusyError
-                    await self._db.execute(
-                        pg_insert(TaskReplayKey)
-                        .values(
-                            owner_user_id=owner_user_id,
-                            kind=kind,
-                            idempotency_key=idempotency_key,
-                            task_id=active.id,
-                        )
-                        .on_conflict_do_update(
-                            index_elements=["owner_user_id", "kind", "idempotency_key"],
-                            set_={"task_id": active.id},
-                        )
+                    .order_by(Task.created_at, Task.id)
+                    .limit(1)
+                )
+            ).one_or_none()
+            if active_row is not None:
+                active = active_row[0]
+                # A new key is a fresh access request, unlike an exact-key
+                # replay. Recheck scope before disclosing an active task.
+                try:
+                    if admit is not None:
+                        await admit()
+                except BaseException:
+                    await self._db.rollback()
+                    raise
+                if active_row[1] or active.request_hash != request_hash:
+                    await self._db.rollback()
+                    raise TaskTargetBusyError
+                await self._db.execute(
+                    pg_insert(TaskReplayKey)
+                    .values(
+                        owner_user_id=owner_user_id,
+                        kind=kind,
+                        idempotency_key=idempotency_key,
+                        task_id=active.id,
                     )
-                    await self._db.commit()
-                    return TaskReservation(task=_to_read(active), created=False)
+                    .on_conflict_do_update(
+                        index_elements=["owner_user_id", "kind", "idempotency_key"],
+                        set_={"task_id": active.id},
+                    )
+                )
+                await self._db.commit()
+                return TaskReservation(task=_to_read(active), created=False)
             active_count = (
                 await self._db.execute(
                     select(func.count())
@@ -336,6 +352,15 @@ class PostgresTaskService(TaskService):
             return TaskReservation(task=_to_read(task), created=True)
 
         existing = await self._maybe_existing(owner_user_id, kind, idempotency_key)
+        if existing is None and document_transform_payload is not None:
+            # PostgreSQL may test the original key's uniqueness before the
+            # unreferenced expiry DELETE CTE runs. The owner lock is still held;
+            # retry once against this transaction's completed cleanup, without
+            # repeating admission or changing the insertion intent.
+            task = (await self._db.execute(statement)).scalar_one_or_none()
+            if task is not None:
+                await self._db.commit()
+                return TaskReservation(task=_to_read(task), created=True)
         if existing is None:
             await self._db.rollback()
             raise TaskTargetBusyError
