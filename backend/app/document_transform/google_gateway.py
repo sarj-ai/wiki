@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from functools import cache
 import hashlib
+from http import HTTPStatus
 from io import BytesIO
 import json
 import threading
@@ -69,6 +70,7 @@ from app.document_transform.native_date_flow import (
     date_invariant_sha256,
     plan_copy_dates,
     verified_date_projection,
+    verify_dates_unchanged,
 )
 from app.document_transform.native_footer import FooterAction, FooterCheckpoint, plan_native_footer
 from app.document_transform.native_footer_flow import (
@@ -185,6 +187,9 @@ class GoogleDocumentGateway(DocumentGateway):
         self, *, document_id: FileId, checkpoint: NativeDateCheckpoint
     ) -> NativeDateCheckpoint:
         document = await asyncio.to_thread(self._get_document_sync, document_id)
+        if checkpoint.declined_reason is not None:
+            verify_dates_unchanged(document, checkpoint)
+            return checkpoint
         if not _has_exact_named_range(document, checkpoint.marker_name, checkpoint.marker_range):
             if (
                 checkpoint.complete
@@ -192,13 +197,23 @@ class GoogleDocumentGateway(DocumentGateway):
                 or date_invariant_sha256(document) != checkpoint.invariant_sha256
             ):
                 raise InPlaceNeedsReviewError
-            result = await self.apply_in_place_stage(
-                document_id=document_id,
-                required_revision_id=checkpoint.revision_id,
-                marker_name=checkpoint.marker_name,
-                marker_range=checkpoint.marker_range,
-                requests=checkpoint.requests,
-            )
+            try:
+                result = await self.apply_in_place_stage(
+                    document_id=document_id,
+                    required_revision_id=checkpoint.revision_id,
+                    marker_name=checkpoint.marker_name,
+                    marker_range=checkpoint.marker_range,
+                    requests=checkpoint.requests,
+                )
+            except DocumentGatewayError as exc:
+                if exc.http_status != HTTPStatus.BAD_REQUEST:
+                    raise
+                document = await asyncio.to_thread(self._get_document_sync, document_id)
+                verify_dates_unchanged(document, checkpoint)
+                # The executor persists this outcome before continuing. A crash
+                # before that save can redispatch the rejected CAS batch, but
+                # exact preimage/marker recovery still prevents duplicate edits.
+                return checkpoint.model_copy(update={"declined_reason": "provider_rejected"})
             document = result.document
         verified_date_projection(document, checkpoint)
         return checkpoint.model_copy(
@@ -835,7 +850,9 @@ class GoogleDocumentGateway(DocumentGateway):
             document = self._get_document_sync(document_id)
             logger.warning(
                 "document stage provider boundary http_status={http_status} "
-                "revision_unchanged={revision_unchanged} marker_checks={marker_checks}",
+                "revision_unchanged={revision_unchanged} marker_checks={marker_checks} "
+                "request_kinds={request_kinds}",
+                request_kinds=stage_request_kinds(requests),
                 http_status=exc.http_status if isinstance(exc, DocumentGatewayError) else None,
                 revision_unchanged=document.get("revisionId") == required_revision_id,
                 marker_checks=_named_range_diagnostics(
@@ -854,7 +871,8 @@ class GoogleDocumentGateway(DocumentGateway):
         if not _has_exact_named_range(document, marker_name, expected_marker_range):
             logger.warning(
                 "document stage marker verification failed revision_unchanged={revision_unchanged} "
-                "marker_checks={marker_checks}",
+                "marker_checks={marker_checks} request_kinds={request_kinds}",
+                request_kinds=stage_request_kinds(requests),
                 revision_unchanged=document.get("revisionId") == required_revision_id,
                 marker_checks=_named_range_diagnostics(
                     document, marker_name, expected_marker_range
@@ -1695,6 +1713,29 @@ def _post_mutation_marker_range(
     expected["startIndex"] = start
     expected["endIndex"] = end
     return expected
+
+
+_STAGE_REQUEST_KINDS = frozenset(
+    {
+        "createFooter",
+        "createHeader",
+        "insertText",
+        "deleteContentRange",
+        "insertDate",
+        "updateTextStyle",
+        "updateParagraphStyle",
+        "updateDocumentStyle",
+        "createNamedRange",
+        "deleteNamedRange",
+        "updateDocumentTabProperties",
+    }
+)
+
+
+def stage_request_kinds(requests: list[dict[str, Any]]) -> list[str]:
+    return sorted(
+        {key if key in _STAGE_REQUEST_KINDS else "other" for request in requests for key in request}
+    )
 
 
 def _named_range_diagnostics(

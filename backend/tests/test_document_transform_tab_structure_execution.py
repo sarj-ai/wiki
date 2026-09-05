@@ -89,6 +89,42 @@ def test_creation_requires_persisted_intent_and_never_retries_ambiguous_dispatch
         prepare_content_move(intent)
 
 
+def test_native_keep_lines_together_is_preserved_in_tab_move_requests():
+    document = _document()
+    for element in document["tabs"][0]["documentTab"]["body"]["content"]:
+        if "paragraph" in element:
+            element["paragraph"]["paragraphStyle"]["keepLinesTogether"] = True
+    plan = plan_tab_structure(document, comments_verified_absent=True)
+    assert plan is not None
+    assert executable_structure(plan, copy_mode=True)
+    intent, _ = prepare_tab_creation(StructureCheckpoint(plan))
+    created = bind_created_tabs(
+        intent,
+        tab_ids=(DocsTabId("delivery"), DocsTabId("risks")),
+        revision_id=DocsRevisionId("r2"),
+    )
+    _, body = prepare_content_move(created)
+    updates = [
+        request["updateParagraphStyle"]
+        for request in body["requests"]
+        if "updateParagraphStyle" in request
+    ]
+    assert updates
+    assert all(update["paragraphStyle"]["keepLinesTogether"] for update in updates)
+    assert all("keepLinesTogether" in update["fields"] for update in updates)
+
+
+def test_header_footer_margins_still_require_exact_cross_tab_style_preservation():
+    checkpoint, _ = _moving()
+    document = _output(checkpoint)
+    style = {"marginHeader": {"magnitude": 36, "unit": "PT"}}
+    for tab in document["tabs"]:
+        tab["documentTab"]["documentStyle"] = deepcopy(style)
+    assert verify_structure_content(checkpoint, document)
+    document["tabs"][1]["documentTab"]["documentStyle"]["marginHeader"]["magnitude"] = 72
+    assert not verify_structure_content(checkpoint, document)
+
+
 @pytest.mark.parametrize(
     "ids",
     [("same", "same"), ("tab1", "new"), ("one",), ("", "two")],

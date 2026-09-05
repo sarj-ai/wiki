@@ -16,6 +16,9 @@ MIN_SECTION_WORDS = 200
 MIN_SECTIONS = 3
 MAX_SECTIONS = 6
 _PERMITTED_NATIVE_FIELDS = frozenset({"body", "documentStyle", "namedStyles", "lists"})
+_HEADER_FOOTER_LAYOUT_FIELDS = frozenset(
+    {"marginHeader", "marginFooter", "useFirstPageHeaderFooter", "useEvenPageHeaderFooter"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,7 +113,15 @@ def _safe_native(native: object) -> bool:
         return False
     if not isinstance(native.get("body"), dict) or not isinstance(native.get("lists", {}), dict):
         return False
-    return not any("header" in key.lower() or "footer" in key.lower() for key in style)
+    # Layout settings do not imply an occupied segment. Native header/footer
+    # maps are already rejected above; retain fail-closed handling for IDs and
+    # unknown future header/footer properties. Execution still compares the
+    # complete unmodified documentStyle across every created tab.
+    return not any(
+        ("header" in key.lower() or "footer" in key.lower())
+        and key not in _HEADER_FOOTER_LAYOUT_FIELDS
+        for key in style
+    )
 
 
 def _paragraphs(content: object) -> list[dict[str, Any]]:

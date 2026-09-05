@@ -97,7 +97,7 @@ _PARAGRAPH_FIELDS = frozenset(
         "indentFirstLine",
         "keepWithNext",
         "avoidWidowAndOrphan",
-        "keepTogether",
+        "keepLinesTogether",
         "direction",
         "spacingMode",
         "pageBreakBefore",

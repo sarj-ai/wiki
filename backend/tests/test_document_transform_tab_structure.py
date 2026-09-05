@@ -69,6 +69,28 @@ def test_protected_native_features_decline(feature: str):
     assert plan_tab_structure(document, comments_verified_absent=True) is None
 
 
+def test_header_footer_layout_settings_do_not_masquerade_as_occupied_segments():
+    document = _document()
+    document["tabs"][0]["documentTab"]["documentStyle"] = {
+        "marginHeader": {"magnitude": 36, "unit": "PT"},
+        "marginFooter": {"magnitude": 36, "unit": "PT"},
+        "useFirstPageHeaderFooter": False,
+        "useEvenPageHeaderFooter": False,
+    }
+    before = deepcopy(document)
+    assert plan_tab_structure(document, comments_verified_absent=True) is not None
+    assert document == before
+
+
+@pytest.mark.parametrize(
+    "field", ["defaultHeaderId", "firstPageFooterId", "evenPageHeaderId", "futureHeaderProperty"]
+)
+def test_segment_references_and_unknown_header_fields_still_decline(field: str):
+    document = _document()
+    document["tabs"][0]["documentTab"]["documentStyle"] = {field: "protected"}
+    assert plan_tab_structure(document, comments_verified_absent=True) is None
+
+
 def test_comments_unknown_existing_tabs_and_short_documents_decline():
     document = _document()
     assert plan_tab_structure(document) is None
