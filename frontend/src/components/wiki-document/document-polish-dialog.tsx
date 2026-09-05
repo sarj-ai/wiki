@@ -939,10 +939,10 @@ export function DocumentPolishDialog({
                       ? "Starting Markdown import…"
                       : `Starting ${artifactNoun} polish…`
                     : source.kind === "markdown"
-                      ? "Importing and checking the new document… Keep this window open."
+                      ? "Importing and checking the new document…"
                       : effectiveOutputStrategy === "in_place"
-                        ? `Updating and checking the original ${artifactNoun}… Keep this window open.`
-                        : `Creating and checking the new ${artifactNoun}… Keep this window open.`}
+                        ? `Updating and checking the original ${artifactNoun}…`
+                        : `Creating and checking the new ${artifactNoun}…`}
                 </span>
               </div>
             ) : null}

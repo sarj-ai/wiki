@@ -91,6 +91,7 @@ from app.document_transform.native_footer_flow import (
     verified_footer_coverage_projection,
     verified_footer_projection,
 )
+from app.document_transform.native_safety_diagnostics import SafetyStage, native_safety_error
 from app.document_transform.provider_diagnostics import native_provider_diagnostics
 from app.document_transform.schemas import (
     DocumentOutput,
@@ -191,7 +192,7 @@ class GoogleDocumentGateway(DocumentGateway):
     ) -> NativeDateCheckpoint | None:
         document = await asyncio.to_thread(self._get_document_sync, draft.document_id)
         if document.get("revisionId") != draft.revision_id:
-            raise InPlaceNeedsReviewError
+            native_safety_error("date_plan", "revision")
         return plan_copy_dates(document, operation_id=operation_id)
 
     @override
@@ -208,7 +209,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 or document.get("revisionId") != checkpoint.revision_id
                 or date_invariant_sha256(document) != checkpoint.invariant_sha256
             ):
-                raise InPlaceNeedsReviewError
+                native_safety_error("date_pre", "preimage")
             try:
                 result = await self.apply_in_place_stage(
                     document_id=document_id,
@@ -417,7 +418,7 @@ class GoogleDocumentGateway(DocumentGateway):
     ) -> TabNamingCheckpoint | None:
         document = await asyncio.to_thread(self._get_document_sync, document_id)
         if document.get("revisionId") != required_revision_id:
-            raise InPlaceNeedsReviewError
+            native_safety_error("tab_naming_plan", "revision")
         plan = plan_tab_names(
             parse_google_document(document, title=title), native_tab_properties(document)
         )
@@ -441,7 +442,7 @@ class GoogleDocumentGateway(DocumentGateway):
     ) -> NativeFooterCheckpoint | None:
         document = await asyncio.to_thread(self._get_document_sync, draft.document_id)
         if document.get("revisionId") != draft.revision_id:
-            raise InPlaceNeedsReviewError
+            native_safety_error("footer_plan", "revision")
         url = f"https://wiki.sarj.ai/d/{draft.document_id}"
         topology = tuple(DocsTabId(tab_id) for tab_id, _ in _document_tabs(document))
         eligible: list[DocsTabId] = []
@@ -486,7 +487,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 )
         marker_range = _terminal_body_marker_range(document)
         if marker_range is None:
-            raise InPlaceNeedsReviewError
+            native_safety_error("footer_plan", "marker")
         first_tab = eligible[0] if eligible else draft.tab_id
         suffix = f"{operation_id.hex}_{topology.index(first_tab)}"
         return NativeFooterCheckpoint(
@@ -515,13 +516,13 @@ class GoogleDocumentGateway(DocumentGateway):
         coverage = checkpoint.coverage
         if coverage is not None:
             if tuple(tab_id for tab_id, _ in _document_tabs(document)) != coverage.topology:
-                raise InPlaceNeedsReviewError
+                native_safety_error("footer_coverage", "topology")
             if checkpoint.stage is NativeFooterStage.COMPLETE:
                 if not coverage.pending:
                     verified_footer_coverage_projection(document, checkpoint)
                     return checkpoint
                 if document.get("revisionId") != checkpoint.revision_id:
-                    raise InPlaceNeedsReviewError
+                    native_safety_error("footer_advance", "revision")
                 verified_footer_projection(document, checkpoint, populated=True)
                 next_tab = coverage.pending[0]
                 suffix = f"{checkpoint.create_marker.rsplit('_', 1)[0]}_{coverage.topology.index(next_tab)}"
@@ -547,13 +548,14 @@ class GoogleDocumentGateway(DocumentGateway):
                     ),
                 )
         creating = checkpoint.stage is NativeFooterStage.CREATE
+        diagnostic_stage: SafetyStage = "footer_create" if creating else "footer_populate"
         marker = checkpoint.create_marker if creating else checkpoint.populate_marker
         if not _has_exact_named_range(document, marker, checkpoint.marker_range):
             if document.get("revisionId") != checkpoint.revision_id:
-                raise InPlaceNeedsReviewError
+                native_safety_error(diagnostic_stage, "revision")
             if creating:
                 if footer_invariant_sha256(document) != checkpoint.invariant_sha256:
-                    raise InPlaceNeedsReviewError
+                    native_safety_error(diagnostic_stage, "invariant")
             else:
                 verified_footer_projection(document, checkpoint, populated=False)
             plan = plan_native_footer(
@@ -566,7 +568,7 @@ class GoogleDocumentGateway(DocumentGateway):
             )
             expected_action = FooterAction.CREATE if creating else FooterAction.POPULATE
             if plan.action is not expected_action:
-                raise InPlaceNeedsReviewError
+                native_safety_error(diagnostic_stage, "action")
             result = await self.apply_in_place_stage(
                 document_id=document_id,
                 required_revision_id=checkpoint.revision_id,
@@ -596,17 +598,17 @@ class GoogleDocumentGateway(DocumentGateway):
             tab_naming_invariant_sha256(document, checkpoint.marker_name)
             != checkpoint.invariant_sha256
         ):
-            raise InPlaceNeedsReviewError
+            native_safety_error("tab_naming_pre", "invariant")
         if _has_exact_named_range(document, checkpoint.marker_name, checkpoint.marker_range):
             if not checkpoint.plan.matches_result(native_tab_properties(document)):
-                raise InPlaceNeedsReviewError
+                native_safety_error("tab_naming_pre", "topology")
             return DocsRevisionId(_required_string(document, "revisionId"))
         if document.get(
             "revisionId"
         ) != checkpoint.revision_id or not checkpoint.plan.matches_preimage(
             native_tab_properties(document)
         ):
-            raise InPlaceNeedsReviewError
+            native_safety_error("tab_naming_pre", "preimage")
         result = await self.apply_in_place_stage(
             document_id=document_id,
             required_revision_id=checkpoint.revision_id,
@@ -619,7 +621,7 @@ class GoogleDocumentGateway(DocumentGateway):
         ) != checkpoint.invariant_sha256 or not checkpoint.plan.matches_result(
             native_tab_properties(result.document)
         ):
-            raise InPlaceNeedsReviewError
+            native_safety_error("tab_naming_post", "preimage")
         return result.revision_id
 
     @override

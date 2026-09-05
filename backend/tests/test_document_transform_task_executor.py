@@ -184,6 +184,7 @@ class _SuccessTransform:
     def __init__(self) -> None:
         self.markdown: str | None = None
         self.needs_review = False
+        self.review_code = "native_date_provider_rejected"
         self.protected_content_preserved = True
         self.structure_preserved = True
         self.source_unchanged = True
@@ -211,11 +212,7 @@ class _SuccessTransform:
             ),
             mode=request.mode,
             applied_patch_count=0,
-            findings=[
-                TransformFinding(
-                    code="native_date_provider_rejected", detail="Original date retained"
-                )
-            ]
+            findings=[TransformFinding(code=self.review_code, detail="Original content retained")]
             if self.needs_review
             else [],
             validation=ValidationSummary(
@@ -349,14 +346,19 @@ async def test_success_records_automatic_short_link_without_replaying_transform(
 
 
 @pytest.mark.parametrize("alias", ["output-document", None])
+@pytest.mark.parametrize(
+    "review_code", ["native_date_provider_rejected", "google_doc_text_target_unsupported"]
+)
 async def test_preserved_review_output_gets_automatic_link_without_approving_findings(
     alias: str | None,
+    review_code: str,
 ) -> None:
     payload = _payload()
     task_id = TaskId(uuid.uuid7())
     links = _ShortLinks(alias)
     transform = _SuccessTransform()
     transform.needs_review = True
+    transform.review_code = review_code
     completed = await task_executor_module._execute_claimed(
         task_id,
         tasks=_SuccessTasks(payload=payload),
@@ -370,7 +372,7 @@ async def test_preserved_review_output_gets_automatic_link_without_approving_fin
     assert completed.result.short_link_status == ("ready" if alias else "unavailable")
     assert completed.result.short_link_alias == alias
     assert completed.result.needs_review is True
-    assert completed.result.findings[0].code == "native_date_provider_rejected"
+    assert completed.result.findings[0].code == review_code
     assert links.calls == [(FileId("output"), "Output")]
     assert transform.calls == 1
 

@@ -1269,12 +1269,14 @@ async def test_completed_operation_is_replayed_without_second_mutation() -> None
     ],
     ids=["content-and-structure", "brand"],
 )
+@pytest.mark.parametrize("rich", [False, True], ids=["plain", "preserved-rich"])
 async def test_native_doc_post_write_mismatch_is_reported_for_review(
     mode: TransformMode,
     verification: OutputVerification,
     expected_codes: set[str],
+    rich: bool,
 ) -> None:
-    document = {
+    document: dict[str, Any] = {
         "revisionId": "source-revision-1",
         "tabs": [
             {
@@ -1298,6 +1300,10 @@ async def test_native_doc_post_write_mismatch_is_reported_for_review(
             }
         ],
     }
+    if rich:
+        document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["elements"].append(
+            {"inlineObjectElement": {"inlineObjectId": "authored-object"}}
+        )
     gateway = _Gateway(
         SourceSnapshot(
             title="Decision",
@@ -1327,14 +1333,19 @@ async def test_native_doc_post_write_mismatch_is_reported_for_review(
         assert gateway.completed_result is None
         return
 
-    result = await DocumentTransformExecutor(gateway=gateway, generator=_Generator()).execute(
-        operation_id=uuid.uuid7(), request=request
-    )
+    executor = DocumentTransformExecutor(gateway=gateway, generator=_Generator())
+    operation_id = uuid.uuid7()
+    result = await executor.execute(operation_id=operation_id, request=request)
+    applies = gateway.applies
+    assert await executor.execute(operation_id=operation_id, request=request) == result
+    assert gateway.applies == applies
 
     assert result.needs_review is True
     assert result.validation.protected_content_preserved is verification.content_preserved
     assert result.validation.structure_preserved is verification.structure_preserved
-    assert {finding.code for finding in result.findings} == expected_codes
+    assert {finding.code for finding in result.findings} == expected_codes | (
+        {"google_doc_text_target_unsupported"} if rich else set()
+    )
 
 
 async def test_markdown_import_readback_mismatch_is_reported_for_review() -> None:
