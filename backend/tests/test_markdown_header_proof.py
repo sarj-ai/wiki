@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 
+from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.docx_renderer import markdown_import_manifest
 from app.document_transform.markdown_import import (
     markdown_import_brand_diagnostics,
@@ -41,7 +42,13 @@ def test_exact_header_accepts_legal_native_metadata(*, newline: bool, indices: s
     assert result.brand_applied
     assert result.content_preserved
     assert result.structure_preserved
-    assert all(markdown_import_brand_diagnostics(document, manifest).values())
+    checks = markdown_import_brand_diagnostics(document, manifest)
+    assert all(
+        value
+        for key, value in checks.items()
+        if key not in {"import_logo_source_uri_absent", "import_logo_source_uri_exact"}
+    )
+    assert checks["import_logo_source_uri_absent"] or checks["import_logo_source_uri_exact"]
     assert document == before
 
 
@@ -152,4 +159,44 @@ def test_diagnostics_preserve_logo_metadata_short_circuit(magnitude: object) -> 
     assert "import_footer_shape" not in checks
     assert "import_body_style" not in checks
     assert verify_markdown_import(document, manifest) == before
+    assert "SECRET" not in json.dumps(checks)
+
+
+@pytest.mark.parametrize(
+    "change", ["title", "description", "malformed", "absent", "null", "empty", "foreign", "exact"]
+)
+def test_logo_metadata_components_are_static_and_do_not_relax_proof(change: str) -> None:
+    document = _header_document()
+    embedded = document["tabs"][0]["documentTab"]["inlineObjects"]["logo-1"][
+        "inlineObjectProperties"
+    ]["embeddedObject"]
+    embedded["imageProperties"] = {}
+    if change in {"title", "description"}:
+        embedded[change] = "SECRET"
+    elif change == "malformed":
+        embedded["imageProperties"] = "SECRET"
+    elif change != "absent":
+        embedded["imageProperties"]["sourceUri"] = {
+            "null": None,
+            "empty": "",
+            "foreign": "SECRET",
+            "exact": CURRENT_BRAND_MANIFEST.assets.logo_uri,
+        }[change]
+    manifest = markdown_import_manifest("Body", title="Import", branded=True)
+    checks = markdown_import_brand_diagnostics(document, manifest)
+    expected = change in {"absent", "null", "exact"}
+    assert checks["import_logo_metadata"] is expected
+    assert verify_markdown_import(document, manifest).brand_applied is expected
+    assert checks["import_logo_title_exact"] is (change != "title")
+    assert checks["import_logo_description_exact"] is (change != "description")
+    assert checks["import_logo_image_properties_valid"] is (change != "malformed")
+    if change == "malformed":
+        assert "import_logo_source_uri_absent" not in checks
+        assert "import_logo_source_uri_exact" not in checks
+    else:
+        assert checks["import_logo_source_uri_absent"] is (
+            change in {"title", "description", "absent", "null"}
+        )
+        assert checks["import_logo_source_uri_exact"] is (change == "exact")
+    assert all(type(value) is bool for value in checks.values())
     assert "SECRET" not in json.dumps(checks)
