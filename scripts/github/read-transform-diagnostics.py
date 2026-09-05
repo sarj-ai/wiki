@@ -137,6 +137,18 @@ PROVIDER_FIELDS = MappingProxyType(
 READ_FAILURES = (ValueError, TypeError, KeyError, OSError, subprocess.TimeoutExpired)
 BOOLEAN_FIELDS = frozenset(
     [
+        "import_brand_requested",
+        "import_single_tab",
+        "import_block_count",
+        "import_margins",
+        "import_header_shape",
+        "import_logo_object",
+        "import_logo_metadata",
+        "import_logo_dimensions",
+        "import_footer_shape",
+        "import_body_style",
+        "import_content_preserved",
+        "import_structure_preserved",
         "spacer_scope_checked",
         "spacer_named_styles_known",
         "in_place_active_suggestions",
@@ -278,6 +290,7 @@ ERROR_CODES = frozenset(
     ]
 )
 MESSAGE_PREFIXES = (
+    "document markdown import verification checks=",
     "document native safety stop stage=",
     "document in-place preflight",
     "document bullet stage snapshot stage=",
