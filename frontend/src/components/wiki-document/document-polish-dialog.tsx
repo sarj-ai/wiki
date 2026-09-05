@@ -294,13 +294,14 @@ export function DocumentPolishDialog({
     onOpenChange(false);
   };
 
+  const recoveredMarkdownSource =
+    source.kind === "markdown" &&
+    restoredDraft?.owner === owner &&
+    restoredDraft.key === unresolved?.key
+      ? restoredDraft.source
+      : null;
   const inputSource = (): DocumentTransformSource | null => {
-    if (
-      source.kind === "markdown" &&
-      restoredDraft?.owner === owner &&
-      restoredDraft.key === unresolved?.key
-    )
-      return restoredDraft.source;
+    if (recoveredMarkdownSource) return recoveredMarkdownSource;
     if (source.kind === "drive_file") {
       return {
         expectedModifiedTime: source.expectedModifiedTime,
@@ -528,6 +529,8 @@ export function DocumentPolishDialog({
   };
 
   const valid = inputSource() !== null;
+  const displayedMarkdown = recoveredMarkdownSource?.content ?? markdown;
+  const displayedMode = completedResult?.mode ?? unresolved?.mode ?? mode;
   const destinationLabel = destination
     ? destination.folderPath.length > 0
       ? destination.folderPath.join(" / ")
@@ -694,7 +697,7 @@ export function DocumentPolishDialog({
                 starting another operation.
               </p>
             ) : null}
-            {source.kind === "markdown" ? (
+            {source.kind === "markdown" && !completedResult ? (
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="polish-markdown-name">Document name</Label>
@@ -707,7 +710,7 @@ export function DocumentPolishDialog({
                       setName(event.target.value);
                       resetRequest();
                     }}
-                    value={name}
+                    value={recoveredMarkdownSource?.name ?? name}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -750,7 +753,7 @@ export function DocumentPolishDialog({
                   <div className="flex items-baseline justify-between gap-3">
                     <Label htmlFor="polish-markdown-content">Markdown</Label>
                     <span className="text-muted-foreground text-xs tabular-nums">
-                      {markdownByteLength(markdown).toLocaleString()} /{" "}
+                      {markdownByteLength(displayedMarkdown).toLocaleString()} /{" "}
                       {MARKDOWN_LIMIT_BYTES.toLocaleString()} bytes
                     </span>
                   </div>
@@ -766,7 +769,7 @@ export function DocumentPolishDialog({
                       resetRequest();
                     }}
                     placeholder={"# Proposal\n\nPaste Markdown here…"}
-                    value={markdown}
+                    value={displayedMarkdown}
                   />
                   {markdownError ? (
                     <p className="text-destructive text-xs" role="alert">
@@ -787,10 +790,14 @@ export function DocumentPolishDialog({
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium">
-                        {destination?.driveName ?? "No workspace selected"}
+                        {recoveredMarkdownSource
+                          ? "Saved destination folder"
+                          : (destination?.driveName ?? "No workspace selected")}
                       </span>
                       <span className="text-muted-foreground block truncate text-xs">
-                        {destinationLabel}
+                        {recoveredMarkdownSource
+                          ? `Folder ID: ${recoveredMarkdownSource.destinationFolderId}`
+                          : destinationLabel}
                       </span>
                     </span>
                     <span className="text-muted-foreground shrink-0 text-xs">Change</span>
@@ -824,7 +831,7 @@ export function DocumentPolishDialog({
               <div className="grid gap-2 sm:grid-cols-3">
                 {MODES.map((option) => {
                   const Icon = option.icon;
-                  const selected = mode === option.value;
+                  const selected = displayedMode === option.value;
                   return (
                     <button
                       aria-pressed={selected}
@@ -1045,13 +1052,14 @@ export function DocumentPolishDialog({
               className="w-full sm:w-auto"
               disabled={
                 submitting ||
-                recovery.isPending ||
-                recovery.isError ||
-                (!unresolved && !completedResult && sessionIdentityUnavailable) ||
-                (!unresolved && (capabilityPending || capabilityFailed)) ||
-                reviewMessage !== null ||
-                terminalMessage !== null ||
-                (!valid && !unresolved?.taskId)
+                (!completedResult &&
+                  (recovery.isPending ||
+                    recovery.isError ||
+                    (!unresolved && sessionIdentityUnavailable) ||
+                    (!unresolved && (capabilityPending || capabilityFailed)) ||
+                    reviewMessage !== null ||
+                    terminalMessage !== null ||
+                    (!valid && !unresolved?.taskId)))
               }
               onClick={() => {
                 if (completedResult) {
