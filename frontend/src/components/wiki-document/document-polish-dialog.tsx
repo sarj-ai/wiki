@@ -133,6 +133,7 @@ export function DocumentPolishDialog({
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<"idle" | "starting" | "transforming">("idle");
   const [terminalMessage, setTerminalMessage] = useState<null | string>(null);
+  const [retryMessage, setRetryMessage] = useState<null | string>(null);
   const [unverifiedOutputId, setUnverifiedOutputId] = useState<null | string>(null);
   const [reviewMessage, setReviewMessage] = useState<null | string>(null);
   const [reviewResult, setReviewResult] = useState<DocumentTransformResult | null>(null);
@@ -176,6 +177,7 @@ export function DocumentPolishDialog({
     staleTime: Infinity,
   });
   const unresolved = recovery.data ?? null;
+  const sessionIdentityUnavailable = source.kind === "drive_file" && !owner;
   const optionsLocked = submitting || unresolved !== null || completedResult !== null;
   const saveRecovery = (operation: null | TransformRecovery) => {
     writeTransformRecovery(owner, sourceIdentity, operation);
@@ -210,6 +212,7 @@ export function DocumentPolishDialog({
 
   const resetRequest = () => {
     if (unresolved) return;
+    setRetryMessage(null);
     idempotencyKey.current = null;
     refreshedDriveSource.current = null;
     fileLoadGeneration.current += 1;
@@ -220,6 +223,7 @@ export function DocumentPolishDialog({
   };
 
   const close = () => {
+    setRetryMessage(null);
     abortRef.current?.abort();
     abortRef.current = null;
     submitLatch.current = false;
@@ -281,6 +285,7 @@ export function DocumentPolishDialog({
       setReviewMessage(null);
       setReviewResult(null);
       setTerminalMessage(null);
+      setRetryMessage(null);
     } catch (error: unknown) {
       if (fileLoadGeneration.current === generation) {
         setMarkdownError(errorMessage(error, "Couldn’t read the Markdown file"));
@@ -293,6 +298,7 @@ export function DocumentPolishDialog({
   };
 
   const create = async () => {
+    if (sessionIdentityUnavailable && !unresolved) return;
     const startedAt = Date.now();
     let transformSource = unresolved?.source ?? inputSource();
     if (!transformSource && unresolved?.taskId) {
@@ -302,6 +308,7 @@ export function DocumentPolishDialog({
     if ((!transformSource && !unresolved?.taskId) || submitLatch.current) return;
     if (!transformSource) return;
     submitLatch.current = true;
+    setRetryMessage(null);
     setSubmitting(true);
     setStage("starting");
     setReviewMessage(null);
@@ -331,7 +338,9 @@ export function DocumentPolishDialog({
         cacheRefreshedDriveSource(refreshedDriveSource, transformSource);
       } catch (error: unknown) {
         if (!(error instanceof DOMException && error.name === "AbortError") && isCurrent()) {
-          toast.error(errorMessage(error, "Couldn’t verify the latest document revision"));
+          const message = errorMessage(error, "Couldn’t verify the latest document revision");
+          setRetryMessage(message);
+          toast.error(message);
         }
         finishSubmission();
         return;
@@ -452,6 +461,8 @@ export function DocumentPolishDialog({
           saveRecovery(null);
           setTerminalMessage(error.message);
           setUnverifiedOutputId(error.unverifiedOutputId ?? null);
+        } else {
+          setRetryMessage(errorMessage(error, `Couldn’t polish ${artifactNoun}`));
         }
         toast.error(errorMessage(error, `Couldn’t polish ${artifactNoun}`));
       }
@@ -553,6 +564,24 @@ export function DocumentPolishDialog({
                 <p className="text-muted-foreground text-xs">
                   Short links do not change who can access the document.
                 </p>
+              </div>
+            ) : null}
+            {sessionIdentityUnavailable ? (
+              <div className="border-border rounded-lg border px-3 py-2.5 text-sm" role="alert">
+                <p className="font-medium">Secure session identity unavailable</p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Reload your session before starting polish. Existing operations are preserved;
+                  this does not sign you out.
+                </p>
+                <Button
+                  className="mt-2"
+                  onClick={() => router.refresh()}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Reload session
+                </Button>
               </div>
             ) : null}
             {unresolved ? (
@@ -880,6 +909,17 @@ export function DocumentPolishDialog({
                 ) : null}
               </div>
             ) : null}
+            {retryMessage ? (
+              <div className="border-destructive/30 rounded-lg border p-3 text-sm" role="alert">
+                <p className="font-medium">Polish interrupted</p>
+                <p className="text-muted-foreground mt-1 text-xs">{retryMessage}</p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  {unresolved
+                    ? "Your existing operation is still reserved. Resume checking to recover its status; options remain locked to prevent duplicate work."
+                    : "You can retry, change the options, or close this dialog."}
+                </p>
+              </div>
+            ) : null}
             {terminalMessage ? (
               <div
                 className="border-destructive/30 bg-destructive/5 rounded-lg border px-3 py-2.5 text-sm"
@@ -924,6 +964,7 @@ export function DocumentPolishDialog({
                 submitting ||
                 recovery.isPending ||
                 recovery.isError ||
+                (!unresolved && !completedResult && sessionIdentityUnavailable) ||
                 (!unresolved && (capabilityPending || capabilityFailed)) ||
                 reviewMessage !== null ||
                 terminalMessage !== null ||
