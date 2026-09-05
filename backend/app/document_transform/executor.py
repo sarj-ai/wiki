@@ -41,6 +41,7 @@ from app.document_transform.gateway import (
     TabHeader,
 )
 from app.document_transform.header_provenance import HeaderIdentityFinalization
+from app.document_transform.header_recovery import recover_empty_header_postcondition
 from app.document_transform.ir import (
     MAX_DOC_TABS,
     DocumentIR,
@@ -936,7 +937,11 @@ class DocumentTransformExecutor:
             )
 
         if checkpoint.stage is InPlaceCheckpointStage.HEADERS:
-            stage_result = await self._apply_checkpoint_stage(checkpoint)
+            stage_result = recover_empty_header_postcondition(
+                snapshot, inspection, checkpoint, operation_id
+            )
+            if stage_result is None:
+                stage_result = await self._apply_checkpoint_stage(checkpoint)
             stage_snapshot = SourceSnapshot(
                 title=snapshot.title,
                 parent_folder_id=snapshot.parent_folder_id,
