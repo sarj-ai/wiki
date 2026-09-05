@@ -153,6 +153,32 @@ def test_provider_message_topic_has_a_finite_reader_allowlist(topic: str) -> Non
 
 
 @pytest.mark.parametrize(
+    "outcome", ["matched", "ambiguous", "oversized", "quoted_lead", "unrecognized_lead"]
+)
+def test_message_classifier_outcome_has_only_finite_reader_values(outcome: str) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = (
+        "document stage provider boundary http_status=400 SECRET"
+    )
+    record["jsonPayload"]["record"]["extra"]["diagnostics"] = {"provider_message_outcome": outcome}
+    rows = MODULE["sanitize"]([record], TASK)
+    assert rows[0]["provider_message_outcome"] == outcome
+    assert "SECRET" not in json.dumps(rows)
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    ["SECRET", None, 400, {"SECRET": "SECRET"}],
+    ids=["unknown", "null", "numeric", "object"],
+)
+def test_message_classifier_outcome_rejects_arbitrary_reader_values(outcome: object) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["extra"]["diagnostics"] = {"provider_message_outcome": outcome}
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
+
+
+@pytest.mark.parametrize(
     "field",
     [
         "timestamp",

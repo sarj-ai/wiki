@@ -164,6 +164,30 @@ export function DocumentPolishDialog({
   > | null>(null);
   const lifecycleGeneration = useRef(0);
   const submitLatch = useRef(false);
+  const outcomeHeadingRef = useRef<HTMLHeadingElement>(null);
+  const scrollBodyRef = useRef<HTMLDivElement>(null);
+  const revealedOutcome = useRef<null | string>(null);
+  const outcomeIdentity = completedResult
+    ? `complete:${completedResult.operationId}`
+    : terminalMessage
+      ? `failed:${terminalTaskId}:${terminalMessage}`
+      : reviewMessage
+        ? `review:${terminalTaskId}:${reviewMessage}`
+        : null;
+
+  useEffect(() => {
+    if (!outcomeIdentity) {
+      revealedOutcome.current = null;
+      return;
+    }
+    if (!open || submitting || revealedOutcome.current === outcomeIdentity) return;
+    const heading = outcomeHeadingRef.current;
+    const body = scrollBodyRef.current;
+    if (!heading || !body) return;
+    revealedOutcome.current = outcomeIdentity;
+    heading.focus({ preventScroll: true });
+    body.scrollTo({ top: 0, behavior: "instant" });
+  }, [open, submitting, outcomeIdentity]);
   const capabilities = useQuery({
     enabled: open && source.kind === "drive_file" && source.allowInPlace,
     queryFn: documentTransformApi.capabilities,
@@ -539,13 +563,19 @@ export function DocumentPolishDialog({
             </DialogHeader>
           </div>
 
-          <div className="space-y-5 overflow-y-auto p-5 sm:px-6">
+          <div
+            className="space-y-5 overflow-y-auto p-5 sm:px-6"
+            data-polish-scroll-body
+            ref={scrollBodyRef}
+          >
             {terminalMessage ? (
               <div
                 className="border-destructive/30 bg-destructive/5 rounded-lg border px-3 py-2.5 text-sm"
                 role="alert"
               >
-                <p className="font-medium">Polish did not complete</p>
+                <h3 className="font-medium" ref={outcomeHeadingRef} tabIndex={-1}>
+                  Polish did not complete
+                </h3>
                 <p className="text-muted-foreground mt-1 text-xs">{terminalMessage}</p>
                 {terminalTaskId ? (
                   <p className="text-muted-foreground mt-2 text-xs">
@@ -576,7 +606,9 @@ export function DocumentPolishDialog({
                 className="border-border bg-muted/50 rounded-lg border px-3 py-2.5 text-sm"
                 role="alert"
               >
-                <p className="font-medium">This {artifactNoun} needs review</p>
+                <h3 className="font-medium" ref={outcomeHeadingRef} tabIndex={-1}>
+                  This {artifactNoun} needs review
+                </h3>
                 <p className="text-muted-foreground mt-1 text-xs">{reviewMessage}</p>
                 {terminalTaskId ? (
                   <p className="text-muted-foreground mt-2 text-xs">
@@ -605,9 +637,9 @@ export function DocumentPolishDialog({
             ) : null}
             {completedResult ? (
               <div className="space-y-3" role="status">
-                <p className="text-lg font-semibold">
+                <h3 className="text-lg font-semibold" ref={outcomeHeadingRef} tabIndex={-1}>
                   {completedResult.changed ? "Polish complete" : "No changes needed"}
-                </p>
+                </h3>
                 <p className="font-medium break-words">{completedResult.outputFile.name}</p>
                 <p className="text-muted-foreground text-sm">
                   {completedResult.mode === "format"
@@ -621,6 +653,10 @@ export function DocumentPolishDialog({
                       ? " Updated the original; Drive version history is available."
                       : " Your original is unchanged; no edits were needed."
                     : " Your original is unchanged."}
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  Task reference:{" "}
+                  <code className="break-all select-all">{completedResult.operationId}</code>
                 </p>
                 <DocumentPolishReceipt result={completedResult} />
               </div>
@@ -643,18 +679,13 @@ export function DocumentPolishDialog({
                 </Button>
               </div>
             ) : null}
-            {unresolved ? (
+            {unresolved && !submitting ? (
               <p className="text-sm" role="status">
-                {submitting
-                  ? unresolved.taskId
-                    ? `Polishing this ${artifactNoun}… Checking its status automatically. Leaving this page does not cancel it.`
-                    : `Starting ${artifactNoun} polish… Checking the submission automatically. Leaving this page does not cancel a submitted operation.`
-                  : "A polish operation is already reserved for this document. Resume checking its status; closing this dialog does not cancel it."}
+                A polish operation is already reserved for this document. Resume checking its
+                status; closing this dialog does not cancel it.
                 {unresolved.taskId
                   ? ` Task: ${unresolved.taskId}`
-                  : submitting
-                    ? ""
-                    : " Its submission is being recovered."}
+                  : " Its submission is being recovered."}
               </p>
             ) : null}
             {recovery.isError ? (
@@ -967,6 +998,9 @@ export function DocumentPolishDialog({
                       : effectiveOutputStrategy === "in_place"
                         ? `Updating and checking the original ${artifactNoun}…`
                         : `Creating and checking the new ${artifactNoun}…`}
+                  {unresolved?.taskId
+                    ? ` Checking its status automatically. Leaving this page does not cancel it. Task: ${unresolved.taskId}`
+                    : " Checking the submission automatically. Leaving this page does not cancel a submitted operation."}
                 </span>
               </div>
             ) : null}

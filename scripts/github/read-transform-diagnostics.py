@@ -24,6 +24,9 @@ BULLET_SNAPSHOT_FIELDS = frozenset(
 MAX_PROVIDER_ORDINAL = 200
 PROVIDER_FIELDS = MappingProxyType(
     {
+        "provider_message_outcome": frozenset(
+            {"matched", "ambiguous", "oversized", "quoted_lead", "unrecognized_lead"}
+        ),
         "safety_stage": frozenset(
             {
                 "footer_plan",
