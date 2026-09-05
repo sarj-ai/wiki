@@ -255,6 +255,16 @@ def test_sarj_header_logo_footer_and_margins_follow_manifest(rendered: bytes) ->
     )
 
 
+def test_logo_authors_explicit_alt_title_and_description(rendered: bytes) -> None:
+    with ZipFile(BytesIO(rendered)) as archive:
+        header = fromstring(archive.read("word/header1.xml"))
+    logo_properties = header.find(f".//{WP}docPr")
+    assert logo_properties is not None
+    assert logo_properties.get("title") == "Sarj logo"
+    assert logo_properties.get("name") == "Sarj logo"
+    assert logo_properties.get("descr") == docx_renderer.trusted_document_logo_description()
+
+
 def test_custom_logo_is_a_native_header_picture() -> None:
     rendered = render_markdown_docx("Body", title="Custom", logo_bytes=LOGO_BYTES)
     with ZipFile(BytesIO(rendered)) as archive:

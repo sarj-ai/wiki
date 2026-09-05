@@ -740,6 +740,17 @@ def markdown_import_brand_diagnostics(
     checks["import_logo_object"] = embedded is not None
     if embedded is None:
         return checks
+    checks["import_logo_title_exact"] = embedded.get("title") == "Sarj logo"
+    checks["import_logo_description_exact"] = (
+        embedded.get("description") == trusted_document_logo_description()
+    )
+    image_properties = embedded.get("imageProperties", {})
+    checks["import_logo_image_properties_valid"] = isinstance(image_properties, dict)
+    if isinstance(image_properties, dict):
+        checks["import_logo_source_uri_absent"] = image_properties.get("sourceUri") is None
+        checks["import_logo_source_uri_exact"] = (
+            image_properties.get("sourceUri") == CURRENT_BRAND_MANIFEST.assets.logo_uri
+        )
     checks["import_logo_metadata"] = _logo_metadata_matches(embedded)
     if not checks["import_logo_metadata"]:
         return checks

@@ -52,6 +52,11 @@ def test_native_import_diagnostics_expose_only_static_boolean_checks(*, invalid:
     record["jsonPayload"]["record"]["extra"]["checks"] = {
         "import_header_shape": False,
         "import_logo_dimensions": True,
+        "import_logo_title_exact": True,
+        "import_logo_description_exact": False,
+        "import_logo_image_properties_valid": True,
+        "import_logo_source_uri_absent": True,
+        "import_logo_source_uri_exact": False,
         "import_logo_metadata": "SECRET" if invalid else False,
         "import_body_style": 1 if invalid else True,
         "provider_body": "SECRET",
@@ -64,6 +69,11 @@ def test_native_import_diagnostics_expose_only_static_boolean_checks(*, invalid:
     assert rows[0]["import_header_shape"] is False
     assert rows[0]["import_logo_dimensions"] is True
     assert rows[0]["import_logo_metadata"] is False
+    assert rows[0]["import_logo_title_exact"] is True
+    assert rows[0]["import_logo_description_exact"] is False
+    assert rows[0]["import_logo_image_properties_valid"] is True
+    assert rows[0]["import_logo_source_uri_absent"] is True
+    assert rows[0]["import_logo_source_uri_exact"] is False
     assert rows[0]["import_body_style"] is True
     assert "SECRET" not in json.dumps(rows)
 

@@ -760,6 +760,7 @@ def _configure_header(document: Document, logo_bytes: bytes) -> None:
     drawing_properties = _xml_member(paragraph, "_p").xpath(".//wp:docPr")
     if drawing_properties:
         drawing_properties[0].set("name", "Sarj logo")
+        drawing_properties[0].set("title", "Sarj logo")
         drawing_properties[0].set("descr", trusted_document_logo_description())
 
 
