@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from types import MappingProxyType
 from typing import Any, NamedTuple
 
 from googleapiclient.errors import HttpError
@@ -12,6 +13,31 @@ from pydantic import TypeAdapter
 MAX_ERROR_BYTES = 16_384
 MAX_DETAILS = 16
 MAX_REQUEST_ORDINAL = 200
+MAX_TOPIC_CHARS = 2_048
+MESSAGE_TOPICS = MappingProxyType(
+    {
+        "time_zone": re.compile(
+            r"\A(?:invalid|unknown|unrecognized|unsupported) (?:time zone|timezone|timeZoneId)\b",
+            re.IGNORECASE,
+        ),
+        "timestamp": re.compile(
+            r"\A(?:invalid|missing|malformed|out of range) (?:timestamp|date timestamp)\b",
+            re.IGNORECASE,
+        ),
+        "location": re.compile(
+            r"\A(?:(?:invalid|missing|out of bounds) (?:location|insertion index|index)|(?:the )?insertion index (?:must|cannot|is invalid))\b",
+            re.IGNORECASE,
+        ),
+        "capability": re.compile(
+            r"\A(?:(?:this operation|insertDate|date insertion|inserting dates) (?:is|are) not supported|unsupported (?:operation|request|insertDate))\b",
+            re.IGNORECASE,
+        ),
+        "access": re.compile(
+            r"\A(?:permission denied|access denied|insufficient permissions|the caller does not have permission)\b",
+            re.IGNORECASE,
+        ),
+    }
+)
 ERROR_JSON = TypeAdapter(dict[str, Any])
 FIELD_PATH = re.compile(
     r"requests\[([0-9]{1,3})\]\.(insertDate|deleteContentRange|createNamedRange)"
@@ -64,11 +90,34 @@ def native_provider_diagnostics(
         or set(requests[ordinal]) != {operation}
     ):
         return unknown
-    return {
+    result: dict[str, str | int] = {
         "provider_category": next(iter(categories), "unknown"),
         "provider_request_ordinal": ordinal,
         "provider_operation": next(iter(requests[ordinal])),
     }
+    if operation == "insertDate" and prefix is not None and isinstance(message, str):
+        result["provider_message_topic"] = _message_topic(message[prefix.end() :])
+    return result
+
+
+def _message_topic(tail: str) -> str:
+    # Diagnostic vocabulary only, never policy. Do not inspect quoted values,
+    # interpolate matched text, or log a message digest. Multiple leading
+    # clauses are recognized only when none contains a quoted provider value.
+    if len(tail) > MAX_TOPIC_CHARS:
+        return "unknown"
+    lead = re.split(r"[\"'`\u2018\u2019\u201c\u201d]", tail, maxsplit=1)[0]
+    if not any(pattern.match(lead.split(";", 1)[0].strip()) for pattern in MESSAGE_TOPICS.values()):
+        return "unknown"
+    topics = {
+        topic
+        for clause in lead.split(";")
+        for topic, pattern in MESSAGE_TOPICS.items()
+        if pattern.match(clause.strip())
+    }
+    if len(topics) > 1:
+        return "ambiguous"
+    return next(iter(topics), "unknown")
 
 
 def _field_evidence(body: dict[str, Any]) -> list[FieldEvidence] | None:

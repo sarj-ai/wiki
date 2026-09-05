@@ -24,6 +24,17 @@ BULLET_SNAPSHOT_FIELDS = frozenset(
 MAX_PROVIDER_ORDINAL = 200
 PROVIDER_FIELDS = MappingProxyType(
     {
+        "provider_message_topic": frozenset(
+            {
+                "unknown",
+                "time_zone",
+                "timestamp",
+                "location",
+                "capability",
+                "access",
+                "ambiguous",
+            }
+        ),
         "bullet_stage": frozenset(
             {
                 "source_read",

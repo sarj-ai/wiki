@@ -63,6 +63,7 @@ def test_prefix_discards_all_provider_description() -> None:
         "provider_category": "unknown",
         "provider_request_ordinal": 2,
         "provider_operation": "insertDate",
+        "provider_message_topic": "unknown",
     }
 
 
@@ -113,6 +114,42 @@ def test_no_provider_cause_is_unknown() -> None:
     assert native_provider_diagnostics(DocumentGatewayError(), []) == {
         "provider_category": "unknown"
     }
+
+
+@pytest.mark.parametrize(
+    ("tail", "topic"),
+    [
+        ("Invalid time zone 'SECRET permission denied'", "time_zone"),
+        ("Invalid timestamp: SECRET", "timestamp"),
+        ("The insertion index must be inside a paragraph", "location"),
+        ("This operation is not supported for this document", "capability"),
+        ("Permission denied: SECRET", "access"),
+        ("Invalid timestamp; Invalid location", "ambiguous"),
+        ("Bad request", "unknown"),
+        ("SECRET; Permission denied", "unknown"),
+        ('"Permission denied"', "unknown"),
+        ("Invalid value 'Invalid timestamp; Permission denied'", "unknown"),
+        ("Invalid time zone 'SECRET'; Permission denied", "time_zone"),
+        ("Invalid timestamp" + "x" * 3000, "unknown"),
+    ],
+)
+def test_message_topics_are_bounded_hints_without_provider_values(tail: str, topic: str) -> None:
+    result = _diagnostics({"message": f"Invalid requests[2].insertDate: {tail}"})
+    assert result["provider_message_topic"] == topic
+    assert "SECRET" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "Invalid requests[1].insertDate:",
+        "Invalid requests[201].insertDate:",
+        "SECRET Invalid requests[2].insertDate:",
+        "Invalid requests[1].deleteContentRange:",
+    ],
+)
+def test_message_topics_require_exact_validated_insert_date_prefix(prefix: str) -> None:
+    assert "provider_message_topic" not in _diagnostics({"message": f"{prefix} Permission denied"})
 
 
 @pytest.mark.parametrize(

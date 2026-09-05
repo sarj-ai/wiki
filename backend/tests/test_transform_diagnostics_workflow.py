@@ -79,6 +79,29 @@ def test_provider_boundary_diagnostics_are_finite_and_private() -> None:
     assert "SECRET" not in json.dumps(row)
 
 
+@pytest.mark.parametrize(
+    "topic",
+    [
+        "unknown",
+        "time_zone",
+        "timestamp",
+        "location",
+        "capability",
+        "access",
+        "ambiguous",
+        "SECRET",
+    ],
+)
+def test_provider_message_topic_has_a_finite_reader_allowlist(topic: str) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["extra"]["diagnostics"] = {"provider_message_topic": topic}
+    if topic == "SECRET":
+        with pytest.raises(ValueError, match=r"^$"):
+            MODULE["sanitize"]([record], TASK)
+    else:
+        assert MODULE["sanitize"]([record], TASK)[0]["provider_message_topic"] == topic
+
+
 def test_bullet_stage_snapshot_has_only_finite_labels_and_bounded_counts() -> None:
     record = _record()
     extra = record["jsonPayload"]["record"]["extra"]

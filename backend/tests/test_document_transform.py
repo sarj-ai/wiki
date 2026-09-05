@@ -778,17 +778,33 @@ def test_native_mixed_text_paragraph_is_preserved_as_uneditable_for_review() -> 
     assert parsed.blocks[0].editable is False
 
 
-async def test_native_mutation_budget_is_checked_before_copy_creation() -> None:
+@pytest.mark.parametrize("native_list", [False, True])
+async def test_native_mutation_budget_is_checked_before_copy_creation(
+    native_list: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
     content: list[dict[str, Any]] = []
     cursor = 1
-    paragraph = "Moreover, we approved.\n"
+    paragraph = "Review evidence.\n" if native_list else "Moreover, we approved.\n"
+    if native_list:
+        # 750 unsplit paragraphs fit; the additional 750 proper subranges do not.
+        monkeypatch.setattr("app.document_transform.brand.MAX_DOCS_MUTATION_REQUESTS", 2_000)
     for _ in range(750):
         end = cursor + utf16_length(paragraph)
         content.append(
             {
                 "startIndex": cursor,
                 "endIndex": end,
-                "paragraph": {"elements": [{"textRun": {"content": paragraph}}]},
+                "paragraph": {
+                    "elements": [{"textRun": {"content": paragraph}}],
+                    **(
+                        {
+                            "bullet": {"listId": "native-list", "nestingLevel": 0},
+                            "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                        }
+                        if native_list
+                        else {}
+                    ),
+                },
             }
         )
         cursor = end
@@ -2462,12 +2478,17 @@ async def test_copy_checkpoints_plan_before_create_and_resource_immediately_afte
 
 @pytest.mark.parametrize(
     ("interrupt_population", "previous_builder"),
-    [(False, False), (True, False), (True, True)],
-    ids=["fresh-v8", "resume-v8", "reject-pending-v7-before-provider-write"],
+    [(False, None), (True, None), (True, "v7"), (True, "v8")],
+    ids=[
+        "fresh-v9",
+        "resume-v9",
+        "reject-pending-v7-before-provider-write",
+        "reject-pending-v8-before-provider-write",
+    ],
 )
 async def test_copy_native_footer_persists_each_stage_and_does_not_replay_body(
     interrupt_population: bool,
-    previous_builder: bool,
+    previous_builder: str | None,
 ) -> None:
     store = _CopyCheckpointStore()
 
@@ -2547,13 +2568,13 @@ async def test_copy_native_footer_persists_each_stage_and_does_not_replay_body(
         with pytest.raises(DocumentGatewayError):
             await executor.execute(operation_id=task_id, request=request)
         pending = store.checkpoints[-1]
-        assert pending.request_builder_version == "google-docs-requests-v8"
+        assert pending.request_builder_version == "google-docs-requests-v9"
         assert pending.native_footer is not None
         assert pending.native_footer.coverage is None
         assert pending.native_footer.stage is NativeFooterStage.POPULATE
         if previous_builder:
             pending = pending.model_copy(
-                update={"request_builder_version": "google-docs-requests-v7"}
+                update={"request_builder_version": f"google-docs-requests-{previous_builder}"}
             )
         executor = _copy_executor(gateway=gateway, store=store, task_id=task_id, checkpoint=pending)
     if previous_builder:
