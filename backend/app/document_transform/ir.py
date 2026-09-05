@@ -75,6 +75,8 @@ class TextBlock:
     authored_emphasis: tuple[tuple[str, bool], ...] = ()
     # Copy-only, durably attested layout expectation; never a semantic role.
     pagination_keep_with_next: bool | None = None
+    suppress_space_above: bool = False
+    suppress_space_below: bool = False
 
     @property
     def is_authored_lead_in(self) -> bool:

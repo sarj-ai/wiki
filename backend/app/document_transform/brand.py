@@ -461,6 +461,14 @@ def _named_style(block: TextBlock) -> str:
 
 
 def paragraph_spacing(block: TextBlock, profile: SarjBrandProfile) -> ParagraphSpacing:
+    spacing = _role_paragraph_spacing(block, profile)
+    return ParagraphSpacing(
+        0 if block.suppress_space_above else spacing.above,
+        0 if block.suppress_space_below else spacing.below,
+    )
+
+
+def _role_paragraph_spacing(block: TextBlock, profile: SarjBrandProfile) -> ParagraphSpacing:
     # Derive role rhythm from pinned tokens; never infer new headings from prose.
     above = profile.paragraph_space_above_pt
     below = profile.paragraph_space_below_pt
@@ -673,6 +681,8 @@ def _post_edit_locations(original: DocumentIR, transformed: DocumentIR) -> Docum
                 native_bullet_json=target.native_bullet_json,
                 authored_emphasis=target.authored_emphasis,
                 pagination_keep_with_next=target.pagination_keep_with_next,
+                suppress_space_above=target.suppress_space_above,
+                suppress_space_below=target.suppress_space_below,
                 font_style_ranges=tuple(
                     replace(
                         item,

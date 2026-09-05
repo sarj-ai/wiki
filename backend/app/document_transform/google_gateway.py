@@ -92,6 +92,10 @@ from app.document_transform.native_footer_flow import (
     verified_footer_coverage_projection,
     verified_footer_projection,
 )
+from app.document_transform.native_pagination import (
+    apply_native_pagination,
+    existing_native_pagination,
+)
 from app.document_transform.native_safety_diagnostics import SafetyStage, native_safety_error
 from app.document_transform.provider_diagnostics import native_provider_diagnostics
 from app.document_transform.schemas import (
@@ -962,7 +966,10 @@ class GoogleDocumentGateway(DocumentGateway):
                     unknown.append(tab_id)
                 continue
             headers.append(TabHeader(tab_id=tab_id, header_id=DocsSegmentId(header_id)))
-        parse_google_document(document, title=title)
+        parsed = parse_google_document(document, title=title)
+        existing_layout = apply_native_pagination(
+            parsed, existing_native_pagination(document, parsed)
+        )
         marker_range = _terminal_body_marker_range(document)
         logger.info(
             "document in-place preflight checks={checks}",
@@ -987,7 +994,7 @@ class GoogleDocumentGateway(DocumentGateway):
             fully_branded=not (missing or unknown or headers)
             and verify_brand_application(
                 document,
-                parse_google_document(document, title=title),
+                existing_layout,
                 expected_header_title=header_title,
             ),
             missing_header_tab_ids=tuple(missing),
@@ -2411,7 +2418,16 @@ def _typography_verification_ir(actual: DocumentIR, expected: DocumentIR) -> Doc
             or planned.source_range is None
             or observed.source_range is None
         ):
-            blocks.append(observed)
+            blocks.append(
+                replace(
+                    observed,
+                    pagination_keep_with_next=planned.pagination_keep_with_next,
+                    suppress_space_above=planned.suppress_space_above,
+                    suppress_space_below=planned.suppress_space_below,
+                )
+                if observed.sha256 == planned.sha256
+                else observed
+            )
             continue
         delta = observed.source_range.start_index - planned.source_range.start_index
         blocks.append(
