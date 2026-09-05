@@ -79,6 +79,7 @@ class TextBlock:
     suppress_space_below: bool = False
     # In-place only: exact source-bound paragraph layout, not a new semantic role.
     preserved_paragraph_style_sha256: str | None = None
+    preserved_font_family: bool = False
 
     @property
     def is_authored_lead_in(self) -> bool:

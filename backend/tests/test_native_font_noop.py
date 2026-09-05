@@ -332,7 +332,7 @@ async def test_new_content_plan_filters_but_persisted_replay_remains_exact(
     with pytest.raises(DocumentGatewayError):
         await executor().execute(operation_id=operation, request=request)
     checkpoint = store.checkpoints[-1]
-    assert checkpoint.request_builder_version == "google-docs-requests-v24"
+    assert checkpoint.request_builder_version == "google-docs-requests-v25"
     result = await executor(checkpoint).execute(operation_id=operation, request=request)
     assert attempts[0] == attempts[1]
     assert (

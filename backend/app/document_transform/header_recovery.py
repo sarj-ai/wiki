@@ -226,10 +226,13 @@ def _empty_header(
         return False
     style = paragraph.get("paragraphStyle", {})
     checks["header_recovery_empty_reason"] = "paragraph_style"
-    if not isinstance(style, dict) or not set(style) <= {"namedStyleType"}:
+    if not isinstance(style, dict) or not set(style) <= {"namedStyleType", "direction"}:
         _paragraph_style_diagnostics(style, checks)
         return False
-    if style and style != {"namedStyleType": "NORMAL_TEXT"}:
+    if (
+        style.get("namedStyleType", "NORMAL_TEXT") != "NORMAL_TEXT"
+        or style.get("direction", "LEFT_TO_RIGHT") != "LEFT_TO_RIGHT"
+    ):
         _paragraph_style_diagnostics(style, checks)
         return False
     runs = paragraph.get("elements")
