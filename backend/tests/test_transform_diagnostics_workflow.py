@@ -43,6 +43,46 @@ def test_only_static_typed_fields_are_emitted() -> None:
     assert "message" not in rows[0]
 
 
+def test_native_font_proof_fields_are_finite_and_private() -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "document native font proof checks=SECRET"
+    record["jsonPayload"]["record"]["extra"]["checks"] = {
+        "font_proof_count": 57,
+        "font_proof_verified_count": 4,
+        "font_proof_reason": "paragraph_payload",
+        "font_proof_stage": "content",
+        "font_proof_valid": False,
+        "supported_brand_applied": True,
+        "raw_styles": "SECRET",
+    }
+    rows = MODULE["sanitize"]([record], TASK)
+    assert rows[0]["font_proof_verified_count"] == 4
+    assert rows[0]["font_proof_reason"] == "paragraph_payload"
+    assert rows[0]["supported_brand_applied"] is True
+    assert "SECRET" not in json.dumps(rows)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("font_proof_reason", "SECRET"),
+        ("font_proof_stage", "SECRET"),
+        ("font_proof_count", True),
+        ("font_proof_count", 751),
+        ("font_proof_verified_count", -1),
+        ("font_proof_valid", 1),
+        ("supported_brand_applied", "SECRET"),
+    ],
+)
+def test_native_font_diagnostics_reject_unbounded_or_untyped_values(
+    field: str, value: object
+) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["extra"]["checks"] = {field: value}
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
+
+
 @pytest.mark.parametrize(
     "value", [0, 1, "SECRET", None, {}], ids=["zero", "one", "string", "null", "object"]
 )

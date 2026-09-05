@@ -886,6 +886,7 @@ class DocumentTransformExecutor:
                 snapshot.google_document,
                 checkpoint.native_font_proof,
                 preserved_block_ids=_preserved_block_ids(checkpoint),
+                diagnostic_stage="resume",
             ):
                 raise InPlaceNeedsReviewError
             if checkpoint.stage is InPlaceCheckpointStage.COMPLETE:
@@ -971,6 +972,7 @@ class DocumentTransformExecutor:
                 stage_result.document,
                 checkpoint.native_font_proof,
                 preserved_block_ids=_preserved_block_ids(checkpoint),
+                diagnostic_stage="headers",
             ):
                 raise InPlaceNeedsReviewError
             if (
@@ -1055,6 +1057,7 @@ class DocumentTransformExecutor:
             stage_result.document,
             checkpoint.native_font_proof,
             preserved_block_ids=_preserved_block_ids(checkpoint),
+            diagnostic_stage="content",
         ):
             raise InPlaceNeedsReviewError
         checkpoint = checkpoint.model_copy(update={"current_revision_id": stage_result.revision_id})
