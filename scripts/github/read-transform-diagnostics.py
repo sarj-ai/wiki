@@ -163,6 +163,12 @@ READ_FAILURES = (ValueError, TypeError, KeyError, OSError, subprocess.TimeoutExp
 BOOLEAN_FIELDS = frozenset(
     [
         "font_proof_valid",
+        "font_proof_components_evaluated",
+        "font_proof_paragraph_metadata_equal",
+        "font_proof_visible_residual_equal",
+        "font_proof_terminal_residual_equal",
+        "font_proof_terminal_family_representation_equal",
+        "font_proof_parent_context_equal",
         "supported_brand_applied",
         "spacer_named_values_first_entry_only",
         "spacer_named_indent_schema_known",

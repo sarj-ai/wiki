@@ -14,7 +14,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -125,6 +125,7 @@ export function DocumentPolishDialog({
 }: DocumentPolishDialogProps) {
   const queryClient = useQueryClient();
   const owner = useBrowserUserId();
+  const saveDescriptionId = useId();
   const router = useRouter();
   const [mode, setMode] = useState<DocumentTransformMode>("both");
   const [outputStrategy, setOutputStrategy] = useState<DocumentTransformOutputStrategy>("copy");
@@ -881,6 +882,8 @@ export function DocumentPolishDialog({
                 <legend className="mb-2 text-sm font-medium">Save result</legend>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <button
+                    aria-describedby={`${saveDescriptionId}-copy`}
+                    aria-label="Create review copy"
                     aria-pressed={outputStrategy === "copy"}
                     className={cn(
                       "focus-visible:ring-ring/50 rounded-lg border p-3 text-left outline-none focus-visible:ring-[3px] disabled:opacity-50",
@@ -896,10 +899,13 @@ export function DocumentPolishDialog({
                     type="button"
                   >
                     <span className="flex items-center gap-2 text-sm font-semibold">
-                      <Copy className="size-4" />
+                      <Copy aria-hidden="true" className="size-4" />
                       Create review copy
                     </span>
-                    <span className="text-muted-foreground mt-2 block text-xs leading-relaxed">
+                    <span
+                      className="text-muted-foreground mt-2 block text-xs leading-relaxed"
+                      id={`${saveDescriptionId}-copy`}
+                    >
                       Keep the original untouched and create a sibling {outputNoun}.
                     </span>
                     <span className="text-primary mt-2 block text-[10px] font-semibold tracking-wide uppercase">
@@ -907,6 +913,8 @@ export function DocumentPolishDialog({
                     </span>
                   </button>
                   <button
+                    aria-describedby={`${saveDescriptionId}-original`}
+                    aria-label="Edit original"
                     aria-pressed={outputStrategy === "in_place"}
                     className={cn(
                       "focus-visible:ring-ring/50 rounded-lg border p-3 text-left outline-none focus-visible:ring-[3px] disabled:opacity-50",
@@ -922,10 +930,13 @@ export function DocumentPolishDialog({
                     type="button"
                   >
                     <span className="flex items-center gap-2 text-sm font-semibold">
-                      <FilePenLine className="size-4" />
+                      <FilePenLine aria-hidden="true" className="size-4" />
                       Edit original
                     </span>
-                    <span className="text-muted-foreground mt-2 block text-xs leading-relaxed">
+                    <span
+                      className="text-muted-foreground mt-2 block text-xs leading-relaxed"
+                      id={`${saveDescriptionId}-original`}
+                    >
                       Amend this Google Doc; Drive version history remains available.
                     </span>
                   </button>

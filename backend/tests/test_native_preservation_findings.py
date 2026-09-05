@@ -14,6 +14,7 @@ from app.document_transform.ir import parse_google_document
 from app.document_transform.native_preservation import preserved_native_findings
 from app.document_transform.schemas import (
     DocumentTransformCheckpoint,
+    InPlaceCheckpoint,
     TransformFinding,
     TransformMode,
 )
@@ -188,11 +189,13 @@ async def test_existing_protected_checkpoint_hash_rejects_native_element_tamperi
 
 @pytest.mark.parametrize("protected", [False, True])
 @pytest.mark.parametrize("mode", [TransformMode.FORMAT, TransformMode.BOTH])
+@pytest.mark.parametrize("legacy_components", [False, True])
 async def test_in_place_preservation_receipt_survives_interruption_and_completed_replay(
     monkeypatch: pytest.MonkeyPatch,
     *,
     protected: bool,
     mode: TransformMode,
+    legacy_components: bool,
 ):
     gateway = _InPlaceGateway("Source")
     document = _native(protected=protected)
@@ -232,6 +235,11 @@ async def test_in_place_preservation_receipt_survives_interruption_and_completed
     with pytest.raises(DocumentGatewayError):
         await executor().execute(operation_id=operation, request=request)
     checkpoint = store.checkpoints[-1]
+    if legacy_components:
+        payload = checkpoint.model_dump(mode="json")
+        for proof in payload["native_font_proof"] or []:
+            proof.pop("components", None)
+        checkpoint = InPlaceCheckpoint.model_validate(payload)
     assert checkpoint.findings[0].code == "native_rich_text_preserved"
     result = await executor(checkpoint).execute(operation_id=operation, request=request)
     assert result.findings == checkpoint.findings

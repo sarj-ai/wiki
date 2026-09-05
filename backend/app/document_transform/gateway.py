@@ -10,6 +10,7 @@ from app.document_transform.header_provenance import HeaderIdentityEvidence
 from app.document_transform.ir import DocumentIR
 from app.document_transform.native_date_flow import NativeDateCheckpoint
 from app.document_transform.native_footer_flow import NativeFooterCheckpoint
+from app.document_transform.native_table_font import TableFontPlan
 from app.document_transform.schemas import (
     DocumentOutput,
     DriveFileSource,
@@ -174,6 +175,7 @@ class DocumentGateway(ABC):
         *,
         snapshot: SourceSnapshot,
         title: str,
+        table_font_plan: TableFontPlan | None = None,
     ) -> InPlaceInspection:
         raise NotImplementedError
 
@@ -198,6 +200,7 @@ class DocumentGateway(ABC):
         protected_structure_sha256: str,
         verify_brand: bool,
         custom_furniture: tuple[CustomFurnitureBinding, ...] = (),
+        table_font_plan: TableFontPlan | None = None,
     ) -> OutputVerification:
         raise NotImplementedError
 

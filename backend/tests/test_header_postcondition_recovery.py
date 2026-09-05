@@ -19,6 +19,7 @@ from app.document_transform.gateway import (
     SourceSnapshot,
 )
 from app.document_transform.header_recovery import recover_empty_header_postcondition
+from app.document_transform.native_table_font import TableFontPlan
 from app.document_transform.schemas import (
     DocumentTransformRequest,
     DriveFileSource,
@@ -69,8 +70,12 @@ class _HeaderGateway(_Gateway):
         )
 
     @override
-    async def inspect_in_place(self, *, snapshot: SourceSnapshot, title: str) -> InPlaceInspection:
-        return await self.native.inspect_in_place(snapshot=snapshot, title=title)
+    async def inspect_in_place(
+        self, *, snapshot: SourceSnapshot, title: str, table_font_plan: TableFontPlan | None = None
+    ) -> InPlaceInspection:
+        return await self.native.inspect_in_place(
+            snapshot=snapshot, title=title, table_font_plan=table_font_plan
+        )
 
     @override
     async def verify_in_place(self, **kwargs: Any) -> OutputVerification:

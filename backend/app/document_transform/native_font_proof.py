@@ -1,3 +1,4 @@
+from contextlib import suppress
 from copy import deepcopy
 import hashlib
 import json
@@ -16,6 +17,28 @@ from app.document_transform.ir import (
 from app.identifiers import DocsTabId
 
 
+_MAX_COMPONENT_BYTES = 131072
+_COMPONENT_ERRORS = (
+    KeyError,
+    IndexError,
+    TypeError,
+    ValueError,
+    AttributeError,
+    OverflowError,
+    RecursionError,
+)
+
+
+class NativeFontComponents(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    version: Literal[1] = 1
+    paragraph_metadata_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    visible_residual_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    terminal_residual_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    terminal_family_representation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class NativeFontProof(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -24,6 +47,7 @@ class NativeFontProof(BaseModel):
     body_ordinal: int = Field(ge=0)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     named_styles_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    components: NativeFontComponents | None = None
 
 
 def _bodies(document: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
@@ -41,7 +65,9 @@ def _bodies(document: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     return result
 
 
-def _paragraph_digest(element: dict[str, Any], *, preserve_font_family: bool = False) -> str:
+def native_paragraph_font_sha256(
+    element: dict[str, Any], *, preserve_font_family: bool = False
+) -> str:
     payload = deepcopy(element)
     start, end = payload.pop("startIndex"), payload.pop("endIndex")
     if type(start) is not int or type(end) is not int or not 0 <= start < end:
@@ -156,8 +182,9 @@ def capture_native_font_proof(
             NativeFontProof(
                 tab_id=source.tab_id,
                 body_ordinal=ordinal,
-                sha256=_paragraph_digest(element),
+                sha256=native_paragraph_font_sha256(element),
                 named_styles_sha256=_named_styles_digest(document, source.tab_id),
+                components=_optional_components(element),
             )
         )
     return tuple(result)
@@ -177,11 +204,127 @@ def verify_native_font_proof(
     }
     valid = _verify_native_font_proof(document, proofs, preserved_block_ids, checks)
     if isinstance(diagnostic_stage, str) and diagnostic_stage in {"resume", "headers", "content"}:
+        if not valid:
+            checks.update(_component_checks(document, proofs, checks))
         logger.info(
             "document native font proof checks={checks}",
             checks={**checks, "font_proof_stage": diagnostic_stage, "font_proof_valid": valid},
         )
     return valid
+
+
+def _component_checks(
+    document: dict[str, Any] | None,
+    proofs: tuple[NativeFontProof, ...],
+    checks: dict[str, str | int | bool],
+) -> dict[str, bool]:
+    ordinal = checks["font_proof_verified_count"]
+    if (
+        document is None
+        or checks["font_proof_reason"] not in {"paragraph_payload", "parent_styles"}
+        or type(ordinal) is not int
+        or not 0 <= ordinal < min(len(proofs), MAX_DOCUMENT_BLOCKS)
+    ):
+        return {}
+    proof = proofs[ordinal]
+    if proof.components is None:
+        return {}
+    try:
+        observed = _optional_components(_bodies(document)[proof.tab_id][proof.body_ordinal])
+    except _COMPONENT_ERRORS:
+        return {"font_proof_components_evaluated": False}
+    if observed is None:
+        return {"font_proof_components_evaluated": False}
+    result = {
+        "font_proof_components_evaluated": True,
+        "font_proof_paragraph_metadata_equal": observed.paragraph_metadata_sha256
+        == proof.components.paragraph_metadata_sha256,
+        "font_proof_visible_residual_equal": observed.visible_residual_sha256
+        == proof.components.visible_residual_sha256,
+        "font_proof_terminal_residual_equal": observed.terminal_residual_sha256
+        == proof.components.terminal_residual_sha256,
+        "font_proof_terminal_family_representation_equal": observed.terminal_family_representation_sha256
+        == proof.components.terminal_family_representation_sha256,
+    }
+    with suppress(*_COMPONENT_ERRORS):
+        result["font_proof_parent_context_equal"] = (
+            _named_styles_digest(document, proof.tab_id) == proof.named_styles_sha256
+        )
+    return result
+
+
+def _optional_components(element: dict[str, Any]) -> NativeFontComponents | None:
+    try:
+        # Diagnostic-only work is bounded and must never change acceptance.
+        if len(json.dumps(element).encode()) > _MAX_COMPONENT_BYTES:
+            return None
+        return _paragraph_components(element)
+    except (
+        KeyError,
+        IndexError,
+        TypeError,
+        ValueError,
+        AttributeError,
+        OverflowError,
+        RecursionError,
+    ):
+        return None
+
+
+def _paragraph_components(element: dict[str, Any]) -> NativeFontComponents:
+    payload = deepcopy(element)
+    payload.pop("startIndex")
+    payload.pop("endIndex")
+    parts = payload["paragraph"].pop("elements")
+    visible: list[dict[str, Any]] = []
+    terminal: dict[str, Any] = {}
+    family_representation: dict[str, Any] = {}
+    for ordinal, part in enumerate(parts):
+        part.pop("startIndex")
+        part.pop("endIndex")
+        run = part["textRun"]
+        content = run.pop("content")
+        if ordinal == len(parts) - 1:
+            if not content.endswith("\n"):
+                raise ValueError
+            content = content[:-1]
+            terminal = deepcopy(part)
+            terminal_style = terminal["textRun"].get("textStyle", {})
+            terminal_family = terminal_style.get("weightedFontFamily", {})
+            family_representation = {
+                "text_style_present": "textStyle" in terminal["textRun"],
+                "weighted_family_present": "weightedFontFamily" in terminal_style,
+                "family_present": "fontFamily" in terminal_family,
+                "family": terminal_family.get("fontFamily"),
+            }
+            _remove_component_family(terminal)
+        _remove_component_family(part)
+        _append_run(visible, content, part)
+    if not terminal:
+        raise ValueError
+    return NativeFontComponents(
+        paragraph_metadata_sha256=_component_digest(payload),
+        visible_residual_sha256=_component_digest(visible),
+        terminal_residual_sha256=_component_digest(terminal),
+        terminal_family_representation_sha256=_component_digest(family_representation),
+    )
+
+
+def _remove_component_family(part: dict[str, Any]) -> None:
+    run = part["textRun"]
+    style = run.get("textStyle", {})
+    family = style.get("weightedFontFamily", {})
+    family.pop("fontFamily", None)
+    if not family:
+        style.pop("weightedFontFamily", None)
+    if not style:
+        run.pop("textStyle", None)
+
+
+def _component_digest(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+    ).hexdigest()
 
 
 def _verify_native_font_proof(
@@ -214,7 +357,7 @@ def _native_font_proof_matches(
         checks["font_proof_reason"] = "duplicate_binding"
         return False
     for ordinal, proof in enumerate(proofs):
-        if _paragraph_digest(bodies[proof.tab_id][proof.body_ordinal]) != proof.sha256:
+        if native_paragraph_font_sha256(bodies[proof.tab_id][proof.body_ordinal]) != proof.sha256:
             checks["font_proof_reason"] = "paragraph_payload"
             return False
         if _named_styles_digest(document, proof.tab_id) != proof.named_styles_sha256:
@@ -292,7 +435,9 @@ def _verify_native_unstyled_text(
         ):
             # Existing protected inventory binds the entire nonplain payload.
             continue
-        if _paragraph_digest(element, preserve_font_family=True) != _paragraph_digest(
+        if native_paragraph_font_sha256(
+            element, preserve_font_family=True
+        ) != native_paragraph_font_sha256(
             after_bodies[location.tab_id][ordinal], preserve_font_family=True
         ) or _named_styles_digest(source, location.tab_id) != _named_styles_digest(
             actual, location.tab_id

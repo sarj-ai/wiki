@@ -31,6 +31,8 @@ from app.document_transform.native_date_flow import NativeDateCheckpoint
 from app.document_transform.native_font_proof import NativeFontProof
 from app.document_transform.native_footer_flow import NativeFooterCheckpoint
 from app.document_transform.native_pagination import MAX_PAGINATION_RULES, NativePaginationRule
+from app.document_transform.native_paragraph_layout import NativeParagraphLayout
+from app.document_transform.native_table_font import TableFontPlan
 from app.document_transform.tab_names import TabNamingPlan
 from app.document_transform.tab_structure_execution import StructureCheckpoint
 from app.identifiers import BrandProfileId, DocsRevisionId, FileId, ModelId
@@ -224,6 +226,10 @@ class InPlaceCheckpointStage(StrEnum):
 
 
 class InPlaceCheckpoint(StrictTransformModel):
+    paragraph_layout: tuple[NativeParagraphLayout, ...] = Field(
+        default=(), max_length=MAX_DOCUMENT_BLOCKS
+    )
+    table_font_plan: TableFontPlan | None = None
     native_font_proof: tuple[NativeFontProof, ...] | None = Field(
         default=None, max_length=MAX_DOCUMENT_BLOCKS
     )

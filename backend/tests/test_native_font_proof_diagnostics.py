@@ -33,6 +33,8 @@ def test_font_proof_diagnostics_are_finite_and_preserve_result(
     source = _native()
     source["documentId"] = "SECRET"
     proofs = capture_native_font_proof(source, parse_google_document(source, title="SECRET"))
+    # Old checkpoints omit the optional diagnostic fingerprints entirely.
+    proofs = tuple(proof.model_copy(update={"components": None}) for proof in proofs)
     actual: dict[str, Any] | None = deepcopy(source)
     block_ids: tuple[str, ...] = ()
     match reason:

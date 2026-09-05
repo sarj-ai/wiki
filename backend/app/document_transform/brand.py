@@ -316,43 +316,37 @@ def _style_requests(
             and block.source_named_style == _named_style(block)
             and block.source_style_text_sha256 == block.sha256
         )
-        requests.append(
-            {
-                "updateParagraphStyle": {
-                    "range": range_value,
-                    "paragraphStyle": {
-                        "alignment": "START",
-                        "lineSpacing": profile.line_spacing_percent if branded else 100,
-                        "spaceAbove": {
-                            "magnitude": paragraph_spacing(block, profile).above if branded else 0,
-                            "unit": "PT",
-                        },
-                        "spaceBelow": {
-                            "magnitude": paragraph_spacing(block, profile).below if branded else 0,
-                            "unit": "PT",
-                        },
-                        "keepWithNext": paragraph_keep_with_next(block),
-                        **(
-                            {"keepLinesTogether": True}
-                            if block.pagination_keep_with_next is not None
-                            else {}
-                        ),
-                        **(
-                            {} if preserve_native_style else {"namedStyleType": _named_style(block)}
-                        ),
+        paragraph_request = {
+            "updateParagraphStyle": {
+                "range": range_value,
+                "paragraphStyle": {
+                    "alignment": "START",
+                    "lineSpacing": profile.line_spacing_percent if branded else 100,
+                    "spaceAbove": {
+                        "magnitude": paragraph_spacing(block, profile).above if branded else 0,
+                        "unit": "PT",
                     },
-                    "fields": (
-                        "alignment,lineSpacing,spaceAbove,spaceBelow,keepWithNext"
-                        + (
-                            ",keepLinesTogether"
-                            if block.pagination_keep_with_next is not None
-                            else ""
-                        )
-                        + ("" if preserve_native_style else ",namedStyleType")
+                    "spaceBelow": {
+                        "magnitude": paragraph_spacing(block, profile).below if branded else 0,
+                        "unit": "PT",
+                    },
+                    "keepWithNext": paragraph_keep_with_next(block),
+                    **(
+                        {"keepLinesTogether": True}
+                        if block.pagination_keep_with_next is not None
+                        else {}
                     ),
-                }
+                    **({} if preserve_native_style else {"namedStyleType": _named_style(block)}),
+                },
+                "fields": (
+                    "alignment,lineSpacing,spaceAbove,spaceBelow,keepWithNext"
+                    + (",keepLinesTogether" if block.pagination_keep_with_next is not None else "")
+                    + ("" if preserve_native_style else ",namedStyleType")
+                ),
             }
-        )
+        }
+        if block.preserved_paragraph_style_sha256 is None:
+            requests.append(paragraph_request)
         # Named styles can affect inherited text appearance. Apply the explicit
         # brand overrides after selecting the paragraph's named style.
         if branded:
@@ -687,6 +681,7 @@ def _post_edit_locations(original: DocumentIR, transformed: DocumentIR) -> Docum
                 pagination_keep_with_next=target.pagination_keep_with_next,
                 suppress_space_above=target.suppress_space_above,
                 suppress_space_below=target.suppress_space_below,
+                preserved_paragraph_style_sha256=target.preserved_paragraph_style_sha256,
                 font_style_ranges=tuple(
                     replace(
                         item,

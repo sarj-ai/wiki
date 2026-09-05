@@ -77,6 +77,8 @@ class TextBlock:
     pagination_keep_with_next: bool | None = None
     suppress_space_above: bool = False
     suppress_space_below: bool = False
+    # In-place only: exact source-bound paragraph layout, not a new semantic role.
+    preserved_paragraph_style_sha256: str | None = None
 
     @property
     def is_authored_lead_in(self) -> bool:
