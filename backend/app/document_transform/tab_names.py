@@ -125,8 +125,15 @@ def plan_tab_names(
             candidate = _candidate_title(document, tab.tab_id, single_root_tab=single_root_tab)
         if not candidate:
             candidate = _clean_title(tab.title) or "Tab"
+        icon_hint = candidate
         candidate = _truncate(title_case_document_name(candidate), MAX_TAB_TITLE_UNITS)
         if not candidate or not any(character.isalpha() for character in candidate):
+            if tab.title and utf16_length(tab.title) <= MAX_TAB_TITLE_UNITS:
+                icon = tab.icon_emoji or tab_icon_emoji(icon_hint) or tab_icon_emoji(tab.title)
+                if icon is not None and icon != tab.icon_emoji:
+                    renames.append(
+                        TabRename(tab.tab_id, tab.title, tab.title, tab.icon_emoji, icon)
+                    )
             continue
         sibling_titles = occupied[tab.parent_tab_id]
         title = candidate if candidate == tab.title else _unique_title(candidate, sibling_titles)
@@ -210,12 +217,13 @@ def _heading_title(document: DocumentIR, tab_id: DocsTabId) -> str:
 def _clean_title(text: str) -> str:
     normalized = " ".join(text.split())
     # Strip invisible controls, retaining joiners used by real scripts and emoji.
-    visible = "".join(
+    # Keep the source-grounded topic until the final title-length decision so
+    # an unbreakable title can still supply a native icon without being cut.
+    return "".join(
         char
         for char in normalized
         if not unicodedata.category(char).startswith("C") or char in {"\u200c", "\u200d"}
     )
-    return _truncate(visible, MAX_TAB_TITLE_UNITS)
 
 
 def _truncate(text: str, units: int) -> str:
