@@ -12,7 +12,12 @@ from loguru import logger
 
 from app.document_transform.errors import OutputVerificationError
 from app.document_transform.ir import utf16_length
-from app.document_transform.tab_structure import TabSection, TabStructurePlan, plan_tab_structure
+from app.document_transform.tab_structure import (
+    HEADER_FOOTER_LAYOUT_FIELDS,
+    TabSection,
+    TabStructurePlan,
+    plan_tab_structure,
+)
 from app.identifiers import DocsRevisionId, DocsTabId, FileId
 
 
@@ -90,6 +95,11 @@ def structure_eligibility_checks(document: dict[str, Any]) -> dict[str, int | bo
         "paragraph_tab_stops": False,
         "paragraph_borders": False,
         "paragraph_shading": False,
+        "custom_header_footer_margins_present": False,
+        "custom_header_footer_margins_enabled": False,
+        "custom_header_footer_margins_malformed": False,
+        "document_segment_reference_count": 0,
+        "unknown_header_footer_style_count": 0,
     }
     tabs = document.get("tabs", [])
     pending = list(tabs) if isinstance(tabs, list) else []
@@ -104,6 +114,7 @@ def structure_eligibility_checks(document: dict[str, Any]) -> dict[str, int | bo
         native = tab.get("documentTab", {})
         if not isinstance(native, dict):
             continue
+        _accumulate_layout_checks(native, checks)
         checks["rejected_native_fields_count"] += sum(
             bool(value)
             for key, value in native.items()
@@ -136,8 +147,41 @@ def structure_eligibility_checks(document: dict[str, Any]) -> dict[str, int | bo
     return checks
 
 
+def _accumulate_layout_checks(native: object, checks: dict[str, int | bool]) -> None:
+    if not isinstance(native, dict):
+        return
+    document_style = native.get("documentStyle", {})
+    if not isinstance(document_style, dict):
+        return
+    present = "useCustomHeaderFooterMargins" in document_style
+    custom = document_style.get("useCustomHeaderFooterMargins")
+    checks["custom_header_footer_margins_present"] |= present
+    checks["custom_header_footer_margins_enabled"] |= custom is True
+    checks["custom_header_footer_margins_malformed"] |= present and not isinstance(custom, bool)
+    checks["document_segment_reference_count"] += sum(
+        key in document_style for key in _SEGMENT_REFERENCE_FIELDS
+    )
+    checks["unknown_header_footer_style_count"] += sum(
+        isinstance(key, str)
+        and ("header" in key.lower() or "footer" in key.lower())
+        and key not in HEADER_FOOTER_LAYOUT_FIELDS
+        and key not in _SEGMENT_REFERENCE_FIELDS
+        for key in document_style
+    )
+
+
 _BORDER_FIELDS = frozenset(
     {"borderBetween", "borderTop", "borderBottom", "borderLeft", "borderRight"}
+)
+_SEGMENT_REFERENCE_FIELDS = frozenset(
+    {
+        "defaultHeaderId",
+        "defaultFooterId",
+        "firstPageHeaderId",
+        "firstPageFooterId",
+        "evenPageHeaderId",
+        "evenPageFooterId",
+    }
 )
 
 

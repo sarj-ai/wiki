@@ -25,6 +25,7 @@ from app.document_transform.tab_structure_execution import (
     prepare_content_move,
     prepare_tab_creation,
     recover_created_tabs,
+    structure_eligibility_checks,
     verify_structure_content,
 )
 from app.identifiers import DocsRevisionId, DocsTabId, FileId, TaskId
@@ -256,6 +257,52 @@ async def test_provider_requires_explicit_comment_absence(comments_absent: bool)
     )
     assert (plan is not None) is comments_absent
     assert not writes
+
+
+def test_layout_diagnostics_count_protected_fields_without_emitting_them():
+    document = _document()
+    native = document["tabs"][0]["documentTab"]
+    native["documentStyle"] = {
+        "useCustomHeaderFooterMargins": False,
+        "defaultHeaderId": "private-segment-id",
+        "privateFutureFooterField": "private-content",
+    }
+    checks = structure_eligibility_checks(document)
+    assert checks["custom_header_footer_margins_present"] is True
+    assert checks["custom_header_footer_margins_enabled"] is False
+    assert checks["custom_header_footer_margins_malformed"] is False
+    assert checks["document_segment_reference_count"] == 1
+    assert checks["unknown_header_footer_style_count"] == 1
+    assert "private" not in json.dumps(checks)
+    assert plan_tab_structure(document, comments_verified_absent=True) is None
+    native["documentStyle"] = {"useCustomHeaderFooterMargins": "private-malformed"}
+    assert structure_eligibility_checks(document)["custom_header_footer_margins_malformed"] is True
+
+
+@pytest.mark.parametrize("custom_margins", [False, True], ids=["default", "custom"])
+def test_custom_margins_remain_exact_during_tab_reconstruction(custom_margins: bool):
+    document = _document()
+    document["tabs"][0]["documentTab"]["documentStyle"] = {
+        "useCustomHeaderFooterMargins": custom_margins
+    }
+    plan = plan_tab_structure(document, comments_verified_absent=True)
+    assert plan is not None
+    intent, _ = prepare_tab_creation(StructureCheckpoint(plan))
+    created = bind_created_tabs(
+        intent,
+        tab_ids=(DocsTabId("delivery"), DocsTabId("risks")),
+        revision_id=DocsRevisionId("r2"),
+    )
+    moving, requests = prepare_content_move(created)
+    assert "useCustomHeaderFooterMargins" not in json.dumps(requests)
+    output = _output(moving)
+    for tab in output["tabs"]:
+        tab["documentTab"]["documentStyle"] = {"useCustomHeaderFooterMargins": custom_margins}
+    assert verify_structure_content(moving, output)
+    output["tabs"][1]["documentTab"]["documentStyle"][
+        "useCustomHeaderFooterMargins"
+    ] = not custom_margins
+    assert not verify_structure_content(moving, output)
 
 
 @pytest.mark.parametrize(

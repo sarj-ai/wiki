@@ -43,6 +43,26 @@ def test_only_static_typed_fields_are_emitted() -> None:
     assert "message" not in rows[0]
 
 
+def test_layout_eligibility_diagnostics_use_fixed_typed_allowlist() -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "document tab structure eligibility"
+    record["jsonPayload"]["record"]["extra"]["checks"] = {
+        "custom_header_footer_margins_present": True,
+        "custom_header_footer_margins_enabled": False,
+        "custom_header_footer_margins_malformed": False,
+        "document_segment_reference_count": 1,
+        "unknown_header_footer_style_count": 2,
+        "privateFutureFooterField": "private-content",
+    }
+    row = MODULE["sanitize"]([record], TASK)[0]
+    assert row["custom_header_footer_margins_present"] is True
+    assert row["custom_header_footer_margins_enabled"] is False
+    assert row["custom_header_footer_margins_malformed"] is False
+    assert row["document_segment_reference_count"] == 1
+    assert row["unknown_header_footer_style_count"] == 2
+    assert "private" not in json.dumps(row)
+
+
 def test_emphasis_breakdown_is_fixed_counter_allowlist() -> None:
     record = _record()
     record["jsonPayload"]["record"]["extra"]["diagnostics"] = {
