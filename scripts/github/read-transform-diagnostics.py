@@ -24,6 +24,35 @@ BULLET_SNAPSHOT_FIELDS = frozenset(
 MAX_PROVIDER_ORDINAL = 200
 PROVIDER_FIELDS = MappingProxyType(
     {
+        "safety_stage": frozenset(
+            {
+                "footer_plan",
+                "footer_create",
+                "footer_populate",
+                "footer_advance",
+                "footer_coverage",
+                "footer_projection_empty",
+                "footer_projection_populated",
+                "footer_tab",
+                "tab_naming_plan",
+                "tab_naming_pre",
+                "tab_naming_post",
+                "date_plan",
+                "date_pre",
+            }
+        ),
+        "safety_reason": frozenset(
+            {
+                "revision",
+                "topology",
+                "marker",
+                "segment",
+                "shape",
+                "invariant",
+                "action",
+                "preimage",
+            }
+        ),
         "provider_message_topic": frozenset(
             {
                 "unknown",
@@ -190,6 +219,7 @@ ERROR_CODES = frozenset(
     ]
 )
 MESSAGE_PREFIXES = (
+    "document native safety stop stage=",
     "document in-place preflight",
     "document bullet stage snapshot stage=",
     "document stage provider boundary http_status=",

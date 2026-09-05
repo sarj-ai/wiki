@@ -43,6 +43,27 @@ def test_only_static_typed_fields_are_emitted() -> None:
     assert "message" not in rows[0]
 
 
+@pytest.mark.parametrize("invalid", [False, True])
+def test_native_safety_diagnostics_keep_only_finite_stage_reason(invalid: bool) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "document native safety stop stage=SECRET"
+    record["jsonPayload"]["record"]["extra"].update(
+        {
+            "safety_stage": "SECRET" if invalid else "footer_projection_empty",
+            "safety_reason": "invariant",
+            "raw_provider_message": "SECRET",
+        }
+    )
+    if invalid:
+        with pytest.raises(ValueError, match=r"^$"):
+            MODULE["sanitize"]([record], TASK)
+    else:
+        row = MODULE["sanitize"]([record], TASK)[0]
+        assert row["safety_stage"] == "footer_projection_empty"
+        assert row["safety_reason"] == "invariant"
+        assert "SECRET" not in json.dumps(row)
+
+
 def test_in_place_preflight_exposes_only_static_reasons_and_counts() -> None:
     record = _record()
     record["jsonPayload"]["record"]["message"] = "document in-place preflight checks=SECRET"

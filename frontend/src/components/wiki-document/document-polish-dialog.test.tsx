@@ -140,6 +140,7 @@ describe("DocumentPolishDialog", () => {
       "Polishing this document… Checking its status automatically.",
     );
     expect(document.body).toHaveTextContent("Leaving this page does not cancel it.");
+    expect(document.body).not.toHaveTextContent("Keep this window open");
     expect(document.body).toHaveTextContent(`Task: ${pending.id}`);
     expect(document.body).not.toHaveTextContent("already reserved");
     expect(document.body).not.toHaveTextContent("Resume checking");
@@ -461,6 +462,10 @@ describe("DocumentPolishDialog", () => {
         "in_place",
       );
     });
+    await vi.waitFor(() => {
+      expect(document.body).toHaveTextContent("Updating and checking the original document…");
+    });
+    expect(document.body).not.toHaveTextContent("Keep this window open");
     completion.resolve(
       transformResult({
         outputFileId: "source-1",
@@ -911,6 +916,10 @@ describe("DocumentPolishDialog", () => {
         "copy",
       );
     });
+    await vi.waitFor(() => {
+      expect(document.body).toHaveTextContent("Importing and checking the new document…");
+    });
+    expect(document.body).not.toHaveTextContent("Keep this window open");
   });
 
   it("loads dropped UTF-8 Markdown and derives the document name", async () => {

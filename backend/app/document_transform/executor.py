@@ -412,7 +412,6 @@ class DocumentTransformExecutor:
             snapshot=snapshot,
             expected=outcome.document,
             draft=applied,
-            transform_findings=outcome.findings,
         )
         applied = replace(applied, revision_id=applied_validation.revision_id)
         if (
@@ -1239,7 +1238,6 @@ class DocumentTransformExecutor:
         snapshot: SourceSnapshot,
         expected: DocumentIR,
         draft: OutputDraft,
-        transform_findings: tuple[TransformFinding, ...],
     ) -> AppliedValidation:
         verification = await self._gateway.verify_output(
             draft=draft,
@@ -1258,7 +1256,7 @@ class DocumentTransformExecutor:
                 )
             )
         return AppliedValidation(
-            protected_content_preserved=(not transform_findings and verification.content_preserved),
+            protected_content_preserved=verification.content_preserved,
             structure_preserved=verification.structure_preserved,
             findings=tuple(findings),
             revision_id=verification.revision_id or draft.revision_id,

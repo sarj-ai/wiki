@@ -9,8 +9,8 @@ from typing import Any, Literal, NamedTuple, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
-from app.document_transform.errors import InPlaceNeedsReviewError
 from app.document_transform.ir import MAX_DOC_TABS
+from app.document_transform.native_safety_diagnostics import SafetyStage, native_safety_error
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId
 
 
@@ -96,11 +96,11 @@ def verified_footer_coverage_projection(
     document: dict[str, Any], checkpoint: NativeFooterCheckpoint
 ) -> dict[str, Any]:
     if not footer_coverage_complete(checkpoint):
-        raise InPlaceNeedsReviewError
+        native_safety_error("footer_coverage", "action")
     coverage = checkpoint.coverage
     if coverage is not None and not coverage.active:
         if footer_invariant_sha256(document) != checkpoint.invariant_sha256:
-            raise InPlaceNeedsReviewError
+            native_safety_error("footer_coverage", "invariant")
         return deepcopy(document)
     projected, _ = verified_footer_projection(document, checkpoint, populated=True)
     if coverage is not None:
@@ -120,7 +120,7 @@ def footer_document_tab(document: dict[str, Any], tab_id: DocsTabId) -> dict[str
 
     visit(document.get("tabs", []))
     if len(matches) != 1:
-        raise InPlaceNeedsReviewError
+        native_safety_error("footer_tab", "topology")
     return matches[0]
 
 
@@ -153,6 +153,7 @@ def verified_footer_projection(
     *,
     populated: bool,
 ) -> VerifiedFooterProjection:
+    stage: SafetyStage = "footer_projection_populated" if populated else "footer_projection_empty"
     snapshot = deepcopy(document)
     tab = footer_document_tab(snapshot, checkpoint.tab_id)
     style = tab.get("documentStyle", {})
@@ -160,22 +161,22 @@ def verified_footer_projection(
     if not isinstance(footer_id, str) or (
         checkpoint.footer_id is not None and footer_id != checkpoint.footer_id
     ):
-        raise InPlaceNeedsReviewError
+        native_safety_error(stage, "segment")
     footers = tab.get("footers", {})
     footer = footers.get(footer_id)
     if isinstance(footer, dict) and footer.get("footerId", footer_id) != footer_id:
-        raise InPlaceNeedsReviewError
+        native_safety_error(stage, "segment")
     if not isinstance(footer, dict) or not _footer_matches(
         footer, checkpoint.url, populated=populated, display_text=checkpoint.display_text
     ):
-        raise InPlaceNeedsReviewError
+        native_safety_error(stage, "shape")
     del footers[footer_id]
     if not footers:
         tab.pop("footers", None)
     del style["defaultFooterId"]
     _remove_footer_markers(snapshot, {checkpoint.create_marker, checkpoint.populate_marker})
     if footer_invariant_sha256(snapshot) != checkpoint.invariant_sha256:
-        raise InPlaceNeedsReviewError
+        native_safety_error(stage, "invariant")
     return VerifiedFooterProjection(snapshot, DocsSegmentId(footer_id))
 
 
