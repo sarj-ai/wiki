@@ -6,10 +6,12 @@ const actionMocks = vi.hoisted(() => ({
   getTask: vi.fn(),
 }));
 
-vi.mock("@/app/actions/smart-create-actions", () => ({
-  createDocumentTransformAction: actionMocks.create,
-  getDocumentTransformCapabilitiesAction: actionMocks.capabilities,
-  getSmartCreateTaskAction: actionMocks.getTask,
+vi.mock("@/lib/document-transform-http", () => ({
+  transformHttp: (path: string, body?: string, key?: string) => {
+    if (path === "/capabilities") return actionMocks.capabilities();
+    if (path.startsWith("/tasks/")) return actionMocks.getTask(path.slice("/tasks/".length));
+    return actionMocks.create(body, key);
+  },
 }));
 
 import { documentTransformApi } from "@/lib/document-transform-client";

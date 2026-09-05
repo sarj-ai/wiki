@@ -29,6 +29,13 @@ class TaskStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class DocumentTransformAdmission(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: TaskId
+    status: TaskStatus
+
+
 class _TaskReadBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

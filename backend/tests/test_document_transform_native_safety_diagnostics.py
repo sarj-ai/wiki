@@ -55,6 +55,11 @@ async def test_footer_projection_reports_exact_existing_failure_without_content(
     assert safety_logs[-1] == {
         "safety_stage": "footer_projection_populated" if populated else "footer_projection_empty",
         "safety_reason": reason,
+        **(
+            {"footer_shape_check": "paragraph_fields", "footer_shape_reason": "mismatch"}
+            if reason == "shape"
+            else {}
+        ),
     }
     assert "SECRET" not in json.dumps(safety_logs)
     assert document == before
