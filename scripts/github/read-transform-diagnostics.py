@@ -23,6 +23,9 @@ BOOLEAN_FIELDS = frozenset(
         "paragraph_tab_stops",
         "paragraph_borders",
         "paragraph_shading",
+        "custom_header_footer_margins_present",
+        "custom_header_footer_margins_enabled",
+        "custom_header_footer_margins_malformed",
         "content_preserved",
         "structure_preserved",
         "brand_applied",
@@ -64,6 +67,8 @@ COUNT_FIELDS = frozenset(
         "h1_count",
         "h2_count",
         "rejected_native_fields_count",
+        "document_segment_reference_count",
+        "unknown_header_footer_style_count",
         "bullet_presence_mismatch",
         "bullet_identity_mismatch",
         "bullet_nesting_mismatch",
@@ -172,9 +177,7 @@ def sanitize(
         if request_ids and extra.get("request_id") not in request_ids:
             raise ValueError
         timestamp = entry.get("timestamp")
-        if not isinstance(timestamp, str) or not re.fullmatch(
-            r"[0-9T:.+Z-]{20,40}", timestamp
-        ):
+        if not isinstance(timestamp, str) or not re.fullmatch(r"[0-9T:.+Z-]{20,40}", timestamp):
             raise ValueError
         parsed = datetime.fromisoformat(timestamp)
         if parsed.tzinfo is None:
@@ -185,9 +188,7 @@ def sanitize(
                 row["status"] = status
         if "request_id" in extra:
             request_id = extra["request_id"]
-            if not isinstance(request_id, str) or not re.fullmatch(
-                r"[0-9a-f]{12,32}", request_id
-            ):
+            if not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f]{12,32}", request_id):
                 raise ValueError
             row["request_id"] = request_id
         if "error_code" in extra:
@@ -265,8 +266,7 @@ def run_read() -> int:
             raise ValueError
         rows.extend(sanitize(correlated, task_id, request_ids))
     sys.stdout.write(
-        json.dumps({"records": rows, "returned_count": len(rows)}, sort_keys=True)
-        + "\n"
+        json.dumps({"records": rows, "returned_count": len(rows)}, sort_keys=True) + "\n"
     )
     return 0
 
@@ -276,9 +276,7 @@ def main() -> int:
         return run_read()
     except READ_FAILURES:
         # Never echo subprocess output, exceptions, input or log messages.
-        sys.stderr.write(
-            "Diagnostic read rejected or unavailable; no raw logs emitted.\n"
-        )
+        sys.stderr.write("Diagnostic read rejected or unavailable; no raw logs emitted.\n")
         return 1
 
 

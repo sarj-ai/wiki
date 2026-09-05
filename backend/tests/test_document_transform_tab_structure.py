@@ -69,17 +69,28 @@ def test_protected_native_features_decline(feature: str):
     assert plan_tab_structure(document, comments_verified_absent=True) is None
 
 
-def test_header_footer_layout_settings_do_not_masquerade_as_occupied_segments():
+@pytest.mark.parametrize("custom_margins", [False, True], ids=["default", "custom"])
+def test_header_footer_layout_settings_do_not_masquerade_as_occupied_segments(custom_margins: bool):
     document = _document()
     document["tabs"][0]["documentTab"]["documentStyle"] = {
         "marginHeader": {"magnitude": 36, "unit": "PT"},
         "marginFooter": {"magnitude": 36, "unit": "PT"},
         "useFirstPageHeaderFooter": False,
         "useEvenPageHeaderFooter": False,
+        "useCustomHeaderFooterMargins": custom_margins,
     }
     before = deepcopy(document)
     assert plan_tab_structure(document, comments_verified_absent=True) is not None
     assert document == before
+
+
+@pytest.mark.parametrize(
+    "value", [None, 0, 1, "false", {}, []], ids=["null", "zero", "one", "string", "object", "array"]
+)
+def test_custom_header_footer_layout_flag_rejects_malformed_values(value: object):
+    document = _document()
+    document["tabs"][0]["documentTab"]["documentStyle"] = {"useCustomHeaderFooterMargins": value}
+    assert plan_tab_structure(document, comments_verified_absent=True) is None
 
 
 @pytest.mark.parametrize(
