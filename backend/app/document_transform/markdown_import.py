@@ -7,6 +7,7 @@ import unicodedata
 
 from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
+    HEADER_TITLE_SEPARATOR,
     trusted_document_logo_description,
 )
 from app.document_transform.docx_renderer import (
@@ -971,6 +972,10 @@ def _header_named_style(document: dict[str, Any], tab: dict[str, Any]) -> _Named
 
 
 def _header_dimension_exact(value: object, expected: int) -> bool:
+    # Docs emits explicit zero dimensions as {unit: PT}: ProtoJSON may omit a
+    # default-valued scalar. Missing dimensions still mean unknown/inherited.
+    if expected == 0 and value == {"unit": "PT"}:
+        return True
     return (
         isinstance(value, dict)
         and set(value) == {"unit", "magnitude"}
@@ -1131,7 +1136,7 @@ def _header_elements_are_exact(
             return False
         if variant == "inlineObjectElement":
             if seen_logo or before_logo != (
-                header_title + "\t" if header_title is not None else ""
+                header_title + HEADER_TITLE_SEPARATOR if header_title is not None else ""
             ):
                 return False
             seen_logo = True

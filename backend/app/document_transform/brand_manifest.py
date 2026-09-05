@@ -164,6 +164,10 @@ def trusted_document_logo_description() -> str:
     )
 
 
+# Generated furniture only: append after normalization, never to authored body text.
+HEADER_TITLE_SEPARATOR = "\u00a0\u00a0\u00a0\u00a0\t"
+
+
 def normalize_header_title(title: str, *, max_chars: int) -> str:
     normalized = " ".join(title.split()) or "Untitled"
     return normalized[:max_chars].rstrip()

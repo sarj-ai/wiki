@@ -21,7 +21,7 @@ class ManagedHeaderIdentity(BaseModel):
 
 class HeaderIdentityEvidence(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    version: Literal[1] = 1
+    version: Literal[1, 2] = 1
     operation_id: uuid.UUID
     file_id: FileId
     profile_sha256: HeaderDigest

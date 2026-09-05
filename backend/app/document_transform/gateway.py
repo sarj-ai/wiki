@@ -234,6 +234,7 @@ class DocumentGateway(ABC):
         *,
         operation_id: uuid.UUID,
         draft: OutputDraft,
+        managed_headers: dict[str, str] | None = None,
     ) -> OutputDraft:
         """Create or recover header and footer segments and resolve the logo URI."""
 

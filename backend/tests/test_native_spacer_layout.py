@@ -167,7 +167,7 @@ async def test_copy_to_in_place_is_noop_or_truthful_review_never_padding_reset(
         )
         document["tabs"][0]["documentTab"]["headers"]["header-a"]["content"][0]["paragraph"][
             "elements"
-        ][0]["textRun"]["content"] = "Decision — Sarj Polished\t"
+        ][0]["textRun"]["content"] = "Decision — Sarj Polished\u00a0\u00a0\u00a0\u00a0\t"
     if unused_custom_style:
         document["namedStyles"] = {
             "styles": [{"namedStyleType": "HEADING_6", "paragraphStyle": {"shading": {}}}]
@@ -341,11 +341,11 @@ async def test_spacer_checkpoint_recomputes_proof_before_replay(tamper: str) -> 
         operation_id=task_id, request=request
     )
     checkpoint = store.checkpoints[-1]
-    assert checkpoint.request_builder_version == "google-docs-requests-v19"
+    assert checkpoint.request_builder_version == "google-docs-requests-v20"
     assert checkpoint.pagination[0].below_spacer_sha256 is not None
     if tamper == "old_version":
         checkpoint = checkpoint.model_copy(
-            update={"request_builder_version": "google-docs-requests-v18"}
+            update={"request_builder_version": "google-docs-requests-v19"}
         )
     elif tamper != "none":
         checkpoint = checkpoint.model_copy(

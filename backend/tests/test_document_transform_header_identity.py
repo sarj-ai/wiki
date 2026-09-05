@@ -8,6 +8,7 @@ import pytest
 
 from app.document_transform import google_gateway as google_gateway_module
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
+from app.document_transform.brand_manifest import HEADER_TITLE_SEPARATOR
 from app.document_transform.gateway import SourceSnapshot, TabHeader
 from app.document_transform.google_gateway import GoogleDocumentGateway, verify_brand_application
 from app.document_transform.ir import DocumentIR, parse_google_document
@@ -52,8 +53,13 @@ def test_copy_header_override_is_explicit_and_does_not_change_source_identity(ti
         headers=headers,
         logo_uri=logo_uri,
     )
-    assert any(item.get("insertText", {}).get("text") == "Untitled document\t" for item in default)
-    assert any(item.get("insertText", {}).get("text") == f"{title}\t" for item in copied)
+    assert any(
+        item.get("insertText", {}).get("text") == "Untitled document" + HEADER_TITLE_SEPARATOR
+        for item in default
+    )
+    assert any(
+        item.get("insertText", {}).get("text") == title + HEADER_TITLE_SEPARATOR for item in copied
+    )
     assert original.title == transformed.title == "Untitled document"
     assert copied == build_copy_mutations(
         original,
@@ -144,7 +150,10 @@ async def test_copy_auto_title_and_header_agree_and_retry_keeps_identity() -> No
     )
     title = "Platform Reliability Plan — Sarj Formatted"
     assert result.output.name == title
-    assert any(item.get("insertText", {}).get("text") == f"{title}\t" for item in gateway.requests)
+    assert any(
+        item.get("insertText", {}).get("text") == title + HEADER_TITLE_SEPARATOR
+        for item in gateway.requests
+    )
     assert set(gateway.verified_header_titles) == {title}
     assert {checkpoint.source_title for checkpoint in store.checkpoints} == {"Untitled document"}
     repeated = await _copy_executor(

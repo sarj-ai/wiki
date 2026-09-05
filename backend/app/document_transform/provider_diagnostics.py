@@ -67,8 +67,26 @@ PROPERTY_TOPIC_PATTERNS = MappingProxyType(
     }
 )
 FIELD_PATH = re.compile(
-    r"requests\[([0-9]{1,3})\]\.(insertDate|deleteContentRange|createNamedRange)"
-    r"(?:\.(dateElementProperties|location|range)(?:\.([A-Za-z]+))?)?"
+    r"requests\[([0-9]{1,3})\]\.(insertDate|deleteContentRange|createNamedRange|insert_date|delete_content_range|create_named_range)"
+    r"(?:\.(dateElementProperties|date_element_properties|location|range)(?:\.([A-Za-z_]+))?)?"
+)
+_FIELD_ALIASES = MappingProxyType(
+    {
+        "insert_date": "insertDate",
+        "delete_content_range": "deleteContentRange",
+        "create_named_range": "createNamedRange",
+        "date_element_properties": "dateElementProperties",
+        "time_zone_id": "timeZoneId",
+        "date_format": "dateFormat",
+        "time_format": "timeFormat",
+        "tab_id": "tabId",
+        "segment_id": "segmentId",
+        "start_index": "startIndex",
+        "end_index": "endIndex",
+    }
+)
+_STATUSES = frozenset(
+    {"INVALID_ARGUMENT", "FAILED_PRECONDITION", "UNIMPLEMENTED", "PERMISSION_DENIED"}
 )
 MESSAGE_PREFIX = re.compile(
     r"\AInvalid requests\[([0-9]{1,3})\]\.(insertDate|deleteContentRange|createNamedRange):"
@@ -88,8 +106,67 @@ class MessageEvidence(NamedTuple):
 
 
 def native_provider_diagnostics(
-    error: Exception, requests: list[dict[str, Any]]
+    error: Exception, requests: list[dict[str, Any]], *, include_envelope: bool = False
 ) -> dict[str, str | int]:
+    result = _request_diagnostics(error, requests)
+    return result | _envelope_diagnostics(error, result) if include_envelope else result
+
+
+def _envelope_diagnostics(error: Exception, request: dict[str, str | int]) -> dict[str, str | int]:
+    cause = error.__cause__
+    if not isinstance(cause, HttpError) or len(cause.content) > MAX_ERROR_BYTES:
+        return {}
+    try:
+        payload = ERROR_JSON.validate_json(cause.content)
+    except ValueError, UnicodeError, RecursionError:
+        return {}
+    body = payload.get("error")
+    if not isinstance(body, dict):
+        return {}
+    status = body.get("status")
+    result: dict[str, str | int] = {
+        "provider_status": status if isinstance(status, str) and status in _STATUSES else "unknown"
+    }
+    details = body.get("details", [])
+    if (
+        not isinstance(details, list)
+        or len(details) > MAX_DETAILS
+        or any(not isinstance(item, dict) for item in details)
+    ):
+        return result | {
+            "provider_detail_shape": "malformed",
+            "provider_field_evidence": "unrecognized",
+        }
+    kinds = {kind for item in details if isinstance((kind := item.get("@type")), str)}
+    known = kinds & {
+        "type.googleapis.com/google.rpc.BadRequest",
+        "type.googleapis.com/google.rpc.ErrorInfo",
+    }
+    result["provider_detail_shape"] = (
+        "absent"
+        if not details
+        else "mixed"
+        if len(known) > 1
+        else "bad_request"
+        if "type.googleapis.com/google.rpc.BadRequest" in known
+        else "error_info"
+        if "type.googleapis.com/google.rpc.ErrorInfo" in known
+        else "other"
+    )
+    evidence = _field_evidence(body)
+    result["provider_field_evidence"] = (
+        "unrecognized"
+        if evidence is None
+        else "none"
+        if not evidence
+        else "recognized"
+        if "provider_request_ordinal" in request
+        else "conflicting"
+    )
+    return result
+
+
+def _request_diagnostics(error: Exception, requests: list[dict[str, Any]]) -> dict[str, str | int]:
     unknown: dict[str, str | int] = {"provider_category": "unknown"}
     cause = error.__cause__
     if not isinstance(cause, HttpError):
@@ -181,6 +258,9 @@ def _field_evidence(body: dict[str, Any]) -> list[FieldEvidence] | None:
             if match is None:
                 return None
             ordinal, operation, field, leaf = match.groups()
+            operation = _FIELD_ALIASES.get(operation, operation)
+            field = _FIELD_ALIASES.get(field, field) if field is not None else None
+            leaf = _FIELD_ALIASES.get(leaf, leaf) if leaf is not None else None
             category = _field_category(operation, field, leaf)
             if category is None:
                 return None

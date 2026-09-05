@@ -24,6 +24,19 @@ BULLET_SNAPSHOT_FIELDS = frozenset(
 MAX_PROVIDER_ORDINAL = 200
 PROVIDER_FIELDS = MappingProxyType(
     {
+        "provider_status": frozenset(
+            {
+                "INVALID_ARGUMENT",
+                "FAILED_PRECONDITION",
+                "UNIMPLEMENTED",
+                "PERMISSION_DENIED",
+                "unknown",
+            }
+        ),
+        "provider_detail_shape": frozenset(
+            {"absent", "mixed", "bad_request", "error_info", "other", "malformed"}
+        ),
+        "provider_field_evidence": frozenset({"none", "recognized", "unrecognized", "conflicting"}),
         "provider_message_outcome": frozenset(
             {"matched", "ambiguous", "oversized", "quoted_lead", "unrecognized_lead"}
         ),
@@ -129,9 +142,7 @@ PROVIDER_FIELDS = MappingProxyType(
                 "marker_range",
             }
         ),
-        "provider_operation": frozenset(
-            {"insertDate", "deleteContentRange", "createNamedRange"}
-        ),
+        "provider_operation": frozenset({"insertDate", "deleteContentRange", "createNamedRange"}),
     }
 )
 READ_FAILURES = (ValueError, TypeError, KeyError, OSError, subprocess.TimeoutExpired)
@@ -385,9 +396,7 @@ def sanitize(
         if request_ids and extra.get("request_id") not in request_ids:
             raise ValueError
         timestamp = entry.get("timestamp")
-        if not isinstance(timestamp, str) or not re.fullmatch(
-            r"[0-9T:.+Z-]{20,40}", timestamp
-        ):
+        if not isinstance(timestamp, str) or not re.fullmatch(r"[0-9T:.+Z-]{20,40}", timestamp):
             raise ValueError
         parsed = datetime.fromisoformat(timestamp)
         if parsed.tzinfo is None:
@@ -398,9 +407,7 @@ def sanitize(
                 row["status"] = status
         if "request_id" in extra:
             request_id = extra["request_id"]
-            if not isinstance(request_id, str) or not re.fullmatch(
-                r"[0-9a-f]{12,32}", request_id
-            ):
+            if not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f]{12,32}", request_id):
                 raise ValueError
             row["request_id"] = request_id
         if "error_code" in extra:
@@ -428,10 +435,7 @@ def sanitize(
                         raise ValueError
                     row[key] = value
                 elif key in BULLET_SNAPSHOT_FIELDS:
-                    if (
-                        type(value) is not int
-                        or not 0 <= value <= MAX_BULLET_SNAPSHOT_COUNT
-                    ):
+                    if type(value) is not int or not 0 <= value <= MAX_BULLET_SNAPSHOT_COUNT:
                         raise ValueError
                     row[key] = value
                 elif key in COUNT_FIELDS or key in EMPHASIS_COUNT_FIELDS:
@@ -493,8 +497,7 @@ def run_read() -> int:
             raise ValueError
         rows.extend(sanitize(correlated, task_id, request_ids))
     sys.stdout.write(
-        json.dumps({"records": rows, "returned_count": len(rows)}, sort_keys=True)
-        + "\n"
+        json.dumps({"records": rows, "returned_count": len(rows)}, sort_keys=True) + "\n"
     )
     return 0
 
@@ -504,9 +507,7 @@ def main() -> int:
         return run_read()
     except READ_FAILURES:
         # Never echo subprocess output, exceptions, input or log messages.
-        sys.stderr.write(
-            "Diagnostic read rejected or unavailable; no raw logs emitted.\n"
-        )
+        sys.stderr.write("Diagnostic read rejected or unavailable; no raw logs emitted.\n")
         return 1
 
 

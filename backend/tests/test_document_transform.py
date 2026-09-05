@@ -968,7 +968,9 @@ class _Gateway(DocumentGateway):
         *,
         operation_id: uuid.UUID,
         draft: OutputDraft,
+        managed_headers: dict[str, str] | None = None,
     ) -> OutputDraft:
+        del managed_headers
         self.draft = OutputDraft(
             output=draft.output,
             document_id=draft.document_id,
@@ -1727,7 +1729,7 @@ def test_copy_branding_styles_header_deterministically() -> None:
     )
     assert header_text_style["range"] == {
         "startIndex": 0,
-        "endIndex": 9,
+        "endIndex": 13,
         "segmentId": "header-a",
         "tabId": "tab-a",
     }
@@ -1751,7 +1753,7 @@ def test_copy_branding_styles_header_deterministically() -> None:
         if "updateParagraphStyle" in request
         and request["updateParagraphStyle"]["range"].get("segmentId") == "header-a"
     )
-    assert header_paragraph_style["range"]["endIndex"] == 10
+    assert header_paragraph_style["range"]["endIndex"] == 14
     assert header_paragraph_style["paragraphStyle"] == {
         "alignment": "END",
         "lineSpacing": 100,
@@ -1791,9 +1793,9 @@ def test_copy_branding_normalizes_header_title_and_uses_utf16_indexes() -> None:
         "updateParagraphStyle",
         "updateTextStyle",
     ]
-    assert header_requests[0]["insertText"]["text"] == "Decision 😀 Brief\t"
-    assert header_requests[3]["updateTextStyle"]["range"]["endIndex"] == 18
-    assert header_requests[2]["updateParagraphStyle"]["range"]["endIndex"] == 19
+    assert header_requests[0]["insertText"]["text"] == "Decision 😀 Brief\u00a0\u00a0\u00a0\u00a0\t"
+    assert header_requests[3]["updateTextStyle"]["range"]["endIndex"] == 22
+    assert header_requests[2]["updateParagraphStyle"]["range"]["endIndex"] == 23
 
 
 @pytest.mark.parametrize(
@@ -2215,7 +2217,7 @@ def _branded_google_document() -> dict[str, Any]:
                                         "elements": [
                                             {
                                                 "textRun": {
-                                                    "content": "Decision\t",
+                                                    "content": "Decision\u00a0\u00a0\u00a0\u00a0\t",
                                                     "textStyle": {
                                                         "weightedFontFamily": {
                                                             "fontFamily": "Nunito"
@@ -2501,6 +2503,7 @@ async def test_copy_checkpoints_plan_before_create_and_resource_immediately_afte
         (True, "google-docs-requests-v8"),
         (True, "google-docs-requests-v9"),
         (True, "google-docs-requests-v15"),
+        (True, "google-docs-requests-v19"),
     ],
     ids=[
         "fresh-current",
@@ -2509,6 +2512,7 @@ async def test_copy_checkpoints_plan_before_create_and_resource_immediately_afte
         "reject-pending-v8-before-provider-write",
         "reject-pending-v9-before-provider-write",
         "reject-pending-v15-before-provider-write",
+        "reject-pending-v19-before-provider-write",
     ],
 )
 async def test_copy_native_footer_persists_each_stage_and_does_not_replay_body(

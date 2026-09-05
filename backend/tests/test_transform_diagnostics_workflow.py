@@ -183,6 +183,26 @@ def test_provider_boundary_diagnostics_are_finite_and_private() -> None:
 
 
 @pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("provider_status", "INVALID_ARGUMENT"),
+        ("provider_detail_shape", "bad_request"),
+        ("provider_field_evidence", "recognized"),
+    ],
+)
+def test_provider_envelope_fields_are_exact_allowlisted_values(key: str, value: str) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "document stage provider boundary http_status=400"
+    record["jsonPayload"]["record"]["extra"]["diagnostics"] = {key: value, "raw_field": "SECRET"}
+    row = MODULE["sanitize"]([record], TASK)[0]
+    assert row[key] == value
+    assert "SECRET" not in json.dumps(row)
+    record["jsonPayload"]["record"]["extra"]["diagnostics"] = {key: "SECRET"}
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
+
+
+@pytest.mark.parametrize(
     "topic",
     [
         "unknown",

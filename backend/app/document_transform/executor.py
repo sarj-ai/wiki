@@ -89,7 +89,7 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, Task
 
 
 PIPELINE_VERSION = "document-transform-v3"
-REQUEST_BUILDER_VERSION = "google-docs-requests-v19"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v20"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _MAX_GENERATED_NAME_SUFFIXES = 16
 _OUTPUT_SUFFIX = MappingProxyType(
@@ -392,19 +392,28 @@ class DocumentTransformExecutor:
             prepared_draft = await self._gateway.prepare_brand_shell(
                 operation_id=operation_id,
                 draft=draft,
+                managed_headers=checkpoint.managed_headers,
             )
+            if (
+                checkpoint.managed_headers is not None
+                and draft.applied_mutation_sha256 is None
+                and draft.pending_mutation_sha256 is None
+                and prepared_draft.revision_id != checkpoint.output_revision_id
+            ):
+                raise SourceChangedError
             if checkpoint.managed_headers is None:
                 # Persist positive ownership before body/header population.
                 # Never infer ownership from an already-mutated recovered copy.
                 checkpoint = await self._save_copy_checkpoint(
                     checkpoint.model_copy(
                         update={
+                            "output_revision_id": prepared_draft.revision_id,
                             "managed_headers": {}
                             if (draft.applied_mutation_sha256 or draft.pending_mutation_sha256)
                             else {
                                 str(header.tab_id): str(header.header_id)
                                 for header in prepared_draft.headers
-                            }
+                            },
                         }
                     )
                 )

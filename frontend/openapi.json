@@ -1451,8 +1451,11 @@
             "type": "string"
           },
           "version": {
-            "const": 1,
             "default": 1,
+            "enum": [
+              1,
+              2
+            ],
             "title": "Version",
             "type": "integer"
           }
