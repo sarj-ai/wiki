@@ -30,6 +30,7 @@ def _current_header_tokens() -> DocumentHeaderBrandTokens:
 CURRENT_HEADER_TOKENS = _current_header_tokens()
 MAX_DOCS_MUTATION_REQUESTS = 2_500
 MAX_DOCS_MUTATION_BYTES = 5 * 1024 * 1024
+_MIN_NATIVE_STYLE_SPLIT_CODEPOINTS = 2
 type DocsRequest = dict[str, Any]
 
 
@@ -134,7 +135,17 @@ def build_copy_mutations(
             logo_uri=logo_uri,
         )
     )
-    requests.extend(_style_requests(located, profile=profile, branded=True))
+    # Check provider widths before post-edit locations reconstruct them from text.
+    split_native_ids = frozenset(
+        block.id
+        for block in original.blocks
+        if block.source_range is not None
+        and block.source_range.end_index - block.source_range.start_index
+        == utf16_length(block.text)
+    )
+    requests.extend(
+        _style_requests(located, profile=profile, branded=True, split_native_ids=split_native_ids)
+    )
     return requests
 
 
@@ -266,6 +277,7 @@ def _style_requests(
     *,
     profile: SarjBrandProfile,
     branded: bool,
+    split_native_ids: frozenset[str] = frozenset(),
 ) -> list[DocsRequest]:
     requests: list[DocsRequest] = []
     for block in document.blocks:
@@ -349,16 +361,38 @@ def _style_requests(
                 # selection. Never synthesize emphasis for ordinary prose.
                 text_style.update(block.authored_emphasis)
                 fields += "".join(f",{key}" for key, _value in block.authored_emphasis)
-            requests.append(
+            ranges = [range_value]
+            if preserve_native_style and block.id in split_native_ids:
+                ranges = _native_text_style_ranges(block, range_value)
+            requests.extend(
                 {
                     "updateTextStyle": {
-                        "range": range_value,
+                        "range": text_range,
                         "textStyle": text_style,
                         "fields": fields,
                     }
                 }
+                for text_range in ranges
             )
     return requests
+
+
+def _native_text_style_ranges(block: TextBlock, range_value: DocsRequest) -> list[DocsRequest]:
+    # Full-paragraph text styling may also update its bullet. Two proper
+    # subranges are a bounded avoidance hypothesis, not a verifier relaxation.
+    # Split at a Unicode codepoint boundary, never inside a UTF-16 surrogate pair.
+    if (
+        len(block.text) < _MIN_NATIVE_STYLE_SPLIT_CODEPOINTS
+        or "\n" in block.text
+        or "\r" in block.text
+        or range_value["endIndex"] - range_value["startIndex"] != utf16_length(block.text)
+    ):
+        return [range_value]
+    midpoint = range_value["startIndex"] + utf16_length(block.text[: len(block.text) // 2])
+    return [
+        {**range_value, "endIndex": midpoint},
+        {**range_value, "startIndex": midpoint},
+    ]
 
 
 def _font_only_requests(block: TextBlock, profile: SarjBrandProfile) -> list[DocsRequest]:
