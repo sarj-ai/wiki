@@ -34,9 +34,12 @@ def test_header_component_checks_preserve_review_without_private_payload(change:
     run = paragraph["elements"][0]["textRun"]["textStyle"]
     if change == "above_unit_only":
         style["spaceAbove"] = {"unit": "PT"}
+        # Zero is valid; an independent font failure keeps component diagnostics evaluated.
+        run["weightedFontFamily"]["fontFamily"] = "SECRET"
         field = "import_header_space_above_unit_only"
     elif change == "below_unit_only":
         style["spaceBelow"] = {"unit": "PT"}
+        run["weightedFontFamily"]["fontFamily"] = "SECRET"
         field = "import_header_space_below_unit_only"
     elif change == "keep_absent":
         style.pop("keepWithNext")
@@ -77,7 +80,11 @@ def test_header_component_checks_preserve_review_without_private_payload(change:
     assert checks[field] is (change in {"above_unit_only", "below_unit_only", "keep_absent"})
     assert "import_footer_shape" not in checks
     assert "import_body_style" not in checks
-    if change in {"above_unit_only", "below_unit_only", "keep_absent", "parent_duplicate"}:
+    if change in {"above_unit_only", "below_unit_only"}:
+        assert checks["import_header_space_above_exact"]
+        assert checks["import_header_space_below_exact"]
+        assert not checks["import_header_run_font_exact"]
+    if change in {"keep_absent", "parent_duplicate"}:
         assert "import_header_first_failed_run_only" not in checks
     assert all(type(value) is bool for value in checks.values())
     assert "SECRET" not in json.dumps(checks)

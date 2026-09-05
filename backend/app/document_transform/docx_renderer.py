@@ -29,6 +29,7 @@ from markdown_it.token import Token
 
 from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
+    HEADER_TITLE_SEPARATOR,
     DocumentHeaderBrandTokens,
     normalize_header_title,
     trusted_document_logo_description,
@@ -767,7 +768,7 @@ def _configure_header(document: Document, logo_bytes: bytes, *, title: str) -> N
     paragraph.paragraph_format.line_spacing = _HEADER.line_spacing_percent / 100
     paragraph.paragraph_format.keep_with_next = False
     title_run = paragraph.add_run(
-        normalize_header_title(title, max_chars=_HEADER.max_title_chars) + "\t"
+        normalize_header_title(title, max_chars=_HEADER.max_title_chars) + HEADER_TITLE_SEPARATOR
     )
     _format_run(
         title_run,

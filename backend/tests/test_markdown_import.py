@@ -254,7 +254,7 @@ def _branded_document() -> dict[str, Any]:
                                         "elements": [
                                             {
                                                 "textRun": {
-                                                    "content": "Import\t",
+                                                    "content": "Import\u00a0\u00a0\u00a0\u00a0\t",
                                                     "textStyle": {
                                                         "weightedFontFamily": {
                                                             "fontFamily": "Nunito"

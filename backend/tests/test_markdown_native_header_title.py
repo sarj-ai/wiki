@@ -8,6 +8,7 @@ from defusedxml.ElementTree import fromstring
 from docx import Document as WordDocument
 import pytest
 
+from app.document_transform.brand_manifest import HEADER_TITLE_SEPARATOR
 from app.document_transform.docx_renderer import markdown_import_manifest, render_markdown_docx
 from app.document_transform.executor import DocumentTransformExecutor
 from app.document_transform.gateway import OutputDraft
@@ -26,13 +27,13 @@ from tests.test_markdown_import import _branded_document
 def _titled_document(title: str, *, newline: bool) -> dict[str, Any]:
     document = _branded_document()
     paragraph = document["tabs"][0]["documentTab"]["headers"]["header-1"]["content"][0]["paragraph"]
-    width = utf16_length(title + "\t")
+    width = utf16_length(title + HEADER_TITLE_SEPARATOR)
     elements = [
         {
             "startIndex": 0,
             "endIndex": width,
             "textRun": {
-                "content": title + "\t",
+                "content": title + HEADER_TITLE_SEPARATOR,
                 "textStyle": deepcopy(paragraph["elements"][0]["textRun"]["textStyle"]),
             },
         },
@@ -138,7 +139,9 @@ def test_writer_native_header_uses_chosen_title_without_rewriting_authored_h1() 
     with ZipFile(BytesIO(data)) as archive:
         header = fromstring(archive.read("word/header1.xml"))
         body = fromstring(archive.read("word/document.xml"))
-    assert "".join(node.text or "" for node in header.findall(f".//{W}t")) == "Chosen Title — Sarj"
+    assert "".join(node.text or "" for node in header.findall(f".//{W}t")) == (
+        "Chosen Title — Sarj" + HEADER_TITLE_SEPARATOR.removesuffix("\t")
+    )
     assert header.find(f".//{W}tab") is not None
     assert header.find(f".//{WP}docPr") is not None
     assert "Chosen Title" not in "".join(node.text or "" for node in body.findall(f".//{W}t"))
@@ -190,7 +193,7 @@ async def test_checkpoint_header_title_ignores_provider_collision_name_and_repla
     assert gateway.imported_docx is not None
     assert (
         WordDocument(BytesIO(gateway.imported_docx)).sections[0].header.paragraphs[0].text
-        == "Chosen Title\t"
+        == "Chosen Title" + HEADER_TITLE_SEPARATOR
     )
     assert (
         await DocumentTransformExecutor(

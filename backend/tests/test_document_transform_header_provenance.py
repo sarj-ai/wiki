@@ -150,7 +150,7 @@ def test_provenance_table_survives_task_expiry() -> None:
 
 def test_unknown_evidence_version_is_rejected() -> None:
     with pytest.raises(ValidationError):
-        HeaderIdentityEvidence.model_validate({"version": 2})
+        HeaderIdentityEvidence.model_validate({"version": 3})
 
 
 async def test_partial_managed_evidence_cannot_authorize_a_custom_header(

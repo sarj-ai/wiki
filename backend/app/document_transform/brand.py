@@ -7,6 +7,7 @@ from typing import Any
 
 from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
+    HEADER_TITLE_SEPARATOR,
     DocumentHeaderBrandTokens,
     normalize_header_title,
 )
@@ -541,7 +542,10 @@ def _brand_shell_requests(
             "segmentId": header.header_id,
             "tabId": header.tab_id,
         }
-        header_text = f"{normalize_header_title(title, max_chars=profile.header_max_title_chars)}\t"
+        header_text = (
+            normalize_header_title(title, max_chars=profile.header_max_title_chars)
+            + HEADER_TITLE_SEPARATOR
+        )
         requests.append(
             {
                 "insertText": {

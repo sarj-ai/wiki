@@ -28,7 +28,11 @@ from app.document_transform.brand import (
     paragraph_named_style,
     paragraph_spacing,
 )
-from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST, normalize_header_title
+from app.document_transform.brand_manifest import (
+    CURRENT_BRAND_MANIFEST,
+    HEADER_TITLE_SEPARATOR,
+    normalize_header_title,
+)
 from app.document_transform.bullet_stage_diagnostics import log_bullet_stage
 from app.document_transform.bullet_style_projection import (
     align_branded_bullet_metadata,
@@ -407,6 +411,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 )
             )
         return HeaderIdentityEvidence(
+            version=2,
             operation_id=operation_id,
             file_id=draft.document_id,
             profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
@@ -683,6 +688,7 @@ class GoogleDocumentGateway(DocumentGateway):
             expected_header_title=_trusted_header_identity_title(
                 document, getattr(self, "_header_identity", None)
             ),
+            header_separator=_owned_header_separator(getattr(self, "_header_identity", None)),
         )
         if not (content_preserved and structure_preserved and brand_applied):
             logger.warning(
@@ -813,8 +819,11 @@ class GoogleDocumentGateway(DocumentGateway):
         *,
         operation_id: uuid.UUID,
         draft: OutputDraft,
+        managed_headers: dict[str, str] | None = None,
     ) -> OutputDraft:
-        return await asyncio.to_thread(self._prepare_brand_shell_sync, operation_id, draft)
+        return await asyncio.to_thread(
+            self._prepare_brand_shell_sync, operation_id, draft, managed_headers
+        )
 
     @override
     async def apply_requests_once(
@@ -963,6 +972,9 @@ class GoogleDocumentGateway(DocumentGateway):
                     document_tab,
                     expected_title=header_title,
                     allow_legacy_inline_objects=len(tuple(_document_tabs(document))) == 1,
+                    header_separator=_owned_header_separator(
+                        getattr(self, "_header_identity", None)
+                    ),
                 ):
                     preserved_headers.append(
                         TabHeader(tab_id=tab_id, header_id=DocsSegmentId(header_id))
@@ -1001,6 +1013,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 document,
                 existing_layout,
                 expected_header_title=header_title,
+                header_separator=_owned_header_separator(getattr(self, "_header_identity", None)),
             ),
             missing_header_tab_ids=tuple(missing),
             unknown_header_tab_ids=tuple(unknown),
@@ -1044,7 +1057,9 @@ class GoogleDocumentGateway(DocumentGateway):
                 "document stage provider boundary http_status={http_status} "
                 "revision_unchanged={revision_unchanged} marker_checks={marker_checks} "
                 "request_kinds={request_kinds} diagnostics={diagnostics}",
-                diagnostics=native_provider_diagnostics(exc, atomic_requests),
+                diagnostics=native_provider_diagnostics(
+                    exc, atomic_requests, include_envelope=True
+                ),
                 request_kinds=stage_request_kinds(requests),
                 http_status=exc.http_status if isinstance(exc, DocumentGatewayError) else None,
                 revision_unchanged=document.get("revisionId") == required_revision_id,
@@ -1205,8 +1220,11 @@ class GoogleDocumentGateway(DocumentGateway):
         self,
         operation_id: uuid.UUID,
         draft: OutputDraft,
+        managed_headers: dict[str, str] | None = None,
     ) -> OutputDraft:
         del operation_id
+        if managed_headers is not None:
+            return self._recover_owned_brand_shell_sync(draft, managed_headers)
         if draft.headers:
             return draft
         document = self._get_document_sync(draft.document_id)
@@ -1293,6 +1311,48 @@ class GoogleDocumentGateway(DocumentGateway):
             brand_warnings=tuple(warnings),
         )
 
+    def _recover_owned_brand_shell_sync(
+        self, draft: OutputDraft, managed_headers: dict[str, str]
+    ) -> OutputDraft:
+        # The checkpoint, including an empty ownership map, is authoritative.
+        # Never infer ownership from a header populated before a later outage.
+        document = self._get_document_sync(draft.document_id)
+        tabs = tuple(_document_tabs(document))
+        tab_ids = [tab_id for tab_id, _ in tabs]
+        if len(set(tab_ids)) != len(tab_ids) or not set(managed_headers) <= set(tab_ids):
+            raise SourceChangedError
+        headers: list[TabHeader] = []
+        warnings: list[str] = [] if self._logo_uri else ["logo_unavailable"]
+        for tab_id, tab in tabs:
+            style = tab.get("documentStyle")
+            header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
+            segments = tab.get("headers")
+            if (
+                not isinstance(header_id, str)
+                or not isinstance(segments, dict)
+                or not isinstance(segments.get(header_id), dict)
+            ):
+                raise SourceChangedError
+            if tab_id in managed_headers:
+                if managed_headers[tab_id] != header_id:
+                    raise SourceChangedError
+                if (
+                    draft.pending_mutation_sha256 is None
+                    and draft.applied_mutation_sha256 is None
+                    and _segment_has_content(segments, header_id)
+                ):
+                    raise SourceChangedError
+                headers.append(TabHeader(DocsTabId(tab_id), DocsSegmentId(header_id)))
+            elif _segment_has_content(segments, header_id):
+                warnings.append(f"header_conflict:{tab_id}")
+        return replace(
+            draft,
+            headers=tuple(headers),
+            logo_uri=self._logo_uri,
+            revision_id=DocsRevisionId(_required_string(document, "revisionId")),
+            brand_warnings=tuple(warnings),
+        )
+
     def _apply_requests_sync(
         self,
         draft: OutputDraft,
@@ -1320,7 +1380,10 @@ class GoogleDocumentGateway(DocumentGateway):
                     mutation_sha256,
                     revision_id=current_revision,
                 )
-            if current_revision != required_revision_id:
+            if (
+                current_revision != required_revision_id
+                or draft.mutation_base_revision_sha256 != _revision_sha256(current_revision)
+            ):
                 raise SourceChangedError
         if requests:
             if current_revision != required_revision_id:
@@ -2493,7 +2556,11 @@ def _font_only_has_brand(paragraph: dict[str, Any], block: TextBlock) -> bool:
 
 
 def verify_brand_application(
-    document: dict[str, Any], parsed: DocumentIR, *, expected_header_title: str | None = None
+    document: dict[str, Any],
+    parsed: DocumentIR,
+    *,
+    expected_header_title: str | None = None,
+    header_separator: str = HEADER_TITLE_SEPARATOR,
 ) -> bool:
     tabs = tuple(_document_tabs(document))
     applied = bool(tabs) and all(
@@ -2502,6 +2569,7 @@ def verify_brand_application(
             document_tab,
             expected_title=parsed.title if expected_header_title is None else expected_header_title,
             allow_legacy_inline_objects=len(tabs) == 1,
+            header_separator=header_separator,
         )
         for _, document_tab in tabs
     )
@@ -2529,7 +2597,10 @@ def verify_brand_application(
                 break
     if not applied:
         checks = _brand_application_diagnostics(
-            document, parsed, expected_header_title=expected_header_title
+            document,
+            parsed,
+            expected_header_title=expected_header_title,
+            header_separator=header_separator,
         )
         logger.warning("document brand verification failed checks={checks}", checks=checks)
     return applied
@@ -2540,6 +2611,7 @@ def _brand_application_diagnostics(
     parsed: DocumentIR,
     *,
     expected_header_title: str | None = None,
+    header_separator: str = HEADER_TITLE_SEPARATOR,
 ) -> dict[str, bool | int]:
     tabs = tuple(_document_tabs(document))
     tab_checks: list[dict[str, bool]] = []
@@ -2552,6 +2624,7 @@ def _brand_application_diagnostics(
                 if expected_header_title is None
                 else expected_header_title,
                 allow_legacy_inline_objects=len(tabs) == 1,
+                header_separator=header_separator,
             )
         )
     paragraphs = _paragraphs_by_range(tabs)
@@ -2611,6 +2684,7 @@ def _tab_brand_diagnostics(
     *,
     expected_title: str,
     allow_legacy_inline_objects: bool,
+    header_separator: str = HEADER_TITLE_SEPARATOR,
 ) -> dict[str, bool]:
     style = document_tab.get("documentStyle")
     expected_margin = CURRENT_BRAND_MANIFEST.document.horizontal_margin_pt
@@ -2630,6 +2704,7 @@ def _tab_brand_diagnostics(
     header_checks = _header_brand_diagnostics(
         header if isinstance(header, dict) else None,
         expected_title=expected_title,
+        header_separator=header_separator,
     )
     object_ids = _values_for_key(header, "inlineObjectId") if isinstance(header, dict) else ()
     logo_count_ok = len(object_ids) == 1
@@ -2653,6 +2728,7 @@ def _header_brand_diagnostics(
     header: dict[str, Any] | None,
     *,
     expected_title: str,
+    header_separator: str = HEADER_TITLE_SEPARATOR,
 ) -> dict[str, bool]:
     header_tokens = CURRENT_BRAND_MANIFEST.document.header
     content = header.get("content") if isinstance(header, dict) else None
@@ -2699,7 +2775,7 @@ def _header_brand_diagnostics(
         "header_title": bool(text_runs)
         and len(text_runs) == len(title_elements)
         and all(isinstance(run.get("content"), str) for run in text_runs)
-        and "".join(run["content"] for run in text_runs) == f"{normalized_title}\t",
+        and "".join(run["content"] for run in text_runs) == normalized_title + header_separator,
         "header_text_style": bool(text_runs)
         and all(_header_text_run_has_brand(run) for run in text_runs),
     }
@@ -2758,6 +2834,7 @@ def _tab_shell_is_branded(
     *,
     expected_title: str,
     allow_legacy_inline_objects: bool,
+    header_separator: str = HEADER_TITLE_SEPARATOR,
 ) -> bool:
     style = document_tab.get("documentStyle")
     if not isinstance(style, dict):
@@ -2776,6 +2853,7 @@ def _tab_shell_is_branded(
         document_tab,
         expected_title=expected_title,
         allow_legacy_inline_objects=allow_legacy_inline_objects,
+        header_separator=header_separator,
     )
 
 
@@ -2789,10 +2867,18 @@ def _header_identity_title_digest(title: str) -> str:
 
 
 def _managed_header_fingerprint(
-    document: dict[str, Any], tab: dict[str, Any], *, expected_title: str
+    document: dict[str, Any],
+    tab: dict[str, Any],
+    *,
+    expected_title: str,
+    header_separator: str = HEADER_TITLE_SEPARATOR,
 ) -> str | None:
     if not _tab_header_is_branded(
-        document, tab, expected_title=expected_title, allow_legacy_inline_objects=False
+        document,
+        tab,
+        expected_title=expected_title,
+        allow_legacy_inline_objects=False,
+        header_separator=header_separator,
     ):
         return None
     header_id = tab["documentStyle"]["defaultHeaderId"]
@@ -2806,6 +2892,10 @@ def _managed_header_fingerprint(
     # sourceUri/size were checked above; every other object field is bound.
     logo["inlineObjectProperties"]["embeddedObject"]["imageProperties"].pop("contentUri", None)
     return _inventory_sha256({"header": header, "logo": logo})
+
+
+def _owned_header_separator(evidence: HeaderIdentityEvidence | None) -> str:
+    return "\t" if evidence is not None and evidence.version == 1 else HEADER_TITLE_SEPARATOR
 
 
 def _trusted_header_identity_title(
@@ -2841,10 +2931,13 @@ def _trusted_header_identity_title(
             if not isinstance(value, str):
                 raise InPlaceNeedsReviewError
             parts.append(value)
-        candidate = "".join(parts).removesuffix("\t")
+        separator = _owned_header_separator(evidence)
+        candidate = "".join(parts).removesuffix(separator)
         if (
             _header_identity_title_digest(candidate) != evidence.title_sha256
-            or _managed_header_fingerprint(document, tab, expected_title=candidate)
+            or _managed_header_fingerprint(
+                document, tab, expected_title=candidate, header_separator=separator
+            )
             != binding.fingerprint_sha256
             or (title is not None and title != candidate)
         ):
@@ -2859,6 +2952,7 @@ def _tab_header_is_branded(
     *,
     expected_title: str,
     allow_legacy_inline_objects: bool,
+    header_separator: str = HEADER_TITLE_SEPARATOR,
 ) -> bool:
     style = document_tab.get("documentStyle", {})
     header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
@@ -2881,7 +2975,9 @@ def _tab_header_is_branded(
             for item in header.get("content", [])
         ],
     }
-    if not _header_has_brand(effective_header, expected_title=expected_title):
+    if not _header_has_brand(
+        effective_header, expected_title=expected_title, header_separator=header_separator
+    ):
         return False
     object_ids = _values_for_key(header, "inlineObjectId")
     if len(object_ids) != 1:
@@ -2910,7 +3006,12 @@ def _segment_has_text(segments: object, segment_id: str) -> bool:
     )
 
 
-def _header_has_brand(header: dict[str, Any], *, expected_title: str) -> bool:
+def _header_has_brand(
+    header: dict[str, Any],
+    *,
+    expected_title: str,
+    header_separator: str = HEADER_TITLE_SEPARATOR,
+) -> bool:
     header_tokens = CURRENT_BRAND_MANIFEST.document.header
     if header_tokens is None:
         return False
@@ -2970,7 +3071,7 @@ def _header_has_brand(header: dict[str, Any], *, expected_title: str) -> bool:
         expected_title,
         max_chars=header_tokens.max_title_chars,
     )
-    if "".join(run["content"] for run in text_runs) != f"{normalized_title}\t":
+    if "".join(run["content"] for run in text_runs) != normalized_title + header_separator:
         return False
     return bool(text_runs) and all(_header_text_run_has_brand(run) for run in text_runs)
 
