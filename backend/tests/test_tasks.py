@@ -46,6 +46,11 @@ class _Result:
     def scalar_one_or_none(self) -> Any:
         return self._row
 
+    def one_or_none(self) -> Any:
+        if isinstance(self._row, Task):
+            return (self._row, False)
+        return self._row
+
 
 class _Session:
     def __init__(self, *rows: object) -> None:
@@ -223,7 +228,7 @@ async def test_admitted_replay_does_not_revalidate_changed_provider_state() -> N
 
 async def test_distinct_active_in_place_task_for_same_target_is_rejected() -> None:
     row = _task(request_hash="0" * 64)
-    session = _Session(None, None, None, 0, 0, None, None)
+    session = _Session(None, None, None, 0, 0, None, None, None)
 
     with pytest.raises(TaskTargetBusyError):
         await _service(session).create_or_replay(
@@ -318,7 +323,8 @@ async def test_different_key_same_source_reuses_active_task(
     params = query.compile().params or {}
     assert row.owner_user_id in params.values()
     assert "document-1" in params.values()
-    assert "expires_at" not in str(query).split("WHERE", 1)[1]
+    assert "tasks.expires_at > now()" in str(query)
+    assert "tasks.lease_expires_at > now()" in str(query)
     assert "INSERT INTO task_replay_keys" in str(session.statements[3])
     assert not any("INSERT INTO tasks " in str(statement) for statement in session.statements)
 
@@ -407,7 +413,7 @@ async def test_markdown_task_persists_ciphertext_and_hash_without_plaintext() ->
     serialized = task_service_module._serialize(payload)
     row = _task(request_hash=task_service_module._request_hash(serialized))
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, 0, row)
+    session = _Session(None, None, None, 0, row)
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -434,6 +440,99 @@ async def test_markdown_task_persists_ciphertext_and_hash_without_plaintext() ->
     assert "tasks.expires_at <= now()" in gc_sql
     assert "tasks.status !=" in gc_sql
     assert "tasks.lease_expires_at <=" in gc_sql
+
+
+@pytest.mark.parametrize("revoked", [False, True])
+@pytest.mark.parametrize("expired", [False, True])
+async def test_markdown_active_hash_reuse_authorizes_before_recording_new_key(
+    *, revoked: bool, expired: bool
+) -> None:
+    payload = _markdown_payload()
+    row = _task(
+        request_hash=task_service_module._request_hash(task_service_module._serialize(payload))
+    )
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    session = _Session(None, None, (row, expired), None)
+    admissions: list[bool] = []
+
+    async def admit() -> None:
+        admissions.append(True)
+        if revoked:
+            message = "revoked"
+            raise PermissionError(message)
+
+    async def reserve():
+        return await _service(session).create_or_replay(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            owner_user_id=row.owner_user_id,
+            idempotency_key=IdempotencyKey(uuid.uuid7()),
+            payload=payload,
+            admit=admit,
+        )
+
+    if revoked:
+        with pytest.raises(PermissionError, match="revoked"):
+            await reserve()
+        assert session.rollbacks == 1
+        assert session.commits == 0
+        assert len(session.statements) == 3
+    elif expired:
+        with pytest.raises(TaskTargetBusyError):
+            await reserve()
+        assert session.rollbacks == 1
+        assert session.commits == 0
+        assert len(session.statements) == 3
+    else:
+        reservation = await reserve()
+        assert reservation.task.id == row.id
+        assert not reservation.created
+        assert "INSERT INTO task_replay_keys" in str(session.statements[-1])
+    assert admissions == [True]
+    query = session.statements[2]
+    assert isinstance(query, ClauseElement)
+    params = query.compile().params or {}
+    assert row.owner_user_id in params.values()
+    assert row.request_hash in params.values()
+    assert "markdown" in params.values()
+    assert "tasks.status IN" in str(query)
+    assert "tasks.expires_at <= now() AS expired" in str(query)
+
+
+@pytest.mark.parametrize("insert_succeeds", [False, True])
+async def test_expired_transform_key_retries_identical_insert_once(
+    *, insert_succeeds: bool
+) -> None:
+    row = _task(request_hash="0" * 64)
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    session = _Session(None, None, None, 0, None, None, row if insert_succeeds else None)
+    admissions: list[bool] = []
+
+    async def admit() -> None:
+        admissions.append(True)
+        assert session.commits == 0
+
+    async def reserve():
+        return await _service(session).create_or_replay(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            owner_user_id=row.owner_user_id,
+            idempotency_key=row.idempotency_key,
+            payload=_markdown_payload(),
+            admit=admit,
+        )
+
+    if insert_succeeds:
+        reservation = await reserve()
+        assert reservation.created
+        assert session.commits == 1
+        assert session.rollbacks == 0
+    else:
+        with pytest.raises(TaskTargetBusyError):
+            await reserve()
+        assert session.commits == 0
+        assert session.rollbacks == 1
+    assert admissions == [True]
+    assert len(session.statements) == 7
+    assert session.statements[4] is session.statements[6]
 
 
 async def test_worker_load_decrypts_markdown_and_accepts_legacy_payloads() -> None:
