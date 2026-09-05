@@ -63,6 +63,35 @@ def test_native_font_proof_fields_are_finite_and_private() -> None:
 
 
 @pytest.mark.parametrize(
+    "field",
+    [
+        "font_proof_components_evaluated",
+        "font_proof_paragraph_metadata_equal",
+        "font_proof_visible_residual_equal",
+        "font_proof_terminal_residual_equal",
+        "font_proof_terminal_family_representation_equal",
+        "font_proof_parent_context_equal",
+    ],
+)
+def test_component_diagnostics_allow_only_booleans_without_fingerprints(field: str) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "document native font proof checks=SECRET"
+    checks: dict[str, object] = {
+        field: False,
+        "visible_residual_sha256": "a" * 64,
+        "components": {"SECRET": "SECRET"},
+    }
+    record["jsonPayload"]["record"]["extra"]["checks"] = checks
+    rows = MODULE["sanitize"]([record], TASK)
+    assert rows[0][field] is False
+    assert "a" * 64 not in json.dumps(rows)
+    assert "SECRET" not in json.dumps(rows)
+    checks[field] = 0
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
+
+
+@pytest.mark.parametrize(
     ("field", "value"),
     [
         ("font_proof_reason", "SECRET"),
