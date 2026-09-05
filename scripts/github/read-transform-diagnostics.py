@@ -26,6 +26,21 @@ BULLET_SNAPSHOT_FIELDS = frozenset(
 MAX_PROVIDER_ORDINAL = 200
 PROVIDER_FIELDS = MappingProxyType(
     {
+        "header_recovery_reason": frozenset(
+            {"state", "ownership", "invariants", "semantic", "bindings", "inventory", "recovered"}
+        ),
+        "header_recovery_empty_reason": frozenset(
+            {
+                "segment",
+                "content_count",
+                "paragraph_wrapper",
+                "paragraph_fields",
+                "paragraph_style",
+                "run_wrapper",
+                "text_run",
+                "empty",
+            }
+        ),
         "font_proof_stage": frozenset({"resume", "headers", "content"}),
         "font_proof_reason": frozenset(
             {
@@ -162,6 +177,45 @@ PROVIDER_FIELDS = MappingProxyType(
 READ_FAILURES = (ValueError, TypeError, KeyError, OSError, subprocess.TimeoutExpired)
 BOOLEAN_FIELDS = frozenset(
     [
+        "header_recovery_paragraph_mapping",
+        "header_recovery_paragraph_direction_present",
+        "header_recovery_paragraph_direction_ltr",
+        "header_recovery_paragraph_direction_rtl",
+        "header_recovery_paragraph_lineSpacing_present",
+        "header_recovery_paragraph_lineSpacing_zero",
+        "header_recovery_paragraph_lineSpacing_hundred",
+        "header_recovery_paragraph_unknown_fields",
+        "header_recovery_run_mapping",
+        "header_recovery_run_unknown_fields",
+        "header_recovery_run_content_lf",
+        "header_recovery_run_style_present",
+        "header_recovery_run_style_empty",
+        *[
+            f"header_recovery_paragraph_{field}_{suffix}"
+            for field in ("namedStyleType", "alignment")
+            for suffix in ("present", "default")
+        ],
+        *[
+            f"header_recovery_paragraph_{field}_{suffix}"
+            for field in ("spaceAbove", "spaceBelow", "indentStart", "indentEnd", "indentFirstLine")
+            for suffix in ("present", "unit_only", "explicit_zero")
+        ],
+        *[
+            f"header_recovery_paragraph_{field}_{suffix}"
+            for field in ("keepWithNext", "keepTogether", "avoidWidowAndOrphan", "pageBreakBefore")
+            for suffix in ("present", "false")
+        ],
+        "header_recovery_revision_equal",
+        "header_recovery_document_equal",
+        "header_recovery_digest_equal",
+        "header_recovery_marker_name_equal",
+        "header_recovery_marker_range_equal",
+        "header_recovery_custom_equal",
+        "header_recovery_identity_equal",
+        "header_recovery_structure_equal",
+        "header_recovery_protected_equal",
+        "header_recovery_body_equal",
+        "header_recovery_safe_equal",
         "font_proof_valid",
         "font_proof_components_evaluated",
         "font_proof_paragraph_metadata_equal",
@@ -371,6 +425,7 @@ ERROR_CODES = frozenset(
 )
 MESSAGE_PREFIXES = (
     "document native font proof checks=",
+    "document header recovery checks=",
     "document markdown import verification checks=",
     "document native safety stop stage=",
     "document in-place preflight",

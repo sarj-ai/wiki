@@ -43,6 +43,33 @@ def test_only_static_typed_fields_are_emitted() -> None:
     assert "message" not in rows[0]
 
 
+@pytest.mark.parametrize("invalid", [False, True])
+def test_header_recovery_diagnostics_are_finite_and_private(*, invalid: bool) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "document header recovery checks=SECRET"
+    record["jsonPayload"]["record"]["extra"]["checks"] = {
+        "header_recovery_reason": "SECRET" if invalid else "inventory",
+        "header_recovery_empty_reason": "paragraph_style",
+        "header_recovery_body_equal": True,
+        "header_recovery_paragraph_spaceAbove_unit_only": True,
+        "header_recovery_paragraph_spaceAbove_explicit_zero": False,
+        "header_recovery_run_style_empty": False,
+        "raw_header": "SECRET",
+    }
+    if invalid:
+        with pytest.raises(ValueError, match=r"^$"):
+            MODULE["sanitize"]([record], TASK)
+    else:
+        rows = MODULE["sanitize"]([record], TASK)
+        assert rows[0]["header_recovery_reason"] == "inventory"
+        assert rows[0]["header_recovery_empty_reason"] == "paragraph_style"
+        assert rows[0]["header_recovery_body_equal"] is True
+        assert rows[0]["header_recovery_paragraph_spaceAbove_unit_only"] is True
+        assert rows[0]["header_recovery_paragraph_spaceAbove_explicit_zero"] is False
+        assert rows[0]["header_recovery_run_style_empty"] is False
+        assert "SECRET" not in json.dumps(rows)
+
+
 def test_native_font_proof_fields_are_finite_and_private() -> None:
     record = _record()
     record["jsonPayload"]["record"]["message"] = "document native font proof checks=SECRET"
