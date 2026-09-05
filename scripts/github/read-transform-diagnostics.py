@@ -137,6 +137,8 @@ PROVIDER_FIELDS = MappingProxyType(
 READ_FAILURES = (ValueError, TypeError, KeyError, OSError, subprocess.TimeoutExpired)
 BOOLEAN_FIELDS = frozenset(
     [
+        "spacer_scope_checked",
+        "spacer_named_styles_known",
         "in_place_active_suggestions",
         "in_place_logo_available",
         "in_place_marker_available",
@@ -191,6 +193,17 @@ BOOLEAN_FIELDS = frozenset(
 )
 COUNT_FIELDS = frozenset(
     [
+        "spacer_planned_above_count",
+        "spacer_planned_below_count",
+        "spacer_examined_count",
+        "spacer_neighbor_style_count",
+        "spacer_neighbor_content_count",
+        "spacer_indices_count",
+        "spacer_container_count",
+        "spacer_style_count",
+        "spacer_runs_count",
+        "spacer_text_run_count",
+        "spacer_budget_count",
         "word_count",
         "h1_count",
         "h2_count",
@@ -270,6 +283,7 @@ MESSAGE_PREFIXES = (
     "document bullet stage snapshot stage=",
     "document stage provider boundary http_status=",
     "document tab structure eligibility",
+    "document spacer eligibility",
     "document copy verification failed checks=",
     "document brand verification failed checks=",
     "in-place verification failed content_preserved=",
