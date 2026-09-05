@@ -44,6 +44,31 @@ def test_only_static_typed_fields_are_emitted() -> None:
 
 
 @pytest.mark.parametrize("invalid", [False, True])
+def test_native_import_diagnostics_expose_only_static_boolean_checks(*, invalid: bool) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = (
+        "document markdown import verification checks=SECRET"
+    )
+    record["jsonPayload"]["record"]["extra"]["checks"] = {
+        "import_header_shape": False,
+        "import_logo_dimensions": True,
+        "import_logo_metadata": "SECRET" if invalid else False,
+        "import_body_style": 1 if invalid else True,
+        "provider_body": "SECRET",
+    }
+    if invalid:
+        with pytest.raises(ValueError, match=r"^$"):
+            MODULE["sanitize"]([record], TASK)
+        return
+    rows = MODULE["sanitize"]([record], TASK)
+    assert rows[0]["import_header_shape"] is False
+    assert rows[0]["import_logo_dimensions"] is True
+    assert rows[0]["import_logo_metadata"] is False
+    assert rows[0]["import_body_style"] is True
+    assert "SECRET" not in json.dumps(rows)
+
+
+@pytest.mark.parametrize("invalid", [False, True])
 def test_native_safety_diagnostics_keep_only_finite_stage_reason(invalid: bool) -> None:
     record = _record()
     record["jsonPayload"]["record"]["message"] = "document native safety stop stage=SECRET"

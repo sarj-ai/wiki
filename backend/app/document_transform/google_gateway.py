@@ -72,7 +72,10 @@ from app.document_transform.ir import (
     rewrite_markdown,
 )
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
-from app.document_transform.markdown_import import verify_markdown_import
+from app.document_transform.markdown_import import (
+    markdown_import_brand_diagnostics,
+    verify_markdown_import,
+)
 from app.document_transform.naming import suggested_document_title
 from app.document_transform.native_date_flow import (
     NativeDateCheckpoint,
@@ -1402,13 +1405,17 @@ class GoogleDocumentGateway(DocumentGateway):
                 parse_markdown(source.markdown, title=source.title),
                 expected,
             )
-            verification = verify_markdown_import(
-                output_document,
-                markdown_import_manifest(
-                    rendered_markdown,
-                    title=source.title,
-                    branded=verify_brand,
-                ),
+            manifest = markdown_import_manifest(
+                rendered_markdown, title=source.title, branded=verify_brand
+            )
+            verification = verify_markdown_import(output_document, manifest)
+            logger.info(
+                "document markdown import verification checks={checks}",
+                checks={
+                    "import_content_preserved": verification.content_preserved,
+                    "import_structure_preserved": verification.structure_preserved,
+                    **markdown_import_brand_diagnostics(output_document, manifest),
+                },
             )
             return OutputVerification(
                 content_preserved=verification.content_preserved,

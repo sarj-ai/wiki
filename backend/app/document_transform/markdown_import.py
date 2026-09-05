@@ -30,6 +30,7 @@ _ORDERED_GLYPH_TYPES = frozenset(
 _CODE_FONTS = frozenset({"consolas", "courier new", "menlo", "monospace", "roboto mono"})
 _TOLERANCE = 1e-6
 _H2_LEVEL = 2
+_MAX_HEADER_ELEMENTS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -714,6 +715,44 @@ def _document_style_matches(tab: dict[str, Any], horizontal: float, vertical: fl
     )
 
 
+def markdown_import_brand_diagnostics(
+    document: dict[str, Any], expected: MarkdownImportManifest
+) -> dict[str, bool]:
+    checks = {"import_brand_requested": expected.branded}
+    if not expected.branded:
+        return checks
+    tabs = tuple(_document_tabs(document))
+    observed = _observed_blocks(document, expected)
+    checks.update(
+        import_single_tab=len(tabs) == 1, import_block_count=len(observed) == len(expected.blocks)
+    )
+    if len(tabs) != 1 or not checks["import_block_count"]:
+        return checks
+    tab = tabs[0]
+    tokens = CURRENT_BRAND_MANIFEST.document
+    checks["import_margins"] = _document_style_matches(
+        tab, tokens.horizontal_margin_pt, tokens.vertical_margin_pt
+    )
+    if not checks["import_margins"]:
+        return checks
+    checks["import_header_shape"] = len(_exact_header_logo_ids(tab.get("headers"))) == 1
+    embedded = _tab_logo_object(document, tab)
+    checks["import_logo_object"] = embedded is not None
+    if embedded is None:
+        return checks
+    checks["import_logo_metadata"] = _logo_metadata_matches(embedded)
+    if not checks["import_logo_metadata"]:
+        return checks
+    checks["import_logo_dimensions"] = _logo_dimensions_match(embedded)
+    if not checks["import_logo_dimensions"]:
+        return checks
+    checks["import_footer_shape"] = _segment_has_exact_footer(tab.get("footers"))
+    if not checks["import_footer_shape"]:
+        return checks
+    checks["import_body_style"] = _body_brand_matches(document, tab, expected)
+    return checks
+
+
 def _dimension_points(value: object) -> float:
     if not isinstance(value, dict) or value.get("unit") != "PT":
         return 0
@@ -722,19 +761,32 @@ def _dimension_points(value: object) -> float:
 
 
 def _tab_has_logo(document: dict[str, Any], tab: dict[str, Any]) -> bool:
+    embedded = _tab_logo_object(document, tab)
+    return (
+        embedded is not None
+        and _logo_metadata_matches(embedded)
+        and _logo_dimensions_match(embedded)
+    )
+
+
+def _tab_logo_object(document: dict[str, Any], tab: dict[str, Any]) -> dict[str, Any] | None:
     object_ids = _exact_header_logo_ids(tab.get("headers"))
     if len(object_ids) != 1 or not isinstance(object_ids[0], str):
-        return False
+        return None
     inline_objects = tab.get("inlineObjects")
     if not isinstance(inline_objects, dict):
         inline_objects = document.get("inlineObjects")
     if not isinstance(inline_objects, dict):
-        return False
+        return None
     candidate = inline_objects.get(object_ids[0])
-    properties = candidate.get("inlineObjectProperties", {}) if isinstance(candidate, dict) else {}
-    embedded = properties.get("embeddedObject", {}) if isinstance(properties, dict) else {}
+    properties = candidate.get("inlineObjectProperties") if isinstance(candidate, dict) else None
+    embedded = properties.get("embeddedObject") if isinstance(properties, dict) else None
     if not isinstance(embedded, dict):
-        return False
+        return None
+    return embedded
+
+
+def _logo_metadata_matches(embedded: dict[str, Any]) -> bool:
     if (
         embedded.get("title") != "Sarj logo"
         or embedded.get("description") != trusted_document_logo_description()
@@ -744,8 +796,10 @@ def _tab_has_logo(document: dict[str, Any], tab: dict[str, Any]) -> bool:
     if not isinstance(image_properties, dict):
         return False
     source_uri = image_properties.get("sourceUri")
-    if source_uri is not None and source_uri != CURRENT_BRAND_MANIFEST.assets.logo_uri:
-        return False
+    return source_uri is None or source_uri == CURRENT_BRAND_MANIFEST.assets.logo_uri
+
+
+def _logo_dimensions_match(embedded: dict[str, Any]) -> bool:
     size = embedded.get("size", {})
     width = _dimension_points(size.get("width")) if isinstance(size, dict) else 0
     height = _dimension_points(size.get("height")) if isinstance(size, dict) else 0
@@ -773,26 +827,52 @@ def _exact_header_logo_ids(segments: object) -> tuple[object, ...]:
         return ()
     if set(element) == {"inlineObjectId"}:
         return (element["inlineObjectId"],)
+    if not _location_wrapper_matches(element, {"paragraph"}):
+        return ()
     paragraph = element.get("paragraph")
-    if not isinstance(paragraph, dict):
+    if not isinstance(paragraph, dict) or set(paragraph) - {"elements", "paragraphStyle"}:
         return ()
     elements = paragraph.get("elements", [])
     if not isinstance(elements, list):
         return ()
     identifiers = _values_for_key(elements, "inlineObjectId")
-    return identifiers if len(identifiers) == 1 and _header_elements_are_exact(elements) else ()
-
-
-def _header_elements_are_exact(elements: list[Any]) -> bool:
     return (
-        len(elements) == 1
-        and isinstance(elements[0], dict)
-        and (
-            set(elements[0]) == {"inlineObjectElement"}
-            and isinstance(elements[0]["inlineObjectElement"], dict)
-            and set(elements[0]["inlineObjectElement"]) == {"inlineObjectId"}
-        )
+        identifiers
+        if len(identifiers) == 1 and _header_elements_are_exact(elements, outer=element)
+        else ()
     )
+
+
+def _header_elements_are_exact(elements: list[Any], *, outer: dict[str, Any] | None = None) -> bool:
+    if not elements or len(elements) > _MAX_HEADER_ELEMENTS:
+        return False
+    cursor: int | None = outer.get("startIndex") if outer is not None else None
+    for index, element in enumerate(elements):
+        variant = "inlineObjectElement" if index == 0 else "textRun"
+        if not isinstance(element, dict) or not _location_wrapper_matches(element, {variant}):
+            return False
+        payload = element.get(variant)
+        field = "inlineObjectId" if index == 0 else "content"
+        if not isinstance(payload, dict) or not _plain_segment_payload_known(payload, field):
+            return False
+        value = payload.get(field)
+        if not isinstance(value, str) or (not value if index == 0 else value != "\n"):
+            return False
+        start, end = element.get("startIndex"), element.get("endIndex")
+        if (start is not None and not isinstance(start, int)) or (
+            end is not None and not isinstance(end, int)
+        ):
+            return False
+        if start is not None and cursor is not None and start != cursor:
+            return False
+        effective_start = start if start is not None else cursor
+        if end is not None and effective_start is not None and end != effective_start + 1:
+            return False
+        cursor = (
+            end if end is not None else effective_start + 1 if effective_start is not None else None
+        )
+    paragraph_end = outer.get("endIndex") if outer is not None else None
+    return paragraph_end is None or cursor is None or paragraph_end == cursor
 
 
 def _segment_has_exact_footer(segments: object) -> bool:
@@ -821,7 +901,7 @@ def _segment_has_exact_footer(segments: object) -> bool:
         auto_text = element.get("autoText")
         if (
             isinstance(text_run, dict)
-            and _footer_payload_known(text_run, "content")
+            and _plain_segment_payload_known(text_run, "content")
             and isinstance(value := text_run.get("content"), str)
         ):
             width = utf16_length(value)
@@ -837,7 +917,7 @@ def _segment_has_exact_footer(segments: object) -> bool:
                 tokens.append(("text", " ".join(value.split())))
         elif (
             isinstance(auto_text, dict)
-            and _footer_payload_known(auto_text, "type")
+            and _plain_segment_payload_known(auto_text, "type")
             and auto_text.get("type") == "PAGE_NUMBER"
         ):
             width = 1
@@ -867,7 +947,7 @@ def _segment_has_exact_footer(segments: object) -> bool:
     return tokens == [("text", "Sarj ·"), ("auto", "PAGE_NUMBER")]
 
 
-def _footer_payload_known(payload: object, field: str) -> bool:
+def _plain_segment_payload_known(payload: object, field: str) -> bool:
     if not isinstance(payload, dict) or set(payload) - {field, "textStyle"}:
         return False
     style = payload.get("textStyle", {})
