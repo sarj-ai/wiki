@@ -91,7 +91,7 @@ def test_header_verification_override_does_not_weaken_in_place_identity() -> Non
     assert parsed.title == "Untitled document"
 
 
-async def test_repeat_copy_title_preflight_reports_unknown_header_without_private_content() -> None:
+async def test_custom_header_preflight_preserves_privacy() -> None:
     document = _branded_google_document()
     document["documentId"] = "private-document"
     gateway = object.__new__(GoogleDocumentGateway)
@@ -113,11 +113,14 @@ async def test_repeat_copy_title_preflight_reports_unknown_header_without_privat
         inspection = await gateway.inspect_in_place(snapshot=snapshot, title=snapshot.title)
     finally:
         logger.remove(sink)
-    assert inspection.unknown_header_tab_ids
+    assert not inspection.unknown_header_tab_ids
+    assert inspection.custom_furniture
+    assert not inspection.headers
+    assert not inspection.preserved_headers
     assert not inspection.fully_branded
     logged = "\n".join(messages)
     assert "document in-place preflight" in logged
-    assert "'unknown_header_count': 1" in logged
+    assert "'unknown_header_count': 0" in logged
     assert "'in_place_logo_available': True" in logged
     assert "Decision" not in logged
     assert "private" not in logged

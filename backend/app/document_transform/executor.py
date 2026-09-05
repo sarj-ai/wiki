@@ -21,6 +21,7 @@ from app.document_transform.brand import (
     mutation_sha256,
 )
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
+from app.document_transform.custom_furniture import custom_furniture_requests_safe
 from app.document_transform.docx_renderer import markdown_import_manifest, render_markdown_docx
 from app.document_transform.errors import (
     DocumentGatewayError,
@@ -49,6 +50,10 @@ from app.document_transform.ir import (
 )
 from app.document_transform.models import PatchGenerator
 from app.document_transform.naming import suggested_document_title, title_case_document_name
+from app.document_transform.native_font_proof import (
+    capture_native_font_proof,
+    verify_native_font_proof,
+)
 from app.document_transform.native_footer_flow import footer_coverage_complete
 from app.document_transform.native_pagination import (
     NativePaginationRule,
@@ -56,6 +61,7 @@ from app.document_transform.native_pagination import (
     existing_native_pagination,
     plan_native_pagination,
 )
+from app.document_transform.native_preservation import preserved_native_findings
 from app.document_transform.planner import TextTransformPlanner, TransformOutcome
 from app.document_transform.schemas import (
     CopyCheckpoint,
@@ -89,7 +95,7 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, Task
 
 
 PIPELINE_VERSION = "document-transform-v3"
-REQUEST_BUILDER_VERSION = "google-docs-requests-v20"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v21"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _MAX_GENERATED_NAME_SUFFIXES = 16
 _OUTPUT_SUFFIX = MappingProxyType(
@@ -872,8 +878,28 @@ class DocumentTransformExecutor:
             )
             if checkpoint_contract != current_contract:
                 raise OutputConflictError
+            if checkpoint.native_font_proof is None and any(
+                finding.code == "native_rich_text_preserved" for finding in checkpoint.findings
+            ):
+                raise InPlaceNeedsReviewError
+            if checkpoint.native_font_proof is not None and not verify_native_font_proof(
+                snapshot.google_document,
+                checkpoint.native_font_proof,
+                preserved_block_ids=_preserved_block_ids(checkpoint),
+            ):
+                raise InPlaceNeedsReviewError
             if checkpoint.stage is InPlaceCheckpointStage.COMPLETE:
                 if snapshot.revision_id != checkpoint.current_revision_id:
+                    raise InPlaceNeedsReviewError
+                if (
+                    checkpoint.custom_furniture
+                    and (
+                        await self._gateway.inspect_in_place(
+                            snapshot=snapshot, title=snapshot.title
+                        )
+                    ).custom_furniture
+                    != checkpoint.custom_furniture
+                ):
                     raise InPlaceNeedsReviewError
                 return self._in_place_result(
                     operation_id=operation_id,
@@ -887,6 +913,8 @@ class DocumentTransformExecutor:
                     ),
                 )
         inspection = await self._gateway.inspect_in_place(snapshot=snapshot, title=snapshot.title)
+        if checkpoint is not None and checkpoint.custom_furniture != inspection.custom_furniture:
+            raise InPlaceNeedsReviewError
         if checkpoint is not None and checkpoint.header_identity != inspection.header_identity:
             raise OutputConflictError
         if checkpoint is None:
@@ -918,6 +946,7 @@ class DocumentTransformExecutor:
                 owned_by_me=snapshot.owned_by_me,
                 can_edit=snapshot.can_edit,
                 is_personal_drive=snapshot.is_personal_drive,
+                shared_drive_id=snapshot.shared_drive_id,
                 web_url=snapshot.web_url,
             )
             inspection = await self._gateway.inspect_in_place(
@@ -932,9 +961,16 @@ class DocumentTransformExecutor:
                 structural_sha256=checkpoint.structural_sha256,
                 protected_structure_sha256=checkpoint.protected_structure_sha256,
                 verify_brand=False,
+                custom_furniture=checkpoint.custom_furniture,
             )
             if not (
                 header_verification.content_preserved and header_verification.structure_preserved
+            ):
+                raise InPlaceNeedsReviewError
+            if checkpoint.native_font_proof is not None and not verify_native_font_proof(
+                stage_result.document,
+                checkpoint.native_font_proof,
+                preserved_block_ids=_preserved_block_ids(checkpoint),
             ):
                 raise InPlaceNeedsReviewError
             if (
@@ -944,6 +980,8 @@ class DocumentTransformExecutor:
             ):
                 raise InPlaceNeedsReviewError
             if inspection.missing_header_tab_ids or inspection.unknown_header_tab_ids:
+                raise InPlaceNeedsReviewError
+            if inspection.custom_furniture != checkpoint.custom_furniture:
                 raise InPlaceNeedsReviewError
             snapshot = stage_snapshot
             original = apply_native_pagination(_to_ir(stage_snapshot), checkpoint.pagination)
@@ -1005,11 +1043,18 @@ class DocumentTransformExecutor:
             structural_sha256=checkpoint.structural_sha256,
             protected_structure_sha256=checkpoint.protected_structure_sha256,
             verify_brand=request.mode is not TransformMode.UNSLOP,
+            custom_furniture=checkpoint.custom_furniture,
         )
         if not (
             verification.content_preserved
             and verification.structure_preserved
-            and verification.brand_applied
+            and (verification.brand_applied or verification.supported_brand_applied)
+        ):
+            raise InPlaceNeedsReviewError
+        if checkpoint.native_font_proof is not None and not verify_native_font_proof(
+            stage_result.document,
+            checkpoint.native_font_proof,
+            preserved_block_ids=_preserved_block_ids(checkpoint),
         ):
             raise InPlaceNeedsReviewError
         checkpoint = checkpoint.model_copy(update={"current_revision_id": stage_result.revision_id})
@@ -1095,7 +1140,14 @@ class DocumentTransformExecutor:
             transformed=outcome.document,
             brand=self._brand,
         )
-        if outcome.findings:
+        preserved_findings = preserved_native_findings(
+            original=original,
+            transformed=outcome.document,
+            findings=outcome.findings,
+            native_document=snapshot.google_document,
+            mode=request.mode,
+        )
+        if preserved_findings is None:
             logger.info(
                 "document in-place preflight checks={checks}",
                 checks={"in_place_planner_findings": True},
@@ -1116,14 +1168,17 @@ class DocumentTransformExecutor:
             for block, transformed in zip(original.blocks, outcome.document.blocks, strict=True)
             if block.text != transformed.text
         }
-        if pagination and (replacements or (branded and not inspection.fully_branded)):
+        scope_applied = inspection.fully_branded or (
+            bool(inspection.custom_furniture) and inspection.supported_brand_applied
+        )
+        if pagination and (replacements or (branded and not scope_applied)):
             # Existing-only recognition is a no-op contract, not authority to
             # reinterpret a partially edited layout or move its spacer ranges.
             raise InPlaceNeedsReviewError
         model_ids = (
             [ModelId(value) for value in self._generator.model_ids] if outcome.llm_invoked else []
         )
-        if branded and inspection.fully_branded and not replacements:
+        if branded and scope_applied and not replacements:
             requests = []
             stage = InPlaceCheckpointStage.CONTENT
         elif branded and inspection.missing_header_tab_ids:
@@ -1152,7 +1207,13 @@ class DocumentTransformExecutor:
                 checks={"in_place_missing_marker": True},
             )
             raise InPlaceNeedsReviewError
+        try:
+            native_font_proof = capture_native_font_proof(snapshot.google_document, original)
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError) as error:
+            raise InPlaceNeedsReviewError from error
         checkpoint = InPlaceCheckpoint(
+            native_font_proof=native_font_proof,
+            custom_furniture=inspection.custom_furniture,
             pagination=pagination,
             header_identity=inspection.header_identity,
             document_id=source.file_id,
@@ -1178,7 +1239,17 @@ class DocumentTransformExecutor:
             mutation_sha256=mutation_sha256(requests) if requests else None,
             requests=requests,
             replacements=replacements,
-            findings=[],
+            findings=list(preserved_findings)
+            + (
+                [
+                    TransformFinding(
+                        code="custom_furniture_preserved",
+                        detail="Supported body formatting was applied; custom headers, footers, and page geometry were preserved. Full Sarj branding was not applied.",
+                    )
+                ]
+                if branded and inspection.custom_furniture and not inspection.fully_branded
+                else []
+            ),
             applied_patch_count=outcome.applied_count,
             deterministic_patch_count=outcome.deterministic_count,
             model_patch_count=outcome.model_count,
@@ -1202,15 +1273,23 @@ class DocumentTransformExecutor:
     ) -> list[dict[str, Any]]:
         if request.mode is TransformMode.UNSLOP:
             return build_copy_text_mutations(original, transformed)
-        return build_copy_mutations(
+        requests = build_copy_mutations(
             original,
             transformed,
             profile=self._brand,
             headers=inspection.headers,
             logo_uri=inspection.logo_uri,
         )
+        preserved_tabs = {binding.tab_id for binding in inspection.custom_furniture}
+        return [
+            item
+            for item in requests
+            if item.get("updateDocumentStyle", {}).get("tabId") not in preserved_tabs
+        ]
 
     async def _apply_checkpoint_stage(self, checkpoint: InPlaceCheckpoint) -> InPlaceStageResult:
+        if not custom_furniture_requests_safe(checkpoint.requests, checkpoint.custom_furniture):
+            raise OutputConflictError
         if checkpoint.marker_name is None or checkpoint.marker_range is None:
             raise DocumentGatewayError
         if checkpoint.mutation_sha256 != mutation_sha256(checkpoint.requests):
@@ -1265,7 +1344,7 @@ class DocumentTransformExecutor:
                 "unslop_version": UNSLOP_UPSTREAM_VERSION,
             },
             pipeline_version=PIPELINE_VERSION,
-            needs_review=False,
+            needs_review=bool(checkpoint.findings),
             brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
             brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
             deterministic_patch_count=checkpoint.deterministic_patch_count,
@@ -1704,6 +1783,7 @@ def _matches_pre_header_checkpoint(
         and inspection.protected_structure_sha256 == checkpoint.protected_structure_sha256
         and inspection.body_sha256 == checkpoint.body_sha256
         and inspection.header_safe_sha256 == checkpoint.header_safe_sha256
+        and inspection.custom_furniture == checkpoint.custom_furniture
         and not inspection.unknown_header_tab_ids
         and tuple(str(tab_id) for tab_id in inspection.missing_header_tab_ids) == requested_tab_ids
         and current_headers == checkpoint.headers
@@ -1782,3 +1862,11 @@ def _brand_warning_detail(code: str) -> str:
     if code == "logo_unavailable":
         return "Typography and spacing were applied, but the logo URL was not publicly readable"
     return "Existing header preserved for review"
+
+
+def _preserved_block_ids(checkpoint: InPlaceCheckpoint) -> tuple[str, ...]:
+    return tuple(
+        finding.block_id or ""
+        for finding in checkpoint.findings
+        if finding.code == "native_rich_text_preserved"
+    )

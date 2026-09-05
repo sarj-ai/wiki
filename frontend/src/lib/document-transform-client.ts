@@ -2,6 +2,7 @@ import * as z from "zod";
 
 import { transformHttp } from "@/lib/document-transform-http";
 import { ApiError } from "@/lib/api-error";
+import { preservedInPlaceOutcome } from "@/lib/document-transform-outcome";
 import { runAction } from "@/lib/action-client";
 import {
   DocumentTransformNeedsReviewError,
@@ -194,7 +195,10 @@ async function waitForTask(
       case "succeeded":
         if (current.result.needsReview) {
           throw new DocumentTransformNeedsReviewError(
-            "Automated safety checks marked this copy for review.",
+            preservedInPlaceOutcome(current.result)?.message ??
+              (current.result.outputStrategy === "in_place"
+                ? "Automated safety checks marked this document for review."
+                : "Automated safety checks marked this copy for review."),
             current.result,
           );
         }

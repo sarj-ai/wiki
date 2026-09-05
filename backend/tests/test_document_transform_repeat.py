@@ -90,7 +90,8 @@ def test_existing_header_conflicts_stay_blocked(conflict: str) -> None:
     gateway._logo_uri = "https://wiki.sarj.ai/brand/sarj-logo-light.png"
     snapshot = _inspection_snapshot(document)
     inspection = gateway._inspect_in_place_sync(snapshot, "Decision")
-    assert inspection.unknown_header_tab_ids == ("tab-a",)
+    assert inspection.unknown_header_tab_ids == (("tab-a",) if conflict == "extra_header" else ())
+    assert bool(inspection.custom_furniture) is (conflict != "extra_header")
     assert not inspection.preserved_headers
     assert not inspection.fully_branded
 

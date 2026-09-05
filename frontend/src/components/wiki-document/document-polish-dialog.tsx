@@ -33,6 +33,7 @@ import { FolderPickerDialog } from "@/components/wiki-sidebar/folder-picker-dial
 import { ApiError } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
 import { documentTransformApi } from "@/lib/document-transform-client";
+import { preservedInPlaceOutcome } from "@/lib/document-transform-outcome";
 import {
   claimTransformRecovery,
   completeTransformRecovery,
@@ -509,7 +510,9 @@ export function DocumentPolishDialog({
         } else if (error.result) {
           injectNewFileIntoCaches(queryClient, error.result.outputFile);
         }
-        toast.warning(`The ${artifactNoun} needs review`);
+        toast.warning(
+          preservedInPlaceOutcome(error.result)?.heading ?? `The ${artifactNoun} needs review`,
+        );
       } else if (!(error instanceof DOMException && error.name === "AbortError")) {
         if (!isCurrent()) return;
         if (error instanceof DocumentTransformTerminalError) {
@@ -610,9 +613,12 @@ export function DocumentPolishDialog({
                 role="alert"
               >
                 <h3 className="font-medium" ref={outcomeHeadingRef} tabIndex={-1}>
-                  This {artifactNoun} needs review
+                  {preservedInPlaceOutcome(reviewResult)?.heading ??
+                    `This ${artifactNoun} needs review`}
                 </h3>
-                <p className="text-muted-foreground mt-1 text-xs">{reviewMessage}</p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  {preservedInPlaceOutcome(reviewResult)?.message ?? reviewMessage}
+                </p>
                 {terminalTaskId ? (
                   <p className="text-muted-foreground mt-2 text-xs">
                     Task reference: <code className="break-all select-all">{terminalTaskId}</code>
@@ -631,9 +637,10 @@ export function DocumentPolishDialog({
                     type="button"
                     variant="link"
                   >
-                    {reviewResult.outputStrategy === "in_place"
-                      ? "Open original document"
-                      : "Open review copy"}
+                    {preservedInPlaceOutcome(reviewResult)?.openLabel ??
+                      (reviewResult.outputStrategy === "in_place"
+                        ? "Open original document"
+                        : "Open review copy")}
                   </Button>
                 ) : null}
               </div>
