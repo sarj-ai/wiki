@@ -28,6 +28,7 @@ from app.document_transform.brand import (
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST, normalize_header_title
 from app.document_transform.bullet_style_projection import (
     align_branded_bullet_metadata,
+    bullet_style_diagnostics,
     project_branded_bullet_styles,
 )
 from app.document_transform.copy_identity import (
@@ -511,6 +512,17 @@ class GoogleDocumentGateway(DocumentGateway):
                 content_preserved=content_preserved,
                 structure_preserved=structure_preserved,
                 brand_applied=brand_applied,
+                diagnostics={
+                    "structural_inventory_preserved": _inventory_sha256(
+                        _structural_inventory(document)
+                    )
+                    == structural_sha256,
+                    "protected_inventory_preserved": _inventory_sha256(
+                        _protected_structure_inventory(structure_document)
+                    )
+                    == protected_structure_sha256,
+                    **bullet_style_diagnostics(parsed, expected),
+                },
             )
         return OutputVerification(
             content_preserved=content_preserved,
@@ -1237,6 +1249,33 @@ class GoogleDocumentGateway(DocumentGateway):
                     "copy_list_identity_equivalent": copy_list_identity_equivalent,
                     "occupied_headers_preserved": headers_preserved,
                 },
+                diagnostics={
+                    **_copy_inventory_diagnostics(source_document, structure_document),
+                    **bullet_style_diagnostics(
+                        parse_google_document(output_document, title=expected.title), expected
+                    ),
+                    "block_count_mismatch": len(parsed.blocks) != len(expected.blocks),
+                    "block_text_mismatches": sum(
+                        a.text != b.text
+                        for a, b in zip(parsed.blocks, expected.blocks, strict=False)
+                    ),
+                    "block_kind_mismatches": sum(
+                        (a.kind, a.level) != (b.kind, b.level)
+                        for a, b in zip(parsed.blocks, expected.blocks, strict=False)
+                    ),
+                    "block_native_content_mismatches": sum(
+                        a.native_content != b.native_content
+                        for a, b in zip(parsed.blocks, expected.blocks, strict=False)
+                    ),
+                    "block_native_style_mismatches": sum(
+                        a.native_named_style != b.native_named_style
+                        for a, b in zip(parsed.blocks, expected.blocks, strict=False)
+                    ),
+                    "block_editability_mismatches": sum(
+                        a.editable != b.editable
+                        for a, b in zip(parsed.blocks, expected.blocks, strict=False)
+                    ),
+                },
             )
         elif copy_list_identity_equivalent:
             logger.info("document copy verified with exact list identity equivalence")
@@ -1873,6 +1912,46 @@ def _protected_structure_inventory(document: dict[str, Any]) -> tuple[tuple[str,
             )
         )
     return tuple(inventory)
+
+
+def _copy_inventory_diagnostics(
+    original: dict[str, Any] | None, actual: dict[str, Any]
+) -> dict[str, bool]:
+    if original is None:
+        return {"source_document_present": False}
+    source_tabs = list(_document_tabs(original))
+    actual_tabs = list(_document_tabs(actual))
+    checks = {
+        "tab_identities_equal": [tab[0] for tab in source_tabs] == [tab[0] for tab in actual_tabs]
+    }
+    fields = (
+        "links",
+        "bullets",
+        "lists",
+        "inlineObjects",
+        "positionedObjects",
+        "footnotes",
+        "footers",
+    )
+    checks.update(
+        {f"protected_{field}_equal": len(source_tabs) == len(actual_tabs) for field in fields}
+    )
+    for (_, source_tab), (_, actual_tab) in zip(source_tabs, actual_tabs, strict=False):
+        source_payload = _immutable_tab_payload(
+            source_tab, source_tab.get("body", {}).get("content", [])
+        )
+        actual_payload = _immutable_tab_payload(
+            actual_tab, actual_tab.get("body", {}).get("content", [])
+        )
+        for field in fields:
+            checks[f"protected_{field}_equal"] &= source_payload.get(field) == actual_payload.get(
+                field
+            )
+    normalized_source = normalize_copy_list_identity(original)
+    normalized_actual = normalize_copy_list_identity(actual)
+    checks["source_list_projection_valid"] = normalized_source is not None
+    checks["output_list_projection_valid"] = normalized_actual is not None
+    return checks
 
 
 def _occupied_headers_preserved(original: dict[str, Any], actual: dict[str, Any]) -> bool:

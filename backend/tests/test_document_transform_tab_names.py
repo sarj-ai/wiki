@@ -1,12 +1,18 @@
 from dataclasses import replace
+from typing import override
+import uuid
+
+import pytest
 
 from app.document_transform.ir import BlockKind, DocumentIR, SourceRange, TextBlock, utf16_length
+from app.document_transform.schemas import DocumentTransformRequest, MarkdownSource, TransformMode
 from app.document_transform.tab_names import (
     MAX_TAB_TITLE_UNITS,
     NativeTabProperties,
     plan_tab_names,
 )
-from app.identifiers import DocsTabId
+from app.identifiers import DocsRevisionId, DocsTabId, FileId, TaskId
+from tests.test_document_transform import _copy_executor, _CopyCheckpointStore, _Gateway
 
 
 def _document(*headings: str) -> DocumentIR:
@@ -121,3 +127,118 @@ def test_long_duplicate_titles_remain_bounded_and_repeat_is_noop():
         replace(tab, title=rename.title) for tab, rename in zip(tabs, plan.renames, strict=True)
     )
     assert plan_tab_names(document, result).renames == ()
+
+
+def _notes(title: str, *, bold: bool = False) -> DocumentIR:
+    document = _document("Delivery notes")
+    return replace(
+        document,
+        title=title,
+        blocks=(
+            replace(
+                document.blocks[0],
+                kind=BlockKind.PARAGRAPH,
+                level=None,
+                authored_emphasis=(("bold", True),) if bold else (),
+            ),
+        ),
+    )
+
+
+def test_single_headingless_tab_uses_original_title_without_body_edits_and_is_idempotent():
+    document = _notes("Project follow-up")
+    before = document
+    plan = plan_tab_names(document, _tabs("Tab 1"))
+    assert [rename.title for rename in plan.renames] == ["Project follow-up"]
+    assert document == before
+    result = _tabs("Project follow-up")
+    assert plan.matches_result(result)
+    assert plan_tab_names(document, result).renames == ()
+
+
+def test_real_heading_then_first_authored_bold_lead_have_priority_over_document_title():
+    document = _notes("Project follow-up", bold=True)
+    assert plan_tab_names(document, _tabs("Tab 1")).renames[0].title == "Delivery notes"
+    document = replace(
+        document,
+        blocks=(
+            document.blocks[0],
+            replace(
+                document.blocks[0],
+                id="b1",
+                kind=BlockKind.HEADING,
+                level=1,
+                text="Roadmap",
+            ),
+        ),
+    )
+    assert plan_tab_names(document, _tabs("Tab 1")).renames[0].title == "Roadmap"
+
+
+@pytest.mark.parametrize("title", ["Document", "Untitled document", "Tab 1", "", "2026-09-04"])
+def test_no_purpose_is_invented_for_generic_or_numeric_source_title(title: str):
+    assert plan_tab_names(_notes(title), _tabs("Tab 1")).renames == ()
+
+
+def test_authored_tab_and_multiple_headingless_tabs_never_receive_document_title_fallback():
+    document = _notes("Project follow-up")
+    assert plan_tab_names(document, _tabs("Personal decisions")).renames == ()
+    document = replace(document, tab_ids=(DocsTabId("t0"), DocsTabId("t1")))
+    assert plan_tab_names(document, _tabs("Tab 1", "Tab 2")).renames == ()
+
+
+def test_later_bold_body_prose_and_long_or_protected_leads_are_not_tab_titles():
+    document = _notes("Document")
+    bold = replace(document.blocks[0], id="b1", authored_emphasis=(("bold", True),))
+    assert (
+        plan_tab_names(replace(document, blocks=(*document.blocks, bold)), _tabs("Tab 1")).renames
+        == ()
+    )
+    for block in (replace(bold, text="A long body sentence " * 8), replace(bold, editable=False)):
+        assert plan_tab_names(replace(document, blocks=(block,)), _tabs("Tab 1")).renames == ()
+
+
+@pytest.mark.parametrize("title", ["خطة العمل", "🚀 Review " * 20, "Safe\u202e title"])
+def test_original_title_fallback_preserves_unicode_and_bounds(title: str):
+    document = _notes(title)
+    plan = plan_tab_names(document, _tabs("Tab 1"))
+    assert len(plan.renames) == 1
+    assert utf16_length(plan.renames[0].title) <= MAX_TAB_TITLE_UNITS
+    assert "\u202e" not in plan.renames[0].title
+    assert plan_tab_names(document, _tabs(plan.renames[0].title)).renames == ()
+
+
+async def test_copy_tab_naming_receives_original_title_not_generated_output_suffix():
+    seen: list[str] = []
+
+    class Gateway(_Gateway):
+        @override
+        async def plan_tab_naming(
+            self,
+            *,
+            document_id: FileId,
+            title: str,
+            operation_id: uuid.UUID,
+            required_revision_id: DocsRevisionId,
+        ) -> None:
+            del document_id, operation_id, required_revision_id
+            seen.append(title)
+
+    gateway = Gateway()
+    task_id = TaskId(uuid.uuid7())
+    result = await _copy_executor(
+        gateway=gateway, store=_CopyCheckpointStore(), task_id=task_id
+    ).execute(
+        operation_id=task_id,
+        request=DocumentTransformRequest(
+            source=MarkdownSource(
+                kind="markdown",
+                content="Rough notes without headings.",
+                name="Project follow-up",
+                destination_folder_id=FileId("folder"),
+            ),
+            mode=TransformMode.FORMAT,
+        ),
+    )
+    assert result.output.name == "Project follow-up — Sarj formatted"
+    assert seen == ["Project follow-up"]

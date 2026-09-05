@@ -10,6 +10,10 @@ from app.identifiers import DocsTabId
 
 
 MAX_TAB_TITLE_UNITS = 60
+_MAX_LEAD_IN_WORDS = 12
+_GENERIC_DOCUMENT_TITLES = frozenset(
+    {"document", "untitled document", "new document", "overview", "introduction"}
+)
 _GENERIC_TITLE = re.compile(r"(?:tab\s*\d*|untitled(?:\s+tab)?(?:\s*\d*)?)", re.IGNORECASE)
 
 
@@ -81,7 +85,9 @@ def plan_tab_names(
     for tab in tabs:
         if not _is_generic(tab.title):
             continue
-        candidate = _heading_title(document, tab.tab_id)
+        candidate = _candidate_title(
+            document, tab.tab_id, single_root_tab=len(tabs) == 1 and tab.parent_tab_id is None
+        )
         if not candidate:
             continue
         sibling_titles = occupied[tab.parent_tab_id]
@@ -90,6 +96,48 @@ def plan_tab_names(
         if title != tab.title:
             renames.append(TabRename(tab.tab_id, tab.title, title))
     return TabNamingPlan(tabs, tuple(renames))
+
+
+def _candidate_title(document: DocumentIR, tab_id: DocsTabId, *, single_root_tab: bool) -> str:
+    heading = _heading_title(document, tab_id)
+    if heading:
+        return heading
+    lead = next(
+        (
+            block
+            for block in document.blocks
+            if block.text.strip()
+            and block.source_range is not None
+            and block.source_range.tab_id == tab_id
+            and block.source_range.segment_id is None
+        ),
+        None,
+    )
+    lead_title = ""
+    if (
+        lead is not None
+        and lead.editable
+        and lead.is_authored_lead_in
+        and utf16_length(lead.text) <= MAX_TAB_TITLE_UNITS
+        and len(lead.text.split()) <= _MAX_LEAD_IN_WORDS
+    ):
+        lead_title = _meaningful_fallback_title(lead.text)
+    if lead_title:
+        return lead_title
+    return _meaningful_fallback_title(document.title) if single_root_tab else ""
+
+
+def _meaningful_fallback_title(text: str) -> str:
+    title = _clean_title(text)
+    if (
+        not title
+        or _is_generic(title)
+        or title.casefold() in _GENERIC_DOCUMENT_TITLES
+        or not any(character.isalpha() for character in title)
+        or "://" in title
+    ):
+        return ""
+    return title
 
 
 def _is_generic(title: str) -> bool:

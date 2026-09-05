@@ -16,7 +16,7 @@ import { MIME_DOC, MIME_SLIDE } from "@/types/wiki";
 
 import { DocumentPolishDialog, type DocumentPolishSource } from "./document-polish-dialog";
 
-const NavigationMock = vi.hoisted(() => ({ push: vi.fn() }));
+const NavigationMock = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => NavigationMock }));
 vi.mock("@/components/wiki-sidebar/folder-picker-dialog", () => ({
@@ -60,6 +60,35 @@ describe("DocumentPolishDialog", () => {
     });
     host.remove();
     vi.restoreAllMocks();
+  });
+
+  it("requires a secure owner and recovers after reloading the session", async () => {
+    const source = {
+      allowInPlace: false,
+      expectedModifiedTime: "revision",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Notes",
+    } as const;
+    const create = vi.spyOn(documentTransformApi, "create").mockRejectedValue(new Error("offline"));
+    renderDialog(root, source, undefined, null);
+    expect(document.querySelector('[role="alert"]')).toHaveTextContent(
+      "Secure session identity unavailable",
+    );
+    expect(findButtonNow("Create polished copy")).toBeDisabled();
+    clickButton(findButtonNow("Create polished copy"));
+    expect(create).not.toHaveBeenCalled();
+    clickButton(findButtonNow("Reload session"));
+    expect(NavigationMock.refresh).toHaveBeenCalledOnce();
+    expect(NavigationMock.push).not.toHaveBeenCalled();
+    renderDialog(root, source, undefined, "owner-1");
+    await vi.waitFor(() => {
+      expect(findButtonNow("Create polished copy")).toBeEnabled();
+    });
+    expect(document.body).not.toHaveTextContent("Secure session identity unavailable");
+    clickButton(findButtonNow("Create polished copy"));
+    await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
   });
 
   it("always asks for a mode and discloses the untouched source copy", () => {
@@ -240,6 +269,19 @@ describe("DocumentPolishDialog", () => {
     await vi.waitFor(() => {
       expect(findButtonNow("Create polished copy")).toBeEnabled();
     });
+    expect(document.querySelector('[role="alert"]')).toHaveTextContent(
+      "Couldn’t verify the latest revision",
+    );
+    expect(findButtonNow("Formatting")).toBeEnabled();
+    clickButton(findButtonNow("Formatting"));
+    expect(document.body).not.toHaveTextContent("Polish interrupted");
+    clickButton(findButtonNow("Create polished copy"));
+    await vi.waitFor(() => {
+      expect(refreshExpectedModifiedTime).toHaveBeenCalledTimes(2);
+      expect(document.body).toHaveTextContent("Polish interrupted");
+    });
+    clickButton(findButtonNow("Cancel"));
+    expect(document.body).not.toHaveTextContent("Polish interrupted");
   });
 
   it("reuses the refreshed revision and key after an ambiguous create failure", async () => {
@@ -272,8 +314,11 @@ describe("DocumentPolishDialog", () => {
       expect(create).toHaveBeenCalledTimes(1);
       expect(findButtonNow("Resume checking")).toBeEnabled();
       expect(findButtonNow("Formatting")).toBeDisabled();
+      expect(document.querySelector('[role="alert"]')).toHaveTextContent("Response was lost");
+      expect(document.body).toHaveTextContent("Your existing operation is still reserved");
     });
     clickButton(findButtonNow("Resume checking"));
+    expect(document.body).not.toHaveTextContent("Polish interrupted");
 
     await vi.waitFor(() => {
       expect(create).toHaveBeenCalledTimes(2);
