@@ -1,11 +1,12 @@
 from dataclasses import replace
 import hashlib
 import json
+import math
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
-from app.document_transform.errors import OutputConflictError
+from app.document_transform.errors import InPlaceNeedsReviewError, OutputConflictError
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock, utf16_length
 
 
@@ -15,6 +16,8 @@ _MAX_LEAD_CHARS = 120
 _MAX_ITEM_CHARS = 240
 _MAX_BODY_CHARS = 1_000
 _MAX_BULLET_BYTES = 8_192
+_MAX_SPACER_PROOF_BYTES = 8_192
+_MAX_SPACER_SPACE_PT = 1_000
 
 
 class NativePaginationRule(BaseModel):
@@ -22,7 +25,9 @@ class NativePaginationRule(BaseModel):
 
     block_id: str = Field(min_length=1, max_length=64)
     text_sha256: str = Field(pattern="^[0-9a-f]{64}$")
-    keep_with_next: StrictBool
+    keep_with_next: StrictBool | None = None
+    above_spacer_sha256: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
+    below_spacer_sha256: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
 
 
 def plan_native_pagination(
@@ -108,7 +113,173 @@ def plan_native_pagination(
             rules[block.id] = rule
         if len(rules) > MAX_PAGINATION_RULES:
             return ()
+    if _spacer_named_styles_known(native, body) and not _add_spacer_rules(
+        content, mapped, document.tab_ids[0], rules
+    ):
+        return ()
     return tuple(rules[block.id] for block in document.blocks if block.id in rules)
+
+
+def _add_spacer_rules(
+    content: list[Any],
+    mapped: list[TextBlock | None],
+    tab_id: str,
+    rules: dict[str, NativePaginationRule],
+) -> bool:
+    for index in range(1, len(content) - 1):
+        if not all(
+            _plain_spacing_neighbor(item) for item in (content[index - 1], content[index + 1])
+        ):
+            continue
+        first, third = mapped[index - 1], mapped[index + 1]
+        spacer = _spacer_proof(content[index], first, third, tab_id)
+        if spacer is None or first is None or third is None:
+            continue
+        for block, field in ((first, "below_spacer_sha256"), (third, "above_spacer_sha256")):
+            existing = rules.get(block.id) or NativePaginationRule(
+                block_id=block.id, text_sha256=block.sha256
+            )
+            rules[block.id] = existing.model_copy(update={field: spacer})
+        if len(rules) > MAX_PAGINATION_RULES:
+            return False
+    return True
+
+
+def _plain_spacing_neighbor(element: object) -> bool:
+    if not isinstance(element, dict):
+        return False
+    paragraph = element.get("paragraph")
+    if not isinstance(paragraph, dict):
+        return False
+    style = paragraph.get("paragraphStyle", {})
+    return isinstance(style, dict) and not set(style) - {
+        "namedStyleType",
+        "headingId",
+        "alignment",
+        "direction",
+        "lineSpacing",
+        "spaceAbove",
+        "spaceBelow",
+        "keepWithNext",
+        "keepLinesTogether",
+        "avoidWidowAndOrphan",
+        "pageBreakBefore",
+    }
+
+
+def _spacer_named_styles_known(native: dict[str, Any], body: dict[str, Any]) -> bool:
+    for scope in (native, body):
+        for entry in scope.get("namedStyles", {}).get("styles", []):
+            style = entry.get("paragraphStyle", {})
+            if not _plain_spacing_neighbor({"paragraph": {"paragraphStyle": style}}):
+                return False
+            if not _spacer_style_values_known(style):
+                return False
+            text_style = entry.get("textStyle", {})
+            if not isinstance(text_style, dict) or "link" in text_style:
+                return False
+    return True
+
+
+def _spacer_proof(
+    element: object, first: TextBlock | None, third: TextBlock | None, tab_id: str
+) -> str | None:
+    if (
+        first is None
+        or third is None
+        or any(
+            block.kind not in {BlockKind.PARAGRAPH, BlockKind.HEADING}
+            or block.native_bullet_json is not None
+            or block.source_style_text_sha256 != block.sha256
+            for block in (first, third)
+        )
+    ):
+        return None
+    if first.source_range is None or third.source_range is None:
+        return None
+    if not isinstance(element, dict) or set(element) != {"startIndex", "endIndex", "paragraph"}:
+        return None
+    start, end = element.get("startIndex"), element.get("endIndex")
+    if (
+        type(start) is not int
+        or type(end) is not int
+        or end != start + 1
+        or first.source_range.end_index + 1 != start
+        or third.source_range.start_index != end
+    ):
+        return None
+    paragraph = element.get("paragraph")
+    if not isinstance(paragraph, dict) or set(paragraph) - {"elements", "paragraphStyle"}:
+        return None
+    style = paragraph.get("paragraphStyle", {})
+    if (
+        not isinstance(style, dict)
+        or set(style)
+        - {
+            "namedStyleType",
+            "spaceAbove",
+            "spaceBelow",
+            "lineSpacing",
+            "keepWithNext",
+            "keepLinesTogether",
+            "avoidWidowAndOrphan",
+            "alignment",
+            "direction",
+            "pageBreakBefore",
+        }
+        or style.get("namedStyleType", "NORMAL_TEXT") != "NORMAL_TEXT"
+        or style.get("pageBreakBefore", False) is not False
+        or not _spacer_style_values_known(style)
+    ):
+        return None
+    elements = paragraph.get("elements")
+    if not isinstance(elements, list) or len(elements) != 1:
+        return None
+    run = elements[0]
+    if not isinstance(run, dict) or set(run) - {"startIndex", "endIndex", "textRun"}:
+        return None
+    if (
+        type(run.get("startIndex", start)) is not int
+        or type(run.get("endIndex", end)) is not int
+        or run.get("startIndex", start) != start
+        or run.get("endIndex", end) != end
+    ):
+        return None
+    text_run = run.get("textRun")
+    if (
+        not isinstance(text_run, dict)
+        or set(text_run) - {"content", "textStyle"}
+        or text_run.get("content") != "\n"
+        or text_run.get("textStyle", {}) != {}
+    ):
+        return None
+    payload = json.dumps(
+        {"tab_id": tab_id, "spacer": element}, sort_keys=True, separators=(",", ":")
+    ).encode()
+    return hashlib.sha256(payload).hexdigest() if len(payload) <= _MAX_SPACER_PROOF_BYTES else None
+
+
+def _spacer_style_values_known(style: object) -> bool:
+    if not isinstance(style, dict):
+        return False
+    for field in ("spaceAbove", "spaceBelow"):
+        if field not in style:
+            continue
+        value = style.get(field)
+        if not isinstance(value, dict) or set(value) != {"magnitude", "unit"}:
+            return False
+        magnitude = value.get("magnitude")
+        if not isinstance(magnitude, (int, float)) or isinstance(magnitude, bool):
+            return False
+        if not math.isfinite(magnitude):
+            return False
+        if not 0 <= magnitude <= _MAX_SPACER_SPACE_PT or value.get("unit") != "PT":
+            return False
+    return all(
+        type(style.get(field)) is bool
+        for field in ("keepWithNext", "keepLinesTogether", "avoidWidowAndOrphan")
+        if field in style
+    )
 
 
 def _page_boundaries_known(native: dict[str, Any], body: dict[str, Any]) -> bool:
@@ -229,7 +400,60 @@ def apply_native_pagination(
         if rule is not None:
             if block.sha256 != rule.text_sha256:
                 raise OutputConflictError
-            blocks.append(replace(block, pagination_keep_with_next=rule.keep_with_next))
+            blocks.append(
+                replace(
+                    block,
+                    pagination_keep_with_next=rule.keep_with_next,
+                    suppress_space_above=rule.above_spacer_sha256 is not None,
+                    suppress_space_below=rule.below_spacer_sha256 is not None,
+                )
+            )
         else:
             blocks.append(block)
     return replace(document, blocks=tuple(blocks))
+
+
+def existing_native_pagination(
+    native: dict[str, Any] | None, document: DocumentIR
+) -> tuple[NativePaginationRule, ...]:
+    # Recognize existing exact layout only; never plan new in-place groups.
+    rules = plan_native_pagination(native, document)
+    if not rules or native is None:
+        return ()
+    content = native["tabs"][0]["documentTab"]["body"]["content"]
+    styles = {
+        item.get("startIndex"): item.get("paragraph", {}).get("paragraphStyle", {})
+        for item in content
+        if isinstance(item, dict) and isinstance(item.get("paragraph"), dict)
+    }
+    blocks = {block.id: block for block in document.blocks}
+    found = False
+    matches = True
+    for rule in rules:
+        block = blocks[rule.block_id]
+        if block.source_range is None:
+            raise InPlaceNeedsReviewError
+        style = styles.get(block.source_range.start_index, {})
+        for field, digest in (
+            ("spaceAbove", rule.above_spacer_sha256),
+            ("spaceBelow", rule.below_spacer_sha256),
+        ):
+            if digest is not None:
+                dimension = style.get(field)
+                exact = (
+                    isinstance(dimension, dict)
+                    and type(dimension.get("magnitude")) in {int, float}
+                    and dimension == {"magnitude": 0, "unit": "PT"}
+                )
+                found = found or exact
+                matches = matches and exact
+        if rule.keep_with_next is not None:
+            exact = (
+                style.get("keepWithNext") is rule.keep_with_next
+                and style.get("keepLinesTogether") is True
+            )
+            found = found or (exact and block.kind is not BlockKind.HEADING)
+            matches = matches and exact
+    if found and not matches:
+        raise InPlaceNeedsReviewError
+    return rules if found else ()

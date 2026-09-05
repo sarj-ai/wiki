@@ -53,6 +53,7 @@ from app.document_transform.native_footer_flow import footer_coverage_complete
 from app.document_transform.native_pagination import (
     NativePaginationRule,
     apply_native_pagination,
+    existing_native_pagination,
     plan_native_pagination,
 )
 from app.document_transform.planner import TextTransformPlanner, TransformOutcome
@@ -88,7 +89,7 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, Task
 
 
 PIPELINE_VERSION = "document-transform-v3"
-REQUEST_BUILDER_VERSION = "google-docs-requests-v14"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v15"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _OUTPUT_SUFFIX = MappingProxyType(
     {
@@ -834,6 +835,10 @@ class DocumentTransformExecutor:
         if checkpoint is not None:
             if checkpoint.document_id != request.source.file_id:
                 raise OutputConflictError
+            if checkpoint.pagination != existing_native_pagination(
+                snapshot.google_document, _to_ir(snapshot)
+            ):
+                raise InPlaceNeedsReviewError
             checkpoint_contract = (
                 checkpoint.source_title,
                 checkpoint.source_modified_time,
@@ -928,7 +933,7 @@ class DocumentTransformExecutor:
             if inspection.missing_header_tab_ids or inspection.unknown_header_tab_ids:
                 raise InPlaceNeedsReviewError
             snapshot = stage_snapshot
-            original = _to_ir(stage_snapshot)
+            original = apply_native_pagination(_to_ir(stage_snapshot), checkpoint.pagination)
             transformed = original.replace_blocks(checkpoint.replacements)
             requests = self._content_requests(
                 request=request,
@@ -969,7 +974,9 @@ class DocumentTransformExecutor:
                 output=inspection.output,
             )
         before_content = _to_ir(snapshot)
-        expected_content = before_content.replace_blocks(checkpoint.replacements)
+        expected_content = apply_native_pagination(
+            before_content.replace_blocks(checkpoint.replacements), checkpoint.pagination
+        )
         if expected_content.semantic_sha256 != checkpoint.expected_semantic_sha256:
             raise InPlaceNeedsReviewError
         if checkpoint.tab_naming is not None:
@@ -1061,7 +1068,13 @@ class DocumentTransformExecutor:
         if snapshot.revision_id is None:
             raise InPlaceNotAllowedError
         original = _to_ir(snapshot)
+        pagination = existing_native_pagination(snapshot.google_document, original)
+        original = apply_native_pagination(original, pagination)
         outcome = await self._planner.transform(original, request)
+        if pagination:
+            outcome = replace(
+                outcome, document=apply_native_pagination(outcome.document, pagination)
+            )
         _preflight_native_mutation_budget(
             request=request,
             snapshot=snapshot,
@@ -1090,6 +1103,10 @@ class DocumentTransformExecutor:
             for block, transformed in zip(original.blocks, outcome.document.blocks, strict=True)
             if block.text != transformed.text
         }
+        if pagination and (replacements or (branded and not inspection.fully_branded)):
+            # Existing-only recognition is a no-op contract, not authority to
+            # reinterpret a partially edited layout or move its spacer ranges.
+            raise InPlaceNeedsReviewError
         model_ids = (
             [ModelId(value) for value in self._generator.model_ids] if outcome.llm_invoked else []
         )
@@ -1123,6 +1140,7 @@ class DocumentTransformExecutor:
             )
             raise InPlaceNeedsReviewError
         checkpoint = InPlaceCheckpoint(
+            pagination=pagination,
             header_identity=inspection.header_identity,
             document_id=source.file_id,
             source_title=snapshot.title,

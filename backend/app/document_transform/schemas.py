@@ -221,6 +221,9 @@ class InPlaceCheckpointStage(StrEnum):
 
 
 class InPlaceCheckpoint(StrictTransformModel):
+    pagination: tuple[NativePaginationRule, ...] = Field(
+        default=(), max_length=MAX_PAGINATION_RULES
+    )
     header_identity: HeaderIdentityEvidence | None = None
     version: Literal[2] = 2
     kind: Literal["in_place"] = "in_place"
