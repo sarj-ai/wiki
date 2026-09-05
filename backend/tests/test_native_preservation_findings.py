@@ -76,10 +76,16 @@ def _finding() -> TransformFinding:
 
 @pytest.mark.parametrize("protected", [False, True])
 @pytest.mark.parametrize("mode", [TransformMode.FORMAT, TransformMode.BOTH])
+@pytest.mark.parametrize("font_family", ["Arial", "Nunito"])
 def test_exact_preserved_blocks_receive_truthful_persistable_findings(
-    *, protected: bool, mode: TransformMode
+    *, protected: bool, mode: TransformMode, font_family: str
 ):
     native = _native(protected=protected)
+    for part in native["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["elements"]:
+        if "textRun" in part:
+            part["textRun"].setdefault("textStyle", {})["weightedFontFamily"] = {
+                "fontFamily": font_family
+            }
     original = parse_google_document(native, title="Source")
     assert not original.blocks[0].editable
     result = preserved_native_findings(
@@ -93,6 +99,10 @@ def test_exact_preserved_blocks_receive_truthful_persistable_findings(
     assert result[0].code == "native_rich_text_preserved"
     assert result[0].block_id == "b0"
     assert "preserved" in result[0].detail
+    if not protected:
+        assert result[0].detail == (
+            "Rich text wording and native structure were preserved; supported font formatting was checked."
+        )
     requests = build_copy_mutations(
         original,
         original,
