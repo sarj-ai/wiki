@@ -65,6 +65,7 @@ from app.document_transform.ir import (
 )
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.document_transform.markdown_import import verify_markdown_import
+from app.document_transform.naming import suggested_document_title
 from app.document_transform.native_date_flow import (
     NativeDateCheckpoint,
     date_invariant_sha256,
@@ -388,6 +389,7 @@ class GoogleDocumentGateway(DocumentGateway):
         return NativeFooterCheckpoint(
             tab_id=draft.tab_id,
             url=url,
+            display_text="Open in Wiki",
             revision_id=draft.revision_id,
             create_marker=f"sarj_footer_create_{operation_id.hex}",
             populate_marker=f"sarj_footer_populate_{operation_id.hex}",
@@ -415,6 +417,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 tab_id=checkpoint.tab_id,
                 revision_id=checkpoint.revision_id,
                 short_link=checkpoint.url,
+                display_text=checkpoint.display_text,
                 checkpoint=FooterCheckpoint(not creating, checkpoint.footer_id),
             )
             expected_action = FooterAction.CREATE if creating else FooterAction.POPULATE
@@ -1302,7 +1305,15 @@ class GoogleDocumentGateway(DocumentGateway):
             structure_preserved=structure_preserved,
             brand_applied=not verify_brand
             or verify_brand_application(
-                output_document, _typography_verification_ir(parsed, expected)
+                output_document,
+                _typography_verification_ir(parsed, expected),
+                expected_header_title=(
+                    suggested_document_title(
+                        parse_google_document(source_document, title=source.title)
+                    )
+                    if source_document is not None
+                    else expected.title
+                ),
             ),
             revision_id=DocsRevisionId(_required_string(output_document, "revisionId")),
         )
@@ -2265,13 +2276,15 @@ def _font_only_has_brand(paragraph: dict[str, Any], block: TextBlock) -> bool:
     return True
 
 
-def verify_brand_application(document: dict[str, Any], parsed: DocumentIR) -> bool:
+def verify_brand_application(
+    document: dict[str, Any], parsed: DocumentIR, *, expected_header_title: str | None = None
+) -> bool:
     tabs = tuple(_document_tabs(document))
     applied = bool(tabs) and all(
         _tab_shell_is_branded(
             document,
             document_tab,
-            expected_title=parsed.title,
+            expected_title=parsed.title if expected_header_title is None else expected_header_title,
             allow_legacy_inline_objects=len(tabs) == 1,
         )
         for _, document_tab in tabs
@@ -2299,7 +2312,9 @@ def verify_brand_application(document: dict[str, Any], parsed: DocumentIR) -> bo
                 applied = False
                 break
     if not applied:
-        checks = _brand_application_diagnostics(document, parsed)
+        checks = _brand_application_diagnostics(
+            document, parsed, expected_header_title=expected_header_title
+        )
         logger.warning("document brand verification failed checks={checks}", checks=checks)
     return applied
 
@@ -2307,6 +2322,8 @@ def verify_brand_application(document: dict[str, Any], parsed: DocumentIR) -> bo
 def _brand_application_diagnostics(
     document: dict[str, Any],
     parsed: DocumentIR,
+    *,
+    expected_header_title: str | None = None,
 ) -> dict[str, bool | int]:
     tabs = tuple(_document_tabs(document))
     tab_checks: list[dict[str, bool]] = []
@@ -2315,7 +2332,9 @@ def _brand_application_diagnostics(
             _tab_brand_diagnostics(
                 document,
                 document_tab,
-                expected_title=parsed.title,
+                expected_title=parsed.title
+                if expected_header_title is None
+                else expected_header_title,
                 allow_legacy_inline_objects=len(tabs) == 1,
             )
         )

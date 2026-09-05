@@ -8,6 +8,8 @@ from enum import StrEnum
 import json
 from typing import Any, NamedTuple
 
+from loguru import logger
+
 from app.document_transform.errors import OutputVerificationError
 from app.document_transform.ir import utf16_length
 from app.document_transform.tab_structure import TabSection, TabStructurePlan, plan_tab_structure
@@ -64,11 +66,79 @@ class StructureProvider:
             raise StructureStateError
         # This first call is eligibility-only and never authorizes a write.
         plan = plan_tab_structure(document, comments_verified_absent=True)
-        if plan is None or not executable_structure(plan, copy_mode=True):
+        checks = structure_eligibility_checks(document)
+        checks["plan_available"] = plan is not None
+        checks["executable_plan"] = plan is not None and executable_structure(plan, copy_mode=True)
+        if not checks["executable_plan"]:
+            logger.info("document tab structure eligibility checks={checks}", checks=checks)
             return None
-        if not await asyncio.to_thread(self.comments_absent_sync, source_id):
+        comments_absent = await asyncio.to_thread(self.comments_absent_sync, source_id)
+        checks["comments_verified_absent"] = comments_absent
+        logger.info("document tab structure eligibility checks={checks}", checks=checks)
+        if not comments_absent or plan is None:
             return None
         return StructureCheckpoint(plan)
+
+
+def structure_eligibility_checks(document: dict[str, Any]) -> dict[str, int | bool]:
+    checks: dict[str, int | bool] = {
+        "tab_count": 0,
+        "word_count": 0,
+        "h1_count": 0,
+        "h2_count": 0,
+        "rejected_native_fields_count": 0,
+        "paragraph_tab_stops": False,
+        "paragraph_borders": False,
+        "paragraph_shading": False,
+    }
+    tabs = document.get("tabs", [])
+    pending = list(tabs) if isinstance(tabs, list) else []
+    while pending:
+        tab = pending.pop()
+        if not isinstance(tab, dict):
+            continue
+        checks["tab_count"] += 1
+        children = tab.get("childTabs", [])
+        if isinstance(children, list):
+            pending.extend(children)
+        native = tab.get("documentTab", {})
+        if not isinstance(native, dict):
+            continue
+        checks["rejected_native_fields_count"] += sum(
+            bool(value)
+            for key, value in native.items()
+            if key not in {"body", "documentStyle", "namedStyles", "lists"}
+        )
+        body = native.get("body", {})
+        content = body.get("content", []) if isinstance(body, dict) else []
+        for element in content if isinstance(content, list) else []:
+            if not isinstance(element, dict):
+                continue
+            paragraph = element.get("paragraph", {})
+            if not isinstance(paragraph, dict):
+                continue
+            style = paragraph.get("paragraphStyle", {})
+            if not isinstance(style, dict):
+                continue
+            checks["h1_count"] += style.get("namedStyleType") == "HEADING_1"
+            checks["h2_count"] += style.get("namedStyleType") == "HEADING_2"
+            checks["paragraph_tab_stops"] |= "tabStops" in style
+            checks["paragraph_borders"] |= any(field in style for field in _BORDER_FIELDS)
+            checks["paragraph_shading"] |= "shading" in style
+            runs = paragraph.get("elements", [])
+            text = []
+            for run in runs if isinstance(runs, list) else []:
+                payload = run.get("textRun", {}) if isinstance(run, dict) else {}
+                value = payload.get("content", "") if isinstance(payload, dict) else ""
+                if isinstance(value, str):
+                    text.append(value)
+            checks["word_count"] += len("".join(text).split())
+    return checks
+
+
+_BORDER_FIELDS = frozenset(
+    {"borderBetween", "borderTop", "borderBottom", "borderLeft", "borderRight"}
+)
 
 
 _TEXT_FIELDS = frozenset(

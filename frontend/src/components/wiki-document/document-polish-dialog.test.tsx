@@ -575,6 +575,14 @@ describe("DocumentPolishDialog", () => {
     clickButton(findButtonNow("Create polished copy"));
     await vi.waitFor(() => {
       expect(document.body).toHaveTextContent("Polish did not complete");
+      expect(document.querySelector('[role="alert"]')).toHaveTextContent(
+        "Task reference: 55555555-5555-4555-8555-555555555555",
+      );
+      const receipt = document.querySelector('[role="alert"]');
+      expect(receipt?.parentElement?.firstElementChild).toBe(receipt);
+      expect(receipt?.compareDocumentPosition(findButtonNow("Formatting")) ?? 0).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
       expect(document.body).toHaveTextContent("has not passed safety verification");
       expect(document.querySelector('a[href="/d/incomplete-copy"]')).toHaveTextContent(
         "Open incomplete copy for review",
@@ -583,6 +591,11 @@ describe("DocumentPolishDialog", () => {
     });
     clickButton(findButtonNow("Create polished copy"));
     expect(documentTransformApi.create).toHaveBeenCalledTimes(1);
+    clickButton(findButtonNow("Formatting"));
+    await vi.waitFor(() => {
+      expect(document.body).not.toHaveTextContent("Task reference:");
+      expect(findButtonNow("Create polished copy")).toBeEnabled();
+    });
   });
 
   it.each([false, true])(
@@ -627,6 +640,9 @@ describe("DocumentPolishDialog", () => {
         expect(document.querySelector('a[href="/d/recovered-incomplete-copy"]')).toHaveTextContent(
           "Open incomplete copy for review",
         );
+        expect(document.querySelector('[role="alert"]')).toHaveTextContent(
+          `Task reference: ${failed.id}`,
+        );
       });
       expect(wait).toHaveBeenCalledWith(enriched, expect.any(AbortSignal));
       expect(getTask).toHaveBeenCalledWith(failed.id, expect.any(AbortSignal));
@@ -658,6 +674,11 @@ describe("DocumentPolishDialog", () => {
     await vi.waitFor(() => {
       expect(document.body).toHaveTextContent(
         "Review the document and its Drive version history before trying again.",
+      );
+      const receipt = document.querySelector('[role="alert"]');
+      expect(receipt?.parentElement?.firstElementChild).toBe(receipt);
+      expect(receipt?.compareDocumentPosition(findButtonNow("Formatting")) ?? 0).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
       );
       expect(findButtonNow("Create polished copy")).toBeDisabled();
     });

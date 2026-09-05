@@ -80,6 +80,22 @@ def test_recorded_creation_id_can_be_populated() -> None:
     assert plan.requests[2]["updateTextStyle"]["textStyle"]["link"] == {"url": LINK}
 
 
+def test_caption_population_keeps_exact_destination_and_caption_sized_ranges() -> None:
+    plan = _plan(_tab(), checkpoint=FooterCheckpoint(True, "footer-1"), display_text="Open in Wiki")
+    assert plan.requests[0]["insertText"]["text"] == "Open in Wiki"
+    assert plan.requests[2]["updateTextStyle"]["textStyle"]["link"] == {"url": LINK}
+    assert plan.requests[2]["updateTextStyle"]["range"]["endIndex"] == len("Open in Wiki")
+    assert (
+        _plan(_tab("Open in Wiki\n"), display_text="Open in Wiki").action == FooterAction.UNCHANGED
+    )
+
+
+def test_unknown_caption_is_rejected_and_legacy_footer_is_not_rewritten() -> None:
+    with pytest.raises(ValueError, match="pinned Wiki label"):
+        _plan(_tab(), display_text="Invented title")
+    assert _plan(_tab(LINK + "\n"), display_text="Open in Wiki").action == FooterAction.PRESERVE
+
+
 def test_repeat_and_lost_population_reply_do_not_duplicate() -> None:
     plan = _plan(_tab(LINK + "\n"), checkpoint=FooterCheckpoint(True, "footer-1"))
     assert plan.action == FooterAction.UNCHANGED

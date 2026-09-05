@@ -74,7 +74,7 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, Task
 
 
 PIPELINE_VERSION = "document-transform-v3"
-REQUEST_BUILDER_VERSION = "google-docs-requests-v5"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v6"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _OUTPUT_SUFFIX = MappingProxyType(
     {
@@ -376,6 +376,7 @@ class DocumentTransformExecutor:
                 profile=self._brand,
                 headers=prepared_draft.headers,
                 logo_uri=prepared_draft.logo_uri,
+                header_title=suggested_document_title(original),
             )
         applied = prepared_draft
         if checkpoint.native_footer is None and checkpoint.native_dates is None:
@@ -1566,6 +1567,11 @@ def _preflight_native_mutation_budget(
             profile=brand,
             headers=headers,
             logo_uri="https://assets.sarj.ai/preflight-logo.png",
+            header_title=(
+                suggested_document_title(original)
+                if request.output_strategy is OutputStrategy.COPY
+                else None
+            ),
         )
     mutation_sha256(requests)
 

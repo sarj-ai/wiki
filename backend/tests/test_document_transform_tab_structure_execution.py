@@ -4,6 +4,7 @@ import json
 from typing import Any, override
 import uuid
 
+from loguru import logger
 import pytest
 
 from app.document_transform.gateway import OutputDraft, SourceSnapshot
@@ -255,6 +256,49 @@ async def test_provider_requires_explicit_comment_absence(comments_absent: bool)
     )
     assert (plan is not None) is comments_absent
     assert not writes
+
+
+@pytest.mark.parametrize(
+    "decline", ["style", "short", "comments"], ids=["style", "short", "comments"]
+)
+async def test_structure_decline_diagnostics_are_private_and_skip_unchecked_comments(decline: str):
+    document = _document()
+    document["private-future-key"] = "private-text-do-not-log"
+    if decline == "style":
+        document["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]["paragraphStyle"][
+            "tabStops"
+        ] = []
+    elif decline == "short":
+        document["tabs"][0]["documentTab"]["body"]["content"] = document["tabs"][0]["documentTab"][
+            "body"
+        ]["content"][:2]
+    reads: list[FileId] = []
+
+    def comments(source_id: FileId) -> bool:
+        reads.append(source_id)
+        return False
+
+    messages: list[str] = []
+    sink = logger.add(lambda message: messages.append(str(message)), format="{message}")
+    try:
+        provider = StructureProvider(lambda _: document, lambda *_: None, comments)
+        assert (
+            await provider.plan(
+                document_id=FileId("private-copy-id"),
+                source_id=FileId("private-source-id"),
+                revision_id=DocsRevisionId("rev1"),
+            )
+            is None
+        )
+    finally:
+        logger.remove(sink)
+    message = "".join(messages)
+    assert "document tab structure eligibility" in message
+    assert "private" not in message
+    assert ("comments_verified_absent" in message) is (decline == "comments")
+    assert bool(reads) is (decline == "comments")
+    assert f"'paragraph_tab_stops': {decline == 'style'}" in message
+    assert f"'plan_available': {decline != 'short'}" in message
 
 
 @pytest.mark.parametrize("crash_stage", [None, StructureStage.CREATING, StructureStage.MOVING])
