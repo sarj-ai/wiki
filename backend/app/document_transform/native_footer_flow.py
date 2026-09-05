@@ -18,6 +18,9 @@ from app.document_transform.native_safety_diagnostics import (
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId
 
 
+MAX_FOOTER_NAMED_STYLES = 60
+
+
 class NativeFooterStage(StrEnum):
     CREATE = "create"
     POPULATE = "populate"
@@ -171,7 +174,11 @@ def verified_footer_projection(
     if isinstance(footer, dict) and footer.get("footerId", footer_id) != footer_id:
         native_safety_error(stage, "segment")
     if not isinstance(footer, dict) or not _footer_matches(
-        footer, checkpoint.url, populated=populated, display_text=checkpoint.display_text
+        footer,
+        checkpoint.url,
+        populated=populated,
+        display_text=checkpoint.display_text,
+        inherited_family=_normal_text_family(tab),
     ):
         native_safety_error(
             stage,
@@ -181,6 +188,7 @@ def verified_footer_projection(
                 checkpoint.url,
                 populated=populated,
                 display_text=checkpoint.display_text,
+                inherited_family=_normal_text_family(tab),
             ),
         )
     del footers[footer_id]
@@ -212,7 +220,12 @@ def _remove_footer_markers(value: object, markers: set[str]) -> None:
 
 
 def _footer_matches(
-    footer: dict[str, Any], url: str, *, populated: bool, display_text: str | None = None
+    footer: dict[str, Any],
+    url: str,
+    *,
+    populated: bool,
+    display_text: str | None = None,
+    inherited_family: str | None = None,
 ) -> bool:
     if set(footer) - {"footerId", "content"}:
         return False
@@ -242,7 +255,7 @@ def _footer_matches(
         if (
             populated
             and value.rstrip("\n")
-            and not _link_style_matches(text_run.get("textStyle", {}), url)
+            and not _link_style_matches(text_run.get("textStyle", {}), url, inherited_family)
         ):
             return False
     if populated:
@@ -253,10 +266,39 @@ def _footer_matches(
     return "".join(parts) == (caption + "\n" if populated else "\n")
 
 
-def _link_style_matches(style: dict[str, Any], url: str) -> bool:
+def _normal_text_family(tab: dict[str, Any]) -> str | None:
+    # Require an explicit parent family; never guess editor defaults.
+    named = tab.get("namedStyles")
+    styles = named.get("styles") if isinstance(named, dict) else None
+    if not isinstance(styles, list) or len(styles) > MAX_FOOTER_NAMED_STYLES:
+        return None
+    if any(not isinstance(style, dict) for style in styles):
+        return None
+    parents = [style for style in styles if style.get("namedStyleType") == "NORMAL_TEXT"]
+    if len(parents) != 1:
+        return None
+    text = parents[0].get("textStyle")
+    family = text.get("weightedFontFamily") if isinstance(text, dict) else None
+    value = family.get("fontFamily") if isinstance(family, dict) else None
+    return value if isinstance(value, str) and value else None
+
+
+def _resolved_family(style: object, inherited_family: str | None) -> object:
+    # Docs serializes equal-to-parent updates as absent fields. Never repair
+    # an explicitly present malformed or conflicting weightedFontFamily.
+    if not isinstance(style, dict):
+        return None
+    if "weightedFontFamily" not in style:
+        return inherited_family
+    family = style.get("weightedFontFamily")
+    return family.get("fontFamily") if isinstance(family, dict) else None
+
+
+def _link_style_matches(style: object, url: str, inherited_family: str | None = None) -> bool:
     profile = CURRENT_BRAND_MANIFEST.document
     return (
-        style.get("weightedFontFamily", {}).get("fontFamily") == profile.font_family
+        isinstance(style, dict)
+        and _resolved_family(style, inherited_family) == profile.font_family
         and style.get("fontSize") == {"magnitude": profile.caption_size_pt, "unit": "PT"}
         and style.get("link") == {"url": url}
         and not style.get("bold")
@@ -270,6 +312,7 @@ def _footer_shape_failure(
     *,
     populated: bool,
     display_text: str | None = None,
+    inherited_family: str | None = None,
 ) -> FooterShapeFailure | None:
     # Diagnostic mirror only: _footer_matches remains the unchanged authority.
     if not isinstance(footer, dict):
@@ -298,7 +341,9 @@ def _footer_shape_failure(
         return FooterShapeFailure("runs", "missing" if "elements" not in paragraph else "mismatch")
     parts: list[str] = []
     for run in runs:
-        failure = _footer_run_failure(run, url, populated=populated)
+        failure = _footer_run_failure(
+            run, url, populated=populated, inherited_family=inherited_family
+        )
         if failure is not None:
             return failure
         text_run = run.get("textRun") if isinstance(run, dict) else None
@@ -324,7 +369,9 @@ def _footer_shape_failure(
     return None
 
 
-def _footer_run_failure(run: object, url: str, *, populated: bool) -> FooterShapeFailure | None:
+def _footer_run_failure(
+    run: object, url: str, *, populated: bool, inherited_family: str | None = None
+) -> FooterShapeFailure | None:
     if not isinstance(run, dict):
         return FooterShapeFailure("run_container", "mismatch")
     if set(run) - {"startIndex", "endIndex", "textRun"}:
@@ -340,18 +387,20 @@ def _footer_run_failure(run: object, url: str, *, populated: bool) -> FooterShap
             "text_content", "missing" if "content" not in text_run else "mismatch"
         )
     if populated and value.rstrip("\n"):
-        return _footer_link_style_failure(text_run.get("textStyle", {}), url)
+        return _footer_link_style_failure(text_run.get("textStyle", {}), url, inherited_family)
     return None
 
 
-def _footer_link_style_failure(style: object, url: str) -> FooterShapeFailure | None:
+def _footer_link_style_failure(
+    style: object, url: str, inherited_family: str | None = None
+) -> FooterShapeFailure | None:
     if not isinstance(style, dict):
         return FooterShapeFailure("text_style", "mismatch")
     profile = CURRENT_BRAND_MANIFEST.document
     family = style.get("weightedFontFamily", {})
     if not isinstance(family, dict):
         return FooterShapeFailure("font_family", "mismatch")
-    if family.get("fontFamily") != profile.font_family:
+    if _resolved_family(style, inherited_family) != profile.font_family:
         return FooterShapeFailure(
             "font_family", "missing" if "fontFamily" not in family else "mismatch"
         )
