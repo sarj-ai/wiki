@@ -7,7 +7,11 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt
 
-from app.document_transform.schemas import DocumentTransformRequest, DocumentTransformResult
+from app.document_transform.schemas import (
+    DocumentTransformCheckpoint,
+    DocumentTransformRequest,
+    DocumentTransformResult,
+)
 from app.identifiers import FileId, TaskId
 from app.smart_create.schemas import SmartCreateResult, SmartFileCreate
 
@@ -23,6 +27,13 @@ class TaskStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class DocumentTransformAdmission(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: TaskId
+    status: TaskStatus
 
 
 class _TaskReadBase(BaseModel):
@@ -66,12 +77,17 @@ class SucceededTaskRead(_TaskReadBase):
     finished_at: datetime
 
 
+class UnverifiedTaskOutput(BaseModel):
+    file_id: FileId
+
+
 class FailedTaskRead(_TaskReadBase):
     status: Literal[TaskStatus.FAILED]
     result: None
     resource_id: FileId | None
     error_code: str
     error_detail: str | None
+    unverified_output: UnverifiedTaskOutput | None = None
     attempt_count: PositiveInt
     started_at: datetime
     finished_at: datetime
@@ -113,7 +129,9 @@ class SmartCreateTaskRecord(BaseModel):
 class DocumentTransformTaskRecord(BaseModel):
     owner_user_id: uuid.UUID
     task: TaskRead
-    payload: DocumentTransformRequest
+    payload: DocumentTransformRequest | None
+    checkpoint: DocumentTransformCheckpoint | None = None
+    checkpoint_generation: int = Field(default=0, ge=0)
 
 
 class TaskDispatchRequest(BaseModel):

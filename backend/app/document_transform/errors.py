@@ -23,6 +23,16 @@ class OutputConflictError(DocumentTransformError):
     public_detail = "The existing output belongs to a different source revision"
 
 
+class OutputVerificationError(DocumentTransformError):
+    code = "output_verification_failed"
+    public_detail = "The transformed output did not pass lossless verification"
+
+
+class IncompatiblePendingOutputError(DocumentTransformError):
+    code = "incompatible_pending_output"
+    public_detail = "An incomplete output from an older transform needs review"
+
+
 class ModelUnavailableError(DocumentTransformError):
     code = "model_unavailable"
     public_detail = "The document transformation model is temporarily unavailable"
@@ -32,7 +42,32 @@ class DocumentGatewayError(DocumentTransformError):
     code = "document_provider_unavailable"
     public_detail = "Google Drive or Docs could not complete the transformation"
 
+    def __init__(
+        self,
+        *,
+        retryable: bool = True,
+        http_status: int | None = None,
+    ) -> None:
+        super().__init__(self.public_detail)
+        self.retryable = retryable
+        self.http_status = http_status
+
 
 class HeaderConflictError(DocumentTransformError):
     code = "header_conflict"
     public_detail = "The source header needs review before Sarj branding can be applied"
+
+
+class InPlaceNotAllowedError(DocumentTransformError):
+    code = "in_place_not_allowed"
+    public_detail = "This document is not eligible for safe in-place transformation"
+
+
+class InPlaceNeedsReviewError(DocumentTransformError):
+    code = "needs_review"
+    public_detail = "The source needs review before it can be changed in place"
+
+
+class CheckpointTooLargeError(DocumentTransformError):
+    code = "checkpoint_too_large"
+    public_detail = "The document transformation plan is too large to execute safely"

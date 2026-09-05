@@ -28,6 +28,8 @@ export const MIME_PDF = "application/pdf";
 export const MIME_SHORTCUT = "application/vnd.google-apps.shortcut";
 export const MIME_HTML = "text/html";
 export const MIME_MARKDOWN = "text/markdown";
+export const MIME_PPTX =
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
 export type DriveSummary = z.output<typeof driveSummary>;
 export type DriveNode = z.output<typeof driveNode>;

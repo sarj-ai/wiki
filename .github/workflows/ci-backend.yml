@@ -95,6 +95,55 @@ jobs:
       - name: Run pytest
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70
 
+  postgres-concurrency:
+    name: Backend / PostgreSQL concurrency
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18-bookworm
+        env:
+          POSTGRES_DB: wiki_polish29_qa
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U postgres -d wiki_polish29_qa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Disposable runner-local fixtures only; no cloud or repository secrets.
+      DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
+      WIKI_POLISH29_QA_DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
+      SECRET_KEY: disposable-postgres-concurrency-qa-only
+      FERNET_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      GOOGLE_CLIENT_ID: disposable-qa-client
+      GOOGLE_CLIENT_SECRET: disposable-qa-client-secret
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+
+      - name: Apply actual schema migrations to the disposable database
+        run: uv run --locked alembic upgrade head
+
+      - name: Exercise concurrent source reservations and durable replay keys
+        run: uv run --locked pytest tests/test_task_source_dedupe_postgres.py tests/test_header_provenance_postgres.py -q -rA
+
   image:
     name: Backend / Image build + Trivy scan
     runs-on: ubuntu-latest
@@ -128,7 +177,7 @@ jobs:
   required:
     name: Backend / required
     if: ${{ always() }}
-    needs: [lint-and-typecheck, test, image]
+    needs: [lint-and-typecheck, test, postgres-concurrency, image]
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
@@ -137,8 +186,10 @@ jobs:
         env:
           IMAGE_RESULT: ${{ needs.image.result }}
           LINT_RESULT: ${{ needs.lint-and-typecheck.result }}
+          POSTGRES_RESULT: ${{ needs.postgres-concurrency.result }}
           TEST_RESULT: ${{ needs.test.result }}
         run: |
           test "$LINT_RESULT" = success
           test "$TEST_RESULT" = success
+          test "$POSTGRES_RESULT" = success
           test "$IMAGE_RESULT" = success

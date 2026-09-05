@@ -244,7 +244,9 @@ resource "google_cloud_tasks_queue" "document_transform_dammam" {
   }
 
   retry_config {
-    max_attempts  = 10
+    # Dispatches rejected while a prior worker lease is still active do not count
+    # toward the application's separate ten claimed-execution safety cap.
+    max_attempts  = 100
     min_backoff   = "5s"
     max_backoff   = "300s"
     max_doublings = 5
@@ -306,6 +308,7 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
 
   template {
     service_account = google_service_account.backend.email
+    timeout         = "300s"
 
     scaling {
       min_instance_count = 1
@@ -369,6 +372,7 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
           DOCUMENT_TRANSFORM_QUEUE            = google_cloud_tasks_queue.document_transform_dammam[0].name
           DOCUMENT_TRANSFORM_TARGET_URL       = "https://${var.backend_domain}/internal/tasks/document-transform"
           DOCUMENT_TRANSFORM_FALLBACK_MODEL   = "gemini-2.5-flash-lite"
+          DOCUMENT_TRANSFORM_IN_PLACE_ENABLED = "true"
           LOG_JSON                            = "true"
           MAINTENANCE_MODE                    = tostring(var.maintenance_mode)
         }

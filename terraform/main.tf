@@ -19,6 +19,7 @@ resource "google_project_service" "apis" {
     "securitycenter.googleapis.com",
     "aiplatform.googleapis.com",
     "cloudtasks.googleapis.com",
+    "cloudscheduler.googleapis.com",
     "docs.googleapis.com",
     "cloudasset.googleapis.com",
   ])

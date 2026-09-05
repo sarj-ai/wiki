@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { MIME_DOC, MIME_MARKDOWN, MIME_PDF } from "@/types/wiki";
+import { MIME_DOC, MIME_MARKDOWN, MIME_PDF, MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
 
 import { WikiToolbar } from "./wiki-toolbar";
 
@@ -18,7 +18,8 @@ vi.mock("./reorganize-document", () => ({
 }));
 vi.mock("./document-polish-dialog", () => ({
   // eslint-disable-next-line @typescript-eslint/naming-convention -- matches the component export
-  DocumentPolishDialog: ({ source }: { source: { fileId: string } }) => `polish:${source.fileId}`,
+  DocumentPolishDialog: ({ source }: { source: { allowInPlace: boolean; fileId: string } }) =>
+    `polish:${source.fileId}:in-place-${String(source.allowInPlace)}`,
 }));
 
 describe("WikiToolbar", () => {
@@ -38,7 +39,7 @@ describe("WikiToolbar", () => {
 
     expect(view).toContain("reader:read-only-file");
     expect(view).not.toContain("editor:read-only-file");
-    expect(view).toContain("reorganize:read-only-file");
+    expect(view).not.toContain("reorganize:read-only-file");
   });
 
   it("routes editors to short-link management", () => {
@@ -94,7 +95,25 @@ describe("WikiToolbar", () => {
     );
 
     expect(view).toContain("Polish");
-    expect(view).toContain("polish:doc-file");
+    expect(view).toContain("polish:doc-file:in-place-true");
+  });
+
+  it("never offers in-place polishing for a read-only Google Doc", () => {
+    const view = renderToStaticMarkup(
+      <WikiToolbar
+        breadcrumb={[]}
+        canEdit={false}
+        driveId="drive"
+        fileId="read-only-doc"
+        mimeType={MIME_DOC}
+        modifiedTime="2026-09-03T12:00:00Z"
+        onReload={vi.fn()}
+        parentFolderId="folder"
+        title="Read-only review"
+      />,
+    );
+
+    expect(view).toContain("polish:read-only-doc:in-place-false");
   });
 
   it("offers the same copy-safe action for Drive-hosted Markdown", () => {
@@ -112,6 +131,24 @@ describe("WikiToolbar", () => {
       />,
     );
 
-    expect(view).toContain("polish:markdown-file");
+    expect(view).toContain("polish:markdown-file:in-place-false");
+  });
+
+  it.each([MIME_SLIDE, MIME_PPTX])("offers copy-safe presentation polishing for %s", (mimeType) => {
+    const view = renderToStaticMarkup(
+      <WikiToolbar
+        breadcrumb={[]}
+        canEdit
+        driveId="drive"
+        fileId="deck-file"
+        mimeType={mimeType}
+        modifiedTime="2026-09-04T12:00:00Z"
+        onReload={vi.fn()}
+        parentFolderId="folder"
+        title="Quarterly review"
+      />,
+    );
+
+    expect(view).toContain("polish:deck-file:in-place-false");
   });
 });

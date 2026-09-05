@@ -34,6 +34,10 @@ export async function createDocumentTransformAction(
   return runSmartOperation("create", body, idempotencyKey, "/document-transforms");
 }
 
+export async function getDocumentTransformCapabilitiesAction(): Promise<ActionResult<string>> {
+  return runSmartRead("/document-transforms/capabilities");
+}
+
 export async function proposeSmartFileAction(body: string): Promise<ActionResult<string>> {
   return runSmartOperation("proposal", body);
 }

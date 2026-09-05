@@ -12,6 +12,7 @@ import { DocViewerHost } from "@/components/wiki-document/doc-viewer-host";
 import { DocWarmup } from "@/components/wiki-document/doc-warmup";
 import { CommandPaletteMount } from "@/components/wiki-search/command-palette-mount";
 import { WikiSidebar } from "@/components/wiki-sidebar/wiki-sidebar";
+import { loadSessionBootstrap } from "@/lib/load-session-bootstrap";
 import { serverWikiApi } from "@/lib/server-api";
 import {
   SIDEBAR_WIDTH_COOKIE,
@@ -35,10 +36,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     sidebarWidth === undefined ? undefined : { "--sidebar-width": sidebarWidth };
 
   const queryClient = new QueryClient();
-  const bootstrap = await serverWikiApi.getBootstrap().catch((error: unknown) => {
-    console.error("Bootstrap preload failed", error);
-    return null;
-  });
+  const { bootstrap, me } = await loadSessionBootstrap(serverWikiApi);
+  if (me) queryClient.setQueryData(authKeys.me, me);
   if (bootstrap) {
     queryClient.setQueryData(wikiKeys.drives, bootstrap.drives);
     queryClient.setQueryData(wikiKeys.preferences, bootstrap.preferences);
@@ -59,9 +58,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <QueryProvider key={bootstrap?.me.id ?? "anonymous"} userId={bootstrap?.me.id ?? null}>
+    <QueryProvider key={me?.id ?? "anonymous"} userId={me?.id ?? null}>
       <HydrationBoundary state={dehydrate(queryClient)}>
-        <BrowserSessionBoundary initialUserId={bootstrap?.me.id ?? null}>
+        <BrowserSessionBoundary initialUserId={me?.id ?? null}>
           <SidebarProvider defaultOpen={defaultOpen} style={sidebarStyle}>
             <RedirectAfterLogin />
             <SessionRefresh />

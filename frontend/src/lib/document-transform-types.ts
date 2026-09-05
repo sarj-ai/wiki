@@ -1,6 +1,7 @@
 import type { FileResponse } from "@/types/wiki";
 
 export type DocumentTransformMode = "both" | "format" | "unslop";
+export type DocumentTransformOutputStrategy = "copy" | "in_place";
 
 export type DocumentTransformSource =
   | {
@@ -17,16 +18,30 @@ export type DocumentTransformSource =
     };
 
 export interface DocumentTransformResult {
+  accessScope: "inherited" | "owner_only";
   appliedPatchCount: number;
+  artifactKind: "document" | "presentation";
+  brandProfileId: string;
+  brandProfileSha256: string;
+  deterministicPatchCount: number;
   findings: DocumentTransformFinding[];
   mode: DocumentTransformMode;
+  llmInvoked: boolean;
+  modelPatchCount: number;
+  promotedHeadingCount: number;
   modelIds: string[];
   needsReview: boolean;
   operationId: string;
+  outputStrategy: DocumentTransformOutputStrategy;
   outputFile: FileResponse;
   outputWebUrl: null | string;
   pipelineVersion: string;
+  changed: boolean;
+  outputRevisionId: null | string;
+  sourceRevisionId: null | string;
   sourceSha256: string;
+  shortLinkAlias?: null | string;
+  shortLinkStatus?: "ready" | "unavailable" | null;
   toolVersions: Record<string, string>;
   validation: DocumentTransformValidation;
 }
@@ -50,6 +65,7 @@ export type DocumentTransformTask =
       errorDetail?: string;
       id: string;
       status: "failed";
+      unverifiedOutputId?: string;
     }
   | {
       id: string;
@@ -68,5 +84,17 @@ export class DocumentTransformNeedsReviewError extends Error {
     super(message);
     this.name = "DocumentTransformNeedsReviewError";
     this.result = result;
+  }
+}
+
+export class DocumentTransformTerminalError extends Error {
+  readonly code: string;
+  readonly unverifiedOutputId: string | undefined;
+
+  constructor(code: string, message: string, unverifiedOutputId?: string) {
+    super(message);
+    this.code = code;
+    this.unverifiedOutputId = unverifiedOutputId;
+    this.name = "DocumentTransformTerminalError";
   }
 }

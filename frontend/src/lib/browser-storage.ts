@@ -1,3 +1,5 @@
+import { markdownRecoveryStorageKey } from "@/lib/markdown-transform-recovery";
+
 const LEGACY_KEYS = [
   "sarj-wiki-query-cache",
   "sarj-wiki:recent-docs",
@@ -39,7 +41,7 @@ export function clearUserBrowserStorage(userId: string): void {
     collapsedDrivesStorageKey(userId),
     LAST_REFRESH_KEY,
   ]);
-  removeSessionStorageKeys([ACTIVE_USER_KEY, REDIRECT_KEY]);
+  removeSessionStorageKeys([ACTIVE_USER_KEY, REDIRECT_KEY, markdownRecoveryStorageKey(userId)]);
 }
 
 export function purgeLegacyBrowserStorage(): void {

@@ -3,6 +3,7 @@ import "server-only";
 import * as z from "zod";
 
 import { API_URL } from "@/lib/env";
+import { boundedTransformText } from "@/lib/bounded-transform-text";
 
 const ErrorResponseSchema = z.object({ detail: z.string().optional() });
 const UPSTREAM_TIMEOUT_MS = 30_000;
@@ -34,7 +35,7 @@ export async function callSmartCreateApi(
       method: "POST",
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    const responseBody = await response.text();
+    const responseBody = await boundedTransformText(response.body);
     if (response.ok) return { body: responseBody, ok: true, status: response.status };
     const parsed = ErrorResponseSchema.safeParse(safeJson(responseBody));
     const error = parsed.success ? parsed.data.detail : undefined;
@@ -59,7 +60,7 @@ export async function readSmartCreateApi(
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    const responseBody = await response.text();
+    const responseBody = await boundedTransformText(response.body);
     if (response.ok) return { body: responseBody, ok: true, status: response.status };
     const parsed = ErrorResponseSchema.safeParse(safeJson(responseBody));
     const error = parsed.success ? parsed.data.detail : undefined;

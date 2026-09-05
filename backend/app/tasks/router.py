@@ -1,16 +1,38 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Protocol
+import uuid
 
 from fastapi import APIRouter, Depends, Path, Response, status
 
 from app.auth.dependencies import get_current_user
-from app.identifiers import TaskId
+from app.document_transform.schemas import CopyCheckpoint, DriveFileSource, OutputStrategy
+from app.files.dependencies import files_service_dep
+from app.files.errors import FilesError
+from app.files.schemas import FileResponse
+from app.identifiers import FileId, TaskId
 from app.models.user import User
 from app.openapi import authentication_responses
 from app.tasks.dependencies import task_service_dep
-from app.tasks.schemas import PendingTaskRead, RunningTaskRead, TaskRead
-from app.tasks.service import TaskService
+from app.tasks.schemas import (
+    DocumentTransformTaskRecord,
+    FailedTaskRead,
+    PendingTaskRead,
+    RunningTaskRead,
+    TaskKind,
+    TaskRead,
+    UnverifiedTaskOutput,
+)
+
+
+class TaskReader(Protocol):
+    async def get_for_owner(self, task_id: TaskId, owner_user_id: uuid.UUID) -> TaskRead: ...
+
+    async def load_document_transform(self, task_id: TaskId) -> DocumentTransformTaskRecord: ...
+
+
+class OutputReader(Protocol):
+    async def get(self, file_id: FileId) -> FileResponse: ...
 
 
 router = APIRouter(
@@ -34,11 +56,43 @@ router = APIRouter(
 )
 async def get_task(
     task_id: Annotated[TaskId, Path()],
-    service: Annotated[TaskService, Depends(task_service_dep)],
+    service: Annotated[TaskReader, Depends(task_service_dep)],
     user: Annotated[User, Depends(get_current_user)],
     response: Response,
+    files: Annotated[OutputReader, Depends(files_service_dep)],
 ) -> TaskRead:
     task = await service.get_for_owner(task_id, user.id)
+    if isinstance(task, FailedTaskRead) and task.kind is TaskKind.FILE_DOCUMENT_TRANSFORM:
+        task = await _with_unverified_output(task, service, user, files)
     if isinstance(task, PendingTaskRead | RunningTaskRead):
         response.headers["Retry-After"] = "1"
     return task
+
+
+async def _with_unverified_output(
+    task: FailedTaskRead, service: TaskReader, user: User, files: OutputReader
+) -> FailedTaskRead:
+    record = await service.load_document_transform(task.id)
+    checkpoint = record.checkpoint
+    payload = record.payload
+    if (
+        record.owner_user_id != user.id
+        or (payload is not None and payload.output_strategy is not OutputStrategy.COPY)
+        or not isinstance(checkpoint, CopyCheckpoint)
+        or checkpoint.output is None
+    ):
+        return task
+    output_id = checkpoint.output.file_id
+    if (
+        payload is not None
+        and isinstance(payload.source, DriveFileSource)
+        and output_id == payload.source.file_id
+    ):
+        return task
+    try:
+        accessible = await files.get(output_id)
+    except FilesError:
+        return task
+    if accessible.id != output_id:
+        return task
+    return task.model_copy(update={"unverified_output": UnverifiedTaskOutput(file_id=output_id)})

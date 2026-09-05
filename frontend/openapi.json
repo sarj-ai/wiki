@@ -359,6 +359,11 @@
             "title": "File Id",
             "type": "string"
           },
+          "media_type": {
+            "default": "application/vnd.google-apps.document",
+            "title": "Media Type",
+            "type": "string"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -387,6 +392,57 @@
         "title": "DocumentOutput",
         "type": "object"
       },
+      "DocumentTransformAdmission": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "status"
+        ],
+        "title": "DocumentTransformAdmission",
+        "type": "object"
+      },
+      "DocumentTransformCapabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "copy": {
+            "const": true,
+            "default": true,
+            "title": "Copy",
+            "type": "boolean"
+          },
+          "in_place": {
+            "title": "In Place",
+            "type": "boolean"
+          },
+          "presentation_copy": {
+            "const": true,
+            "default": true,
+            "title": "Presentation Copy",
+            "type": "boolean"
+          },
+          "presentation_in_place": {
+            "const": false,
+            "default": false,
+            "title": "Presentation In Place",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "in_place"
+        ],
+        "title": "DocumentTransformCapabilities",
+        "type": "object"
+      },
       "DocumentTransformRequest": {
         "additionalProperties": false,
         "properties": {
@@ -405,6 +461,10 @@
               }
             ],
             "title": "Output Name"
+          },
+          "output_strategy": {
+            "$ref": "#/components/schemas/OutputStrategy",
+            "default": "copy"
           },
           "source": {
             "discriminator": {
@@ -435,9 +495,48 @@
       "DocumentTransformResult": {
         "additionalProperties": false,
         "properties": {
+          "access_scope": {
+            "default": "inherited",
+            "enum": [
+              "inherited",
+              "owner_only"
+            ],
+            "title": "Access Scope",
+            "type": "string"
+          },
           "applied_patch_count": {
             "minimum": 0.0,
             "title": "Applied Patch Count",
+            "type": "integer"
+          },
+          "artifact_kind": {
+            "default": "document",
+            "enum": [
+              "document",
+              "presentation"
+            ],
+            "title": "Artifact Kind",
+            "type": "string"
+          },
+          "brand_profile_id": {
+            "default": "sarj-2026-v4",
+            "title": "Brand Profile Id",
+            "type": "string"
+          },
+          "brand_profile_sha256": {
+            "default": "bbc319b0152be2a645099c0d88516ebf13b375bdadb5b443ef7037da027dcb22",
+            "title": "Brand Profile Sha256",
+            "type": "string"
+          },
+          "changed": {
+            "default": true,
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "deterministic_patch_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Deterministic Patch Count",
             "type": "integer"
           },
           "findings": {
@@ -446,6 +545,21 @@
             },
             "title": "Findings",
             "type": "array"
+          },
+          "header_identity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HeaderIdentityEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "llm_invoked": {
+            "default": false,
+            "title": "Llm Invoked",
+            "type": "boolean"
           },
           "mode": {
             "$ref": "#/components/schemas/TransformMode"
@@ -456,6 +570,12 @@
             },
             "title": "Model Ids",
             "type": "array"
+          },
+          "model_patch_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Model Patch Count",
+            "type": "integer"
           },
           "needs_review": {
             "title": "Needs Review",
@@ -469,9 +589,71 @@
           "output": {
             "$ref": "#/components/schemas/DocumentOutput"
           },
+          "output_revision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Revision Id"
+          },
+          "output_strategy": {
+            "$ref": "#/components/schemas/OutputStrategy",
+            "default": "copy"
+          },
           "pipeline_version": {
             "title": "Pipeline Version",
             "type": "string"
+          },
+          "promoted_heading_count": {
+            "default": 0,
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Promoted Heading Count",
+            "type": "integer"
+          },
+          "short_link_alias": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 5,
+                "pattern": "^[a-z]{2,12}(?:-[a-z]{2,12}){1,2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Link Alias"
+          },
+          "short_link_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ready",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Link Status"
+          },
+          "source_revision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Revision Id"
           },
           "source_sha256": {
             "title": "Source Sha256",
@@ -895,6 +1077,16 @@
             "const": "failed",
             "title": "Status",
             "type": "string"
+          },
+          "unverified_output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnverifiedTaskOutput"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1218,6 +1410,92 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HeaderIdentityEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "headers": {
+            "items": {
+              "$ref": "#/components/schemas/ManagedHeaderIdentity"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Headers",
+            "type": "array"
+          },
+          "operation_id": {
+            "format": "uuid",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "profile_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Profile Sha256",
+            "type": "string"
+          },
+          "tab_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Tab Ids",
+            "type": "array"
+          },
+          "title_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Title Sha256",
+            "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "enum": [
+              1,
+              2
+            ],
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operation_id",
+          "file_id",
+          "profile_sha256",
+          "title_sha256",
+          "tab_ids",
+          "headers"
+        ],
+        "title": "HeaderIdentityEvidence",
+        "type": "object"
+      },
+      "ManagedHeaderIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "fingerprint_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Fingerprint Sha256",
+            "type": "string"
+          },
+          "header_id": {
+            "title": "Header Id",
+            "type": "string"
+          },
+          "tab_id": {
+            "title": "Tab Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tab_id",
+          "header_id",
+          "fingerprint_sha256"
+        ],
+        "title": "ManagedHeaderIdentity",
+        "type": "object"
+      },
       "MarkdownSource": {
         "additionalProperties": false,
         "properties": {
@@ -1251,6 +1529,14 @@
         ],
         "title": "MarkdownSource",
         "type": "object"
+      },
+      "OutputStrategy": {
+        "enum": [
+          "copy",
+          "in_place"
+        ],
+        "title": "OutputStrategy",
+        "type": "string"
       },
       "PendingTaskRead": {
         "properties": {
@@ -2028,6 +2314,17 @@
         "title": "TaskKind",
         "type": "string"
       },
+      "TaskStatus": {
+        "enum": [
+          "pending",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "TaskStatus",
+        "type": "string"
+      },
       "TemplateCatalogRead": {
         "properties": {
           "templates": {
@@ -2183,6 +2480,19 @@
         ],
         "title": "TransformMode",
         "type": "string"
+      },
+      "UnverifiedTaskOutput": {
+        "properties": {
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "title": "UnverifiedTaskOutput",
+        "type": "object"
       },
       "UserProfile": {
         "properties": {
@@ -2865,6 +3175,69 @@
             },
             "description": "Authentication is required or the session is invalid."
           },
+          "413": {
+            "description": "Markdown input exceeds a bounded conversion limit"
+          },
+          "422": {
+            "description": "In-place transformation is limited to native Google Docs"
+          },
+          "503": {
+            "description": "In-place document transformation is disabled"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Document Transform",
+        "tags": [
+          "document-transforms"
+        ]
+      }
+    },
+    "/document-transforms/admissions/{idempotency_key}": {
+      "get": {
+        "operationId": "get_document_transform_admission",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idempotency_key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTransformAdmission"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "404": {
+            "description": "No retained admission for this owner and key"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2884,7 +3257,46 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Create Document Transform",
+        "summary": "Get Document Transform Admission",
+        "tags": [
+          "document-transforms"
+        ]
+      }
+    },
+    "/document-transforms/capabilities": {
+      "get": {
+        "operationId": "get_document_transform_capabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTransformCapabilities"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Document Transform Capabilities",
         "tags": [
           "document-transforms"
         ]

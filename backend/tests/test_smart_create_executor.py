@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import NamedTuple, override
 import uuid
@@ -112,6 +113,7 @@ class _Tasks(TaskService):
         owner_user_id: uuid.UUID,
         idempotency_key: IdempotencyKey,
         payload: BaseModel,
+        admit: Callable[[], Awaitable[None]] | None = None,
     ) -> TaskReservation:
         raise NotImplementedError
 

@@ -112,6 +112,41 @@ class PostgresAliasService(AliasService):
         await self._db.commit()
         return _to_read(row)
 
+    async def ensure_for_file(
+        self, file_id: FileId, candidates: tuple[DocumentAliasValue, ...]
+    ) -> DocumentAliasRead:
+        # Both alias uniqueness and the active-file unique index arbitrate races.
+        # Retired aliases remain reserved. Never change Drive permissions or
+        # replace an editor's chosen link.
+        file = await self._files.get(file_id)
+        if file.mime_type not in NAVIGATOR_SUPPORTED_MIME_TYPES or file.mime_type in {
+            MIME_FOLDER,
+            MIME_SHORTCUT,
+        }:
+            raise AliasTargetUnsupportedError
+        if not file.can_edit:
+            raise AliasEditForbiddenError
+        for alias in candidates:
+            existing = await self._active_for_file(file_id)
+            if existing is not None:
+                return _to_read(existing)
+            statement = (
+                pg_insert(DocumentAlias)
+                .values(alias=alias, file_id=file_id, created_by=self._user.id)
+                .on_conflict_do_nothing()
+                .returning(DocumentAlias)
+            )
+            row = (await self._db.execute(statement)).scalar_one_or_none()
+            if row is not None:
+                await self._db.commit()
+                return _to_read(row)
+            # Under READ COMMITTED this new query observes a concurrent winner
+            # after ON CONFLICT has waited for that transaction to finish.
+            existing = await self._active_for_file(file_id)
+            if existing is not None:
+                return _to_read(existing)
+        raise AliasConflictError
+
     @override
     async def retire(self, file_id: FileId) -> None:
         file = await self._files.get(file_id)

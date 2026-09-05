@@ -1,51 +1,133 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 import hashlib
 import json
 from types import MappingProxyType
-from typing import Any
+from typing import Any, NamedTuple, Protocol
 import uuid
 
+from loguru import logger
+
+from app.document_transform.authored_labels import (
+    AuthoredLabelRole,
+    apply_authored_labels,
+    plan_authored_labels,
+)
 from app.document_transform.brand import (
     SarjBrandProfile,
     build_copy_mutations,
     build_copy_text_mutations,
-    build_markdown_mutations,
     mutation_sha256,
 )
-from app.document_transform.docx_renderer import render_markdown_docx
+from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
+from app.document_transform.custom_furniture import custom_furniture_requests_safe
+from app.document_transform.docx_renderer import markdown_import_manifest, render_markdown_docx
 from app.document_transform.errors import (
+    DocumentGatewayError,
+    InPlaceNeedsReviewError,
+    InPlaceNotAllowedError,
     OutputConflictError,
+    OutputVerificationError,
     SourceChangedError,
+    SourceTooLargeError,
     UnsupportedSourceError,
 )
-from app.document_transform.gateway import DocumentGateway, OutputDraft, SourceSnapshot
+from app.document_transform.gateway import (
+    DocumentGateway,
+    InPlaceInspection,
+    InPlaceStageResult,
+    OutputDraft,
+    SourceSnapshot,
+    TabHeader,
+)
+from app.document_transform.header_provenance import HeaderIdentityFinalization
+from app.document_transform.header_recovery import recover_empty_header_postcondition
 from app.document_transform.ir import (
+    MAX_DOC_TABS,
     DocumentIR,
     parse_google_document,
     parse_markdown,
     rewrite_markdown,
 )
 from app.document_transform.models import PatchGenerator
-from app.document_transform.safety import validate_patches
+from app.document_transform.naming import suggested_document_title, title_case_document_name
+from app.document_transform.native_font_defense import (
+    apply_native_font_preservation,
+    defend_native_font_requests,
+    preserved_native_font_blocks,
+)
+from app.document_transform.native_font_noop import filter_redundant_native_fonts
+from app.document_transform.native_font_proof import (
+    NativeFontBlockId,
+    NativeFontVerificationPolicy,
+    capture_native_font_proof,
+    verify_native_font_proof,
+)
+from app.document_transform.native_footer_flow import footer_coverage_complete
+from app.document_transform.native_pagination import (
+    NativePaginationRule,
+    apply_native_pagination,
+    existing_native_pagination,
+    plan_native_pagination,
+)
+from app.document_transform.native_paragraph_layout import (
+    apply_paragraph_layout,
+    capture_paragraph_layout,
+    paragraph_layout_requests_safe,
+    verify_paragraph_layout,
+)
+from app.document_transform.native_preservation import preserved_native_findings
+from app.document_transform.native_table_font import (
+    TableFontPlan,
+    plan_table_fonts,
+    project_table_fonts,
+    table_font_proof_matches,
+    table_font_requests,
+)
+from app.document_transform.planner import TextTransformPlanner, TransformOutcome
 from app.document_transform.schemas import (
+    CopyCheckpoint,
+    CopyCheckpointStage,
+    DocumentOutput,
+    DocumentTransformCheckpoint,
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
+    InPlaceCheckpoint,
+    InPlaceCheckpointStage,
+    OutputStrategy,
     TransformFinding,
     TransformMode,
-    TransformPhase,
     ValidationSummary,
 )
+from app.document_transform.tab_structure_execution import (
+    StructureStage,
+    planned_structure_document,
+    prepare_content_move,
+    prepare_tab_creation,
+    recover_created_tabs,
+    verify_structure_content,
+)
 from app.document_transform.unslop import (
+    UNSLOP_CATALOG_SHA256,
     UNSLOP_UPSTREAM_COMMIT,
     UNSLOP_UPSTREAM_VERSION,
-    scan_unslop_candidates,
 )
+from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, TaskId
 
 
-PIPELINE_VERSION = "document-transform-v1"
+class _TableFontScope(NamedTuple):
+    plan: TableFontPlan | None
+    protected_sha256: str
+    requests: list[dict[str, Any]]
+    findings: list[TransformFinding]
+
+
+PIPELINE_VERSION = "document-transform-v3"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v25"
+_MAX_OUTPUT_NAME_LENGTH = 255
+_MAX_GENERATED_NAME_SUFFIXES = 16
 _OUTPUT_SUFFIX = MappingProxyType(
     {
         TransformMode.FORMAT: "Sarj formatted",
@@ -55,11 +137,58 @@ _OUTPUT_SUFFIX = MappingProxyType(
 )
 
 
+class StructureInputs(NamedTuple):
+    snapshot: SourceSnapshot
+    expected: DocumentIR
+
+
+def _structure_inputs(
+    snapshot: SourceSnapshot, expected: DocumentIR, checkpoint: CopyCheckpoint
+) -> StructureInputs:
+    structure = checkpoint.tab_structure
+    if structure is None:
+        return StructureInputs(snapshot, expected)
+    if snapshot.google_document is None or structure.stage is not StructureStage.VERIFIED:
+        raise OutputVerificationError
+    projected = planned_structure_document(structure, snapshot.google_document)
+    mapped = parse_google_document(projected, title=expected.title)
+    if len(mapped.blocks) != len(expected.blocks):
+        raise OutputVerificationError
+    mapped = replace(
+        mapped,
+        blocks=tuple(
+            replace(block, text=transformed.text)
+            for block, transformed in zip(mapped.blocks, expected.blocks, strict=True)
+        ),
+    )
+    return StructureInputs(replace(snapshot, google_document=projected), mapped)
+
+
 @dataclass(frozen=True, slots=True)
-class TransformOutcome:
-    document: DocumentIR
+class AppliedValidation:
+    protected_content_preserved: bool
+    structure_preserved: bool
     findings: tuple[TransformFinding, ...]
-    applied_count: int
+    revision_id: DocsRevisionId
+
+
+class DocumentTransformCheckpointStore(Protocol):
+    async def save_document_transform_checkpoint(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        expected_generation: int,
+        checkpoint: DocumentTransformCheckpoint,
+    ) -> int: ...
+
+    async def record_resource(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        resource_id: FileId,
+    ) -> None: ...
 
 
 class DocumentTransformExecutor:
@@ -71,14 +200,43 @@ class DocumentTransformExecutor:
         brand: SarjBrandProfile | None = None,
         allow_format_text_edits: bool = False,
         logo_bytes: bytes | None = None,
+        checkpoint_store: DocumentTransformCheckpointStore | None = None,
+        task_id: TaskId | None = None,
+        lease_token: uuid.UUID | None = None,
+        checkpoint: DocumentTransformCheckpoint | None = None,
+        checkpoint_generation: int = 0,
     ) -> None:
         self._gateway = gateway
         self._generator = generator
+        self._planner = TextTransformPlanner(
+            generator=generator,
+            allow_format_text_edits=allow_format_text_edits,
+        )
         self._brand = brand or SarjBrandProfile()
         self._allow_format_text_edits = allow_format_text_edits
         self._logo_bytes = logo_bytes
+        self._checkpoint_store = checkpoint_store
+        self._task_id = task_id
+        self._lease_token = lease_token
+        self._checkpoint = checkpoint
+        self._checkpoint_generation = checkpoint_generation
 
     async def execute(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+    ) -> DocumentTransformResult:
+        if (
+            self._brand.version != CURRENT_BRAND_MANIFEST.profile_id
+            or self._brand.sha256 != CURRENT_BRAND_MANIFEST.sha256
+        ):
+            raise UnsupportedSourceError
+        if request.output_strategy is OutputStrategy.IN_PLACE:
+            return await self._execute_in_place(operation_id=operation_id, request=request)
+        return await self._execute_copy(operation_id=operation_id, request=request)
+
+    async def _execute_copy(
         self,
         *,
         operation_id: uuid.UUID,
@@ -88,72 +246,213 @@ class DocumentTransformExecutor:
         original = _to_ir(snapshot)
         source_sha256 = _source_sha256(snapshot, original)
         recovered = await self._gateway.recover_output(operation_id)
-        if recovered is not None:
-            if recovered.source_sha256 != source_sha256:
+        checkpoint = self._copy_checkpoint_or_none()
+        if checkpoint is None:
+            if recovered is not None:
+                # Legacy/incomplete outputs without a durable plan cannot be
+                # re-attested safely and must never trigger a fresh model plan.
                 raise OutputConflictError
-            if recovered.completed:
-                if recovered.result is not None:
-                    return DocumentTransformResult.model_validate(recovered.result)
-                return self._recovered_completed_result(
-                    operation_id=operation_id,
-                    request=request,
-                    source_sha256=source_sha256,
-                    draft=recovered,
+            outcome = await self._planner.transform(original, request)
+            if request.mode is not TransformMode.UNSLOP:
+                outcome = replace(
+                    outcome,
+                    document=apply_authored_labels(
+                        outcome.document, plan_authored_labels(original)
+                    ),
                 )
-
-        outcome = await self._transform(original, request)
-        transformed = outcome.document
-        findings = list(outcome.findings)
-        if request.mode is TransformMode.UNSLOP:
-            findings.extend(_markdown_fidelity_findings(snapshot))
-        elif snapshot.markdown is not None:
-            findings.append(
-                TransformFinding(
-                    code="structure_verification_required",
-                    detail=(
-                        "The native Google Doc was created, but Markdown import structure "
-                        "requires review until output round-trip verification is available"
+                outcome = replace(
+                    outcome,
+                    document=apply_native_pagination(
+                        outcome.document,
+                        plan_native_pagination(snapshot.google_document, outcome.document),
+                    ),
+                )
+            checkpoint = await self._save_copy_checkpoint(
+                _new_copy_checkpoint(
+                    request=request,
+                    snapshot=snapshot,
+                    original=original,
+                    outcome=outcome,
+                    source_sha256=source_sha256,
+                    model_ids=(
+                        [ModelId(value) for value in self._generator.model_ids]
+                        if outcome.llm_invoked
+                        else []
+                    ),
+                    logo_sha256=(
+                        hashlib.sha256(self._logo_bytes).hexdigest()
+                        if self._logo_bytes is not None
+                        else None
                     ),
                 )
             )
-            if self._logo_bytes is None:
-                findings.append(
-                    TransformFinding(
-                        code="logo_unavailable",
-                        detail="Typography and spacing were applied, but the Sarj logo was unavailable",
-                    )
-                )
-        await self._require_unchanged_drive_source(request, snapshot)
-        draft = recovered or await self._create_output(
-            operation_id=operation_id,
-            request=request,
-            snapshot=snapshot,
-            source_sha256=source_sha256,
-            original=original,
-            transformed=transformed,
-        )
-        if request.mode is TransformMode.UNSLOP:
-            prepared_draft = draft
-            mutations = (
-                build_copy_text_mutations(original, transformed)
-                if snapshot.media_type == "application/vnd.google-apps.document"
-                else build_markdown_mutations(
-                    transformed,
-                    tab_id=draft.tab_id,
-                    profile=self._brand,
-                    headers=(),
-                    logo_uri="",
-                    branded=False,
+        else:
+            _validate_copy_checkpoint(
+                checkpoint,
+                request=request,
+                snapshot=snapshot,
+                original=original,
+                source_sha256=source_sha256,
+                current_logo_sha256=(
+                    hashlib.sha256(self._logo_bytes).hexdigest()
+                    if self._logo_bytes is not None
+                    else None
+                ),
+            )
+            outcome = _copy_checkpoint_outcome(checkpoint, original)
+
+        if recovered is not None and (
+            recovered.source_sha256 != source_sha256
+            or (
+                checkpoint.output is not None
+                and recovered.output.file_id != checkpoint.output.file_id
+            )
+        ):
+            raise OutputConflictError
+        if checkpoint.stage is CopyCheckpointStage.VERIFIED:
+            if recovered is None or checkpoint.result is None:
+                raise OutputConflictError
+            snapshot, original = _structure_inputs(snapshot, outcome.document, checkpoint)
+            return await self._complete_verified_copy(
+                operation_id=operation_id,
+                request=request,
+                snapshot=snapshot,
+                expected=original,
+                checkpoint=checkpoint,
+                draft=recovered,
+            )
+
+        findings = list(outcome.findings)
+        if (
+            snapshot.markdown is not None
+            and request.mode is not TransformMode.UNSLOP
+            and self._logo_bytes is None
+        ):
+            findings.append(
+                TransformFinding(
+                    code="logo_unavailable",
+                    detail="Typography and spacing were applied, but the Sarj logo was unavailable",
                 )
             )
+        _preflight_native_mutation_budget(
+            request=request,
+            snapshot=snapshot,
+            original=original,
+            transformed=outcome.document,
+            brand=self._brand,
+        )
+        await self._require_unchanged_drive_source(request, snapshot)
+        if recovered is None:
+            if checkpoint.stage is CopyCheckpointStage.CREATING:
+                # The preceding create may have committed even when Drive search has
+                # not indexed the operation property yet.  Never issue a second create.
+                raise DocumentGatewayError(retryable=True)
+            if checkpoint.stage is not CopyCheckpointStage.PLANNED:
+                raise OutputConflictError
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"stage": CopyCheckpointStage.CREATING})
+            )
+            draft = await self._create_output(
+                operation_id=operation_id,
+                request=request,
+                snapshot=snapshot,
+                source_sha256=source_sha256,
+                original=original,
+                transformed=outcome.document,
+                output_name=checkpoint.output_name,
+            )
+            await self._record_copy_resource(draft.output.file_id)
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(
+                    update={
+                        "stage": CopyCheckpointStage.CREATED,
+                        "output": draft.output,
+                        "output_revision_id": draft.revision_id,
+                    }
+                )
+            )
+        else:
+            draft = recovered
+            if checkpoint.stage not in {
+                CopyCheckpointStage.CREATING,
+                CopyCheckpointStage.CREATED,
+            }:
+                raise OutputConflictError
+            if checkpoint.stage is CopyCheckpointStage.CREATING:
+                await self._record_copy_resource(draft.output.file_id)
+                checkpoint = await self._save_copy_checkpoint(
+                    checkpoint.model_copy(
+                        update={
+                            "stage": CopyCheckpointStage.CREATED,
+                            "output": draft.output,
+                            "output_revision_id": draft.revision_id,
+                        }
+                    )
+                )
+        if (
+            snapshot.google_document is not None
+            and isinstance(request.source, DriveFileSource)
+            and request.mode is not TransformMode.UNSLOP
+            and self._checkpoint_store is not None
+            and self._gateway.structure_provider is not None
+        ):
+            draft = await self._finish_copy_structure(
+                checkpoint=checkpoint, draft=draft, source_id=request.source.file_id
+            )
+            checkpoint = self._copy_checkpoint_or_none() or checkpoint
+            snapshot, original = _structure_inputs(snapshot, outcome.document, checkpoint)
+            outcome = replace(outcome, document=original)
+            original = _to_ir(snapshot)
+        if checkpoint.native_dates is not None:
+            draft = replace(draft, native_footer=checkpoint.native_footer)
+            draft = await self._finish_copy_dates(
+                operation_id=operation_id, checkpoint=checkpoint, draft=draft
+            )
+            checkpoint = self._copy_checkpoint_or_none() or checkpoint
+            prepared_draft = draft
+            mutations: list[dict[str, Any]] = []
+        elif checkpoint.native_footer is not None:
+            draft = await self._finish_copy_footer(
+                operation_id=operation_id, checkpoint=checkpoint, draft=draft
+            )
+            checkpoint = self._copy_checkpoint_or_none() or checkpoint
+            prepared_draft = draft
+            mutations = []
         elif snapshot.markdown is not None:
             prepared_draft = draft
             mutations = []
+        elif request.mode is TransformMode.UNSLOP:
+            prepared_draft = draft
+            mutations = build_copy_text_mutations(original, outcome.document)
         else:
             prepared_draft = await self._gateway.prepare_brand_shell(
                 operation_id=operation_id,
                 draft=draft,
+                managed_headers=checkpoint.managed_headers,
             )
+            if (
+                checkpoint.managed_headers is not None
+                and draft.applied_mutation_sha256 is None
+                and draft.pending_mutation_sha256 is None
+                and prepared_draft.revision_id != checkpoint.output_revision_id
+            ):
+                raise SourceChangedError
+            if checkpoint.managed_headers is None:
+                # Persist positive ownership before body/header population.
+                # Never infer ownership from an already-mutated recovered copy.
+                checkpoint = await self._save_copy_checkpoint(
+                    checkpoint.model_copy(
+                        update={
+                            "output_revision_id": prepared_draft.revision_id,
+                            "managed_headers": {}
+                            if (draft.applied_mutation_sha256 or draft.pending_mutation_sha256)
+                            else {
+                                str(header.tab_id): str(header.header_id)
+                                for header in prepared_draft.headers
+                            },
+                        }
+                    )
+                )
             if prepared_draft.logo_uri is None:
                 msg = "Brand shell did not provide a logo reference"
                 raise RuntimeError(msg)
@@ -161,39 +460,107 @@ class DocumentTransformExecutor:
                 TransformFinding(code=code, detail=_brand_warning_detail(code))
                 for code in prepared_draft.brand_warnings
             )
-            mutations = (
-                build_copy_mutations(
-                    original,
-                    transformed,
-                    profile=self._brand,
-                    headers=prepared_draft.headers,
-                    logo_uri=prepared_draft.logo_uri,
+            mutations = build_copy_mutations(
+                original,
+                outcome.document,
+                profile=self._brand,
+                headers=prepared_draft.headers,
+                logo_uri=prepared_draft.logo_uri,
+                header_title=checkpoint.output_name,
+            )
+        applied = prepared_draft
+        if checkpoint.native_footer is None and checkpoint.native_dates is None:
+            applied = await self._gateway.apply_requests_once(
+                operation_id=operation_id,
+                draft=prepared_draft,
+                mutation_sha256=mutation_sha256(mutations),
+                requests=mutations,
+                required_revision_id=prepared_draft.revision_id,
+            )
+        await self._require_unchanged_drive_source(request, snapshot)
+        applied_validation = await self._validate_applied_output(
+            request=request,
+            snapshot=snapshot,
+            expected=outcome.document,
+            draft=applied,
+            header_title=checkpoint.output_name,
+        )
+        applied = replace(applied, revision_id=applied_validation.revision_id)
+        if (
+            request.mode is not TransformMode.UNSLOP
+            and checkpoint.native_footer is None
+            and checkpoint.native_dates is None
+        ):
+            applied = await self._name_copy_tabs(
+                operation_id=operation_id,
+                checkpoint=checkpoint,
+                draft=applied,
+                source_has_native_title=any(
+                    block.source_named_style == "TITLE" for block in original.blocks
+                ),
+            )
+            checkpoint = self._copy_checkpoint_or_none() or checkpoint
+            # Footer metadata follows content and tab verification. Never revisit
+            # earlier mutation stages once its durable checkpoint exists.
+            if (
+                snapshot.markdown is None
+                and self._checkpoint_store is not None
+                and self._gateway.supports_native_footer
+            ):
+                applied = await self._finish_copy_footer(
+                    operation_id=operation_id, checkpoint=checkpoint, draft=applied
                 )
-                if isinstance(request.source, DriveFileSource)
-                and snapshot.media_type == "application/vnd.google-apps.document"
-                else build_markdown_mutations(
-                    transformed,
-                    tab_id=prepared_draft.tab_id,
-                    profile=self._brand,
-                    headers=prepared_draft.headers,
-                    logo_uri=prepared_draft.logo_uri,
+                checkpoint = self._copy_checkpoint_or_none() or checkpoint
+        if (
+            request.mode is not TransformMode.UNSLOP
+            and snapshot.markdown is None
+            and self._checkpoint_store is not None
+            and self._gateway.supports_native_dates
+        ):
+            applied = await self._finish_copy_dates(
+                operation_id=operation_id, checkpoint=checkpoint, draft=applied
+            )
+            checkpoint = self._copy_checkpoint_or_none() or checkpoint
+        findings.extend(applied_validation.findings)
+        if checkpoint.native_footer is not None and checkpoint.native_footer.coverage is not None:
+            findings.extend(
+                TransformFinding(
+                    code=f"native_footer_{reason}",
+                    detail={
+                        "custom_footer": "Existing custom footers were preserved on some tabs.",
+                        "pageless": "Wiki footers were not added to pageless tabs.",
+                        "unsupported_layout": "Wiki footers were not added where tab layout could not be safely verified.",
+                    }[reason],
+                )
+                for reason in sorted(
+                    {skip.reason for skip in checkpoint.native_footer.coverage.skipped}
                 )
             )
-        applied = await self._gateway.apply_requests_once(
-            operation_id=operation_id,
-            draft=prepared_draft,
-            mutation_sha256=mutation_sha256(mutations),
-            requests=mutations,
-            required_revision_id=prepared_draft.revision_id,
-        )
-        await self._require_unchanged_drive_source(request, snapshot)
+        if checkpoint.native_dates is not None and checkpoint.native_dates.declined_reason:
+            findings.append(
+                TransformFinding(
+                    code="native_date_provider_rejected",
+                    detail="Google rejected native date conversion; dates were preserved as text.",
+                )
+            )
         validation = ValidationSummary(
             source_unchanged=True,
-            protected_content_preserved=not outcome.findings,
-            structure_preserved=snapshot.markdown is None,
+            protected_content_preserved=applied_validation.protected_content_preserved,
+            structure_preserved=applied_validation.structure_preserved,
             unsafe_patch_count=len(outcome.findings),
         )
         result = DocumentTransformResult(
+            promoted_heading_count=len(checkpoint.authored_labels),
+            header_identity=(
+                await self._gateway.capture_header_identity(
+                    draft=applied,
+                    operation_id=operation_id,
+                    managed_headers=checkpoint.managed_headers or {},
+                    title=checkpoint.output_name,
+                )
+                if self._gateway.capture_header_identity is not None
+                else None
+            ),
             operation_id=operation_id,
             source_sha256=source_sha256,
             output=applied.output,
@@ -201,20 +568,1021 @@ class DocumentTransformExecutor:
             applied_patch_count=outcome.applied_count,
             findings=findings,
             validation=validation,
-            model_ids=list(self._generator.model_ids),
+            model_ids=checkpoint.model_ids,
             tool_versions={
+                "unslop_catalog_sha256": UNSLOP_CATALOG_SHA256,
                 "unslop_commit": UNSLOP_UPSTREAM_COMMIT,
                 "unslop_version": UNSLOP_UPSTREAM_VERSION,
             },
             pipeline_version=PIPELINE_VERSION,
             needs_review=bool(findings),
+            brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
+            brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
+            deterministic_patch_count=outcome.deterministic_count,
+            model_patch_count=outcome.model_count,
+            llm_invoked=outcome.llm_invoked,
+            output_revision_id=applied.revision_id,
         )
-        await self._gateway.complete(
+        checkpoint = await self._save_copy_checkpoint(
+            checkpoint.model_copy(
+                update={
+                    "stage": CopyCheckpointStage.VERIFIED,
+                    "output": applied.output,
+                    "output_revision_id": applied.revision_id,
+                    "result": result,
+                }
+            )
+        )
+        return await self._complete_verified_copy(
             operation_id=operation_id,
+            request=request,
+            snapshot=snapshot,
+            expected=outcome.document,
+            checkpoint=checkpoint,
             draft=applied,
-            result=result.model_dump(mode="json"),
         )
+
+    async def _finish_copy_structure(
+        self, *, checkpoint: CopyCheckpoint, draft: OutputDraft, source_id: FileId
+    ) -> OutputDraft:
+        provider = self._gateway.structure_provider
+        if provider is None:
+            raise OutputVerificationError
+        structure = checkpoint.tab_structure
+        if structure is None:
+            # Do not introduce a new pre-brand stage into a partially completed
+            # output, even if a later retry finds that its contents qualify.
+            if (
+                checkpoint.tab_naming
+                or checkpoint.native_footer
+                or checkpoint.native_dates
+                or draft.applied_mutation_sha256
+            ):
+                return draft
+            structure = await provider.plan(
+                document_id=draft.document_id, revision_id=draft.revision_id, source_id=source_id
+            )
+            if structure is None:
+                return draft
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"tab_structure": structure})
+            )
+        if structure.stage is StructureStage.VERIFIED:
+            return draft
+        if structure.stage is StructureStage.PLANNED:
+            structure, body = prepare_tab_creation(structure)
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"tab_structure": structure})
+            )
+            await provider.write(draft.document_id, body)
+        if structure.stage is StructureStage.CREATING:
+            document = await provider.read(draft.document_id)
+            structure = recover_created_tabs(structure, document)
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"tab_structure": structure})
+            )
+        if structure.stage is StructureStage.CREATED:
+            structure, body = prepare_content_move(structure)
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"tab_structure": structure})
+            )
+            await provider.write(draft.document_id, body)
+        document = await provider.read(draft.document_id)
+        if not verify_structure_content(structure, document):
+            raise OutputVerificationError
+        revision = DocsRevisionId(document["revisionId"])
+        structure = replace(structure, stage=StructureStage.VERIFIED, revision_id=revision)
+        await self._save_copy_checkpoint(checkpoint.model_copy(update={"tab_structure": structure}))
+        return replace(draft, revision_id=revision)
+
+    async def _finish_copy_dates(
+        self, *, operation_id: uuid.UUID, checkpoint: CopyCheckpoint, draft: OutputDraft
+    ) -> OutputDraft:
+        dates = checkpoint.native_dates
+        if dates is None:
+            if (
+                dates := await self._gateway.plan_copy_dates(draft=draft, operation_id=operation_id)
+            ) is None:
+                return draft
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"native_dates": dates})
+            )
+        dates = await self._gateway.apply_copy_dates(
+            document_id=draft.document_id, checkpoint=dates
+        )
+        if not dates.complete and dates.declined_reason is None:
+            raise OutputVerificationError
+        await self._save_copy_checkpoint(checkpoint.model_copy(update={"native_dates": dates}))
+        return replace(draft, native_dates=dates, revision_id=dates.revision_id)
+
+    async def _finish_copy_footer(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        checkpoint: CopyCheckpoint,
+        draft: OutputDraft,
+    ) -> OutputDraft:
+        footer = checkpoint.native_footer
+        if footer is None:
+            if (
+                footer := await self._gateway.plan_copy_footer(
+                    draft=draft, operation_id=operation_id
+                )
+            ) is None:
+                return draft
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"native_footer": footer})
+            )
+        # Two native batches and one persisted transition per bounded tab.
+        # Legacy checkpoints never acquire coverage or additional tabs on retry.
+        for _ in range(3 * MAX_DOC_TABS):
+            if footer_coverage_complete(footer):
+                break
+            footer = await self._gateway.apply_copy_footer_stage(
+                document_id=draft.document_id, checkpoint=footer
+            )
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"native_footer": footer})
+            )
+        if not footer_coverage_complete(footer):
+            raise OutputVerificationError
+        return replace(draft, revision_id=footer.revision_id, native_footer=footer)
+
+    async def _name_copy_tabs(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        checkpoint: CopyCheckpoint,
+        draft: OutputDraft,
+        source_has_native_title: bool,
+    ) -> OutputDraft:
+        if checkpoint.tab_naming is None:
+            tab_naming = await self._gateway.plan_tab_naming(
+                document_id=draft.document_id,
+                title=checkpoint.source_title,
+                operation_id=operation_id,
+                required_revision_id=draft.revision_id,
+                prefer_document_title=bool(checkpoint.authored_labels)
+                and not source_has_native_title,
+            )
+            if tab_naming is None:
+                return draft
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"tab_naming": tab_naming})
+            )
+        naming = checkpoint.tab_naming
+        if naming is None:
+            raise DocumentGatewayError
+        revision = await self._gateway.apply_tab_naming(
+            document_id=draft.document_id,
+            checkpoint=naming,
+        )
+        return replace(draft, revision_id=revision)
+
+    def _copy_checkpoint_or_none(self) -> CopyCheckpoint | None:
+        checkpoint = self._checkpoint
+        if checkpoint is None:
+            return None
+        if not isinstance(checkpoint, CopyCheckpoint):
+            raise OutputConflictError
+        return checkpoint
+
+    async def _save_copy_checkpoint(self, checkpoint: CopyCheckpoint) -> CopyCheckpoint:
+        if self._checkpoint_store is None:
+            self._checkpoint = checkpoint
+            return checkpoint
+        if self._task_id is None or self._lease_token is None:
+            raise DocumentGatewayError
+        self._checkpoint_generation = (
+            await self._checkpoint_store.save_document_transform_checkpoint(
+                self._task_id,
+                lease_token=self._lease_token,
+                expected_generation=self._checkpoint_generation,
+                checkpoint=checkpoint,
+            )
+        )
+        self._checkpoint = checkpoint
+        return checkpoint
+
+    async def _record_copy_resource(self, resource_id: FileId) -> None:
+        if self._checkpoint_store is None:
+            return
+        if self._task_id is None or self._lease_token is None:
+            raise DocumentGatewayError
+        await self._checkpoint_store.record_resource(
+            self._task_id,
+            lease_token=self._lease_token,
+            resource_id=resource_id,
+        )
+
+    async def _complete_verified_copy(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+        snapshot: SourceSnapshot,
+        expected: DocumentIR,
+        checkpoint: CopyCheckpoint,
+        draft: OutputDraft,
+    ) -> DocumentTransformResult:
+        result = checkpoint.result
+        draft = replace(
+            draft, native_footer=checkpoint.native_footer, native_dates=checkpoint.native_dates
+        )
+        if (
+            checkpoint.stage is not CopyCheckpointStage.VERIFIED
+            or checkpoint.output is None
+            or checkpoint.output_revision_id is None
+            or result is None
+            or draft.output.file_id != checkpoint.output.file_id
+        ):
+            raise OutputConflictError
+        await self._require_unchanged_drive_source(request, snapshot)
+        verification = await self._gateway.verify_output(
+            draft=draft,
+            source=snapshot,
+            expected=expected,
+            verify_brand=request.mode is not TransformMode.UNSLOP,
+            header_title=checkpoint.output_name,
+        )
+        revision_id = verification.revision_id or draft.revision_id
+        if (
+            not verification.content_preserved
+            or not verification.structure_preserved
+            or revision_id != checkpoint.output_revision_id
+        ):
+            raise OutputVerificationError
+        serialized_result = result.model_dump(mode="json")
+        expected_result_sha256 = _json_sha256(serialized_result)
+        expected_revision_sha256 = hashlib.sha256(revision_id.encode()).hexdigest()
+        if not draft.completed:
+            await self._gateway.complete(
+                operation_id=operation_id,
+                draft=replace(draft, revision_id=revision_id),
+                result=serialized_result,
+            )
+            recovered = await self._gateway.recover_output(operation_id)
+            if recovered is None or recovered.output.file_id != draft.output.file_id:
+                raise OutputConflictError
+            draft = replace(
+                recovered,
+                native_footer=checkpoint.native_footer,
+                native_dates=checkpoint.native_dates,
+            )
+        durable = self._checkpoint_store is not None
+        digest_matches = (
+            draft.result_sha256 == expected_result_sha256
+            and draft.verified_revision_sha256 == expected_revision_sha256
+        )
+        legacy_fake_matches = draft.result == serialized_result
+        if not draft.completed or (not digest_matches and (durable or not legacy_fake_matches)):
+            raise OutputConflictError
+        final_verification = await self._gateway.verify_output(
+            draft=draft,
+            source=snapshot,
+            expected=expected,
+            verify_brand=request.mode is not TransformMode.UNSLOP,
+            header_title=checkpoint.output_name,
+        )
+        final_revision = final_verification.revision_id or draft.revision_id
+        if (
+            not final_verification.content_preserved
+            or not final_verification.structure_preserved
+            or final_revision != checkpoint.output_revision_id
+        ):
+            raise OutputVerificationError
+        if result.header_identity is not None:
+            await self._save_copy_checkpoint(
+                checkpoint.model_copy(
+                    update={
+                        "header_finalization": HeaderIdentityFinalization(
+                            result_sha256=expected_result_sha256,
+                            verified_revision_sha256=expected_revision_sha256,
+                        )
+                    }
+                )
+            )
         return result
+
+    async def _execute_in_place(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+    ) -> DocumentTransformResult:
+        if not isinstance(request.source, DriveFileSource):
+            raise InPlaceNotAllowedError
+        if self._checkpoint_store is None or self._task_id is None or self._lease_token is None:
+            raise DocumentGatewayError
+
+        snapshot = await self._gateway.load_drive_source(request.source)
+        checkpoint = self._checkpoint
+        if checkpoint is not None and not isinstance(checkpoint, InPlaceCheckpoint):
+            raise OutputConflictError
+        if checkpoint is None and snapshot.modified_time != request.source.expected_modified_time:
+            raise SourceChangedError
+        if checkpoint is not None:
+            if checkpoint.document_id != request.source.file_id:
+                raise OutputConflictError
+            if checkpoint.pagination != existing_native_pagination(
+                snapshot.google_document, _to_ir(snapshot)
+            ):
+                raise InPlaceNeedsReviewError
+            checkpoint_contract = (
+                checkpoint.source_title,
+                checkpoint.source_modified_time,
+                checkpoint.brand_profile_id,
+                checkpoint.brand_profile_sha256,
+                checkpoint.pipeline_version,
+                checkpoint.request_builder_version,
+                checkpoint.unslop_catalog_sha256,
+            )
+            current_contract = (
+                snapshot.title,
+                request.source.expected_modified_time,
+                CURRENT_BRAND_MANIFEST.profile_id,
+                CURRENT_BRAND_MANIFEST.sha256,
+                PIPELINE_VERSION,
+                REQUEST_BUILDER_VERSION,
+                UNSLOP_CATALOG_SHA256,
+            )
+            if checkpoint_contract != current_contract:
+                raise OutputConflictError
+            if checkpoint.table_font_plan is not None:
+                if request.mode is not TransformMode.FORMAT or checkpoint.replacements:
+                    raise InPlaceNeedsReviewError
+                if snapshot.google_document is None:
+                    raise InPlaceNeedsReviewError
+                try:
+                    project_table_fonts(
+                        snapshot.google_document,
+                        checkpoint.table_font_plan,
+                        applied=checkpoint.stage is InPlaceCheckpointStage.COMPLETE,
+                    )
+                except (KeyError, IndexError, TypeError, ValueError, AttributeError) as error:
+                    raise InPlaceNeedsReviewError from error
+            elif any(finding.code == "table_font_scope" for finding in checkpoint.findings):
+                raise InPlaceNeedsReviewError
+            if {item.block_id for item in checkpoint.paragraph_layout} != {
+                finding.block_id
+                for finding in checkpoint.findings
+                if finding.code == "native_paragraph_layout_preserved"
+            } or not verify_paragraph_layout(
+                snapshot.google_document,
+                checkpoint.paragraph_layout,
+                applied=True if checkpoint.stage is InPlaceCheckpointStage.COMPLETE else None,
+            ):
+                raise InPlaceNeedsReviewError
+            if checkpoint.native_font_proof is None and (
+                checkpoint.preserved_font_block_ids
+                or any(
+                    finding.code == "native_rich_text_preserved" for finding in checkpoint.findings
+                )
+            ):
+                raise InPlaceNeedsReviewError
+            if set(checkpoint.preserved_font_block_ids) != {
+                finding.block_id
+                for finding in checkpoint.findings
+                if finding.code == "native_font_family_preserved"
+            }:
+                raise InPlaceNeedsReviewError
+            if checkpoint.native_font_proof is not None and not verify_native_font_proof(
+                snapshot.google_document,
+                checkpoint.native_font_proof,
+                preserved_block_ids=_preserved_block_ids(checkpoint),
+                diagnostic_stage="resume",
+                font_policy=NativeFontVerificationPolicy(
+                    require_target_family=checkpoint.stage is InPlaceCheckpointStage.COMPLETE,
+                    preserved_family_block_ids=checkpoint.preserved_font_block_ids,
+                ),
+            ):
+                raise InPlaceNeedsReviewError
+            if checkpoint.stage is InPlaceCheckpointStage.COMPLETE:
+                if snapshot.revision_id != checkpoint.current_revision_id:
+                    raise InPlaceNeedsReviewError
+                if (
+                    checkpoint.custom_furniture
+                    and (
+                        await self._gateway.inspect_in_place(
+                            snapshot=snapshot, title=snapshot.title
+                        )
+                    ).custom_furniture
+                    != checkpoint.custom_furniture
+                ):
+                    raise InPlaceNeedsReviewError
+                return self._in_place_result(
+                    operation_id=operation_id,
+                    request=request,
+                    checkpoint=checkpoint,
+                    output=DocumentOutput(
+                        file_id=request.source.file_id,
+                        name=snapshot.title,
+                        parent_folder_id=snapshot.parent_folder_id,
+                        web_url=snapshot.web_url,
+                    ),
+                )
+        inspection = await self._gateway.inspect_in_place(
+            snapshot=snapshot,
+            title=snapshot.title,
+            **(
+                {"table_font_plan": checkpoint.table_font_plan}
+                if checkpoint is not None and checkpoint.table_font_plan is not None
+                else {}
+            ),
+        )
+        if checkpoint is not None and checkpoint.custom_furniture != inspection.custom_furniture:
+            raise InPlaceNeedsReviewError
+        if checkpoint is not None and checkpoint.header_identity != inspection.header_identity:
+            raise OutputConflictError
+        if checkpoint is None:
+            checkpoint = await self._plan_initial_in_place(
+                operation_id=operation_id,
+                request=request,
+                snapshot=snapshot,
+                inspection=inspection,
+            )
+
+        if (
+            checkpoint.stage is InPlaceCheckpointStage.HEADERS
+            and snapshot.revision_id != checkpoint.current_revision_id
+            and _matches_pre_header_checkpoint(snapshot, inspection, checkpoint)
+        ):
+            checkpoint = await self._save_checkpoint(
+                checkpoint.model_copy(update={"current_revision_id": snapshot.revision_id})
+            )
+
+        if checkpoint.stage is InPlaceCheckpointStage.HEADERS:
+            stage_result = recover_empty_header_postcondition(
+                snapshot, inspection, checkpoint, operation_id
+            )
+            if stage_result is None:
+                stage_result = await self._apply_checkpoint_stage(checkpoint)
+            stage_snapshot = SourceSnapshot(
+                title=snapshot.title,
+                parent_folder_id=snapshot.parent_folder_id,
+                modified_time=snapshot.modified_time,
+                revision_id=stage_result.revision_id,
+                media_type=snapshot.media_type,
+                google_document=stage_result.document,
+                owned_by_me=snapshot.owned_by_me,
+                can_edit=snapshot.can_edit,
+                is_personal_drive=snapshot.is_personal_drive,
+                shared_drive_id=snapshot.shared_drive_id,
+                web_url=snapshot.web_url,
+            )
+            inspection = await self._gateway.inspect_in_place(
+                snapshot=stage_snapshot,
+                title=snapshot.title,
+                **(
+                    {"table_font_plan": checkpoint.table_font_plan}
+                    if checkpoint.table_font_plan is not None
+                    else {}
+                ),
+            )
+            header_expected = _to_ir(stage_snapshot).replace_blocks({})
+            header_verification = await self._gateway.verify_in_place(
+                document=stage_result.document,
+                title=snapshot.title,
+                expected=header_expected,
+                structural_sha256=checkpoint.structural_sha256,
+                protected_structure_sha256=checkpoint.protected_structure_sha256,
+                verify_brand=False,
+                custom_furniture=checkpoint.custom_furniture,
+                **(
+                    {"table_font_plan": checkpoint.table_font_plan}
+                    if checkpoint.table_font_plan is not None
+                    else {}
+                ),
+            )
+            if not (
+                header_verification.content_preserved and header_verification.structure_preserved
+            ):
+                raise InPlaceNeedsReviewError
+            if checkpoint.native_font_proof is not None and not verify_native_font_proof(
+                stage_result.document,
+                checkpoint.native_font_proof,
+                preserved_block_ids=_preserved_block_ids(checkpoint),
+                diagnostic_stage="headers",
+                font_policy=NativeFontVerificationPolicy(
+                    preserved_family_block_ids=checkpoint.preserved_font_block_ids,
+                ),
+            ):
+                raise InPlaceNeedsReviewError
+            if not verify_paragraph_layout(
+                stage_result.document, checkpoint.paragraph_layout, applied=False
+            ):
+                raise InPlaceNeedsReviewError
+            if (
+                header_expected.semantic_sha256 != checkpoint.original_semantic_sha256
+                or inspection.body_sha256 != checkpoint.body_sha256
+                or inspection.header_safe_sha256 != checkpoint.header_safe_sha256
+            ):
+                raise InPlaceNeedsReviewError
+            if inspection.missing_header_tab_ids or inspection.unknown_header_tab_ids:
+                raise InPlaceNeedsReviewError
+            if inspection.custom_furniture != checkpoint.custom_furniture:
+                raise InPlaceNeedsReviewError
+            snapshot = stage_snapshot
+            original = apply_paragraph_layout(
+                apply_native_pagination(_to_ir(stage_snapshot), checkpoint.pagination),
+                checkpoint.paragraph_layout,
+            )
+            original = apply_native_font_preservation(original, checkpoint.preserved_font_block_ids)
+            transformed = original.replace_blocks(checkpoint.replacements)
+            requests = self._content_requests(
+                request=request,
+                snapshot=stage_snapshot,
+                original=original,
+                transformed=transformed,
+                inspection=inspection,
+            )
+            if checkpoint.table_font_plan is not None:
+                requests.extend(table_font_requests(checkpoint.table_font_plan))
+            checkpoint = checkpoint.model_copy(
+                update={
+                    "stage": InPlaceCheckpointStage.CONTENT,
+                    "current_revision_id": stage_result.revision_id,
+                    "marker_name": _in_place_marker(operation_id, "content", requests),
+                    "marker_range": inspection.marker_range,
+                    "mutation_sha256": mutation_sha256(requests),
+                    "requests": requests,
+                    "headers": {
+                        str(header.tab_id): str(header.header_id) for header in inspection.headers
+                    },
+                }
+            )
+            checkpoint = await self._save_checkpoint(checkpoint)
+
+        if checkpoint.stage is not InPlaceCheckpointStage.CONTENT:
+            raise DocumentGatewayError
+        if not checkpoint.requests:
+            checkpoint = await self._name_in_place_tabs(
+                operation_id=operation_id,
+                request=request,
+                checkpoint=checkpoint,
+            )
+            checkpoint = await self._save_checkpoint(
+                checkpoint.model_copy(update={"stage": InPlaceCheckpointStage.COMPLETE})
+            )
+            return self._in_place_result(
+                operation_id=operation_id,
+                request=request,
+                checkpoint=checkpoint,
+                output=inspection.output,
+            )
+        before_content = apply_native_font_preservation(
+            apply_paragraph_layout(_to_ir(snapshot), checkpoint.paragraph_layout),
+            checkpoint.preserved_font_block_ids,
+        )
+        expected_content = apply_native_pagination(
+            before_content.replace_blocks(checkpoint.replacements), checkpoint.pagination
+        )
+        if expected_content.semantic_sha256 != checkpoint.expected_semantic_sha256:
+            raise InPlaceNeedsReviewError
+        if checkpoint.tab_naming is not None:
+            if snapshot.google_document is None or snapshot.revision_id is None:
+                raise InPlaceNeedsReviewError
+            stage_result = InPlaceStageResult(snapshot.revision_id, snapshot.google_document)
+        else:
+            stage_result = await self._apply_checkpoint_stage(checkpoint)
+        verification = await self._gateway.verify_in_place(
+            document=stage_result.document,
+            title=snapshot.title,
+            expected=expected_content,
+            structural_sha256=checkpoint.structural_sha256,
+            protected_structure_sha256=checkpoint.protected_structure_sha256,
+            verify_brand=request.mode is not TransformMode.UNSLOP,
+            custom_furniture=checkpoint.custom_furniture,
+            **(
+                {"table_font_plan": checkpoint.table_font_plan}
+                if checkpoint.table_font_plan is not None
+                else {}
+            ),
+        )
+        if checkpoint.table_font_plan is not None and not table_font_proof_matches(
+            stage_result.document, checkpoint.table_font_plan, applied=True
+        ):
+            raise InPlaceNeedsReviewError
+        if not (
+            verification.content_preserved
+            and verification.structure_preserved
+            and (verification.brand_applied or verification.supported_brand_applied)
+        ):
+            raise InPlaceNeedsReviewError
+        if not verify_paragraph_layout(
+            stage_result.document, checkpoint.paragraph_layout, applied=True
+        ):
+            raise InPlaceNeedsReviewError
+        if checkpoint.native_font_proof is not None and not verify_native_font_proof(
+            stage_result.document,
+            checkpoint.native_font_proof,
+            preserved_block_ids=_preserved_block_ids(checkpoint),
+            diagnostic_stage="content",
+            font_policy=NativeFontVerificationPolicy(
+                require_target_family=True,
+                preserved_family_block_ids=checkpoint.preserved_font_block_ids,
+            ),
+        ):
+            raise InPlaceNeedsReviewError
+        checkpoint = checkpoint.model_copy(update={"current_revision_id": stage_result.revision_id})
+        checkpoint = await self._name_in_place_tabs(
+            operation_id=operation_id,
+            request=request,
+            checkpoint=checkpoint,
+        )
+        checkpoint = await self._save_checkpoint(
+            checkpoint.model_copy(
+                update={
+                    "stage": InPlaceCheckpointStage.COMPLETE,
+                    "current_revision_id": checkpoint.current_revision_id,
+                    "requests": [],
+                    "marker_name": None,
+                    "marker_range": None,
+                    "mutation_sha256": None,
+                }
+            )
+        )
+        return self._in_place_result(
+            operation_id=operation_id,
+            request=request,
+            checkpoint=checkpoint,
+            output=inspection.output,
+        )
+
+    async def _name_in_place_tabs(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+        checkpoint: InPlaceCheckpoint,
+    ) -> InPlaceCheckpoint:
+        if request.mode is TransformMode.UNSLOP:
+            return checkpoint
+        if checkpoint.tab_naming is None:
+            tab_naming = await self._gateway.plan_tab_naming(
+                document_id=checkpoint.document_id,
+                title=checkpoint.source_title,
+                operation_id=operation_id,
+                required_revision_id=checkpoint.current_revision_id,
+            )
+            if tab_naming is None:
+                return checkpoint
+            checkpoint = await self._save_checkpoint(
+                checkpoint.model_copy(update={"tab_naming": tab_naming, "changed": True})
+            )
+        naming = checkpoint.tab_naming
+        if naming is None:
+            raise DocumentGatewayError
+        revision = await self._gateway.apply_tab_naming(
+            document_id=checkpoint.document_id,
+            checkpoint=naming,
+        )
+        return checkpoint.model_copy(update={"current_revision_id": revision})
+
+    async def _plan_initial_in_place(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+        snapshot: SourceSnapshot,
+        inspection: InPlaceInspection,
+    ) -> InPlaceCheckpoint:
+        source = request.source
+        if not isinstance(source, DriveFileSource):
+            raise InPlaceNotAllowedError
+        if snapshot.revision_id is None:
+            raise InPlaceNotAllowedError
+        original = _to_ir(snapshot)
+        pagination = existing_native_pagination(snapshot.google_document, original)
+        original = apply_native_pagination(original, pagination)
+        outcome = await self._planner.transform(original, request)
+        try:
+            paragraph_layout = (
+                capture_paragraph_layout(snapshot.google_document, original, outcome.document)
+                if request.mode is not TransformMode.UNSLOP
+                else ()
+            )
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError) as error:
+            raise InPlaceNeedsReviewError from error
+        original = apply_paragraph_layout(original, paragraph_layout)
+        outcome = replace(
+            outcome, document=apply_paragraph_layout(outcome.document, paragraph_layout)
+        )
+        if pagination:
+            outcome = replace(
+                outcome, document=apply_native_pagination(outcome.document, pagination)
+            )
+        preserved_font_ids = (
+            preserved_native_font_blocks(snapshot.google_document, original, outcome.document)
+            if request.mode is not TransformMode.UNSLOP
+            else ()
+        )
+        original = apply_native_font_preservation(original, preserved_font_ids)
+        outcome = replace(
+            outcome, document=apply_native_font_preservation(outcome.document, preserved_font_ids)
+        )
+        _preflight_native_mutation_budget(
+            request=request,
+            snapshot=snapshot,
+            original=original,
+            transformed=outcome.document,
+            brand=self._brand,
+        )
+        preserved_findings = preserved_native_findings(
+            original=original,
+            transformed=outcome.document,
+            findings=outcome.findings,
+            native_document=snapshot.google_document,
+            mode=request.mode,
+        )
+        if preserved_findings is None:
+            logger.info(
+                "document in-place preflight checks={checks}",
+                checks={"in_place_planner_findings": True},
+            )
+            raise InPlaceNeedsReviewError
+        branded = request.mode is not TransformMode.UNSLOP
+        if branded and (inspection.unknown_header_tab_ids or not inspection.logo_uri):
+            logger.info(
+                "document in-place preflight checks={checks}",
+                checks={
+                    "in_place_unknown_header": bool(inspection.unknown_header_tab_ids),
+                    "in_place_missing_logo": not bool(inspection.logo_uri),
+                },
+            )
+            raise InPlaceNeedsReviewError
+        replacements = {
+            block.id: transformed.text
+            for block, transformed in zip(original.blocks, outcome.document.blocks, strict=True)
+            if block.text != transformed.text
+        }
+        scope_applied = inspection.fully_branded or inspection.supported_brand_applied
+        if pagination and (replacements or (branded and not scope_applied)):
+            # Existing-only recognition is a no-op contract, not authority to
+            # reinterpret a partially edited layout or move its spacer ranges.
+            raise InPlaceNeedsReviewError
+        if branded and scope_applied and not replacements:
+            requests = []
+            stage = InPlaceCheckpointStage.CONTENT
+        elif branded and inspection.missing_header_tab_ids:
+            requests = [
+                {
+                    "createHeader": {
+                        "type": "DEFAULT",
+                        "sectionBreakLocation": {"index": 0, "tabId": tab_id},
+                    }
+                }
+                for tab_id in inspection.missing_header_tab_ids
+            ]
+            stage = InPlaceCheckpointStage.HEADERS
+        else:
+            requests = self._content_requests(
+                request=request,
+                snapshot=snapshot,
+                original=original,
+                transformed=outcome.document,
+                inspection=inspection,
+            )
+            stage = InPlaceCheckpointStage.CONTENT
+        table_scope = await self._table_font_scope(
+            request=request,
+            snapshot=snapshot,
+            original=original,
+            transformed=outcome.document,
+            inspection=inspection,
+        )
+        if stage is InPlaceCheckpointStage.CONTENT:
+            requests.extend(table_scope.requests)
+        if requests and inspection.marker_range is None:
+            logger.info(
+                "document in-place preflight checks={checks}",
+                checks={"in_place_missing_marker": True},
+            )
+            raise InPlaceNeedsReviewError
+        try:
+            native_font_proof = capture_native_font_proof(
+                snapshot.google_document,
+                original,
+                transformed=outcome.document,
+                target_font_family=self._brand.font_family if branded else None,
+                preserved_family_block_ids=preserved_font_ids,
+            )
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError) as error:
+            raise InPlaceNeedsReviewError from error
+        checkpoint = InPlaceCheckpoint(
+            preserved_font_block_ids=tuple(NativeFontBlockId(item) for item in preserved_font_ids),
+            paragraph_layout=paragraph_layout,
+            table_font_plan=table_scope.plan,
+            native_font_proof=native_font_proof,
+            custom_furniture=inspection.custom_furniture,
+            pagination=pagination,
+            header_identity=inspection.header_identity,
+            document_id=source.file_id,
+            source_title=snapshot.title,
+            source_sha256=_source_sha256(snapshot, original),
+            source_modified_time=source.expected_modified_time,
+            brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
+            brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
+            pipeline_version=PIPELINE_VERSION,
+            request_builder_version=REQUEST_BUILDER_VERSION,
+            unslop_catalog_sha256=UNSLOP_CATALOG_SHA256,
+            original_semantic_sha256=original.semantic_sha256,
+            expected_semantic_sha256=outcome.document.semantic_sha256,
+            structural_sha256=inspection.structural_sha256,
+            protected_structure_sha256=table_scope.protected_sha256,
+            body_sha256=inspection.body_sha256,
+            header_safe_sha256=inspection.header_safe_sha256,
+            source_revision_id=snapshot.revision_id,
+            current_revision_id=snapshot.revision_id,
+            stage=stage,
+            marker_name=_in_place_marker(operation_id, stage.value, requests) if requests else None,
+            marker_range=inspection.marker_range if requests else None,
+            mutation_sha256=mutation_sha256(requests) if requests else None,
+            requests=requests,
+            replacements=replacements,
+            findings=list(preserved_findings)
+            + [
+                TransformFinding(
+                    code="native_font_family_preserved",
+                    block_id=block_id,
+                    detail="This paragraph's font family and authored styling were preserved unchanged because a safe, bounded font change could not be proved.",
+                )
+                for block_id in preserved_font_ids
+            ]
+            + [
+                TransformFinding(
+                    code="native_paragraph_layout_preserved",
+                    block_id=item.block_id,
+                    detail="Authored non-start paragraph alignment, spacing, and layout were preserved; supported typography was checked. Full Sarj paragraph layout was not applied.",
+                )
+                for item in paragraph_layout
+            ]
+            + table_scope.findings
+            + (
+                [
+                    TransformFinding(
+                        code="custom_furniture_preserved",
+                        detail="Supported body formatting was applied; custom headers, footers, and page geometry were preserved. Full Sarj branding was not applied.",
+                    )
+                ]
+                if branded and inspection.custom_furniture and not inspection.fully_branded
+                else []
+            ),
+            applied_patch_count=outcome.applied_count,
+            deterministic_patch_count=outcome.deterministic_count,
+            model_patch_count=outcome.model_count,
+            llm_invoked=outcome.llm_invoked,
+            model_ids=[ModelId(value) for value in self._generator.model_ids]
+            if outcome.llm_invoked
+            else [],
+            headers={str(header.tab_id): str(header.header_id) for header in inspection.headers},
+            preserved_headers={
+                str(header.tab_id): str(header.header_id) for header in inspection.preserved_headers
+            },
+            changed=bool(requests),
+        )
+        return await self._save_checkpoint(checkpoint)
+
+    @staticmethod
+    async def _table_font_scope(
+        *,
+        request: DocumentTransformRequest,
+        snapshot: SourceSnapshot,
+        original: DocumentIR,
+        transformed: DocumentIR,
+        inspection: InPlaceInspection,
+    ) -> _TableFontScope:
+        del original, transformed
+        empty = _TableFontScope(None, inspection.protected_structure_sha256, [], [])
+        if request.mode is TransformMode.UNSLOP or snapshot.google_document is None:
+            return empty
+        try:
+            candidate = plan_table_fonts(snapshot.google_document)
+        except KeyError, IndexError, TypeError, ValueError, AttributeError, SourceTooLargeError:
+            return empty._replace(
+                findings=[
+                    TransformFinding(
+                        code="table_font_preserved",
+                        detail="Table typography was preserved unchanged because its safety proof or operation budget could not be established.",
+                    )
+                ]
+            )
+        if candidate.targets or candidate.skipped_paragraphs:
+            return empty._replace(
+                findings=[
+                    TransformFinding(
+                        code="table_font_preserved",
+                        detail="Table typography and geometry were preserved unchanged because bold and weight preservation for native table font updates has not been verified.",
+                    )
+                ]
+            )
+        return empty
+
+    def _content_requests(
+        self,
+        *,
+        request: DocumentTransformRequest,
+        snapshot: SourceSnapshot,
+        original: DocumentIR,
+        transformed: DocumentIR,
+        inspection: InPlaceInspection,
+    ) -> list[dict[str, Any]]:
+        if request.mode is TransformMode.UNSLOP:
+            return build_copy_text_mutations(original, transformed)
+        requests = build_copy_mutations(
+            original,
+            transformed,
+            profile=self._brand,
+            headers=inspection.headers,
+            logo_uri=inspection.logo_uri,
+        )
+        preserved_tabs = {binding.tab_id for binding in inspection.custom_furniture}
+        requests = filter_redundant_native_fonts(
+            requests,
+            document=snapshot.google_document,
+            original=original,
+            transformed=transformed,
+            font_family=self._brand.font_family,
+        )
+        requests = defend_native_font_requests(
+            requests, document=snapshot.google_document, original=original
+        )
+        return [
+            item
+            for item in requests
+            if item.get("updateDocumentStyle", {}).get("tabId") not in preserved_tabs
+        ]
+
+    async def _apply_checkpoint_stage(self, checkpoint: InPlaceCheckpoint) -> InPlaceStageResult:
+        if not paragraph_layout_requests_safe(checkpoint.requests, checkpoint.paragraph_layout):
+            raise OutputConflictError
+        if not custom_furniture_requests_safe(checkpoint.requests, checkpoint.custom_furniture):
+            raise OutputConflictError
+        if checkpoint.marker_name is None or checkpoint.marker_range is None:
+            raise DocumentGatewayError
+        if checkpoint.mutation_sha256 != mutation_sha256(checkpoint.requests):
+            raise OutputConflictError
+        return await self._gateway.apply_in_place_stage(
+            document_id=checkpoint.document_id,
+            required_revision_id=DocsRevisionId(checkpoint.current_revision_id),
+            marker_name=checkpoint.marker_name,
+            marker_range=checkpoint.marker_range,
+            requests=checkpoint.requests,
+        )
+
+    async def _save_checkpoint(self, checkpoint: InPlaceCheckpoint) -> InPlaceCheckpoint:
+        if self._checkpoint_store is None or self._task_id is None or self._lease_token is None:
+            raise DocumentGatewayError
+        self._checkpoint_generation = (
+            await self._checkpoint_store.save_document_transform_checkpoint(
+                self._task_id,
+                lease_token=self._lease_token,
+                expected_generation=self._checkpoint_generation,
+                checkpoint=checkpoint,
+            )
+        )
+        self._checkpoint = checkpoint
+        return checkpoint
+
+    @staticmethod
+    def _in_place_result(
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+        checkpoint: InPlaceCheckpoint,
+        output: DocumentOutput,
+    ) -> DocumentTransformResult:
+        return DocumentTransformResult(
+            operation_id=operation_id,
+            source_sha256=checkpoint.source_sha256,
+            output=output,
+            mode=request.mode,
+            applied_patch_count=checkpoint.applied_patch_count,
+            findings=checkpoint.findings,
+            validation=ValidationSummary(
+                source_unchanged=True,
+                protected_content_preserved=True,
+                structure_preserved=True,
+                unsafe_patch_count=0,
+            ),
+            model_ids=checkpoint.model_ids,
+            tool_versions={
+                "unslop_catalog_sha256": UNSLOP_CATALOG_SHA256,
+                "unslop_commit": UNSLOP_UPSTREAM_COMMIT,
+                "unslop_version": UNSLOP_UPSTREAM_VERSION,
+            },
+            pipeline_version=PIPELINE_VERSION,
+            needs_review=bool(checkpoint.findings),
+            brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
+            brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
+            deterministic_patch_count=checkpoint.deterministic_patch_count,
+            model_patch_count=checkpoint.model_patch_count,
+            llm_invoked=checkpoint.llm_invoked,
+            output_strategy=OutputStrategy.IN_PLACE,
+            changed=checkpoint.changed,
+            source_revision_id=checkpoint.source_revision_id,
+            output_revision_id=checkpoint.current_revision_id,
+        )
 
     async def _require_unchanged_drive_source(
         self,
@@ -227,45 +1595,42 @@ class DocumentTransformExecutor:
             request.source,
             expected_modified_time=request.source.expected_modified_time,
             expected_revision_id=snapshot.revision_id,
+            expected_parent_folder_id=snapshot.parent_folder_id,
         )
         if not unchanged:
             raise SourceChangedError
 
-    def _recovered_completed_result(
+    async def _validate_applied_output(
         self,
         *,
-        operation_id: uuid.UUID,
         request: DocumentTransformRequest,
-        source_sha256: str,
+        snapshot: SourceSnapshot,
+        expected: DocumentIR,
         draft: OutputDraft,
-    ) -> DocumentTransformResult:
-        finding = TransformFinding(
-            code="recovered_completed_output",
-            detail=(
-                "The completed sibling was recovered after task interruption; "
-                "review it because detailed patch telemetry was not persisted"
-            ),
+        header_title: str,
+    ) -> AppliedValidation:
+        verification = await self._gateway.verify_output(
+            draft=draft,
+            source=snapshot,
+            expected=expected,
+            verify_brand=request.mode is not TransformMode.UNSLOP,
+            header_title=header_title,
         )
-        return DocumentTransformResult(
-            operation_id=operation_id,
-            source_sha256=source_sha256,
-            output=draft.output,
-            mode=request.mode,
-            applied_patch_count=0,
-            findings=[finding],
-            validation=ValidationSummary(
-                source_unchanged=True,
-                protected_content_preserved=False,
-                structure_preserved=False,
-                unsafe_patch_count=1,
-            ),
-            model_ids=list(self._generator.model_ids),
-            tool_versions={
-                "unslop_commit": UNSLOP_UPSTREAM_COMMIT,
-                "unslop_version": UNSLOP_UPSTREAM_VERSION,
-            },
-            pipeline_version=PIPELINE_VERSION,
-            needs_review=True,
+        if not verification.content_preserved or not verification.structure_preserved:
+            raise OutputVerificationError
+        findings: list[TransformFinding] = []
+        if not verification.brand_applied:
+            findings.append(
+                TransformFinding(
+                    code="post_write_brand_mismatch",
+                    detail="Output did not contain the complete pinned Sarj brand treatment",
+                )
+            )
+        return AppliedValidation(
+            protected_content_preserved=verification.content_preserved,
+            structure_preserved=verification.structure_preserved,
+            findings=tuple(findings),
+            revision_id=verification.revision_id or draft.revision_id,
         )
 
     async def _load_source(self, request: DocumentTransformRequest) -> SourceSnapshot:
@@ -284,32 +1649,6 @@ class DocumentTransformExecutor:
             markdown=source.content,
         )
 
-    async def _transform(
-        self,
-        original: DocumentIR,
-        request: DocumentTransformRequest,
-    ) -> TransformOutcome:
-        current = original
-        findings: list[TransformFinding] = []
-        applied_count = 0
-        if request.mode is TransformMode.FORMAT:
-            phases: tuple[TransformPhase, ...] = (TransformPhase.FORMAT,)
-        elif request.mode is TransformMode.UNSLOP:
-            phases = (TransformPhase.UNSLOP,)
-        else:
-            phases = (TransformPhase.UNSLOP, TransformPhase.FORMAT)
-        for phase in phases:
-            if phase is TransformPhase.UNSLOP and not scan_unslop_candidates(current):
-                continue
-            if phase is TransformPhase.FORMAT and not self._allow_format_text_edits:
-                continue
-            patches = await self._generator.generate(current, phase=phase)
-            decision = validate_patches(current, patches, phase=phase)
-            current = current.replace_blocks(decision.accepted)
-            applied_count += len(decision.accepted)
-            findings.extend(decision.findings)
-        return TransformOutcome(current, tuple(findings), applied_count)
-
     async def _create_output(
         self,
         *,
@@ -319,17 +1658,18 @@ class DocumentTransformExecutor:
         source_sha256: str,
         original: DocumentIR,
         transformed: DocumentIR,
+        output_name: str | None = None,
     ) -> OutputDraft:
-        output_name = request.output_name or f"{snapshot.title} — {_OUTPUT_SUFFIX[request.mode]}"
-        imported_docx = (
-            render_markdown_docx(
+        output_name = output_name or _copy_output_name(request, original)
+        imported_docx = None
+        if snapshot.markdown is not None:
+            imported_docx = render_markdown_docx(
                 rewrite_markdown(snapshot.markdown, original, transformed),
                 title=snapshot.title,
+                header_title=output_name,
                 logo_bytes=self._logo_bytes,
+                branded=request.mode is not TransformMode.UNSLOP,
             )
-            if snapshot.markdown is not None and request.mode is not TransformMode.UNSLOP
-            else None
-        )
         if isinstance(request.source, DriveFileSource):
             if snapshot.media_type != "application/vnd.google-apps.document":
                 return await self._gateway.create_from_drive_markdown(
@@ -355,6 +1695,286 @@ class DocumentTransformExecutor:
         )
 
 
+def _copy_output_name(request: DocumentTransformRequest, original: DocumentIR) -> str:
+    if request.output_name is not None:
+        return (
+            request.output_name
+            if request.mode is TransformMode.UNSLOP
+            else title_case_document_name(request.output_name)
+        )
+    title = (
+        original.title
+        if request.mode is TransformMode.UNSLOP
+        else _strip_generated_copy_suffixes(suggested_document_title(original))
+    )
+    suffix = f" — {_OUTPUT_SUFFIX[request.mode]}"
+    # COPY names share the request/checkpoint limit. Never truncate the source
+    # metadata itself; reserve room for the review-copy suffix before persisting.
+    base = title.strip()[: _MAX_OUTPUT_NAME_LENGTH - len(suffix)].rstrip()
+    if request.mode is not TransformMode.UNSLOP:
+        base = _strip_generated_copy_suffixes(base)
+    name = f"{base}{suffix}"
+    return name if request.mode is TransformMode.UNSLOP else title_case_document_name(name)
+
+
+def _strip_generated_copy_suffixes(title: str) -> str:
+    title = title.strip()
+    for _ in range(_MAX_GENERATED_NAME_SUFFIXES):
+        suffix = next(
+            (
+                value
+                for value in (" — Sarj formatted", " — Sarj polished")
+                if title.casefold().endswith(value.casefold())
+            ),
+            None,
+        )
+        if suffix is None:
+            break
+        title = title[: -len(suffix)].rstrip()
+    return title or "Untitled"
+
+
+def _new_copy_checkpoint(
+    *,
+    request: DocumentTransformRequest,
+    snapshot: SourceSnapshot,
+    original: DocumentIR,
+    outcome: TransformOutcome,
+    source_sha256: str,
+    model_ids: list[ModelId],
+    logo_sha256: str | None,
+) -> CopyCheckpoint:
+    replacements = {
+        before.id: after.text
+        for before, after in zip(original.blocks, outcome.document.blocks, strict=True)
+        if before.text != after.text
+    }
+    authored_labels = (
+        plan_authored_labels(original) if request.mode is not TransformMode.UNSLOP else ()
+    )
+    pagination = (
+        plan_native_pagination(snapshot.google_document, outcome.document, emit_diagnostics=True)
+        if request.mode is not TransformMode.UNSLOP
+        else ()
+    )
+    output_name = _copy_output_name(request, original)
+    plan_payload = _copy_plan_payload(
+        output_name=output_name,
+        replacements=replacements,
+        authored_labels=authored_labels,
+        pagination=pagination,
+        findings=list(outcome.findings),
+        applied_patch_count=outcome.applied_count,
+        deterministic_patch_count=outcome.deterministic_count,
+        model_patch_count=outcome.model_count,
+        llm_invoked=outcome.llm_invoked,
+        model_ids=model_ids,
+        expected_semantic_sha256=outcome.document.semantic_sha256,
+        logo_sha256=logo_sha256,
+    )
+    return CopyCheckpoint(
+        authored_labels=authored_labels,
+        pagination=pagination,
+        source_title=snapshot.title,
+        source_sha256=source_sha256,
+        source_modified_time=snapshot.modified_time,
+        source_revision_id=snapshot.revision_id,
+        source_parent_folder_id=snapshot.parent_folder_id,
+        brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
+        brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
+        pipeline_version=PIPELINE_VERSION,
+        request_builder_version=REQUEST_BUILDER_VERSION,
+        unslop_catalog_sha256=UNSLOP_CATALOG_SHA256,
+        original_semantic_sha256=original.semantic_sha256,
+        expected_semantic_sha256=outcome.document.semantic_sha256,
+        plan_sha256=_json_sha256(plan_payload),
+        manifest_sha256=_copy_manifest_sha256(
+            snapshot,
+            original,
+            outcome.document,
+            branded=request.mode is not TransformMode.UNSLOP,
+            header_title=output_name,
+        ),
+        logo_sha256=logo_sha256,
+        output_name=output_name,
+        replacements=replacements,
+        findings=list(outcome.findings),
+        applied_patch_count=outcome.applied_count,
+        deterministic_patch_count=outcome.deterministic_count,
+        model_patch_count=outcome.model_count,
+        llm_invoked=outcome.llm_invoked,
+        model_ids=model_ids,
+        stage=CopyCheckpointStage.PLANNED,
+    )
+
+
+def _validate_copy_checkpoint(
+    checkpoint: CopyCheckpoint,
+    *,
+    request: DocumentTransformRequest,
+    snapshot: SourceSnapshot,
+    original: DocumentIR,
+    source_sha256: str,
+    current_logo_sha256: str | None,
+) -> None:
+    expected_contract = (
+        snapshot.title,
+        source_sha256,
+        snapshot.modified_time,
+        snapshot.revision_id,
+        snapshot.parent_folder_id,
+        CURRENT_BRAND_MANIFEST.profile_id,
+        CURRENT_BRAND_MANIFEST.sha256,
+        PIPELINE_VERSION,
+        REQUEST_BUILDER_VERSION,
+        UNSLOP_CATALOG_SHA256,
+        original.semantic_sha256,
+        _copy_output_name(request, original),
+        current_logo_sha256,
+    )
+    checkpoint_contract = (
+        checkpoint.source_title,
+        checkpoint.source_sha256,
+        checkpoint.source_modified_time,
+        checkpoint.source_revision_id,
+        checkpoint.source_parent_folder_id,
+        checkpoint.brand_profile_id,
+        checkpoint.brand_profile_sha256,
+        checkpoint.pipeline_version,
+        checkpoint.request_builder_version,
+        checkpoint.unslop_catalog_sha256,
+        checkpoint.original_semantic_sha256,
+        checkpoint.output_name,
+        checkpoint.logo_sha256,
+    )
+    if checkpoint_contract != expected_contract:
+        raise OutputConflictError
+    if checkpoint.authored_labels != (
+        plan_authored_labels(original) if request.mode is not TransformMode.UNSLOP else ()
+    ):
+        raise OutputConflictError
+    transformed = apply_authored_labels(
+        original.replace_blocks(checkpoint.replacements), checkpoint.authored_labels
+    )
+    if checkpoint.pagination != (
+        plan_native_pagination(snapshot.google_document, transformed)
+        if request.mode is not TransformMode.UNSLOP
+        else ()
+    ):
+        raise OutputConflictError
+    transformed = apply_native_pagination(transformed, checkpoint.pagination)
+    if transformed.semantic_sha256 != checkpoint.expected_semantic_sha256:
+        raise OutputConflictError
+    plan_payload = _copy_plan_payload(
+        output_name=checkpoint.output_name,
+        replacements=checkpoint.replacements,
+        authored_labels=checkpoint.authored_labels,
+        pagination=checkpoint.pagination,
+        findings=checkpoint.findings,
+        applied_patch_count=checkpoint.applied_patch_count,
+        deterministic_patch_count=checkpoint.deterministic_patch_count,
+        model_patch_count=checkpoint.model_patch_count,
+        llm_invoked=checkpoint.llm_invoked,
+        model_ids=checkpoint.model_ids,
+        expected_semantic_sha256=checkpoint.expected_semantic_sha256,
+        logo_sha256=checkpoint.logo_sha256,
+    )
+    if checkpoint.plan_sha256 != _json_sha256(plan_payload):
+        raise OutputConflictError
+    if checkpoint.manifest_sha256 != _copy_manifest_sha256(
+        snapshot,
+        original,
+        transformed,
+        branded=request.mode is not TransformMode.UNSLOP,
+        header_title=checkpoint.output_name,
+    ):
+        raise OutputConflictError
+
+
+def _copy_checkpoint_outcome(
+    checkpoint: CopyCheckpoint,
+    original: DocumentIR,
+) -> TransformOutcome:
+    return TransformOutcome(
+        document=apply_native_pagination(
+            apply_authored_labels(
+                original.replace_blocks(checkpoint.replacements), checkpoint.authored_labels
+            ),
+            checkpoint.pagination,
+        ),
+        findings=tuple(checkpoint.findings),
+        applied_count=checkpoint.applied_patch_count,
+        deterministic_count=checkpoint.deterministic_patch_count,
+        model_count=checkpoint.model_patch_count,
+        llm_invoked=checkpoint.llm_invoked,
+    )
+
+
+def _copy_plan_payload(
+    *,
+    output_name: str,
+    replacements: dict[str, str],
+    authored_labels: tuple[AuthoredLabelRole, ...],
+    pagination: tuple[NativePaginationRule, ...],
+    findings: list[TransformFinding],
+    applied_patch_count: int,
+    deterministic_patch_count: int,
+    model_patch_count: int,
+    llm_invoked: bool,
+    model_ids: list[ModelId],
+    expected_semantic_sha256: str,
+    logo_sha256: str | None,
+) -> dict[str, Any]:
+    return {
+        "output_name": output_name,
+        "replacements": replacements,
+        "authored_labels": [role.model_dump(mode="json") for role in authored_labels],
+        "pagination": [rule.model_dump(mode="json") for rule in pagination],
+        "findings": [finding.model_dump(mode="json") for finding in findings],
+        "applied_patch_count": applied_patch_count,
+        "deterministic_patch_count": deterministic_patch_count,
+        "model_patch_count": model_patch_count,
+        "llm_invoked": llm_invoked,
+        "model_ids": list(model_ids),
+        "expected_semantic_sha256": expected_semantic_sha256,
+        "logo_sha256": logo_sha256,
+    }
+
+
+def _copy_manifest_sha256(
+    snapshot: SourceSnapshot,
+    original: DocumentIR,
+    transformed: DocumentIR,
+    *,
+    branded: bool,
+    header_title: str,
+) -> str:
+    if snapshot.markdown is not None:
+        rendered = rewrite_markdown(snapshot.markdown, original, transformed)
+        manifest: object = asdict(
+            markdown_import_manifest(
+                rendered, title=snapshot.title, branded=branded, header_title=header_title
+            )
+        )
+    else:
+        manifest = {
+            "expected_semantic_sha256": transformed.semantic_sha256,
+            "source_format": transformed.source_format,
+            "tab_ids": list(transformed.tab_ids),
+            "branded": branded,
+            "header_title": header_title if branded else None,
+        }
+    return hashlib.sha256(
+        json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()
+
+
+def _json_sha256(value: dict[str, Any]) -> str:
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()
+
+
 def _to_ir(snapshot: SourceSnapshot) -> DocumentIR:
     if snapshot.google_document is not None:
         if snapshot.google_document.get("revisionId") != snapshot.revision_id:
@@ -363,6 +1983,60 @@ def _to_ir(snapshot: SourceSnapshot) -> DocumentIR:
     if snapshot.markdown is None:
         raise UnsupportedSourceError
     return parse_markdown(snapshot.markdown, title=snapshot.title)
+
+
+def _in_place_marker(
+    operation_id: uuid.UUID,
+    stage: str,
+    requests: list[dict[str, Any]],
+) -> str:
+    digest = mutation_sha256(requests)[:20]
+    return f"sarj-transform-{operation_id.hex}-{stage}-{digest}"
+
+
+def _matches_pre_header_checkpoint(
+    snapshot: SourceSnapshot,
+    inspection: InPlaceInspection,
+    checkpoint: InPlaceCheckpoint,
+) -> bool:
+    if snapshot.revision_id is None:
+        return False
+    requested_tab_ids = _header_request_tab_ids(checkpoint.requests)
+    if requested_tab_ids is None:
+        return False
+    current_headers = {str(header.tab_id): str(header.header_id) for header in inspection.headers}
+    return (
+        _to_ir(snapshot).semantic_sha256 == checkpoint.original_semantic_sha256
+        and inspection.structural_sha256 == checkpoint.structural_sha256
+        and inspection.protected_structure_sha256 == checkpoint.protected_structure_sha256
+        and inspection.body_sha256 == checkpoint.body_sha256
+        and inspection.header_safe_sha256 == checkpoint.header_safe_sha256
+        and inspection.custom_furniture == checkpoint.custom_furniture
+        and not inspection.unknown_header_tab_ids
+        and tuple(str(tab_id) for tab_id in inspection.missing_header_tab_ids) == requested_tab_ids
+        and current_headers == checkpoint.headers
+        and {str(header.tab_id): str(header.header_id) for header in inspection.preserved_headers}
+        == checkpoint.preserved_headers
+        and inspection.marker_range == checkpoint.marker_range
+    )
+
+
+def _header_request_tab_ids(requests: list[dict[str, Any]]) -> tuple[str, ...] | None:
+    tab_ids: list[str] = []
+    for request in requests:
+        if set(request) != {"createHeader"}:
+            return None
+        creation = request.get("createHeader")
+        if not isinstance(creation, dict) or creation.get("type") != "DEFAULT":
+            return None
+        location = creation.get("sectionBreakLocation")
+        if not isinstance(location, dict) or location.get("index") != 0:
+            return None
+        tab_id = location.get("tabId")
+        if not isinstance(tab_id, str) or not tab_id or tab_id in tab_ids:
+            return None
+        tab_ids.append(tab_id)
+    return tuple(tab_ids) if tab_ids else None
 
 
 def _source_sha256(snapshot: SourceSnapshot, document: DocumentIR) -> str:
@@ -377,29 +2051,58 @@ def _source_sha256(snapshot: SourceSnapshot, document: DocumentIR) -> str:
     ).hexdigest()
 
 
-def _markdown_fidelity_findings(snapshot: SourceSnapshot) -> list[TransformFinding]:
-    markdown = snapshot.markdown
-    if markdown is None:
-        return []
-    findings: list[TransformFinding] = []
-    if any(line.startswith("|") and line.endswith("|") for line in markdown.splitlines()):
-        findings.append(
-            TransformFinding(
-                code="markdown_table_preserved_as_text",
-                detail="Markdown tables remain pipe-delimited text",
+def _preflight_native_mutation_budget(
+    *,
+    request: DocumentTransformRequest,
+    snapshot: SourceSnapshot,
+    original: DocumentIR,
+    transformed: DocumentIR,
+    brand: SarjBrandProfile,
+    extra_requests: tuple[dict[str, Any], ...] = (),
+) -> None:
+    if snapshot.media_type != "application/vnd.google-apps.document":
+        return
+    if request.mode is TransformMode.UNSLOP:
+        requests = build_copy_text_mutations(original, transformed)
+    else:
+        headers = tuple(
+            TabHeader(
+                tab_id=tab_id,
+                header_id=DocsSegmentId("preflight-header-segment"),
             )
+            for tab_id in transformed.tab_ids
         )
-    if any(token in markdown for token in ("**", "__", "](")):
-        findings.append(
-            TransformFinding(
-                code="markdown_inline_markup_preserved_as_text",
-                detail="Inline links or emphasis remain Markdown text for lossless review",
-            )
+        requests = build_copy_mutations(
+            original,
+            transformed,
+            profile=brand,
+            headers=headers,
+            logo_uri="https://assets.sarj.ai/preflight-logo.png",
+            header_title=(
+                _copy_output_name(request, original)
+                if request.output_strategy is OutputStrategy.COPY
+                else None
+            ),
         )
-    return findings
+    if (
+        request.output_strategy is OutputStrategy.IN_PLACE
+        and request.mode is not TransformMode.UNSLOP
+    ):
+        requests = defend_native_font_requests(
+            requests, document=snapshot.google_document, original=original
+        )
+    mutation_sha256(requests + list(extra_requests))
 
 
 def _brand_warning_detail(code: str) -> str:
     if code == "logo_unavailable":
         return "Typography and spacing were applied, but the logo URL was not publicly readable"
     return "Existing header preserved for review"
+
+
+def _preserved_block_ids(checkpoint: InPlaceCheckpoint) -> tuple[str, ...]:
+    return tuple(
+        finding.block_id or ""
+        for finding in checkpoint.findings
+        if finding.code == "native_rich_text_preserved"
+    )
