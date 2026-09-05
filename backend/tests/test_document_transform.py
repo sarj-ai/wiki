@@ -18,6 +18,7 @@ import pytest
 
 from app.document_transform import google_gateway as google_gateway_module
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
+from app.document_transform.custom_furniture import CustomFurnitureBinding
 from app.document_transform.docx_renderer import markdown_import_manifest, render_markdown_docx
 from app.document_transform.errors import (
     CheckpointTooLargeError,
@@ -2876,7 +2877,9 @@ class _InPlaceGateway(_Gateway):
         structural_sha256: str,
         protected_structure_sha256: str,
         verify_brand: bool,
+        custom_furniture: tuple[CustomFurnitureBinding, ...] = (),
     ) -> OutputVerification:
+        del custom_furniture
         del document, title, expected, structural_sha256, protected_structure_sha256, verify_brand
         return OutputVerification(
             content_preserved=True, structure_preserved=True, brand_applied=True

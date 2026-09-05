@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { ApiError } from "@/lib/api-error";
 import { BrowserUserContext } from "@/lib/browser-user-context";
 import { documentTransformApi } from "@/lib/document-transform-client";
+import { preservedInPlaceOutcome } from "@/lib/document-transform-outcome";
 import { writeTransformRecovery } from "@/lib/document-transform-recovery";
 import {
   DocumentTransformNeedsReviewError,
@@ -900,6 +901,123 @@ describe("DocumentPolishDialog", () => {
       } finally {
         vi.unstubAllGlobals();
       }
+    },
+  );
+
+  it.each([true, false])(
+    "describes verified scoped in-place preservation (changed=%s)",
+    async (changed) => {
+      const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
+      const result = {
+        ...transformResult({ outputStrategy: "in_place" }),
+        mode: "format" as const,
+        changed,
+        needsReview: true,
+        findings: [
+          {
+            blockId: "block-1",
+            code: "native_rich_text_preserved",
+            detail: "Authored text styles were preserved.",
+          },
+          {
+            blockId: null,
+            code: "custom_furniture_preserved",
+            detail: "Custom headers were preserved. Full Sarj branding was not applied.",
+          },
+        ],
+      };
+      vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
+      const waitForCompletion = documentTransformApi.waitForCompletion;
+      vi.spyOn(documentTransformApi, "waitForCompletion").mockImplementation(
+        async () => await waitForCompletion({ id: pending.id, status: "succeeded", result }),
+      );
+      renderDialog(root, {
+        allowInPlace: false,
+        expectedModifiedTime: "before",
+        fileId: "source-1",
+        kind: "drive_file",
+        mimeType: MIME_DOC,
+        name: "Notes",
+      });
+      await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+      clickButton(findButtonNow("Create polished copy"));
+      await vi.waitFor(() =>
+        expect(document.body).toHaveTextContent(
+          changed
+            ? "Polish complete with preserved content"
+            : "No changes needed; review notes remain",
+        ),
+      );
+      expect(document.body).toHaveTextContent(
+        changed ? "Updated the original document." : "The original document is unchanged.",
+      );
+      expect(document.body).toHaveTextContent("Full Sarj branding was not applied.");
+      expect(document.body).toHaveTextContent("Authored text styles were preserved.");
+      expect(document.body).toHaveTextContent(`Task reference: ${pending.id}`);
+      expect(document.body).not.toHaveTextContent("Open review copy");
+      clickButton(findButtonNow(changed ? "Open updated document" : "Open original document"));
+      expect(NavigationMock.push).toHaveBeenCalledWith("/d/output-1");
+      expect(documentTransformApi.create).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each([
+    "empty",
+    "unknown",
+    "mixed",
+    "content",
+    "structure",
+    "unsafe",
+    "copy",
+    "no-review",
+    "unslop",
+  ] as const)(
+    "does not describe an unproven or unrelated review as preservation success: %s",
+    (reason) => {
+      const result: DocumentTransformResult = {
+        ...transformResult({ outputStrategy: "in_place" }),
+        mode: "format",
+        needsReview: true,
+        findings: [
+          { blockId: null, code: "custom_furniture_preserved", detail: "Preserved custom header." },
+        ],
+      };
+      switch (reason) {
+        case "empty":
+          result.findings = [];
+          break;
+        case "unknown":
+          result.findings = [
+            { blockId: null, code: "verification_failed", detail: "Review required." },
+          ];
+          break;
+        case "mixed":
+          result.findings.push({
+            blockId: null,
+            code: "native_date_provider_rejected",
+            detail: "Date fallback.",
+          });
+          break;
+        case "content":
+          result.validation.protectedContentPreserved = false;
+          break;
+        case "structure":
+          result.validation.structurePreserved = false;
+          break;
+        case "unsafe":
+          result.validation.unsafePatchCount = 1;
+          break;
+        case "copy":
+          result.outputStrategy = "copy";
+          break;
+        case "no-review":
+          result.needsReview = false;
+          break;
+        case "unslop":
+          result.mode = "unslop";
+          break;
+      }
+      expect(preservedInPlaceOutcome(result)).toBeNull();
     },
   );
 

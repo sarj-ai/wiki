@@ -43,6 +43,12 @@ from app.document_transform.copy_identity import (
     align_verified_copy_list_metadata,
     normalize_copy_list_identity,
 )
+from app.document_transform.custom_furniture import (
+    MAX_FURNITURE_BYTES,
+    CustomFurnitureBinding,
+    furniture_bindings_known,
+    furniture_context_values,
+)
 from app.document_transform.docx_renderer import markdown_import_manifest
 from app.document_transform.errors import (
     DocumentGatewayError,
@@ -68,6 +74,7 @@ from app.document_transform.header_provenance import (
     ManagedHeaderIdentity,
 )
 from app.document_transform.ir import (
+    MAX_DOC_TABS,
     BlockKind,
     DocumentIR,
     TextBlock,
@@ -111,6 +118,7 @@ from app.document_transform.schemas import (
     MarkdownSource,
     TabNamingCheckpoint,
 )
+from app.document_transform.source_access import native_source_access
 from app.document_transform.tab_metadata import native_tab_properties, tab_naming_invariant_sha256
 from app.document_transform.tab_names import plan_tab_names
 from app.document_transform.tab_structure_execution import StructureProvider
@@ -341,6 +349,7 @@ class GoogleDocumentGateway(DocumentGateway):
             if not isinstance(revision_id, str) or metadata.get("mimeType") != MIME_DOC:
                 raise DocumentGatewayError
             log_bullet_stage(document, "source_read")
+            access = native_source_access(metadata)
             return SourceSnapshot(
                 title=_required_string(metadata, "name"),
                 parent_folder_id=_required_parent(metadata),
@@ -348,12 +357,10 @@ class GoogleDocumentGateway(DocumentGateway):
                 revision_id=DocsRevisionId(revision_id),
                 media_type=file.mime_type,
                 google_document=document,
-                owned_by_me=metadata.get("ownedByMe") is True,
-                can_edit=(
-                    isinstance(metadata.get("capabilities"), dict)
-                    and metadata["capabilities"].get("canEdit") is True
-                ),
-                is_personal_drive=metadata.get("driveId") is None,
+                owned_by_me=access.owned_by_me,
+                can_edit=access.can_edit,
+                is_personal_drive=access.is_personal_drive,
+                shared_drive_id=access.shared_drive_id,
                 web_url=(
                     metadata.get("webViewLink")
                     if isinstance(metadata.get("webViewLink"), str)
@@ -669,6 +676,7 @@ class GoogleDocumentGateway(DocumentGateway):
         structural_sha256: str,
         protected_structure_sha256: str,
         verify_brand: bool,
+        custom_furniture: tuple[CustomFurnitureBinding, ...] = (),
     ) -> OutputVerification:
         parsed = parse_google_document(document, title=title)
         content_preserved = _typography_content_preserved(
@@ -681,6 +689,7 @@ class GoogleDocumentGateway(DocumentGateway):
             _inventory_sha256(_structural_inventory(document)) == structural_sha256
             and _inventory_sha256(_protected_structure_inventory(structure_document))
             == protected_structure_sha256
+            and _custom_furniture_matches(document, custom_furniture)
         )
         brand_applied = not verify_brand or verify_brand_application(
             document,
@@ -689,6 +698,29 @@ class GoogleDocumentGateway(DocumentGateway):
                 document, getattr(self, "_header_identity", None)
             ),
             header_separator=_owned_header_separator(getattr(self, "_header_identity", None)),
+        )
+        supported_brand_applied = (
+            bool(custom_furniture)
+            and structure_preserved
+            and (
+                not verify_brand
+                or verify_brand_application(
+                    document,
+                    _typography_verification_ir(parsed, expected),
+                    expected_header_title=_trusted_header_identity_title(
+                        document, getattr(self, "_header_identity", None)
+                    ),
+                    header_separator=_owned_header_separator(
+                        getattr(self, "_header_identity", None)
+                    ),
+                    preserved_furniture_tabs=frozenset(
+                        binding.tab_id for binding in custom_furniture
+                    ),
+                    preserved_header_tabs=frozenset(
+                        binding.tab_id for binding in custom_furniture if binding.header_ids
+                    ),
+                )
+            )
         )
         if not (content_preserved and structure_preserved and brand_applied):
             logger.warning(
@@ -710,6 +742,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 },
             )
         return OutputVerification(
+            supported_brand_applied=supported_brand_applied,
             content_preserved=content_preserved,
             structure_preserved=structure_preserved,
             brand_applied=brand_applied,
@@ -928,9 +961,9 @@ class GoogleDocumentGateway(DocumentGateway):
             (
                 document is not None,
                 snapshot.media_type == MIME_DOC,
-                snapshot.owned_by_me,
+                (snapshot.owned_by_me and snapshot.is_personal_drive)
+                or snapshot.shared_drive_id is not None,
                 snapshot.can_edit,
-                snapshot.is_personal_drive,
                 snapshot.revision_id is not None,
             )
         )
@@ -948,6 +981,7 @@ class GoogleDocumentGateway(DocumentGateway):
         )
         headers: list[TabHeader] = []
         preserved_headers: list[TabHeader] = []
+        custom_furniture: list[CustomFurnitureBinding] = []
         missing: list[DocsTabId] = []
         unknown: list[DocsTabId] = []
         for raw_tab_id, document_tab in _document_tabs(document):
@@ -955,16 +989,36 @@ class GoogleDocumentGateway(DocumentGateway):
             style = document_tab.get("documentStyle", {})
             header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
             segments = document_tab.get("headers", {})
+            if (
+                not _furniture_references_resolve(document_tab)
+                or not isinstance(segments, dict)
+                or any(not isinstance(key, str) or not key for key in segments)
+            ):
+                unknown.append(tab_id)
+                continue
+            if isinstance(header_id, str) and header_id not in segments:
+                unknown.append(tab_id)
+                continue
             if not isinstance(header_id, str):
-                if isinstance(segments, dict) and segments:
-                    unknown.append(tab_id)
+                if segments:
+                    binding = _custom_furniture_binding(
+                        document, tab_id, document_tab, tuple(sorted(segments))
+                    )
+                    if binding is None:
+                        unknown.append(tab_id)
+                    else:
+                        custom_furniture.append(binding)
                 else:
                     missing.append(tab_id)
                 continue
-            if isinstance(segments, dict) and any(
-                segment_id != header_id for segment_id in segments
-            ):
-                unknown.append(tab_id)
+            if any(segment_id != header_id for segment_id in segments):
+                binding = _custom_furniture_binding(
+                    document, tab_id, document_tab, tuple(sorted(segments))
+                )
+                if binding is None:
+                    unknown.append(tab_id)
+                else:
+                    custom_furniture.append(binding)
                 continue
             if _segment_has_content(segments, header_id):
                 if _tab_header_is_branded(
@@ -980,25 +1034,56 @@ class GoogleDocumentGateway(DocumentGateway):
                         TabHeader(tab_id=tab_id, header_id=DocsSegmentId(header_id))
                     )
                 else:
-                    unknown.append(tab_id)
+                    binding = _custom_furniture_binding(
+                        document, tab_id, document_tab, (header_id,)
+                    )
+                    if binding is None:
+                        unknown.append(tab_id)
+                    else:
+                        custom_furniture.append(binding)
                 continue
             headers.append(TabHeader(tab_id=tab_id, header_id=DocsSegmentId(header_id)))
+        for raw_tab_id, document_tab in _document_tabs(document):
+            if (
+                raw_tab_id not in {binding.tab_id for binding in custom_furniture}
+                and raw_tab_id not in unknown
+                and document_tab.get("footers")
+            ):
+                binding = _custom_furniture_binding(
+                    document, DocsTabId(raw_tab_id), document_tab, ()
+                )
+                if binding is None:
+                    unknown.append(DocsTabId(raw_tab_id))
+                else:
+                    custom_furniture.append(binding)
         parsed = parse_google_document(document, title=title)
         existing_layout = apply_native_pagination(
             parsed, existing_native_pagination(document, parsed)
         )
-        marker_range = _terminal_body_marker_range(document)
         logger.info(
             "document in-place preflight checks={checks}",
             checks={
-                "tab_count": len(headers) + len(preserved_headers) + len(missing) + len(unknown),
+                "tab_count": len(tuple(_document_tabs(document))),
                 "unknown_header_count": len(unknown),
                 "missing_header_count": len(missing),
                 "in_place_logo_available": bool(self._logo_uri),
-                "in_place_marker_available": marker_range is not None,
+                "in_place_marker_available": _terminal_body_marker_range(document) is not None,
             },
         )
         return InPlaceInspection(
+            custom_furniture=tuple(custom_furniture),
+            supported_brand_applied=bool(custom_furniture)
+            and not (missing or unknown or headers)
+            and verify_brand_application(
+                document,
+                existing_layout,
+                expected_header_title=header_title,
+                header_separator=_owned_header_separator(getattr(self, "_header_identity", None)),
+                preserved_furniture_tabs=frozenset(binding.tab_id for binding in custom_furniture),
+                preserved_header_tabs=frozenset(
+                    binding.tab_id for binding in custom_furniture if binding.header_ids
+                ),
+            ),
             output=DocumentOutput(
                 file_id=FileId(_required_string(document, "documentId")),
                 name=snapshot.title,
@@ -1017,7 +1102,7 @@ class GoogleDocumentGateway(DocumentGateway):
             ),
             missing_header_tab_ids=tuple(missing),
             unknown_header_tab_ids=tuple(unknown),
-            marker_range=marker_range,
+            marker_range=_terminal_body_marker_range(document),
             logo_uri=self._logo_uri,
             structural_sha256=_inventory_sha256(_structural_inventory(document)),
             protected_structure_sha256=_inventory_sha256(_protected_structure_inventory(document)),
@@ -1646,7 +1731,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 supportsAllDrives=True,
                 fields=(
                     "id,name,parents,mimeType,modifiedTime,appProperties,ownedByMe,"
-                    "capabilities(canEdit),driveId,webViewLink"
+                    "capabilities(canEdit),driveId,webViewLink,trashed,contentRestrictions(readOnly)"
                 ),
             )
         )
@@ -1887,6 +1972,117 @@ def _inventory_sha256(value: object) -> str:
     return hashlib.sha256(
         json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
     ).hexdigest()
+
+
+def _custom_furniture_binding(
+    document: dict[str, Any], tab_id: DocsTabId, tab: dict[str, Any], header_ids: tuple[str, ...]
+) -> CustomFurnitureBinding | None:
+    style = tab.get("documentStyle")
+    headers, footers = tab.get("headers", {}), tab.get("footers", {})
+    if (
+        not isinstance(style, dict)
+        or not isinstance(headers, dict)
+        or not isinstance(footers, dict)
+    ):
+        return None
+    if not furniture_bindings_known(tab):
+        return None
+    if header_ids:
+        header_refs = set().union(
+            *(
+                _referenced_ids(tab, key)
+                for key in ("defaultHeaderId", "firstPageHeaderId", "evenPageHeaderId")
+            )
+        )
+        if (
+            len(header_ids) > MAX_DOC_TABS
+            or set(headers) != set(header_ids)
+            or header_refs != set(header_ids)
+        ):
+            return None
+    if len(footers) > MAX_DOC_TABS or any(not isinstance(key, str) for key in footers):
+        return None
+    footer_refs = set().union(
+        *(
+            _referenced_ids(tab, key)
+            for key in ("defaultFooterId", "firstPageFooterId", "evenPageFooterId")
+        )
+    )
+    if footer_refs != set(footers):
+        return None
+    segments = {"headers": {key: headers.get(key) for key in header_ids}, "footers": footers}
+    if any(
+        not isinstance(segment, dict) or not isinstance(segment.get("content"), list)
+        for group in segments.values()
+        for segment in group.values()
+    ):
+        return None
+    payload = {
+        **segments,
+        "documentStyle": {
+            key: value for key, value in style.items() if header_ids or key != "defaultHeaderId"
+        },
+        "rootDocumentStyle": document.get("documentStyle"),
+        "namedStyles": [document.get("namedStyles"), tab.get("namedStyles")],
+        "sectionStyles": furniture_context_values(tab.get("body", {}), frozenset({"sectionStyle"})),
+    }
+    for reference, field in (
+        ("inlineObjectId", "inlineObjects"),
+        ("positionedObjectIds", "positionedObjects"),
+        ("listId", "lists"),
+    ):
+        identifiers = _referenced_ids(segments, reference)
+        definitions = tab.get(field, document.get(field, {}))
+        if not isinstance(definitions, dict) or any(
+            not isinstance(definitions.get(key), dict) for key in identifiers
+        ):
+            return None
+        payload[field] = {key: definitions[key] for key in sorted(identifiers)}
+    try:
+        normalized = _stable_object_payload(payload)
+        size = len(json.dumps(normalized, ensure_ascii=False, allow_nan=False).encode())
+    except TypeError, ValueError, RecursionError:
+        return None
+    if size > MAX_FURNITURE_BYTES:
+        return None
+    return CustomFurnitureBinding(
+        tab_id=tab_id,
+        header_ids=tuple(DocsSegmentId(identifier) for identifier in header_ids),
+        footer_ids=tuple(DocsSegmentId(identifier) for identifier in sorted(footers)),
+        sha256=_inventory_sha256(normalized),
+    )
+
+
+def _furniture_references_resolve(tab: dict[str, Any]) -> bool:
+    if not furniture_bindings_known(tab):
+        return False
+    for segment_type, reference_fields in (
+        ("headers", ("defaultHeaderId", "firstPageHeaderId", "evenPageHeaderId")),
+        ("footers", ("defaultFooterId", "firstPageFooterId", "evenPageFooterId")),
+    ):
+        segments = tab.get(segment_type, {})
+        if not isinstance(segments, dict) or any(
+            not isinstance(key, str) or not key for key in segments
+        ):
+            return False
+        references = set().union(*(_referenced_ids(tab, key) for key in reference_fields))
+        if references != set(segments):
+            return False
+    return True
+
+
+def _custom_furniture_matches(
+    document: dict[str, Any], bindings: tuple[CustomFurnitureBinding, ...]
+) -> bool:
+    tabs = dict(_document_tabs(document))
+    return len({binding.tab_id for binding in bindings}) == len(bindings) and all(
+        binding.tab_id in tabs
+        and _custom_furniture_binding(
+            document, binding.tab_id, tabs[binding.tab_id], binding.header_ids
+        )
+        == binding
+        for binding in bindings
+    )
 
 
 def _body_sha256(document: dict[str, Any]) -> str:
@@ -2561,17 +2757,38 @@ def verify_brand_application(
     *,
     expected_header_title: str | None = None,
     header_separator: str = HEADER_TITLE_SEPARATOR,
+    preserved_furniture_tabs: frozenset[DocsTabId] = frozenset(),
+    preserved_header_tabs: frozenset[DocsTabId] = frozenset(),
 ) -> bool:
     tabs = tuple(_document_tabs(document))
-    applied = bool(tabs) and all(
-        _tab_shell_is_branded(
-            document,
-            document_tab,
-            expected_title=parsed.title if expected_header_title is None else expected_header_title,
-            allow_legacy_inline_objects=len(tabs) == 1,
-            header_separator=header_separator,
+    applied = (
+        bool(tabs)
+        and preserved_header_tabs <= preserved_furniture_tabs
+        and all(
+            tab_id in preserved_header_tabs
+            or (
+                tab_id in preserved_furniture_tabs
+                and _tab_header_is_branded(
+                    document,
+                    document_tab,
+                    expected_title=parsed.title
+                    if expected_header_title is None
+                    else expected_header_title,
+                    allow_legacy_inline_objects=len(tabs) == 1,
+                    header_separator=header_separator,
+                )
+            )
+            or _tab_shell_is_branded(
+                document,
+                document_tab,
+                expected_title=parsed.title
+                if expected_header_title is None
+                else expected_header_title,
+                allow_legacy_inline_objects=len(tabs) == 1,
+                header_separator=header_separator,
+            )
+            for tab_id, document_tab in tabs
         )
-        for _, document_tab in tabs
     )
     paragraphs = _paragraphs_by_range(tabs)
     if applied:

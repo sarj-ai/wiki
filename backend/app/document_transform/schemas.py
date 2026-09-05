@@ -20,12 +20,15 @@ from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
     CURRENT_BRAND_PROFILE_ID,
 )
+from app.document_transform.custom_furniture import CustomFurnitureBinding
 from app.document_transform.header_provenance import (
     HeaderIdentityEvidence,
     HeaderIdentityFinalization,
 )
+from app.document_transform.ir import MAX_DOC_TABS, MAX_DOCUMENT_BLOCKS
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.document_transform.native_date_flow import NativeDateCheckpoint
+from app.document_transform.native_font_proof import NativeFontProof
 from app.document_transform.native_footer_flow import NativeFooterCheckpoint
 from app.document_transform.native_pagination import MAX_PAGINATION_RULES, NativePaginationRule
 from app.document_transform.tab_names import TabNamingPlan
@@ -221,6 +224,12 @@ class InPlaceCheckpointStage(StrEnum):
 
 
 class InPlaceCheckpoint(StrictTransformModel):
+    native_font_proof: tuple[NativeFontProof, ...] | None = Field(
+        default=None, max_length=MAX_DOCUMENT_BLOCKS
+    )
+    custom_furniture: tuple[CustomFurnitureBinding, ...] = Field(
+        default=(), max_length=MAX_DOC_TABS
+    )
     pagination: tuple[NativePaginationRule, ...] = Field(
         default=(), max_length=MAX_PAGINATION_RULES
     )

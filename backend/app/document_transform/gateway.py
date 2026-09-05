@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 import uuid
 
+from app.document_transform.custom_furniture import CustomFurnitureBinding
 from app.document_transform.header_provenance import HeaderIdentityEvidence
 from app.document_transform.ir import DocumentIR
 from app.document_transform.native_date_flow import NativeDateCheckpoint
@@ -16,7 +17,7 @@ from app.document_transform.schemas import (
     TabNamingCheckpoint,
 )
 from app.document_transform.tab_structure_execution import StructureProvider
-from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId
+from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, DriveId, FileId
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,7 @@ class SourceSnapshot:
     owned_by_me: bool = False
     can_edit: bool = False
     is_personal_drive: bool = False
+    shared_drive_id: DriveId | None = None
     web_url: str | None = None
 
 
@@ -67,6 +69,7 @@ class OutputVerification:
     structure_preserved: bool
     brand_applied: bool = True
     revision_id: DocsRevisionId | None = None
+    supported_brand_applied: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +87,8 @@ class InPlaceInspection:
     preserved_headers: tuple[TabHeader, ...] = ()
     fully_branded: bool = False
     header_identity: HeaderIdentityEvidence | None = None
+    custom_furniture: tuple[CustomFurnitureBinding, ...] = ()
+    supported_brand_applied: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +197,7 @@ class DocumentGateway(ABC):
         structural_sha256: str,
         protected_structure_sha256: str,
         verify_brand: bool,
+        custom_furniture: tuple[CustomFurnitureBinding, ...] = (),
     ) -> OutputVerification:
         raise NotImplementedError
 
