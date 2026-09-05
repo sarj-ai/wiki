@@ -163,13 +163,14 @@ describe("documentTransformApi", () => {
     });
   });
 
-  it("polls until the typed transformed file is ready", async () => {
+  it.each([undefined, 0, 1, 20])("parses heading count %s while polling", async (count) => {
     actionMocks.getTask.mockResolvedValue({
       data: JSON.stringify({
         ...task("succeeded"),
         result: {
           access_scope: "inherited",
           applied_patch_count: 1,
+          promoted_heading_count: count,
           artifact_kind: "presentation",
           findings: [{ block_id: "paragraph-1", code: "ai_phrase", detail: "Removed filler" }],
           mode: "unslop",
@@ -201,6 +202,7 @@ describe("documentTransformApi", () => {
       documentTransformApi.waitForCompletion({ id: taskId, status: "running" }, undefined, 0),
     ).resolves.toMatchObject({
       mode: "unslop",
+      promotedHeadingCount: count ?? 0,
       accessScope: "inherited",
       artifactKind: "presentation",
       outputFile: {

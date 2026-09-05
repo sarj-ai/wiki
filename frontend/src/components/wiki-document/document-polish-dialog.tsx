@@ -595,7 +595,9 @@ export function DocumentPolishDialog({
                     ? " Protected content checks passed."
                     : " Review protected content before using this result."}
                   {completedResult.outputStrategy === "in_place"
-                    ? " Updated the original; Drive version history is available."
+                    ? completedResult.changed
+                      ? " Updated the original; Drive version history is available."
+                      : " Your original is unchanged; no edits were needed."
                     : " Your original is unchanged."}
                 </p>
                 <DocumentPolishReceipt result={completedResult} />

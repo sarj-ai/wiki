@@ -410,7 +410,7 @@ describe("DocumentPolishDialog", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it("offers server-gated in-place editing while defaulting to a review copy", async () => {
+  it.each([true, false])("reports in-place changed=%s accurately", async (changed) => {
     vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
       copy: true,
       inPlace: true,
@@ -466,21 +466,31 @@ describe("DocumentPolishDialog", () => {
       expect(document.body).toHaveTextContent("Updating and checking the original document…");
     });
     expect(document.body).not.toHaveTextContent("Keep this window open");
-    completion.resolve(
-      transformResult({
+    completion.resolve({
+      ...transformResult({
         outputFileId: "source-1",
         outputFileName: "Architecture review",
         outputRevisionId: "revision-2",
         outputStrategy: "in_place",
         sourceRevisionId: "revision-1",
       }),
-    );
+      appliedPatchCount: changed ? 1 : 0,
+      changed,
+    });
 
     await vi.waitFor(() => {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ["wiki", "file", "source-1"] });
       expect(onInPlaceComplete).toHaveBeenCalledOnce();
-      expect(document.body).toHaveTextContent("Polish complete");
+      expect(document.body).toHaveTextContent(changed ? "Polish complete" : "No changes needed");
     });
+    expect(document.body).toHaveTextContent(
+      changed
+        ? "Updated the original; Drive version history is available."
+        : "Your original is unchanged; no edits were needed.",
+    );
+    expect(document.body).not.toHaveTextContent(
+      changed ? "no edits were needed" : "Updated the original",
+    );
     clickButton(findButtonNow("Open polished document"));
     expect(NavigationMock.push).toHaveBeenCalledWith("/d/source-1");
   });
@@ -1036,6 +1046,7 @@ function transformResult(overrides: TransformResultOverrides = {}): DocumentTran
     brandProfileSha256: "b".repeat(64),
     changed: true,
     deterministicPatchCount: 1,
+    promotedHeadingCount: 0,
     findings: [],
     llmInvoked: false,
     mode: "unslop",

@@ -880,6 +880,7 @@ class _Gateway(DocumentGateway):
         title: str,
         operation_id: uuid.UUID,
         required_revision_id: DocsRevisionId,
+        prefer_document_title: bool = False,
     ) -> None:
         return None
 

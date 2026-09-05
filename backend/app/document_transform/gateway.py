@@ -136,6 +136,7 @@ class DocumentGateway(ABC):
         title: str,
         operation_id: uuid.UUID,
         required_revision_id: DocsRevisionId,
+        prefer_document_title: bool = False,
     ) -> TabNamingCheckpoint | None:
         raise NotImplementedError
 

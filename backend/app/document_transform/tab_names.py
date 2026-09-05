@@ -73,6 +73,8 @@ class TabNamingPlan:
 def plan_tab_names(
     document: DocumentIR,
     tabs: tuple[NativeTabProperties, ...],
+    *,
+    prefer_document_title: bool = False,
 ) -> TabNamingPlan:
     if tuple(tab.tab_id for tab in tabs) != document.tab_ids:
         return TabNamingPlan(tabs, ())
@@ -85,9 +87,11 @@ def plan_tab_names(
     for tab in tabs:
         if not _is_generic(tab.title):
             continue
-        candidate = _candidate_title(
-            document, tab.tab_id, single_root_tab=len(tabs) == 1 and tab.parent_tab_id is None
-        )
+        single_root_tab = len(tabs) == 1 and tab.parent_tab_id is None
+        if prefer_document_title:
+            candidate = _meaningful_fallback_title(document.title) if single_root_tab else ""
+        else:
+            candidate = _candidate_title(document, tab.tab_id, single_root_tab=single_root_tab)
         if not candidate:
             continue
         sibling_titles = occupied[tab.parent_tab_id]

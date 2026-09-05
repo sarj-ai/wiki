@@ -415,12 +415,15 @@ class GoogleDocumentGateway(DocumentGateway):
         title: str,
         operation_id: uuid.UUID,
         required_revision_id: DocsRevisionId,
+        prefer_document_title: bool = False,
     ) -> TabNamingCheckpoint | None:
         document = await asyncio.to_thread(self._get_document_sync, document_id)
         if document.get("revisionId") != required_revision_id:
             native_safety_error("tab_naming_plan", "revision")
         plan = plan_tab_names(
-            parse_google_document(document, title=title), native_tab_properties(document)
+            parse_google_document(document, title=title),
+            native_tab_properties(document),
+            prefer_document_title=prefer_document_title,
         )
         marker_range = _terminal_body_marker_range(document)
         if not plan.renames or marker_range is None:

@@ -106,6 +106,9 @@ def test_provider_boundary_diagnostics_are_finite_and_private() -> None:
         "unknown",
         "time_zone",
         "timestamp",
+        "locale",
+        "date_format",
+        "time_format",
         "location",
         "capability",
         "access",
@@ -121,6 +124,35 @@ def test_provider_message_topic_has_a_finite_reader_allowlist(topic: str) -> Non
             MODULE["sanitize"]([record], TASK)
     else:
         assert MODULE["sanitize"]([record], TASK)[0]["provider_message_topic"] == topic
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "timestamp",
+        "timeZoneId",
+        "locale",
+        "dateFormat",
+        "timeFormat",
+        "index",
+        "tabId",
+        "segmentId",
+        "startIndex",
+        "endIndex",
+    ],
+)
+def test_provider_field_reader_emits_only_validated_static_names(field: str) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["extra"]["diagnostics"] = {"provider_field": field}
+    assert MODULE["sanitize"]([record], TASK)[0]["provider_field"] == field
+
+
+@pytest.mark.parametrize("field", ["SECRET", "requests[2].insertDate.locale", None, 400])
+def test_provider_field_reader_rejects_private_or_malformed_values(field: object) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["extra"]["diagnostics"] = {"provider_field": field}
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
 
 
 def test_bullet_stage_snapshot_has_only_finite_labels_and_bounded_counts() -> None:
