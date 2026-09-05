@@ -735,6 +735,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 structure_preserved=structure_preserved,
                 brand_applied=brand_applied,
                 diagnostics={
+                    "supported_brand_applied": supported_brand_applied,
                     "structural_inventory_preserved": _inventory_sha256(
                         _structural_inventory(document)
                     )

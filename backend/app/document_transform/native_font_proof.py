@@ -3,10 +3,16 @@ import hashlib
 import json
 from typing import Any, Literal
 
+from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.document_transform.errors import UnsupportedSourceError
-from app.document_transform.ir import DocumentIR, parse_google_document, utf16_length
+from app.document_transform.ir import (
+    MAX_DOCUMENT_BLOCKS,
+    DocumentIR,
+    parse_google_document,
+    utf16_length,
+)
 from app.identifiers import DocsTabId
 
 
@@ -162,21 +168,61 @@ def verify_native_font_proof(
     proofs: tuple[NativeFontProof, ...],
     *,
     preserved_block_ids: tuple[str, ...] = (),
+    diagnostic_stage: Literal["resume", "headers", "content"] | None = None,
+) -> bool:
+    checks: dict[str, str | int | bool] = {
+        "font_proof_count": min(len(proofs), MAX_DOCUMENT_BLOCKS),
+        "font_proof_verified_count": 0,
+        "font_proof_reason": "document_missing",
+    }
+    valid = _verify_native_font_proof(document, proofs, preserved_block_ids, checks)
+    if isinstance(diagnostic_stage, str) and diagnostic_stage in {"resume", "headers", "content"}:
+        logger.info(
+            "document native font proof checks={checks}",
+            checks={**checks, "font_proof_stage": diagnostic_stage, "font_proof_valid": valid},
+        )
+    return valid
+
+
+def _verify_native_font_proof(
+    document: dict[str, Any] | None,
+    proofs: tuple[NativeFontProof, ...],
+    preserved_block_ids: tuple[str, ...],
+    checks: dict[str, str | int | bool],
 ) -> bool:
     if document is None:
         return False
     try:
-        bodies = _bodies(document)
-        identities = {(proof.tab_id, proof.body_ordinal) for proof in proofs}
-        if not _coverage_is_complete(document, bodies, identities, preserved_block_ids):
-            return False
-        return len(identities) == len(proofs) and all(
-            _paragraph_digest(bodies[proof.tab_id][proof.body_ordinal]) == proof.sha256
-            and _named_styles_digest(document, proof.tab_id) == proof.named_styles_sha256
-            for proof in proofs
-        )
+        return _native_font_proof_matches(document, proofs, preserved_block_ids, checks)
     except KeyError, IndexError, TypeError, ValueError, AttributeError, UnsupportedSourceError:
+        checks["font_proof_reason"] = "malformed"
         return False
+
+
+def _native_font_proof_matches(
+    document: dict[str, Any],
+    proofs: tuple[NativeFontProof, ...],
+    preserved_block_ids: tuple[str, ...],
+    checks: dict[str, str | int | bool],
+) -> bool:
+    bodies = _bodies(document)
+    identities = {(proof.tab_id, proof.body_ordinal) for proof in proofs}
+    if not _coverage_is_complete(document, bodies, identities, preserved_block_ids):
+        checks["font_proof_reason"] = "coverage"
+        return False
+    if len(identities) != len(proofs):
+        checks["font_proof_reason"] = "duplicate_binding"
+        return False
+    for ordinal, proof in enumerate(proofs):
+        if _paragraph_digest(bodies[proof.tab_id][proof.body_ordinal]) != proof.sha256:
+            checks["font_proof_reason"] = "paragraph_payload"
+            return False
+        if _named_styles_digest(document, proof.tab_id) != proof.named_styles_sha256:
+            checks["font_proof_reason"] = "parent_styles"
+            return False
+        checks["font_proof_verified_count"] = min(ordinal + 1, MAX_DOCUMENT_BLOCKS)
+    checks["font_proof_reason"] = "matched"
+    return True
 
 
 def _coverage_is_complete(

@@ -16,6 +16,8 @@ MAX_ROWS = 200
 MAX_ATTEMPTS = 3
 MAX_BYTES = 4 * 1024 * 1024
 MAX_BULLET_SNAPSHOT_COUNT = 50_000
+MAX_FONT_PROOF_COUNT = 750
+FONT_PROOF_COUNT_FIELDS = frozenset({"font_proof_count", "font_proof_verified_count"})
 BULLET_SNAPSHOT_FIELDS = frozenset(
     f"bullet_snapshot_{field}_{state}"
     for field in ("bold", "italic", "underline")
@@ -24,6 +26,18 @@ BULLET_SNAPSHOT_FIELDS = frozenset(
 MAX_PROVIDER_ORDINAL = 200
 PROVIDER_FIELDS = MappingProxyType(
     {
+        "font_proof_stage": frozenset({"resume", "headers", "content"}),
+        "font_proof_reason": frozenset(
+            {
+                "document_missing",
+                "coverage",
+                "duplicate_binding",
+                "paragraph_payload",
+                "parent_styles",
+                "malformed",
+                "matched",
+            }
+        ),
         "provider_status": frozenset(
             {
                 "INVALID_ARGUMENT",
@@ -148,6 +162,8 @@ PROVIDER_FIELDS = MappingProxyType(
 READ_FAILURES = (ValueError, TypeError, KeyError, OSError, subprocess.TimeoutExpired)
 BOOLEAN_FIELDS = frozenset(
     [
+        "font_proof_valid",
+        "supported_brand_applied",
         "spacer_named_values_first_entry_only",
         "spacer_named_indent_schema_known",
         "spacer_named_indent_all_zero",
@@ -348,6 +364,7 @@ ERROR_CODES = frozenset(
     ]
 )
 MESSAGE_PREFIXES = (
+    "document native font proof checks=",
     "document markdown import verification checks=",
     "document native safety stop stage=",
     "document in-place preflight",
@@ -436,6 +453,10 @@ def sanitize(
                     row[key] = value
                 elif key in BULLET_SNAPSHOT_FIELDS:
                     if type(value) is not int or not 0 <= value <= MAX_BULLET_SNAPSHOT_COUNT:
+                        raise ValueError
+                    row[key] = value
+                elif key in FONT_PROOF_COUNT_FIELDS:
+                    if type(value) is not int or not 0 <= value <= MAX_FONT_PROOF_COUNT:
                         raise ValueError
                     row[key] = value
                 elif key in COUNT_FIELDS or key in EMPHASIS_COUNT_FIELDS:
