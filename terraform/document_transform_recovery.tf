@@ -19,7 +19,7 @@ resource "google_cloud_scheduler_job" "document_transform_reconcile_dammam" {
     max_retry_duration   = "0s"
     min_backoff_duration = "5s"
     max_backoff_duration = "60s"
-    max_doublings        = 0
+    max_doublings        = 5
   }
 
   http_target {

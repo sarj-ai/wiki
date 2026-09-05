@@ -46,6 +46,11 @@ run "bounded_authenticated_recovery" {
   }
 
   assert {
+    condition     = google_cloud_scheduler_job.document_transform_reconcile_dammam[0].retry_config[0].max_doublings == 5
+    error_message = "Recovery must use Scheduler's canonical doubling default to avoid perpetual drift; retry count and duration remain zero."
+  }
+
+  assert {
     condition     = !google_cloud_scheduler_job.document_transform_reconcile_dammam[0].paused
     error_message = "Recovery should be enabled outside maintenance mode."
   }

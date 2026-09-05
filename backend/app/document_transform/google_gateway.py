@@ -27,6 +27,7 @@ from app.document_transform.brand import (
     paragraph_spacing,
 )
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST, normalize_header_title
+from app.document_transform.bullet_stage_diagnostics import log_bullet_stage
 from app.document_transform.bullet_style_projection import (
     align_branded_bullet_metadata,
     bullet_style_diagnostics,
@@ -76,11 +77,15 @@ from app.document_transform.native_date_flow import (
 from app.document_transform.native_footer import FooterAction, FooterCheckpoint, plan_native_footer
 from app.document_transform.native_footer_flow import (
     NativeFooterCheckpoint,
+    NativeFooterCoverage,
+    NativeFooterSkip,
     NativeFooterStage,
     footer_document_tab,
     footer_invariant_sha256,
+    verified_footer_coverage_projection,
     verified_footer_projection,
 )
+from app.document_transform.provider_diagnostics import native_provider_diagnostics
 from app.document_transform.schemas import (
     DocumentOutput,
     DriveFileSource,
@@ -299,6 +304,7 @@ class GoogleDocumentGateway(DocumentGateway):
             revision_id = document.get("revisionId")
             if not isinstance(revision_id, str) or metadata.get("mimeType") != MIME_DOC:
                 raise DocumentGatewayError
+            log_bullet_stage(document, "source_read")
             return SourceSnapshot(
                 title=_required_string(metadata, "name"),
                 parent_folder_id=_required_parent(metadata),
@@ -375,26 +381,69 @@ class GoogleDocumentGateway(DocumentGateway):
         document = await asyncio.to_thread(self._get_document_sync, draft.document_id)
         if document.get("revisionId") != draft.revision_id:
             raise InPlaceNeedsReviewError
-        tab = footer_document_tab(document, draft.tab_id)
-        # Existing footer segments, including blank custom ones, remain untouched.
-        if tab.get("footers") or tab.get("documentStyle", {}).get("defaultFooterId"):
-            return None
         url = f"https://wiki.sarj.ai/d/{draft.document_id}"
-        plan = plan_native_footer(
-            tab, tab_id=draft.tab_id, revision_id=draft.revision_id, short_link=url
-        )
+        topology = tuple(DocsTabId(tab_id) for tab_id, _ in _document_tabs(document))
+        eligible: list[DocsTabId] = []
+        skipped: list[NativeFooterSkip] = []
+        for tab_id in topology:
+            tab = footer_document_tab(document, tab_id)
+            style = tab.get("documentStyle", {})
+            reason = None
+            if not isinstance(style, dict) or not isinstance(tab.get("footers", {}), dict):
+                reason = "unsupported_layout"
+            elif tab.get("footers") or any(
+                style.get(key)
+                for key in ("defaultFooterId", "firstPageFooterId", "evenPageFooterId")
+            ):
+                reason = "custom_footer"
+            elif not isinstance(style.get("documentFormat", {}), dict):
+                reason = "unsupported_layout"
+            elif style.get("documentFormat", {}).get("documentMode") == "PAGELESS":
+                reason = "pageless"
+            elif (
+                (
+                    style.get("documentFormat", {}).get("documentMode") is not None
+                    and style.get("documentFormat", {}).get("documentMode") != "PAGES"
+                )
+                or any(
+                    style.get(key) is not None and style.get(key) is not False
+                    for key in ("useFirstPageHeaderFooter", "useEvenPageHeaderFooter")
+                )
+                or (
+                    plan_native_footer(
+                        tab, tab_id=tab_id, revision_id=draft.revision_id, short_link=url
+                    ).action
+                    is not FooterAction.CREATE
+                )
+            ):
+                reason = "unsupported_layout"
+            if reason is None:
+                eligible.append(tab_id)
+            else:
+                skipped.append(
+                    NativeFooterSkip.model_validate({"tab_id": tab_id, "reason": reason})
+                )
         marker_range = _terminal_body_marker_range(document)
-        if plan.action is not FooterAction.CREATE or marker_range is None:
-            return None
+        if marker_range is None:
+            raise InPlaceNeedsReviewError
+        first_tab = eligible[0] if eligible else draft.tab_id
+        suffix = f"{operation_id.hex}_{topology.index(first_tab)}"
         return NativeFooterCheckpoint(
-            tab_id=draft.tab_id,
+            stage=NativeFooterStage.CREATE if eligible else NativeFooterStage.COMPLETE,
+            tab_id=first_tab,
             url=url,
             display_text="Open in Wiki",
             revision_id=draft.revision_id,
-            create_marker=f"sarj_footer_create_{operation_id.hex}",
-            populate_marker=f"sarj_footer_populate_{operation_id.hex}",
+            create_marker=f"sarj_footer_create_{suffix}",
+            populate_marker=f"sarj_footer_populate_{suffix}",
             marker_range=marker_range,
             invariant_sha256=footer_invariant_sha256(document),
+            coverage=NativeFooterCoverage(
+                topology=topology,
+                pending=tuple(eligible[1:]),
+                skipped=tuple(skipped),
+                active=bool(eligible),
+            ),
         )
 
     @override
@@ -402,6 +451,40 @@ class GoogleDocumentGateway(DocumentGateway):
         self, *, document_id: FileId, checkpoint: NativeFooterCheckpoint
     ) -> NativeFooterCheckpoint:
         document = await asyncio.to_thread(self._get_document_sync, document_id)
+        coverage = checkpoint.coverage
+        if coverage is not None:
+            if tuple(tab_id for tab_id, _ in _document_tabs(document)) != coverage.topology:
+                raise InPlaceNeedsReviewError
+            if checkpoint.stage is NativeFooterStage.COMPLETE:
+                if not coverage.pending:
+                    verified_footer_coverage_projection(document, checkpoint)
+                    return checkpoint
+                if document.get("revisionId") != checkpoint.revision_id:
+                    raise InPlaceNeedsReviewError
+                verified_footer_projection(document, checkpoint, populated=True)
+                next_tab = coverage.pending[0]
+                suffix = f"{checkpoint.create_marker.rsplit('_', 1)[0]}_{coverage.topology.index(next_tab)}"
+                return NativeFooterCheckpoint(
+                    tab_id=next_tab,
+                    url=checkpoint.url,
+                    display_text=checkpoint.display_text,
+                    revision_id=checkpoint.revision_id,
+                    create_marker=suffix,
+                    populate_marker=suffix.replace(
+                        "sarj_footer_create_", "sarj_footer_populate_", 1
+                    ),
+                    marker_range=checkpoint.marker_range,
+                    invariant_sha256=footer_invariant_sha256(document),
+                    coverage=coverage.model_copy(
+                        update={
+                            "pending": coverage.pending[1:],
+                            "completed": (
+                                *coverage.completed,
+                                checkpoint.model_copy(update={"coverage": None}),
+                            ),
+                        }
+                    ),
+                )
         creating = checkpoint.stage is NativeFooterStage.CREATE
         marker = checkpoint.create_marker if creating else checkpoint.populate_marker
         if not _has_exact_named_range(document, marker, checkpoint.marker_range):
@@ -765,6 +848,10 @@ class GoogleDocumentGateway(DocumentGateway):
         if not eligible or document is None:
             raise InPlaceNotAllowedError
         if _has_active_suggestions(document):
+            logger.info(
+                "document in-place preflight checks={checks}",
+                checks={"in_place_active_suggestions": True},
+            )
             raise InPlaceNeedsReviewError
         headers: list[TabHeader] = []
         preserved_headers: list[TabHeader] = []
@@ -802,6 +889,16 @@ class GoogleDocumentGateway(DocumentGateway):
             headers.append(TabHeader(tab_id=tab_id, header_id=DocsSegmentId(header_id)))
         parse_google_document(document, title=title)
         marker_range = _terminal_body_marker_range(document)
+        logger.info(
+            "document in-place preflight checks={checks}",
+            checks={
+                "tab_count": len(headers) + len(preserved_headers) + len(missing) + len(unknown),
+                "unknown_header_count": len(unknown),
+                "missing_header_count": len(missing),
+                "in_place_logo_available": bool(self._logo_uri),
+                "in_place_marker_available": marker_range is not None,
+            },
+        )
         return InPlaceInspection(
             output=DocumentOutput(
                 file_id=FileId(_required_string(document, "documentId")),
@@ -854,7 +951,8 @@ class GoogleDocumentGateway(DocumentGateway):
             logger.warning(
                 "document stage provider boundary http_status={http_status} "
                 "revision_unchanged={revision_unchanged} marker_checks={marker_checks} "
-                "request_kinds={request_kinds}",
+                "request_kinds={request_kinds} diagnostics={diagnostics}",
+                diagnostics=native_provider_diagnostics(exc, atomic_requests),
                 request_kinds=stage_request_kinds(requests),
                 http_status=exc.http_status if isinstance(exc, DocumentGatewayError) else None,
                 revision_unchanged=document.get("revisionId") == required_revision_id,
@@ -982,6 +1080,7 @@ class GoogleDocumentGateway(DocumentGateway):
         if not isinstance(parents, list) or not parents or not isinstance(parents[0], str):
             raise DocumentGatewayError
         document = self._get_document_sync(FileId(file_id))
+        log_bullet_stage(document, "draft_read")
         revision_id = _required_string(document, "revisionId")
         tab_id = _first_tab_id(document)
         properties = raw.get("appProperties", {})
@@ -1020,6 +1119,7 @@ class GoogleDocumentGateway(DocumentGateway):
             return draft
         document = self._get_document_sync(draft.document_id)
         tabs = tuple(_document_tabs(document))
+        log_bullet_stage(document, "pre_header")
         requests: list[dict[str, object]] = []
         warnings: list[str] = [] if self._logo_uri else ["logo_unavailable"]
         pending_write_may_have_committed = bool(
@@ -1061,6 +1161,7 @@ class GoogleDocumentGateway(DocumentGateway):
             )
             document = self._get_document_sync(draft.document_id)
             tabs = tuple(_document_tabs(document))
+        log_bullet_stage(document, "post_header")
         tab_headers: list[TabHeader] = []
         for tab_id, document_tab in tabs:
             style = document_tab.get("documentStyle", {})
@@ -1111,6 +1212,7 @@ class GoogleDocumentGateway(DocumentGateway):
             raise IncompatiblePendingOutputError
         marker_name = f"sarj-transform-copy-{mutation_sha256}"
         document = self._get_document_sync(draft.document_id)
+        log_bullet_stage(document, "pre_style")
         current_revision = DocsRevisionId(_required_string(document, "revisionId"))
         if draft.pending_mutation_sha256 == mutation_sha256:
             marker_range = _terminal_body_marker_range(document)
@@ -1175,6 +1277,7 @@ class GoogleDocumentGateway(DocumentGateway):
             _terminal_body_marker_range(document) or {},
         ):
             raise DocumentGatewayError
+        log_bullet_stage(document, "post_style")
         return OutputDraft(
             output=draft.output,
             document_id=draft.document_id,
@@ -1203,8 +1306,8 @@ class GoogleDocumentGateway(DocumentGateway):
         if draft.native_dates is not None:
             output_document = verified_date_projection(output_document, draft.native_dates)
         if draft.native_footer is not None:
-            output_document, _ = verified_footer_projection(
-                output_document, draft.native_footer, populated=True
+            output_document = verified_footer_coverage_projection(
+                output_document, draft.native_footer
             )
         if source.markdown is not None:
             rendered_markdown = rewrite_markdown(

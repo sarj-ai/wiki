@@ -516,6 +516,7 @@ describe("DocumentPolishDialog", () => {
   it("fails closed and offers retry when edit capabilities cannot be checked", async () => {
     vi.mocked(documentTransformApi.capabilities).mockRejectedValue(new Error("offline"));
     const create = vi.spyOn(documentTransformApi, "create");
+    const reload = vi.spyOn(window.location, "reload").mockImplementation(vi.fn<() => void>());
 
     renderDialog(root, {
       allowInPlace: true,
@@ -533,6 +534,36 @@ describe("DocumentPolishDialog", () => {
     });
     clickButton(findButtonNow("Create polished copy"));
     expect(create).not.toHaveBeenCalled();
+    clickButton(findButtonNow("Reload page"));
+    expect(reload).toHaveBeenCalledOnce();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("does not reload over an operation reserved by another tab", async () => {
+    vi.mocked(documentTransformApi.capabilities).mockRejectedValue(new Error("stale action"));
+    const reload = vi.spyOn(window.location, "reload").mockImplementation(vi.fn<() => void>());
+    renderDialog(root, {
+      allowInPlace: true,
+      expectedModifiedTime: "revision",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Notes",
+    });
+    await vi.waitFor(() => expect(findButtonNow("Reload page")).toBeEnabled());
+    writeTransformRecovery("owner-1", "drive:source-1", {
+      createdAt: Date.now(),
+      key: "66666666-6666-4666-8666-666666666666",
+      mode: "format",
+      outputStrategy: "copy",
+      source: null,
+      taskId: "55555555-5555-4555-8555-555555555555",
+    });
+    clickButton(findButtonNow("Reload page"));
+    expect(reload).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(findButtonNow("Resume checking")).toBeEnabled());
+    expect(document.body).not.toHaveTextContent("Reload page");
+    expect(document.body).toHaveTextContent("55555555-5555-4555-8555-555555555555");
   });
 
   it.each([

@@ -884,6 +884,30 @@ export function DocumentPolishDialog({
                 >
                   Retry edit options
                 </Button>
+                {!optionsLocked && !recovery.isPending && !recovery.isError && owner ? (
+                  <Button
+                    onClick={() => {
+                      try {
+                        if (readTransformRecovery(owner, sourceIdentity)) {
+                          void recovery.refetch();
+                          return;
+                        }
+                        window.location.reload();
+                      } catch {
+                        void recovery.refetch();
+                      }
+                    }}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    Reload page
+                  </Button>
+                ) : null}
+                <p className="text-muted-foreground">
+                  If retry keeps failing after an update, reload this page to load the latest
+                  version. Reloading does not start polish or clear saved operations.
+                </p>
               </div>
             ) : null}
 

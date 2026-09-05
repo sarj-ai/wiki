@@ -3,6 +3,7 @@ from dataclasses import replace
 from typing import Any
 import uuid
 
+from loguru import logger
 import pytest
 
 from app.document_transform import google_gateway as google_gateway_module
@@ -83,6 +84,39 @@ def test_header_verification_override_does_not_weaken_in_place_identity() -> Non
     assert verify_brand_application(document, parsed, expected_header_title="Decision")
     assert not verify_brand_application(document, parsed, expected_header_title="Different title")
     assert parsed.title == "Untitled document"
+
+
+async def test_repeat_copy_title_preflight_reports_unknown_header_without_private_content() -> None:
+    document = _branded_google_document()
+    document["documentId"] = "private-document"
+    gateway = object.__new__(GoogleDocumentGateway)
+    gateway._logo_uri = "https://private.example/secret-logo"
+    snapshot = SourceSnapshot(
+        title="Decision — Sarj formatted (12345678)",
+        parent_folder_id=FileId("private-folder"),
+        modified_time="private-time",
+        revision_id=DocsRevisionId("private-revision"),
+        media_type="application/vnd.google-apps.document",
+        google_document=document,
+        owned_by_me=True,
+        can_edit=True,
+        is_personal_drive=True,
+    )
+    messages: list[str] = []
+    sink = logger.add(lambda message: messages.append(str(message)), format="{message}")
+    try:
+        inspection = await gateway.inspect_in_place(snapshot=snapshot, title=snapshot.title)
+    finally:
+        logger.remove(sink)
+    assert inspection.unknown_header_tab_ids
+    assert not inspection.fully_branded
+    logged = "\n".join(messages)
+    assert "document in-place preflight" in logged
+    assert "'unknown_header_count': 1" in logged
+    assert "'in_place_logo_available': True" in logged
+    assert "Decision" not in logged
+    assert "private" not in logged
+    assert "12345678" not in logged
 
 
 async def test_copy_auto_title_and_header_agree_and_retry_keeps_identity() -> None:

@@ -7,6 +7,8 @@ from types import MappingProxyType
 from typing import Any, NamedTuple, Protocol
 import uuid
 
+from loguru import logger
+
 from app.document_transform.brand import (
     SarjBrandProfile,
     build_copy_mutations,
@@ -33,6 +35,7 @@ from app.document_transform.gateway import (
     TabHeader,
 )
 from app.document_transform.ir import (
+    MAX_DOC_TABS,
     DocumentIR,
     parse_google_document,
     parse_markdown,
@@ -40,7 +43,7 @@ from app.document_transform.ir import (
 )
 from app.document_transform.models import PatchGenerator
 from app.document_transform.naming import suggested_document_title
-from app.document_transform.native_footer_flow import NativeFooterStage
+from app.document_transform.native_footer_flow import footer_coverage_complete
 from app.document_transform.planner import TextTransformPlanner, TransformOutcome
 from app.document_transform.schemas import (
     CopyCheckpoint,
@@ -74,7 +77,7 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, Task
 
 
 PIPELINE_VERSION = "document-transform-v3"
-REQUEST_BUILDER_VERSION = "google-docs-requests-v7"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v8"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _OUTPUT_SUFFIX = MappingProxyType(
     {
@@ -429,6 +432,20 @@ class DocumentTransformExecutor:
             )
             checkpoint = self._copy_checkpoint_or_none() or checkpoint
         findings.extend(applied_validation.findings)
+        if checkpoint.native_footer is not None and checkpoint.native_footer.coverage is not None:
+            findings.extend(
+                TransformFinding(
+                    code=f"native_footer_{reason}",
+                    detail={
+                        "custom_footer": "Existing custom footers were preserved on some tabs.",
+                        "pageless": "Wiki footers were not added to pageless tabs.",
+                        "unsupported_layout": "Wiki footers were not added where tab layout could not be safely verified.",
+                    }[reason],
+                )
+                for reason in sorted(
+                    {skip.reason for skip in checkpoint.native_footer.coverage.skipped}
+                )
+            )
         if checkpoint.native_dates is not None and checkpoint.native_dates.declined_reason:
             findings.append(
                 TransformFinding(
@@ -575,10 +592,10 @@ class DocumentTransformExecutor:
             checkpoint = await self._save_copy_checkpoint(
                 checkpoint.model_copy(update={"native_footer": footer})
             )
-        # At most two native batches. Each durable pre-dispatch state has its
-        # own atomic marker; a crash after creation never creates a second footer.
-        for _ in range(2):
-            if footer.stage is NativeFooterStage.COMPLETE:
+        # Two native batches and one persisted transition per bounded tab.
+        # Legacy checkpoints never acquire coverage or additional tabs on retry.
+        for _ in range(3 * MAX_DOC_TABS):
+            if footer_coverage_complete(footer):
                 break
             footer = await self._gateway.apply_copy_footer_stage(
                 document_id=draft.document_id, checkpoint=footer
@@ -586,7 +603,7 @@ class DocumentTransformExecutor:
             checkpoint = await self._save_copy_checkpoint(
                 checkpoint.model_copy(update={"native_footer": footer})
             )
-        if footer.stage is not NativeFooterStage.COMPLETE:
+        if not footer_coverage_complete(footer):
             raise OutputVerificationError
         return replace(draft, revision_id=footer.revision_id, native_footer=footer)
 
@@ -984,9 +1001,20 @@ class DocumentTransformExecutor:
             brand=self._brand,
         )
         if outcome.findings:
+            logger.info(
+                "document in-place preflight checks={checks}",
+                checks={"in_place_planner_findings": True},
+            )
             raise InPlaceNeedsReviewError
         branded = request.mode is not TransformMode.UNSLOP
         if branded and (inspection.unknown_header_tab_ids or not inspection.logo_uri):
+            logger.info(
+                "document in-place preflight checks={checks}",
+                checks={
+                    "in_place_unknown_header": bool(inspection.unknown_header_tab_ids),
+                    "in_place_missing_logo": not bool(inspection.logo_uri),
+                },
+            )
             raise InPlaceNeedsReviewError
         replacements = {
             block.id: transformed.text
@@ -1020,6 +1048,10 @@ class DocumentTransformExecutor:
             stage = InPlaceCheckpointStage.CONTENT
         changed = bool(requests)
         if requests and inspection.marker_range is None:
+            logger.info(
+                "document in-place preflight checks={checks}",
+                checks={"in_place_missing_marker": True},
+            )
             raise InPlaceNeedsReviewError
         checkpoint = InPlaceCheckpoint(
             document_id=source.file_id,

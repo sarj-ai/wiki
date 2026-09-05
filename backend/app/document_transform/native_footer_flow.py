@@ -4,12 +4,13 @@ from copy import deepcopy
 from enum import StrEnum
 import hashlib
 import json
-from typing import Any, Literal, NamedTuple
+from typing import Any, Literal, NamedTuple, Self
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import InPlaceNeedsReviewError
+from app.document_transform.ir import MAX_DOC_TABS
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId
 
 
@@ -33,6 +34,79 @@ class NativeFooterCheckpoint(BaseModel):
     marker_range: dict[str, Any]
     invariant_sha256: str
     footer_id: DocsSegmentId | None = None
+    coverage: NativeFooterCoverage | None = None
+
+    @model_validator(mode="after")
+    def validate_coverage(self) -> Self:
+        coverage = self.coverage
+        if coverage is None:
+            return self
+        entries = coverage.completed
+        completed_ids = tuple(entry.tab_id for entry in entries)
+        active_ids = (self.tab_id,) if coverage.active else ()
+        processed = completed_ids + active_ids + coverage.pending
+        skipped_ids = tuple(skip.tab_id for skip in coverage.skipped)
+        all_ids = processed + skipped_ids
+        markers = [
+            marker for entry in entries for marker in (entry.create_marker, entry.populate_marker)
+        ]
+        markers.extend((self.create_marker, self.populate_marker))
+        invalid_ids = (
+            len(set(all_ids)) != len(all_ids)
+            or len(set(coverage.topology)) != len(coverage.topology)
+            or len(set(markers)) != len(markers)
+            or set(all_ids) != set(coverage.topology)
+            or tuple(tab for tab in coverage.topology if tab not in skipped_ids) != processed
+        )
+        invalid_entries = any(
+            entry.coverage is not None or entry.stage is not NativeFooterStage.COMPLETE
+            for entry in entries
+        )
+        invalid_inactive = not coverage.active and (
+            bool(processed) or self.stage is not NativeFooterStage.COMPLETE
+        )
+        if not coverage.topology or invalid_ids or invalid_entries or invalid_inactive:
+            msg = "Invalid bounded footer coverage"
+            raise ValueError(msg)
+        return self
+
+
+class NativeFooterSkip(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tab_id: DocsTabId
+    reason: Literal["custom_footer", "pageless", "unsupported_layout"]
+
+
+class NativeFooterCoverage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    topology: tuple[DocsTabId, ...] = Field(max_length=MAX_DOC_TABS)
+    pending: tuple[DocsTabId, ...] = Field(default=(), max_length=MAX_DOC_TABS)
+    completed: tuple[NativeFooterCheckpoint, ...] = Field(default=(), max_length=MAX_DOC_TABS)
+    skipped: tuple[NativeFooterSkip, ...] = Field(default=(), max_length=MAX_DOC_TABS)
+    active: bool = True
+
+
+def footer_coverage_complete(checkpoint: NativeFooterCheckpoint) -> bool:
+    return checkpoint.stage is NativeFooterStage.COMPLETE and (
+        checkpoint.coverage is None or not checkpoint.coverage.pending
+    )
+
+
+def verified_footer_coverage_projection(
+    document: dict[str, Any], checkpoint: NativeFooterCheckpoint
+) -> dict[str, Any]:
+    if not footer_coverage_complete(checkpoint):
+        raise InPlaceNeedsReviewError
+    coverage = checkpoint.coverage
+    if coverage is not None and not coverage.active:
+        if footer_invariant_sha256(document) != checkpoint.invariant_sha256:
+            raise InPlaceNeedsReviewError
+        return deepcopy(document)
+    projected, _ = verified_footer_projection(document, checkpoint, populated=True)
+    if coverage is not None:
+        for prior in reversed(coverage.completed):
+            projected, _ = verified_footer_projection(projected, prior, populated=True)
+    return projected
 
 
 def footer_document_tab(document: dict[str, Any], tab_id: DocsTabId) -> dict[str, Any]:

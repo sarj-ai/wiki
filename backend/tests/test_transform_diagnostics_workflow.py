@@ -43,6 +43,82 @@ def test_only_static_typed_fields_are_emitted() -> None:
     assert "message" not in rows[0]
 
 
+def test_in_place_preflight_exposes_only_static_reasons_and_counts() -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = "document in-place preflight checks=SECRET"
+    record["jsonPayload"]["record"]["extra"]["checks"] = {
+        "in_place_unknown_header": True,
+        "in_place_missing_logo": False,
+        "unknown_header_count": 3,
+        "missing_header_count": 0,
+        "private_header_text": "SECRET",
+    }
+    row = MODULE["sanitize"]([record], TASK)[0]
+    assert row["in_place_unknown_header"] is True
+    assert row["in_place_missing_logo"] is False
+    assert row["unknown_header_count"] == 3
+    assert row["missing_header_count"] == 0
+    assert "SECRET" not in json.dumps(row)
+
+
+def test_provider_boundary_diagnostics_are_finite_and_private() -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = (
+        "document stage provider boundary http_status=400 SECRET"
+    )
+    record["jsonPayload"]["record"]["extra"]["diagnostics"] = {
+        "provider_category": "date_properties",
+        "provider_operation": "insertDate",
+        "provider_request_ordinal": 2,
+        "provider_message": "SECRET",
+    }
+    row = MODULE["sanitize"]([record], TASK)[0]
+    assert row["provider_category"] == "date_properties"
+    assert row["provider_operation"] == "insertDate"
+    assert row["provider_request_ordinal"] == 2
+    assert "SECRET" not in json.dumps(row)
+
+
+def test_bullet_stage_snapshot_has_only_finite_labels_and_bounded_counts() -> None:
+    record = _record()
+    extra = record["jsonPayload"]["record"]["extra"]
+    record["jsonPayload"]["record"]["message"] = "document bullet stage snapshot stage=SECRET"
+    extra["bullet_stage"] = "pre_style"
+    extra["diagnostics"] = {
+        "bullet_snapshot_complete": True,
+        "bullet_snapshot_underline_false": 10,
+        "bullet_snapshot_SECRET_false": 1,
+    }
+    row = MODULE["sanitize"]([record], TASK)[0]
+    assert row["bullet_stage"] == "pre_style"
+    assert row["bullet_snapshot_underline_false"] == 10
+    assert row["bullet_snapshot_complete"] is True
+    assert "SECRET" not in json.dumps(row)
+    extra["bullet_stage"] = "SECRET"
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
+    extra["bullet_stage"] = "pre_style"
+    extra["diagnostics"]["bullet_snapshot_underline_false"] = 50_001
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("provider_category", "SECRET"),
+        ("provider_operation", "SECRET"),
+        ("provider_request_ordinal", True),
+        ("provider_request_ordinal", 201),
+    ],
+)
+def test_malformed_provider_diagnostics_fail_closed(key: str, value: object) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["extra"]["diagnostics"] = {key: value}
+    with pytest.raises(ValueError, match=r"^$"):
+        MODULE["sanitize"]([record], TASK)
+
+
 def test_layout_eligibility_diagnostics_use_fixed_typed_allowlist() -> None:
     record = _record()
     record["jsonPayload"]["record"]["message"] = "document tab structure eligibility"
