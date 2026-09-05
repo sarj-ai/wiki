@@ -35,7 +35,7 @@ def _bodies(document: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     return result
 
 
-def _paragraph_digest(element: dict[str, Any]) -> str:
+def _paragraph_digest(element: dict[str, Any], *, preserve_font_family: bool = False) -> str:
     payload = deepcopy(element)
     start, end = payload.pop("startIndex"), payload.pop("endIndex")
     if type(start) is not int or type(end) is not int or not 0 <= start < end:
@@ -71,11 +71,12 @@ def _paragraph_digest(element: dict[str, Any]) -> str:
             not isinstance(family["fontFamily"], str) or not family["fontFamily"]
         ):
             raise ValueError
-        family.pop("fontFamily", None)
-        if not family:
-            style.pop("weightedFontFamily", None)
-        if not style:
-            run.pop("textStyle", None)
+        if not preserve_font_family:
+            family.pop("fontFamily", None)
+            if not family:
+                style.pop("weightedFontFamily", None)
+            if not style:
+                run.pop("textStyle", None)
         if suffix is not None:
             if not content.endswith("\n"):
                 raise ValueError
@@ -203,5 +204,52 @@ def _coverage_is_complete(
             isinstance(part, dict) and isinstance(part.get("textRun"), dict) for part in parts
         )
         if plain and (source.tab_id, ordinal) not in identities:
+            return False
+    return True
+
+
+def verify_native_unstyled_text(
+    source: dict[str, Any], actual: dict[str, Any], original: DocumentIR
+) -> bool:
+    # COPY-only exact style proof where no font override was authorized.
+    try:
+        return _verify_native_unstyled_text(source, actual, original)
+    except KeyError, IndexError, TypeError, ValueError, AttributeError:
+        return False
+
+
+def _verify_native_unstyled_text(
+    source: dict[str, Any], actual: dict[str, Any], original: DocumentIR
+) -> bool:
+    before_bodies, after_bodies = _bodies(source), _bodies(actual)
+    for block in original.blocks:
+        if (
+            block.editable
+            or block.font_style_ranges
+            or not block.text
+            or block.source_range is None
+        ):
+            continue
+        location = block.source_range
+        matches = [
+            (ordinal, element)
+            for ordinal, element in enumerate(before_bodies[location.tab_id])
+            if element.get("startIndex") == location.start_index
+            and element.get("endIndex") == location.end_index + 1
+        ]
+        if len(matches) != 1:
+            return False
+        ordinal, element = matches[0]
+        parts = element.get("paragraph", {}).get("elements", [])
+        if not all(
+            isinstance(part, dict) and isinstance(part.get("textRun"), dict) for part in parts
+        ):
+            # Existing protected inventory binds the entire nonplain payload.
+            continue
+        if _paragraph_digest(element, preserve_font_family=True) != _paragraph_digest(
+            after_bodies[location.tab_id][ordinal], preserve_font_family=True
+        ) or _named_styles_digest(source, location.tab_id) != _named_styles_digest(
+            actual, location.tab_id
+        ):
             return False
     return True

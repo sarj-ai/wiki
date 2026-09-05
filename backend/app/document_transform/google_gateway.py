@@ -95,6 +95,11 @@ from app.document_transform.native_date_flow import (
     verified_date_projection,
     verify_dates_unchanged,
 )
+from app.document_transform.native_font_proof import (
+    capture_native_font_proof,
+    verify_native_font_proof,
+    verify_native_unstyled_text,
+)
 from app.document_transform.native_footer import FooterAction, FooterCheckpoint, plan_native_footer
 from app.document_transform.native_footer_flow import (
     NativeFooterCheckpoint,
@@ -1607,7 +1612,19 @@ class GoogleDocumentGateway(DocumentGateway):
         headers_preserved = source_document is None or _occupied_headers_preserved(
             source_document, output_document
         )
-        structure_preserved = structural_preserved and protected_preserved and headers_preserved
+        structure_preserved = (
+            structural_preserved
+            and protected_preserved
+            and headers_preserved
+            and (
+                not verify_brand
+                or _copy_font_preserved(
+                    source_document,
+                    structure_document,
+                    list_identity_equivalent=copy_list_identity_equivalent,
+                )
+            )
+        )
         content_preserved = _typography_content_preserved(
             parsed, expected, verify_brand=verify_brand
         )
@@ -2406,6 +2423,58 @@ def _count_structural_keys(value: object, counts: dict[str, int]) -> None:
                 _count_structural_keys(child, counts)
         case _:
             pass
+
+
+def _copy_font_preserved(
+    source: dict[str, Any] | None,
+    actual: dict[str, Any],
+    *,
+    list_identity_equivalent: bool,
+) -> bool:
+    if source is None:
+        return True
+    # List alpha-renaming is allowed only after the complete existing protected
+    # inventory proves the bijection. Never infer it from text or run styles.
+    if list_identity_equivalent:
+        source = normalize_copy_list_identity(source)
+        normalized_actual = normalize_copy_list_identity(actual)
+        if source is None or normalized_actual is None:
+            return False
+        actual = normalized_actual
+    try:
+        original = parse_google_document(source, title="")
+        if any(
+            not _font_ranges_cover_paragraph(block)
+            for block in original.blocks
+            if not block.editable and block.font_style_ranges
+        ):
+            return False
+        proofs = capture_native_font_proof(source, original)
+        return verify_native_font_proof(actual, proofs) and verify_native_unstyled_text(
+            source, actual, original
+        )
+    except KeyError, IndexError, TypeError, ValueError, AttributeError, UnsupportedSourceError:
+        return False
+
+
+def _font_ranges_cover_paragraph(block: TextBlock) -> bool:
+    source = block.source_range
+    if source is None or source.segment_id is not None:
+        return False
+    cursor = source.start_index
+    for span in block.font_style_ranges:
+        if type(span.start_index) is not int or type(span.end_index) is not int:
+            return False
+        if (
+            span.tab_id != source.tab_id
+            or span.segment_id is not None
+            or span.start_index != cursor
+            or span.end_index <= cursor
+            or span.end_index > source.end_index
+        ):
+            return False
+        cursor = span.end_index
+    return cursor == source.end_index
 
 
 def _protected_structure_inventory(document: dict[str, Any]) -> tuple[tuple[str, str], ...]:
