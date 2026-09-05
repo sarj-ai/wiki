@@ -298,7 +298,7 @@ async def test_copy_roles_are_persisted_reconstructed_and_replayed(
         checkpoint = store.checkpoints[-1]
         if interruption == "old_builder":
             checkpoint = checkpoint.model_copy(
-                update={"request_builder_version": "google-docs-requests-v12"}
+                update={"request_builder_version": "google-docs-requests-v13"}
             )
         elif interruption == "missing_roles" and mode is not TransformMode.UNSLOP:
             checkpoint = checkpoint.model_copy(update={"authored_labels": ()})
