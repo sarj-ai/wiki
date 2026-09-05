@@ -50,6 +50,11 @@ from app.document_transform.ir import (
 from app.document_transform.models import PatchGenerator
 from app.document_transform.naming import suggested_document_title
 from app.document_transform.native_footer_flow import footer_coverage_complete
+from app.document_transform.native_pagination import (
+    NativePaginationRule,
+    apply_native_pagination,
+    plan_native_pagination,
+)
 from app.document_transform.planner import TextTransformPlanner, TransformOutcome
 from app.document_transform.schemas import (
     CopyCheckpoint,
@@ -83,7 +88,7 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, Task
 
 
 PIPELINE_VERSION = "document-transform-v3"
-REQUEST_BUILDER_VERSION = "google-docs-requests-v11"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v12"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _OUTPUT_SUFFIX = MappingProxyType(
     {
@@ -215,6 +220,13 @@ class DocumentTransformExecutor:
                     outcome,
                     document=apply_authored_labels(
                         outcome.document, plan_authored_labels(original)
+                    ),
+                )
+                outcome = replace(
+                    outcome,
+                    document=apply_native_pagination(
+                        outcome.document,
+                        plan_native_pagination(snapshot.google_document, outcome.document),
                     ),
                 )
             checkpoint = await self._save_copy_checkpoint(
@@ -435,6 +447,9 @@ class DocumentTransformExecutor:
                 operation_id=operation_id,
                 checkpoint=checkpoint,
                 draft=applied,
+                source_has_native_title=any(
+                    block.source_named_style == "TITLE" for block in original.blocks
+                ),
             )
             checkpoint = self._copy_checkpoint_or_none() or checkpoint
             # Footer metadata follows content and tab verification. Never revisit
@@ -651,6 +666,7 @@ class DocumentTransformExecutor:
         operation_id: uuid.UUID,
         checkpoint: CopyCheckpoint,
         draft: OutputDraft,
+        source_has_native_title: bool,
     ) -> OutputDraft:
         if checkpoint.tab_naming is None:
             tab_naming = await self._gateway.plan_tab_naming(
@@ -658,7 +674,8 @@ class DocumentTransformExecutor:
                 title=checkpoint.source_title,
                 operation_id=operation_id,
                 required_revision_id=draft.revision_id,
-                prefer_document_title=bool(checkpoint.authored_labels),
+                prefer_document_title=bool(checkpoint.authored_labels)
+                and not source_has_native_title,
             )
             if tab_naming is None:
                 return draft
@@ -1369,11 +1386,17 @@ def _new_copy_checkpoint(
     authored_labels = (
         plan_authored_labels(original) if request.mode is not TransformMode.UNSLOP else ()
     )
+    pagination = (
+        plan_native_pagination(snapshot.google_document, outcome.document)
+        if request.mode is not TransformMode.UNSLOP
+        else ()
+    )
     output_name = _copy_output_name(request, original)
     plan_payload = _copy_plan_payload(
         output_name=output_name,
         replacements=replacements,
         authored_labels=authored_labels,
+        pagination=pagination,
         findings=list(outcome.findings),
         applied_patch_count=outcome.applied_count,
         deterministic_patch_count=outcome.deterministic_count,
@@ -1385,6 +1408,7 @@ def _new_copy_checkpoint(
     )
     return CopyCheckpoint(
         authored_labels=authored_labels,
+        pagination=pagination,
         source_title=snapshot.title,
         source_sha256=source_sha256,
         source_modified_time=snapshot.modified_time,
@@ -1465,12 +1489,20 @@ def _validate_copy_checkpoint(
     transformed = apply_authored_labels(
         original.replace_blocks(checkpoint.replacements), checkpoint.authored_labels
     )
+    if checkpoint.pagination != (
+        plan_native_pagination(snapshot.google_document, transformed)
+        if request.mode is not TransformMode.UNSLOP
+        else ()
+    ):
+        raise OutputConflictError
+    transformed = apply_native_pagination(transformed, checkpoint.pagination)
     if transformed.semantic_sha256 != checkpoint.expected_semantic_sha256:
         raise OutputConflictError
     plan_payload = _copy_plan_payload(
         output_name=checkpoint.output_name,
         replacements=checkpoint.replacements,
         authored_labels=checkpoint.authored_labels,
+        pagination=checkpoint.pagination,
         findings=checkpoint.findings,
         applied_patch_count=checkpoint.applied_patch_count,
         deterministic_patch_count=checkpoint.deterministic_patch_count,
@@ -1496,8 +1528,11 @@ def _copy_checkpoint_outcome(
     original: DocumentIR,
 ) -> TransformOutcome:
     return TransformOutcome(
-        document=apply_authored_labels(
-            original.replace_blocks(checkpoint.replacements), checkpoint.authored_labels
+        document=apply_native_pagination(
+            apply_authored_labels(
+                original.replace_blocks(checkpoint.replacements), checkpoint.authored_labels
+            ),
+            checkpoint.pagination,
         ),
         findings=tuple(checkpoint.findings),
         applied_count=checkpoint.applied_patch_count,
@@ -1512,6 +1547,7 @@ def _copy_plan_payload(
     output_name: str,
     replacements: dict[str, str],
     authored_labels: tuple[AuthoredLabelRole, ...],
+    pagination: tuple[NativePaginationRule, ...],
     findings: list[TransformFinding],
     applied_patch_count: int,
     deterministic_patch_count: int,
@@ -1525,6 +1561,7 @@ def _copy_plan_payload(
         "output_name": output_name,
         "replacements": replacements,
         "authored_labels": [role.model_dump(mode="json") for role in authored_labels],
+        "pagination": [rule.model_dump(mode="json") for rule in pagination],
         "findings": [finding.model_dump(mode="json") for finding in findings],
         "applied_patch_count": applied_patch_count,
         "deterministic_patch_count": deterministic_patch_count,

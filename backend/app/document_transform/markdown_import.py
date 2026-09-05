@@ -326,7 +326,9 @@ def _topology_matches(document: dict[str, Any], expected: MarkdownImportManifest
     section_breaks = 0
     previous_was_table = False
     for index, element in enumerate(elements):
-        if not isinstance(element, dict) or len(element) != 1:
+        if not isinstance(element, dict) or not _location_wrapper_matches(
+            element, {"sectionBreak", "table", "paragraph"}
+        ):
             return False
         if "sectionBreak" in element:
             section_breaks += 1
@@ -357,10 +359,28 @@ def _paragraph_topology_matches(paragraph: dict[str, Any]) -> bool:
     elements = paragraph.get("elements", [])
     return isinstance(elements, list) and all(
         isinstance(element, dict)
-        and set(element) == {"textRun"}
+        and _location_wrapper_matches(element, {"textRun"})
         and isinstance(element["textRun"], dict)
         for element in elements
     )
+
+
+def _location_wrapper_matches(element: object, variants: set[str]) -> bool:
+    if not isinstance(element, dict):
+        return False
+    fields = {key: value for key, value in element.items() if isinstance(key, str)}
+    if len(fields) != len(element):
+        return False
+    locations = {"startIndex", "endIndex"}
+    if len(set(fields) - locations) != 1 or not (set(fields) - locations) <= variants:
+        return False
+    for key in locations & fields.keys():
+        value = fields[key]
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            return False
+    start = fields.get("startIndex")
+    end = fields.get("endIndex")
+    return not (isinstance(start, int) and isinstance(end, int) and end <= start)
 
 
 def _table_topology_matches(table: dict[str, Any]) -> bool:
@@ -379,7 +399,7 @@ def _table_topology_matches(table: dict[str, Any]) -> bool:
             content = cell.get("content", [])
             if not isinstance(content, list) or not all(
                 isinstance(element, dict)
-                and set(element) == {"paragraph"}
+                and _location_wrapper_matches(element, {"paragraph"})
                 and isinstance(element["paragraph"], dict)
                 and _paragraph_topology_matches(element["paragraph"])
                 for element in content

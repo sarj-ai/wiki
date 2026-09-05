@@ -27,6 +27,7 @@ from app.document_transform.header_provenance import (
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.document_transform.native_date_flow import NativeDateCheckpoint
 from app.document_transform.native_footer_flow import NativeFooterCheckpoint
+from app.document_transform.native_pagination import MAX_PAGINATION_RULES, NativePaginationRule
 from app.document_transform.tab_names import TabNamingPlan
 from app.document_transform.tab_structure_execution import StructureCheckpoint
 from app.identifiers import BrandProfileId, DocsRevisionId, FileId, ModelId
@@ -266,6 +267,9 @@ class CopyCheckpointStage(StrEnum):
 
 
 class CopyCheckpoint(StrictTransformModel):
+    pagination: tuple[NativePaginationRule, ...] = Field(
+        default=(), max_length=MAX_PAGINATION_RULES
+    )
     authored_labels: tuple[AuthoredLabelRole, ...] = Field(default=(), max_length=100)
     header_finalization: HeaderIdentityFinalization | None = None
     managed_headers: dict[str, str] | None = None

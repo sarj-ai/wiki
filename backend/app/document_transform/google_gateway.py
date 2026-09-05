@@ -24,6 +24,7 @@ from app.document_transform.brand import (
     SarjBrandProfile,
     paragraph_color,
     paragraph_font_size,
+    paragraph_keep_with_next,
     paragraph_named_style,
     paragraph_spacing,
 )
@@ -2704,7 +2705,11 @@ def _paragraph_brand_diagnostics(
                 paragraph_style.get("spaceBelow"),
                 spacing.below,
             )
-            and paragraph_style.get("keepWithNext") is (block.kind is BlockKind.HEADING)
+            and paragraph_style.get("keepWithNext") is paragraph_keep_with_next(block)
+            and (
+                block.pagination_keep_with_next is None
+                or paragraph_style.get("keepLinesTogether") is True
+            )
         ),
         "text_style": bool(text_runs)
         and all(
@@ -3039,7 +3044,8 @@ def _paragraph_has_brand(paragraph: dict[str, Any], block: TextBlock) -> bool:
             paragraph_style.get("spaceBelow"),
             spacing.below,
         ),
-        paragraph_style.get("keepWithNext") is (block.kind is BlockKind.HEADING),
+        paragraph_style.get("keepWithNext") is paragraph_keep_with_next(block),
+        block.pagination_keep_with_next is None or paragraph_style.get("keepLinesTogether") is True,
     )
     if not all(style_checks):
         return False
