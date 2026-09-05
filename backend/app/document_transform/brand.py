@@ -297,6 +297,12 @@ def _style_requests(
                     }
                 }
             )
+        preserve_native_style = (
+            block.kind in {BlockKind.LIST_ITEM, BlockKind.CHECKLIST}
+            and block.native_bullet_json is not None
+            and block.source_named_style == _named_style(block)
+            and block.source_style_text_sha256 == block.sha256
+        )
         requests.append(
             {
                 "updateParagraphStyle": {
@@ -313,10 +319,13 @@ def _style_requests(
                             "unit": "PT",
                         },
                         "keepWithNext": block.kind == BlockKind.HEADING,
-                        "namedStyleType": _named_style(block),
+                        **(
+                            {} if preserve_native_style else {"namedStyleType": _named_style(block)}
+                        ),
                     },
                     "fields": (
-                        "alignment,lineSpacing,spaceAbove,spaceBelow,keepWithNext,namedStyleType"
+                        "alignment,lineSpacing,spaceAbove,spaceBelow,keepWithNext"
+                        + ("" if preserve_native_style else ",namedStyleType")
                     ),
                 }
             }
@@ -335,7 +344,7 @@ def _style_requests(
             if block.kind == BlockKind.HEADING:
                 text_style["bold"] = block.native_named_style != "SUBTITLE"
                 fields += ",bold"
-            else:
+            elif not preserve_native_style:
                 # Explicitly retain authored body emphasis across named-style
                 # selection. Never synthesize emphasis for ordinary prose.
                 text_style.update(block.authored_emphasis)
@@ -607,6 +616,8 @@ def _post_edit_locations(original: DocumentIR, transformed: DocumentIR) -> Docum
                 editable=target.editable,
                 native_content=target.native_content,
                 native_named_style=target.native_named_style,
+                source_named_style=target.source_named_style,
+                source_style_text_sha256=target.source_style_text_sha256,
                 native_bullet_json=target.native_bullet_json,
                 authored_emphasis=target.authored_emphasis,
                 font_style_ranges=tuple(

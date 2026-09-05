@@ -136,6 +136,13 @@ describe("DocumentPolishDialog", () => {
       expect(document.body).toHaveTextContent("Creating and checking the new document");
       expect(findButtonNow("Polishing…")).toBeDisabled();
     });
+    expect(document.body).toHaveTextContent(
+      "Polishing this document… Checking its status automatically.",
+    );
+    expect(document.body).toHaveTextContent("Leaving this page does not cancel it.");
+    expect(document.body).toHaveTextContent(`Task: ${pending.id}`);
+    expect(document.body).not.toHaveTextContent("already reserved");
+    expect(document.body).not.toHaveTextContent("Resume checking");
     expect(documentTransformApi.create).toHaveBeenCalledWith(
       {
         expectedModifiedTime: "2026-09-03T12:00:00Z",
@@ -317,6 +324,8 @@ describe("DocumentPolishDialog", () => {
       expect(document.querySelector('[role="alert"]')).toHaveTextContent("Response was lost");
       expect(document.body).toHaveTextContent("Your existing operation is still reserved");
     });
+    expect(document.body).toHaveTextContent("A polish operation is already reserved");
+    expect(document.body).not.toHaveTextContent("Checking its status automatically");
     clickButton(findButtonNow("Resume checking"));
     expect(document.body).not.toHaveTextContent("Polish interrupted");
 
@@ -358,6 +367,8 @@ describe("DocumentPolishDialog", () => {
     );
     renderDialog(root, source, undefined, "owner-1");
     await vi.waitFor(() => expect(findButtonNow("Resume checking")).toBeEnabled());
+    expect(document.body).toHaveTextContent("A polish operation is already reserved");
+    expect(document.body).not.toHaveTextContent("Polishing this document");
     clickButton(findButtonNow("Resume checking"));
     await vi.waitFor(() =>
       expect(documentTransformApi.getTask).toHaveBeenCalledWith(

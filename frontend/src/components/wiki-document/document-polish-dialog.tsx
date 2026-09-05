@@ -621,11 +621,16 @@ export function DocumentPolishDialog({
             ) : null}
             {unresolved ? (
               <p className="text-sm" role="status">
-                A polish operation is already reserved for this document. Resume checking its
-                status; closing this dialog does not cancel it.
+                {submitting
+                  ? unresolved.taskId
+                    ? `Polishing this ${artifactNoun}… Checking its status automatically. Leaving this page does not cancel it.`
+                    : `Starting ${artifactNoun} polish… Checking the submission automatically. Leaving this page does not cancel a submitted operation.`
+                  : "A polish operation is already reserved for this document. Resume checking its status; closing this dialog does not cancel it."}
                 {unresolved.taskId
                   ? ` Task: ${unresolved.taskId}`
-                  : " Its submission is being recovered."}
+                  : submitting
+                    ? ""
+                    : " Its submission is being recovered."}
               </p>
             ) : null}
             {recovery.isError ? (

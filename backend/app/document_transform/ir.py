@@ -64,6 +64,11 @@ class TextBlock:
     font_style_ranges: tuple[SourceRange, ...] = ()
     native_content: tuple[NativeContent, ...] = ()
     native_named_style: str | None = None
+    # Source provenance, not a semantic role. Retain the original text digest
+    # through replacements so request reconstruction cannot mistake edited text
+    # for an unchanged provider paragraph.
+    source_named_style: str | None = None
+    source_style_text_sha256: str | None = None
     native_bullet_json: str | None = None
     # Uniform authored emphasis is independent of the document's heading tree.
     authored_emphasis: tuple[tuple[str, bool], ...] = ()
@@ -534,6 +539,12 @@ def _parse_structural_element(
         native_bullet_json=json.dumps(bullet, sort_keys=True) if isinstance(bullet, dict) else None,
         native_content=tuple(native_content),
         authored_emphasis=_uniform_authored_emphasis(elements),
+        source_named_style=(
+            paragraph_style["namedStyleType"]
+            if isinstance(paragraph_style.get("namedStyleType"), str)
+            else None
+        ),
+        source_style_text_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
         native_named_style=(
             str(paragraph_style["namedStyleType"])
             if paragraph_style.get("namedStyleType") in {"TITLE", "SUBTITLE"}
