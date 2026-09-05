@@ -14,6 +14,7 @@ from app.document_transform.docx_renderer import (
     MarkdownImportInline,
     MarkdownImportManifest,
 )
+from app.document_transform.ir import utf16_length
 
 
 _ORDERED_GLYPH_TYPES = frozenset(
@@ -801,23 +802,87 @@ def _segment_has_exact_footer(segments: object) -> bool:
     content = segment.get("content")
     if not isinstance(content, list) or len(content) != 1:
         return False
-    paragraph = content[0].get("paragraph") if isinstance(content[0], dict) else None
-    elements = paragraph.get("elements", []) if isinstance(paragraph, dict) else None
+    if not _location_wrapper_matches(content[0], {"paragraph"}):
+        return False
+    paragraph = content[0].get("paragraph")
+    if not isinstance(paragraph, dict) or set(paragraph) - {"elements", "paragraphStyle"}:
+        return False
+    elements = paragraph.get("elements", [])
     if not isinstance(elements, list):
         return False
     tokens: list[tuple[str, str]] = []
-    for element in elements:
-        if not isinstance(element, dict) or len(element) != 1:
+    cursor: int | None = content[0].get("startIndex")
+    for index, element in enumerate(elements):
+        if not isinstance(element, dict) or not _location_wrapper_matches(
+            element, {"textRun", "autoText"}
+        ):
             return False
         text_run = element.get("textRun")
         auto_text = element.get("autoText")
-        if isinstance(text_run, dict) and isinstance(text_run.get("content"), str):
-            tokens.append(("text", " ".join(text_run["content"].split())))
-        elif isinstance(auto_text, dict) and auto_text.get("type") == "PAGE_NUMBER":
+        if (
+            isinstance(text_run, dict)
+            and _footer_payload_known(text_run, "content")
+            and isinstance(value := text_run.get("content"), str)
+        ):
+            width = utf16_length(value)
+            if value == "\n":
+                if index != len(elements) - 1 or tokens != [
+                    ("text", "Sarj ·"),
+                    ("auto", "PAGE_NUMBER"),
+                ]:
+                    return False
+            else:
+                if any(character in value for character in "\n\r\v\f\u2028\u2029"):
+                    return False
+                tokens.append(("text", " ".join(value.split())))
+        elif (
+            isinstance(auto_text, dict)
+            and _footer_payload_known(auto_text, "type")
+            and auto_text.get("type") == "PAGE_NUMBER"
+        ):
+            width = 1
             tokens.append(("auto", "PAGE_NUMBER"))
         else:
             return False
+        start, end = element.get("startIndex"), element.get("endIndex")
+        if (start is not None and not isinstance(start, int)) or (
+            end is not None and not isinstance(end, int)
+        ):
+            return False
+        if start is not None and cursor is not None and start != cursor:
+            return False
+        effective_start = start if start is not None else cursor
+        if end is not None and effective_start is not None and end != effective_start + width:
+            return False
+        cursor = (
+            end
+            if end is not None
+            else effective_start + width
+            if effective_start is not None
+            else None
+        )
+    paragraph_end = content[0].get("endIndex")
+    if paragraph_end is not None and cursor is not None and paragraph_end != cursor:
+        return False
     return tokens == [("text", "Sarj ·"), ("auto", "PAGE_NUMBER")]
+
+
+def _footer_payload_known(payload: object, field: str) -> bool:
+    if not isinstance(payload, dict) or set(payload) - {field, "textStyle"}:
+        return False
+    style = payload.get("textStyle", {})
+    return isinstance(style, dict) and not set(style) - {
+        "bold",
+        "italic",
+        "underline",
+        "strikethrough",
+        "smallCaps",
+        "backgroundColor",
+        "foregroundColor",
+        "fontSize",
+        "weightedFontFamily",
+        "baselineOffset",
+    }
 
 
 def _only_segment(segments: object) -> dict[str, Any] | None:
