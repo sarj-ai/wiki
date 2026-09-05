@@ -16,11 +16,13 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.encryption import decrypt_cache, encrypt_cache
-from app.document_transform.errors import CheckpointTooLargeError
+from app.document_transform.errors import CheckpointTooLargeError, OutputConflictError
 from app.document_transform.schemas import (
     CopyCheckpoint,
+    CopyCheckpointStage,
     DocumentTransformCheckpoint,
     DocumentTransformRequest,
+    DocumentTransformResult,
     DriveFileSource,
     InPlaceCheckpoint,
     MarkdownSource,
@@ -29,6 +31,7 @@ from app.document_transform.schemas import (
 from app.identifiers import FileId, IdempotencyKey, TaskId
 from app.models.task import Task
 from app.models.task_replay_key import TaskReplayKey
+from app.models.wiki import DocumentHeaderProvenance
 from app.tasks.errors import (
     TaskAdmissionLimitError,
     TaskIdempotencyConflictError,
@@ -426,6 +429,7 @@ class PostgresTaskService(TaskService):
                 "finished_at": now,
                 "updated_at": now,
             },
+            header_result=result if isinstance(result, DocumentTransformResult) else None,
         )
 
     @override
@@ -631,6 +635,7 @@ class PostgresTaskService(TaskService):
         lease_token: uuid.UUID,
         *,
         values: dict[str, object],
+        header_result: DocumentTransformResult | None = None,
     ) -> TaskRead:
         statement = (
             update(Task)
@@ -646,8 +651,85 @@ class PostgresTaskService(TaskService):
         if task is None:
             await self._db.rollback()
             raise TaskLeaseLostError
+        try:
+            if header_result is not None and header_result.header_identity is not None:
+                await self._persist_header_identity(task, header_result)
+        except Exception:
+            await self._db.rollback()
+            raise
         await self._db.commit()
         return _to_read(task)
+
+    async def _persist_header_identity(self, task: Task, result: DocumentTransformResult) -> None:
+        checkpoint = (
+            _deserialize_checkpoint(task.checkpoint) if task.checkpoint is not None else None
+        )
+        evidence = result.header_identity
+        if (
+            not isinstance(checkpoint, CopyCheckpoint)
+            or checkpoint.stage is not CopyCheckpointStage.VERIFIED
+            or checkpoint.result is None
+            or evidence is None
+            or checkpoint.header_finalization is None
+        ):
+            raise OutputConflictError
+        finalized = checkpoint.result
+        if (
+            finalized.header_identity != evidence
+            or evidence.operation_id != task.id
+            or evidence.file_id != result.output.file_id
+            or not finalized.validation.protected_content_preserved
+            or not finalized.validation.structure_preserved
+        ):
+            raise OutputConflictError
+        if finalized.output_revision_id is None or finalized.output.file_id != evidence.file_id:
+            raise OutputConflictError
+        # Alias receipts are added after provider finalization. Hash the exact
+        # pre-alias checkpoint result whose Drive completion was read back.
+        result_digest = hashlib.sha256(
+            json.dumps(
+                finalized.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        revision_digest = hashlib.sha256(finalized.output_revision_id.encode()).hexdigest()
+        if (
+            checkpoint.header_finalization.result_sha256 != result_digest
+            or checkpoint.header_finalization.verified_revision_sha256 != revision_digest
+            or checkpoint.managed_headers
+            != {str(header.tab_id): str(header.header_id) for header in evidence.headers}
+        ):
+            raise OutputConflictError
+        value = evidence.model_dump(mode="json")
+        await self._db.execute(
+            pg_insert(DocumentHeaderProvenance)
+            .values(
+                owner_user_id=task.owner_user_id,
+                file_id=evidence.file_id,
+                producer_operation_id=evidence.operation_id,
+                evidence=value,
+                result_sha256=result_digest,
+                verified_revision_sha256=revision_digest,
+            )
+            .on_conflict_do_nothing()
+        )
+        stored = (
+            await self._db.execute(
+                select(DocumentHeaderProvenance).where(
+                    DocumentHeaderProvenance.owner_user_id == task.owner_user_id,
+                    DocumentHeaderProvenance.file_id == evidence.file_id,
+                )
+            )
+        ).scalar_one()
+        if (
+            stored.producer_operation_id != evidence.operation_id
+            or stored.evidence != value
+            or stored.result_sha256 != result_digest
+            or stored.verified_revision_sha256 != revision_digest
+        ):
+            raise OutputConflictError
 
 
 def _serialize(model: BaseModel) -> dict[str, JsonValue]:

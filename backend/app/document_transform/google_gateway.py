@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterator
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from functools import cache
 import hashlib
@@ -55,6 +56,11 @@ from app.document_transform.gateway import (
     OutputVerification,
     SourceSnapshot,
     TabHeader,
+)
+from app.document_transform.header_provenance import (
+    HeaderIdentityEvidence,
+    HeaderIdentityProof,
+    ManagedHeaderIdentity,
 )
 from app.document_transform.ir import (
     BlockKind,
@@ -236,6 +242,7 @@ class GoogleDocumentGateway(DocumentGateway):
         files: FilesService,
         logo_uri: str,
         refresh_handler: GoogleRefreshHandler | None = None,
+        header_identity: HeaderIdentityProof | None = None,
     ) -> None:
         self.structure_provider = StructureProvider(
             self._get_document_sync, self._write_copy_structure_sync, self._comments_absent_sync
@@ -244,6 +251,9 @@ class GoogleDocumentGateway(DocumentGateway):
         self._files = files
         self._logo_uri = logo_uri
         self._refresh_handler = refresh_handler
+        self._header_identity_proof = header_identity
+        self._header_identity = header_identity.evidence if header_identity is not None else None
+        self.capture_header_identity = self._capture_header_identity
         self._drive_clients: dict[int, DriveResource] = {}
         self._docs_clients: dict[int, _DocumentsProvider] = {}
 
@@ -285,7 +295,6 @@ class GoogleDocumentGateway(DocumentGateway):
         )
 
     @override
-    @override
     async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot:
         try:
             file = await self._files.get(source.file_id)
@@ -301,6 +310,20 @@ class GoogleDocumentGateway(DocumentGateway):
                 asyncio.to_thread(self._get_document_sync, source.file_id),
                 asyncio.to_thread(self._files_get_sync, source.file_id),
             )
+            proof = getattr(self, "_header_identity_proof", None)
+            if proof is not None:
+                properties = metadata.get("appProperties", {})
+                if not isinstance(properties, dict):
+                    raise InPlaceNeedsReviewError
+                if (
+                    proof.evidence.file_id != source.file_id
+                    or properties.get(_PROP_OPERATION) != str(proof.evidence.operation_id)
+                    or properties.get(_PROP_STATE) != _STATE_COMPLETE
+                    or properties.get(_PROP_RESULT_HASH) != proof.result_sha256
+                    or properties.get(_PROP_VERIFIED_REVISION_HASH)
+                    != proof.verified_revision_sha256
+                ):
+                    raise InPlaceNeedsReviewError
             revision_id = document.get("revisionId")
             if not isinstance(revision_id, str) or metadata.get("mimeType") != MIME_DOC:
                 raise DocumentGatewayError
@@ -344,6 +367,44 @@ class GoogleDocumentGateway(DocumentGateway):
         title: str,
     ) -> InPlaceInspection:
         return await asyncio.to_thread(self._inspect_in_place_sync, snapshot, title)
+
+    async def _capture_header_identity(
+        self,
+        *,
+        draft: OutputDraft,
+        operation_id: uuid.UUID,
+        managed_headers: dict[str, str],
+        title: str,
+    ) -> HeaderIdentityEvidence | None:
+        if not managed_headers:
+            return None
+        document = await asyncio.to_thread(self._get_document_sync, draft.document_id)
+        if document.get("revisionId") != draft.revision_id:
+            raise InPlaceNeedsReviewError
+        identities: list[ManagedHeaderIdentity] = []
+        for tab_id, header_id in managed_headers.items():
+            tab = footer_document_tab(document, DocsTabId(tab_id))
+            fingerprint = _managed_header_fingerprint(document, tab, expected_title=title)
+            if (
+                fingerprint is None
+                or tab.get("documentStyle", {}).get("defaultHeaderId") != header_id
+            ):
+                raise InPlaceNeedsReviewError
+            identities.append(
+                ManagedHeaderIdentity(
+                    tab_id=DocsTabId(tab_id),
+                    header_id=DocsSegmentId(header_id),
+                    fingerprint_sha256=fingerprint,
+                )
+            )
+        return HeaderIdentityEvidence(
+            operation_id=operation_id,
+            file_id=draft.document_id,
+            profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
+            title_sha256=_header_identity_title_digest(title),
+            tab_ids=tuple(DocsTabId(tab_id) for tab_id, _ in _document_tabs(document)),
+            headers=tuple(identities),
+        )
 
     @override
     async def plan_tab_naming(
@@ -604,7 +665,11 @@ class GoogleDocumentGateway(DocumentGateway):
             == protected_structure_sha256
         )
         brand_applied = not verify_brand or verify_brand_application(
-            document, _typography_verification_ir(parsed, expected)
+            document,
+            _typography_verification_ir(parsed, expected),
+            expected_header_title=_trusted_header_identity_title(
+                document, getattr(self, "_header_identity", None)
+            ),
         )
         if not (content_preserved and structure_preserved and brand_applied):
             logger.warning(
@@ -853,6 +918,10 @@ class GoogleDocumentGateway(DocumentGateway):
                 checks={"in_place_active_suggestions": True},
             )
             raise InPlaceNeedsReviewError
+        header_title = (
+            _trusted_header_identity_title(document, getattr(self, "_header_identity", None))
+            or title
+        )
         headers: list[TabHeader] = []
         preserved_headers: list[TabHeader] = []
         missing: list[DocsTabId] = []
@@ -877,7 +946,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 if _tab_header_is_branded(
                     document,
                     document_tab,
-                    expected_title=title,
+                    expected_title=header_title,
                     allow_legacy_inline_objects=len(tuple(_document_tabs(document))) == 1,
                 ):
                     preserved_headers.append(
@@ -908,8 +977,13 @@ class GoogleDocumentGateway(DocumentGateway):
             ),
             headers=tuple(headers),
             preserved_headers=tuple(preserved_headers),
+            header_identity=getattr(self, "_header_identity", None),
             fully_branded=not (missing or unknown or headers)
-            and verify_brand_application(document, parse_google_document(document, title=title)),
+            and verify_brand_application(
+                document,
+                parse_google_document(document, title=title),
+                expected_header_title=header_title,
+            ),
             missing_header_tab_ids=tuple(missing),
             unknown_header_tab_ids=tuple(unknown),
             marker_range=marker_range,
@@ -2660,6 +2734,80 @@ def _tab_shell_is_branded(
         expected_title=expected_title,
         allow_legacy_inline_objects=allow_legacy_inline_objects,
     )
+
+
+def _header_identity_title_digest(title: str) -> str:
+    tokens = CURRENT_BRAND_MANIFEST.document.header
+    if tokens is None:
+        raise InPlaceNeedsReviewError
+    return hashlib.sha256(
+        normalize_header_title(title, max_chars=tokens.max_title_chars).encode()
+    ).hexdigest()
+
+
+def _managed_header_fingerprint(
+    document: dict[str, Any], tab: dict[str, Any], *, expected_title: str
+) -> str | None:
+    if not _tab_header_is_branded(
+        document, tab, expected_title=expected_title, allow_legacy_inline_objects=False
+    ):
+        return None
+    header_id = tab["documentStyle"]["defaultHeaderId"]
+    header = deepcopy(tab["headers"][header_id])
+    for item in header["content"]:
+        if isinstance(item.get("paragraph"), dict):
+            item["paragraph"] = _effective_paragraph(item["paragraph"], tab)
+    object_id = _values_for_key(header, "inlineObjectId")[0]
+    logo = deepcopy(tab["inlineObjects"][object_id])
+    # Only the documented temporary download URI is excluded. Canonical
+    # sourceUri/size were checked above; every other object field is bound.
+    logo["inlineObjectProperties"]["embeddedObject"]["imageProperties"].pop("contentUri", None)
+    return _inventory_sha256({"header": header, "logo": logo})
+
+
+def _trusted_header_identity_title(
+    document: dict[str, Any], evidence: HeaderIdentityEvidence | None
+) -> str | None:
+    if evidence is None:
+        return None
+    # The first version supports only wholly producer-managed header topology.
+    # Never lend a trusted title to an unowned canonical-looking custom header.
+    if {header.tab_id for header in evidence.headers} != set(evidence.tab_ids):
+        raise InPlaceNeedsReviewError
+    if tuple(tab_id for tab_id, _ in _document_tabs(document)) != evidence.tab_ids:
+        raise InPlaceNeedsReviewError
+    if (
+        document.get("documentId") != evidence.file_id
+        or evidence.profile_sha256 != CURRENT_BRAND_MANIFEST.sha256
+    ):
+        raise InPlaceNeedsReviewError
+    title: str | None = None
+    for binding in evidence.headers:
+        tab = footer_document_tab(document, binding.tab_id)
+        if tab.get("documentStyle", {}).get("defaultHeaderId") != binding.header_id:
+            raise InPlaceNeedsReviewError
+        header = tab.get("headers", {}).get(binding.header_id, {})
+        content = header.get("content", [])
+        if not isinstance(content, list) or len(content) != 1:
+            raise InPlaceNeedsReviewError
+        parts: list[str] = []
+        for element in content[0].get("paragraph", {}).get("elements", []):
+            if "inlineObjectElement" in element:
+                break
+            value = element.get("textRun", {}).get("content")
+            if not isinstance(value, str):
+                raise InPlaceNeedsReviewError
+            parts.append(value)
+        candidate = "".join(parts).removesuffix("\t")
+        if (
+            _header_identity_title_digest(candidate) != evidence.title_sha256
+            or _managed_header_fingerprint(document, tab, expected_title=candidate)
+            != binding.fingerprint_sha256
+            or (title is not None and title != candidate)
+        ):
+            raise InPlaceNeedsReviewError
+        title = candidate
+    return title
 
 
 def _tab_header_is_branded(

@@ -19,6 +19,10 @@ from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
     CURRENT_BRAND_PROFILE_ID,
 )
+from app.document_transform.header_provenance import (
+    HeaderIdentityEvidence,
+    HeaderIdentityFinalization,
+)
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.document_transform.native_date_flow import NativeDateCheckpoint
 from app.document_transform.native_footer_flow import NativeFooterCheckpoint
@@ -168,6 +172,7 @@ class DocumentOutput(StrictTransformModel):
 
 
 class DocumentTransformResult(StrictTransformModel):
+    header_identity: HeaderIdentityEvidence | None = None
     operation_id: uuid.UUID
     source_sha256: str
     output: DocumentOutput
@@ -213,6 +218,7 @@ class InPlaceCheckpointStage(StrEnum):
 
 
 class InPlaceCheckpoint(StrictTransformModel):
+    header_identity: HeaderIdentityEvidence | None = None
     version: Literal[2] = 2
     kind: Literal["in_place"] = "in_place"
     document_id: FileId
@@ -258,6 +264,8 @@ class CopyCheckpointStage(StrEnum):
 
 
 class CopyCheckpoint(StrictTransformModel):
+    header_finalization: HeaderIdentityFinalization | None = None
+    managed_headers: dict[str, str] | None = None
     """Durable copy plan and output attestation.
 
     A ``creating`` checkpoint is deliberately ambiguous: retries may recover its

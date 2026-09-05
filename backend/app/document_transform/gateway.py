@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 import uuid
 
+from app.document_transform.header_provenance import HeaderIdentityEvidence
 from app.document_transform.ir import DocumentIR
 from app.document_transform.native_date_flow import NativeDateCheckpoint
 from app.document_transform.native_footer_flow import NativeFooterCheckpoint
@@ -82,6 +83,7 @@ class InPlaceInspection:
     header_safe_sha256: str
     preserved_headers: tuple[TabHeader, ...] = ()
     fully_branded: bool = False
+    header_identity: HeaderIdentityEvidence | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,10 +92,22 @@ class InPlaceStageResult:
     document: dict[str, Any]
 
 
+class HeaderIdentityCapture(Protocol):
+    async def __call__(
+        self,
+        *,
+        draft: OutputDraft,
+        operation_id: uuid.UUID,
+        managed_headers: dict[str, str],
+        title: str,
+    ) -> HeaderIdentityEvidence | None: ...
+
+
 class DocumentGateway(ABC):
     supports_native_footer = False
     supports_native_dates = False
     structure_provider: StructureProvider | None = None
+    capture_header_identity: HeaderIdentityCapture | None = None
 
     async def plan_copy_dates(
         self, *, draft: OutputDraft, operation_id: uuid.UUID

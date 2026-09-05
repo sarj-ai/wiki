@@ -527,6 +527,16 @@
             "title": "Findings",
             "type": "array"
           },
+          "header_identity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HeaderIdentityEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "llm_invoked": {
             "default": false,
             "title": "Llm Invoked",
@@ -1372,6 +1382,89 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HeaderIdentityEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "headers": {
+            "items": {
+              "$ref": "#/components/schemas/ManagedHeaderIdentity"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Headers",
+            "type": "array"
+          },
+          "operation_id": {
+            "format": "uuid",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "profile_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Profile Sha256",
+            "type": "string"
+          },
+          "tab_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Tab Ids",
+            "type": "array"
+          },
+          "title_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Title Sha256",
+            "type": "string"
+          },
+          "version": {
+            "const": 1,
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operation_id",
+          "file_id",
+          "profile_sha256",
+          "title_sha256",
+          "tab_ids",
+          "headers"
+        ],
+        "title": "HeaderIdentityEvidence",
+        "type": "object"
+      },
+      "ManagedHeaderIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "fingerprint_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Fingerprint Sha256",
+            "type": "string"
+          },
+          "header_id": {
+            "title": "Header Id",
+            "type": "string"
+          },
+          "tab_id": {
+            "title": "Tab Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tab_id",
+          "header_id",
+          "fingerprint_sha256"
+        ],
+        "title": "ManagedHeaderIdentity",
         "type": "object"
       },
       "MarkdownSource": {

@@ -10,6 +10,7 @@ import uuid
 
 import httpx
 from loguru import logger
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.aliases.schemas import DocumentAliasRead, DocumentAliasValue
@@ -25,6 +26,7 @@ from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import (
     DocumentGatewayError,
     DocumentTransformError,
+    InPlaceNeedsReviewError,
     ModelUnavailableError,
     UnsupportedSourceError,
 )
@@ -34,6 +36,7 @@ from app.document_transform.google_presentation_gateway import (
     PPTX_MIME_TYPE,
     GooglePresentationGateway,
 )
+from app.document_transform.header_provenance import HeaderIdentityEvidence, HeaderIdentityProof
 from app.document_transform.models import PatchGenerator
 from app.document_transform.naming import polish_alias_candidates
 from app.document_transform.presentation_executor import PresentationTransformExecutor
@@ -54,6 +57,7 @@ from app.files.errors import FileNotInScopeError, FilesError
 from app.files.service import GoogleFilesService
 from app.identifiers import FileId, TaskId
 from app.models.user import User
+from app.models.wiki import DocumentHeaderProvenance
 from app.tasks.errors import TaskExecutionDeferredError, TaskNotClaimableError
 from app.tasks.schemas import (
     CancelledTaskRead,
@@ -305,6 +309,7 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         if payload.mode is not TransformMode.UNSLOP:
             logo_bytes = await self._load_logo()
             logo_uri = self._logo_uri if logo_bytes is not None else ""
+        header_identity: HeaderIdentityProof | None = None
         if isinstance(payload.source, DriveFileSource):
             try:
                 source_file = await files.get(payload.source.file_id)
@@ -314,6 +319,23 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 if exc.http_status in {401, 403}:
                     raise UnsupportedSourceError from exc
                 raise DocumentGatewayError from exc
+            if payload.output_strategy is OutputStrategy.IN_PLACE:
+                provenance = (
+                    await self._db.execute(
+                        select(DocumentHeaderProvenance).where(
+                            DocumentHeaderProvenance.owner_user_id == owner_user_id,
+                            DocumentHeaderProvenance.file_id == payload.source.file_id,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if provenance is not None:
+                    header_identity = HeaderIdentityProof(
+                        evidence=HeaderIdentityEvidence.model_validate(provenance.evidence),
+                        result_sha256=provenance.result_sha256,
+                        verified_revision_sha256=provenance.verified_revision_sha256,
+                    )
+                    if header_identity.evidence.operation_id != provenance.producer_operation_id:
+                        raise InPlaceNeedsReviewError
             if source_file.mime_type in {MIME_SLIDE, PPTX_MIME_TYPE}:
                 presentation_gateway = GooglePresentationGateway(
                     user=prepared.user,
@@ -334,6 +356,7 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             files=files,
             logo_uri=logo_uri,
             refresh_handler=prepared.refresh_handler,
+            header_identity=header_identity,
         )
         return DocumentTransformRuntime(
             short_links=short_links,
