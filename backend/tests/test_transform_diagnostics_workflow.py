@@ -65,6 +65,9 @@ def test_native_import_diagnostics_expose_only_static_boolean_checks(*, invalid:
     record["jsonPayload"]["record"]["extra"]["checks"] = {
         "import_header_shape": False,
         "import_header_title_style": True,
+        "import_header_space_above_unit_only": True,
+        "import_header_keep_next_absent": False,
+        "import_header_run_fields_known": False,
         "import_logo_dimensions": True,
         "import_logo_title_exact": True,
         "import_logo_description_exact": False,
@@ -82,6 +85,9 @@ def test_native_import_diagnostics_expose_only_static_boolean_checks(*, invalid:
     rows = MODULE["sanitize"]([record], TASK)
     assert rows[0]["import_header_shape"] is False
     assert rows[0]["import_header_title_style"] is True
+    assert rows[0]["import_header_space_above_unit_only"] is True
+    assert rows[0]["import_header_keep_next_absent"] is False
+    assert rows[0]["import_header_run_fields_known"] is False
     assert rows[0]["import_logo_dimensions"] is True
     assert rows[0]["import_logo_metadata"] is False
     assert rows[0]["import_logo_title_exact"] is True

@@ -35,6 +35,20 @@ _MAX_HEADER_NAMED_STYLES = 60
 _NORMAL_FONT_WEIGHT = 400
 _BOLD_FONT_WEIGHT = 700
 _FONT_WEIGHT_STEP = 100
+_HEADER_RUN_STYLE_FIELDS = frozenset(
+    {
+        "weightedFontFamily",
+        "fontSize",
+        "foregroundColor",
+        "backgroundColor",
+        "bold",
+        "italic",
+        "underline",
+        "strikethrough",
+        "smallCaps",
+        "baselineOffset",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -766,6 +780,7 @@ def markdown_import_brand_diagnostics(
     if expected.header_title is not None:
         checks["import_header_title_style"] = _header_title_brand_matches(document, tab)
         if not checks["import_header_title_style"]:
+            checks.update(_header_title_style_diagnostics(document, tab))
             return checks
     checks["import_footer_shape"] = _segment_has_exact_footer(tab.get("footers"))
     if not checks["import_footer_shape"]:
@@ -829,6 +844,110 @@ def _header_title_brand_matches(document: dict[str, Any], tab: dict[str, Any]) -
     )
 
 
+def _header_title_style_diagnostics(
+    document: dict[str, Any], tab: dict[str, Any]
+) -> dict[str, bool]:
+    # Called only after exact header shape and logo proof. Never inspect private
+    # text or expose provider keys; downstream checks remain absent if unchecked.
+    tokens = CURRENT_BRAND_MANIFEST.document.header
+    segment = _only_segment(tab.get("headers"))
+    if tokens is None or segment is None:
+        return {}
+    paragraph = segment["content"][0]["paragraph"]
+    style = paragraph.get("paragraphStyle")
+    checks = {"import_header_paragraph_style_known": isinstance(style, dict)}
+    if not isinstance(style, dict):
+        return checks
+    checks["import_header_named_type_exact"] = (
+        style.get("namedStyleType", "NORMAL_TEXT") == "NORMAL_TEXT"
+    )
+    if not checks["import_header_named_type_exact"]:
+        return checks
+    inherited = _header_named_style(document, tab)
+    checks["import_header_named_identity_known"] = inherited is not None
+    if inherited is None:
+        return checks
+    effective = inherited.paragraph | style
+    checks.update(
+        import_header_alignment_exact=effective.get("alignment") == tokens.alignment,
+        import_header_line_spacing_exact=effective.get("lineSpacing")
+        == tokens.line_spacing_percent,
+        import_header_space_above_exact=_header_dimension_exact(
+            effective.get("spaceAbove"), tokens.space_above_pt
+        ),
+        import_header_space_below_exact=_header_dimension_exact(
+            effective.get("spaceBelow"), tokens.space_below_pt
+        ),
+        import_header_keep_next_exact=effective.get("keepWithNext") is False,
+    )
+    paragraph_matches = all(checks.values())
+    checks.update(
+        import_header_space_above_unit_only=effective.get("spaceAbove") == {"unit": "PT"},
+        import_header_space_below_unit_only=effective.get("spaceBelow") == {"unit": "PT"},
+        import_header_keep_next_absent="keepWithNext" not in effective,
+    )
+    if not paragraph_matches:
+        return checks
+    for element in paragraph["elements"]:
+        if "inlineObjectElement" in element:
+            break
+        run = element["textRun"].get("textStyle", {})
+        if not _header_run_style_matches(run, inherited.text):
+            checks.update(_header_run_style_diagnostics(run, inherited.text))
+            break
+    return checks
+
+
+def _header_run_style_diagnostics(style: object, inherited: dict[str, Any]) -> dict[str, bool]:
+    checks = {"import_header_first_failed_run_only": True}
+    tokens = CURRENT_BRAND_MANIFEST.document.header
+    checks["import_header_run_style_known"] = isinstance(style, dict)
+    if tokens is None or not isinstance(style, dict):
+        return checks
+    effective = inherited | style
+    checks.update(
+        import_header_run_fields_known=not bool(set(effective) - _HEADER_RUN_STYLE_FIELDS),
+        import_header_run_font_exact=_font_family(effective) == tokens.font_family,
+        import_header_run_size_exact=_header_dimension_exact(
+            effective.get("fontSize"), tokens.size_pt
+        ),
+        import_header_run_bold_exact=effective.get("bold") is tokens.bold,
+        import_header_run_effects_exact=all(
+            key not in effective or effective[key] is False
+            for key in ("italic", "underline", "strikethrough", "smallCaps")
+        ),
+        import_header_run_baseline_exact="baselineOffset" not in effective
+        or effective["baselineOffset"] == "NONE",
+        import_header_run_background_exact="backgroundColor" not in effective
+        or effective["backgroundColor"] == {},
+    )
+    # The existing full matcher is the authority. Isolate color and weight by
+    # supplying only fixed known-good unrelated properties, never provider text.
+    canonical = {
+        "weightedFontFamily": {"fontFamily": tokens.font_family},
+        "fontSize": {"magnitude": tokens.size_pt, "unit": "PT"},
+        "foregroundColor": {
+            "color": {
+                "rgbColor": dict(
+                    zip(
+                        ("red", "green", "blue"),
+                        (int(tokens.color[index : index + 2], 16) / 255 for index in (1, 3, 5)),
+                        strict=True,
+                    )
+                )
+            }
+        },
+        "bold": tokens.bold,
+    }
+    checks["import_header_run_color_exact"] = _header_run_style_matches(
+        canonical | {"foregroundColor": effective.get("foregroundColor")}, {}
+    )
+    checks["import_header_run_family_weight_exact"] = _header_run_style_matches(
+        canonical | {"weightedFontFamily": effective.get("weightedFontFamily")}, {}
+    )
+    return checks
+
+
 def _header_named_style(document: dict[str, Any], tab: dict[str, Any]) -> _NamedStyle | None:
     if "namedStyles" not in tab and "namedStyles" not in document:
         return _NamedStyle({}, {})
@@ -866,18 +985,7 @@ def _header_run_style_matches(style: object, inherited: dict[str, Any]) -> bool:
     if tokens is None or not isinstance(style, dict):
         return False
     effective = inherited | style
-    if set(effective) - {
-        "weightedFontFamily",
-        "fontSize",
-        "foregroundColor",
-        "backgroundColor",
-        "bold",
-        "italic",
-        "underline",
-        "strikethrough",
-        "smallCaps",
-        "baselineOffset",
-    }:
+    if set(effective) - _HEADER_RUN_STYLE_FIELDS:
         return False
     if "backgroundColor" in effective and effective["backgroundColor"] != {}:
         return False
