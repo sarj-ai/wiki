@@ -19,6 +19,9 @@ _MAX_BODY_CHARS = 1_000
 _MAX_BULLET_BYTES = 8_192
 _MAX_SPACER_PROOF_BYTES = 8_192
 _MAX_SPACER_SPACE_PT = 1_000
+_KNOWN_NAMED_STYLES = frozenset(
+    {"NORMAL_TEXT", "TITLE", "SUBTITLE", *(f"HEADING_{level}" for level in range(1, 7))}
+)
 
 
 class NativePaginationRule(BaseModel):
@@ -139,8 +142,13 @@ def _plan_native_pagination(
         if len(rules) > MAX_PAGINATION_RULES:
             return ()
     diagnostics["spacer_scope_checked"] = True
-    styles_known = _spacer_named_styles_known(native, body)
-    diagnostics["spacer_named_styles_known"] = styles_known
+    dependencies = _spacer_dependencies(content, mapped, document.tab_ids[0])
+    diagnostics["spacer_dependency_identity_known"] = dependencies is not None
+    diagnostics["spacer_named_styles_known"] = _spacer_named_styles_known(native, body)
+    styles_known = dependencies is not None and _spacer_dependencies_known(
+        native, body, dependencies, diagnostics
+    )
+    diagnostics["spacer_used_named_styles_known"] = styles_known
     if styles_known and not _add_spacer_rules(
         content, mapped, document.tab_ids[0], rules, diagnostics
     ):
@@ -200,7 +208,80 @@ def _plain_spacing_neighbor(element: object) -> bool:
     }
 
 
+def _spacer_dependencies(
+    content: list[Any], mapped: list[TextBlock | None], tab_id: str
+) -> frozenset[str] | None:
+    # Docs inheritance is corresponding named style -> NORMAL_TEXT. Include
+    # both source and generated target roles; never infer adjacency from IR.
+    dependencies = {"NORMAL_TEXT"}
+    for index in range(1, len(content) - 1):
+        first, third = mapped[index - 1], mapped[index + 1]
+        if not all(
+            _plain_spacing_neighbor(item) for item in (content[index - 1], content[index + 1])
+        ):
+            continue
+        if _spacer_proof(content[index], first, third, tab_id) is None:
+            continue
+        for block in (first, third):
+            if block is None or block.source_named_style not in _KNOWN_NAMED_STYLES:
+                return None
+            dependencies.add(block.source_named_style)
+            if block.kind is BlockKind.HEADING and block.level in {1, 2, 3, 4, 5, 6}:
+                dependencies.add(f"HEADING_{block.level}")
+    return frozenset(dependencies)
+
+
+def _spacer_dependencies_known(
+    native: dict[str, Any],
+    body: dict[str, Any],
+    dependencies: frozenset[str],
+    diagnostics: dict[str, int | bool],
+) -> bool:
+    for scope in (native, body):
+        seen: set[str] = set()
+        for entry in scope.get("namedStyles", {}).get("styles", []):
+            name = entry.get("namedStyleType")
+            if not isinstance(name, str) or name not in _KNOWN_NAMED_STYLES or name in seen:
+                diagnostics["spacer_named_identity_count"] = 1
+                return False
+            seen.add(name)
+            if name not in dependencies:
+                diagnostics["spacer_unused_named_style_count"] = (
+                    diagnostics.get("spacer_unused_named_style_count", 0) + 1
+                )
+                continue
+            style = entry.get("paragraphStyle", {})
+            if not _plain_spacing_neighbor({"paragraph": {"paragraphStyle": style}}):
+                diagnostics["spacer_named_paragraph_fields_count"] = 1
+                if isinstance(style, dict):
+                    diagnostics["spacer_named_indent_present"] = any(
+                        field in style for field in ("indentStart", "indentEnd", "indentFirstLine")
+                    )
+                    diagnostics["spacer_named_border_present"] = any(
+                        field in style
+                        for field in (
+                            "borderTop",
+                            "borderBottom",
+                            "borderLeft",
+                            "borderRight",
+                            "borderBetween",
+                        )
+                    )
+                    diagnostics["spacer_named_shading_present"] = "shading" in style
+                return False
+            if not _spacer_style_values_known(style):
+                diagnostics["spacer_named_paragraph_values_count"] = 1
+                return False
+            text_style = entry.get("textStyle", {})
+            if not isinstance(text_style, dict) or "link" in text_style:
+                diagnostics["spacer_named_text_style_count"] = 1
+                return False
+    return True
+
+
 def _spacer_named_styles_known(native: dict[str, Any], body: dict[str, Any]) -> bool:
+    # Preserve the original whole-document diagnostic meaning. Eligibility
+    # separately proves only the actual candidate dependency closure.
     for scope in (native, body):
         for entry in scope.get("namedStyles", {}).get("styles", []):
             style = entry.get("paragraphStyle", {})

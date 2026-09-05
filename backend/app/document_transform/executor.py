@@ -89,7 +89,7 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, Task
 
 
 PIPELINE_VERSION = "document-transform-v3"
-REQUEST_BUILDER_VERSION = "google-docs-requests-v16"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v17"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _OUTPUT_SUFFIX = MappingProxyType(
     {

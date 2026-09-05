@@ -154,10 +154,15 @@ def test_inherited_custom_styles_block_spacers_without_changing_keep_groups(
 
 
 @pytest.mark.parametrize("tamper", ["none", "spacing", "custom_spacer", "body_font"])
+@pytest.mark.parametrize("unused_custom_style", [False, True])
 async def test_copy_to_in_place_is_noop_or_truthful_review_never_padding_reset(
-    tamper: str, monkeypatch: pytest.MonkeyPatch
+    tamper: str, monkeypatch: pytest.MonkeyPatch, unused_custom_style: bool
 ) -> None:
     document = _styled_document()
+    if unused_custom_style:
+        document["namedStyles"] = {
+            "styles": [{"namedStyleType": "HEADING_6", "paragraphStyle": {"shading": {}}}]
+        }
     document["documentId"] = "source"
     content = document["tabs"][0]["documentTab"]["body"]["content"]
     if tamper == "spacing":
@@ -327,11 +332,11 @@ async def test_spacer_checkpoint_recomputes_proof_before_replay(tamper: str) -> 
         operation_id=task_id, request=request
     )
     checkpoint = store.checkpoints[-1]
-    assert checkpoint.request_builder_version == "google-docs-requests-v16"
+    assert checkpoint.request_builder_version == "google-docs-requests-v17"
     assert checkpoint.pagination[0].below_spacer_sha256 is not None
     if tamper == "old_version":
         checkpoint = checkpoint.model_copy(
-            update={"request_builder_version": "google-docs-requests-v14"}
+            update={"request_builder_version": "google-docs-requests-v16"}
         )
     elif tamper != "none":
         checkpoint = checkpoint.model_copy(
