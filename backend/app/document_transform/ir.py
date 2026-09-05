@@ -20,6 +20,7 @@ MAX_DOC_TABS = 50
 MAX_DOCUMENT_BLOCKS = 750
 _MIN_TABLE_COLUMNS = 2
 _MAX_AUTHORED_LEAD_IN_LENGTH = 160
+_TERMINAL_TEXT_RUN_COUNT = 2
 
 
 class BlockKind(StrEnum):
@@ -526,7 +527,9 @@ def _parse_structural_element(
         raise UnsupportedSourceError
     if isinstance(bullet, dict) and classification.kind == BlockKind.PARAGRAPH:
         classification = BlockClassification(BlockKind.LIST_ITEM, None)
-    editable = not contains_non_text and _paragraph_is_editable(runs, paragraph_data)
+    editable = not contains_non_text and _paragraph_is_editable(
+        runs, paragraph_data, start=start, end=end
+    )
     return TextBlock(
         id=f"b{ordinal}",
         kind=classification.kind,
@@ -721,11 +724,56 @@ def _text_run_is_locked(part: object, style: object) -> bool:
     )
 
 
-def _paragraph_is_editable(runs: list[tuple[str, bool]], paragraph: dict[str, Any]) -> bool:
+def _paragraph_is_editable(
+    runs: list[tuple[str, bool]], paragraph: dict[str, Any], *, start: int, end: int
+) -> bool:
     has_suggestion = bool(
         paragraph.get("suggestedParagraphStyleChanges") or paragraph.get("suggestedBulletChanges")
     )
-    return len(runs) == 1 and not any(run[1] for run in runs) and not has_suggestion
+    return (
+        (len(runs) == 1 or _terminal_text_run_shape(runs, paragraph, start=start, end=end))
+        and not any(run[1] for run in runs)
+        and not has_suggestion
+    )
+
+
+def _terminal_text_run_shape(
+    runs: list[tuple[str, bool]], paragraph: dict[str, Any], *, start: int, end: int
+) -> bool:
+    # A separately styled paragraph terminator is not a second editable text
+    # span. Never coalesce runs or include the terminator in replacement ranges.
+    if (
+        len(runs) != _TERMINAL_TEXT_RUN_COUNT
+        or not runs[0][0]
+        or any(character in runs[0][0] for character in "\n\r\v\f\u2028\u2029")
+        or runs[1][0] != "\n"
+    ):
+        return False
+    if isinstance(start, bool) or isinstance(end, bool) or start < 0:
+        return False
+    elements = paragraph.get("elements")
+    if not isinstance(elements, list) or len(elements) != _TERMINAL_TEXT_RUN_COUNT:
+        return False
+    cursor = start
+    for element, (text, _) in zip(elements, runs, strict=True):
+        if not isinstance(element, dict) or set(element) - {"startIndex", "endIndex", "textRun"}:
+            return False
+        text_run = element.get("textRun")
+        if not isinstance(text_run, dict) or set(text_run) - {"content", "textStyle"}:
+            return False
+        run_start = element.get("startIndex")
+        run_end = element.get("endIndex")
+        if (
+            not isinstance(run_start, int)
+            or isinstance(run_start, bool)
+            or not isinstance(run_end, int)
+            or isinstance(run_end, bool)
+        ):
+            return False
+        if run_start != cursor or run_end != cursor + utf16_length(text):
+            return False
+        cursor = run_end
+    return cursor == end
 
 
 def _classify_block(paragraph_style: dict[object, object]) -> BlockClassification:
