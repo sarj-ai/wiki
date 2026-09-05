@@ -647,7 +647,7 @@ export function DocumentPolishDialog({
                 <p className="text-muted-foreground text-sm">
                   {completedResult.mode === "format"
                     ? "Formatting-only mode leaves wording unchanged."
-                    : `${completedResult.appliedPatchCount} writing edits applied.`}
+                    : `${completedResult.appliedPatchCount} writing edit${completedResult.appliedPatchCount === 1 ? "" : "s"} applied.`}
                   {completedResult.validation.protectedContentPreserved
                     ? " Protected content checks passed."
                     : " Review protected content before using this result."}

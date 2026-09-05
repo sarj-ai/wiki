@@ -549,6 +549,9 @@ describe("DocumentPolishDialog", () => {
       expect(document.body).toHaveTextContent(changed ? "Polish complete" : "No changes needed");
     });
     expect(document.body).toHaveTextContent(
+      changed ? "1 writing edit applied." : "0 writing edits applied.",
+    );
+    expect(document.body).toHaveTextContent(
       changed
         ? "Updated the original; Drive version history is available."
         : "Your original is unchanged; no edits were needed.",
