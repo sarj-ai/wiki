@@ -74,7 +74,7 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, Task
 
 
 PIPELINE_VERSION = "document-transform-v3"
-REQUEST_BUILDER_VERSION = "google-docs-requests-v4"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v5"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _OUTPUT_SUFFIX = MappingProxyType(
     {
@@ -428,6 +428,13 @@ class DocumentTransformExecutor:
             )
             checkpoint = self._copy_checkpoint_or_none() or checkpoint
         findings.extend(applied_validation.findings)
+        if checkpoint.native_dates is not None and checkpoint.native_dates.declined_reason:
+            findings.append(
+                TransformFinding(
+                    code="native_date_provider_rejected",
+                    detail="Google rejected native date conversion; dates were preserved as text.",
+                )
+            )
         validation = ValidationSummary(
             source_unchanged=True,
             protected_content_preserved=applied_validation.protected_content_preserved,
@@ -534,8 +541,9 @@ class DocumentTransformExecutor:
     ) -> OutputDraft:
         dates = checkpoint.native_dates
         if dates is None:
-            dates = await self._gateway.plan_copy_dates(draft=draft, operation_id=operation_id)
-            if dates is None:
+            if (
+                dates := await self._gateway.plan_copy_dates(draft=draft, operation_id=operation_id)
+            ) is None:
                 return draft
             checkpoint = await self._save_copy_checkpoint(
                 checkpoint.model_copy(update={"native_dates": dates})
@@ -543,7 +551,7 @@ class DocumentTransformExecutor:
         dates = await self._gateway.apply_copy_dates(
             document_id=draft.document_id, checkpoint=dates
         )
-        if not dates.complete:
+        if not dates.complete and dates.declined_reason is None:
             raise OutputVerificationError
         await self._save_copy_checkpoint(checkpoint.model_copy(update={"native_dates": dates}))
         return replace(draft, native_dates=dates, revision_id=dates.revision_id)

@@ -3,10 +3,10 @@ from __future__ import annotations
 from copy import deepcopy
 import hashlib
 import json
-from typing import Any, NewType
+from typing import Any, Literal, NewType, Self
 import uuid
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from app.document_transform.errors import InPlaceNeedsReviewError
 from app.document_transform.ir import parse_google_document, verify_planned_date_conversions
@@ -37,6 +37,35 @@ class NativeDateCheckpoint(BaseModel):
     paragraphs: list[NativeDateParagraph]
     requests: list[dict[str, Any]]
     complete: bool = False
+    declined_reason: Literal["provider_rejected"] | None = None
+
+    @model_validator(mode="after")
+    def validate_outcome(self) -> Self:
+        if self.complete and self.declined_reason is not None:
+            msg = "A declined date conversion cannot be complete"
+            raise ValueError(msg)
+        return self
+
+
+def verify_dates_unchanged(document: dict[str, Any], checkpoint: NativeDateCheckpoint) -> None:
+    # Check every provider surface, including malformed or misplaced markers.
+    def contains_marker(value: object) -> bool:
+        match value:
+            case dict():
+                return checkpoint.marker_name in value or any(
+                    contains_marker(item) for item in value.values()
+                )
+            case list():
+                return any(contains_marker(item) for item in value)
+            case _:
+                return value == checkpoint.marker_name
+
+    if (
+        document.get("revisionId") != checkpoint.revision_id
+        or contains_marker(document)
+        or date_invariant_sha256(document) != checkpoint.invariant_sha256
+    ):
+        raise InPlaceNeedsReviewError
 
 
 def _tabs(document: dict[str, Any]) -> list[dict[str, Any]]:
@@ -155,6 +184,9 @@ def plan_copy_dates(
 def verified_date_projection(
     document: dict[str, Any], checkpoint: NativeDateCheckpoint
 ) -> dict[str, Any]:
+    if checkpoint.declined_reason is not None:
+        verify_dates_unchanged(document, checkpoint)
+        return deepcopy(document)
     projected = deepcopy(document)
     for tab in _tabs(projected):
         tab_id = tab.get("tabProperties", {}).get("tabId")
