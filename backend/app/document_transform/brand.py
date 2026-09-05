@@ -401,6 +401,8 @@ def _native_text_style_ranges(block: TextBlock, range_value: DocsRequest) -> lis
 
 
 def _font_only_requests(block: TextBlock, profile: SarjBrandProfile) -> list[DocsRequest]:
+    if block.preserved_font_family:
+        return []
     # Preserve links, emphasis and paragraph semantics while styling safe prose runs.
     return [
         {
@@ -682,6 +684,7 @@ def _post_edit_locations(original: DocumentIR, transformed: DocumentIR) -> Docum
                 suppress_space_above=target.suppress_space_above,
                 suppress_space_below=target.suppress_space_below,
                 preserved_paragraph_style_sha256=target.preserved_paragraph_style_sha256,
+                preserved_font_family=target.preserved_font_family,
                 font_style_ranges=tuple(
                     replace(
                         item,

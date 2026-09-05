@@ -101,7 +101,10 @@ class _HeaderGateway(_Gateway):
                             "endIndex": 1,
                             "paragraph": {
                                 "elements": [{"endIndex": 1, "textRun": {"content": "\n"}}],
-                                "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                                "paragraphStyle": {
+                                    "namedStyleType": "NORMAL_TEXT",
+                                    "direction": "LEFT_TO_RIGHT",
+                                },
                             },
                         }
                     ]
@@ -280,11 +283,19 @@ async def test_recovered_headers_do_not_rebase_concurrent_content_revision() -> 
         "negative",
         "start",
         "end",
+        "direction_rtl",
+        "direction_unknown",
+        "direction_null",
+        "style_extra",
+        "content",
     ],
 )
 def test_empty_header_rejects_noncanonical_payload(change: str) -> None:
     run: dict[str, Any] = {"startIndex": 0, "endIndex": 1, "textRun": {"content": "\n"}}
-    paragraph: dict[str, Any] = {"elements": [run]}
+    paragraph: dict[str, Any] = {
+        "elements": [run],
+        "paragraphStyle": {"namedStyleType": "NORMAL_TEXT", "direction": "LEFT_TO_RIGHT"},
+    }
     element: dict[str, Any] = {"startIndex": 0, "endIndex": 1, "paragraph": paragraph}
     header = {"headerId": "created", "content": [element]}
     assert header_recovery._empty_header(header, "created")
@@ -309,9 +320,47 @@ def test_empty_header_rejects_noncanonical_payload(change: str) -> None:
             run["startIndex"] = 1
         case "end":
             element["endIndex"] = 2
+        case "direction_rtl":
+            paragraph["paragraphStyle"]["direction"] = "RIGHT_TO_LEFT"
+        case "direction_unknown":
+            paragraph["paragraphStyle"]["direction"] = "UNKNOWN"
+        case "direction_null":
+            paragraph["paragraphStyle"]["direction"] = None
+        case "style_extra":
+            paragraph["paragraphStyle"]["alignment"] = "START"
+        case "content":
+            run["textRun"]["content"] = "x"
         case _:
             raise AssertionError
     assert not header_recovery._empty_header(header, "created")
+
+
+@pytest.mark.parametrize(
+    "style",
+    [
+        {},
+        {"namedStyleType": "NORMAL_TEXT"},
+        {"direction": "LEFT_TO_RIGHT"},
+        {"namedStyleType": "NORMAL_TEXT", "direction": "LEFT_TO_RIGHT"},
+    ],
+    ids=["empty", "normal-text", "left-to-right", "normal-text-left-to-right"],
+)
+def test_empty_header_accepts_only_optional_observed_defaults(style: dict[str, str]) -> None:
+    header = {
+        "headerId": "created",
+        "content": [
+            {
+                "endIndex": 1,
+                "paragraph": {
+                    "paragraphStyle": style,
+                    "elements": [{"endIndex": 1, "textRun": {"content": "\n"}}],
+                },
+            }
+        ],
+    }
+    checks: dict[str, bool | str] = {}
+    assert header_recovery._empty_header(header, "created", checks)
+    assert checks["header_recovery_empty_reason"] == "empty"
 
 
 async def test_existing_custom_header_tampering_prevents_recovery() -> None:

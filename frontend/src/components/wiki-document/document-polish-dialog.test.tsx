@@ -961,6 +961,11 @@ describe("DocumentPolishDialog", () => {
             detail: "Authored text styles were preserved.",
           },
           {
+            blockId: "block-2",
+            code: "native_font_family_preserved",
+            detail: "Original font and text styles were preserved where inheritance was uncertain.",
+          },
+          {
             blockId: null,
             code: "custom_furniture_preserved",
             detail: "Custom headers were preserved. Full Sarj branding was not applied.",
@@ -994,6 +999,9 @@ describe("DocumentPolishDialog", () => {
       );
       expect(document.body).toHaveTextContent("Full Sarj branding was not applied.");
       expect(document.body).toHaveTextContent("Authored text styles were preserved.");
+      expect(document.body).toHaveTextContent(
+        "Original font and text styles were preserved where inheritance was uncertain.",
+      );
       expect(document.body).toHaveTextContent(`Task reference: ${pending.id}`);
       expect(document.body).not.toHaveTextContent("Open review copy");
       clickButton(findButtonNow(changed ? "Open updated document" : "Open original document"));
@@ -1002,38 +1010,52 @@ describe("DocumentPolishDialog", () => {
     },
   );
 
-  it.each(["native_paragraph_layout_preserved", "table_font_scope", "table_font_preserved"])(
-    "recognizes verified preservation notes without hiding other failures: %s",
-    (code) => {
-      const result: DocumentTransformResult = {
-        ...transformResult({ outputStrategy: "in_place" }),
-        changed: true,
-        mode: "format",
-        needsReview: true,
-        findings: [{ blockId: null, code, detail: "Review preserved formatting." }],
-      };
-      expect(preservedInPlaceOutcome(result)?.heading).toBe(
-        "Polish complete with preserved content",
-      );
-      expect(result.needsReview).toBe(true);
-      result.changed = false;
-      expect(preservedInPlaceOutcome(result)?.heading).toBe(
-        "No changes needed; review notes remain",
-      );
-      result.validation.structurePreserved = false;
-      expect(preservedInPlaceOutcome(result)).toBeNull();
-      result.validation.structurePreserved = true;
-      result.validation.protectedContentPreserved = false;
-      expect(preservedInPlaceOutcome(result)).toBeNull();
-      result.validation.protectedContentPreserved = true;
-      result.findings.push({
-        blockId: null,
-        code: "verification_failed",
-        detail: "Review required.",
-      });
-      expect(preservedInPlaceOutcome(result)).toBeNull();
-    },
-  );
+  it.each([
+    "native_paragraph_layout_preserved",
+    "native_font_family_preserved",
+    "table_font_scope",
+    "table_font_preserved",
+  ])("recognizes verified preservation notes without hiding other failures: %s", (code) => {
+    const result: DocumentTransformResult = {
+      ...transformResult({ outputStrategy: "in_place" }),
+      changed: true,
+      mode: "format",
+      needsReview: true,
+      findings: [{ blockId: null, code, detail: "Review preserved formatting." }],
+    };
+    expect(preservedInPlaceOutcome(result)?.heading).toBe("Polish complete with preserved content");
+    expect(result.needsReview).toBe(true);
+    result.changed = false;
+    expect(preservedInPlaceOutcome(result)?.heading).toBe("No changes needed; review notes remain");
+    result.validation.structurePreserved = false;
+    expect(preservedInPlaceOutcome(result)).toBeNull();
+    result.validation.structurePreserved = true;
+    result.validation.protectedContentPreserved = false;
+    expect(preservedInPlaceOutcome(result)).toBeNull();
+    result.validation.protectedContentPreserved = true;
+    result.validation.unsafePatchCount = 1;
+    expect(preservedInPlaceOutcome(result)).toBeNull();
+    result.validation.unsafePatchCount = 0;
+    result.needsReview = false;
+    expect(preservedInPlaceOutcome(result)).toBeNull();
+    result.needsReview = true;
+    result.outputStrategy = "copy";
+    expect(preservedInPlaceOutcome(result)).toBeNull();
+    result.outputStrategy = "in_place";
+    result.artifactKind = "presentation";
+    expect(preservedInPlaceOutcome(result)).toBeNull();
+    result.artifactKind = "document";
+    result.mode = "unslop";
+    expect(preservedInPlaceOutcome(result)).toBeNull();
+    result.mode = "both";
+    expect(preservedInPlaceOutcome(result)?.heading).toBe("No changes needed; review notes remain");
+    result.findings.push({
+      blockId: null,
+      code: "verification_failed",
+      detail: "Review required.",
+    });
+    expect(preservedInPlaceOutcome(result)).toBeNull();
+  });
 
   it.each([
     "empty",

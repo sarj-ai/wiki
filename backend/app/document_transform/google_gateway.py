@@ -95,6 +95,10 @@ from app.document_transform.native_date_flow import (
     verified_date_projection,
     verify_dates_unchanged,
 )
+from app.document_transform.native_font_defense import (
+    apply_native_font_preservation,
+    preserved_native_font_blocks,
+)
 from app.document_transform.native_font_proof import (
     capture_native_font_proof,
     verify_native_font_proof,
@@ -725,7 +729,10 @@ class GoogleDocumentGateway(DocumentGateway):
             == protected_structure_sha256
             and _custom_furniture_matches(document, custom_furniture)
         )
-        preserved_layout = any(block.preserved_paragraph_style_sha256 for block in expected.blocks)
+        preserved_layout = any(
+            block.preserved_paragraph_style_sha256 or block.preserved_font_family
+            for block in expected.blocks
+        )
         brand_applied = not verify_brand or (
             not preserved_layout
             and verify_brand_application(
@@ -1105,6 +1112,10 @@ class GoogleDocumentGateway(DocumentGateway):
             )
         except (KeyError, IndexError, TypeError, ValueError, AttributeError) as error:
             raise InPlaceNeedsReviewError from error
+        existing_layout = apply_native_font_preservation(
+            existing_layout,
+            preserved_native_font_blocks(document, existing_layout, existing_layout),
+        )
         logger.info(
             "document in-place preflight checks={checks}",
             checks={
@@ -1119,7 +1130,10 @@ class GoogleDocumentGateway(DocumentGateway):
             custom_furniture=tuple(custom_furniture),
             supported_brand_applied=bool(
                 custom_furniture
-                or any(block.preserved_paragraph_style_sha256 for block in existing_layout.blocks)
+                or any(
+                    block.preserved_paragraph_style_sha256 or block.preserved_font_family
+                    for block in existing_layout.blocks
+                )
             )
             and not (missing or unknown or headers)
             and verify_brand_application(
@@ -1142,7 +1156,8 @@ class GoogleDocumentGateway(DocumentGateway):
             preserved_headers=tuple(preserved_headers),
             header_identity=getattr(self, "_header_identity", None),
             fully_branded=not any(
-                block.preserved_paragraph_style_sha256 for block in existing_layout.blocks
+                block.preserved_paragraph_style_sha256 or block.preserved_font_family
+                for block in existing_layout.blocks
             )
             and not (missing or unknown or headers)
             and verify_brand_application(
@@ -2826,6 +2841,7 @@ def _typography_verification_ir(actual: DocumentIR, expected: DocumentIR) -> Doc
             replace(
                 observed,
                 editable=False,
+                preserved_font_family=planned.preserved_font_family,
                 font_style_ranges=tuple(
                     replace(
                         item, start_index=item.start_index + delta, end_index=item.end_index + delta
@@ -2838,6 +2854,10 @@ def _typography_verification_ir(actual: DocumentIR, expected: DocumentIR) -> Doc
 
 
 def _font_only_has_brand(paragraph: dict[str, Any], block: TextBlock) -> bool:
+    if block.preserved_font_family:
+        # This is excluded from full-brand claims. The executor's persisted
+        # exact-family proof must independently pass before scoped completion.
+        return True
     elements = paragraph.get("elements", [])
     if not isinstance(elements, list):
         return False

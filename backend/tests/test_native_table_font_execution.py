@@ -7,7 +7,6 @@ import pytest
 
 from app.document_transform.errors import (
     DocumentGatewayError,
-    InPlaceNeedsReviewError,
     OutputConflictError,
 )
 from app.document_transform.executor import DocumentTransformExecutor
@@ -28,7 +27,7 @@ from tests.test_document_transform import (
     _Generator,
 )
 from tests.test_document_transform_repeat import _inspection_snapshot
-from tests.test_native_table_font import _document, _formatted, _paragraph
+from tests.test_native_table_font import _document, _paragraph
 
 
 @pytest.mark.parametrize("change", ["text", "range", "tab"])
@@ -79,14 +78,14 @@ async def test_table_scope_declines_before_write_when_preceding_body_changes(cha
     assert scope.plan is None
     assert scope.requests == []
     assert [finding.code for finding in scope.findings] == ["table_font_preserved"]
-    assert "body text or source ranges" in scope.findings[0].detail
+    assert "preserved" in scope.findings[0].detail
     assert document == _document()
 
 
-@pytest.mark.parametrize(("outage", "tamper"), [(False, False), (True, False), (False, True)])
 @pytest.mark.parametrize("preserve_alignment", [False, True])
-async def test_table_format_exact_proof_retry_and_repeat_noop(
-    monkeypatch: pytest.MonkeyPatch, *, outage: bool, tamper: bool, preserve_alignment: bool
+@pytest.mark.parametrize("tamper", ["bold", "family", "terminator"])
+async def test_table_format_preserves_exact_styles_and_repeat_noop(
+    monkeypatch: pytest.MonkeyPatch, *, preserve_alignment: bool, tamper: str
 ) -> None:
     document = _document()
     if preserve_alignment:
@@ -106,25 +105,9 @@ async def test_table_format_exact_proof_retry_and_repeat_noop(
             _inspection_snapshot(document), revision_id=DocsRevisionId(document["revisionId"])
         )
 
-    async def apply(**kwargs: Any) -> InPlaceStageResult:
-        if not events:
-            assert kwargs["required_revision_id"] == document["revisionId"]
-            assert all(
-                request["updateTextStyle"]["fields"] == "weightedFontFamily.fontFamily"
-                for request in kwargs["requests"]
-            )
-            actual = _formatted(document)
-            document.clear()
-            document.update(actual)
-            document["revisionId"] = "formatted"
-            events.append("table")
-            if tamper:
-                _paragraph(document)["paragraph"]["elements"][0]["textRun"]["textStyle"]["bold"] = (
-                    False
-                )
-            if outage:
-                raise DocumentGatewayError
-        return InPlaceStageResult(DocsRevisionId(document["revisionId"]), deepcopy(document))
+    async def apply(**_kwargs: Any) -> InPlaceStageResult:
+        events.append("unexpected_write")
+        pytest.fail("Preserved table-only formatting must not dispatch provider requests")
 
     monkeypatch.setattr(gateway, "load_drive_source", load)
     monkeypatch.setattr(gateway, "inspect_in_place", native.inspect_in_place)
@@ -149,25 +132,18 @@ async def test_table_format_exact_proof_retry_and_repeat_noop(
             checkpoint_generation=store.generation,
         )
 
-    if outage:
-        with pytest.raises(DocumentGatewayError):
-            await executor().execute(operation_id=operation, request=request)
-    if tamper:
-        with pytest.raises(InPlaceNeedsReviewError):
-            await executor().execute(operation_id=operation, request=request)
-        assert events == ["table"]
-        return
-    result = await executor(store.checkpoints[-1] if outage else None).execute(
-        operation_id=operation, request=request
-    )
-    assert result.changed
+    before = deepcopy(document)
+    result = await executor().execute(operation_id=operation, request=request)
+    assert not result.changed
     assert result.needs_review
     assert [finding.code for finding in result.findings] == (
-        ["native_paragraph_layout_preserved", "table_font_scope"]
+        ["native_paragraph_layout_preserved", "table_font_preserved"]
         if preserve_alignment
-        else ["table_font_scope"]
+        else ["table_font_preserved"]
     )
-    assert events == ["table"]
+    assert events == []
+    assert document == before
+    assert all(checkpoint.table_font_plan is None for checkpoint in store.checkpoints)
     assert (
         await executor(store.checkpoints[-1]).execute(operation_id=operation, request=request)
         == result
@@ -175,16 +151,28 @@ async def test_table_format_exact_proof_retry_and_repeat_noop(
     again = await executor().execute(operation_id=uuid.uuid7(), request=request)
     assert not again.changed
     assert again.needs_review
-    assert events == ["table"]
-    missing = store.checkpoints[-1].model_copy(update={"table_font_plan": None})
-    with pytest.raises(InPlaceNeedsReviewError):
-        await executor(missing).execute(operation_id=operation, request=request)
+    assert events == []
     previous = store.checkpoints[-1].model_copy(
-        update={"request_builder_version": "google-docs-requests-v21"}
+        update={"request_builder_version": "google-docs-requests-v24"}
     )
     with pytest.raises(OutputConflictError):
         await executor(previous).execute(operation_id=operation, request=request)
-    assert events == ["table"]
+    assert events == []
+    parts = _paragraph(document)["paragraph"]["elements"]
+    if tamper == "bold":
+        parts[0]["textRun"]["textStyle"]["bold"] = False
+    else:
+        part = parts[-1] if tamper == "terminator" else parts[0]
+        part["textRun"]["textStyle"]["weightedFontFamily"]["fontFamily"] = "Changed Family"
+    verification = await native.verify_in_place(
+        document=document,
+        title=_inspection_snapshot(before).title,
+        expected=parse_google_document(before, title=_inspection_snapshot(before).title),
+        structural_sha256=store.checkpoints[-1].structural_sha256,
+        protected_structure_sha256=store.checkpoints[-1].protected_structure_sha256,
+        verify_brand=True,
+    )
+    assert not verification.structure_preserved
 
 
 async def test_table_font_budget_preserves_table_before_any_write(
@@ -217,7 +205,7 @@ async def test_table_font_budget_preserves_table_before_any_write(
     )
     assert not result.changed
     assert [finding.code for finding in result.findings] == ["table_font_preserved"]
-    assert "budget" in result.findings[0].detail
+    assert "preserved" in result.findings[0].detail
     assert document == _document()
 
 
@@ -243,7 +231,7 @@ async def test_table_plan_survives_header_stage_without_replanning(
         )
 
     async def apply(**kwargs: Any) -> InPlaceStageResult:
-        assert store.checkpoints[-1].table_font_plan is not None
+        assert store.checkpoints[-1].table_font_plan is None
         if "createHeader" in kwargs["requests"][0]:
             if not events:
                 tab["headers"] = {"header-a": {"content": []}}
@@ -253,7 +241,11 @@ async def test_table_plan_survives_header_stage_without_replanning(
                 if outage:
                     raise DocumentGatewayError
         else:
-            formatted = _formatted(document)
+            assert all(
+                request.get("updateTextStyle", {}).get("range", {}).get("startIndex", 0) < 103
+                for request in kwargs["requests"]
+            )
+            formatted = deepcopy(document)
             formatted["tabs"][0]["documentTab"]["headers"] = deepcopy(
                 _branded_google_document()["tabs"][0]["documentTab"]["headers"]
             )

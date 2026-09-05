@@ -221,8 +221,18 @@ async def test_custom_body_format_then_repeat_is_noop_with_truthful_receipt(
     ]["weightedFontFamily"]["fontFamily"] = "Arial"
     if rich:
         rich_document = _native()
+        for part in rich_document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"][
+            "elements"
+        ]:
+            part["textRun"]["textStyle"]["weightedFontFamily"] = {
+                "fontFamily": "Arial",
+                "weight": 400,
+            }
         document["tabs"][0]["documentTab"]["body"] = rich_document["tabs"][0]["documentTab"]["body"]
         branded_body = _formatted(rich_document)["tabs"][0]["documentTab"]["body"]
+        for part in branded_body["content"][0]["paragraph"]["elements"]:
+            part["textRun"]["textStyle"]["weightedFontFamily"]["fontFamily"] = "Nunito"
+            part["textRun"]["textStyle"]["weightedFontFamily"]["weight"] = 400
     native = _native_gateway()
     gateway = _Gateway(_inspection_snapshot(document))
     events: list[str] = []

@@ -41,7 +41,7 @@ def preserved_native_findings(
                 block_id=block.id,
                 detail=(
                     "Rich text wording and native structure were preserved; supported font formatting was checked."
-                    if block.font_style_ranges
+                    if block.font_style_ranges and not block.preserved_font_family
                     else "Text and protected native elements in this paragraph were preserved without modification"
                 ),
             )

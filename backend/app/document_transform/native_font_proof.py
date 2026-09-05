@@ -1,23 +1,33 @@
 from contextlib import suppress
 from copy import deepcopy
+from dataclasses import dataclass
 import hashlib
 import json
-from typing import Any, Literal
+from typing import Any, Literal, NewType, Self
 
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.document_transform.errors import UnsupportedSourceError
 from app.document_transform.ir import (
     MAX_DOCUMENT_BLOCKS,
     DocumentIR,
+    TextBlock,
     parse_google_document,
     utf16_length,
+)
+from app.document_transform.native_font_semantics import (
+    NativeFontSemantics,
+    capture_font_semantics,
+    semantic_font_digest,
 )
 from app.identifiers import DocsTabId
 
 
 _MAX_COMPONENT_BYTES = 131072
+NativeFontBlockId = NewType("NativeFontBlockId", str)
+_SEMANTIC_VERSION = 2
+MAX_NATIVE_FONT_INTERVALS = 5000
 _COMPONENT_ERRORS = (
     KeyError,
     IndexError,
@@ -42,12 +52,29 @@ class NativeFontComponents(BaseModel):
 class NativeFontProof(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    version: Literal[1] = 1
+    version: Literal[1, 2] = 1
     tab_id: DocsTabId
     body_ordinal: int = Field(ge=0)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     named_styles_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     components: NativeFontComponents | None = None
+    semantics: NativeFontSemantics | None = None
+    block_id: NativeFontBlockId | None = Field(default=None, pattern=r"^b[0-9]+$", max_length=32)
+
+    @model_validator(mode="after")
+    def validate_semantic_version(self) -> Self:
+        if self.version == 1:
+            if self.semantics is not None or self.block_id is not None:
+                raise ValueError
+        elif self.semantics is None or self.block_id is None:
+            raise ValueError
+        return self
+
+
+@dataclass(frozen=True)
+class NativeFontVerificationPolicy:
+    preserved_family_block_ids: tuple[str, ...] = ()
+    require_target_family: bool = False
 
 
 def _bodies(document: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
@@ -159,12 +186,22 @@ def _named_styles_digest(document: dict[str, Any], tab_id: str) -> str:
 
 
 def capture_native_font_proof(
-    document: dict[str, Any] | None, original: DocumentIR
+    document: dict[str, Any] | None,
+    original: DocumentIR,
+    *,
+    preserved_family_block_ids: tuple[str, ...] = (),
+    target_font_family: str | None = None,
+    transformed: DocumentIR | None = None,
 ) -> tuple[NativeFontProof, ...]:
     if document is None:
         raise ValueError
     bodies = _bodies(document)
     result = []
+    captured_ids = set()
+    interval_count = 0
+    position_deltas = (
+        _position_deltas(original, transformed) if target_font_family is not None else {}
+    )
     for block in original.blocks:
         if block.editable or not block.font_style_ranges or block.source_range is None:
             continue
@@ -178,16 +215,105 @@ def capture_native_font_proof(
         if len(matches) != 1:
             raise ValueError
         ordinal, element = matches[0]
+        digest = native_paragraph_font_sha256(element)
+        semantics = None
+        if target_font_family is not None:
+            semantics = capture_font_semantics(
+                document,
+                source.tab_id,
+                element,
+                target_font_family=target_font_family,
+                preserve_family=block.id in preserved_family_block_ids,
+                position_delta=position_deltas.get(block.id, 0),
+            )
+            digest = semantic_font_digest(
+                document, source.tab_id, element, semantics, require_target_family=False
+            )
+            interval_count += len(semantics.intervals)
+            if interval_count > MAX_NATIVE_FONT_INTERVALS:
+                raise ValueError
+        captured_ids.add(block.id)
         result.append(
             NativeFontProof(
+                version=2 if semantics is not None else 1,
+                block_id=NativeFontBlockId(block.id) if semantics is not None else None,
+                semantics=semantics,
                 tab_id=source.tab_id,
                 body_ordinal=ordinal,
-                sha256=native_paragraph_font_sha256(element),
+                sha256=digest,
                 named_styles_sha256=_named_styles_digest(document, source.tab_id),
                 components=_optional_components(element),
             )
         )
+    if (
+        len(preserved_family_block_ids) != len(set(preserved_family_block_ids))
+        or not set(preserved_family_block_ids) <= captured_ids
+        or (preserved_family_block_ids and target_font_family is None)
+    ):
+        raise ValueError
     return tuple(result)
+
+
+def _position_deltas(original: DocumentIR, transformed: DocumentIR | None) -> dict[str, int]:
+    if transformed is None:
+        return {}
+    if original.tab_ids != transformed.tab_ids or len(original.blocks) != len(transformed.blocks):
+        raise ValueError
+    shifts: dict[DocsTabId, int] = {}
+    result: dict[str, int] = {}
+    for before, after in zip(original.blocks, transformed.blocks, strict=True):
+        if (before.id, before.kind, before.source_range, before.editable) != (
+            after.id,
+            after.kind,
+            after.source_range,
+            after.editable,
+        ):
+            raise ValueError
+        source = before.source_range
+        if source is not None:
+            result[before.id] = shifts.get(source.tab_id, 0)
+        if before.text == after.text:
+            continue
+        if (
+            not before.editable
+            or source is None
+            or source.segment_id is not None
+            or before.native_content
+            or after.native_content
+        ):
+            raise ValueError
+        if (
+            "\n" in before.text
+            or "\n" in after.text
+            or source.end_index - source.start_index != utf16_length(before.text)
+        ):
+            raise ValueError
+        shifts[source.tab_id] = (
+            shifts.get(source.tab_id, 0) + utf16_length(after.text) - utf16_length(before.text)
+        )
+    return result
+
+
+def native_font_target_interval_count(document: dict[str, Any], block: TextBlock) -> int | None:
+    source = block.source_range
+    if source is None or block.editable or not block.font_style_ranges:
+        return None
+    try:
+        matches = [
+            element
+            for element in _bodies(document)[source.tab_id]
+            if element.get("startIndex") == source.start_index
+            and element.get("endIndex") == source.end_index + 1
+        ]
+        if len(matches) != 1:
+            return None
+        native_paragraph_font_sha256(matches[0])
+        evidence = capture_font_semantics(
+            document, source.tab_id, matches[0], target_font_family="Nunito", preserve_family=False
+        )
+        return len(evidence.intervals)
+    except _COMPONENT_ERRORS:
+        return None
 
 
 def verify_native_font_proof(
@@ -196,13 +322,21 @@ def verify_native_font_proof(
     *,
     preserved_block_ids: tuple[str, ...] = (),
     diagnostic_stage: Literal["resume", "headers", "content"] | None = None,
+    font_policy: NativeFontVerificationPolicy | None = None,
 ) -> bool:
     checks: dict[str, str | int | bool] = {
         "font_proof_count": min(len(proofs), MAX_DOCUMENT_BLOCKS),
         "font_proof_verified_count": 0,
         "font_proof_reason": "document_missing",
     }
-    valid = _verify_native_font_proof(document, proofs, preserved_block_ids, checks)
+    valid = _verify_native_font_proof(
+        document,
+        proofs,
+        preserved_block_ids,
+        checks,
+        preserved_family_block_ids=font_policy.preserved_family_block_ids if font_policy else (),
+        require_target_family=font_policy.require_target_family if font_policy else False,
+    )
     if isinstance(diagnostic_stage, str) and diagnostic_stage in {"resume", "headers", "content"}:
         if not valid:
             checks.update(_component_checks(document, proofs, checks))
@@ -332,11 +466,21 @@ def _verify_native_font_proof(
     proofs: tuple[NativeFontProof, ...],
     preserved_block_ids: tuple[str, ...],
     checks: dict[str, str | int | bool],
+    *,
+    preserved_family_block_ids: tuple[str, ...],
+    require_target_family: bool,
 ) -> bool:
     if document is None:
         return False
     try:
-        return _native_font_proof_matches(document, proofs, preserved_block_ids, checks)
+        return _native_font_proof_matches(
+            document,
+            proofs,
+            preserved_block_ids,
+            checks,
+            preserved_family_block_ids=preserved_family_block_ids,
+            require_target_family=require_target_family,
+        )
     except KeyError, IndexError, TypeError, ValueError, AttributeError, UnsupportedSourceError:
         checks["font_proof_reason"] = "malformed"
         return False
@@ -347,6 +491,9 @@ def _native_font_proof_matches(
     proofs: tuple[NativeFontProof, ...],
     preserved_block_ids: tuple[str, ...],
     checks: dict[str, str | int | bool],
+    *,
+    preserved_family_block_ids: tuple[str, ...],
+    require_target_family: bool,
 ) -> bool:
     bodies = _bodies(document)
     identities = {(proof.tab_id, proof.body_ordinal) for proof in proofs}
@@ -356,8 +503,49 @@ def _native_font_proof_matches(
     if len(identities) != len(proofs):
         checks["font_proof_reason"] = "duplicate_binding"
         return False
+    if (
+        len(proofs) > MAX_DOCUMENT_BLOCKS
+        or sum(len(proof.semantics.intervals) for proof in proofs if proof.semantics is not None)
+        > MAX_NATIVE_FONT_INTERVALS
+    ):
+        return False
+    blocks = (
+        {block.id: block for block in parse_google_document(document, title="").blocks}
+        if any(proof.version == _SEMANTIC_VERSION for proof in proofs)
+        else {}
+    )
+    if len(preserved_family_block_ids) != len(set(preserved_family_block_ids)) or not set(
+        preserved_family_block_ids
+    ) <= {proof.block_id for proof in proofs if proof.version == _SEMANTIC_VERSION}:
+        return False
     for ordinal, proof in enumerate(proofs):
-        if native_paragraph_font_sha256(bodies[proof.tab_id][proof.body_ordinal]) != proof.sha256:
+        element = bodies[proof.tab_id][proof.body_ordinal]
+        digest = native_paragraph_font_sha256(element)
+        if proof.version == _SEMANTIC_VERSION:
+            semantics = proof.semantics
+            if (
+                semantics is None
+                or proof.block_id is None
+                or semantics.preserve_family != (proof.block_id in preserved_family_block_ids)
+            ):
+                return False
+            source = blocks[proof.block_id].source_range
+            if source is None or (source.tab_id, source.start_index, source.end_index + 1) != (
+                proof.tab_id,
+                element["startIndex"],
+                element["endIndex"],
+            ):
+                return False
+            digest = semantic_font_digest(
+                document,
+                proof.tab_id,
+                element,
+                semantics,
+                require_target_family=require_target_family,
+            )
+        elif proof.semantics is not None or proof.block_id is not None:
+            return False
+        if digest != proof.sha256:
             checks["font_proof_reason"] = "paragraph_payload"
             return False
         if _named_styles_digest(document, proof.tab_id) != proof.named_styles_sha256:
