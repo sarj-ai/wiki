@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
@@ -28,6 +28,7 @@ from app.document_transform.schemas import (
 )
 from app.identifiers import FileId, IdempotencyKey, TaskId
 from app.models.task import Task
+from app.models.task_replay_key import TaskReplayKey
 from app.tasks.errors import (
     TaskAdmissionLimitError,
     TaskIdempotencyConflictError,
@@ -66,9 +67,13 @@ _MARKDOWN_ENCRYPTION_VERSION = "fernet-v1"
 _TERMINAL_REDACTED_PAYLOAD: dict[str, JsonValue] = {"redacted": True}
 _LEASE_RETENTION_GRACE = timedelta(minutes=10)
 _COPY_CHECKPOINT_CIPHERTEXT_FIELD = "checkpoint_ciphertext"
+_MAX_DISPATCH_RECONCILIATION_BATCH = 100
 
 
 class TaskService(ABC):
+    async def pending_document_transform_dispatches(self, *, limit: int = 50) -> list[TaskId]:
+        raise NotImplementedError
+
     @abstractmethod
     async def create_or_replay(
         self,
@@ -77,6 +82,7 @@ class TaskService(ABC):
         owner_user_id: uuid.UUID,
         idempotency_key: IdempotencyKey,
         payload: BaseModel,
+        admit: Callable[[], Awaitable[None]] | None = None,
     ) -> TaskReservation: ...
 
     @abstractmethod
@@ -144,6 +150,24 @@ class PostgresTaskService(TaskService):
         self._db = db
 
     @override
+    async def pending_document_transform_dispatches(self, *, limit: int = 50) -> list[TaskId]:
+        if not 1 <= limit <= _MAX_DISPATCH_RECONCILIATION_BATCH:
+            msg = "Dispatch reconciliation limit must be between 1 and 100"
+            raise ValueError(msg)
+        statement = (
+            select(Task.id)
+            .where(
+                Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+                Task.status == TaskStatus.PENDING,
+                Task.dispatch_ready_at <= func.now() - timedelta(minutes=2),
+                Task.expires_at > func.now(),
+            )
+            .order_by(Task.dispatch_ready_at, Task.id)
+            .limit(limit)
+        )
+        return list((await self._db.execute(statement)).scalars().all())
+
+    @override
     async def create_or_replay(
         self,
         *,
@@ -151,6 +175,7 @@ class PostgresTaskService(TaskService):
         owner_user_id: uuid.UUID,
         idempotency_key: IdempotencyKey,
         payload: BaseModel,
+        admit: Callable[[], Awaitable[None]] | None = None,
     ) -> TaskReservation:
         serialized = _serialize(payload)
         request_hash = _request_hash(serialized)
@@ -179,6 +204,49 @@ class PostgresTaskService(TaskService):
                     raise TaskIdempotencyConflictError
                 await self._db.commit()
                 return TaskReservation(task=_to_read(existing), created=False)
+            if isinstance(document_transform_payload.source, DriveFileSource):
+                active = (
+                    await self._db.execute(
+                        select(Task)
+                        .where(
+                            Task.owner_user_id == owner_user_id,
+                            Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+                            Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
+                            Task.payload["source"]["kind"].astext == "drive_file",
+                            Task.payload["source"]["file_id"].astext
+                            == document_transform_payload.source.file_id,
+                        )
+                        .order_by(Task.created_at, Task.id)
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+                if active is not None:
+                    # A new key is a fresh access request, unlike an exact-key
+                    # replay. Recheck scope before disclosing an active task.
+                    try:
+                        if admit is not None:
+                            await admit()
+                    except BaseException:
+                        await self._db.rollback()
+                        raise
+                    if active.request_hash != request_hash:
+                        await self._db.rollback()
+                        raise TaskTargetBusyError
+                    await self._db.execute(
+                        pg_insert(TaskReplayKey)
+                        .values(
+                            owner_user_id=owner_user_id,
+                            kind=kind,
+                            idempotency_key=idempotency_key,
+                            task_id=active.id,
+                        )
+                        .on_conflict_do_update(
+                            index_elements=["owner_user_id", "kind", "idempotency_key"],
+                            set_={"task_id": active.id},
+                        )
+                    )
+                    await self._db.commit()
+                    return TaskReservation(task=_to_read(active), created=False)
             active_count = (
                 await self._db.execute(
                     select(func.count())
@@ -216,6 +284,15 @@ class PostgresTaskService(TaskService):
                 if active_in_place_count >= _MAX_ACTIVE_IN_PLACE_TASKS_PER_OWNER:
                     await self._db.rollback()
                     raise TaskAdmissionLimitError
+        # Admission runs under the owner's transaction lock, before publishing a
+        # durable dispatch intent. Replays return above without revalidating a
+        # source which may have changed because this operation already succeeded.
+        if admit is not None:
+            try:
+                await admit()
+            except BaseException:
+                await self._db.rollback()
+                raise
         now = datetime.now(UTC)
         expired = (
             delete(Task)
@@ -236,6 +313,7 @@ class PostgresTaskService(TaskService):
                 idempotency_key=idempotency_key,
                 request_hash=request_hash,
                 payload=persisted_payload,
+                dispatch_ready_at=now if admit is not None else None,
                 in_place_target=(in_place_source.file_id if in_place_source else None),
                 expires_at=now + _DEFAULT_RETENTION,
             )
@@ -532,7 +610,16 @@ class PostgresTaskService(TaskService):
                 select(Task).where(
                     Task.owner_user_id == owner_user_id,
                     Task.kind == kind,
-                    Task.idempotency_key == idempotency_key,
+                    or_(
+                        Task.idempotency_key == idempotency_key,
+                        Task.id.in_(
+                            select(TaskReplayKey.task_id).where(
+                                TaskReplayKey.owner_user_id == owner_user_id,
+                                TaskReplayKey.kind == kind,
+                                TaskReplayKey.idempotency_key == idempotency_key,
+                            )
+                        ),
+                    ),
                     Task.expires_at > func.now(),
                 )
             )

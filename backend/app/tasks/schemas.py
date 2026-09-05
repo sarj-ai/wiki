@@ -70,12 +70,17 @@ class SucceededTaskRead(_TaskReadBase):
     finished_at: datetime
 
 
+class UnverifiedTaskOutput(BaseModel):
+    file_id: FileId
+
+
 class FailedTaskRead(_TaskReadBase):
     status: Literal[TaskStatus.FAILED]
     result: None
     resource_id: FileId | None
     error_code: str
     error_detail: str | None
+    unverified_output: UnverifiedTaskOutput | None = None
     attempt_count: PositiveInt
     started_at: datetime
     finished_at: datetime

@@ -9,6 +9,7 @@ import uuid
 import httpx
 import pytest
 
+from app.aliases.schemas import DocumentAliasRead
 from app.config import settings
 from app.document_transform import task_executor as task_executor_module
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
@@ -181,6 +182,7 @@ class _VerificationFailureTransform:
 class _SuccessTransform:
     def __init__(self) -> None:
         self.markdown: str | None = None
+        self.needs_review = False
 
     async def execute(
         self,
@@ -210,7 +212,7 @@ class _SuccessTransform:
             model_ids=[],
             tool_versions={},
             pipeline_version=PIPELINE_VERSION,
-            needs_review=False,
+            needs_review=self.needs_review,
             brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
             brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
             deterministic_patch_count=0,
@@ -259,6 +261,95 @@ class _SuccessTasks(_RetryTasks):
             started_at=now,
             finished_at=now,
         )
+
+
+class _ShortLinks:
+    def __init__(self, alias: str | None) -> None:
+        self.alias = alias
+        self.calls: list[tuple[FileId, str]] = []
+
+    async def ensure(self, output_id: FileId, title: str) -> str | None:
+        self.calls.append((output_id, title))
+        return self.alias
+
+
+class _AutomaticAliases:
+    def __init__(self, *, fails: bool) -> None:
+        self.fails = fails
+        self.file_id: FileId | None = None
+
+    async def ensure_for_file(
+        self, file_id: FileId, candidates: tuple[str, ...]
+    ) -> DocumentAliasRead:
+        self.file_id = file_id
+        assert candidates
+        if self.fails:
+            msg = "private provider detail"
+            raise RuntimeError(msg)
+        return DocumentAliasRead(alias="output-document", file_id=file_id)
+
+
+class _AliasTransaction:
+    def __init__(self) -> None:
+        self.rollbacks = 0
+
+    async def rollback(self) -> None:
+        self.rollbacks += 1
+
+
+@pytest.mark.parametrize("fails", [False, True])
+async def test_automatic_short_links_roll_back_only_failed_link_attempt(fails: bool) -> None:
+    aliases = _AutomaticAliases(fails=fails)
+    db = _AliasTransaction()
+    links = task_executor_module._AutomaticShortLinks(aliases=aliases, db=db)
+    alias = await links.ensure(FileId("output"), "Output")
+    assert alias == (None if fails else "output-document")
+    assert db.rollbacks == int(fails)
+    assert aliases.file_id == FileId("output")
+
+
+@pytest.mark.parametrize("alias", ["output-document", None])
+async def test_success_records_automatic_short_link_without_replaying_transform(
+    alias: str | None,
+) -> None:
+    payload = _payload()
+    task_id = TaskId(uuid.uuid7())
+    links = _ShortLinks(alias)
+    tasks = _SuccessTasks(payload=payload)
+    completed = await task_executor_module._execute_claimed(
+        task_id,
+        tasks=tasks,
+        transform=_SuccessTransform(),
+        claim=_claim(task_id, attempt_count=1),
+        payload=payload,
+        short_links=links,
+    )
+    assert isinstance(completed, SucceededTaskRead)
+    assert isinstance(completed.result, DocumentTransformResult)
+    assert completed.result.short_link_alias == alias
+    assert completed.result.short_link_status == ("ready" if alias else "unavailable")
+    assert links.calls == [(FileId("output"), "Output")]
+    assert tasks.failed == tasks.deferred == 0
+
+
+async def test_review_required_output_does_not_create_automatic_short_link() -> None:
+    payload = _payload()
+    task_id = TaskId(uuid.uuid7())
+    links = _ShortLinks("output-document")
+    transform = _SuccessTransform()
+    transform.needs_review = True
+    completed = await task_executor_module._execute_claimed(
+        task_id,
+        tasks=_SuccessTasks(payload=payload),
+        transform=transform,
+        claim=_claim(task_id, attempt_count=1),
+        payload=payload,
+        short_links=links,
+    )
+    assert isinstance(completed, SucceededTaskRead)
+    assert isinstance(completed.result, DocumentTransformResult)
+    assert completed.result.short_link_status is None
+    assert links.calls == []
 
 
 class _BudgetProbeExecutor(DocumentTransformTaskExecutor):

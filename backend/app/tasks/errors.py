@@ -24,7 +24,7 @@ class TaskTargetBusyError(TaskError):
     http_status = 409
 
     def __init__(self) -> None:
-        super().__init__("This document already has an active in-place transformation")
+        super().__init__("This document already has an active transformation")
 
 
 class TaskAdmissionLimitError(TaskError):

@@ -53,6 +53,7 @@ from app.document_transform.ir import (
 )
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.document_transform.models import PatchGenerator
+from app.document_transform.native_footer_flow import NativeFooterCheckpoint, NativeFooterStage
 from app.document_transform.planner import TextTransformPlanner
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import (
@@ -66,10 +67,12 @@ from app.document_transform.schemas import (
     InPlaceCheckpointStage,
     MarkdownSource,
     OutputStrategy,
+    TabNamingCheckpoint,
     TextPatch,
     TransformMode,
     TransformPhase,
 )
+from app.document_transform.tab_names import TabNamingPlan
 from app.document_transform.unslop import (
     MAX_MODEL_EDITABLE_BLOCK_CHARS,
     deterministic_unslop_replacement,
@@ -853,6 +856,17 @@ def test_unslop_scanner_handles_native_docs_typography() -> None:
 
 
 class _Gateway(DocumentGateway):
+    @override
+    async def plan_tab_naming(
+        self,
+        *,
+        document_id: FileId,
+        title: str,
+        operation_id: uuid.UUID,
+        required_revision_id: DocsRevisionId,
+    ) -> None:
+        return None
+
     def __init__(
         self,
         snapshot: SourceSnapshot | None = None,
@@ -2362,6 +2376,51 @@ def _copy_executor(
     )
 
 
+@pytest.mark.parametrize(
+    ("source_name", "mode", "override", "expected_name"),
+    [
+        ("Untitled", TransformMode.FORMAT, None, "Capacity review — Sarj formatted"),
+        ("Untitled", TransformMode.BOTH, None, "Capacity review — Sarj polished"),
+        ("Untitled", TransformMode.UNSLOP, None, "Untitled — Unslopped"),
+        ("Board  Pack", TransformMode.FORMAT, None, "Board  Pack — Sarj formatted"),
+        ("Untitled", TransformMode.FORMAT, "Approved packet", "Approved packet"),
+        ("x" * 255, TransformMode.FORMAT, None, "x" * 238 + " — Sarj formatted"),
+    ],
+)
+async def test_copy_automatic_name_is_persisted_before_creation_and_retry_stable(
+    source_name: str,
+    mode: TransformMode,
+    override: str | None,
+    expected_name: str,
+) -> None:
+    gateway = _Gateway()
+    store = _CopyCheckpointStore()
+    task_id = TaskId(uuid.uuid7())
+    request = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content="# Capacity review\n\nThe team approved the plan.",
+            name=source_name,
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=mode,
+        output_name=override,
+    )
+    result = await _copy_executor(gateway=gateway, store=store, task_id=task_id).execute(
+        operation_id=task_id, request=request
+    )
+    assert result.output.name == expected_name
+    assert {checkpoint.output_name for checkpoint in store.checkpoints} == {expected_name}
+    assert store.events.index("checkpoint:planned") < store.events.index("resource:output")
+    applies = gateway.applies
+    repeated = await _copy_executor(
+        gateway=gateway, store=store, task_id=task_id, checkpoint=store.checkpoints[-1]
+    ).execute(operation_id=task_id, request=request)
+    assert repeated.output == result.output
+    assert gateway.applies == applies
+    assert store.resources == [result.output.file_id]
+
+
 async def test_copy_checkpoints_plan_before_create_and_resource_immediately_after() -> None:
     gateway = _Gateway()
     store = _CopyCheckpointStore()
@@ -2399,6 +2458,101 @@ async def test_copy_checkpoints_plan_before_create_and_resource_immediately_afte
     persisted = task_service_module._serialize_checkpoint(verified)
     assert set(persisted) == {"kind", "version", "checkpoint_ciphertext"}
     assert task_service_module._deserialize_checkpoint(persisted) == verified
+
+
+@pytest.mark.parametrize("interrupt_population", [False, True])
+async def test_copy_native_footer_persists_each_stage_and_does_not_replay_body(
+    interrupt_population: bool,
+) -> None:
+    store = _CopyCheckpointStore()
+
+    class FooterGateway(_Gateway):
+        supports_native_footer = True
+        interrupted = False
+
+        @override
+        async def plan_copy_footer(
+            self, *, draft: OutputDraft, operation_id: uuid.UUID
+        ) -> NativeFooterCheckpoint:
+            assert self.applies == 1
+            return NativeFooterCheckpoint(
+                tab_id=draft.tab_id,
+                url="https://wiki.sarj.ai/d/output",
+                revision_id=draft.revision_id,
+                create_marker=f"create-{operation_id}",
+                populate_marker=f"populate-{operation_id}",
+                marker_range={},
+                invariant_sha256="hash",
+            )
+
+        @override
+        async def apply_copy_footer_stage(
+            self, *, document_id: FileId, checkpoint: NativeFooterCheckpoint
+        ) -> NativeFooterCheckpoint:
+            assert document_id == "output"
+            assert store.checkpoints[-1].native_footer == checkpoint
+            if (
+                checkpoint.stage is NativeFooterStage.POPULATE
+                and interrupt_population
+                and not self.interrupted
+            ):
+                self.interrupted = True
+                raise DocumentGatewayError
+            stage = (
+                NativeFooterStage.POPULATE
+                if checkpoint.stage is NativeFooterStage.CREATE
+                else NativeFooterStage.COMPLETE
+            )
+            result = checkpoint.model_copy(
+                update={
+                    "stage": stage,
+                    "footer_id": DocsSegmentId("footer"),
+                    "revision_id": DocsRevisionId(f"footer-{stage.value}"),
+                }
+            )
+            assert self.draft is not None
+            self.draft = replace(self.draft, revision_id=result.revision_id)
+            return result
+
+    gateway = FooterGateway(
+        SourceSnapshot(
+            title="Decision",
+            parent_folder_id=FileId("folder"),
+            modified_time="2026-09-03T00:00:00Z",
+            revision_id=DocsRevisionId("source-revision"),
+            media_type="application/vnd.google-apps.document",
+            google_document=_in_place_document(
+                "The team approved the plan.", revision="source-revision"
+            ),
+        )
+    )
+    task_id = TaskId(uuid.uuid7())
+    request = DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("source"),
+            expected_modified_time="2026-09-03T00:00:00Z",
+        ),
+        mode=TransformMode.FORMAT,
+    )
+    executor = _copy_executor(gateway=gateway, store=store, task_id=task_id)
+    if interrupt_population:
+        with pytest.raises(DocumentGatewayError):
+            await executor.execute(operation_id=task_id, request=request)
+        executor = _copy_executor(
+            gateway=gateway, store=store, task_id=task_id, checkpoint=store.checkpoints[-1]
+        )
+    result = await executor.execute(operation_id=task_id, request=request)
+    assert result.output_revision_id == "footer-complete"
+    assert gateway.applies == 1
+    assert gateway.brand_prepares == 1
+    stages = [c.native_footer.stage for c in store.checkpoints if c.native_footer is not None]
+    assert stages == [
+        NativeFooterStage.CREATE,
+        NativeFooterStage.POPULATE,
+        NativeFooterStage.COMPLETE,
+        NativeFooterStage.COMPLETE,
+    ]
 
 
 async def test_copy_readback_mismatch_fails_with_output_resource_tracked() -> None:
@@ -2916,6 +3070,56 @@ async def test_in_place_persisted_checkpoint_replay_skips_model_and_duplicate_ba
     assert result.output_strategy is OutputStrategy.IN_PLACE
     assert result.changed is True
     assert result.output_revision_id == "revision-3"
+
+
+async def test_in_place_tab_checkpoint_resume_never_replays_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = _CrashReplayInPlaceGateway("Quarterly review", crash_stage="never")
+    store = _CheckpointStore(gateway.events)
+    operation_id = uuid.uuid7()
+    task_id = TaskId(uuid.uuid7())
+    calls: list[str] = []
+
+    async def plan_tabs(**_kwargs: object) -> TabNamingCheckpoint:
+        return TabNamingCheckpoint(
+            plan=TabNamingPlan((), ()),
+            revision_id=DocsRevisionId("revision-3"),
+            marker_name="tabs",
+            marker_range={"startIndex": 1, "endIndex": 2, "tabId": "tab-1"},
+            invariant_sha256="test",
+        )
+
+    async def apply_tabs(**_kwargs: object) -> DocsRevisionId:
+        calls.append("tabs")
+        gateway.document["revisionId"] = "revision-4"
+        if len(calls) == 1:
+            raise DocumentGatewayError
+        return DocsRevisionId("revision-4")
+
+    async def reject_content_replay(**_kwargs: object) -> InPlaceStageResult:
+        pytest.fail("content must never be replayed after the metadata checkpoint")
+
+    monkeypatch.setattr(gateway, "plan_tab_naming", plan_tabs)
+    monkeypatch.setattr(gateway, "apply_tab_naming", apply_tabs)
+    with pytest.raises(DocumentGatewayError):
+        await _replay_executor(
+            gateway=gateway,
+            generator=_Generator({TransformPhase.FORMAT: "Quarterly review refined."}),
+            store=store,
+            task_id=task_id,
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+    assert store.checkpoints[-1].tab_naming is not None
+    monkeypatch.setattr(gateway, "apply_in_place_stage", reject_content_replay)
+    result = await _replay_executor(
+        gateway=gateway,
+        generator=_Generator(),
+        store=store,
+        task_id=task_id,
+        checkpoint=store.checkpoints[-1],
+    ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.FORMAT))
+    assert result.output_revision_id == "revision-4"
+    assert len(calls) == 2
 
 
 async def test_in_place_header_retry_rebases_metadata_only_revision_drift() -> None:

@@ -39,6 +39,8 @@ export interface DocumentTransformResult {
   outputRevisionId: null | string;
   sourceRevisionId: null | string;
   sourceSha256: string;
+  shortLinkAlias?: null | string;
+  shortLinkStatus?: "ready" | "unavailable" | null;
   toolVersions: Record<string, string>;
   validation: DocumentTransformValidation;
 }
@@ -62,6 +64,7 @@ export type DocumentTransformTask =
       errorDetail?: string;
       id: string;
       status: "failed";
+      unverifiedOutputId?: string;
     }
   | {
       id: string;
@@ -85,10 +88,12 @@ export class DocumentTransformNeedsReviewError extends Error {
 
 export class DocumentTransformTerminalError extends Error {
   readonly code: string;
+  readonly unverifiedOutputId: string | undefined;
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, unverifiedOutputId?: string) {
     super(message);
     this.code = code;
+    this.unverifiedOutputId = unverifiedOutputId;
     this.name = "DocumentTransformTerminalError";
   }
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import override
 import uuid
@@ -120,7 +121,10 @@ class _Tasks(TaskService):
         owner_user_id: uuid.UUID,
         idempotency_key: IdempotencyKey,
         payload: BaseModel,
+        admit: Callable[[], Awaitable[None]] | None = None,
     ) -> TaskReservation:
+        if self.created and admit is not None:
+            await admit()
         self.requested_kind = kind
         task = _succeeded(self.task_id) if self.terminal else _pending(self.task_id, kind=kind)
         return TaskReservation(task=task, created=self.created)
@@ -306,8 +310,8 @@ async def test_markdown_transform_rejects_invalid_destination_before_task_creati
             files=files,
         )
 
-    assert tasks.requested_kind is TaskKind.FILE_DOCUMENT_TRANSFORM
-    assert tasks.discarded == [tasks.task_id]
+    assert tasks.requested_kind is TaskKind.FILE_SMART_CREATE
+    assert tasks.discarded == []
     assert files.requested == [FileId("folder")]
 
 
@@ -470,5 +474,5 @@ async def test_native_slides_in_place_is_rejected_before_enqueue(
         )
 
     assert exc_info.value.status_code == 422
-    assert tasks.discarded
+    assert not tasks.discarded
     assert enqueuer.document_task_ids == []

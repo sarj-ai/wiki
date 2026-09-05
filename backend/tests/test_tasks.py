@@ -141,7 +141,7 @@ def _success_result(task_id: TaskId) -> SmartCreateResult:
 async def test_in_place_admission_reserves_target_before_queueing() -> None:
     row = _task(request_hash="0" * 64)
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, 0, 0, row)
+    session = _Session(None, None, None, 0, 0, row)
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -157,9 +157,73 @@ async def test_in_place_admission_reserves_target_before_queueing() -> None:
     assert session.commits == 1
 
 
+async def test_admission_finishes_before_dispatch_intent_is_committed() -> None:
+    row = _task(request_hash="0" * 64)
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    session = _Session(None, None, None, 0, 0, row)
+
+    async def admit() -> None:
+        assert session.commits == 0
+        assert not any("INSERT INTO tasks" in str(query) for query in session.statements)
+
+    await _service(session).create_or_replay(
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        owner_user_id=row.owner_user_id,
+        idempotency_key=row.idempotency_key,
+        payload=_in_place_payload(),
+        admit=admit,
+    )
+    statement = session.statements[-1]
+    assert isinstance(statement, ClauseElement)
+    assert (statement.compile().params or {})["dispatch_ready_at"] is not None
+    assert session.commits == 1
+
+
+async def test_failed_admission_never_publishes_or_discards_a_reservation() -> None:
+    row = _task(request_hash="0" * 64)
+    session = _Session(None, None, None, 0, 0)
+
+    async def admit() -> None:
+        message = "Admission denied"
+        raise PermissionError(message)
+
+    with pytest.raises(PermissionError, match="Admission denied"):
+        await _service(session).create_or_replay(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            owner_user_id=row.owner_user_id,
+            idempotency_key=row.idempotency_key,
+            payload=_in_place_payload(),
+            admit=admit,
+        )
+    assert session.commits == 0
+    assert session.rollbacks == 1
+    assert not any("INSERT INTO tasks" in str(query) for query in session.statements)
+
+
+async def test_admitted_replay_does_not_revalidate_changed_provider_state() -> None:
+    payload = _in_place_payload()
+    row = _task(
+        request_hash=task_service_module._request_hash(task_service_module._serialize(payload))
+    )
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    session = _Session(None, row)
+
+    async def admit() -> None:
+        pytest.fail("An already admitted replay must not inspect changed provider state")
+
+    result = await _service(session).create_or_replay(
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        owner_user_id=row.owner_user_id,
+        idempotency_key=row.idempotency_key,
+        payload=payload,
+        admit=admit,
+    )
+    assert result.created is False
+
+
 async def test_distinct_active_in_place_task_for_same_target_is_rejected() -> None:
     row = _task(request_hash="0" * 64)
-    session = _Session(None, None, 0, 0, None, None)
+    session = _Session(None, None, None, 0, 0, None, None)
 
     with pytest.raises(TaskTargetBusyError):
         await _service(session).create_or_replay(
@@ -182,7 +246,7 @@ async def test_document_transform_admission_caps_all_active_owner_tasks() -> Non
         ),
         mode=TransformMode.UNSLOP,
     )
-    session = _Session(None, None, 20)
+    session = _Session(None, None, None, 20)
 
     with pytest.raises(TaskAdmissionLimitError):
         await _service(session).create_or_replay(
@@ -212,6 +276,129 @@ async def test_document_transform_admission_replay_precedes_owner_cap() -> None:
     assert reservation.created is False
     assert reservation.task.id == row.id
     assert len(session.statements) == 2
+
+
+@pytest.mark.parametrize("strategy", [OutputStrategy.COPY, OutputStrategy.IN_PLACE])
+@pytest.mark.parametrize("task_status", [TaskStatus.PENDING, TaskStatus.RUNNING])
+async def test_different_key_same_source_reuses_active_task(
+    strategy: OutputStrategy, task_status: TaskStatus
+) -> None:
+    payload = _in_place_payload().model_copy(update={"output_strategy": strategy})
+    row = _task(
+        request_hash=task_service_module._request_hash(task_service_module._serialize(payload)),
+        status=task_status,
+    )
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    session = _Session(None, None, row, None)
+    if task_status is TaskStatus.RUNNING:
+        row.started_at = datetime.now(UTC)
+        row.attempt_count = 1
+    admitted = False
+
+    async def admit() -> None:
+        nonlocal admitted
+        admitted = True
+        assert session.commits == 0
+        assert "pg_advisory_xact_lock" in str(session.statements[0])
+
+    new_key = IdempotencyKey(uuid.uuid7())
+    reservation = await _service(session).create_or_replay(
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        owner_user_id=row.owner_user_id,
+        idempotency_key=new_key,
+        payload=payload,
+        admit=admit,
+    )
+    assert admitted
+    assert not reservation.created
+    assert reservation.task.id == row.id
+    assert session.commits == 1
+    query = session.statements[2]
+    assert isinstance(query, ClauseElement)
+    params = query.compile().params or {}
+    assert row.owner_user_id in params.values()
+    assert "document-1" in params.values()
+    assert "expires_at" not in str(query).split("WHERE", 1)[1]
+    assert "INSERT INTO task_replay_keys" in str(session.statements[3])
+    assert not any("INSERT INTO tasks " in str(statement) for statement in session.statements)
+
+
+@pytest.mark.parametrize("change", ["mode", "source_revision", "strategy", "name"])
+async def test_active_source_different_intent_is_busy(change: str) -> None:
+    payload = _in_place_payload()
+    row = _task(
+        request_hash=task_service_module._request_hash(task_service_module._serialize(payload))
+    )
+    match change:
+        case "mode":
+            changed = payload.model_copy(update={"mode": TransformMode.FORMAT})
+        case "source_revision":
+            changed = payload.model_copy(
+                update={
+                    "source": payload.source.model_copy(update={"expected_modified_time": "new"})
+                }
+            )
+        case "strategy":
+            changed = payload.model_copy(update={"output_strategy": OutputStrategy.COPY})
+        case _:
+            changed = payload.model_copy(update={"output_name": "Different name"})
+    session = _Session(None, None, row)
+    with pytest.raises(TaskTargetBusyError):
+        await _service(session).create_or_replay(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            owner_user_id=row.owner_user_id,
+            idempotency_key=IdempotencyKey(uuid.uuid7()),
+            payload=changed,
+        )
+    assert session.rollbacks == 1
+    assert session.commits == 0
+
+
+async def test_active_source_reuse_rechecks_revoked_access() -> None:
+    payload = _in_place_payload()
+    row = _task(
+        request_hash=task_service_module._request_hash(task_service_module._serialize(payload))
+    )
+    session = _Session(None, None, row)
+
+    async def admit() -> None:
+        message = "Source access revoked"
+        raise PermissionError(message)
+
+    with pytest.raises(PermissionError, match="revoked"):
+        await _service(session).create_or_replay(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            owner_user_id=row.owner_user_id,
+            idempotency_key=IdempotencyKey(uuid.uuid7()),
+            payload=payload,
+            admit=admit,
+        )
+    assert session.rollbacks == 1
+    assert len(session.statements) == 3
+
+
+async def test_secondary_key_replay_query_retains_owner_and_terminal_history() -> None:
+    payload = _in_place_payload()
+    row = _task(
+        request_hash=task_service_module._request_hash(task_service_module._serialize(payload)),
+        status=TaskStatus.CANCELLED,
+    )
+    row.finished_at = datetime.now(UTC)
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    session = _Session(None, row)
+    reservation = await _service(session).create_or_replay(
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        owner_user_id=row.owner_user_id,
+        idempotency_key=IdempotencyKey(uuid.uuid7()),
+        payload=payload,
+    )
+    assert reservation.task.id == row.id
+    assert not reservation.created
+    sql = str(session.statements[1])
+    assert "task_replay_keys.owner_user_id" in sql
+    assert "task_replay_keys.idempotency_key" in sql
+    assert "task_replay_keys.kind" in sql
+    assert "tasks.expires_at >" in sql
 
 
 async def test_markdown_task_persists_ciphertext_and_hash_without_plaintext() -> None:

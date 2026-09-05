@@ -17,6 +17,25 @@ import { DocumentTransformNeedsReviewError } from "@/lib/document-transform-type
 const taskId = "55555555-5555-4555-8555-555555555555";
 
 describe("documentTransformApi", () => {
+  it("keeps an incomplete-copy link on a terminal failure without promoting a result", async () => {
+    actionMocks.getTask.mockResolvedValue({
+      data: JSON.stringify({
+        id: taskId,
+        status: "failed",
+        error_code: "output_verification_failed",
+        error_detail: "Task could not be completed",
+        unverified_output: { file_id: "known-copy" },
+      }),
+      ok: true,
+    });
+    await expect(
+      documentTransformApi.waitForCompletion({ id: taskId, status: "running" }, undefined, 0),
+    ).rejects.toMatchObject({
+      name: "DocumentTransformTerminalError",
+      unverifiedOutputId: "known-copy",
+      code: "output_verification_failed",
+    });
+  });
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -67,6 +86,27 @@ describe("documentTransformApi", () => {
       }),
       "66666666-6666-4666-8666-666666666666",
     );
+  });
+
+  it("sends the explicit copy name without changing the source", async () => {
+    actionMocks.create.mockResolvedValue({ data: JSON.stringify(task("pending")), ok: true });
+    await documentTransformApi.create(
+      {
+        kind: "drive_file",
+        fileId: "doc-1",
+        name: "Source",
+        expectedModifiedTime: "2026-09-03T12:00:00Z",
+      },
+      "format",
+      taskId,
+      "copy",
+      "Architecture decisions",
+    );
+    expect(JSON.parse(actionMocks.create.mock.calls[0]?.[0] as string)).toMatchObject({
+      output_name: "Architecture decisions",
+      output_strategy: "copy",
+      source: { file_id: "doc-1" },
+    });
   });
 
   it("serializes pasted Markdown with its explicit destination", async () => {
@@ -262,6 +302,8 @@ describe("documentTransformApi", () => {
             pipeline_version: "document-transform-v3",
             source_revision_id: "revision-1",
             source_sha256: "a".repeat(64),
+            short_link_alias: "architecture-decisions",
+            short_link_status: "ready",
             tool_versions: {},
             validation: {
               protected_content_preserved: true,
@@ -276,7 +318,12 @@ describe("documentTransformApi", () => {
 
     await expect(
       documentTransformApi.waitForCompletion({ id: taskId, status: "running" }, undefined, 0, 3),
-    ).resolves.toMatchObject({ outputStrategy: "in_place", outputFile: { id: "doc-1" } });
+    ).resolves.toMatchObject({
+      outputStrategy: "in_place",
+      outputFile: { id: "doc-1" },
+      shortLinkAlias: "architecture-decisions",
+      shortLinkStatus: "ready",
+    });
     expect(actionMocks.getTask).toHaveBeenCalledTimes(2);
   });
 });

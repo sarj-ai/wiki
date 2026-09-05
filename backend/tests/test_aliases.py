@@ -172,6 +172,76 @@ class _Drive:
         return [DriveSummary(id=DriveId("drive-1"), name="Engineering")]
 
 
+class _EnsureSession(_Session):
+    def __init__(self, responses: list[DocumentAlias | None]) -> None:
+        super().__init__()
+        self.responses = iter(responses)
+
+    async def execute(self, _statement: object) -> _Result:
+        self.execute_calls += 1
+        return _Result(next(self.responses))
+
+
+def _alias_row(alias: str = "chosen-link") -> DocumentAlias:
+    row = DocumentAlias()
+    row.alias = alias
+    row.file_id = FileId("file-1")
+    return row
+
+
+@pytest.mark.asyncio
+async def test_ensure_alias_preserves_existing_choice() -> None:
+    row = _alias_row()
+    session = _EnsureSession([row])
+    result = await _service(session, _Files()).ensure_for_file(FileId("file-1"), ("auto-link",))
+    assert result.alias == "chosen-link"
+    assert session.execute_calls == 1
+    assert session.commits == session.flushes == session.rollbacks == 0
+    assert row.retired_at is None
+
+
+@pytest.mark.asyncio
+async def test_ensure_alias_reuses_concurrent_winner_without_retiring_it() -> None:
+    row = _alias_row()
+    session = _EnsureSession([None, None, row])
+    result = await _service(session, _Files()).ensure_for_file(FileId("file-1"), ("auto-link",))
+    assert result.alias == "chosen-link"
+    assert session.commits == session.flushes == session.rollbacks == 0
+    assert row.retired_at is None
+
+
+@pytest.mark.asyncio
+async def test_ensure_alias_tries_next_candidate_after_reserved_alias_collision() -> None:
+    session = _EnsureSession([None, None, None, None, _alias_row("second-link")])
+    result = await _service(session, _Files()).ensure_for_file(
+        FileId("file-1"), ("first-link", "second-link")
+    )
+    assert result.alias == "second-link"
+    assert session.commits == 1
+    assert session.flushes == session.rollbacks == 0
+
+
+@pytest.mark.asyncio
+async def test_ensure_alias_exhaustion_does_not_retire_anything() -> None:
+    session = _EnsureSession([None, None, None])
+    with pytest.raises(AliasConflictError):
+        await _service(session, _Files()).ensure_for_file(FileId("file-1"), ("auto-link",))
+    assert session.commits == session.flushes == session.rollbacks == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("editable", "accessible"), [(False, True), (True, False)])
+async def test_ensure_alias_checks_edit_and_scope_before_database_access(
+    *, editable: bool, accessible: bool
+) -> None:
+    session = _EnsureSession([])
+    with pytest.raises((AliasEditForbiddenError, FileNotInScopeError)):
+        await _service(session, _Files(editable=editable, accessible=accessible)).ensure_for_file(
+            FileId("file-1"), ("auto-link",)
+        )
+    assert session.execute_calls == 0
+
+
 def _service(session: _Session, files: _Files) -> PostgresAliasService:
     return PostgresAliasService(
         db=dependency(session),

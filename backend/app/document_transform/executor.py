@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, replace
 import hashlib
 import json
 from types import MappingProxyType
-from typing import Any, Protocol
+from typing import Any, NamedTuple, Protocol
 import uuid
 
 from app.document_transform.brand import (
@@ -39,6 +39,8 @@ from app.document_transform.ir import (
     rewrite_markdown,
 )
 from app.document_transform.models import PatchGenerator
+from app.document_transform.naming import suggested_document_title
+from app.document_transform.native_footer_flow import NativeFooterStage
 from app.document_transform.planner import TextTransformPlanner, TransformOutcome
 from app.document_transform.schemas import (
     CopyCheckpoint,
@@ -55,6 +57,14 @@ from app.document_transform.schemas import (
     TransformMode,
     ValidationSummary,
 )
+from app.document_transform.tab_structure_execution import (
+    StructureStage,
+    planned_structure_document,
+    prepare_content_move,
+    prepare_tab_creation,
+    recover_created_tabs,
+    verify_structure_content,
+)
 from app.document_transform.unslop import (
     UNSLOP_CATALOG_SHA256,
     UNSLOP_UPSTREAM_COMMIT,
@@ -64,7 +74,8 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, Task
 
 
 PIPELINE_VERSION = "document-transform-v3"
-REQUEST_BUILDER_VERSION = "google-docs-requests-v3"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v4"
+_MAX_OUTPUT_NAME_LENGTH = 255
 _OUTPUT_SUFFIX = MappingProxyType(
     {
         TransformMode.FORMAT: "Sarj formatted",
@@ -72,6 +83,33 @@ _OUTPUT_SUFFIX = MappingProxyType(
         TransformMode.BOTH: "Sarj polished",
     }
 )
+
+
+class StructureInputs(NamedTuple):
+    snapshot: SourceSnapshot
+    expected: DocumentIR
+
+
+def _structure_inputs(
+    snapshot: SourceSnapshot, expected: DocumentIR, checkpoint: CopyCheckpoint
+) -> StructureInputs:
+    structure = checkpoint.tab_structure
+    if structure is None:
+        return StructureInputs(snapshot, expected)
+    if snapshot.google_document is None or structure.stage is not StructureStage.VERIFIED:
+        raise OutputVerificationError
+    projected = planned_structure_document(structure, snapshot.google_document)
+    mapped = parse_google_document(projected, title=expected.title)
+    if len(mapped.blocks) != len(expected.blocks):
+        raise OutputVerificationError
+    mapped = replace(
+        mapped,
+        blocks=tuple(
+            replace(block, text=transformed.text)
+            for block, transformed in zip(mapped.blocks, expected.blocks, strict=True)
+        ),
+    )
+    return StructureInputs(replace(snapshot, google_document=projected), mapped)
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,11 +246,12 @@ class DocumentTransformExecutor:
         if checkpoint.stage is CopyCheckpointStage.VERIFIED:
             if recovered is None or checkpoint.result is None:
                 raise OutputConflictError
+            snapshot, original = _structure_inputs(snapshot, outcome.document, checkpoint)
             return await self._complete_verified_copy(
                 operation_id=operation_id,
                 request=request,
                 snapshot=snapshot,
-                expected=outcome.document,
+                expected=original,
                 checkpoint=checkpoint,
                 draft=recovered,
             )
@@ -284,7 +323,36 @@ class DocumentTransformExecutor:
                         }
                     )
                 )
-        if snapshot.markdown is not None:
+        if (
+            snapshot.google_document is not None
+            and isinstance(request.source, DriveFileSource)
+            and request.mode is not TransformMode.UNSLOP
+            and self._checkpoint_store is not None
+            and self._gateway.structure_provider is not None
+        ):
+            draft = await self._finish_copy_structure(
+                checkpoint=checkpoint, draft=draft, source_id=request.source.file_id
+            )
+            checkpoint = self._copy_checkpoint_or_none() or checkpoint
+            snapshot, original = _structure_inputs(snapshot, outcome.document, checkpoint)
+            outcome = replace(outcome, document=original)
+            original = _to_ir(snapshot)
+        if checkpoint.native_dates is not None:
+            draft = replace(draft, native_footer=checkpoint.native_footer)
+            draft = await self._finish_copy_dates(
+                operation_id=operation_id, checkpoint=checkpoint, draft=draft
+            )
+            checkpoint = self._copy_checkpoint_or_none() or checkpoint
+            prepared_draft = draft
+            mutations: list[dict[str, Any]] = []
+        elif checkpoint.native_footer is not None:
+            draft = await self._finish_copy_footer(
+                operation_id=operation_id, checkpoint=checkpoint, draft=draft
+            )
+            checkpoint = self._copy_checkpoint_or_none() or checkpoint
+            prepared_draft = draft
+            mutations = []
+        elif snapshot.markdown is not None:
             prepared_draft = draft
             mutations = []
         elif request.mode is TransformMode.UNSLOP:
@@ -309,13 +377,15 @@ class DocumentTransformExecutor:
                 headers=prepared_draft.headers,
                 logo_uri=prepared_draft.logo_uri,
             )
-        applied = await self._gateway.apply_requests_once(
-            operation_id=operation_id,
-            draft=prepared_draft,
-            mutation_sha256=mutation_sha256(mutations),
-            requests=mutations,
-            required_revision_id=prepared_draft.revision_id,
-        )
+        applied = prepared_draft
+        if checkpoint.native_footer is None and checkpoint.native_dates is None:
+            applied = await self._gateway.apply_requests_once(
+                operation_id=operation_id,
+                draft=prepared_draft,
+                mutation_sha256=mutation_sha256(mutations),
+                requests=mutations,
+                required_revision_id=prepared_draft.revision_id,
+            )
         await self._require_unchanged_drive_source(request, snapshot)
         applied_validation = await self._validate_applied_output(
             request=request,
@@ -325,6 +395,38 @@ class DocumentTransformExecutor:
             transform_findings=outcome.findings,
         )
         applied = replace(applied, revision_id=applied_validation.revision_id)
+        if (
+            request.mode is not TransformMode.UNSLOP
+            and checkpoint.native_footer is None
+            and checkpoint.native_dates is None
+        ):
+            applied = await self._name_copy_tabs(
+                operation_id=operation_id,
+                checkpoint=checkpoint,
+                draft=applied,
+            )
+            checkpoint = self._copy_checkpoint_or_none() or checkpoint
+            # Footer metadata follows content and tab verification. Never revisit
+            # earlier mutation stages once its durable checkpoint exists.
+            if (
+                snapshot.markdown is None
+                and self._checkpoint_store is not None
+                and self._gateway.supports_native_footer
+            ):
+                applied = await self._finish_copy_footer(
+                    operation_id=operation_id, checkpoint=checkpoint, draft=applied
+                )
+                checkpoint = self._copy_checkpoint_or_none() or checkpoint
+        if (
+            request.mode is not TransformMode.UNSLOP
+            and snapshot.markdown is None
+            and self._checkpoint_store is not None
+            and self._gateway.supports_native_dates
+        ):
+            applied = await self._finish_copy_dates(
+                operation_id=operation_id, checkpoint=checkpoint, draft=applied
+            )
+            checkpoint = self._copy_checkpoint_or_none() or checkpoint
         findings.extend(applied_validation.findings)
         validation = ValidationSummary(
             source_unchanged=True,
@@ -374,6 +476,139 @@ class DocumentTransformExecutor:
             draft=applied,
         )
 
+    async def _finish_copy_structure(
+        self, *, checkpoint: CopyCheckpoint, draft: OutputDraft, source_id: FileId
+    ) -> OutputDraft:
+        provider = self._gateway.structure_provider
+        if provider is None:
+            raise OutputVerificationError
+        structure = checkpoint.tab_structure
+        if structure is None:
+            # Do not introduce a new pre-brand stage into a partially completed
+            # output, even if a later retry finds that its contents qualify.
+            if (
+                checkpoint.tab_naming
+                or checkpoint.native_footer
+                or checkpoint.native_dates
+                or draft.applied_mutation_sha256
+            ):
+                return draft
+            structure = await provider.plan(
+                document_id=draft.document_id, revision_id=draft.revision_id, source_id=source_id
+            )
+            if structure is None:
+                return draft
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"tab_structure": structure})
+            )
+        if structure.stage is StructureStage.VERIFIED:
+            return draft
+        if structure.stage is StructureStage.PLANNED:
+            structure, body = prepare_tab_creation(structure)
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"tab_structure": structure})
+            )
+            await provider.write(draft.document_id, body)
+        if structure.stage is StructureStage.CREATING:
+            document = await provider.read(draft.document_id)
+            structure = recover_created_tabs(structure, document)
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"tab_structure": structure})
+            )
+        if structure.stage is StructureStage.CREATED:
+            structure, body = prepare_content_move(structure)
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"tab_structure": structure})
+            )
+            await provider.write(draft.document_id, body)
+        document = await provider.read(draft.document_id)
+        if not verify_structure_content(structure, document):
+            raise OutputVerificationError
+        revision = DocsRevisionId(document["revisionId"])
+        structure = replace(structure, stage=StructureStage.VERIFIED, revision_id=revision)
+        await self._save_copy_checkpoint(checkpoint.model_copy(update={"tab_structure": structure}))
+        return replace(draft, revision_id=revision)
+
+    async def _finish_copy_dates(
+        self, *, operation_id: uuid.UUID, checkpoint: CopyCheckpoint, draft: OutputDraft
+    ) -> OutputDraft:
+        dates = checkpoint.native_dates
+        if dates is None:
+            dates = await self._gateway.plan_copy_dates(draft=draft, operation_id=operation_id)
+            if dates is None:
+                return draft
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"native_dates": dates})
+            )
+        dates = await self._gateway.apply_copy_dates(
+            document_id=draft.document_id, checkpoint=dates
+        )
+        if not dates.complete:
+            raise OutputVerificationError
+        await self._save_copy_checkpoint(checkpoint.model_copy(update={"native_dates": dates}))
+        return replace(draft, native_dates=dates, revision_id=dates.revision_id)
+
+    async def _finish_copy_footer(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        checkpoint: CopyCheckpoint,
+        draft: OutputDraft,
+    ) -> OutputDraft:
+        footer = checkpoint.native_footer
+        if footer is None:
+            if (
+                footer := await self._gateway.plan_copy_footer(
+                    draft=draft, operation_id=operation_id
+                )
+            ) is None:
+                return draft
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"native_footer": footer})
+            )
+        # At most two native batches. Each durable pre-dispatch state has its
+        # own atomic marker; a crash after creation never creates a second footer.
+        for _ in range(2):
+            if footer.stage is NativeFooterStage.COMPLETE:
+                break
+            footer = await self._gateway.apply_copy_footer_stage(
+                document_id=draft.document_id, checkpoint=footer
+            )
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"native_footer": footer})
+            )
+        if footer.stage is not NativeFooterStage.COMPLETE:
+            raise OutputVerificationError
+        return replace(draft, revision_id=footer.revision_id, native_footer=footer)
+
+    async def _name_copy_tabs(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        checkpoint: CopyCheckpoint,
+        draft: OutputDraft,
+    ) -> OutputDraft:
+        if checkpoint.tab_naming is None:
+            tab_naming = await self._gateway.plan_tab_naming(
+                document_id=draft.document_id,
+                title=draft.output.name,
+                operation_id=operation_id,
+                required_revision_id=draft.revision_id,
+            )
+            if tab_naming is None:
+                return draft
+            checkpoint = await self._save_copy_checkpoint(
+                checkpoint.model_copy(update={"tab_naming": tab_naming})
+            )
+        naming = checkpoint.tab_naming
+        if naming is None:
+            raise DocumentGatewayError
+        revision = await self._gateway.apply_tab_naming(
+            document_id=draft.document_id,
+            checkpoint=naming,
+        )
+        return replace(draft, revision_id=revision)
+
     def _copy_checkpoint_or_none(self) -> CopyCheckpoint | None:
         checkpoint = self._checkpoint
         if checkpoint is None:
@@ -421,6 +656,9 @@ class DocumentTransformExecutor:
         draft: OutputDraft,
     ) -> DocumentTransformResult:
         result = checkpoint.result
+        draft = replace(
+            draft, native_footer=checkpoint.native_footer, native_dates=checkpoint.native_dates
+        )
         if (
             checkpoint.stage is not CopyCheckpointStage.VERIFIED
             or checkpoint.output is None
@@ -455,7 +693,11 @@ class DocumentTransformExecutor:
             recovered = await self._gateway.recover_output(operation_id)
             if recovered is None or recovered.output.file_id != draft.output.file_id:
                 raise OutputConflictError
-            draft = recovered
+            draft = replace(
+                recovered,
+                native_footer=checkpoint.native_footer,
+                native_dates=checkpoint.native_dates,
+            )
         durable = self._checkpoint_store is not None
         digest_matches = (
             draft.result_sha256 == expected_result_sha256
@@ -617,6 +859,11 @@ class DocumentTransformExecutor:
         if checkpoint.stage is not InPlaceCheckpointStage.CONTENT:
             raise DocumentGatewayError
         if not checkpoint.requests:
+            checkpoint = await self._name_in_place_tabs(
+                operation_id=operation_id,
+                request=request,
+                checkpoint=checkpoint,
+            )
             checkpoint = await self._save_checkpoint(
                 checkpoint.model_copy(update={"stage": InPlaceCheckpointStage.COMPLETE})
             )
@@ -630,7 +877,12 @@ class DocumentTransformExecutor:
         expected_content = before_content.replace_blocks(checkpoint.replacements)
         if expected_content.semantic_sha256 != checkpoint.expected_semantic_sha256:
             raise InPlaceNeedsReviewError
-        stage_result = await self._apply_checkpoint_stage(checkpoint)
+        if checkpoint.tab_naming is not None:
+            if snapshot.google_document is None or snapshot.revision_id is None:
+                raise InPlaceNeedsReviewError
+            stage_result = InPlaceStageResult(snapshot.revision_id, snapshot.google_document)
+        else:
+            stage_result = await self._apply_checkpoint_stage(checkpoint)
         verification = await self._gateway.verify_in_place(
             document=stage_result.document,
             title=snapshot.title,
@@ -645,11 +897,17 @@ class DocumentTransformExecutor:
             and verification.brand_applied
         ):
             raise InPlaceNeedsReviewError
+        checkpoint = checkpoint.model_copy(update={"current_revision_id": stage_result.revision_id})
+        checkpoint = await self._name_in_place_tabs(
+            operation_id=operation_id,
+            request=request,
+            checkpoint=checkpoint,
+        )
         checkpoint = await self._save_checkpoint(
             checkpoint.model_copy(
                 update={
                     "stage": InPlaceCheckpointStage.COMPLETE,
-                    "current_revision_id": stage_result.revision_id,
+                    "current_revision_id": checkpoint.current_revision_id,
                     "requests": [],
                     "marker_name": None,
                     "marker_range": None,
@@ -663,6 +921,36 @@ class DocumentTransformExecutor:
             checkpoint=checkpoint,
             output=inspection.output,
         )
+
+    async def _name_in_place_tabs(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+        checkpoint: InPlaceCheckpoint,
+    ) -> InPlaceCheckpoint:
+        if request.mode is TransformMode.UNSLOP:
+            return checkpoint
+        if checkpoint.tab_naming is None:
+            tab_naming = await self._gateway.plan_tab_naming(
+                document_id=checkpoint.document_id,
+                title=checkpoint.source_title,
+                operation_id=operation_id,
+                required_revision_id=checkpoint.current_revision_id,
+            )
+            if tab_naming is None:
+                return checkpoint
+            checkpoint = await self._save_checkpoint(
+                checkpoint.model_copy(update={"tab_naming": tab_naming, "changed": True})
+            )
+        naming = checkpoint.tab_naming
+        if naming is None:
+            raise DocumentGatewayError
+        revision = await self._gateway.apply_tab_naming(
+            document_id=checkpoint.document_id,
+            checkpoint=naming,
+        )
+        return checkpoint.model_copy(update={"current_revision_id": revision})
 
     async def _plan_initial_in_place(
         self,
@@ -922,11 +1210,7 @@ class DocumentTransformExecutor:
         transformed: DocumentIR,
         output_name: str | None = None,
     ) -> OutputDraft:
-        output_name = (
-            output_name
-            or request.output_name
-            or (f"{snapshot.title} — {_OUTPUT_SUFFIX[request.mode]}")
-        )
+        output_name = output_name or _copy_output_name(request, original)
         imported_docx = None
         if snapshot.markdown is not None:
             imported_docx = render_markdown_docx(
@@ -960,6 +1244,20 @@ class DocumentTransformExecutor:
         )
 
 
+def _copy_output_name(request: DocumentTransformRequest, original: DocumentIR) -> str:
+    if request.output_name is not None:
+        return request.output_name
+    title = (
+        original.title
+        if request.mode is TransformMode.UNSLOP
+        else suggested_document_title(original)
+    )
+    suffix = f" — {_OUTPUT_SUFFIX[request.mode]}"
+    # COPY names share the request/checkpoint limit. Never truncate the source
+    # metadata itself; reserve room for the review-copy suffix before persisting.
+    return f"{title.strip()[: _MAX_OUTPUT_NAME_LENGTH - len(suffix)].rstrip()}{suffix}"
+
+
 def _new_copy_checkpoint(
     *,
     request: DocumentTransformRequest,
@@ -975,7 +1273,7 @@ def _new_copy_checkpoint(
         for before, after in zip(original.blocks, outcome.document.blocks, strict=True)
         if before.text != after.text
     }
-    output_name = request.output_name or f"{snapshot.title} — {_OUTPUT_SUFFIX[request.mode]}"
+    output_name = _copy_output_name(request, original)
     plan_payload = _copy_plan_payload(
         output_name=output_name,
         replacements=replacements,
@@ -1042,7 +1340,7 @@ def _validate_copy_checkpoint(
         REQUEST_BUILDER_VERSION,
         UNSLOP_CATALOG_SHA256,
         original.semantic_sha256,
-        request.output_name or f"{snapshot.title} — {_OUTPUT_SUFFIX[request.mode]}",
+        _copy_output_name(request, original),
         current_logo_sha256,
     )
     checkpoint_contract = (
