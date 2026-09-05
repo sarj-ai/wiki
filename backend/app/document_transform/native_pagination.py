@@ -2,8 +2,9 @@ from dataclasses import replace
 import hashlib
 import json
 import math
-from typing import Any
+from typing import Any, Literal
 
+from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from app.document_transform.errors import InPlaceNeedsReviewError, OutputConflictError
@@ -31,7 +32,31 @@ class NativePaginationRule(BaseModel):
 
 
 def plan_native_pagination(
-    native: dict[str, Any] | None, document: DocumentIR
+    native: dict[str, Any] | None, document: DocumentIR, *, emit_diagnostics: bool = False
+) -> tuple[NativePaginationRule, ...]:
+    diagnostics: dict[str, int | bool] = {}
+    rules = _plan_native_pagination(native, document, diagnostics)
+    if not emit_diagnostics:
+        return rules
+    logger.info(
+        "document spacer eligibility diagnostics={diagnostics}",
+        diagnostics={
+            **diagnostics,
+            "spacer_planned_above_count": sum(
+                rule.above_spacer_sha256 is not None for rule in rules
+            ),
+            "spacer_planned_below_count": sum(
+                rule.below_spacer_sha256 is not None for rule in rules
+            ),
+        },
+    )
+    return rules
+
+
+def _plan_native_pagination(
+    native: dict[str, Any] | None,
+    document: DocumentIR,
+    diagnostics: dict[str, int | bool],
 ) -> tuple[NativePaginationRule, ...]:
     # Never derive adjacency from flattened IR: it omits empty paragraphs and
     # section boundaries. Initial scope is a single flat native body only.
@@ -113,8 +138,11 @@ def plan_native_pagination(
             rules[block.id] = rule
         if len(rules) > MAX_PAGINATION_RULES:
             return ()
-    if _spacer_named_styles_known(native, body) and not _add_spacer_rules(
-        content, mapped, document.tab_ids[0], rules
+    diagnostics["spacer_scope_checked"] = True
+    styles_known = _spacer_named_styles_known(native, body)
+    diagnostics["spacer_named_styles_known"] = styles_known
+    if styles_known and not _add_spacer_rules(
+        content, mapped, document.tab_ids[0], rules, diagnostics
     ):
         return ()
     return tuple(rules[block.id] for block in document.blocks if block.id in rules)
@@ -125,14 +153,19 @@ def _add_spacer_rules(
     mapped: list[TextBlock | None],
     tab_id: str,
     rules: dict[str, NativePaginationRule],
+    diagnostics: dict[str, int | bool],
 ) -> bool:
     for index in range(1, len(content) - 1):
+        diagnostics["spacer_examined_count"] = diagnostics.get("spacer_examined_count", 0) + 1
         if not all(
             _plain_spacing_neighbor(item) for item in (content[index - 1], content[index + 1])
         ):
+            diagnostics["spacer_neighbor_style_count"] = (
+                diagnostics.get("spacer_neighbor_style_count", 0) + 1
+            )
             continue
         first, third = mapped[index - 1], mapped[index + 1]
-        spacer = _spacer_proof(content[index], first, third, tab_id)
+        spacer = _spacer_proof(content[index], first, third, tab_id, diagnostics=diagnostics)
         if spacer is None or first is None or third is None:
             continue
         for block, field in ((first, "below_spacer_sha256"), (third, "above_spacer_sha256")):
@@ -182,7 +215,12 @@ def _spacer_named_styles_known(native: dict[str, Any], body: dict[str, Any]) -> 
 
 
 def _spacer_proof(
-    element: object, first: TextBlock | None, third: TextBlock | None, tab_id: str
+    element: object,
+    first: TextBlock | None,
+    third: TextBlock | None,
+    tab_id: str,
+    *,
+    diagnostics: dict[str, int | bool] | None = None,
 ) -> str | None:
     if (
         first is None
@@ -194,10 +232,13 @@ def _spacer_proof(
             for block in (first, third)
         )
     ):
+        _spacer_declined(diagnostics, "spacer_neighbor_content_count")
         return None
     if first.source_range is None or third.source_range is None:
+        _spacer_declined(diagnostics, "spacer_indices_count")
         return None
     if not isinstance(element, dict) or set(element) != {"startIndex", "endIndex", "paragraph"}:
+        _spacer_declined(diagnostics, "spacer_container_count")
         return None
     start, end = element.get("startIndex"), element.get("endIndex")
     if (
@@ -207,9 +248,11 @@ def _spacer_proof(
         or first.source_range.end_index + 1 != start
         or third.source_range.start_index != end
     ):
+        _spacer_declined(diagnostics, "spacer_indices_count")
         return None
     paragraph = element.get("paragraph")
     if not isinstance(paragraph, dict) or set(paragraph) - {"elements", "paragraphStyle"}:
+        _spacer_declined(diagnostics, "spacer_container_count")
         return None
     style = paragraph.get("paragraphStyle", {})
     if (
@@ -231,12 +274,15 @@ def _spacer_proof(
         or style.get("pageBreakBefore", False) is not False
         or not _spacer_style_values_known(style)
     ):
+        _spacer_declined(diagnostics, "spacer_style_count")
         return None
     elements = paragraph.get("elements")
     if not isinstance(elements, list) or len(elements) != 1:
+        _spacer_declined(diagnostics, "spacer_runs_count")
         return None
     run = elements[0]
     if not isinstance(run, dict) or set(run) - {"startIndex", "endIndex", "textRun"}:
+        _spacer_declined(diagnostics, "spacer_runs_count")
         return None
     if (
         type(run.get("startIndex", start)) is not int
@@ -244,6 +290,7 @@ def _spacer_proof(
         or run.get("startIndex", start) != start
         or run.get("endIndex", end) != end
     ):
+        _spacer_declined(diagnostics, "spacer_indices_count")
         return None
     text_run = run.get("textRun")
     if (
@@ -252,11 +299,31 @@ def _spacer_proof(
         or text_run.get("content") != "\n"
         or text_run.get("textStyle", {}) != {}
     ):
+        _spacer_declined(diagnostics, "spacer_text_run_count")
         return None
     payload = json.dumps(
         {"tab_id": tab_id, "spacer": element}, sort_keys=True, separators=(",", ":")
     ).encode()
-    return hashlib.sha256(payload).hexdigest() if len(payload) <= _MAX_SPACER_PROOF_BYTES else None
+    if len(payload) > _MAX_SPACER_PROOF_BYTES:
+        _spacer_declined(diagnostics, "spacer_budget_count")
+        return None
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _spacer_declined(
+    diagnostics: dict[str, int | bool] | None,
+    reason: Literal[
+        "spacer_neighbor_content_count",
+        "spacer_indices_count",
+        "spacer_container_count",
+        "spacer_style_count",
+        "spacer_runs_count",
+        "spacer_text_run_count",
+        "spacer_budget_count",
+    ],
+) -> None:
+    if diagnostics is not None:
+        diagnostics[reason] = diagnostics.get(reason, 0) + 1
 
 
 def _spacer_style_values_known(style: object) -> bool:

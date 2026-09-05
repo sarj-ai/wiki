@@ -1405,7 +1405,7 @@ def _new_copy_checkpoint(
         plan_authored_labels(original) if request.mode is not TransformMode.UNSLOP else ()
     )
     pagination = (
-        plan_native_pagination(snapshot.google_document, outcome.document)
+        plan_native_pagination(snapshot.google_document, outcome.document, emit_diagnostics=True)
         if request.mode is not TransformMode.UNSLOP
         else ()
     )
