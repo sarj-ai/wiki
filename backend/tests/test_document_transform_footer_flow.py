@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any, NamedTuple
 import uuid
 
+from pydantic import ValidationError
 import pytest
 
 from app.document_transform.errors import InPlaceNeedsReviewError
@@ -12,6 +13,8 @@ from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.native_footer_flow import (
     NativeFooterCheckpoint,
     NativeFooterStage,
+    footer_coverage_complete,
+    verified_footer_coverage_projection,
     verified_footer_projection,
 )
 from app.document_transform.schemas import DocumentOutput
@@ -65,9 +68,24 @@ class _Provider:
     async def apply(self, **kwargs: Any) -> InPlaceStageResult:
         self.calls.append(kwargs)
         assert kwargs["required_revision_id"] == self.document["revisionId"]
-        tab = self.document["tabs"][0]["documentTab"]
+        request = kwargs["requests"][0]
+        target_id = (
+            request["createFooter"]["sectionBreakLocation"]["tabId"]
+            if "createFooter" in request
+            else request["insertText"]["location"]["tabId"]
+        )
+        target = next(
+            tab for tab in self.document["tabs"] if tab["tabProperties"]["tabId"] == target_id
+        )
+        tab = target["documentTab"]
+        footer_id = f"f{self.document['tabs'].index(target) + 1}"
+        marker_tab = next(
+            tab["documentTab"]
+            for tab in self.document["tabs"]
+            if tab["tabProperties"]["tabId"] == kwargs["marker_range"]["tabId"]
+        )
         marker = kwargs["marker_name"]
-        tab.setdefault("namedRanges", {})[marker] = {
+        marker_tab.setdefault("namedRanges", {})[marker] = {
             "namedRanges": [
                 {
                     "name": marker,
@@ -77,10 +95,10 @@ class _Provider:
         }
         for request in kwargs["requests"]:
             if "createFooter" in request:
-                tab["documentStyle"]["defaultFooterId"] = "f1"
+                tab["documentStyle"]["defaultFooterId"] = footer_id
                 tab["footers"] = {
-                    "f1": {
-                        "footerId": "f1",
+                    footer_id: {
+                        "footerId": footer_id,
                         "content": [
                             {
                                 "paragraph": {
@@ -91,15 +109,15 @@ class _Provider:
                     }
                 }
             elif "insertText" in request:
-                paragraph = tab["footers"]["f1"]["content"][0]["paragraph"]
+                paragraph = tab["footers"][footer_id]["content"][0]["paragraph"]
                 paragraph["elements"][0]["textRun"]["content"] = (
                     request["insertText"]["text"] + "\n"
                 )
             elif "updateParagraphStyle" in request:
-                paragraph = tab["footers"]["f1"]["content"][0]["paragraph"]
+                paragraph = tab["footers"][footer_id]["content"][0]["paragraph"]
                 paragraph["paragraphStyle"] = request["updateParagraphStyle"]["paragraphStyle"]
             elif "updateTextStyle" in request:
-                paragraph = tab["footers"]["f1"]["content"][0]["paragraph"]
+                paragraph = tab["footers"][footer_id]["content"][0]["paragraph"]
                 paragraph["elements"][0]["textRun"]["textStyle"] = request["updateTextStyle"][
                     "textStyle"
                 ]
@@ -169,9 +187,13 @@ async def test_legacy_footer_checkpoint_keeps_raw_url_and_replay_payload(
     monkeypatch: pytest.MonkeyPatch,
 ):
     document = _document()
+    extra = deepcopy(document["tabs"][0])
+    extra["tabProperties"]["tabId"] = "t2"
+    document["tabs"].append(extra)
     gateway, initial, provider = await _plan(monkeypatch, document)
     legacy_payload = initial.model_dump(mode="json")
     legacy_payload.pop("display_text")
+    legacy_payload.pop("coverage")
     legacy = NativeFooterCheckpoint.model_validate(legacy_payload)
     assert legacy.display_text is None
     created = await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=legacy)
@@ -186,6 +208,8 @@ async def test_legacy_footer_checkpoint_keeps_raw_url_and_replay_payload(
     assert run["content"] == legacy.url + "\n"
     assert run["textStyle"]["link"] == {"url": legacy.url}
     assert len(provider.calls) == 2
+    assert complete.coverage is None
+    assert "footers" not in document["tabs"][1]["documentTab"]
 
 
 @pytest.mark.asyncio
@@ -247,7 +271,106 @@ async def test_native_footer_planning_preserves_existing_segments(
         tab["footers"] = {"existing": {"content": [] if existing == "empty" else ["custom"]}}
     gateway = object.__new__(GoogleDocumentGateway)
     monkeypatch.setattr(gateway, "_get_document_sync", lambda _file_id: deepcopy(document))
-    assert await gateway.plan_copy_footer(draft=_draft(), operation_id=uuid.uuid7()) is None
+    result = await gateway.plan_copy_footer(draft=_draft(), operation_id=uuid.uuid7())
+    assert result is not None
+    assert result.coverage is not None
+    assert result.coverage.active is False
+    assert result.coverage.skipped[0].reason == (
+        "pageless" if existing == "pageless" else "custom_footer"
+    )
+    assert verified_footer_coverage_projection(document, result) == document
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("custom_middle", [False, True])
+async def test_all_tabs_footer_stages_recover_and_reverse_project(
+    monkeypatch: pytest.MonkeyPatch, custom_middle: bool
+) -> None:
+    document = _document()
+    for number in (2, 3):
+        tab = deepcopy(document["tabs"][0])
+        tab["tabProperties"]["tabId"] = f"t{number}"
+        document["tabs"].append(tab)
+    if custom_middle:
+        tab = document["tabs"][1]["documentTab"]
+        tab["documentStyle"]["defaultFooterId"] = "custom"
+        tab["footers"] = {"custom": {"content": ["Do not change"]}}
+    before = deepcopy(document)
+    gateway, checkpoint, provider = await _plan(monkeypatch, document)
+    for _ in range(9):
+        if footer_coverage_complete(checkpoint):
+            break
+        advanced = await gateway.apply_copy_footer_stage(
+            document_id=FileId("doc"), checkpoint=checkpoint
+        )
+        assert (
+            await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=checkpoint)
+            == advanced
+        )
+        checkpoint = NativeFooterCheckpoint.model_validate_json(advanced.model_dump_json())
+    assert footer_coverage_complete(checkpoint)
+    assert len(provider.calls) == (4 if custom_middle else 6)
+    before["revisionId"] = document["revisionId"]
+    assert verified_footer_coverage_projection(document, checkpoint) == before
+    assert len({call["marker_name"] for call in provider.calls}) == len(provider.calls)
+    document["tabs"][0]["documentTab"]["footers"]["f1"]["content"][0]["paragraph"]["elements"][0][
+        "textRun"
+    ]["content"] = "Tampered\n"
+    with pytest.raises(InPlaceNeedsReviewError):
+        verified_footer_coverage_projection(document, checkpoint)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["duplicate", "overlap", "wrong_tab", "nested", "oversize"])
+async def test_footer_coverage_rejects_invalid_durable_topology(
+    monkeypatch: pytest.MonkeyPatch, change: str
+) -> None:
+    _, checkpoint, _ = await _plan(monkeypatch, _document())
+    payload = checkpoint.model_dump(mode="json")
+    coverage = payload["coverage"]
+    if change == "duplicate":
+        coverage["topology"] = ["t1", "t1"]
+    elif change == "overlap":
+        coverage["pending"] = ["t1"]
+    elif change == "wrong_tab":
+        payload["tab_id"] = "unplanned"
+    elif change == "nested":
+        coverage["completed"] = [checkpoint.model_dump(mode="json")]
+    else:
+        coverage["topology"] = [f"t{index}" for index in range(51)]
+    with pytest.raises(ValidationError):
+        NativeFooterCheckpoint.model_validate(payload)
+
+
+@pytest.mark.asyncio
+async def test_footer_coverage_rejects_changed_provider_topology_before_writing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = _document()
+    gateway, checkpoint, provider = await _plan(monkeypatch, document)
+    document["tabs"][0]["tabProperties"]["tabId"] = "wrong"
+    with pytest.raises(InPlaceNeedsReviewError):
+        await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=checkpoint)
+    assert provider.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "layout",
+    [None, "malformed", {"documentMode": "UNKNOWN"}],
+    ids=["null", "string", "unknown-mode"],
+)
+async def test_unknown_footer_layout_is_durably_declined(
+    monkeypatch: pytest.MonkeyPatch, layout: object
+) -> None:
+    document = _document()
+    document["tabs"][0]["documentTab"]["documentStyle"]["documentFormat"] = layout
+    _, checkpoint, provider = await _plan(monkeypatch, document)
+    assert checkpoint.coverage is not None
+    assert checkpoint.coverage.skipped[0].reason == "unsupported_layout"
+    assert footer_coverage_complete(checkpoint)
+    assert provider.calls == []
+    assert verified_footer_coverage_projection(document, checkpoint) == document
 
 
 @pytest.mark.asyncio

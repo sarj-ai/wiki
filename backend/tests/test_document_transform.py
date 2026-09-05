@@ -2460,15 +2460,21 @@ async def test_copy_checkpoints_plan_before_create_and_resource_immediately_afte
     assert task_service_module._deserialize_checkpoint(persisted) == verified
 
 
-@pytest.mark.parametrize("interrupt_population", [False, True])
+@pytest.mark.parametrize(
+    ("interrupt_population", "previous_builder"),
+    [(False, False), (True, False), (True, True)],
+    ids=["fresh-v8", "resume-v8", "reject-pending-v7-before-provider-write"],
+)
 async def test_copy_native_footer_persists_each_stage_and_does_not_replay_body(
     interrupt_population: bool,
+    previous_builder: bool,
 ) -> None:
     store = _CopyCheckpointStore()
 
     class FooterGateway(_Gateway):
         supports_native_footer = True
         interrupted = False
+        footer_dispatches = 0
 
         @override
         async def plan_copy_footer(
@@ -2489,6 +2495,7 @@ async def test_copy_native_footer_persists_each_stage_and_does_not_replay_body(
         async def apply_copy_footer_stage(
             self, *, document_id: FileId, checkpoint: NativeFooterCheckpoint
         ) -> NativeFooterCheckpoint:
+            self.footer_dispatches += 1
             assert document_id == "output"
             assert store.checkpoints[-1].native_footer == checkpoint
             if (
@@ -2539,9 +2546,24 @@ async def test_copy_native_footer_persists_each_stage_and_does_not_replay_body(
     if interrupt_population:
         with pytest.raises(DocumentGatewayError):
             await executor.execute(operation_id=task_id, request=request)
-        executor = _copy_executor(
-            gateway=gateway, store=store, task_id=task_id, checkpoint=store.checkpoints[-1]
-        )
+        pending = store.checkpoints[-1]
+        assert pending.request_builder_version == "google-docs-requests-v8"
+        assert pending.native_footer is not None
+        assert pending.native_footer.coverage is None
+        assert pending.native_footer.stage is NativeFooterStage.POPULATE
+        if previous_builder:
+            pending = pending.model_copy(
+                update={"request_builder_version": "google-docs-requests-v7"}
+            )
+        executor = _copy_executor(gateway=gateway, store=store, task_id=task_id, checkpoint=pending)
+    if previous_builder:
+        writes_before = (gateway.applies, gateway.brand_prepares, gateway.footer_dispatches)
+        persisted_before = len(store.checkpoints)
+        with pytest.raises(OutputConflictError):
+            await executor.execute(operation_id=task_id, request=request)
+        assert (gateway.applies, gateway.brand_prepares, gateway.footer_dispatches) == writes_before
+        assert len(store.checkpoints) == persisted_before
+        return
     result = await executor.execute(operation_id=task_id, request=request)
     assert result.output_revision_id == "footer-complete"
     assert gateway.applies == 1

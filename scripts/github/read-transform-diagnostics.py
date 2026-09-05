@@ -7,6 +7,7 @@ import os
 import re
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-only gcloud CLI without shell
 import sys
+from types import MappingProxyType
 import uuid
 
 
@@ -14,9 +15,50 @@ MAX_COUNT = 1_000_000
 MAX_ROWS = 200
 MAX_ATTEMPTS = 3
 MAX_BYTES = 4 * 1024 * 1024
+MAX_BULLET_SNAPSHOT_COUNT = 50_000
+BULLET_SNAPSHOT_FIELDS = frozenset(
+    f"bullet_snapshot_{field}_{state}"
+    for field in ("bold", "italic", "underline")
+    for state in ("true", "false", "missing", "malformed")
+)
+MAX_PROVIDER_ORDINAL = 200
+PROVIDER_FIELDS = MappingProxyType(
+    {
+        "bullet_stage": frozenset(
+            {
+                "source_read",
+                "draft_read",
+                "pre_header",
+                "post_header",
+                "pre_style",
+                "post_style",
+            }
+        ),
+        "provider_category": frozenset(
+            {
+                "unknown",
+                "date_properties",
+                "date_location",
+                "delete_range",
+                "marker_range",
+            }
+        ),
+        "provider_operation": frozenset(
+            {"insertDate", "deleteContentRange", "createNamedRange"}
+        ),
+    }
+)
 READ_FAILURES = (ValueError, TypeError, KeyError, OSError, subprocess.TimeoutExpired)
 BOOLEAN_FIELDS = frozenset(
     [
+        "in_place_active_suggestions",
+        "in_place_logo_available",
+        "in_place_marker_available",
+        "in_place_planner_findings",
+        "in_place_unknown_header",
+        "in_place_missing_logo",
+        "in_place_missing_marker",
+        "bullet_snapshot_complete",
         "plan_available",
         "executable_plan",
         "comments_verified_absent",
@@ -87,6 +129,8 @@ COUNT_FIELDS = frozenset(
         "block_native_style_mismatches",
         "block_editability_mismatches",
         "tab_count",
+        "unknown_header_count",
+        "missing_header_count",
         "paragraph_count",
         "paragraph_font_only_count",
         "entry_count",
@@ -135,6 +179,9 @@ ERROR_CODES = frozenset(
     ]
 )
 MESSAGE_PREFIXES = (
+    "document in-place preflight",
+    "document bullet stage snapshot stage=",
+    "document stage provider boundary http_status=",
     "document tab structure eligibility",
     "document copy verification failed checks=",
     "document brand verification failed checks=",
@@ -177,7 +224,9 @@ def sanitize(
         if request_ids and extra.get("request_id") not in request_ids:
             raise ValueError
         timestamp = entry.get("timestamp")
-        if not isinstance(timestamp, str) or not re.fullmatch(r"[0-9T:.+Z-]{20,40}", timestamp):
+        if not isinstance(timestamp, str) or not re.fullmatch(
+            r"[0-9T:.+Z-]{20,40}", timestamp
+        ):
             raise ValueError
         parsed = datetime.fromisoformat(timestamp)
         if parsed.tzinfo is None:
@@ -188,7 +237,9 @@ def sanitize(
                 row["status"] = status
         if "request_id" in extra:
             request_id = extra["request_id"]
-            if not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f]{12,32}", request_id):
+            if not isinstance(request_id, str) or not re.fullmatch(
+                r"[0-9a-f]{12,32}", request_id
+            ):
                 raise ValueError
             row["request_id"] = request_id
         if "error_code" in extra:
@@ -203,8 +254,23 @@ def sanitize(
             if not isinstance(group, dict):
                 raise TypeError
             for key, value in group.items():
-                if key in BOOLEAN_FIELDS:
+                if key in PROVIDER_FIELDS:
+                    if not isinstance(value, str) or value not in PROVIDER_FIELDS[key]:
+                        raise ValueError
+                    row[key] = value
+                elif key == "provider_request_ordinal":
+                    if type(value) is not int or not 0 <= value <= MAX_PROVIDER_ORDINAL:
+                        raise ValueError
+                    row[key] = value
+                elif key in BOOLEAN_FIELDS:
                     if type(value) is not bool:
+                        raise ValueError
+                    row[key] = value
+                elif key in BULLET_SNAPSHOT_FIELDS:
+                    if (
+                        type(value) is not int
+                        or not 0 <= value <= MAX_BULLET_SNAPSHOT_COUNT
+                    ):
                         raise ValueError
                     row[key] = value
                 elif key in COUNT_FIELDS or key in EMPHASIS_COUNT_FIELDS:
@@ -266,7 +332,8 @@ def run_read() -> int:
             raise ValueError
         rows.extend(sanitize(correlated, task_id, request_ids))
     sys.stdout.write(
-        json.dumps({"records": rows, "returned_count": len(rows)}, sort_keys=True) + "\n"
+        json.dumps({"records": rows, "returned_count": len(rows)}, sort_keys=True)
+        + "\n"
     )
     return 0
 
@@ -276,7 +343,9 @@ def main() -> int:
         return run_read()
     except READ_FAILURES:
         # Never echo subprocess output, exceptions, input or log messages.
-        sys.stderr.write("Diagnostic read rejected or unavailable; no raw logs emitted.\n")
+        sys.stderr.write(
+            "Diagnostic read rejected or unavailable; no raw logs emitted.\n"
+        )
         return 1
 
 
