@@ -39,6 +39,13 @@ _ACRONYMS = frozenset(
     {"api", "qa", "mcp", "iso", "ui", "ux", "prd", "faq", "okr", "okrs", "sql", "http", "https"}
 )
 _EMOJI_CATEGORIES = (
+    (frozenset({"incident", "incidents", "حوادث", "الحوادث"}), "🚨"),
+    (frozenset({"backup", "backups", "restore", "recovery"}), "💾"),
+    (frozenset({"cloud", "السحابة"}), "☁️"),
+    (frozenset({"approval", "approvals", "اعتماد", "الموافقات"}), "✅"),
+    (frozenset({"policy", "policies", "سياسة", "السياسات"}), "📜"),
+    (frozenset({"monthly", "quarterly", "annual", "شهري", "سنوي"}), "📅"),
+    (frozenset({"evidence", "audit", "audits", "أدلة", "التدقيق"}), "🔎"),
     (frozenset({"security", "أمن", "الأمن"}), "🔒"),
     (frozenset({"notes", "ملاحظات", "الملاحظات"}), "📝"),
     (frozenset({"context", "overview", "سياق", "السياق"}), "📋"),

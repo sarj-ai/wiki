@@ -45,6 +45,16 @@ def test_title_case_is_idempotent_and_preserves_identifiers_and_dates(
         ("Context", "📋 Context"),
         ("Overview", "📋 Overview"),
         ("Security", "🔒 Security"),
+        ("Incident Evidence", "🚨 Incident Evidence"),
+        ("Backup Evidence", "💾 Backup Evidence"),
+        ("Cloud Security", "☁️ Cloud Security"),
+        ("Approval Routing", "✅ Approval Routing"),
+        ("Policy Review", "📜 Policy Review"),
+        ("Monthly Evidence", "📅 Monthly Evidence"),
+        ("Quarterly Review", "📅 Quarterly Review"),
+        ("Audit Evidence", "🔎 Audit Evidence"),
+        ("السياسات", "📜 السياسات"),
+        ("Incidental Cloudy", "📄 Incidental Cloudy"),
         ("Noteworthy insecure contextual", "📄 Noteworthy insecure contextual"),
     ],
 )
@@ -53,6 +63,24 @@ def test_tab_emoji_is_relevant_and_never_duplicated(source: str, expected: str) 
         None if source == expected else expected.split(" ", maxsplit=1)[0]
     )
     assert tab_icon_emoji(expected) is None
+
+
+@pytest.mark.parametrize("existing", [None, "📄", "💎"])
+def test_generic_icon_upgrades_once_without_replacing_custom_icon(existing: str | None) -> None:
+    document = _document("Incident Evidence")
+    tabs = (replace(_tabs("Incident Evidence")[0], icon_emoji=existing),)
+    plan = plan_tab_names(document, tabs)
+    if existing == "💎":
+        assert not plan.renames
+        return
+    assert len(plan.renames) == 1
+    rename = plan.renames[0]
+    assert rename.title == tabs[0].title
+    assert rename.icon_emoji == "🚨"
+    assert rename.request()["updateDocumentTabProperties"]["fields"] == "iconEmoji"
+    result = (replace(tabs[0], icon_emoji=rename.icon_emoji),)
+    assert plan.matches_result(result)
+    assert not plan_tab_names(document, result).renames
 
 
 @pytest.mark.parametrize("token", ["👩🏽‍💻", "🇸🇦", "e\u0301", "क्ष", "x" * 61])
