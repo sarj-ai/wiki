@@ -283,7 +283,11 @@ def _style_requests(
     requests: list[DocsRequest] = []
     for block in document.blocks:
         source_range = block.source_range
-        if source_range is None or block.kind == BlockKind.BLANK:
+        if (
+            source_range is None
+            or block.kind == BlockKind.BLANK
+            or block.preserved_visual_authority
+        ):
             continue
         if not block.editable:
             if branded:
@@ -685,6 +689,7 @@ def _post_edit_locations(original: DocumentIR, transformed: DocumentIR) -> Docum
                 suppress_space_below=target.suppress_space_below,
                 preserved_paragraph_style_sha256=target.preserved_paragraph_style_sha256,
                 preserved_font_family=target.preserved_font_family,
+                preserved_visual_authority=target.preserved_visual_authority,
                 font_style_ranges=tuple(
                     replace(
                         item,

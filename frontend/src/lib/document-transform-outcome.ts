@@ -14,6 +14,7 @@ export function preservedInPlaceOutcome(result: DocumentTransformResult | null |
       ({ code }) =>
         code === "native_rich_text_preserved" ||
         code === "native_font_family_preserved" ||
+        code === "native_visual_authority_preserved" ||
         code === "custom_furniture_preserved" ||
         code === "native_paragraph_layout_preserved" ||
         code === "table_font_scope" ||

@@ -61,6 +61,7 @@ from app.document_transform.native_font_noop import filter_redundant_native_font
 from app.document_transform.native_font_proof import (
     NativeFontBlockId,
     NativeFontVerificationPolicy,
+    NativeVisualAuthoritySelection,
     capture_native_font_proof,
     verify_native_font_proof,
 )
@@ -84,6 +85,10 @@ from app.document_transform.native_table_font import (
     project_table_fonts,
     table_font_proof_matches,
     table_font_requests,
+)
+from app.document_transform.native_visual_authority import (
+    apply_visual_authority,
+    visual_authority_block_ids,
 )
 from app.document_transform.planner import TextTransformPlanner, TransformOutcome
 from app.document_transform.schemas import (
@@ -125,7 +130,7 @@ class _TableFontScope(NamedTuple):
 
 
 PIPELINE_VERSION = "document-transform-v3"
-REQUEST_BUILDER_VERSION = "google-docs-requests-v25"
+REQUEST_BUILDER_VERSION = "google-docs-requests-v26"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _MAX_GENERATED_NAME_SUFFIXES = 16
 _OUTPUT_SUFFIX = MappingProxyType(
@@ -946,6 +951,26 @@ class DocumentTransformExecutor:
                 if finding.code == "native_font_family_preserved"
             }:
                 raise InPlaceNeedsReviewError
+            if len(checkpoint.visual_authority_block_ids) != len(
+                set(checkpoint.visual_authority_block_ids)
+            ):
+                raise InPlaceNeedsReviewError
+            if (
+                set(checkpoint.visual_authority_block_ids)
+                != {
+                    finding.block_id
+                    for finding in checkpoint.findings
+                    if finding.code == "native_visual_authority_preserved"
+                }
+                or set(checkpoint.visual_authority_block_ids)
+                != {
+                    proof.block_id
+                    for proof in checkpoint.native_font_proof or ()
+                    if proof.visual_authority
+                }
+                or set(checkpoint.visual_authority_block_ids) & checkpoint.replacements.keys()
+            ):
+                raise InPlaceNeedsReviewError
             if checkpoint.native_font_proof is not None and not verify_native_font_proof(
                 snapshot.google_document,
                 checkpoint.native_font_proof,
@@ -1087,6 +1112,7 @@ class DocumentTransformExecutor:
                 apply_native_pagination(_to_ir(stage_snapshot), checkpoint.pagination),
                 checkpoint.paragraph_layout,
             )
+            original = apply_visual_authority(original, checkpoint.visual_authority_block_ids)
             original = apply_native_font_preservation(original, checkpoint.preserved_font_block_ids)
             transformed = original.replace_blocks(checkpoint.replacements)
             requests = self._content_requests(
@@ -1131,7 +1157,10 @@ class DocumentTransformExecutor:
                 output=inspection.output,
             )
         before_content = apply_native_font_preservation(
-            apply_paragraph_layout(_to_ir(snapshot), checkpoint.paragraph_layout),
+            apply_visual_authority(
+                apply_paragraph_layout(_to_ir(snapshot), checkpoint.paragraph_layout),
+                checkpoint.visual_authority_block_ids,
+            ),
             checkpoint.preserved_font_block_ids,
         )
         expected_content = apply_native_pagination(
@@ -1255,7 +1284,35 @@ class DocumentTransformExecutor:
         original = _to_ir(snapshot)
         pagination = existing_native_pagination(snapshot.google_document, original)
         original = apply_native_pagination(original, pagination)
-        outcome = await self._planner.transform(original, request)
+        visual_ids = (
+            visual_authority_block_ids(snapshot.google_document, original)
+            if request.mode is not TransformMode.UNSLOP
+            else ()
+        )
+        original = apply_visual_authority(original, visual_ids)
+        outcome = await self._planner.transform(
+            apply_visual_authority(original, visual_ids, planner=True), request
+        )
+        outcome = replace(
+            outcome,
+            document=replace(
+                outcome.document,
+                blocks=tuple(
+                    source_block if block.id in visual_ids else block
+                    for source_block, block in zip(
+                        original.blocks, outcome.document.blocks, strict=True
+                    )
+                ),
+            ),
+            findings=tuple(
+                finding
+                for finding in outcome.findings
+                if not (
+                    finding.block_id in visual_ids
+                    and finding.code == "google_doc_text_target_unsupported"
+                )
+            ),
+        )
         try:
             paragraph_layout = (
                 capture_paragraph_layout(snapshot.google_document, original, outcome.document)
@@ -1277,6 +1334,7 @@ class DocumentTransformExecutor:
             if request.mode is not TransformMode.UNSLOP
             else ()
         )
+        preserved_font_ids = tuple(dict.fromkeys((*preserved_font_ids, *visual_ids)))
         original = apply_native_font_preservation(original, preserved_font_ids)
         outcome = replace(
             outcome, document=apply_native_font_preservation(outcome.document, preserved_font_ids)
@@ -1316,12 +1374,18 @@ class DocumentTransformExecutor:
             for block, transformed in zip(original.blocks, outcome.document.blocks, strict=True)
             if block.text != transformed.text
         }
-        scope_applied = inspection.fully_branded or inspection.supported_brand_applied
-        if pagination and (replacements or (branded and not scope_applied)):
+        if pagination and (
+            replacements
+            or (branded and not (inspection.fully_branded or inspection.supported_brand_applied))
+        ):
             # Existing-only recognition is a no-op contract, not authority to
             # reinterpret a partially edited layout or move its spacer ranges.
             raise InPlaceNeedsReviewError
-        if branded and scope_applied and not replacements:
+        if (
+            branded
+            and (inspection.fully_branded or inspection.supported_brand_applied)
+            and not replacements
+        ):
             requests = []
             stage = InPlaceCheckpointStage.CONTENT
         elif branded and inspection.missing_header_tab_ids:
@@ -1366,10 +1430,12 @@ class DocumentTransformExecutor:
                 transformed=outcome.document,
                 target_font_family=self._brand.font_family if branded else None,
                 preserved_family_block_ids=preserved_font_ids,
+                visual_authority=NativeVisualAuthoritySelection(visual_ids),
             )
         except (KeyError, IndexError, TypeError, ValueError, AttributeError) as error:
             raise InPlaceNeedsReviewError from error
         checkpoint = InPlaceCheckpoint(
+            visual_authority_block_ids=tuple(NativeFontBlockId(item) for item in visual_ids),
             preserved_font_block_ids=tuple(NativeFontBlockId(item) for item in preserved_font_ids),
             paragraph_layout=paragraph_layout,
             table_font_plan=table_scope.plan,
@@ -1401,6 +1467,14 @@ class DocumentTransformExecutor:
             requests=requests,
             replacements=replacements,
             findings=list(preserved_findings)
+            + [
+                TransformFinding(
+                    code="native_visual_authority_preserved",
+                    block_id=block_id,
+                    detail="Authored title size, color, alignment, font family, and emphasis were preserved unchanged; wording cleanup was skipped for this paragraph. Full Sarj typography was not applied.",
+                )
+                for block_id in visual_ids
+            ]
             + [
                 TransformFinding(
                     code="native_font_family_preserved",

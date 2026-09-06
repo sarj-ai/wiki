@@ -71,6 +71,11 @@ def resolve_native_font_values(
     return NativeFontValues(bold, weight)
 
 
+def native_normal_text_style(document: dict[str, Any], tab_id: str) -> dict[str, Any] | None:
+    parents = _parents(document, tab_id, {"namedStyleType": "NORMAL_TEXT"})
+    return parents[0] if parents else None
+
+
 def _parents(
     document: dict[str, Any], tab_id: str, paragraph_style: dict[str, Any]
 ) -> list[dict[str, Any]] | None:
