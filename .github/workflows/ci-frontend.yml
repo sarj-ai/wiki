@@ -1,6 +1,7 @@
 name: CI Frontend
 
 "on":
+  workflow_call:
   push:
     branches: [main]
     paths:
@@ -12,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-frontend-${{ github.ref }}
+  group: ci-frontend-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 defaults:

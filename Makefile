@@ -89,6 +89,7 @@ fix: ## Apply safe backend and frontend formatter/linter fixes.
 
 check-repository: ## Verify Markdown, README commands, and environment-example parity.
 	@uv run --project backend --locked python scripts/repository_checks.py all
+	@uv run --project backend --locked python -m pytest -q scripts/github/test_release_gate.py
 
 branch-protection-check: ## Compare live main-branch protection with the canonical policy.
 	@python3 scripts/github/branch_protection.py check

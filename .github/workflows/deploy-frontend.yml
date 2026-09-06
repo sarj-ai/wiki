@@ -6,6 +6,8 @@ name: Deploy Frontend
     paths:
       - "frontend/**"
       - ".github/workflows/deploy-frontend.yml"
+      - "scripts/github/release_gate.py"
+      - "scripts/github/verify-release-gate.sh"
   workflow_dispatch:
 
 permissions:
@@ -20,13 +22,67 @@ defaults:
     working-directory: frontend
 
 jobs:
+  ci-backend:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-backend.yml
+
+  ci-frontend:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-frontend.yml
+
+  ci-quality:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-quality.yml
+
+  ci-iac:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-iac.yml
+
+  standards-receipt:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+    outputs:
+      release_sha: ${{ steps.receipt.outputs.release_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify exact main Standards receipt
+        id: receipt
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/github/verify-release-gate.sh standards frontend
+
   deploy:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt]
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Recheck immutable main release before credentials
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NEEDS: ${{ toJSON(needs) }}
+        run: bash scripts/github/verify-release-gate.sh ready frontend
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -79,6 +135,13 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
           NEXT_PUBLIC_RELEASE_SHA: ${{ github.sha }}
+
+      - name: Confirm main has not advanced before cloud authentication
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NEEDS: ${{ toJSON(needs) }}
+        run: bash scripts/github/verify-release-gate.sh ready frontend
 
       - name: Capture current production version
         id: previous
