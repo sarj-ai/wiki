@@ -39,6 +39,7 @@ from app.document_transform.bullet_style_projection import (
     bullet_style_diagnostics,
     project_branded_bullet_styles,
 )
+from app.document_transform.copy_font_defense import verify_copy_fonts
 from app.document_transform.copy_identity import (
     align_verified_copy_list_metadata,
     normalize_copy_list_identity,
@@ -1697,10 +1698,19 @@ class GoogleDocumentGateway(DocumentGateway):
             )
             and (
                 not verify_brand
-                or _copy_font_preserved(
-                    source_document,
-                    structure_document,
-                    list_identity_equivalent=copy_list_identity_equivalent,
+                or (
+                    verify_copy_fonts(
+                        source_document,
+                        structure_document,
+                        expected,
+                        list_identity_equivalent=copy_list_identity_equivalent,
+                    )
+                    if expected.copy_font_defended
+                    else _copy_font_preserved(
+                        source_document,
+                        structure_document,
+                        list_identity_equivalent=copy_list_identity_equivalent,
+                    )
                 )
             )
         )
