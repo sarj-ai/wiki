@@ -131,6 +131,7 @@ class _TableFontScope(NamedTuple):
 
 PIPELINE_VERSION = "document-transform-v3"
 REQUEST_BUILDER_VERSION = "google-docs-requests-v26"
+_COPY_REQUEST_BUILDER_VERSION = f"{REQUEST_BUILDER_VERSION}-visual-v1"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _MAX_GENERATED_NAME_SUFFIXES = 16
 _OUTPUT_SUFFIX = MappingProxyType(
@@ -162,7 +163,11 @@ def _structure_inputs(
     mapped = replace(
         mapped,
         blocks=tuple(
-            replace(block, text=transformed.text)
+            replace(
+                block,
+                text=transformed.text,
+                preserved_visual_authority=transformed.preserved_visual_authority,
+            )
             for block, transformed in zip(mapped.blocks, expected.blocks, strict=True)
         ),
     )
@@ -249,6 +254,12 @@ class DocumentTransformExecutor:
     ) -> DocumentTransformResult:
         snapshot = await self._load_source(request)
         original = _to_ir(snapshot)
+        original = apply_visual_authority(
+            original,
+            visual_authority_block_ids(snapshot.google_document, original)
+            if request.mode is not TransformMode.UNSLOP
+            else (),
+        )
         source_sha256 = _source_sha256(snapshot, original)
         recovered = await self._gateway.recover_output(operation_id)
         checkpoint = self._copy_checkpoint_or_none()
@@ -257,7 +268,37 @@ class DocumentTransformExecutor:
                 # Legacy/incomplete outputs without a durable plan cannot be
                 # re-attested safely and must never trigger a fresh model plan.
                 raise OutputConflictError
-            outcome = await self._planner.transform(original, request)
+            outcome = await self._planner.transform(
+                apply_visual_authority(original, _copy_visual_ids(original), planner=True), request
+            )
+            outcome = replace(
+                outcome,
+                document=replace(
+                    outcome.document,
+                    blocks=tuple(
+                        before if before.preserved_visual_authority else after
+                        for before, after in zip(
+                            original.blocks, outcome.document.blocks, strict=True
+                        )
+                    ),
+                ),
+                findings=tuple(
+                    finding
+                    for finding in outcome.findings
+                    if not (
+                        finding.block_id in _copy_visual_ids(original)
+                        and finding.code == "google_doc_text_target_unsupported"
+                    )
+                )
+                + tuple(
+                    TransformFinding(
+                        code="native_visual_authority_preserved",
+                        block_id=block_id,
+                        detail="Authored title size, color, alignment, font family, and emphasis were preserved unchanged; wording cleanup was skipped for this paragraph. Full Sarj typography was not applied.",
+                    )
+                    for block_id in _copy_visual_ids(original)
+                ),
+            )
             if request.mode is not TransformMode.UNSLOP:
                 outcome = replace(
                     outcome,
@@ -1808,6 +1849,14 @@ def _strip_generated_copy_suffixes(title: str) -> str:
     return title or "Untitled"
 
 
+def _copy_visual_ids(document: DocumentIR) -> tuple[str, ...]:
+    return tuple(block.id for block in document.blocks if block.preserved_visual_authority)
+
+
+def _copy_builder_version(document: DocumentIR) -> str:
+    return _COPY_REQUEST_BUILDER_VERSION if _copy_visual_ids(document) else REQUEST_BUILDER_VERSION
+
+
 def _new_copy_checkpoint(
     *,
     request: DocumentTransformRequest,
@@ -1857,7 +1906,7 @@ def _new_copy_checkpoint(
         brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
         brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
         pipeline_version=PIPELINE_VERSION,
-        request_builder_version=REQUEST_BUILDER_VERSION,
+        request_builder_version=_copy_builder_version(original),
         unslop_catalog_sha256=UNSLOP_CATALOG_SHA256,
         original_semantic_sha256=original.semantic_sha256,
         expected_semantic_sha256=outcome.document.semantic_sha256,
@@ -1900,7 +1949,7 @@ def _validate_copy_checkpoint(
         CURRENT_BRAND_MANIFEST.profile_id,
         CURRENT_BRAND_MANIFEST.sha256,
         PIPELINE_VERSION,
-        REQUEST_BUILDER_VERSION,
+        _copy_builder_version(original),
         UNSLOP_CATALOG_SHA256,
         original.semantic_sha256,
         _copy_output_name(request, original),
@@ -1922,6 +1971,12 @@ def _validate_copy_checkpoint(
         checkpoint.logo_sha256,
     )
     if checkpoint_contract != expected_contract:
+        raise OutputConflictError
+    if set(_copy_visual_ids(original)) & checkpoint.replacements.keys() or tuple(
+        finding.block_id
+        for finding in checkpoint.findings
+        if finding.code == "native_visual_authority_preserved"
+    ) != _copy_visual_ids(original):
         raise OutputConflictError
     if checkpoint.authored_labels != (
         plan_authored_labels(original) if request.mode is not TransformMode.UNSLOP else ()

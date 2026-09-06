@@ -52,6 +52,7 @@ def plan_authored_labels(document: DocumentIR) -> tuple[AuthoredLabelRole, ...]:
             )
         )
         or not block.editable
+        or block.preserved_visual_authority
         or block.native_content
         or block.native_bullet_json is not None
         or block.source_range is None

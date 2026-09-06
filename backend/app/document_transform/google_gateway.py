@@ -43,6 +43,7 @@ from app.document_transform.copy_identity import (
     align_verified_copy_list_metadata,
     normalize_copy_list_identity,
 )
+from app.document_transform.copy_visual_authority import verify_copy_visual_authority
 from app.document_transform.custom_furniture import (
     MAX_FURNITURE_BYTES,
     CustomFurnitureBinding,
@@ -1692,6 +1693,10 @@ class GoogleDocumentGateway(DocumentGateway):
             and headers_preserved
             and (
                 not verify_brand
+                or verify_copy_visual_authority(source_document, structure_document, expected)
+            )
+            and (
+                not verify_brand
                 or _copy_font_preserved(
                     source_document,
                     structure_document,
@@ -1711,6 +1716,8 @@ class GoogleDocumentGateway(DocumentGateway):
                     "protected_inventory_preserved": protected_preserved,
                     "copy_list_identity_equivalent": copy_list_identity_equivalent,
                     "occupied_headers_preserved": headers_preserved,
+                    "visual_authority_preserved": not verify_brand
+                    or verify_copy_visual_authority(source_document, structure_document, expected),
                 },
                 diagnostics={
                     **_copy_inventory_diagnostics(source_document, structure_document),

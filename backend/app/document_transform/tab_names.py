@@ -114,7 +114,7 @@ def plan_tab_names(
     renames: list[TabRename] = []
     for tab in tabs:
         if not _is_generic(tab.title):
-            icon = tab.icon_emoji or tab_icon_emoji(tab.title)
+            icon = _relevant_icon(tab, tab.title)
             if icon is not None and icon != tab.icon_emoji:
                 renames.append(TabRename(tab.tab_id, tab.title, tab.title, tab.icon_emoji, icon))
             continue
@@ -129,7 +129,7 @@ def plan_tab_names(
         candidate = _truncate(title_case_document_name(candidate), MAX_TAB_TITLE_UNITS)
         if not candidate or not any(character.isalpha() for character in candidate):
             if tab.title and utf16_length(tab.title) <= MAX_TAB_TITLE_UNITS:
-                icon = tab.icon_emoji or tab_icon_emoji(icon_hint) or tab_icon_emoji(tab.title)
+                icon = _relevant_icon(tab, icon_hint) or tab_icon_emoji(tab.title)
                 if icon is not None and icon != tab.icon_emoji:
                     renames.append(
                         TabRename(tab.tab_id, tab.title, tab.title, tab.icon_emoji, icon)
@@ -138,7 +138,7 @@ def plan_tab_names(
         sibling_titles = occupied[tab.parent_tab_id]
         title = candidate if candidate == tab.title else _unique_title(candidate, sibling_titles)
         sibling_titles.add(_name_key(title))
-        icon = tab.icon_emoji or tab_icon_emoji(title)
+        icon = _relevant_icon(tab, title)
         if title != tab.title or (icon is not None and icon != tab.icon_emoji):
             renames.append(
                 TabRename(
@@ -150,6 +150,12 @@ def plan_tab_names(
                 )
             )
     return TabNamingPlan(tabs, tuple(renames))
+
+
+def _relevant_icon(tab: NativeTabProperties, title: str) -> str | None:
+    if tab.icon_emoji and tab.icon_emoji != "📄":
+        return tab.icon_emoji
+    return tab_icon_emoji(title) or tab.icon_emoji
 
 
 def _candidate_title(document: DocumentIR, tab_id: DocsTabId, *, single_root_tab: bool) -> str:
