@@ -15,6 +15,10 @@ from starlette.responses import JSONResponse, Response
 from starlette.status import HTTP_400_BAD_REQUEST
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.mcp.native_admission import (
+    RegistrationAdmissionDeniedError,
+    RegistrationAdmissionUnavailableError,
+)
 from app.mcp.native_metadata import canonical_issuer, issuer_redirect
 from app.mcp.native_request_context import (
     NativeOAuthEndpoint,
@@ -360,6 +364,28 @@ class NativeOAuthHTTPGuard:
                 async with asyncio.timeout(30):
                     await self._app(scope, replay, guarded_send)
                 response = _clean_response(response_start, bytes(response_body), settings)
+            except RegistrationAdmissionDeniedError as error:
+                response = JSONResponse(
+                    {
+                        "error": "temporarily_unavailable",
+                        "error_description": "Registration temporarily unavailable",
+                    },
+                    status_code=429,
+                    headers={
+                        "Cache-Control": "no-store",
+                        "Referrer-Policy": "no-referrer",
+                        "Retry-After": str(max(1, min(1800, error.retry_after_seconds))),
+                    },
+                )
+            except RegistrationAdmissionUnavailableError:
+                response = JSONResponse(
+                    {
+                        "error": "temporarily_unavailable",
+                        "error_description": "Registration temporarily unavailable",
+                    },
+                    status_code=503,
+                    headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+                )
             except Exception:  # ruff: ignore[blind-except] - OAuth privacy boundary before any response is emitted.
                 response = JSONResponse(
                     {"error": "server_error", "error_description": "OAuth request failed"},

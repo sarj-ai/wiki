@@ -10,6 +10,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.config import Settings, parse_fernet_keys
 from app.maintenance import MaintenanceModeMiddleware
+from app.mcp.native_admission import PostgresRegistrationAdmission
 from app.mcp.native_core import NativeOAuthCore
 from app.mcp.native_provider import NativeWikiOAuthProvider
 from app.mcp.native_request_context import require_native_oauth_request
@@ -84,6 +85,7 @@ async def native_composition(
             app_settings.MCP_NATIVE_LOOPBACK_PATHS, app_settings.MCP_NATIVE_HTTPS_CALLBACKS
         ),
         request_guard=require_native_oauth_request,
+        registration_admission=PostgresRegistrationAdmission(sessions).admit,
         issuer_responses_enabled=True,
     )
     async with tasks_v2.CloudTasksAsyncClient() as client:

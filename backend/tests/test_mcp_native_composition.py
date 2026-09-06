@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.config import Settings
 from app.identifiers import TaskId
 from app.main import create_app
+from app.mcp.native_admission import PostgresRegistrationAdmission
 from app.mcp.native_composition import NATIVE_PATHS, NativeComposition
 from app.mcp.native_core import NativeOAuthCore
 from app.mcp.native_provider import NativeWikiOAuthProvider
@@ -96,6 +97,7 @@ class Factory:
             consent_url=f"{ORIGIN}/mcp/consent",
             redirects=McpRedirectPolicy(loopback_paths=("/callback",)),
             request_guard=require_native_oauth_request,
+            registration_admission=PostgresRegistrationAdmission(sessions).admit,
             issuer_responses_enabled=True,
         )
         runtime = create_native_runtime(

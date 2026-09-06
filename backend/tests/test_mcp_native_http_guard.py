@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from base64 import urlsafe_b64encode
+from datetime import timedelta
 import hashlib
 import logging
 import time
@@ -20,6 +21,10 @@ from pydantic import AnyUrl
 import pytest
 from starlette.applications import Starlette
 
+from app.mcp.native_admission import (
+    RegistrationAdmissionDeniedError,
+    RegistrationAdmissionUnavailableError,
+)
 from app.mcp.native_http_guard import NativeOAuthGuardSettings, NativeOAuthHTTPGuard
 from app.mcp.native_request_context import (
     NativeOAuthEndpoint,
@@ -54,6 +59,9 @@ class Provider(OAuthProvider):
         self.revoked: list[str] = []
         self.revocable = False
         self.authorization_redirect = "https://wiki.test/consent"
+        self.registration_attempts = 0
+        self.registration_retry: int | None = None
+        self.registration_unavailable = False
 
     @override
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
@@ -97,6 +105,11 @@ class Provider(OAuthProvider):
 
     @override
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
+        self.registration_attempts += 1
+        if self.registration_retry is not None:
+            raise RegistrationAdmissionDeniedError(timedelta(seconds=self.registration_retry))
+        if self.registration_unavailable:
+            raise RegistrationAdmissionUnavailableError
         self.clients.append(client_info)
 
     @override
@@ -263,6 +276,7 @@ async def test_registration_rejects_raw_duplicates_depth_and_bytes(body: str) ->
         )
     assert response.status_code == 400
     assert provider.clients == []
+    assert provider.registration_attempts == 0
 
 
 async def test_actual_sdk_registration_public_only_no_remote_metadata() -> None:
@@ -287,6 +301,74 @@ async def test_actual_sdk_registration_public_only_no_remote_metadata() -> None:
             denied = await http.post("/register", json={**values, **changed})
             assert denied.status_code == 400
     assert len(provider.clients) == 1
+
+
+@pytest.mark.parametrize("retry", [1, 17, 1800])
+async def test_actual_sdk_registration_admission_returns_retry_after(retry: int) -> None:
+    provider = Provider()
+    provider.registration_retry = retry
+    async with client(provider) as http:
+        response = await http.post(
+            "/register",
+            json={
+                "redirect_uris": [CALLBACK],
+                "token_endpoint_auth_method": "none",
+                "grant_types": ["authorization_code", "refresh_token"],
+                "response_types": ["code"],
+                "client_name": CANARY,
+            },
+        )
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == str(retry)
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json()["error"] == "temporarily_unavailable"
+    assert CANARY not in response.text
+    assert provider.registration_attempts == 1
+    assert provider.clients == []
+
+
+async def test_registration_admission_unavailable_does_not_disable_existing_credentials(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    provider = Provider()
+    provider.registration_unavailable = True
+    provider.issue_code = True
+    provider.revocable = True
+    async with client(provider) as http:
+        response = await http.post(
+            "/register",
+            json={
+                "redirect_uris": [CALLBACK],
+                "token_endpoint_auth_method": "none",
+                "grant_types": ["authorization_code", "refresh_token"],
+                "response_types": ["code"],
+                "client_name": CANARY,
+            },
+        )
+        token = await http.post("/token", data=exchange())
+        revoked = await http.post("/revoke", data={"client_id": "client", "token": CANARY})
+    assert response.status_code == 503
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json()["error"] == "temporarily_unavailable"
+    assert CANARY not in response.text
+    assert CANARY not in caplog.text
+    assert token.status_code == 200
+    assert revoked.status_code == 200
+    assert provider.registration_attempts == 1
+    assert provider.clients == []
+
+
+async def test_invalid_dcr_is_rejected_before_admission() -> None:
+    provider = Provider()
+    provider.registration_retry = 60
+    async with client(provider) as http:
+        response = await http.post(
+            "/register",
+            content='{"client_name":"x","client_name":"y"}',
+            headers={"Content-Type": "application/json"},
+        )
+    assert response.status_code == 400
+    assert provider.registration_attempts == 0
 
 
 async def test_actual_sdk_exception_log_is_redacted_only_in_guard(
