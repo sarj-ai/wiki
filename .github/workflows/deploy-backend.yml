@@ -16,7 +16,14 @@ name: Deploy Backend
       - "scripts/github/verify-backend-production-health.sh"
       - "scripts/github/verify-backend-correlated-logs.sh"
       - "scripts/github/verify-smart-create-queue.sh"
+      - "scripts/backend_release/**"
   workflow_dispatch:
+    inputs:
+      verification_run_id:
+        description: "Verification only: completed run ID with successful migration, traffic switch, and cleanup (empty deploys normally)"
+        type: string
+        required: false
+        default: ""
 
 concurrency:
   group: deploy-backend
@@ -85,7 +92,7 @@ jobs:
         run: bash scripts/github/verify-release-gate.sh standards backend
 
   deploy:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && inputs.verification_run_id == ''
     needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt]
     runs-on: ubuntu-latest
 
@@ -247,3 +254,62 @@ jobs:
           PREVIOUS_REVISION: ${{ steps.deploy.outputs.previous_revision || 'unknown' }}
           TRAFFIC_OUTCOME: ${{ steps.traffic.outcome || 'not-run' }}
         run: scripts/github/report-blocked-backend-release.sh
+
+  verify-existing:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.verification_run_id != ''
+    needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version-file: backend/uv.toml
+          enable-cache: false
+      - name: Recheck immutable main release before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NEEDS: ${{ toJSON(needs) }}
+        run: bash scripts/github/verify-release-gate.sh ready backend
+      - name: Verify completed source mutation receipts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.verification_run_id }}
+        run: |
+          uv run --no-project --python 3.14 python -m scripts.backend_release.recovery \
+            --sha "$GITHUB_SHA" source --run-id "$SOURCE_RUN_ID"
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - name: Verify exact serving image before canary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/backend_release/verify-serving.sh
+      - name: Verify task queues are running
+        run: scripts/github/verify-smart-create-queue.sh
+      - name: Begin fresh verification window
+        id: window
+        run: echo "started_at=$(date -u +'%Y-%m-%dT%H:%M:%S.%NZ')" >> "$GITHUB_OUTPUT"
+      - name: Verify revision and production health
+        id: verify
+        run: scripts/github/verify-backend-production-health.sh
+      - name: Verify correlated production logs
+        env:
+          CANARY_ID: ${{ steps.verify.outputs.canary_id }}
+          DEPLOY_STARTED_AT: ${{ steps.window.outputs.started_at }}
+          VERIFIED_REVISION: ${{ steps.verify.outputs.new_revision }}
+          VERIFY_FINISHED_AT: ${{ steps.verify.outputs.finished_at }}
+        run: scripts/github/verify-backend-correlated-logs.sh
+      - name: Recheck exact serving image after verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/backend_release/verify-serving.sh
