@@ -1,9 +1,9 @@
 import asyncio
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from importlib.metadata import version
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -26,6 +26,15 @@ from app.files.errors import FilesError
 from app.files.router import router as files_router
 from app.logging_config import configure_logging
 from app.maintenance import MaintenanceModeMiddleware
+from app.mcp.native_composition import (
+    NativeCompositionFactory,
+    NativeCompositionSlot,
+    NativeDispatchMiddleware,
+    native_composition,
+)
+from app.mcp.native_consent_router import NativeConsentSettings, create_native_consent_router
+from app.mcp.native_core import NativeOAuthCore
+from app.mcp.redirect_policy import McpRedirectPolicy
 from app.request_body import MAX_REQUEST_BODY_BYTES, RequestBodyLimitMiddleware
 from app.request_id import RequestIDMiddleware
 from app.security_headers import SecurityHeadersMiddleware
@@ -111,14 +120,32 @@ async def health_check() -> dict[str, str]:
     return await _health_check(settings)
 
 
-def create_app(app_settings: Settings) -> FastAPI:
+def create_app(
+    app_settings: Settings, *, native_factory: NativeCompositionFactory = native_composition
+) -> FastAPI:
+    native_slot = NativeCompositionSlot()
+
     @asynccontextmanager
     async def lifespan(instance: FastAPI) -> AsyncGenerator[None]:
         configure_logging(json=app_settings.LOG_JSON, level=app_settings.LOG_LEVEL)
-        async with httpx.AsyncClient(timeout=10.0) as http_client:
-            instance.state.http_client = http_client
-            yield
-        await close_connector()
+        try:
+            async with AsyncExitStack() as stack:
+                http_client = await stack.enter_async_context(httpx.AsyncClient(timeout=10.0))
+                instance.state.http_client = http_client
+                if app_settings.MCP_NATIVE_ENABLED:
+                    composition = await stack.enter_async_context(
+                        native_factory(app_settings, http_client, async_session)
+                    )
+                    await stack.enter_async_context(
+                        composition.runtime.http_app.lifespan(composition.runtime.http_app)
+                    )
+                    native_slot.value = composition
+                try:
+                    yield
+                finally:
+                    native_slot.value = None
+        finally:
+            await close_connector()
 
     docs_url = "/docs" if app_settings.API_DOCS_ENABLED else None
     application = FastAPI(
@@ -136,7 +163,13 @@ def create_app(app_settings: Settings) -> FastAPI:
         allow_origins=[app_settings.frontend_origin],
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            "X-Request-ID",
+            "X-MCP-CSRF",
+        ],
         expose_headers=[
             "Retry-After",
             "Server-Timing",
@@ -176,6 +209,30 @@ def create_app(app_settings: Settings) -> FastAPI:
     application.include_router(document_transform_router)
     application.include_router(tasks_router)
     application.include_router(internal_tasks_router)
+
+    if app_settings.MCP_NATIVE_ENABLED:
+
+        def native_core_dependency() -> NativeOAuthCore:
+            if native_slot.value is None:
+                raise HTTPException(status_code=503)
+            return native_slot.value.core
+
+        application.include_router(
+            create_native_consent_router(
+                settings=NativeConsentSettings(
+                    frontend_origin=app_settings.frontend_origin,
+                    issuer=str(app_settings.MCP_NATIVE_ISSUER),
+                    redirect_policy=McpRedirectPolicy(
+                        app_settings.MCP_NATIVE_LOOPBACK_PATHS,
+                        app_settings.MCP_NATIVE_HTTPS_CALLBACKS,
+                    ),
+                ),
+                core_dependency=native_core_dependency,
+            )
+        )
+        application.add_middleware(
+            NativeDispatchMiddleware, slot=native_slot, maintenance=app_settings.MAINTENANCE_MODE
+        )
 
     if app_settings is settings:
         application.get("/health", include_in_schema=False)(health_check)

@@ -140,7 +140,9 @@ jobs:
         run: uv run --locked pytest tests/test_task_source_dedupe_postgres.py tests/test_header_provenance_postgres.py -q -rA
 
       - name: Exercise MCP storage and client grants across database sessions
-        run: uv run --locked pytest tests/test_mcp_storage.py tests/test_mcp_grants.py -q -rA
+        run: >-
+          uv run --locked pytest tests/test_mcp_storage.py tests/test_mcp_grants.py
+          tests/test_native_mcp_core.py tests/test_mcp_native_runtime.py -q -rA
 
   image:
     name: Backend / Image build + Trivy scan

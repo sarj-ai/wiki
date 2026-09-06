@@ -271,9 +271,11 @@ typed counts or booleans and validated references, never raw logs or document co
 
 ## Codex MCP integration
 
-**Not available for connection yet.** MCP building blocks and tests exist, but `app.main`
-does not mount the MCP server or OAuth routes. No production endpoint, consent screen,
-or Codex connection is verified. The following is the release target, not live setup.
+**Disabled by default; production connection is not verified.** Native OAuth, consent,
+connection management and Streamable HTTP are wired behind `MCP_NATIVE_ENABLED=false`.
+When disabled, no backend MCP, OAuth, discovery or consent routes are exposed. The
+frontend shows setup instructions only after the authenticated connections API succeeds.
+The following is the release target, not a claim of live Codex acceptance.
 
 ### Connect after release
 
@@ -281,7 +283,8 @@ Obtain the exact HTTPS endpoint from the released Wiki integration screen or ver
 release record. Replace the deliberately nonfunctional placeholder:
 
 ```sh
-codex mcp add sarj-wiki --url VERIFIED_WIKI_MCP_URL
+codex mcp add sarj-wiki --url VERIFIED_WIKI_MCP_URL \
+  --oauth-client-registration dcr --oauth-resource VERIFIED_WIKI_MCP_URL
 ```
 
 If login does not start automatically, run `codex mcp login sarj-wiki`. Verify the
@@ -320,18 +323,20 @@ redirect alone is not a working connection.
   including any review-required state. Existing short-link lookup does not create or
   replace an alias or widen sharing.
 
-The released integration must provide server-side revocation with confirmed readback.
+The `/mcp/connections` screen offers a copyable setup command and server-side disconnect.
+Refresh its authenticated status after disconnect; an uncertain response must not trigger
+an automatic retry. Client IDs are shown explicitly rather than presented as verified app names.
 `codex mcp logout sarj-wiki` clears local OAuth credentials; `codex mcp remove sarj-wiki`
 removes local configuration. Neither proves server-side revocation. Revocation must
 stop new calls immediately, but does not cancel already accepted jobs; inspect those in Wiki.
 
 ### Developer and release gates
 
-Use normal repository setup. The backend development command currently starts only
-the existing Wiki API, not an MCP endpoint. From the repository root:
+Use normal repository setup. Without explicit enabled configuration, the backend starts
+only the existing Wiki API. From the repository root:
 
 ```sh
-uv run --project backend --locked pytest backend/tests/test_mcp_*.py
+uv run --project backend --locked pytest backend/tests/test_mcp_*.py backend/tests/test_native_mcp_core.py
 make check
 ```
 
@@ -352,18 +357,28 @@ Every gate below needs recorded evidence for the exact release before OAuth is e
 | Codex setup | Actual add/login/read test, denied write before consent, approved write afterward, correct account, collision-safe configuration and verified revoke/reconnect. |
 | Deployment | Migrations and full CI pass; deployed revision and queue health verified; private output independently rendered/reviewed; operator rollback rehearsed. |
 
-An authorized operator must finalize the mount/provider adapter, derive its exact Google
-redirect URI, and register that URI with the approved OAuth client. Do not guess a callback
-path or confuse the server's Google callback with Codex's loopback callback. For a
-pre-registered Codex client, register the exact callback displayed by its CLI; do not
-enable untested CIMD or arbitrary redirects.
+The native provider uses the maintained public FastMCP `OAuthProvider` interface and
+existing Wiki sign-in. MCP credentials are opaque, purpose-separated and backed by
+encrypted PostgreSQL state; Google and Wiki session credentials are never returned to
+the MCP client. No additional Google OAuth callback or MCP JWT signing key is needed.
+Register only the exact verified Codex loopback callback path; keep CIMD disabled.
+Issuer support is advertised only by the composed path covering approval, denial and
+SDK authorization errors. Never guess a callback or widen the policy to arbitrary URLs.
 
-Provision the approved client secret and independently scoped, stable encryption,
-lookup and signing keys through existing secret management. Never commit/print values,
-reuse browser credentials, or generate per-replica ephemeral keys. Verify least-privilege
-runtime access, retention/rotation/rollback, migrations, issuer/audience and bounded upstream
-calls. Keep the integration unmounted until the adapter, consent/revocation path,
-shared-state race handling and real Codex acceptance tests are complete.
+Provision a distinct MCP encryption ring and stable lock key through existing secret
+management; pin exact secret versions and grant only the backend identity access. Never
+commit/print key values, reuse browser credentials, or create per-replica ephemeral keys.
+Encryption lookup keys are derived with purpose separation. Keep the lock key stable
+across coordinated ring rotations. An image deployment does not provision cloud secrets
+or environment settings: the infrastructure plan/apply and reference readback are separate.
+
+Pending registrations expire after 30 minutes. Only atomic, explicit approval promotes
+their lifetime. Public registration still requires independent global and per-IP admission
+controls before activation; row quotas alone are not abuse protection. Audit infrastructure
+request logging as well as application logs. Retain the disabled state until those controls,
+secret references, migration, browser cookies and real Codex acceptance are verified.
+Rollback by disabling MCP and verifying REST/health; preserve additive tables and secrets.
+Disabling does not revoke durable credentials, and it does not pause admitted document jobs.
 
 ## License and security
 

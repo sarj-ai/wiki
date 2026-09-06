@@ -13,6 +13,7 @@ from pydantic import (
 from pydantic_settings import SettingsConfigDict
 
 from app.database_config import DatabaseSettings, NonEmptyStr
+from app.mcp.redirect_policy import McpRedirectPolicy
 
 
 DomainStr = Annotated[
@@ -56,6 +57,12 @@ class Settings(DatabaseSettings):
     LOG_LEVEL: LogLevel = "INFO"
     MAINTENANCE_MODE: bool = False
     API_DOCS_ENABLED: bool = False
+    MCP_NATIVE_ENABLED: bool = False
+    MCP_NATIVE_ISSUER: HttpUrl | None = None
+    MCP_NATIVE_FERNET_KEYS: SecretStr | None = None
+    MCP_NATIVE_LOCK_KEY: SecretStr | None = None
+    MCP_NATIVE_LOOPBACK_PATHS: tuple[str, ...] = ()
+    MCP_NATIVE_HTTPS_CALLBACKS: tuple[str, ...] = ()
     RELEASE_SHA: ReleaseSha = "dev"
     SIDEBAR_CACHE_TTL: Annotated[timedelta, Field(gt=timedelta(0))] = timedelta(minutes=10)
     GOOGLE_CLOUD_PROJECT: NonEmptyStr | None = None
@@ -137,7 +144,9 @@ class Settings(DatabaseSettings):
             raise ValueError(msg)
         return self
 
-    @field_validator("FERNET_KEY", "CACHE_FERNET_KEY")
+    @field_validator(
+        "FERNET_KEY", "CACHE_FERNET_KEY", "MCP_NATIVE_FERNET_KEYS", "MCP_NATIVE_LOCK_KEY"
+    )
     @classmethod
     def fernet_keys_valid(cls, v: SecretStr | None) -> SecretStr | None:
         if v is None:
@@ -153,6 +162,68 @@ class Settings(DatabaseSettings):
             msg = "must contain at most three Fernet keys"
             raise ValueError(msg)
         return v
+
+    @model_validator(mode="after")
+    def native_mcp_configuration_is_explicit(self) -> Self:
+        McpRedirectPolicy(self.MCP_NATIVE_LOOPBACK_PATHS, self.MCP_NATIVE_HTTPS_CALLBACKS)
+        if not self.MCP_NATIVE_ENABLED:
+            return self
+        issuer = self.MCP_NATIVE_ISSUER
+        if (
+            issuer is None
+            or self.MCP_NATIVE_FERNET_KEYS is None
+            or self.MCP_NATIVE_LOCK_KEY is None
+        ):
+            msg = "Native MCP requires an explicit issuer and independent encryption and lock keys"
+            raise ValueError(msg)
+        frontend = self.FRONTEND_URL
+        callback = self.GOOGLE_REDIRECT_URI
+        if (
+            not _is_https_origin(issuer)
+            or not _is_https_origin(frontend)
+            or callback.scheme != "https"
+            or issuer.host != callback.host
+            or issuer.port != callback.port
+        ):
+            msg = (
+                "Native MCP requires a fixed HTTPS API issuer and same-site trusted frontend origin"
+            )
+            raise ValueError(msg)
+        if self.COOKIE_DOMAIN is None:
+            msg = "Native MCP requires an explicit same-site cookie domain"
+            raise ValueError(msg)
+        keys = parse_fernet_keys(self.MCP_NATIVE_FERNET_KEYS.get_secret_value())
+        lock_keys = parse_fernet_keys(self.MCP_NATIVE_LOCK_KEY.get_secret_value())
+        existing = parse_fernet_keys(self.FERNET_KEY.get_secret_value())
+        if self.CACHE_FERNET_KEY is not None:
+            existing.extend(parse_fernet_keys(self.CACHE_FERNET_KEY.get_secret_value()))
+        existing.append(self.SECRET_KEY.get_secret_value())
+        if (
+            len(lock_keys) != 1
+            or not set(keys).isdisjoint(lock_keys)
+            or not set(keys + lock_keys).isdisjoint(existing)
+        ):
+            msg = "Native MCP encryption and stable lock keys must be distinct from all Wiki keys"
+            raise ValueError(msg)
+        if not (self.MCP_NATIVE_LOOPBACK_PATHS or self.MCP_NATIVE_HTTPS_CALLBACKS):
+            msg = "Native MCP requires explicitly verified client callback paths"
+            raise ValueError(msg)
+        if not all(
+            (self.GOOGLE_CLOUD_PROJECT, self.CLOUD_TASKS_QUEUE, self.DOCUMENT_TRANSFORM_QUEUE)
+        ):
+            msg = "Native MCP requires the existing Cloud Tasks and document transformation queues"
+            raise ValueError(msg)
+        return self
+
+
+def _is_https_origin(url: HttpUrl) -> bool:
+    return (
+        url.scheme == "https"
+        and url.path == "/"
+        and not any(
+            value is not None for value in (url.query, url.fragment, url.username, url.password)
+        )
+    )
 
 
 settings = Settings()  # type: ignore[call-arg]

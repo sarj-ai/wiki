@@ -89,6 +89,22 @@ const nextConfig: NextConfig = {
       headers: [{ key: "Cache-Control", value: "private, no-store" }, ...SECURITY_HEADERS],
       source: "/health",
     },
+    {
+      headers: [
+        ...SECURITY_HEADERS.filter(
+          (header) =>
+            !["Content-Security-Policy", "Referrer-Policy", "X-Frame-Options"].includes(header.key),
+        ),
+        { key: "Cache-Control", value: "private, no-store" },
+        { key: "Referrer-Policy", value: "no-referrer" },
+        { key: "X-Frame-Options", value: "DENY" },
+        {
+          key: "Content-Security-Policy",
+          value: CSP_DIRECTIVES.replace("frame-ancestors 'self'", "frame-ancestors 'none'"),
+        },
+      ],
+      source: "/mcp/:path*",
+    },
   ],
   output: "standalone",
   reactCompiler: true,
