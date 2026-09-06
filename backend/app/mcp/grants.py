@@ -19,7 +19,8 @@ _CLIENT_ID_LIMIT = 1024
 
 @dataclass(frozen=True, slots=True)
 class SignedGrantBinding:
-    # Construct only from signature-verified access claims, never tool arguments.
+    # Construct only from verified signatures or authenticated encrypted native
+    # credential state, never from tool arguments or unsigned client claims.
     grant_id: McpGrantId
     client_id: McpClientId
     issued_at: int

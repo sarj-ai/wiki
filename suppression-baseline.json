@@ -5,14 +5,16 @@
     "backend"
   ],
   "codes": {
-    "noqa:BLE001": 1,
+    "noqa:BLE001": 3,
     "noqa:F401": 1,
+    "noqa:RUF029": 1,
+    "sarj-noqa:SARJ052": 1,
     "type-ignore:attr-defined": 1,
     "type-ignore:call-arg": 2,
     "type-ignore:no-untyped-call": 2
   },
   "packages": {
-    "backend": 7
+    "backend": 11
   },
   "excluded_subtrees": [],
   "files": {

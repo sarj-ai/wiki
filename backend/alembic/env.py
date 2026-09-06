@@ -4,7 +4,16 @@ from alembic import context
 
 from app.database import Base, build_engine, close_connector
 from app.database_config import database_settings
-from app.models import auth_session, mcp_grant, mcp_oauth, task, task_replay_key, user, wiki  # noqa: F401 — register models on Base
+from app.models import (
+    auth_session,
+    mcp_grant,
+    mcp_native_state,
+    mcp_oauth,
+    task,
+    task_replay_key,
+    user,
+    wiki,
+)  # noqa: F401 — register models on Base
 
 config = context.config
 
