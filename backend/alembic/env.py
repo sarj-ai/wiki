@@ -9,6 +9,7 @@ from app.models import (
     mcp_grant,
     mcp_native_state,
     mcp_oauth,
+    mcp_registration_admission,
     task,
     task_replay_key,
     user,
