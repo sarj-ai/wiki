@@ -93,10 +93,10 @@ check-repository: ## Verify Markdown, README commands, and environment-example p
 branch-protection-check: ## Compare live main-branch protection with the canonical policy.
 	@python3 scripts/github/branch_protection.py check
 
-branch-protection-apply: ## Idempotently apply the canonical main-branch protection policy.
+branch-protection-apply: ## Refuse unconfirmed apply; use the CLI with a reviewed fingerprint and target.
 	@python3 scripts/github/branch_protection.py apply
 
-branch-protection-rollback: ## Idempotently remove main-branch protection.
+branch-protection-rollback: ## Disabled; restore a reviewed policy instead of deleting protection.
 	@python3 scripts/github/branch_protection.py rollback
 
 $(STAMPS):
