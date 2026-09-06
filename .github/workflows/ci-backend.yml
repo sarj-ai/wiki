@@ -48,6 +48,20 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check .
 
+      - name: Identify Mypy cache toolchain
+        id: mypy-toolchain
+        run: |
+          uv run python -c 'import importlib.metadata, platform; print("python=" + platform.python_version()); print("mypy=" + importlib.metadata.version("mypy"))' >> "$GITHUB_OUTPUT"
+
+      - name: Restore Mypy incremental data
+        id: mypy-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: backend/.mypy_cache
+          key: mypy-v1-${{ runner.os }}-${{ runner.arch }}-py${{ steps.mypy-toolchain.outputs.python }}-mypy${{ steps.mypy-toolchain.outputs.mypy }}-${{ hashFiles('backend/uv.lock', 'backend/pyproject.toml', 'backend/.python-version', 'backend/uv.toml', 'backend/mypy.ini', 'backend/.mypy.ini', 'backend/setup.cfg', '.sarj-standards.toml', '.github/workflows/ci-backend.yml') }}-${{ github.sha }}
+          restore-keys: |
+            mypy-v1-${{ runner.os }}-${{ runner.arch }}-py${{ steps.mypy-toolchain.outputs.python }}-mypy${{ steps.mypy-toolchain.outputs.mypy }}-${{ hashFiles('backend/uv.lock', 'backend/pyproject.toml', 'backend/.python-version', 'backend/uv.toml', 'backend/mypy.ini', 'backend/.mypy.ini', 'backend/setup.cfg', '.sarj-standards.toml', '.github/workflows/ci-backend.yml') }}-
+
       - name: Mypy strict
         run: uv run mypy app
 
@@ -65,6 +79,13 @@ jobs:
 
       - name: pip-audit
         run: uv run pip-audit
+
+      - name: Save trusted main Mypy incremental data
+        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.mypy-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: backend/.mypy_cache
+          key: ${{ steps.mypy-cache.outputs.cache-primary-key }}
 
   test:
     name: Backend / Unit tests
