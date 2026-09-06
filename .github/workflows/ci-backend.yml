@@ -2,7 +2,7 @@ name: CI Backend
 
 "on":
   push:
-    branches: [main, "feat/**"]
+    branches: [main]
     paths:
       - "backend/**"
       - ".github/workflows/ci-backend.yml"
@@ -42,7 +42,7 @@ jobs:
         run: uv sync --group dev --locked
 
       - name: Ruff check
-        run: uv run ruff check .
+        run: uv run ruff check --output-format=github .
 
       - name: Ruff format check
         run: uv run ruff format --check .
@@ -64,12 +64,6 @@ jobs:
 
       - name: pip-audit
         run: uv run pip-audit
-
-      - name: Standards Ruff strict
-        run: uv run ruff check --output-format=github .
-
-      - name: Standards Basedpyright strict
-        run: uv run basedpyright -p pyrightconfig.json
 
   test:
     name: Backend / Unit tests

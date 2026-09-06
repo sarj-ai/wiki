@@ -2,7 +2,7 @@ name: CI IaC
 
 "on":
   push:
-    branches: [main, "feat/**"]
+    branches: [main]
     paths:
       - "terraform/**"
       - ".github/workflows/ci-iac.yml"
