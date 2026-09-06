@@ -91,8 +91,11 @@ class PostgresOAuthStorage(AsyncKeyValue):
         return operation
 
     @asynccontextmanager
-    async def operation(self, identity: str) -> AsyncGenerator[None]:
+    async def operation(self, identity: str) -> AsyncGenerator[AsyncSession]:
         # Lock identity remains stable across key rotation; revalidate after entry.
+        # This context owns commit/rollback. Callers may join grant writes through
+        # the yielded session, but must not commit, rollback, close, retain, or
+        # share it with another task. Same-identity nesting joins, not a savepoint.
         if not identity or len(identity.encode()) > _MAX_KEY_BYTES:
             msg = "Invalid OAuth operation identity"
             raise ValueError(msg)
@@ -101,7 +104,7 @@ class PostgresOAuthStorage(AsyncKeyValue):
             if current.identity != identity:
                 msg = "Nested OAuth operations must use the same identity"
                 raise RuntimeError(msg)
-            yield
+            yield current.session
             return
         async with (
             asyncio.timeout(_OPERATION_TIMEOUT.total_seconds()),
@@ -115,7 +118,7 @@ class PostgresOAuthStorage(AsyncKeyValue):
             )
             token = self._operation.set(_Operation(session, asyncio.current_task(), identity))
             try:
-                yield
+                yield session
             finally:
                 self._operation.reset(token)
 

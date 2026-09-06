@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import timedelta
 import uuid
 
+from cryptography.fernet import Fernet
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import pytest
 from sqlalchemy import Table, select, update
@@ -20,8 +21,11 @@ from app.mcp.grants import (
     validate_live_grant,
 )
 from app.mcp.identity import McpClientId
+from app.mcp.protection import OAuthStateProtector
 from app.mcp.schemas import McpCapability
+from app.mcp.storage import PostgresOAuthStorage
 from app.models.mcp_grant import McpGrant, McpGrantId
+from app.models.mcp_oauth import MCPOAuthEntry
 from app.models.user import User
 
 
@@ -49,7 +53,7 @@ async def sessions() -> AsyncGenerator[async_sessionmaker[AsyncSession]]:
     try:
         async with engine.begin() as connection:
             await connection.execute(CreateSchema(schema))
-            for model in (User, McpGrant):
+            for model in (User, McpGrant, MCPOAuthEntry):
                 table = model.__table__
                 assert isinstance(table, Table)
                 await connection.run_sync(table.create)
@@ -78,6 +82,99 @@ def _binding(grant: McpGrant, user: User) -> SignedGrantBinding:
         client_id=McpClientId(grant.client_id),
         issued_at=int(grant.created_at.timestamp()),
         google_subject=user.google_id,
+    )
+
+
+@pytest.mark.parametrize("outcome", ["commit", "rollback", "cancel", "deadline"])
+async def test_real_postgres_grant_and_oauth_state_share_one_transaction(
+    sessions: async_sessionmaker[AsyncSession], outcome: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    commit = outcome == "commit"
+    protector = OAuthStateProtector(
+        (Fernet.generate_key().decode(),), lock_key=Fernet.generate_key().decode()
+    )
+    writer = PostgresOAuthStorage(sessions, protector)
+    observer = PostgresOAuthStorage(sessions, protector)
+    collection = "mcp-authorization-codes"
+    async with sessions.begin() as db:
+        user = await _user(db, "atomic")
+        previous = await enroll_approved_client(
+            db, approving_user_id=user.id, client_id=McpClientId("client")
+        )
+        previous_binding = _binding(previous, user)
+    await writer.put("code", {"approved": True}, collection=collection, ttl=60)
+    replacements: list[McpGrantId] = []
+    ready = asyncio.Event()
+    if outcome == "deadline":
+        monkeypatch.setattr("app.mcp.storage._OPERATION_TIMEOUT", timedelta(seconds=2))
+
+    async def exchange() -> None:
+        async with writer.operation("connection:atomic:client") as db:
+            async with writer.operation("connection:atomic:client") as nested:
+                assert nested is db
+                replacement = await enroll_approved_client(
+                    nested,
+                    approving_user_id=user.id,
+                    client_id=McpClientId("client"),
+                    transform_approved=True,
+                )
+                replacements.append(replacement.id)
+                assert await writer.delete("code", collection=collection)
+                await writer.put(
+                    "new-token",
+                    {"grant": str(replacement.id)},
+                    collection="mcp-jti-mappings",
+                    ttl=60,
+                )
+            # Independent instance/session cannot observe either uncommitted write.
+            assert await observer.get("code", collection=collection) == {"approved": True}
+            assert await observer.get("new-token", collection="mcp-jti-mappings") is None
+            async with sessions() as reader:
+                assert await reader.get(McpGrant, replacement.id) is None
+                await validate_live_grant(reader, previous_binding)
+            ready.set()
+            if outcome in {"cancel", "deadline"}:
+                await asyncio.Event().wait()
+            if outcome == "rollback":
+                message = "abort exchange"
+                raise RuntimeError(message)
+
+    if outcome == "cancel":
+        task = asyncio.create_task(exchange())
+        try:
+            await asyncio.wait_for(ready.wait(), timeout=10)
+        finally:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+    elif outcome == "deadline":
+        with pytest.raises(TimeoutError):
+            await exchange()
+        assert ready.is_set(), "Deadline must interrupt after all transaction writes"
+    elif commit:
+        await exchange()
+    else:
+        with pytest.raises(RuntimeError, match="abort exchange"):
+            await exchange()
+    assert len(replacements) == 1
+    replacement_id = replacements[0]
+    async with sessions() as reader:
+        saved = await reader.get(McpGrant, replacement_id)
+        if commit:
+            assert saved is not None
+            await validate_live_grant(
+                reader, _binding(saved, user), required_capability=McpCapability.TRANSFORM
+            )
+            with pytest.raises(McpAuthorizationError):
+                await validate_live_grant(reader, previous_binding)
+        else:
+            assert saved is None
+            await validate_live_grant(reader, previous_binding)
+    assert await observer.get("code", collection=collection) == (
+        None if commit else {"approved": True}
+    )
+    assert await observer.get("new-token", collection="mcp-jti-mappings") == (
+        {"grant": str(replacement_id)} if commit else None
     )
 
 

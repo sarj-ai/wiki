@@ -87,17 +87,25 @@ async def test_operation_reuses_session_and_rejects_cross_task_and_nested_identi
     sessions = _Sessions()
     session: Any = sessions.session
     store = PostgresOAuthStorage(sessions.factory(), _protector())
-    async with store.operation("grant:one"), store.operation("grant:one"):
-        async with store._session() as active:
-            assert active is session
+    async with store.operation("grant:one") as outer, store.operation("grant:one") as inner:
+        assert outer is inner is session
         with pytest.raises(RuntimeError, match="same identity"):
             async with store.operation("grant:two"):
                 pytest.fail("different nested lock accepted")
         with pytest.raises(RuntimeError, match="child tasks"):
             await asyncio.create_task(store.get("code", collection=_COLLECTION))
-    assert store._current() is None
+
+        async def child_operation() -> None:
+            async with store.operation("grant:one"):
+                pytest.fail("child task inherited the operation")
+
+        with pytest.raises(RuntimeError, match="child tasks"):
+            await asyncio.create_task(child_operation())
     assert sessions.session.calls == 3
     assert sessions.calls == 1
+    async with store.operation("grant:two") as later:
+        assert later is session
+    assert sessions.calls == 2
 
 
 class _QASettings(BaseSettings):
