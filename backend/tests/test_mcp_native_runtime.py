@@ -22,6 +22,7 @@ from sqlalchemy.schema import CreateSchema, DropSchema
 
 from app.auth.service import AuthService, AuthSession
 from app.identifiers import GoogleUserId, TaskId, UserId
+from app.mcp.native_admission import PostgresRegistrationAdmission
 from app.mcp.native_consent_router import NativeConsentSettings, create_native_consent_router
 from app.mcp.native_core import NativeOAuthCore
 from app.mcp.native_provider import NativeWikiOAuthProvider
@@ -33,6 +34,7 @@ from app.mcp.redirect_policy import McpRedirectPolicy
 from app.mcp.storage import PostgresOAuthStorage
 from app.models.mcp_grant import McpGrant
 from app.models.mcp_native_state import McpNativeState
+from app.models.mcp_registration_admission import McpRegistrationAdmission
 from app.models.user import User
 from app.tasks.queue import TaskEnqueuer
 
@@ -89,7 +91,12 @@ class RuntimeLab:
     prepared: list[UserId]
 
     async def register(self) -> str:
-        response = await self.client.post(
+        response = await self.registration_response()
+        assert response.status_code == 201, response.text
+        return str(response.json()["client_id"])
+
+    async def registration_response(self) -> httpx.Response:
+        return await self.client.post(
             "/register",
             json={
                 "redirect_uris": [_CALLBACK],
@@ -100,8 +107,6 @@ class RuntimeLab:
                 "client_name": "Synthetic Runtime Client",
             },
         )
-        assert response.status_code == 201, response.text
-        return str(response.json()["client_id"])
 
     async def authorize(self, client_id: str) -> str:
         response = await self.browser.get(
@@ -218,6 +223,7 @@ async def runtime(
         consent_url=f"{_FRONTEND}/mcp/consent",
         redirects=policy,
         request_guard=require_native_oauth_request,
+        registration_admission=PostgresRegistrationAdmission(sessions).admit,
         issuer_responses_enabled=request.param,
     )
     prepared: list[UserId] = []
@@ -232,7 +238,7 @@ async def runtime(
     try:
         async with engine.begin() as connection:
             await connection.execute(CreateSchema(schema))
-            for model in (User, McpGrant, McpNativeState):
+            for model in (User, McpGrant, McpNativeState, McpRegistrationAdmission):
                 table = model.__table__
                 assert isinstance(table, Table)
                 await connection.run_sync(table.create)
@@ -360,6 +366,41 @@ async def test_real_http_pg_oauth_to_mcp_and_revocation(
     )
     assert denied.status_code == 401
     assert len(runtime.prepared) == 2
+
+
+async def test_registration_limit_preserves_refresh_read_and_revoke(runtime: RuntimeLab) -> None:
+    client_id = await runtime.register()
+    approved = await runtime.consent(await runtime.authorize(client_id), approve=True)
+    issued = await runtime.exchange(client_id, approved["code"][0])
+    assert issued.status_code == 200
+    for _ in range(9):
+        await runtime.register()
+    rejected = await runtime.registration_response()
+    assert rejected.status_code == 429
+    assert 1 <= int(rejected.headers["retry-after"]) <= 60
+    assert "no-store" in rejected.headers["cache-control"]
+    refreshed = await runtime.client.post(
+        "/token",
+        data={
+            "client_id": client_id,
+            "grant_type": "refresh_token",
+            "refresh_token": issued.json()["refresh_token"],
+            "resource": _RESOURCE,
+        },
+    )
+    assert refreshed.status_code == 200, refreshed.text
+    token = str(refreshed.json()["access_token"])
+    connected = await runtime.rpc(
+        token, "tools/call", {"name": "wiki_connection_status", "arguments": {"request": {}}}
+    )
+    assert connected.json()["result"]["structuredContent"]["capabilities"] == ["wiki:read"]
+    revoked = await runtime.client.post("/revoke", data={"client_id": client_id, "token": token})
+    assert revoked.status_code == 200, revoked.text
+    denied = await runtime.rpc(
+        token, "tools/call", {"name": "wiki_connection_status", "arguments": {"request": {}}}
+    )
+    assert denied.status_code == 401
+    assert (await runtime.registration_response()).status_code == 429
 
 
 async def test_real_http_denial_and_sdk_error_have_matching_issuer(runtime: RuntimeLab) -> None:

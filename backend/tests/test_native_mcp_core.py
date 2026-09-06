@@ -12,6 +12,7 @@ from mcp.server.auth.provider import (
     AuthorizationCode,
     AuthorizationParams,
     AuthorizeError,
+    RegistrationError,
     TokenError,
 )
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
@@ -24,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.schema import CreateSchema, DropSchema
 
 from app.identifiers import GoogleUserId, UserId
+from app.mcp.native_admission import PostgresRegistrationAdmission
 from app.mcp.native_core import NativeOAuthCore
 from app.mcp.native_provider import NativeWikiOAuthProvider
 from app.mcp.native_request_context import (
@@ -40,6 +42,7 @@ from app.mcp.schemas import McpCapability
 from app.mcp.storage import PostgresOAuthStorage
 from app.models.mcp_grant import McpGrant
 from app.models.mcp_native_state import McpNativeState
+from app.models.mcp_registration_admission import McpRegistrationAdmission
 from app.models.user import User
 
 
@@ -139,6 +142,7 @@ async def lab() -> AsyncGenerator[Lab]:
             consent_url="https://wiki.example.test/mcp/consent",
             redirects=McpRedirectPolicy(loopback_paths=("/callback",)),
             request_guard=require_native_oauth_request,
+            registration_admission=PostgresRegistrationAdmission(sessions).admit,
         )
         for _ in range(2)
     ]
@@ -146,7 +150,7 @@ async def lab() -> AsyncGenerator[Lab]:
     try:
         async with engine.begin() as connection:
             await connection.execute(CreateSchema(schema))
-            for model in (User, McpGrant, McpNativeState):
+            for model in (User, McpGrant, McpNativeState, McpRegistrationAdmission):
                 table = model.__table__
                 assert isinstance(table, Table)
                 await connection.run_sync(table.create)
@@ -476,6 +480,7 @@ async def test_issuer_and_resource_configuration_cannot_rebind_credentials(lab: 
         consent_url="https://wiki.example.test/mcp/consent",
         redirects=original.redirects,
         request_guard=require_native_oauth_request,
+        registration_admission=PostgresRegistrationAdmission(lab.sessions).admit,
     )
     assert await other.load_access_token(token.access_token) is None
     with pytest.raises(NativeOAuthError):
@@ -546,6 +551,24 @@ async def client_expiry(lab: Lab) -> datetime:
         )
         assert expiry is not None
         return expiry
+
+
+async def test_failed_registration_consumes_independent_admission(lab: Lab) -> None:
+    request("register")
+    with pytest.raises(RegistrationError):
+        await lab.providers[0].register_client(lab.client)
+    async with lab.sessions() as db:
+        history = await db.scalar(select(McpRegistrationAdmission.admitted_at))
+        assert history is not None
+        assert len(history) == 2
+        assert (
+            await db.scalar(
+                select(func.count())
+                .select_from(McpNativeState)
+                .where(McpNativeState.purpose == "client")
+            )
+            == 1
+        )
 
 
 async def test_pending_registration_is_short_and_reads_denial_never_extend(lab: Lab) -> None:

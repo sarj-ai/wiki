@@ -1,4 +1,4 @@
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import timedelta
 import hmac
@@ -70,6 +70,7 @@ class NativeWikiOAuthProvider(OAuthProvider):
         consent_url: str,
         redirects: McpRedirectPolicy,
         request_guard: Callable[[str], NativeOAuthRequestContext],
+        registration_admission: Callable[[], Awaitable[None]],
         issuer_responses_enabled: bool = False,
     ) -> None:
         if canonical_issuer(base_url) != core.issuer:
@@ -96,6 +97,7 @@ class NativeWikiOAuthProvider(OAuthProvider):
         self.consent_url = consent_url
         self.redirects = redirects
         self.request_guard = request_guard
+        self.registration_admission = registration_admission
         self.issuer_responses_enabled = issuer_responses_enabled
 
     @override
@@ -171,21 +173,27 @@ class NativeWikiOAuthProvider(OAuthProvider):
                 response_types=["code"],
                 scope=" ".join(scopes),
             )
-            async with self.core.operations.operation(f"native-client:{saved.client_id}") as db:
-                if (
-                    await self.core.state.get(
-                        db, NativePurpose.CLIENT, client_info.client_id, OAuthClientInformationFull
-                    )
-                    is not None
-                ):
-                    raise NativeOAuthError
-                await self.core.state.put(
-                    db,
-                    NativePurpose.CLIENT,
-                    client_info.client_id,
-                    saved,
-                    await native_database_time(db) + timedelta(minutes=30),
+        # Admission commits independently before client persistence. Do not put
+        # its typed failures through SDK RegistrationError's blanket HTTP 400.
+        await self.registration_admission()
+        async with (
+            oauth_boundary("register"),
+            self.core.operations.operation(f"native-client:{saved.client_id}") as db,
+        ):
+            if (
+                await self.core.state.get(
+                    db, NativePurpose.CLIENT, client_info.client_id, OAuthClientInformationFull
                 )
+                is not None
+            ):
+                raise NativeOAuthError
+            await self.core.state.put(
+                db,
+                NativePurpose.CLIENT,
+                client_info.client_id,
+                saved,
+                await native_database_time(db) + timedelta(minutes=30),
+            )
 
     @override
     async def authorize(

@@ -142,7 +142,8 @@ jobs:
       - name: Exercise MCP storage and client grants across database sessions
         run: >-
           uv run --locked pytest tests/test_mcp_storage.py tests/test_mcp_grants.py
-          tests/test_native_mcp_core.py tests/test_mcp_native_runtime.py -q -rA
+          tests/test_native_mcp_core.py tests/test_mcp_native_runtime.py
+          tests/test_mcp_native_admission.py -q -rA
 
   image:
     name: Backend / Image build + Trivy scan
