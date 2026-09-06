@@ -4,7 +4,7 @@ SECRETS_TTL := 1440
 STANDARDS_RUN := uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.2 code-standards
 
 .PHONY: help setup setup-hooks standards-sync standards-check standards-upgrade \
-	check check-node check-quality check-backend check-frontend check-repository fix audit doctor \
+	check check-node check-quality check-backend check-frontend check-iac check-repository fix audit doctor \
 	branch-protection-check branch-protection-apply branch-protection-rollback \
 	pull-local-secrets pull-local-secrets-force pull-tf-secrets pull-tf-secrets-force \
 	push-local-secrets push-tf-secrets
@@ -31,7 +31,7 @@ setup: setup-hooks standards-sync ## Install backend, frontend, and repository t
 	@$(MAKE) -C backend setup-dependencies
 	@npm ci --prefix frontend
 
-check: check-node check-quality check-backend check-frontend ## Run the complete local CI mirror.
+check: check-node check-quality check-backend check-frontend check-iac ## Run the complete local CI mirror.
 	@echo "make check: all CI-mirror steps passed"
 
 check-node:
@@ -66,6 +66,9 @@ check-frontend: ## Run frontend generation, lint, type, test, and build checks.
 	@cd frontend && npm run type-coverage
 	@cd frontend && npm test
 	@cd frontend && NEXT_PUBLIC_API_URL=http://localhost:8000 npm run build
+
+check-iac: ## Validate Terraform schemas and offline MCP preview wiring without cloud credentials.
+	@bash scripts/check-terraform.sh
 
 audit: ## Run network-backed production dependency vulnerability audits.
 	@cd backend && uv run pip-audit
