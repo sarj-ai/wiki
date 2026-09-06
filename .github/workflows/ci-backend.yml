@@ -116,6 +116,7 @@ jobs:
       # Disposable runner-local fixtures only; no cloud or repository secrets.
       DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
       WIKI_POLISH29_QA_DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
+      WIKI_MCP_QA_DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/wiki_polish29_qa
       SECRET_KEY: disposable-postgres-concurrency-qa-only
       FERNET_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       GOOGLE_CLIENT_ID: disposable-qa-client
@@ -143,6 +144,9 @@ jobs:
 
       - name: Exercise concurrent source reservations and durable replay keys
         run: uv run --locked pytest tests/test_task_source_dedupe_postgres.py tests/test_header_provenance_postgres.py -q -rA
+
+      - name: Exercise MCP storage and client grants across database sessions
+        run: uv run --locked pytest tests/test_mcp_storage.py tests/test_mcp_grants.py -q -rA
 
   image:
     name: Backend / Image build + Trivy scan

@@ -1,38 +1,26 @@
 from __future__ import annotations
 
 from time import monotonic
-from typing import Annotated, Protocol
+from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, Path, Response, status
+from fastapi import APIRouter, Body, Depends, Header, Path, Response, status
 
 from app.auth.dependencies import get_current_user
 from app.config import settings
-from app.document_transform.docx_renderer import validate_markdown_import
-from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
-from app.document_transform.ir import parse_markdown
+from app.document_transform.application import DestinationFileReader, submit_document_transform
 from app.document_transform.schemas import (
     DocumentTransformCapabilities,
     DocumentTransformRequest,
-    DriveFileSource,
-    MarkdownSource,
-    OutputStrategy,
 )
-from app.document_transform.word_gateway import WORD_MIME
-from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.files.dependencies import files_service_dep
-from app.files.errors import FileNotInScopeError
-from app.files.schemas import FileResponse
-from app.identifiers import FileId, IdempotencyKey
+from app.identifiers import IdempotencyKey
 from app.models.user import User
 from app.openapi import authentication_responses
 from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
 from app.tasks.queue import TaskEnqueuer
 from app.tasks.schemas import (
     DocumentTransformAdmission,
-    PendingTaskRead,
-    RunningTaskRead,
-    TaskKind,
     TaskRead,
 )
 from app.tasks.service import TaskService
@@ -43,10 +31,6 @@ router = APIRouter(
     tags=["document-transforms"],
     responses=authentication_responses(),
 )
-
-
-class DestinationFileReader(Protocol):
-    async def get(self, file_id: FileId) -> FileResponse: ...
 
 
 @router.get(
@@ -102,64 +86,16 @@ async def create_document_transform(
     enqueuer: Annotated[TaskEnqueuer, Depends(task_enqueuer_dep)],
     files: Annotated[DestinationFileReader, Depends(files_service_dep)],
 ) -> TaskRead:
-    if (
-        payload.output_strategy is OutputStrategy.IN_PLACE
-        and not settings.DOCUMENT_TRANSFORM_IN_PLACE_ENABLED
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="In-place document transformation is disabled",
-        )
-    if isinstance(payload.source, MarkdownSource):
-        try:
-            parse_markdown(payload.source.content, title=payload.source.name)
-            validate_markdown_import(payload.source.content, title=payload.source.name)
-        except SourceTooLargeError as exc:
-            raise HTTPException(status_code=413, detail=exc.public_detail) from exc
-        except UnsupportedSourceError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=exc.public_detail,
-            ) from exc
     started = monotonic()
-
-    async def admit() -> None:
-        await _validate_admission(payload, files)
-
-    reservation = await tasks.create_or_replay(
-        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+    submission = await submit_document_transform(
         owner_user_id=user.id,
         idempotency_key=IdempotencyKey(idempotency_key),
         payload=payload,
-        admit=admit,
+        tasks=tasks,
+        enqueuer=enqueuer,
+        files=files,
     )
-    if isinstance(reservation.task, PendingTaskRead | RunningTaskRead):
-        await enqueuer.enqueue_document_transform(reservation.task.id)
-    response.headers["Idempotency-Replayed"] = str(not reservation.created).lower()
-    response.headers["Retry-After"] = "1"
+    response.headers["Idempotency-Replayed"] = str(submission.replayed).lower()
+    response.headers["Retry-After"] = str(submission.retry_after)
     response.headers["Server-Timing"] = f"total;dur={(monotonic() - started) * 1000:.1f}"
-    return reservation.task
-
-
-async def _validate_admission(
-    payload: DocumentTransformRequest, files: DestinationFileReader
-) -> None:
-    if isinstance(payload.source, MarkdownSource):
-        destination = await files.get(payload.source.destination_folder_id)
-        if destination.mime_type != MIME_FOLDER or not destination.can_add_children:
-            message = "Destination does not accept new files"
-            raise FileNotInScopeError(message)
-    if isinstance(payload.source, DriveFileSource):
-        source = await files.get(payload.source.file_id)
-        if source.mime_type == WORD_MIME and (
-            payload.mode.value != "format" or payload.output_strategy is not OutputStrategy.COPY
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="Word documents currently support formatting-only copies; the original Word file stays unchanged",
-            )
-        if payload.output_strategy is OutputStrategy.IN_PLACE and source.mime_type != MIME_DOC:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="In-place transformation is available only for native Google Docs",
-            )
+    return submission.task
