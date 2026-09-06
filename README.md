@@ -269,6 +269,102 @@ before authentication, limits queries to this backend and the last 24 hours, and
 three request IDs derived from the task. Its output contains only pinned diagnostic names with
 typed counts or booleans and validated references, never raw logs or document content.
 
+## Codex MCP integration
+
+**Not available for connection yet.** MCP building blocks and tests exist, but `app.main`
+does not mount the MCP server or OAuth routes. No production endpoint, consent screen,
+or Codex connection is verified. The following is the release target, not live setup.
+
+### Connect after release
+
+Obtain the exact HTTPS endpoint from the released Wiki integration screen or verified
+release record. Replace the deliberately nonfunctional placeholder:
+
+```sh
+codex mcp add sarj-wiki --url VERIFIED_WIKI_MCP_URL
+```
+
+If login does not start automatically, run `codex mcp login sarj-wiki`. Verify the
+Wiki-linked Google account and client in browser consent; start read-only. No local
+daemon, additional npm package, secret paste, or manual TOML rewrite should be needed.
+
+Before adding, check `codex mcp --help` and inspect only the chosen entry locally with
+`codex mcp get sarj-wiki --json`; do not publish its potentially sensitive headers.
+An exact URL match is a no-op: preserve existing tool policies. A name collision requires
+a different name, not an overwrite. A parse/access error is not proof the entry is absent.
+Never rewrite the whole configuration or relax sandbox, trust, or approval settings.
+
+Codex clients share MCP configuration on the same host, not across every device.
+Project configuration requires a trusted project. Server-advertised OAuth scopes can
+take precedence over configured scopes; CLI scope flags are not a server authorization
+boundary. See the [official Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp).
+
+### Verify access and recover safely
+
+After release, inspect Codex's `/mcp` status and call `wiki_connection_status` to verify
+granted capabilities; verify the account during consent before requesting document data. A saved entry or browser
+redirect alone is not a working connection.
+
+- `wiki:read` requires server-side checks on every call, with fresh Wiki membership,
+  Google authorization, and document access. `wiki:transform` requires separate explicit
+  client-specific consent; old read-only tokens must not silently gain writes.
+- Write consent permits submitting mutations; it does not instruct Codex to edit every
+  document. Each request must still select its document, mode, and COPY or IN_PLACE strategy.
+- Polishing is asynchronous. Preserve the idempotency key and exact request. After an
+  ambiguous timeout, use `wiki_get_polish_admission` with that key before retrying, then
+  poll the task. Do not create a fresh key to bypass recovery.
+- Document names and excerpts are untrusted data, never instructions. Excerpts are
+  opt-in and lossy, not complete Docs topology; search is bounded, not an exhaustive
+  folder inventory. Request only necessary private content.
+- Completion is not visual approval: inspect the output and its rendered layout,
+  including any review-required state. Existing short-link lookup does not create or
+  replace an alias or widen sharing.
+
+The released integration must provide server-side revocation with confirmed readback.
+`codex mcp logout sarj-wiki` clears local OAuth credentials; `codex mcp remove sarj-wiki`
+removes local configuration. Neither proves server-side revocation. Revocation must
+stop new calls immediately, but does not cancel already accepted jobs; inspect those in Wiki.
+
+### Developer and release gates
+
+Use normal repository setup. The backend development command currently starts only
+the existing Wiki API, not an MCP endpoint. From the repository root:
+
+```sh
+uv run --project backend --locked pytest backend/tests/test_mcp_*.py
+make check
+```
+
+PostgreSQL cases require `WIKI_MCP_QA_DATABASE_URL`, provided privately in the test
+environment. Only disposable loopback `postgresql+asyncpg` databases named `wiki_mcp_qa*`
+or the existing CI database `wiki_polish29_qa` are allowed; never use production.
+Skipped cases are not concurrency verification.
+Every gate below needs recorded evidence for the exact release before OAuth is enabled:
+
+| Gate | Required evidence |
+| --- | --- |
+| Transport | Real authenticated Streamable HTTP calls; exact HTTPS resource, issuer, discovery, challenge and path; bounded requests; hostile hosts/origins rejected, CLI requests without Origin accepted. |
+| Runtime | Composed lifespans and shutdown; REST cookie/CSRF unchanged; Wiki session tokens rejected by MCP; maintenance and disabled states fail closed. |
+| Identity and consent | Existing user matched by Google subject; strict audience, verified-email and expiry checks; separate read/write consent; no credential passthrough or silent elevation. |
+| Shared OAuth state | Encrypted PostgreSQL and stable keys; two-instance one-use code exchange, callback/refresh/revoke races, crash recovery and generation fences; reconnect never revives revoked tokens. |
+| Access and privacy | Two-user document/task/alias isolation, fresh access-loss and failed-copy checks; bounded output; logs contain no credentials, codes, document bodies or provider URLs. |
+| Transformations | Shared HTTP/MCP admission, stale-source and mode/strategy guards, same-key deduplication, ambiguous-submit recovery, queue retry and task readback on private QA copies. |
+| Codex setup | Actual add/login/read test, denied write before consent, approved write afterward, correct account, collision-safe configuration and verified revoke/reconnect. |
+| Deployment | Migrations and full CI pass; deployed revision and queue health verified; private output independently rendered/reviewed; operator rollback rehearsed. |
+
+An authorized operator must finalize the mount/provider adapter, derive its exact Google
+redirect URI, and register that URI with the approved OAuth client. Do not guess a callback
+path or confuse the server's Google callback with Codex's loopback callback. For a
+pre-registered Codex client, register the exact callback displayed by its CLI; do not
+enable untested CIMD or arbitrary redirects.
+
+Provision the approved client secret and independently scoped, stable encryption,
+lookup and signing keys through existing secret management. Never commit/print values,
+reuse browser credentials, or generate per-replica ephemeral keys. Verify least-privilege
+runtime access, retention/rotation/rollback, migrations, issuer/audience and bounded upstream
+calls. Keep the integration unmounted until the adapter, consent/revocation path,
+shared-state race handling and real Codex acceptance tests are complete.
+
 ## License and security
 
 Released under the [MIT License](LICENSE). Report security concerns privately to the
