@@ -218,14 +218,18 @@ def read_json(raw: str) -> JsonObject:
 
 
 def command_output(command: list[str]) -> str:
-    result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed read-only commands, no shell
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    require(result.returncode == 0, "Read-only release verification command failed")
+    try:
+        result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed commands, no shell
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        msg = "Release command timed out; completion is unconfirmed"
+        raise ReleaseBlockedError(msg) from exc
+    require(result.returncode == 0, "Release command failed")
     require(len(result.stdout) <= MAX_RESPONSE_BYTES, "Oversized release verification response")
     return result.stdout.strip()
 
