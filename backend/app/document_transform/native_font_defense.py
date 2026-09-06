@@ -34,7 +34,9 @@ def preserved_native_font_blocks(
 def apply_native_font_preservation(document: DocumentIR, block_ids: tuple[str, ...]) -> DocumentIR:
     selected = set(block_ids)
     eligible = {
-        block.id for block in document.blocks if not block.editable and block.font_style_ranges
+        block.id
+        for block in document.blocks
+        if (not block.editable and block.font_style_ranges) or block.preserved_visual_authority
     }
     if len(selected) != len(block_ids) or not selected <= eligible:
         raise ValueError

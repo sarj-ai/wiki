@@ -961,6 +961,12 @@ describe("DocumentPolishDialog", () => {
             detail: "Authored text styles were preserved.",
           },
           {
+            blockId: "block-title",
+            code: "native_visual_authority_preserved",
+            detail:
+              "Authored visual hierarchy was preserved. Wording cleanup was skipped for these paragraphs.",
+          },
+          {
             blockId: "block-2",
             code: "native_font_family_preserved",
             detail: "Original font and text styles were preserved where inheritance was uncertain.",
@@ -999,6 +1005,7 @@ describe("DocumentPolishDialog", () => {
       );
       expect(document.body).toHaveTextContent("Full Sarj branding was not applied.");
       expect(document.body).toHaveTextContent("Authored text styles were preserved.");
+      expect(document.body).toHaveTextContent("Wording cleanup was skipped for these paragraphs.");
       expect(document.body).toHaveTextContent(
         "Original font and text styles were preserved where inheritance was uncertain.",
       );
@@ -1013,6 +1020,7 @@ describe("DocumentPolishDialog", () => {
   it.each([
     "native_paragraph_layout_preserved",
     "native_font_family_preserved",
+    "native_visual_authority_preserved",
     "table_font_scope",
     "table_font_preserved",
   ])("recognizes verified preservation notes without hiding other failures: %s", (code) => {

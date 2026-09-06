@@ -226,6 +226,9 @@ class InPlaceCheckpointStage(StrEnum):
 
 
 class InPlaceCheckpoint(StrictTransformModel):
+    visual_authority_block_ids: tuple[
+        Annotated[NativeFontBlockId, StringConstraints(pattern=r"^b[0-9]+$", max_length=12)], ...
+    ] = Field(default=(), max_length=MAX_DOCUMENT_BLOCKS)
     preserved_font_block_ids: tuple[
         Annotated[NativeFontBlockId, StringConstraints(pattern=r"^b[0-9]+$", max_length=12)], ...
     ] = Field(default=(), max_length=MAX_DOCUMENT_BLOCKS)
