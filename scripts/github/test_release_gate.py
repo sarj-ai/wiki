@@ -1,6 +1,7 @@
 from copy import deepcopy
 from pathlib import Path
 import runpy
+import shlex
 
 import pytest
 import yaml
@@ -53,9 +54,13 @@ def test_exact_trusted_standards_receipt_passes() -> None:
 
 
 @pytest.mark.parametrize("component", ["backend", "frontend"])
-def test_workflow_requires_all_local_gates_without_cloud_secrets(component: str) -> None:
+def test_workflow_requires_all_local_gates_without_cloud_secrets(
+    component: str,
+) -> None:
     root = Path(__file__).resolve().parents[2]
-    workflow = yaml.safe_load((root / f".github/workflows/deploy-{component}.yml").read_text())
+    workflow = yaml.safe_load(
+        (root / f".github/workflows/deploy-{component}.yml").read_text()
+    )
     jobs = workflow["jobs"]
     assert set(jobs["deploy"]["needs"]) == GATE["REQUIRED_JOBS"]
     for name in GATE["REQUIRED_JOBS"] - {"standards-receipt"}:
@@ -76,11 +81,59 @@ def test_workflow_requires_all_local_gates_without_cloud_secrets(component: str)
     verification = [
         step
         for step in jobs["deploy"]["steps"]
-        if step.get("run") == f"bash scripts/github/verify-release-gate.sh ready {component}"
+        if step.get("run")
+        == f"bash scripts/github/verify-release-gate.sh ready {component}"
     ]
     initial_check, final_check = verification
     assert initial_check is not final_check
-    assert all(step["env"]["RELEASE_NEEDS"] == "${{ toJSON(needs) }}" for step in verification)
+    assert all(
+        step["env"]["RELEASE_NEEDS"] == "${{ toJSON(needs) }}" for step in verification
+    )
+
+
+@pytest.mark.parametrize(
+    ("component", "job_name"),
+    [
+        ("backend", "standards-receipt"),
+        ("frontend", "standards-receipt"),
+        ("backend", "deploy"),
+        ("frontend", "deploy"),
+    ],
+)
+def test_gate_bootstraps_python_before_every_invocation(
+    component: str, job_name: str
+) -> None:
+    root = Path(__file__).resolve().parents[2]
+    workflow = yaml.safe_load(
+        (root / f".github/workflows/deploy-{component}.yml").read_text()
+    )
+    steps = workflow["jobs"][job_name]["steps"]
+    (installer,) = [
+        index
+        for index, step in enumerate(steps)
+        if step.get("uses", "").startswith("astral-sh/setup-uv@")
+    ]
+    invocations = [
+        index
+        for index, step in enumerate(steps)
+        if "bash scripts/github/verify-release-gate.sh" in step.get("run", "")
+    ]
+    assert invocations
+    assert all(installer < invocation for invocation in invocations)
+    assert steps[installer]["with"]["version-file"] == "backend/uv.toml"
+    wrapper = (root / "scripts/github/verify-release-gate.sh").read_text()
+    commands = shlex.split(wrapper, comments=True)
+    invocation = commands[commands.index("|") + 1 :]
+    assert invocation == [
+        "uv",
+        "run",
+        "--no-project",
+        "--python",
+        "3.14",
+        "python",
+        "scripts/github/release_gate.py",
+        "$@",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -133,7 +186,9 @@ def test_ambiguous_paginated_runs_fail_closed() -> None:
 
 def test_pending_run_waits_without_accepting_success() -> None:
     data = receipts()
-    data[f"{GATE['API_PREFIX']}/actions/runs/101"].update(status="in_progress", conclusion=None)
+    data[f"{GATE['API_PREFIX']}/actions/runs/101"].update(
+        status="in_progress", conclusion=None
+    )
     assert not GATE["standards_receipt"](data.__getitem__, SHA)
 
 
@@ -211,4 +266,6 @@ def test_missing_standards_times_out() -> None:
         return {"total_count": 0, "workflow_runs": []}
 
     with pytest.raises(GATE["ReleaseBlockedError"], match="deadline"):
-        GATE["wait_for_standards"](fetch, SHA, now=lambda: next(times), pause=lambda _seconds: None)
+        GATE["wait_for_standards"](
+            fetch, SHA, now=lambda: next(times), pause=lambda _seconds: None
+        )
