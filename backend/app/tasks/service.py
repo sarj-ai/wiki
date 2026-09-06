@@ -27,6 +27,7 @@ from app.document_transform.schemas import (
     InPlaceCheckpoint,
     MarkdownSource,
     OutputStrategy,
+    WordCopyCheckpoint,
 )
 from app.identifiers import FileId, IdempotencyKey, TaskId
 from app.models.task import Task
@@ -881,14 +882,14 @@ def _terminal_payload() -> object:
 
 def _serialize_checkpoint(checkpoint: DocumentTransformCheckpoint) -> dict[str, JsonValue]:
     serialized = checkpoint.model_dump(mode="json")
-    if isinstance(checkpoint, CopyCheckpoint):
+    if isinstance(checkpoint, CopyCheckpoint | WordCopyCheckpoint):
         plaintext = json.dumps(
             serialized, ensure_ascii=False, separators=(",", ":"), sort_keys=True
         )
         if len(plaintext.encode()) > _MAX_CHECKPOINT_PLAN_BYTES:
             raise CheckpointTooLargeError
         return {
-            "kind": "copy",
+            "kind": checkpoint.kind,
             "version": 1,
             _COPY_CHECKPOINT_CIPHERTEXT_FIELD: encrypt_cache(plaintext),
         }
@@ -901,7 +902,7 @@ def _serialize_checkpoint(checkpoint: DocumentTransformCheckpoint) -> dict[str, 
 
 
 def _deserialize_checkpoint(raw: Mapping[str, object]) -> DocumentTransformCheckpoint:
-    if raw.get("kind") == "copy":
+    if raw.get("kind") in {"copy", "word_copy"}:
         ciphertext = raw.get(_COPY_CHECKPOINT_CIPHERTEXT_FIELD)
         if not isinstance(ciphertext, str):
             msg = "Copy transform checkpoint is missing its encrypted payload"
@@ -910,7 +911,8 @@ def _deserialize_checkpoint(raw: Mapping[str, object]) -> DocumentTransformCheck
         if not isinstance(payload, dict):
             msg = "Copy transform checkpoint payload is invalid"
             raise ValueError(msg)
-        return CopyCheckpoint.model_validate(payload)
+        checkpoint_type = WordCopyCheckpoint if raw.get("kind") == "word_copy" else CopyCheckpoint
+        return checkpoint_type.model_validate(payload)
     metadata = dict(raw)
     ciphertext = metadata.pop("plan_ciphertext", None)
     if not isinstance(ciphertext, str):

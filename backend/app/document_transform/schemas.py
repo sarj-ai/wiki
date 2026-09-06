@@ -353,7 +353,46 @@ class CopyCheckpoint(StrictTransformModel):
         return self
 
 
+class WordCopyCheckpoint(StrictTransformModel):
+    version: Literal[1] = 1
+    kind: Literal["word_copy"] = "word_copy"
+    request_sha256: str
+    source_binding: dict[str, str]
+    source_sha256: str
+    output_sha256: str
+    transformer_version: str
+    target_font: str
+    output_name: OutputName
+    reserved_output_id: FileId
+    changed_run_count: int = Field(ge=0)
+    stage: Literal[
+        CopyCheckpointStage.PLANNED,
+        CopyCheckpointStage.CREATING,
+        CopyCheckpointStage.CREATED,
+        CopyCheckpointStage.VERIFIED,
+    ]
+    output: DocumentOutput | None = None
+    result: DocumentTransformResult | None = None
+
+    @model_validator(mode="after")
+    def validate_stage(self) -> Self:
+        if not self.reserved_output_id or self.reserved_output_id == self.source_binding.get("id"):
+            message = "Word copy requires a distinct reserved output ID"
+            raise ValueError(message)
+        created = self.stage in {CopyCheckpointStage.CREATED, CopyCheckpointStage.VERIFIED}
+        if created != (self.output is not None):
+            message = "Word checkpoint output does not match its stage"
+            raise ValueError(message)
+        if self.output is not None and self.output.file_id != self.reserved_output_id:
+            message = "Word output does not match its reserved file ID"
+            raise ValueError(message)
+        if (self.stage is CopyCheckpointStage.VERIFIED) != (self.result is not None):
+            message = "Only verified Word checkpoints contain a result"
+            raise ValueError(message)
+        return self
+
+
 DocumentTransformCheckpoint = Annotated[
-    InPlaceCheckpoint | CopyCheckpoint,
+    InPlaceCheckpoint | CopyCheckpoint | WordCopyCheckpoint,
     Field(discriminator="kind"),
 ]

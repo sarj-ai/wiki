@@ -18,6 +18,7 @@ from app.document_transform.schemas import (
     MarkdownSource,
     OutputStrategy,
 )
+from app.document_transform.word_gateway import WORD_MIME
 from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.files.dependencies import files_service_dep
 from app.files.errors import FileNotInScopeError
@@ -150,6 +151,13 @@ async def _validate_admission(
             raise FileNotInScopeError(message)
     if isinstance(payload.source, DriveFileSource):
         source = await files.get(payload.source.file_id)
+        if source.mime_type == WORD_MIME and (
+            payload.mode.value != "format" or payload.output_strategy is not OutputStrategy.COPY
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Word documents currently support formatting-only copies; the original Word file stays unchanged",
+            )
         if payload.output_strategy is OutputStrategy.IN_PLACE and source.mime_type != MIME_DOC:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

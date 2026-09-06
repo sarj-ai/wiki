@@ -13,7 +13,7 @@ import {
 } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
 import type { BreadcrumbItem } from "@/types/wiki";
-import { MIME_DOC, MIME_MARKDOWN, MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
+import { MIME_DOC, MIME_DOCX, MIME_MARKDOWN, MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
 
 import { DocumentPolishDialog } from "./document-polish-dialog";
 import { ReadOnlyShortLink } from "./read-only-short-link";
@@ -124,6 +124,7 @@ export function WikiToolbar({
       {authority === "resolved" &&
       modifiedTime !== undefined &&
       (mimeType === MIME_DOC ||
+        mimeType === MIME_DOCX ||
         mimeType === MIME_MARKDOWN ||
         mimeType === MIME_SLIDE ||
         mimeType === MIME_PPTX) ? (

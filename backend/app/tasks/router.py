@@ -6,7 +6,12 @@ import uuid
 from fastapi import APIRouter, Depends, Path, Response, status
 
 from app.auth.dependencies import get_current_user
-from app.document_transform.schemas import CopyCheckpoint, DriveFileSource, OutputStrategy
+from app.document_transform.schemas import (
+    CopyCheckpoint,
+    DriveFileSource,
+    OutputStrategy,
+    WordCopyCheckpoint,
+)
 from app.files.dependencies import files_service_dep
 from app.files.errors import FilesError
 from app.files.schemas import FileResponse
@@ -78,7 +83,7 @@ async def _with_unverified_output(
     if (
         record.owner_user_id != user.id
         or (payload is not None and payload.output_strategy is not OutputStrategy.COPY)
-        or not isinstance(checkpoint, CopyCheckpoint)
+        or not isinstance(checkpoint, CopyCheckpoint | WordCopyCheckpoint)
         or checkpoint.output is None
     ):
         return task

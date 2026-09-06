@@ -14,7 +14,7 @@ import {
 } from "@/lib/document-transform-types";
 import { makeMarkdownRecovery, saveMarkdownRecovery } from "@/lib/markdown-transform-recovery";
 import { installLocalStorage } from "@/test-stubs/local-storage";
-import { MIME_DOC, MIME_SLIDE } from "@/types/wiki";
+import { MIME_DOC, MIME_DOCX, MIME_SLIDE } from "@/types/wiki";
 
 import { DocumentPolishDialog, type DocumentPolishSource } from "./document-polish-dialog";
 
@@ -1161,6 +1161,68 @@ describe("DocumentPolishDialog", () => {
         "copy",
       );
     });
+  });
+
+  it("offers Word formatting only and submits a type-preserving copy", async () => {
+    const create = vi.spyOn(documentTransformApi, "create").mockRejectedValue(new Error("offline"));
+    renderDialog(root, {
+      allowInPlace: true,
+      expectedModifiedTime: "revision",
+      fileId: "word-1",
+      kind: "drive_file",
+      mimeType: MIME_DOCX,
+      name: "Security Policy.docx",
+    });
+    expect(document.body).toHaveTextContent("new Word document (.docx)");
+    expect(document.body).toHaveTextContent("review pagination and fields in Word");
+    expect(document.body).not.toHaveTextContent("Edit original");
+    expect(document.body).not.toHaveTextContent("Unslop");
+    expect(document.body).not.toHaveTextContent("complete Sarj brand system");
+    expect(documentTransformApi.capabilities).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+    clickButton(findButtonNow("Create polished copy"));
+    await vi.waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ fileId: "word-1" }),
+        "format",
+        expect.any(String),
+        "copy",
+      ),
+    );
+  });
+
+  it("never rewrites an older Word BOTH recovery into FORMAT", async () => {
+    const savedSource = {
+      expectedModifiedTime: "revision",
+      fileId: "word-1",
+      kind: "drive_file",
+      name: "Policy.docx",
+    } as const;
+    const key = "66666666-6666-4666-8666-666666666666";
+    writeTransformRecovery("owner-1", "drive:word-1", {
+      createdAt: Date.now(),
+      key,
+      mode: "both",
+      outputStrategy: "copy",
+      source: savedSource,
+      taskId: null,
+    });
+    const create = vi
+      .spyOn(documentTransformApi, "create")
+      .mockRejectedValue(new ApiError(422, "Word supports formatting only"));
+    renderDialog(root, {
+      ...savedSource,
+      allowInPlace: false,
+      mimeType: MIME_DOCX,
+      name: "Policy.docx",
+    });
+    await vi.waitFor(() => expect(findButtonNow("Resume checking")).toBeEnabled());
+    expect(findButtonNow("Both")).toHaveAttribute("aria-pressed", "true");
+    expect(findButtonNow("Both")).toBeDisabled();
+    clickButton(findButtonNow("Resume checking"));
+    await vi.waitFor(() => expect(create).toHaveBeenCalledWith(savedSource, "both", key, "copy"));
+    await vi.waitFor(() => expect(findButtonNow("Resume checking")).toBeEnabled());
+    expect(findButtonNow("Both")).toHaveAttribute("aria-pressed", "true");
   });
 
   it("presents native Slides as a copy-only presentation transform", () => {
