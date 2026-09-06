@@ -20,6 +20,7 @@ import type {
 
 export const MIME_FOLDER = "application/vnd.google-apps.folder";
 export const MIME_DOC = "application/vnd.google-apps.document";
+export const MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 export const MIME_SHEET = "application/vnd.google-apps.spreadsheet";
 export const MIME_SLIDE = "application/vnd.google-apps.presentation";
 export const MIME_DRAWING = "application/vnd.google-apps.drawing";

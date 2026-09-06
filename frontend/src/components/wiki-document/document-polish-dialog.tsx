@@ -64,7 +64,7 @@ import type { SmartDestination } from "@/lib/smart-create-types";
 import { cn } from "@/lib/utils";
 import { injectNewFileIntoCaches } from "@/lib/wiki-cache";
 import { wikiKeys } from "@/lib/wiki-keys";
-import { MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
+import { MIME_DOCX, MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
 
 import { DocumentPolishReceipt } from "./document-polish-receipt";
 import { DocumentPolishRecovery } from "./document-polish-recovery";
@@ -154,8 +154,14 @@ export function DocumentPolishDialog({
   const isPresentation =
     source.kind === "drive_file" &&
     (source.mimeType === MIME_SLIDE || source.mimeType === MIME_PPTX);
+  const isWord = source.kind === "drive_file" && source.mimeType === MIME_DOCX;
+  const requestedMode = isWord ? "format" : mode;
   const artifactNoun = isPresentation ? "presentation" : "document";
-  const outputNoun = isPresentation ? "Google Slides presentation" : "Google Doc";
+  const outputNoun = isPresentation
+    ? "Google Slides presentation"
+    : isWord
+      ? "Word document (.docx)"
+      : "Google Doc";
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const fileLoadGeneration = useRef(0);
@@ -191,19 +197,22 @@ export function DocumentPolishDialog({
     body.scrollTo({ top: 0, behavior: "instant" });
   }, [open, submitting, outcomeIdentity]);
   const capabilities = useQuery({
-    enabled: open && source.kind === "drive_file" && source.allowInPlace,
+    enabled: open && source.kind === "drive_file" && source.allowInPlace && !isWord,
     queryFn: documentTransformApi.capabilities,
     queryKey: ["document-transform", "capabilities"],
     staleTime: 60_000,
   });
   const effectiveOutputStrategy: DocumentTransformOutputStrategy =
-    source.kind === "drive_file" && source.allowInPlace && capabilities.data?.inPlace === true
+    source.kind === "drive_file" &&
+    source.allowInPlace &&
+    !isWord &&
+    capabilities.data?.inPlace === true
       ? outputStrategy
       : "copy";
   const capabilityPending =
-    source.kind === "drive_file" && source.allowInPlace && capabilities.isPending;
+    source.kind === "drive_file" && source.allowInPlace && !isWord && capabilities.isPending;
   const capabilityFailed =
-    source.kind === "drive_file" && source.allowInPlace && capabilities.isError;
+    source.kind === "drive_file" && source.allowInPlace && !isWord && capabilities.isError;
   const sourceIdentity = source.kind === "drive_file" ? `drive:${source.fileId}` : "markdown";
   const recoveryKey = ["document-transform-recovery", owner, sourceIdentity] as const;
   const recovery = useQuery({
@@ -405,7 +414,7 @@ export function DocumentPolishDialog({
     const candidateOperation: TransformRecovery = unresolved ?? {
       createdAt: startedAt,
       key: requestIdempotencyKey,
-      mode,
+      mode: requestedMode,
       outputStrategy: effectiveOutputStrategy,
       outputName: effectiveOutputStrategy === "copy" ? copyName.trim() || null : null,
       source: transformSource.kind === "drive_file" ? transformSource : null,
@@ -534,7 +543,7 @@ export function DocumentPolishDialog({
 
   const valid = inputSource() !== null;
   const displayedMarkdown = recoveredMarkdownSource?.content ?? markdown;
-  const displayedMode = completedResult?.mode ?? unresolved?.mode ?? mode;
+  const displayedMode = completedResult?.mode ?? unresolved?.mode ?? requestedMode;
   const destinationLabel = destination
     ? destination.folderPath.length > 0
       ? destination.folderPath.join(" / ")
@@ -565,7 +574,9 @@ export function DocumentPolishDialog({
               <DialogDescription>
                 {source.kind === "markdown"
                   ? "Create a native Google Doc from pasted Markdown or a local .md file."
-                  : `Choose how Sarj Wiki should refine this ${artifactNoun}.`}
+                  : isWord
+                    ? "Create a Word review copy with supported font updates. Wording and document structure stay unchanged; review pagination and fields in Word."
+                    : `Choose how Sarj Wiki should refine this ${artifactNoun}.`}
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -836,8 +847,18 @@ export function DocumentPolishDialog({
 
             <fieldset className="space-y-2">
               <legend className="mb-2 text-sm font-medium">Transform method</legend>
+              {isWord &&
+              unresolved &&
+              (unresolved.mode !== "format" || unresolved.outputStrategy !== "copy") ? (
+                <p className="text-muted-foreground text-xs" role="status">
+                  An earlier operation is reserved with its original settings. Resume checks that
+                  exact operation; it will not be changed to Word formatting.
+                </p>
+              ) : null}
               <div className="grid gap-2 sm:grid-cols-3">
-                {MODES.map((option) => {
+                {MODES.filter(
+                  (option) => !isWord || unresolved !== null || option.value === "format",
+                ).map((option) => {
                   const Icon = option.icon;
                   const selected = displayedMode === option.value;
                   return (
@@ -862,7 +883,9 @@ export function DocumentPolishDialog({
                         <span className="text-sm font-semibold">{option.label}</span>
                       </span>
                       <span className="text-muted-foreground mt-2 block text-xs leading-relaxed">
-                        {option.description}
+                        {isWord && option.value === "format"
+                          ? "Update supported Latin fonts only. Preserve sizes, emphasis, tables, headers, footers, and fields."
+                          : option.description}
                       </span>
                       {option.value === "both" ? (
                         <span className="text-primary mt-2 block text-[10px] font-semibold tracking-wide uppercase">
@@ -877,6 +900,7 @@ export function DocumentPolishDialog({
 
             {source.kind === "drive_file" &&
             source.allowInPlace &&
+            !isWord &&
             capabilities.data?.inPlace === true ? (
               <fieldset className="space-y-2">
                 <legend className="mb-2 text-sm font-medium">Save result</legend>

@@ -50,6 +50,8 @@ from app.document_transform.schemas import (
     TransformMode,
 )
 from app.document_transform.slides_brand import presentation_fingerprint
+from app.document_transform.word_executor import WordTransformExecutor
+from app.document_transform.word_gateway import WORD_MIME, GoogleWordGateway
 from app.drive.retry import ProviderDeadlineError
 from app.drive.schemas import MIME_SLIDE
 from app.drive.service import GoogleDriveService
@@ -336,6 +338,23 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                     )
                     if header_identity.evidence.operation_id != provenance.producer_operation_id:
                         raise InPlaceNeedsReviewError
+            if source_file.mime_type == WORD_MIME:
+                return DocumentTransformRuntime(
+                    short_links=short_links,
+                    transform=WordTransformExecutor(
+                        gateway=GoogleWordGateway(
+                            user=prepared.user,
+                            files=files,
+                            logo_uri="",
+                            refresh_handler=prepared.refresh_handler,
+                        ),
+                        checkpoint_store=self._tasks,
+                        task_id=task_id,
+                        lease_token=lease_token,
+                        checkpoint=checkpoint,
+                        checkpoint_generation=checkpoint_generation,
+                    ),
+                )
             if source_file.mime_type in {MIME_SLIDE, PPTX_MIME_TYPE}:
                 presentation_gateway = GooglePresentationGateway(
                     user=prepared.user,
