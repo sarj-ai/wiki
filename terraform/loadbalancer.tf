@@ -247,6 +247,110 @@ resource "google_compute_security_policy" "backend_armor" {
     description = "deny missing or empty client IP"
   }
 
+  # MCP admission is preview-only until proxy identity and CEL matching are
+  # verified. These approximate per-IP limits complement the durable PostgreSQL
+  # DCR budget; they do not implement a second global quota. Existing enforced
+  # rules, including the general 200/minute limit, still apply during preview.
+  # Equality also matches a visitor genuinely equal to the immediate proxy;
+  # this is a conservative fallback sentinel, not a perfect invalid-IP test.
+  rule {
+    action   = "deny(403)"
+    priority = 551
+    preview  = true
+    match {
+      expr {
+        expression = "request.method != 'OPTIONS' && request.path.urlDecode().matches('^/(register|authorize|token|revoke)$') && origin.user_ip == origin.ip"
+      }
+    }
+    description = "preview MCP invalid visitor IP fallback rejection"
+  }
+
+  rule {
+    action   = "throttle"
+    priority = 553
+    preview  = true
+    match {
+      expr {
+        expression = "request.method == 'POST' && request.path.urlDecode() == '/register'"
+      }
+    }
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+      enforce_on_key = "USER_IP"
+      rate_limit_threshold {
+        count        = 6
+        interval_sec = 600
+      }
+    }
+    description = "preview MCP registration throttle per client IP"
+  }
+
+  rule {
+    action   = "throttle"
+    priority = 554
+    preview  = true
+    match {
+      expr {
+        expression = "request.method == 'GET' && request.path.urlDecode() == '/authorize'"
+      }
+    }
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+      enforce_on_key = "USER_IP"
+      rate_limit_threshold {
+        count        = 30
+        interval_sec = 60
+      }
+    }
+    description = "preview MCP authorization throttle per client IP"
+  }
+
+  # Enforcing this later would replace (not stack with) the general 200/minute
+  # rule for POST /token. Review the explicit 300/minute allowance at that gate.
+  rule {
+    action   = "throttle"
+    priority = 555
+    preview  = true
+    match {
+      expr {
+        expression = "request.method == 'POST' && request.path.urlDecode() == '/token'"
+      }
+    }
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+      enforce_on_key = "USER_IP"
+      rate_limit_threshold {
+        count        = 300
+        interval_sec = 60
+      }
+    }
+    description = "preview MCP token throttle per client IP"
+  }
+
+  rule {
+    action   = "throttle"
+    priority = 556
+    preview  = true
+    match {
+      expr {
+        expression = "request.method == 'POST' && request.path.urlDecode() == '/revoke'"
+      }
+    }
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+      enforce_on_key = "USER_IP"
+      rate_limit_threshold {
+        count        = 120
+        interval_sec = 60
+      }
+    }
+    description = "preview MCP revocation throttle per client IP"
+  }
+
   # Keep Drive search and snippet requests in independent buckets, matching the
   # product's per-route rate contract. OPTIONS remains exempt.
   rule {
