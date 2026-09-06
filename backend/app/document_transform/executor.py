@@ -21,6 +21,11 @@ from app.document_transform.brand import (
     mutation_sha256,
 )
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
+from app.document_transform.copy_font_defense import (
+    copy_font_proofs,
+    copy_preserved_font_ids,
+    defend_copy_fonts,
+)
 from app.document_transform.custom_furniture import custom_furniture_requests_safe
 from app.document_transform.docx_renderer import markdown_import_manifest, render_markdown_docx
 from app.document_transform.errors import (
@@ -162,11 +167,18 @@ def _structure_inputs(
         raise OutputVerificationError
     mapped = replace(
         mapped,
+        copy_font_defended=expected.copy_font_defended,
         blocks=tuple(
             replace(
                 block,
                 text=transformed.text,
+                kind=transformed.kind,
+                level=transformed.level,
+                pagination_keep_with_next=transformed.pagination_keep_with_next,
+                suppress_space_above=transformed.suppress_space_above,
+                suppress_space_below=transformed.suppress_space_below,
                 preserved_visual_authority=transformed.preserved_visual_authority,
+                preserved_font_family=transformed.preserved_font_family,
             )
             for block, transformed in zip(mapped.blocks, expected.blocks, strict=True)
         ),
@@ -260,6 +272,11 @@ class DocumentTransformExecutor:
             if request.mode is not TransformMode.UNSLOP
             else (),
         )
+        original = replace(
+            original,
+            copy_font_defended=request.mode is not TransformMode.UNSLOP
+            and any(not block.editable and block.font_style_ranges for block in original.blocks),
+        )
         source_sha256 = _source_sha256(snapshot, original)
         recovered = await self._gateway.recover_output(operation_id)
         checkpoint = self._copy_checkpoint_or_none()
@@ -313,6 +330,7 @@ class DocumentTransformExecutor:
                         plan_native_pagination(snapshot.google_document, outcome.document),
                     ),
                 )
+            outcome = _copy_font_outcome(snapshot, original, outcome)
             checkpoint = await self._save_copy_checkpoint(
                 _new_copy_checkpoint(
                     request=request,
@@ -514,6 +532,14 @@ class DocumentTransformExecutor:
                 logo_uri=prepared_draft.logo_uri,
                 header_title=checkpoint.output_name,
             )
+            if outcome.document.copy_font_defended:
+                mutations = defend_copy_fonts(
+                    mutations,
+                    document=snapshot.google_document,
+                    original=original,
+                    transformed=outcome.document,
+                    font_family=self._brand.font_family,
+                )
         applied = prepared_draft
         if checkpoint.native_footer is None and checkpoint.native_dates is None:
             applied = await self._gateway.apply_requests_once(
@@ -1849,11 +1875,35 @@ def _strip_generated_copy_suffixes(title: str) -> str:
     return title or "Untitled"
 
 
+def _copy_font_outcome(
+    snapshot: SourceSnapshot, original: DocumentIR, outcome: TransformOutcome
+) -> TransformOutcome:
+    if not original.copy_font_defended:
+        return outcome
+    preserved_ids = copy_preserved_font_ids(snapshot.google_document, original, outcome.document)
+    return replace(
+        outcome,
+        document=apply_native_font_preservation(outcome.document, preserved_ids),
+        findings=outcome.findings
+        + tuple(
+            TransformFinding(
+                code="native_font_family_preserved",
+                block_id=block_id,
+                detail="Authored font family was preserved because its complete bold and weight semantics could not be safely changed.",
+            )
+            for block_id in preserved_ids
+            if block_id not in _copy_visual_ids(original)
+        ),
+    )
+
+
 def _copy_visual_ids(document: DocumentIR) -> tuple[str, ...]:
     return tuple(block.id for block in document.blocks if block.preserved_visual_authority)
 
 
 def _copy_builder_version(document: DocumentIR) -> str:
+    if document.copy_font_defended:
+        return f"{REQUEST_BUILDER_VERSION}-copy-font-v1"
     return _COPY_REQUEST_BUILDER_VERSION if _copy_visual_ids(document) else REQUEST_BUILDER_VERSION
 
 
@@ -1992,6 +2042,17 @@ def _validate_copy_checkpoint(
     ):
         raise OutputConflictError
     transformed = apply_native_pagination(transformed, checkpoint.pagination)
+    if original.copy_font_defended:
+        preserved_ids = copy_preserved_font_ids(snapshot.google_document, original, transformed)
+        if tuple(
+            finding.block_id
+            for finding in checkpoint.findings
+            if finding.code == "native_font_family_preserved"
+        ) != tuple(
+            block_id for block_id in preserved_ids if block_id not in _copy_visual_ids(original)
+        ):
+            raise OutputConflictError
+        transformed = apply_native_font_preservation(transformed, preserved_ids)
     if transformed.semantic_sha256 != checkpoint.expected_semantic_sha256:
         raise OutputConflictError
     plan_payload = _copy_plan_payload(
@@ -2024,13 +2085,23 @@ def _copy_checkpoint_outcome(
     checkpoint: CopyCheckpoint,
     original: DocumentIR,
 ) -> TransformOutcome:
-    return TransformOutcome(
-        document=apply_native_pagination(
-            apply_authored_labels(
-                original.replace_blocks(checkpoint.replacements), checkpoint.authored_labels
-            ),
-            checkpoint.pagination,
+    document = apply_native_pagination(
+        apply_authored_labels(
+            original.replace_blocks(checkpoint.replacements), checkpoint.authored_labels
         ),
+        checkpoint.pagination,
+    )
+    if original.copy_font_defended:
+        preserved = {
+            finding.block_id
+            for finding in checkpoint.findings
+            if finding.code == "native_font_family_preserved"
+        } | set(_copy_visual_ids(original))
+        document = apply_native_font_preservation(
+            document, tuple(block.id for block in original.blocks if block.id in preserved)
+        )
+    return TransformOutcome(
+        document=document,
         findings=tuple(checkpoint.findings),
         applied_count=checkpoint.applied_patch_count,
         deterministic_count=checkpoint.deterministic_patch_count,
@@ -2093,6 +2164,16 @@ def _copy_manifest_sha256(
             "branded": branded,
             "header_title": header_title if branded else None,
         }
+        if transformed.copy_font_defended:
+            if snapshot.google_document is None:
+                raise OutputConflictError
+            manifest = {
+                **manifest,
+                "copy_font_proofs": [
+                    proof.model_dump(mode="json")
+                    for proof in copy_font_proofs(snapshot.google_document, transformed)
+                ],
+            }
     return hashlib.sha256(
         json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
     ).hexdigest()
@@ -2212,6 +2293,14 @@ def _preflight_native_mutation_budget(
                 if request.output_strategy is OutputStrategy.COPY
                 else None
             ),
+        )
+    if request.output_strategy is OutputStrategy.COPY and transformed.copy_font_defended:
+        requests = defend_copy_fonts(
+            requests,
+            document=snapshot.google_document,
+            original=original,
+            transformed=transformed,
+            font_family=brand.font_family,
         )
     if (
         request.output_strategy is OutputStrategy.IN_PLACE

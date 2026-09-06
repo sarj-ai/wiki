@@ -107,6 +107,7 @@ class DocumentIR:
     blocks: tuple[TextBlock, ...]
     source_format: str
     tab_ids: tuple[DocsTabId, ...] = ()
+    copy_font_defended: bool = False
 
     @property
     def text_sha256(self) -> str:
