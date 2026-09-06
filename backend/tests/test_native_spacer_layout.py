@@ -51,6 +51,13 @@ def _spaced_document() -> dict[str, Any]:
             "paragraph": {"elements": [{"textRun": {"content": "\n"}}]},
         },
     ]
+    for item in content:
+        cursor = item["startIndex"]
+        for element in item["paragraph"]["elements"]:
+            element["startIndex"] = cursor
+            cursor += utf16_length(element["textRun"]["content"])
+            element["endIndex"] = cursor
+        assert cursor == item["endIndex"]
     return native
 
 
@@ -341,7 +348,7 @@ async def test_spacer_checkpoint_recomputes_proof_before_replay(tamper: str) -> 
         operation_id=task_id, request=request
     )
     checkpoint = store.checkpoints[-1]
-    assert checkpoint.request_builder_version == "google-docs-requests-v25"
+    assert checkpoint.request_builder_version == "google-docs-requests-v26"
     assert checkpoint.pagination[0].below_spacer_sha256 is not None
     if tamper == "old_version":
         checkpoint = checkpoint.model_copy(

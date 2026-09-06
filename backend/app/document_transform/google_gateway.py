@@ -126,6 +126,10 @@ from app.document_transform.native_paragraph_layout import (
 )
 from app.document_transform.native_safety_diagnostics import SafetyStage, native_safety_error
 from app.document_transform.native_table_font import TableFontPlan, project_table_fonts
+from app.document_transform.native_visual_authority import (
+    apply_visual_authority,
+    visual_authority_block_ids,
+)
 from app.document_transform.provider_diagnostics import native_provider_diagnostics
 from app.document_transform.schemas import (
     DocumentOutput,
@@ -730,7 +734,9 @@ class GoogleDocumentGateway(DocumentGateway):
             and _custom_furniture_matches(document, custom_furniture)
         )
         preserved_layout = any(
-            block.preserved_paragraph_style_sha256 or block.preserved_font_family
+            block.preserved_paragraph_style_sha256
+            or block.preserved_font_family
+            or block.preserved_visual_authority
             for block in expected.blocks
         )
         brand_applied = not verify_brand or (
@@ -1116,6 +1122,9 @@ class GoogleDocumentGateway(DocumentGateway):
             existing_layout,
             preserved_native_font_blocks(document, existing_layout, existing_layout),
         )
+        existing_layout = apply_visual_authority(
+            existing_layout, visual_authority_block_ids(document, existing_layout)
+        )
         logger.info(
             "document in-place preflight checks={checks}",
             checks={
@@ -1131,7 +1140,9 @@ class GoogleDocumentGateway(DocumentGateway):
             supported_brand_applied=bool(
                 custom_furniture
                 or any(
-                    block.preserved_paragraph_style_sha256 or block.preserved_font_family
+                    block.preserved_paragraph_style_sha256
+                    or block.preserved_font_family
+                    or block.preserved_visual_authority
                     for block in existing_layout.blocks
                 )
             )
@@ -1156,7 +1167,9 @@ class GoogleDocumentGateway(DocumentGateway):
             preserved_headers=tuple(preserved_headers),
             header_identity=getattr(self, "_header_identity", None),
             fully_branded=not any(
-                block.preserved_paragraph_style_sha256 or block.preserved_font_family
+                block.preserved_paragraph_style_sha256
+                or block.preserved_font_family
+                or block.preserved_visual_authority
                 for block in existing_layout.blocks
             )
             and not (missing or unknown or headers)
@@ -2831,6 +2844,8 @@ def _typography_verification_ir(actual: DocumentIR, expected: DocumentIR) -> Doc
                     suppress_space_above=planned.suppress_space_above,
                     suppress_space_below=planned.suppress_space_below,
                     preserved_paragraph_style_sha256=planned.preserved_paragraph_style_sha256,
+                    preserved_visual_authority=planned.preserved_visual_authority,
+                    preserved_font_family=planned.preserved_font_family,
                 )
                 if observed.sha256 == planned.sha256
                 else observed
@@ -3154,10 +3169,11 @@ def _paragraph_brand_diagnostics(
     ]
     expected_color = paragraph_color(block, SarjBrandProfile())
     return {
-        "named_style": _preserved_layout_matches(paragraph, block)
+        "named_style": block.preserved_visual_authority
+        or _preserved_layout_matches(paragraph, block)
         or paragraph_style.get("namedStyleType") == expected_named_style,
-        "layout": _preserved_layout_matches(paragraph, block)
-        if block.preserved_paragraph_style_sha256 is not None
+        "layout": _preserved_layout_matches(paragraph, block) or block.preserved_visual_authority
+        if block.preserved_paragraph_style_sha256 is not None or block.preserved_visual_authority
         else bool(
             paragraph_style.get("alignment") == "START"
             and paragraph_style.get("lineSpacing")
@@ -3176,10 +3192,13 @@ def _paragraph_brand_diagnostics(
                 or paragraph_style.get("keepLinesTogether") is True
             )
         ),
-        "text_style": bool(text_runs)
-        and all(
-            _text_run_has_brand(run, _brand_font_size(block), expected_color, block)
-            for run in text_runs
+        "text_style": block.preserved_visual_authority
+        or (
+            bool(text_runs)
+            and all(
+                _text_run_has_brand(run, _brand_font_size(block), expected_color, block)
+                for run in text_runs
+            )
         ),
     }
 

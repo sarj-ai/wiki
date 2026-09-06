@@ -6,7 +6,7 @@ import json
 from typing import Any, Literal, NewType, Self
 
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from app.document_transform.errors import UnsupportedSourceError
 from app.document_transform.ir import (
@@ -59,16 +59,22 @@ class NativeFontProof(BaseModel):
     named_styles_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     components: NativeFontComponents | None = None
     semantics: NativeFontSemantics | None = None
+    visual_authority: StrictBool = False
     block_id: NativeFontBlockId | None = Field(default=None, pattern=r"^b[0-9]+$", max_length=32)
 
     @model_validator(mode="after")
     def validate_semantic_version(self) -> Self:
         if self.version == 1:
-            if self.semantics is not None or self.block_id is not None:
+            if self.semantics is not None or self.block_id is not None or self.visual_authority:
                 raise ValueError
         elif self.semantics is None or self.block_id is None:
             raise ValueError
         return self
+
+
+@dataclass(frozen=True)
+class NativeVisualAuthoritySelection:
+    block_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -192,9 +198,11 @@ def capture_native_font_proof(
     preserved_family_block_ids: tuple[str, ...] = (),
     target_font_family: str | None = None,
     transformed: DocumentIR | None = None,
+    visual_authority: NativeVisualAuthoritySelection | None = None,
 ) -> tuple[NativeFontProof, ...]:
     if document is None:
         raise ValueError
+    visual_authority_block_ids = visual_authority.block_ids if visual_authority else ()
     bodies = _bodies(document)
     result = []
     captured_ids = set()
@@ -203,7 +211,12 @@ def capture_native_font_proof(
         _position_deltas(original, transformed) if target_font_family is not None else {}
     )
     for block in original.blocks:
-        if block.editable or not block.font_style_ranges or block.source_range is None:
+        selected_visual = block.id in visual_authority_block_ids
+        if (
+            (block.editable and not selected_visual)
+            or (not block.font_style_ranges and not selected_visual)
+            or block.source_range is None
+        ):
             continue
         source = block.source_range
         matches = [
@@ -238,6 +251,7 @@ def capture_native_font_proof(
                 version=2 if semantics is not None else 1,
                 block_id=NativeFontBlockId(block.id) if semantics is not None else None,
                 semantics=semantics,
+                visual_authority=selected_visual,
                 tab_id=source.tab_id,
                 body_ordinal=ordinal,
                 sha256=digest,
@@ -250,6 +264,10 @@ def capture_native_font_proof(
         or not set(preserved_family_block_ids) <= captured_ids
         or (preserved_family_block_ids and target_font_family is None)
     ):
+        raise ValueError
+    if len(visual_authority_block_ids) != len(set(visual_authority_block_ids)) or not set(
+        visual_authority_block_ids
+    ) <= set(preserved_family_block_ids):
         raise ValueError
     return tuple(result)
 

@@ -2179,6 +2179,25 @@ def _branded_google_document() -> dict[str, Any]:
             {
                 "tabProperties": {"tabId": "tab-a"},
                 "documentTab": {
+                    "namedStyles": {
+                        "styles": [
+                            {
+                                "namedStyleType": "NORMAL_TEXT",
+                                "textStyle": {
+                                    "fontSize": {"magnitude": 11, "unit": "PT"},
+                                    "foregroundColor": {
+                                        "color": {
+                                            "rgbColor": {
+                                                "red": 10 / 255,
+                                                "green": 10 / 255,
+                                                "blue": 10 / 255,
+                                            }
+                                        }
+                                    },
+                                },
+                            }
+                        ]
+                    },
                     "inlineObjects": {
                         "logo-1": {
                             "inlineObjectProperties": {
@@ -2264,6 +2283,8 @@ def _branded_google_document() -> dict[str, Any]:
                                     },
                                     "elements": [
                                         {
+                                            "startIndex": 1,
+                                            "endIndex": 11,
                                             "textRun": {
                                                 "content": "Approved.\n",
                                                 "textStyle": {
@@ -2282,7 +2303,7 @@ def _branded_google_document() -> dict[str, Any]:
                                                         }
                                                     },
                                                 },
-                                            }
+                                            },
                                         }
                                     ],
                                 },
