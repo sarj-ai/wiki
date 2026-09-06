@@ -6,7 +6,7 @@ import uuid
 from fastapi import HTTPException
 import pytest
 
-from app.document_transform import router as transform_router
+from app.document_transform import application as transform_application
 from app.document_transform import word_executor, word_gateway
 from app.document_transform.errors import (
     DocumentGatewayError,
@@ -341,14 +341,16 @@ class WordFiles:
 
 
 async def test_admission_accepts_only_word_format_copy():
-    await transform_router._validate_admission(request(), WordFiles())
+    await transform_application.validate_transform_admission(request(), WordFiles())
     for mode, strategy in (
         (TransformMode.BOTH, OutputStrategy.COPY),
         (TransformMode.UNSLOP, OutputStrategy.COPY),
         (TransformMode.FORMAT, OutputStrategy.IN_PLACE),
     ):
         with pytest.raises(HTTPException) as error:
-            await transform_router._validate_admission(request(mode, strategy), WordFiles())
+            await transform_application.validate_transform_admission(
+                request(mode, strategy), WordFiles()
+            )
         assert error.value.status_code == 422
 
 

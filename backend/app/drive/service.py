@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections.abc import Callable, Mapping
+from collections.abc import AsyncGenerator, Callable, Mapping
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from contextvars import ContextVar
 from datetime import UTC, timedelta
 from functools import cache
 from itertools import batched
@@ -35,7 +37,7 @@ from app.drive.google_schemas import (
     GoogleFileProbe,
     GooglePermission,
 )
-from app.drive.retry import execute_batch_with_retry, execute_with_retry
+from app.drive.retry import execute_batch_with_retry, execute_with_retry, provider_http_status
 from app.drive.schemas import (
     MIME_FOLDER,
     MIME_SHORTCUT,
@@ -101,6 +103,11 @@ class _DriveFilesResult(NamedTuple):
     complete: bool
 
 
+class BoundedSearchResult(NamedTuple):
+    files: list[SearchResult]
+    truncated: bool
+
+
 class DriveService(ABC):
     @property
     def google_refresh_handler(self) -> GoogleRefreshHandler | None:
@@ -151,6 +158,11 @@ class DriveService(ABC):
     @abstractmethod
     async def search(self, query: str, *, limit_per_drive: int = 20) -> list[SearchResult]: ...
 
+    def search_bounded(
+        self, query: str, *, limit: int = 50
+    ) -> AbstractAsyncContextManager[BoundedSearchResult]:
+        raise NotImplementedError
+
     @abstractmethod
     async def fetch_snippet(
         self, file_id: FileId, query: str, *, mime_type: str | None = None
@@ -182,6 +194,9 @@ class GoogleDriveService(DriveService):
         self._clients: dict[int, DriveResource] = {}
         self._drives_task: asyncio.Task[list[DriveSummary]] | None = None
         self._my_drive_id: DriveId | None = None
+        self._bounded_drives: ContextVar[list[DriveSummary] | None] = ContextVar(
+            "bounded_search_drives", default=None
+        )
 
     @property
     @override
@@ -190,6 +205,9 @@ class GoogleDriveService(DriveService):
 
     @override
     async def list_drives(self) -> list[DriveSummary]:
+        bounded = self._bounded_drives.get()
+        if bounded is not None:
+            return bounded
         task = self._drives_task
         if task is None:
             task = asyncio.create_task(self._load_drives())
@@ -243,6 +261,7 @@ class GoogleDriveService(DriveService):
             file_id=file_id,
             root_id=FileId(personal.id),
             parent_id=parent_id,
+            strict=self._bounded_drives.get() is not None,
         )
         return personal.id if is_descendant else None
 
@@ -264,6 +283,17 @@ class GoogleDriveService(DriveService):
         if personal is None:
             return resolved
         personal_ids = [file_id for file_id, drive_id in files.items() if drive_id is None]
+        if self._bounded_drives.get() is not None:
+            for file_id in personal_ids:
+                if await asyncio.to_thread(
+                    self._is_personal_descendant_sync,
+                    file_id=file_id,
+                    root_id=FileId(personal.id),
+                    parent_id=parent_ids.get(file_id) if parent_ids is not None else None,
+                    strict=True,
+                ):
+                    resolved[file_id] = personal.id
+            return resolved
         descendants = await asyncio.gather(
             *(
                 asyncio.to_thread(
@@ -345,6 +375,86 @@ class GoogleDriveService(DriveService):
                     hit.model_copy(update={"drive_name": my_drive.name}) for hit in personal
                 )
         return await self._resolve_shortcut_search_results(merged)
+
+    @override
+    @asynccontextmanager
+    async def search_bounded(
+        self, query: str, *, limit: int = 50
+    ) -> AsyncGenerator[BoundedSearchResult]:
+        if not query.strip() or len(query) > 2048 or type(limit) is not int or not 1 <= limit <= 50:
+            msg = "Invalid bounded search request"
+            raise ValueError(msg)
+        drives = await asyncio.to_thread(self._bounded_drives_sync)
+        token = self._bounded_drives.set(drives)
+        try:
+            hits: list[SearchResult] = []
+            for drive in drives:
+                remaining = limit - len(hits)
+                if remaining == 0:
+                    break
+                hits.extend(
+                    await asyncio.to_thread(self._bounded_search_sync, drive, query, remaining)
+                )
+            # A single page per drive and bounded discovery are never exhaustive.
+            yield BoundedSearchResult(hits, truncated=True)
+        finally:
+            self._bounded_drives.reset(token)
+
+    def _bounded_drives_sync(self) -> list[DriveSummary]:
+        client = self._client()
+        root = GoogleFileLocation.model_validate(
+            execute_with_retry(
+                client.files().get(fileId=_MY_DRIVE_ALIAS, fields="id", supportsAllDrives=True)
+            )
+        )
+        response = execute_with_retry(
+            client.drives().list(
+                pageSize=7,
+                q="hidden = false",
+                useDomainAdminAccess=False,
+                fields="nextPageToken,drives(id,name,hidden)",
+            )
+        )
+        records = response.get("drives", [])
+        if not isinstance(records, list) or len(records) > 7:
+            msg = "Invalid bounded drive inventory"
+            raise ValueError(msg)
+        drives = [DriveSummary(id=DriveId(root.id), name=_MY_DRIVE_NAME, is_personal=True)]
+        for record in records:
+            drive = GoogleDrive.model_validate(record)
+            if not drive.hidden:
+                drives.append(DriveSummary(id=drive.id, name=drive.name))
+        return drives
+
+    def _bounded_search_sync(
+        self, drive: DriveSummary, query: str, limit: int
+    ) -> list[SearchResult]:
+        escaped = escape_query_value(query.strip())
+        q = f"(name contains '{escaped}' or fullText contains '{escaped}') and trashed=false"
+        if drive.is_personal:
+            q += _OWNED_BY_ME_CLAUSE
+        params: dict[str, Any] = {
+            "q": q,
+            "corpora": "user" if drive.is_personal else "drive",
+            "includeItemsFromAllDrives": True,
+            "supportsAllDrives": True,
+            "pageSize": limit,
+            "fields": "nextPageToken,files(id,name,mimeType,parents,modifiedTime,driveId)",
+        }
+        if not drive.is_personal:
+            params["driveId"] = drive.id
+        response = execute_with_retry(self._client().files().list(**params))
+        records = response.get("files", [])
+        if not isinstance(records, list) or len(records) > limit:
+            msg = "Invalid bounded search response"
+            raise ValueError(msg)
+        hits: list[SearchResult] = []
+        for record in records:
+            hit = _search_result_from_api(record, drive.id)
+            if drive.is_personal and hit.drive_id is not None:
+                continue
+            hits.append(hit.model_copy(update={"drive_name": drive.name}))
+        return hits
 
     async def _search_per_drive(
         self, drives: list[DriveSummary], query: str, limit_per_drive: int
@@ -575,6 +685,7 @@ class GoogleDriveService(DriveService):
         file_id: FileId,
         root_id: FileId,
         parent_id: FileId | None = None,
+        strict: bool = False,
     ) -> bool:
         client = self._client()
         if file_id == root_id:
@@ -602,11 +713,18 @@ class GoogleDriveService(DriveService):
                 )
                 location = GoogleFileLocation.model_validate(raw)
             except HttpError as exc:
+                if strict and provider_http_status(exc) not in {403, 404}:
+                    raise
                 _log_provider_failure("verify_my_drive_ancestry", exc)
                 return False
             except ValidationError:
+                if strict:
+                    raise
                 _log_invalid_provider_response("verify_my_drive_ancestry")
                 return False
+            if strict and location.id != current:
+                message = "Invalid personal ancestry response"
+                raise ValueError(message)
             if location.drive_id is not None:
                 return False
             if location.id == root_id:
