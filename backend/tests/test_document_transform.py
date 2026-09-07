@@ -933,9 +933,10 @@ class _Gateway(DocumentGateway):
         source: DriveFileSource,
         source_sha256: str,
         output_name: str,
+        parent_folder_id: FileId,
     ) -> OutputDraft:
         self.brand_prepares += 1
-        return self._create(source_sha256, output_name)
+        return self._create(source_sha256, output_name, parent_folder_id=parent_folder_id)
 
     @override
     async def create_from_drive_markdown(
@@ -989,12 +990,19 @@ class _Gateway(DocumentGateway):
         )
         return self.draft
 
-    def _create(self, source_sha256: str, output_name: str) -> OutputDraft:
+    def _create(
+        self,
+        source_sha256: str,
+        output_name: str,
+        *,
+        parent_folder_id: FileId | None = None,
+    ) -> OutputDraft:
+        parent_folder_id = parent_folder_id or FileId("folder")
         self.draft = OutputDraft(
             output=DocumentOutput(
                 file_id=FileId("output"),
                 name=output_name,
-                parent_folder_id=FileId("folder"),
+                parent_folder_id=parent_folder_id,
             ),
             document_id=FileId("output"),
             tab_id=DocsTabId("tab-1"),
@@ -2054,11 +2062,31 @@ def test_failed_ambiguous_create_preserves_terminal_conversion_error(
         gateway._recover_ambiguous_create(
             uuid.uuid7(),
             "source-hash",
+            expected_parent_folder_id=FileId("folder"),
             original_error=original,
         )
 
     assert raised.value is original
     assert not raised.value.retryable
+
+
+def test_ambiguous_create_rejects_recovery_in_wrong_destination(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = object.__new__(GoogleDocumentGateway)
+    recovered = _pending_output_draft(
+        pending_mutation_sha256="mutation",
+        mutation_base_revision_sha256="revision",
+    )
+    monkeypatch.setattr(gateway, "_recover_output_sync", lambda _operation_id: recovered)
+
+    with pytest.raises(DocumentGatewayError):
+        gateway._recover_ambiguous_create(
+            uuid.uuid7(),
+            "source-hash",
+            expected_parent_folder_id=FileId("different-parent"),
+            original_error=DocumentGatewayError(retryable=True),
+        )
 
 
 @pytest.mark.parametrize(
@@ -2430,6 +2458,79 @@ def _copy_executor(
         checkpoint=checkpoint,
         checkpoint_generation=store.generation,
     )
+
+
+def _native_copy_gateway() -> _Gateway:
+    return _Gateway(
+        SourceSnapshot(
+            title="Decision",
+            parent_folder_id=FileId("source-folder"),
+            modified_time="2026-09-03T00:00:00Z",
+            revision_id=DocsRevisionId("source-revision-1"),
+            media_type="application/vnd.google-apps.document",
+            google_document=_in_place_document(
+                "The team approved the plan.", revision="source-revision-1"
+            ),
+        )
+    )
+
+
+def _native_copy_request(*, destination: FileId | None = None) -> DocumentTransformRequest:
+    return DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("source"),
+            expected_modified_time="2026-09-03T00:00:00Z",
+        ),
+        mode=TransformMode.UNSLOP,
+        copy_destination_folder_id=destination,
+    )
+
+
+async def test_native_copy_uses_and_checkpoints_explicit_destination() -> None:
+    gateway = _native_copy_gateway()
+    store = _CopyCheckpointStore()
+    task_id = TaskId(uuid.uuid7())
+
+    result = await _copy_executor(gateway=gateway, store=store, task_id=task_id).execute(
+        operation_id=task_id,
+        request=_native_copy_request(destination=FileId("qa-folder")),
+    )
+
+    assert result.output.parent_folder_id == "qa-folder"
+    assert {checkpoint.output_parent_folder_id for checkpoint in store.checkpoints} == {"qa-folder"}
+
+
+async def test_native_copy_rejects_recovered_output_in_wrong_destination() -> None:
+    gateway = _native_copy_gateway()
+    gateway._create("source-hash", "Recovered", parent_folder_id=FileId("wrong-folder"))
+
+    with pytest.raises(OutputConflictError):
+        await DocumentTransformExecutor(gateway=gateway, generator=_Generator()).execute(
+            operation_id=uuid.uuid7(),
+            request=_native_copy_request(destination=FileId("qa-folder")),
+        )
+
+
+async def test_legacy_copy_checkpoint_without_output_parent_uses_source_parent() -> None:
+    gateway = _native_copy_gateway()
+    store = _CopyCheckpointStore()
+    task_id = TaskId(uuid.uuid7())
+    request = _native_copy_request()
+    first = await _copy_executor(gateway=gateway, store=store, task_id=task_id).execute(
+        operation_id=task_id,
+        request=request,
+    )
+    legacy = store.checkpoints[-1].model_copy(update={"output_parent_folder_id": None})
+
+    repeated = await _copy_executor(
+        gateway=gateway,
+        store=store,
+        task_id=task_id,
+        checkpoint=legacy,
+    ).execute(operation_id=task_id, request=request)
+
+    assert repeated == first
 
 
 @pytest.mark.parametrize(
@@ -3448,6 +3549,31 @@ def test_in_place_request_rejects_markdown_and_output_name() -> None:
         )
 
 
+def test_copy_destination_request_is_drive_copy_only() -> None:
+    with pytest.raises(ValueError, match="Drive file copies"):
+        DocumentTransformRequest(
+            source=MarkdownSource(
+                kind="markdown",
+                content="Draft",
+                name="Draft",
+                destination_folder_id=FileId("folder"),
+            ),
+            mode=TransformMode.FORMAT,
+            copy_destination_folder_id=FileId("destination"),
+        )
+    with pytest.raises(ValueError, match="Drive file copies"):
+        DocumentTransformRequest(
+            source=DriveFileSource(
+                kind="drive_file",
+                file_id=FileId("source"),
+                expected_modified_time="time",
+            ),
+            mode=TransformMode.FORMAT,
+            output_strategy=OutputStrategy.IN_PLACE,
+            copy_destination_folder_id=FileId("destination"),
+        )
+
+
 def test_copy_request_keeps_legacy_canonical_payload_hash_shape() -> None:
     request = DocumentTransformRequest(
         source=DriveFileSource(
@@ -3461,7 +3587,33 @@ def test_copy_request_keeps_legacy_canonical_payload_hash_shape() -> None:
     serialized = task_service_module._serialize(request)
 
     assert "output_strategy" not in serialized
+    assert "copy_destination_folder_id" not in serialized
     assert serialized["output_name"] is None
+
+
+def test_copy_destination_is_part_of_canonical_payload_hash_shape() -> None:
+    request = _native_copy_request(destination=FileId("qa-folder"))
+
+    serialized = task_service_module._serialize(request)
+
+    assert serialized["copy_destination_folder_id"] == "qa-folder"
+
+
+def test_in_place_request_keeps_legacy_canonical_payload_hash_shape() -> None:
+    request = DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("source"),
+            expected_modified_time="time",
+        ),
+        mode=TransformMode.UNSLOP,
+        output_strategy=OutputStrategy.IN_PLACE,
+    )
+
+    serialized = task_service_module._serialize(request)
+
+    assert serialized["output_strategy"] == "in_place"
+    assert "copy_destination_folder_id" not in serialized
 
 
 def test_in_place_drive_id_is_bounded_and_google_safe() -> None:

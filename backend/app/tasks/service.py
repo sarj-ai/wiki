@@ -795,9 +795,13 @@ class PostgresTaskService(TaskService):
 
 def _serialize(model: BaseModel) -> dict[str, JsonValue]:
     serialized = model.model_dump(mode="json")
-    # Preserve the pre-output_strategy payload and idempotency hash for legacy copy calls.
-    if isinstance(model, DocumentTransformRequest) and model.output_strategy is OutputStrategy.COPY:
-        serialized.pop("output_strategy", None)
+    if isinstance(model, DocumentTransformRequest):
+        # Preserve pre-destination idempotency hashes for every legacy request shape.
+        if model.copy_destination_folder_id is None:
+            serialized.pop("copy_destination_folder_id", None)
+        # Preserve the pre-output_strategy payload and idempotency hash for legacy copy calls.
+        if model.output_strategy is OutputStrategy.COPY:
+            serialized.pop("output_strategy", None)
     return _JSON_OBJECT.validate_python(serialized)
 
 

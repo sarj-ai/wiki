@@ -165,10 +165,12 @@ counts, brand profile ID and digest, UNSLOP catalog digest/source version, valid
 findings, and output metadata.
 
 Release QA uses `backend/scripts/qa_document_transform_corpus.py`. Planning is read-only and writes
-a seeded manifest plus a resumable JSONL ledger. It selects only owner-only, unshared native Google
-Docs whose parent folders are also owner-only and private; prior transform outputs are excluded.
-Use the full production release SHA shown by `/health` and keep the canary and corpus in separate
-private artifact directories.
+a seeded manifest plus a resumable JSONL ledger. The source may be a Shared Drive tree, but every
+native Google Doc must remain readable and copyable in the same bound Drive. Outputs may be created
+only in a separately supplied, owner-only, unshared My Drive folder. The runner verifies that
+destination before every submission and fails if a source, permission inventory, destination, or
+output parent changes. Prior transform outputs are excluded. Use the full production release SHA
+shown by `/health` and keep the canary and corpus in separate private artifact directories.
 
 First plan the one-document canary, without creating a Drive file:
 
@@ -179,6 +181,8 @@ uv run python scripts/qa_document_transform_corpus.py \
   --expected-release-sha 0123456789abcdef0123456789abcdef01234567 \
   --manifest /private/tmp/wiki-doc-transform-qa/canary/manifest.json \
   --ledger /private/tmp/wiki-doc-transform-qa/canary/events.jsonl \
+  --source-folder-id CANARY_SOURCE_FOLDER_ID \
+  --destination-folder-id OWNER_ONLY_QA_DESTINATION_FOLDER_ID \
   --judge-model gemini-3.8-flash \
   --count 1 \
   --canary
@@ -193,6 +197,8 @@ uv run python scripts/qa_document_transform_corpus.py \
   --expected-release-sha 0123456789abcdef0123456789abcdef01234567 \
   --manifest /private/tmp/wiki-doc-transform-qa/canary/manifest.json \
   --ledger /private/tmp/wiki-doc-transform-qa/canary/events.jsonl \
+  --source-folder-id CANARY_SOURCE_FOLDER_ID \
+  --destination-folder-id OWNER_ONLY_QA_DESTINATION_FOLDER_ID \
   --artifacts-dir /private/tmp/wiki-doc-transform-qa/canary/artifacts \
   --pdftoppm-version 25.06.0 \
   --judge-model gemini-3.8-flash \
@@ -203,8 +209,8 @@ uv run python scripts/qa_document_transform_corpus.py \
 ```
 
 Only after the canary is terminal, structurally verified, rendered on every page, and visually
-accepted should you plan the 20-document corpus. Pass the verified canary manifest, ledger, and
-artifact directory to bind the corpus to that exact release and exclude the canary source:
+accepted should you plan the full source-folder corpus. Pass the verified canary manifest, ledger,
+and artifact directory to bind the corpus to that exact release and exclude the canary source:
 
 ```bash
 uv run python scripts/qa_document_transform_corpus.py \
@@ -212,19 +218,23 @@ uv run python scripts/qa_document_transform_corpus.py \
   --expected-release-sha 0123456789abcdef0123456789abcdef01234567 \
   --manifest /private/tmp/wiki-doc-transform-qa/corpus/manifest.json \
   --ledger /private/tmp/wiki-doc-transform-qa/corpus/events.jsonl \
+  --source-folder-id SECURITY_SHARED_DRIVE_FOLDER_ID \
+  --destination-folder-id OWNER_ONLY_QA_DESTINATION_FOLDER_ID \
   --canary-manifest /private/tmp/wiki-doc-transform-qa/canary/manifest.json \
   --canary-ledger /private/tmp/wiki-doc-transform-qa/canary/events.jsonl \
   --canary-artifacts-dir /private/tmp/wiki-doc-transform-qa/canary/artifacts \
   --judge-model gemini-3.8-flash
 ```
 
-Review the 20 selected sources, then repeat that command with a private corpus `--artifacts-dir`,
+Review every enumerated source, then repeat that command with a private corpus `--artifacts-dir`,
 the same pinned renderer and judge, plus
-`--execute --confirm-live-copy CREATE_20_PRIVATE_SIBLINGS`. Execution reads the application bearer
-token only from `WIKI_QA_ACCESS_TOKEN`. UUIDv5 keys provide idempotent replay; the JSONL ledger resumes
-only after revalidating its release, source/output binding, permissions, and artifact hashes. The
-runner stops at the first failed invariant, retains successful labeled siblings for inspection,
-renders every eligible page, and never calls a Drive permission mutation.
+`--execute --confirm-live-copy CREATE_ALL_OWNER_ONLY_DESTINATION_COPIES`. Execution reads the
+application bearer token only from `WIKI_QA_ACCESS_TOKEN`. UUIDv5 keys include the destination and
+provide idempotent replay; the JSONL ledger resumes only after revalidating its release, complete
+source set, source/output binding, permissions, destination, and artifact hashes. The runner stops
+at the first failed invariant, retains successful labeled outputs in the bound QA destination for
+inspection, renders every eligible page, and never edits a source or calls a Drive permission
+mutation.
 
 ## Document-transform dispatch recovery
 

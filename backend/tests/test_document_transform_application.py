@@ -14,7 +14,7 @@ from app.document_transform.schemas import (
     OutputStrategy,
     TransformMode,
 )
-from app.drive.schemas import MIME_DOC
+from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
 from app.identifiers import FileId, IdempotencyKey, TaskId
@@ -66,6 +66,8 @@ class SubmissionHarness:
         self.error: Exception | None = None
         self.enqueue_error: Exception | None = None
         self.file_error: Exception | None = None
+        self.source_mime_type = MIME_DOC
+        self.destination_can_add_children = True
 
     async def create_or_replay(
         self,
@@ -95,13 +97,23 @@ class SubmissionHarness:
 
     async def get(self, file_id: FileId) -> FileResponse:
         self.calls.append("file")
-        assert file_id == "source"
         if self.file_error is not None:
             raise self.file_error
+        if file_id == "destination":
+            return FileResponse(
+                id=file_id,
+                name="Destination",
+                mime_type=MIME_FOLDER,
+                parent_folder_id=None,
+                drive_id=None,
+                modified_time=None,
+                can_add_children=self.destination_can_add_children,
+            )
+        assert file_id == "source"
         return FileResponse(
             id=file_id,
             name="Source",
-            mime_type=MIME_DOC,
+            mime_type=self.source_mime_type,
             parent_folder_id=None,
             drive_id=None,
             modified_time=None,
@@ -199,3 +211,64 @@ async def test_scope_rejection_prevents_dispatch() -> None:
             files=harness,
         )
     assert harness.calls == ["reserve", "file"]
+
+
+async def test_copy_destination_admits_native_doc_and_writable_folder() -> None:
+    harness = SubmissionHarness()
+    harness.request = payload().model_copy(
+        update={"copy_destination_folder_id": FileId("destination")}
+    )
+
+    await submit_document_transform(
+        payload=harness.request,
+        owner_user_id=harness.owner,
+        idempotency_key=harness.key,
+        tasks=dependency(harness),
+        enqueuer=dependency(harness),
+        files=harness,
+    )
+
+    assert harness.calls == ["reserve", "file", "file", "enqueue"]
+
+
+async def test_copy_destination_rejects_non_native_source_before_destination_lookup() -> None:
+    harness = SubmissionHarness()
+    harness.source_mime_type = (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    harness.request = payload().model_copy(
+        update={"copy_destination_folder_id": FileId("destination")}
+    )
+
+    with pytest.raises(HTTPException, match="native Google Docs") as caught:
+        await submit_document_transform(
+            payload=harness.request,
+            owner_user_id=harness.owner,
+            idempotency_key=harness.key,
+            tasks=dependency(harness),
+            enqueuer=dependency(harness),
+            files=harness,
+        )
+
+    assert caught.value.status_code == 422
+    assert harness.calls == ["reserve", "file"]
+
+
+async def test_copy_destination_rejects_unwritable_folder() -> None:
+    harness = SubmissionHarness()
+    harness.destination_can_add_children = False
+    harness.request = payload().model_copy(
+        update={"copy_destination_folder_id": FileId("destination")}
+    )
+
+    with pytest.raises(FileNotInScopeError, match="Destination"):
+        await submit_document_transform(
+            payload=harness.request,
+            owner_user_id=harness.owner,
+            idempotency_key=harness.key,
+            tasks=dependency(harness),
+            enqueuer=dependency(harness),
+            files=harness,
+        )
+
+    assert harness.calls == ["reserve", "file", "file"]
