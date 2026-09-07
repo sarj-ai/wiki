@@ -250,21 +250,9 @@ resource "google_compute_security_policy" "backend_armor" {
   # MCP admission is preview-only until proxy identity and CEL matching are
   # verified. These approximate per-IP limits complement the durable PostgreSQL
   # DCR budget; they do not implement a second global quota. Existing enforced
-  # rules, including the general 200/minute limit, still apply during preview.
-  # Equality also matches a visitor genuinely equal to the immediate proxy;
-  # this is a conservative fallback sentinel, not a perfect invalid-IP test.
-  rule {
-    action   = "deny(403)"
-    priority = 551
-    preview  = true
-    match {
-      expr {
-        expression = "request.method != 'OPTIONS' && request.path.urlDecode().matches('^/register$|^/authorize$|^/token$|^/revoke$') && origin.user_ip == origin.ip"
-      }
-    }
-    description = "preview MCP invalid visitor IP fallback rejection"
-  }
-
+  # rules, including the missing-header rejection and general 200/minute limit,
+  # still apply during preview. Invalid user-IP headers fall back to the proxy IP
+  # and share its rate-limit bucket, failing toward throttling rather than bypass.
   rule {
     action   = "throttle"
     priority = 553
