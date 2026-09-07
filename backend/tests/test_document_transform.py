@@ -16,12 +16,17 @@ from googleapiclient.errors import HttpError
 from pydantic import ValidationError
 import pytest
 
+from app.document_transform import executor as executor_module
 from app.document_transform import google_gateway as google_gateway_module
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
 from app.document_transform.custom_furniture import CustomFurnitureBinding
 from app.document_transform.docx_renderer import markdown_import_manifest, render_markdown_docx
 from app.document_transform.errors import (
+    ActiveSuggestionsNeedsReviewError,
+    BrandAssetUnavailableError,
     CheckpointTooLargeError,
+    ComplexStructureNeedsReviewError,
+    CustomHeaderNeedsReviewError,
     DocumentGatewayError,
     IncompatiblePendingOutputError,
     InPlaceNeedsReviewError,
@@ -3038,6 +3043,7 @@ class _InPlaceGateway(_Gateway):
 class _CrashReplayInPlaceGateway(_InPlaceGateway):
     def __init__(self, text: str, *, crash_stage: str) -> None:
         super().__init__(text, missing_header=True)
+        self.drive_title = "Source"
         self.crash_stage = crash_stage
         self.crashed = False
         self.mutations = {"headers": 0, "content": 0}
@@ -3047,7 +3053,7 @@ class _CrashReplayInPlaceGateway(_InPlaceGateway):
     async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot:
         del source
         return SourceSnapshot(
-            title="Source",
+            title=self.drive_title,
             parent_folder_id=FileId("folder"),
             modified_time="2026-09-03T00:00:00Z",
             revision_id=DocsRevisionId(self.document["revisionId"]),
@@ -3202,6 +3208,111 @@ def _in_place_request(mode: TransformMode) -> DocumentTransformRequest:
         mode=mode,
         output_strategy=OutputStrategy.IN_PLACE,
     )
+
+
+def test_in_place_active_suggestions_are_actionable_non_success() -> None:
+    gateway = object.__new__(GoogleDocumentGateway)
+    document = _in_place_document("Source")
+    document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"][
+        "suggestedParagraphStyleChanges"
+    ] = {"suggestion-1": {}}
+    snapshot = _InPlaceGateway("Source").snapshot
+    assert snapshot is not None
+    snapshot = replace(snapshot, google_document=document)
+
+    with pytest.raises(ActiveSuggestionsNeedsReviewError) as caught:
+        gateway._inspect_in_place_sync(snapshot, "Source")
+
+    assert caught.value.code == "needs_review"
+    assert "Resolve active Google Docs suggestions" in caught.value.public_detail
+
+
+async def test_in_place_custom_header_is_actionable_non_success() -> None:
+    class UnknownHeaderGateway(_InPlaceGateway):
+        @override
+        async def inspect_in_place(
+            self,
+            *,
+            snapshot: SourceSnapshot,
+            title: str,
+            table_font_plan: TableFontPlan | None = None,
+        ) -> InPlaceInspection:
+            inspection = await super().inspect_in_place(
+                snapshot=snapshot,
+                title=title,
+                table_font_plan=table_font_plan,
+            )
+            return replace(
+                inspection,
+                headers=(),
+                missing_header_tab_ids=(),
+                unknown_header_tab_ids=(DocsTabId("tab-1"),),
+            )
+
+    gateway = UnknownHeaderGateway("Source")
+    store = _CheckpointStore(gateway.events)
+
+    with pytest.raises(CustomHeaderNeedsReviewError) as caught:
+        await _replay_executor(
+            gateway=gateway,
+            generator=_Generator(),
+            store=store,
+            task_id=TaskId(uuid.uuid7()),
+        ).execute(operation_id=uuid.uuid7(), request=_in_place_request(TransformMode.FORMAT))
+
+    assert caught.value.code == "needs_review"
+    assert gateway.events == []
+
+
+async def test_in_place_unprovable_structure_is_actionable_non_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = _InPlaceGateway("Source")
+    store = _CheckpointStore(gateway.events)
+    monkeypatch.setattr(executor_module, "preserved_native_findings", lambda **_kwargs: None)
+
+    with pytest.raises(ComplexStructureNeedsReviewError) as caught:
+        await _replay_executor(
+            gateway=gateway,
+            generator=_Generator(),
+            store=store,
+            task_id=TaskId(uuid.uuid7()),
+        ).execute(operation_id=uuid.uuid7(), request=_in_place_request(TransformMode.FORMAT))
+
+    assert caught.value.code == "needs_review"
+    assert gateway.events == []
+
+
+async def test_in_place_missing_brand_asset_is_failure_without_mutation() -> None:
+    class MissingLogoGateway(_InPlaceGateway):
+        @override
+        async def inspect_in_place(
+            self,
+            *,
+            snapshot: SourceSnapshot,
+            title: str,
+            table_font_plan: TableFontPlan | None = None,
+        ) -> InPlaceInspection:
+            inspection = await super().inspect_in_place(
+                snapshot=snapshot,
+                title=title,
+                table_font_plan=table_font_plan,
+            )
+            return replace(inspection, logo_uri="")
+
+    gateway = MissingLogoGateway("Source")
+    store = _CheckpointStore(gateway.events)
+
+    with pytest.raises(BrandAssetUnavailableError) as caught:
+        await _replay_executor(
+            gateway=gateway,
+            generator=_Generator(),
+            store=store,
+            task_id=TaskId(uuid.uuid7()),
+        ).execute(operation_id=uuid.uuid7(), request=_in_place_request(TransformMode.FORMAT))
+
+    assert caught.value.code == "brand_asset_unavailable"
+    assert gateway.events == []
 
 
 async def test_in_place_unslop_checkpoints_before_mutation_and_reports_revisions(
@@ -3537,6 +3648,37 @@ async def test_in_place_checkpoint_replay_rejects_source_title_drift() -> None:
         ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
 
     assert retry_generator.calls == []
+    assert gateway.mutations == {"headers": 1, "content": 0}
+
+
+async def test_in_place_replay_rejects_concurrent_drive_rename_without_more_mutation() -> None:
+    operation_id = uuid.uuid7()
+    task_id = TaskId(uuid.uuid7())
+    gateway = _CrashReplayInPlaceGateway("Moreover, we approved the plan.", crash_stage="headers")
+    store = _CheckpointStore(gateway.events)
+
+    with pytest.raises(RuntimeError, match="simulated worker crash"):
+        await _replay_executor(
+            gateway=gateway,
+            generator=_Generator(),
+            store=store,
+            task_id=task_id,
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
+
+    gateway.drive_title = "Collaborator Renamed This Document"
+    retry_generator = _Generator({TransformPhase.FORMAT: "must never be generated"})
+
+    with pytest.raises(OutputConflictError):
+        await _replay_executor(
+            gateway=gateway,
+            generator=retry_generator,
+            store=store,
+            task_id=task_id,
+            checkpoint=store.checkpoints[-1],
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
+
+    assert retry_generator.calls == []
+    assert gateway.drive_title == "Collaborator Renamed This Document"
     assert gateway.mutations == {"headers": 1, "content": 0}
 
 
