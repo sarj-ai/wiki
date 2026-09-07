@@ -32,6 +32,15 @@ REQUIRED_STEPS = (
     "Switch production traffic",
     "Clear legacy global drive-tree cache after traffic switch",
 )
+REQUIRED_VERIFICATION_JOBS = (
+    "standards-receipt",
+    "ci-backend / Backend / required",
+    "ci-frontend / Frontend / required",
+    "ci-iac / IaC / required",
+    "ci-quality / pre-commit (actionlint, hygiene, sarj rules)",
+    "ci-quality / OpenAPI spec in sync",
+    "ci-quality / gitleaks (full history)",
+)
 MAX_JOBS = 100
 FULL_TRAFFIC = 100
 
@@ -75,6 +84,22 @@ def verify_source(fetch: Fetch, sha: str, run_id: int, run_attempt: int) -> None
         and len(jobs) <= MAX_JOBS,
         "Truncated job receipt",
     )
+    for name in REQUIRED_VERIFICATION_JOBS:
+        matches = [
+            candidate_job
+            for job in jobs
+            if (candidate_job := object_value(job)).get("name") == name
+        ]
+        require(len(matches) == 1, "Missing or ambiguous source verification receipt")
+        verification_job = matches[0]
+        require(
+            verification_job.get("run_id") == run_id
+            and verification_job.get("run_attempt") == run_attempt
+            and verification_job.get("head_sha") == sha
+            and verification_job.get("status") == "completed"
+            and verification_job.get("conclusion") == "success",
+            "Source verification did not complete successfully",
+        )
     deployments = [
         candidate_job
         for job in jobs
@@ -118,7 +143,9 @@ def verify_source(fetch: Fetch, sha: str, run_id: int, run_attempt: int) -> None
 def serving_revision(service: JsonObject) -> str:
     status = object_value(service.get("status"))
     traffic = status.get("traffic")
-    require(isinstance(traffic, list) and len(traffic) == 1, "Ambiguous serving traffic")
+    require(
+        isinstance(traffic, list) and len(traffic) == 1, "Ambiguous serving traffic"
+    )
     if not isinstance(traffic, list):
         msg = "Invalid serving traffic"
         raise ReleaseBlockedError(msg)
@@ -130,14 +157,20 @@ def serving_revision(service: JsonObject) -> str:
         and revision == status.get("latestReadyRevisionName"),
         "Serving revision is not the single latest ready revision",
     )
-    require(re.fullmatch(r"[a-z][a-z0-9-]{0,62}", str(revision)), "Invalid revision name")
+    require(
+        re.fullmatch(r"[a-z][a-z0-9-]{0,62}", str(revision)), "Invalid revision name"
+    )
     return str(revision)
 
 
 def verify_serving(args: argparse.Namespace) -> None:
     for value in (args.project, args.region, args.repository, args.service, args.image):
-        require(re.fullmatch(r"[a-z][a-z0-9-]{0,62}", value), "Invalid cloud resource name")
-    image = f"{args.region}-docker.pkg.dev/{args.project}/{args.repository}/{args.image}"
+        require(
+            re.fullmatch(r"[a-z][a-z0-9-]{0,62}", value), "Invalid cloud resource name"
+        )
+    image = (
+        f"{args.region}-docker.pkg.dev/{args.project}/{args.repository}/{args.image}"
+    )
     digest = command_output(
         [
             "gcloud",
@@ -151,7 +184,9 @@ def verify_serving(args: argparse.Namespace) -> None:
             "--format=value(image_summary.digest)",
         ]
     )
-    require(re.fullmatch(r"sha256:[0-9a-f]{64}", digest), "Invalid immutable release digest")
+    require(
+        re.fullmatch(r"sha256:[0-9a-f]{64}", digest), "Invalid immutable release digest"
+    )
     service = read_json(
         command_output(
             [
@@ -183,7 +218,10 @@ def verify_serving(args: argparse.Namespace) -> None:
             "--format=value(spec.containers[0].image)",
         ]
     )
-    require(actual == f"{image}@{digest}", "Serving image does not match the exact release digest")
+    require(
+        actual == f"{image}@{digest}",
+        "Serving image does not match the exact release digest",
+    )
 
 
 def verify_current_release(args: argparse.Namespace) -> None:

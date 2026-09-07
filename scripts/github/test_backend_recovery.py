@@ -38,15 +38,32 @@ def receipts() -> dict:
         "head_sha": SHA,
         "status": "completed",
         "steps": [
-            {"name": name, "number": index, "status": "completed", "conclusion": "success"}
+            {
+                "name": name,
+                "number": index,
+                "status": "completed",
+                "conclusion": "success",
+            }
             for index, name in enumerate(recovery.REQUIRED_STEPS, start=1)
         ],
     }
+    verification_jobs = [
+        {
+            "name": name,
+            "run_id": RUN_ID,
+            "run_attempt": RUN_ATTEMPT,
+            "head_sha": SHA,
+            "status": "completed",
+            "conclusion": "success",
+            "steps": [],
+        }
+        for name in recovery.REQUIRED_VERIFICATION_JOBS
+    ]
     return {
         f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}": run,
         f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}/attempts/{RUN_ATTEMPT}/jobs?per_page=100&page=1": {
-            "total_count": 1,
-            "jobs": [job],
+            "total_count": 1 + len(verification_jobs),
+            "jobs": [job, *verification_jobs],
         },
     }
 
@@ -75,7 +92,10 @@ def test_current_main_is_rechecked_after_receipt_reads(
         if endpoint.endswith("/git/ref/heads/main"):
             reads.append(endpoint)
             current = SHA if not advance or len(reads) == 1 else "b" * 40
-            return {"ref": "refs/heads/main", "object": {"type": "commit", "sha": current}}
+            return {
+                "ref": "refs/heads/main",
+                "object": {"type": "commit", "sha": current},
+            }
         return data[endpoint]
 
     monkeypatch.setattr(recovery, "fetch_github", fetch)
@@ -119,7 +139,9 @@ def test_invalid_requested_attempt_is_rejected(run_attempt: int) -> None:
 
 def test_latest_attempt_must_match_requested_attempt() -> None:
     data = receipts()
-    data[f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}"]["run_attempt"] = RUN_ATTEMPT + 1
+    data[f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}"]["run_attempt"] = (
+        RUN_ATTEMPT + 1
+    )
     with pytest.raises(recovery.ReleaseBlockedError, match="attempt changed"):
         recovery.verify_source(data.__getitem__, SHA, RUN_ID, RUN_ATTEMPT)
 
@@ -155,6 +177,48 @@ def test_incomplete_mutation_never_authorizes_recovery(
     for step in page["jobs"][0]["steps"]:
         if step["name"] == step_name:
             step["conclusion"] = conclusion
+    with pytest.raises(recovery.ReleaseBlockedError):
+        recovery.verify_source(data.__getitem__, SHA, RUN_ID, RUN_ATTEMPT)
+
+
+@pytest.mark.parametrize("job_name", recovery.REQUIRED_VERIFICATION_JOBS)
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("conclusion", "failure"),
+        ("status", "in_progress"),
+        ("run_id", RUN_ID + 1),
+        ("run_attempt", RUN_ATTEMPT + 1),
+        ("head_sha", "b" * 40),
+    ],
+)
+def test_unproven_source_verification_job_blocks_recovery(
+    job_name: str, field: str, value: object
+) -> None:
+    data = receipts()
+    page = data[
+        f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}/attempts/{RUN_ATTEMPT}/jobs?per_page=100&page=1"
+    ]
+    job = next(candidate for candidate in page["jobs"] if candidate["name"] == job_name)
+    job[field] = value
+    with pytest.raises(recovery.ReleaseBlockedError):
+        recovery.verify_source(data.__getitem__, SHA, RUN_ID, RUN_ATTEMPT)
+
+
+@pytest.mark.parametrize("case", ["missing", "duplicate"])
+def test_ambiguous_source_verification_job_blocks_recovery(case: str) -> None:
+    data = receipts()
+    page = data[
+        f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}/attempts/{RUN_ATTEMPT}/jobs?per_page=100&page=1"
+    ]
+    name = recovery.REQUIRED_VERIFICATION_JOBS[0]
+    matches = [job for job in page["jobs"] if job["name"] == name]
+    assert len(matches) == 1
+    if case == "missing":
+        page["jobs"].remove(matches[0])
+    else:
+        page["jobs"].append(deepcopy(matches[0]))
+    page["total_count"] = len(page["jobs"])
     with pytest.raises(recovery.ReleaseBlockedError):
         recovery.verify_source(data.__getitem__, SHA, RUN_ID, RUN_ATTEMPT)
 
@@ -200,7 +264,9 @@ def test_single_latest_ready_revision_is_required() -> None:
     assert recovery.serving_revision(service()) == REVISION
 
 
-@pytest.mark.parametrize("case", ["split", "not-full", "not-latest", "invalid-name", "missing"])
+@pytest.mark.parametrize(
+    "case", ["split", "not-full", "not-latest", "invalid-name", "missing"]
+)
 def test_unverified_serving_revision_is_rejected(case: str) -> None:
     data = service()
     status = data["status"]
@@ -256,7 +322,9 @@ def test_serving_digest_is_checked_with_only_describe_commands(
 
 def test_recovery_job_is_exclusive_and_contains_no_deployment_mutations() -> None:
     root = Path(__file__).resolve().parents[2]
-    workflow = yaml.safe_load((root / ".github/workflows/deploy-backend.yml").read_text())
+    workflow = yaml.safe_load(
+        (root / ".github/workflows/deploy-backend.yml").read_text()
+    )
     inputs = workflow["on"]["workflow_dispatch"]["inputs"]
     assert set(inputs) == {"verification_run_id", "verification_run_attempt"}
     assert all(
@@ -265,17 +333,36 @@ def test_recovery_job_is_exclusive_and_contains_no_deployment_mutations() -> Non
     )
     jobs = workflow["jobs"]
     verification = jobs["verify-existing"]
-    assert jobs["deploy"]["if"] == (
+    deployment_condition = (
         "github.ref == 'refs/heads/main' && (github.event_name == 'push' || "
         "(github.event_name == 'workflow_dispatch' && "
         "inputs.verification_run_id == '' && "
         "inputs.verification_run_attempt == ''))"
     )
+    for job_name in (
+        "ci-backend",
+        "ci-frontend",
+        "ci-quality",
+        "ci-iac",
+        "standards-receipt",
+        "deploy",
+    ):
+        assert jobs[job_name]["if"] == deployment_condition
     assert verification["if"] == (
         "github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && "
-        "(inputs.verification_run_id != '' || inputs.verification_run_attempt != '')"
+        "inputs.verification_run_id != '' && inputs.verification_run_attempt != ''"
     )
-    assert verification["needs"] == jobs["deploy"]["needs"]
+    assert "needs" not in verification
+    rejection = jobs["reject-partial-verification-inputs"]
+    assert rejection["if"] == (
+        "github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && "
+        "((inputs.verification_run_id == '' && inputs.verification_run_attempt != '') || "
+        "(inputs.verification_run_id != '' && inputs.verification_run_attempt == ''))"
+    )
+    assert rejection["permissions"] == {}
+    assert rejection["steps"] == [
+        {"name": "Require a complete verification source identity", "run": "exit 1"}
+    ]
     steps = verification["steps"]
     uses = [step["uses"].split("@")[0] for step in steps if "uses" in step]
     assert uses == [
@@ -286,7 +373,6 @@ def test_recovery_job_is_exclusive_and_contains_no_deployment_mutations() -> Non
     ]
     script_calls = [step["run"] for step in steps if "run" in step]
     assert script_calls == [
-        "bash scripts/github/verify-release-gate.sh ready backend",
         'uv run --no-project --python 3.14 python -m scripts.backend_release.recovery \\\n  --sha "$GITHUB_SHA" source --run-id "$SOURCE_RUN_ID" \\\n  --run-attempt "$SOURCE_RUN_ATTEMPT"\n',
         "bash scripts/backend_release/verify-serving.sh",
         "scripts/github/verify-smart-create-queue.sh",

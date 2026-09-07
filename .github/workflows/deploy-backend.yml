@@ -46,31 +46,31 @@ env:
 
 jobs:
   ci-backend:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.verification_run_id == '' && inputs.verification_run_attempt == ''))
     permissions:
       contents: read
     uses: ./.github/workflows/ci-backend.yml
 
   ci-frontend:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.verification_run_id == '' && inputs.verification_run_attempt == ''))
     permissions:
       contents: read
     uses: ./.github/workflows/ci-frontend.yml
 
   ci-quality:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.verification_run_id == '' && inputs.verification_run_attempt == ''))
     permissions:
       contents: read
     uses: ./.github/workflows/ci-quality.yml
 
   ci-iac:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.verification_run_id == '' && inputs.verification_run_attempt == ''))
     permissions:
       contents: read
     uses: ./.github/workflows/ci-iac.yml
 
   standards-receipt:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.verification_run_id == '' && inputs.verification_run_attempt == ''))
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -261,8 +261,7 @@ jobs:
         run: scripts/github/report-blocked-backend-release.sh
 
   verify-existing:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && (inputs.verification_run_id != '' || inputs.verification_run_attempt != '')
-    needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.verification_run_id != '' && inputs.verification_run_attempt != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -278,11 +277,6 @@ jobs:
         with:
           version-file: backend/uv.toml
           enable-cache: false
-      - name: Recheck immutable main release before credentials
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_NEEDS: ${{ toJSON(needs) }}
-        run: bash scripts/github/verify-release-gate.sh ready backend
       - name: Verify completed source mutation receipts
         env:
           GH_TOKEN: ${{ github.token }}
@@ -320,3 +314,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/backend_release/verify-serving.sh
+
+  reject-partial-verification-inputs:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && ((inputs.verification_run_id == '' && inputs.verification_run_attempt != '') || (inputs.verification_run_id != '' && inputs.verification_run_attempt == ''))
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions: {}
+    steps:
+      - name: Require a complete verification source identity
+        run: exit 1
