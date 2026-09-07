@@ -161,6 +161,29 @@ async def _renew(
     )
 
 
+async def _invalid_issue(
+    db: AsyncSession,
+    *,
+    lifetime: timedelta = timedelta(minutes=5),
+    release_sha: str = "a" * 40,
+    image_digest: str = "sha256:" + "c" * 64,
+    source_folder_id: FileId = _SOURCE_FOLDER_ID,
+    destination_folder_id: FileId = _DESTINATION_FOLDER_ID,
+) -> IssuedQaGrant:
+    return await issue_qa_grant(
+        db,
+        issuer_user_id=UserId(uuid.uuid7()),
+        user_id=UserId(uuid.uuid7()),
+        session_id=AuthSessionId(uuid.uuid7()),
+        lifetime=lifetime,
+        release_sha=release_sha,
+        image_digest=image_digest,
+        source_folder_id=source_folder_id,
+        destination_folder_id=destination_folder_id,
+        mode=TransformMode.BOTH,
+    )
+
+
 async def test_real_postgres_grant_is_exact_single_use(
     sessions: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -228,33 +251,18 @@ async def test_real_postgres_mismatch_does_not_consume_grant(
 async def test_grant_lifetime_is_bounded_before_database_access(lifetime: timedelta) -> None:
     async with AsyncSession() as db:
         with pytest.raises(QaGrantError):
-            await issue_qa_grant(  # sarj-noqa: SARJ045 -- all binding fields are under test.
-                db,
-                issuer_user_id=UserId(uuid.uuid7()),
-                user_id=UserId(uuid.uuid7()),
-                session_id=AuthSessionId(uuid.uuid7()),
-                lifetime=lifetime,
-                release_sha="a" * 40,
-                image_digest="sha256:" + "c" * 64,
-                source_folder_id=FileId("source-folder"),
-                destination_folder_id=FileId("destination-folder"),
-                mode=TransformMode.BOTH,
-            )
+            await _invalid_issue(db, lifetime=lifetime)
 
 
 async def test_invalid_binding_is_rejected_before_database_access() -> None:
     async with AsyncSession() as db:
         with pytest.raises(QaGrantError):
-            await issue_qa_grant(  # sarj-noqa: SARJ045 -- all binding fields are under test.
+            await _invalid_issue(
                 db,
-                issuer_user_id=UserId(uuid.uuid7()),
-                user_id=UserId(uuid.uuid7()),
-                session_id=AuthSessionId(uuid.uuid7()),
                 release_sha="latest",
                 image_digest="latest",
                 source_folder_id=FileId("same"),
                 destination_folder_id=FileId("same"),
-                mode=TransformMode.BOTH,
             )
 
 
