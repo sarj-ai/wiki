@@ -91,6 +91,16 @@ async def validate_transform_admission(
             raise FileNotInScopeError(message)
     if isinstance(payload.source, DriveFileSource):
         source = await files.get(payload.source.file_id)
+        if payload.copy_destination_folder_id is not None:
+            if source.mime_type != MIME_DOC:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="A copy destination is available only for native Google Docs",
+                )
+            destination = await files.get(payload.copy_destination_folder_id)
+            if destination.mime_type != MIME_FOLDER or not destination.can_add_children:
+                message = "Destination does not accept new files"
+                raise FileNotInScopeError(message)
         if source.mime_type == WORD_MIME and (
             payload.mode.value != "format" or payload.output_strategy is not OutputStrategy.COPY
         ):

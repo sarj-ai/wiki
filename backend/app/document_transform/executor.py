@@ -283,6 +283,10 @@ class DocumentTransformExecutor:
         )
         source_sha256 = _source_sha256(snapshot, original)
         recovered = await self._gateway.recover_output(operation_id)
+        if recovered is not None and recovered.output.parent_folder_id != _copy_output_parent(
+            request, snapshot
+        ):
+            raise OutputConflictError
         checkpoint = self._copy_checkpoint_or_none()
         if checkpoint is None:
             if recovered is not None:
@@ -1830,6 +1834,7 @@ class DocumentTransformExecutor:
                 source=request.source,
                 source_sha256=source_sha256,
                 output_name=output_name,
+                parent_folder_id=request.copy_destination_folder_id or snapshot.parent_folder_id,
             )
         return await self._gateway.create_from_markdown(
             operation_id=operation_id,
@@ -1861,6 +1866,10 @@ def _copy_output_name(request: DocumentTransformRequest, original: DocumentIR) -
         base = polished_document_name(base)
     name = f"{base}{suffix}"
     return name if request.mode is TransformMode.UNSLOP else title_case_document_name(name)
+
+
+def _copy_output_parent(request: DocumentTransformRequest, snapshot: SourceSnapshot) -> FileId:
+    return request.copy_destination_folder_id or snapshot.parent_folder_id
 
 
 def _strip_generated_copy_suffixes(title: str) -> str:
@@ -1958,6 +1967,7 @@ def _new_copy_checkpoint(
         source_modified_time=snapshot.modified_time,
         source_revision_id=snapshot.revision_id,
         source_parent_folder_id=snapshot.parent_folder_id,
+        output_parent_folder_id=request.copy_destination_folder_id or snapshot.parent_folder_id,
         brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
         brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
         pipeline_version=PIPELINE_VERSION,
@@ -2001,6 +2011,7 @@ def _validate_copy_checkpoint(
         snapshot.modified_time,
         snapshot.revision_id,
         snapshot.parent_folder_id,
+        request.copy_destination_folder_id or snapshot.parent_folder_id,
         CURRENT_BRAND_MANIFEST.profile_id,
         CURRENT_BRAND_MANIFEST.sha256,
         PIPELINE_VERSION,
@@ -2016,6 +2027,7 @@ def _validate_copy_checkpoint(
         checkpoint.source_modified_time,
         checkpoint.source_revision_id,
         checkpoint.source_parent_folder_id,
+        checkpoint.output_parent_folder_id or checkpoint.source_parent_folder_id,
         checkpoint.brand_profile_id,
         checkpoint.brand_profile_sha256,
         checkpoint.pipeline_version,

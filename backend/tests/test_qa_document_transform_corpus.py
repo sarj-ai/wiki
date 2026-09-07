@@ -38,6 +38,7 @@ from scripts.qa_document_transform_corpus import (
     VisualEvidence,
     VisualJudgeEvidence,
     _append_ledger,
+    _assert_private_destination,
     _capture_visual_evidence,
     _ensure_manifest_ledger,
     _evenly_sample,
@@ -52,6 +53,8 @@ from scripts.qa_document_transform_corpus import (
     _read_pdf_info,
     _render_pdf,
     _require_artifact_file,
+    _require_copyable_source,
+    _require_current_source_set,
     _require_manifest_invariants,
     _require_private_file,
     _require_private_permissions,
@@ -136,16 +139,32 @@ def test_folder_enumeration_recurses_and_returns_every_native_doc(
     }
     pages = {
         "root": [
-            {"id": "doc-a", "name": "A", "mimeType": "application/vnd.google-apps.document"},
-            {"id": "nested", "name": "Nested", "mimeType": "application/vnd.google-apps.folder"},
+            {
+                "id": "doc-a",
+                "name": "A",
+                "mimeType": "application/vnd.google-apps.document",
+                "driveId": "drive-a",
+            },
+            {
+                "id": "nested",
+                "name": "Nested",
+                "mimeType": "application/vnd.google-apps.folder",
+                "driveId": "drive-a",
+            },
             {
                 "id": "sheet",
                 "name": "Ignored",
                 "mimeType": "application/vnd.google-apps.spreadsheet",
+                "driveId": "drive-a",
             },
         ],
         "nested": [
-            {"id": "doc-b", "name": "B", "mimeType": "application/vnd.google-apps.document"}
+            {
+                "id": "doc-b",
+                "name": "B",
+                "mimeType": "application/vnd.google-apps.document",
+                "driveId": "drive-a",
+            }
         ],
     }
     seen: list[tuple[FileId, str | None]] = []
@@ -170,8 +189,60 @@ def test_folder_enumeration_recurses_and_returns_every_native_doc(
     assert seen == [(FileId("root"), "drive-a"), (FileId("nested"), "drive-a")]
 
 
+def test_execution_revalidates_exact_complete_source_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = _evidence_manifest().model_copy(
+        update={
+            "source_drive_id": "drive-a",
+            "folder_source_ids": (FileId("doc-a"),),
+            "folder_source_count": 1,
+        }
+    )
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus._get_file_metadata",
+        lambda _drive, _file_id: {
+            "id": "source-folder",
+            "name": "Security",
+            "mimeType": "application/vnd.google-apps.folder",
+            "driveId": "drive-a",
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus._list_folder_doc_metadata",
+        lambda _drive, _folder_id: [
+            {
+                "id": "doc-a",
+                "mimeType": "application/vnd.google-apps.document",
+                "driveId": "drive-a",
+            }
+        ],
+    )
+
+    drive: Any = object()
+    _require_current_source_set(drive, manifest)
+
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus._list_folder_doc_metadata",
+        lambda _drive, _folder_id: [
+            {
+                "id": "doc-a",
+                "mimeType": "application/vnd.google-apps.document",
+                "driveId": "drive-a",
+            },
+            {
+                "id": "doc-added-after-plan",
+                "mimeType": "application/vnd.google-apps.document",
+                "driveId": "drive-a",
+            },
+        ],
+    )
+    with pytest.raises(QaError, match="complete source set changed"):
+        _require_current_source_set(drive, manifest)
+
+
 @pytest.mark.asyncio
-async def test_copy_preflight_does_not_require_in_place_eligibility(
+async def test_shared_drive_copy_preflight_does_not_require_private_ownership(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     owner = PermissionEntry(id="owner-1", principal_type="user", role="owner", email_address=_EMAIL)
@@ -179,10 +250,10 @@ async def test_copy_preflight_does_not_require_in_place_eligibility(
         "id": "folder",
         "name": "Security",
         "mimeType": "application/vnd.google-apps.folder",
-        "ownedByMe": True,
-        "shared": False,
-        "capabilities": {"canEdit": True, "canAddChildren": True},
-        "owners": [{"emailAddress": _EMAIL}],
+        "driveId": "drive-a",
+        "ownedByMe": False,
+        "shared": True,
+        "capabilities": {"canEdit": False, "canAddChildren": False},
     }
     monkeypatch.setattr(
         "scripts.qa_document_transform_corpus._get_file_metadata",
@@ -239,22 +310,25 @@ async def test_copy_preflight_does_not_require_in_place_eligibility(
             "mimeType": "application/vnd.google-apps.document",
             "parents": ["folder"],
             "modifiedTime": "2026-09-03T00:00:00Z",
-            "ownedByMe": True,
-            "shared": False,
-            "capabilities": {"canEdit": True},
-            "owners": [{"emailAddress": _EMAIL}],
+            "driveId": "drive-a",
+            "ownedByMe": False,
+            "shared": True,
+            "capabilities": {"canEdit": False, "canCopy": True},
         },
         ordinal=1,
         drive_client=drive_client,
         gateway=CopyGateway(),
         expected_release_sha="a" * 40,
         seed="folder-copy",
+        destination_folder_id=FileId("destination"),
+        source_drive_id="drive-a",
         mode=TransformMode.BOTH,
         user_email=_EMAIL,
         cohort="corpus",
     )
 
     assert evidence.source_id == FileId("doc-a")
+    assert evidence.drive_id == "drive-a"
 
 
 def test_uuid5_operation_key_is_stable_and_scoped() -> None:
@@ -262,6 +336,7 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
         expected_release_sha="a" * 40,
         seed="corpus-1",
         source_id="doc-a",
+        destination_folder_id=FileId("destination"),
         mode=TransformMode.BOTH,
         cohort="corpus",
     )
@@ -270,6 +345,7 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
         expected_release_sha="a" * 40,
         seed="corpus-1",
         source_id="doc-a",
+        destination_folder_id=FileId("destination"),
         mode=TransformMode.BOTH,
         cohort="corpus",
     )
@@ -278,6 +354,7 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
         expected_release_sha="a" * 40,
         seed="corpus-1",
         source_id="doc-b",
+        destination_folder_id=FileId("destination"),
         mode=TransformMode.BOTH,
         cohort="corpus",
     )
@@ -285,17 +362,48 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
         expected_release_sha="a" * 40,
         seed="corpus-1",
         source_id="doc-a",
+        destination_folder_id=FileId("destination"),
         mode=TransformMode.BOTH,
         cohort="canary",
     )
+    assert first != corpus_operation_key(
+        expected_release_sha="a" * 40,
+        seed="corpus-1",
+        source_id="doc-a",
+        destination_folder_id=FileId("another-destination"),
+        mode=TransformMode.BOTH,
+        cohort="corpus",
+    )
+
+
+def test_shared_drive_source_must_remain_copyable_and_in_the_bound_drive() -> None:
+    metadata = _parse_file_metadata(
+        {
+            "id": "doc-a",
+            "name": "Policy",
+            "mimeType": "application/vnd.google-apps.document",
+            "driveId": "drive-a",
+            "capabilities": {"canCopy": True},
+        }
+    )
+    _require_copyable_source(metadata, expected_drive_id="drive-a")
+
+    with pytest.raises(QaError, match="source_not_copyable"):
+        _require_copyable_source(
+            metadata.model_copy(update={"can_copy": False}),
+            expected_drive_id="drive-a",
+        )
+    with pytest.raises(QaError, match="source_drive_changed"):
+        _require_copyable_source(metadata, expected_drive_id="drive-b")
 
 
 def test_live_execution_is_hard_gated_to_all_folder_copies() -> None:
     common = {
         "canary": False,
-        "confirm_live_copy": "CREATE_ALL_PRIVATE_SIBLINGS",
+        "confirm_live_copy": "CREATE_ALL_OWNER_ONLY_DESTINATION_COPIES",
         "count": 20,
         "source_folder_id": "security-folder",
+        "destination_folder_id": "qa-output-folder",
         "execute": True,
         "expected_release_sha": "a" * 40,
         "mode": "both",
@@ -325,6 +433,7 @@ def test_canary_execution_has_distinct_one_document_gate() -> None:
         "confirm_live_copy": "CREATE_1_PRIVATE_CANARY",
         "count": 1,
         "source_folder_id": "canary-folder",
+        "destination_folder_id": "qa-output-folder",
         "execute": True,
         "expected_release_sha": "a" * 40,
         "mode": "both",
@@ -336,7 +445,12 @@ def test_canary_execution_has_distinct_one_document_gate() -> None:
 
     with pytest.raises(QaError, match="CREATE_1_PRIVATE_CANARY"):
         _validate_arguments(
-            argparse.Namespace(**{**common, "confirm_live_copy": "CREATE_ALL_PRIVATE_SIBLINGS"})
+            argparse.Namespace(
+                **{
+                    **common,
+                    "confirm_live_copy": "CREATE_ALL_OWNER_ONLY_DESTINATION_COPIES",
+                }
+            )
         )
     with pytest.raises(QaError, match="requires --count 1"):
         _validate_arguments(argparse.Namespace(**{**common, "count": 20}))
@@ -401,6 +515,46 @@ def test_private_permission_inventory_is_owner_only_and_digest_is_canonical() ->
             ),
             _EMAIL,
         )
+
+
+@pytest.mark.asyncio
+async def test_destination_must_be_owner_only_writable_my_drive_folder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = PermissionEntry(
+        id="owner-1",
+        principal_type="user",
+        role="owner",
+        email_address=_EMAIL,
+    )
+    destination = {
+        "id": "destination",
+        "name": "Wiki Polish Security QA",
+        "mimeType": "application/vnd.google-apps.folder",
+        "ownedByMe": True,
+        "shared": False,
+        "capabilities": {"canAddChildren": True},
+        "owners": [{"emailAddress": _EMAIL}],
+    }
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus._get_file_metadata",
+        lambda _drive, _file_id: destination,
+    )
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus._permission_inventory",
+        lambda _drive, _file_id: (owner,),
+    )
+    drive: Any = object()
+
+    assert await _assert_private_destination(
+        drive,
+        FileId("destination"),
+        _EMAIL,
+    ) == (owner,)
+
+    destination["driveId"] = "shared-drive"
+    with pytest.raises(QaError, match="not_private_my_drive"):
+        await _assert_private_destination(drive, FileId("destination"), _EMAIL)
 
 
 def test_semantic_postcondition_accepts_candidate_only_deletion() -> None:
@@ -701,6 +855,7 @@ def test_resumed_result_requires_intact_private_artifacts(tmp_path: Path) -> Non
     _require_result_binding(
         source,
         result,
+        destination_folder_id=FileId("destination"),
         expected_release_sha=release,
         artifacts_dir=artifacts_dir,
         renderer_version="25.06.0",
@@ -711,6 +866,7 @@ def test_resumed_result_requires_intact_private_artifacts(tmp_path: Path) -> Non
         _require_result_binding(
             source,
             result.model_copy(update={"release_sha_after": "b" * 40}),
+            destination_folder_id=FileId("destination"),
             expected_release_sha=release,
             artifacts_dir=artifacts_dir,
             renderer_version="25.06.0",
@@ -722,6 +878,7 @@ def test_resumed_result_requires_intact_private_artifacts(tmp_path: Path) -> Non
         _require_result_binding(
             source,
             result.model_copy(update={"visual_evidence": incomplete_evidence}),
+            destination_folder_id=FileId("destination"),
             expected_release_sha=release,
             artifacts_dir=artifacts_dir,
             renderer_version="25.06.0",
@@ -735,6 +892,7 @@ def test_resumed_result_requires_intact_private_artifacts(tmp_path: Path) -> Non
         _require_result_binding(
             source,
             result,
+            destination_folder_id=FileId("destination"),
             expected_release_sha=release,
             artifacts_dir=artifacts_dir,
             renderer_version="25.06.0",
@@ -950,7 +1108,13 @@ async def test_submission_uses_live_endpoint_and_uuid5_idempotency_header() -> N
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
-        task, replayed = await _submit_transform(client, "test-token", TransformMode.BOTH, source)
+        task, replayed = await _submit_transform(
+            client,
+            "test-token",
+            TransformMode.BOTH,
+            source,
+            destination_folder_id=FileId("destination"),
+        )
 
     assert task.id == task_id
     assert replayed is False
@@ -978,6 +1142,10 @@ def _evidence_manifest(
         seed_sha256=hashlib.sha256(seed.encode()).hexdigest(),
         mode=TransformMode.BOTH,
         source_folder_id=FileId("folder"),
+        source_drive_id=None,
+        destination_folder_id=FileId("destination"),
+        destination_permission_inventory=source.permission_inventory,
+        destination_permission_sha256=source.permission_sha256,
         folder_source_ids=(source.source_id,),
         folder_source_count=1,
         count=1,
@@ -1070,12 +1238,14 @@ def _source_evidence(
         expected_release_sha=expected_release_sha,
         seed=seed,
         source_id="source",
+        destination_folder_id=FileId("destination"),
         mode=TransformMode.BOTH,
         cohort=cohort,
     )
     return SourceEvidence(
         ordinal=1,
         source_id=FileId("source"),
+        drive_id=None,
         parent_id=FileId("folder"),
         modified_time="2026-09-03T00:00:00Z",
         revision_id="revision-1",
@@ -1156,7 +1326,7 @@ def _evidence_result(
         source_permission_sha256_after=source.permission_sha256,
         task_id=TaskId(uuid.uuid7()),
         output_id=FileId("output"),
-        output_parent_id=source.parent_id,
+        output_parent_id=FileId("destination"),
         output_owned_by_me=True,
         output_shared=False,
         output_revision_id="revision-2",

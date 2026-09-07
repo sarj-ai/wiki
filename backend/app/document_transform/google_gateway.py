@@ -840,6 +840,7 @@ class GoogleDocumentGateway(DocumentGateway):
         source: DriveFileSource,
         source_sha256: str,
         output_name: str,
+        parent_folder_id: FileId,
     ) -> OutputDraft:
         return await asyncio.to_thread(
             self._copy_sync,
@@ -847,6 +848,7 @@ class GoogleDocumentGateway(DocumentGateway):
             source,
             source_sha256,
             output_name,
+            parent_folder_id,
         )
 
     @override
@@ -978,9 +980,8 @@ class GoogleDocumentGateway(DocumentGateway):
         source: DriveFileSource,
         source_sha256: str,
         output_name: str,
+        parent_id: FileId,
     ) -> OutputDraft:
-        file = self._files_get_sync(source.file_id)
-        parent_id = _required_parent(file)
         name = self._unique_name_sync(parent_id, output_name)
         body = {
             "name": name,
@@ -1001,6 +1002,7 @@ class GoogleDocumentGateway(DocumentGateway):
             return self._recover_ambiguous_create(
                 operation_id,
                 source_sha256,
+                expected_parent_folder_id=parent_id,
                 original_error=exc,
             )
         return self._draft_from_file(raw, source_sha256=source_sha256)
@@ -1298,6 +1300,7 @@ class GoogleDocumentGateway(DocumentGateway):
             return self._recover_ambiguous_create(
                 operation_id,
                 source_sha256,
+                expected_parent_folder_id=parent_folder_id,
                 original_error=exc,
             )
         return self._draft_from_file(raw, source_sha256=source_sha256)
@@ -1307,12 +1310,16 @@ class GoogleDocumentGateway(DocumentGateway):
         operation_id: uuid.UUID,
         source_sha256: str,
         *,
+        expected_parent_folder_id: FileId,
         original_error: DocumentGatewayError,
     ) -> OutputDraft:
         recovered = self._recover_output_sync(operation_id)
         if recovered is None:
             raise original_error
-        if recovered.source_sha256 != source_sha256:
+        if (
+            recovered.source_sha256 != source_sha256
+            or recovered.output.parent_folder_id != expected_parent_folder_id
+        ):
             raise DocumentGatewayError
         return recovered
 

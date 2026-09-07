@@ -74,7 +74,7 @@ if TYPE_CHECKING:
 
 _API_BASE_URL = "https://api-wiki.sarj.ai"
 _ACCESS_TOKEN_ENV = "WIKI_QA_ACCESS_TOKEN"
-_CONFIRMATION = "CREATE_ALL_PRIVATE_SIBLINGS"
+_CONFIRMATION = "CREATE_ALL_OWNER_ONLY_DESTINATION_COPIES"
 _CANARY_CONFIRMATION = "CREATE_1_PRIVATE_CANARY"
 _DEFAULT_COUNT = 20
 _MAX_LIST_PAGES = 100
@@ -160,6 +160,7 @@ class FileMetadata(_StrictModel):
     owned_by_me: bool = Field(default=False, alias="ownedByMe")
     shared: bool = True
     can_edit: bool = False
+    can_copy: bool = False
     can_add_children: bool = False
     owner_emails: tuple[str, ...] = ()
     app_properties: dict[str, str] = Field(default_factory=dict, alias="appProperties")
@@ -168,6 +169,7 @@ class FileMetadata(_StrictModel):
 class SourceEvidence(_StrictModel):
     ordinal: Annotated[int, Field(ge=1)]
     source_id: FileId
+    drive_id: str | None
     parent_id: FileId
     modified_time: str
     revision_id: str
@@ -245,7 +247,7 @@ class VisualJudgeEvidence(_StrictModel):
 
 
 class EvidenceManifest(_StrictModel):
-    schema_version: Literal[3] = 3
+    schema_version: Literal[4] = 4
     created_at: datetime
     api_base_url: Literal["https://api-wiki.sarj.ai"] = "https://api-wiki.sarj.ai"
     expected_release_sha: str
@@ -256,6 +258,10 @@ class EvidenceManifest(_StrictModel):
     seed_sha256: str
     mode: TransformMode
     source_folder_id: FileId
+    source_drive_id: str | None
+    destination_folder_id: FileId
+    destination_permission_inventory: tuple[PermissionEntry, ...]
+    destination_permission_sha256: str
     folder_source_ids: tuple[FileId, ...]
     folder_source_count: Annotated[int, Field(ge=1)]
     count: Annotated[int, Field(ge=1)]
@@ -291,6 +297,7 @@ class SelectionResult(NamedTuple):
     sources: list[SourceEvidence]
     rejections: Counter[str]
     folder_source_ids: tuple[FileId, ...]
+    source_drive_id: str | None
 
 
 class SubmissionResult(NamedTuple):
@@ -379,6 +386,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--user-email", default="nasr@sarj.ai")
     parser.add_argument("--count", type=int, default=_DEFAULT_COUNT, help=argparse.SUPPRESS)
     parser.add_argument("--source-folder-id", required=True)
+    parser.add_argument("--destination-folder-id", required=True)
     parser.add_argument("--mode", choices=[item.value for item in TransformMode], default="both")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--canary", action="store_true")
@@ -446,6 +454,7 @@ async def _run(arguments: argparse.Namespace) -> EvidenceManifest:
             seed=arguments.seed,
             count=arguments.count,
             source_folder_id=FileId(arguments.source_folder_id),
+            destination_folder_id=FileId(arguments.destination_folder_id),
             mode=mode,
             user_email=arguments.user_email,
             cohort=cohort,
@@ -505,6 +514,13 @@ async def _execute_planned_manifest(
     if not token:
         _fail(f"{_ACCESS_TOKEN_ENV} is required only with --execute")
     await _verify_api_identity(http, token=token, expected_email=arguments.user_email)
+    await asyncio.to_thread(_require_current_source_set, drive_client, manifest)
+    await _assert_private_destination(
+        drive_client,
+        manifest.destination_folder_id,
+        arguments.user_email,
+        expected_permissions=manifest.destination_permission_inventory,
+    )
     results = await _execute_corpus(
         manifest=manifest,
         ledger=ledger,
@@ -534,6 +550,8 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
     judge_model = getattr(arguments, "judge_model", None)
     if not getattr(arguments, "source_folder_id", None):
         _fail("--source-folder-id is required")
+    if not getattr(arguments, "destination_folder_id", None):
+        _fail("--destination-folder-id is required")
     if arguments.count < 1:
         _fail("--count must be positive")
     if arguments.execute:
@@ -625,6 +643,7 @@ async def _load_or_plan_manifest(
     seed: str,
     count: int,
     source_folder_id: FileId,
+    destination_folder_id: FileId,
     mode: TransformMode,
     user_email: str,
     cohort: QaCohort,
@@ -640,6 +659,7 @@ async def _load_or_plan_manifest(
             seed=seed,
             count=count,
             source_folder_id=source_folder_id,
+            destination_folder_id=destination_folder_id,
             mode=mode,
             user_email=user_email,
             cohort=cohort,
@@ -649,6 +669,11 @@ async def _load_or_plan_manifest(
         return manifest
     if await asyncio.to_thread(_nonempty_file_exists, ledger_path):
         _fail("ledger exists without its evidence manifest")
+    destination_permissions = await _assert_private_destination(
+        drive_client,
+        destination_folder_id,
+        user_email,
+    )
     selection = await _select_sources(
         drive_client=drive_client,
         gateway=gateway,
@@ -656,6 +681,7 @@ async def _load_or_plan_manifest(
         seed=seed,
         count=count,
         source_folder_id=source_folder_id,
+        destination_folder_id=destination_folder_id,
         mode=mode,
         user_email=user_email,
         cohort=cohort,
@@ -672,6 +698,10 @@ async def _load_or_plan_manifest(
         mode=mode,
         count=len(selection.sources),
         source_folder_id=source_folder_id,
+        source_drive_id=selection.source_drive_id,
+        destination_folder_id=destination_folder_id,
+        destination_permission_inventory=destination_permissions,
+        destination_permission_sha256=permission_inventory_sha256(destination_permissions),
         folder_source_ids=selection.folder_source_ids,
         folder_source_count=len(selection.folder_source_ids),
         user_email=user_email,
@@ -701,6 +731,7 @@ def _require_matching_manifest(
     seed: str,
     count: int,
     source_folder_id: FileId,
+    destination_folder_id: FileId,
     mode: TransformMode,
     user_email: str,
     cohort: QaCohort,
@@ -712,6 +743,7 @@ def _require_matching_manifest(
         manifest.seed == seed,
         manifest.count == (count if cohort == "canary" else manifest.folder_source_count),
         manifest.source_folder_id == source_folder_id,
+        manifest.destination_folder_id == destination_folder_id,
         manifest.mode is mode,
         str(manifest.user_email).casefold() == user_email.casefold(),
         manifest.pipeline_version == PIPELINE_VERSION,
@@ -732,6 +764,8 @@ def _require_manifest_invariants(manifest: EvidenceManifest) -> None:
     operation_keys = tuple(source.operation_key for source in sources)
     checks = (
         manifest.seed_sha256 == _sha256_text(manifest.seed),
+        manifest.destination_permission_sha256
+        == permission_inventory_sha256(manifest.destination_permission_inventory),
         len(sources) == manifest.count,
         manifest.folder_source_count == len(manifest.folder_source_ids),
         len(set(manifest.folder_source_ids)) == manifest.folder_source_count,
@@ -751,6 +785,7 @@ def _require_manifest_invariants(manifest: EvidenceManifest) -> None:
             expected_release_sha=manifest.expected_release_sha,
             seed=manifest.seed,
             source_id=source.source_id,
+            destination_folder_id=manifest.destination_folder_id,
             mode=manifest.mode,
             cohort=manifest.cohort,
         )
@@ -764,6 +799,7 @@ def _require_manifest_invariants(manifest: EvidenceManifest) -> None:
                 cohort=manifest.cohort,
             )
             or source.permission_sha256 != permission_inventory_sha256(source.permission_inventory)
+            or source.drive_id != manifest.source_drive_id
             or source.parent_permission_sha256
             != permission_inventory_sha256(source.parent_permission_inventory)
         ):
@@ -772,6 +808,7 @@ def _require_manifest_invariants(manifest: EvidenceManifest) -> None:
         _require_result_binding(
             source,
             result,
+            destination_folder_id=manifest.destination_folder_id,
             expected_release_sha=manifest.expected_release_sha,
             artifacts_dir=None,
             renderer_version=None,
@@ -821,6 +858,7 @@ def _load_verified_canary(
     _require_result_binding(
         source,
         result,
+        destination_folder_id=manifest.destination_folder_id,
         expected_release_sha=expected_release_sha,
         artifacts_dir=artifacts_dir,
         renderer_version=result.visual_evidence.renderer_version,
@@ -849,11 +887,17 @@ async def _select_sources(
     seed: str,
     count: int,
     source_folder_id: FileId,
+    destination_folder_id: FileId,
     mode: TransformMode,
     user_email: str,
     cohort: QaCohort,
     excluded_source_ids: frozenset[FileId],
 ) -> SelectionResult:
+    root = _parse_file_metadata(
+        await asyncio.to_thread(_get_file_metadata, drive_client, source_folder_id)
+    )
+    if root.mime_type != MIME_FOLDER:
+        _fail("source folder is not a Google Drive folder")
     candidates = await asyncio.to_thread(_list_folder_doc_metadata, drive_client, source_folder_id)
     ordered = seeded_order(candidates, seed)
     if cohort == "canary" and len(ordered) != count:
@@ -874,6 +918,8 @@ async def _select_sources(
                 gateway=gateway,
                 expected_release_sha=expected_release_sha,
                 seed=seed,
+                destination_folder_id=destination_folder_id,
+                source_drive_id=root.drive_id,
                 mode=mode,
                 user_email=user_email,
                 cohort=cohort,
@@ -887,7 +933,7 @@ async def _select_sources(
     )
     if len(folder_source_ids) != len(ordered):
         _fail("Drive returned folder content without a stable file ID")
-    return SelectionResult(selected, rejections, folder_source_ids)
+    return SelectionResult(selected, rejections, folder_source_ids, root.drive_id)
 
 
 async def _inspect_candidate(
@@ -898,12 +944,15 @@ async def _inspect_candidate(
     gateway: CopySourceGateway,
     expected_release_sha: str,
     seed: str,
+    destination_folder_id: FileId,
+    source_drive_id: str | None,
     mode: TransformMode,
     user_email: str,
     cohort: QaCohort,
 ) -> SourceEvidence:
     metadata = _parse_file_metadata(raw)
-    _require_private_file(metadata, user_email, expected_mime=MIME_DOC)
+    del user_email
+    _require_copyable_source(metadata, expected_drive_id=source_drive_id)
     if _TRANSFORM_OPERATION_PROPERTY in metadata.app_properties:
         _fail("prior_transform_output")
     if len(metadata.parents) != 1 or metadata.modified_time is None:
@@ -911,9 +960,7 @@ async def _inspect_candidate(
     parent = _parse_file_metadata(
         await asyncio.to_thread(_get_file_metadata, drive_client, metadata.parents[0])
     )
-    _require_private_file(parent, user_email, expected_mime=MIME_FOLDER)
-    if not parent.can_add_children:
-        _fail("parent_not_writable")
+    _require_source_parent(parent, expected_drive_id=source_drive_id)
     source_permissions = await asyncio.to_thread(
         _permission_inventory,
         drive_client,
@@ -924,8 +971,6 @@ async def _inspect_candidate(
         drive_client,
         parent.id,
     )
-    _require_private_permissions(source_permissions, user_email)
-    _require_private_permissions(parent_permissions, user_email)
     snapshot = await gateway.load_drive_source(
         DriveFileSource(
             kind="drive_file",
@@ -940,12 +985,14 @@ async def _inspect_candidate(
         expected_release_sha=expected_release_sha,
         seed=seed,
         source_id=metadata.id,
+        destination_folder_id=destination_folder_id,
         mode=mode,
         cohort=cohort,
     )
     return SourceEvidence(
         ordinal=ordinal,
         source_id=metadata.id,
+        drive_id=metadata.drive_id,
         parent_id=metadata.parents[0],
         modified_time=metadata.modified_time,
         revision_id=str(snapshot.revision_id),
@@ -973,12 +1020,14 @@ def corpus_operation_key(
     expected_release_sha: str,
     seed: str,
     source_id: str,
+    destination_folder_id: FileId,
     mode: TransformMode,
     cohort: QaCohort,
 ) -> uuid.UUID:
     return uuid.uuid5(
         _QA_NAMESPACE,
-        f"{expected_release_sha}\0{seed}\0{source_id}\0{mode.value}\0{cohort}",
+        f"{expected_release_sha}\0{seed}\0{source_id}\0{destination_folder_id}"
+        f"\0{mode.value}\0{cohort}",
     )
 
 
@@ -1003,11 +1052,30 @@ def _list_folder_doc_metadata(
         )
         for child in children:
             metadata = _parse_file_metadata(child)
+            if metadata.drive_id != root.drive_id:
+                _fail("source folder traversal crossed Drive boundaries")
             if metadata.mime_type == MIME_FOLDER:
                 pending.append(metadata.id)
             elif metadata.mime_type == MIME_DOC:
                 documents.append(child)
     return documents
+
+
+def _require_current_source_set(
+    drive_client: DriveResource,
+    manifest: EvidenceManifest,
+) -> None:
+    root = _parse_file_metadata(_get_file_metadata(drive_client, manifest.source_folder_id))
+    if root.mime_type != MIME_FOLDER or root.drive_id != manifest.source_drive_id:
+        _fail("source folder Drive binding changed since corpus planning")
+    current = _list_folder_doc_metadata(drive_client, manifest.source_folder_id)
+    current_ids = tuple(FileId(str(item.get("id", ""))) for item in current)
+    if (
+        any(not file_id for file_id in current_ids)
+        or len(current_ids) != len(set(current_ids))
+        or set(current_ids) != set(manifest.folder_source_ids)
+    ):
+        _fail("complete source set changed since corpus planning")
 
 
 def _list_folder_children(
@@ -1064,7 +1132,7 @@ def _get_file_metadata(drive_client: DriveResource, file_id: FileId) -> dict[str
 def _file_fields() -> str:
     return (
         "id,name,mimeType,parents,modifiedTime,driveId,ownedByMe,shared,"
-        "capabilities(canEdit,canAddChildren),owners(emailAddress),appProperties"
+        "capabilities(canEdit,canCopy,canAddChildren),owners(emailAddress),appProperties"
     )
 
 
@@ -1074,6 +1142,9 @@ def _parse_file_metadata(raw: dict[str, Any]) -> FileMetadata:
     owners = normalized.pop("owners", [])
     normalized["can_edit"] = (
         capabilities.get("canEdit", False) if isinstance(capabilities, dict) else False
+    )
+    normalized["can_copy"] = (
+        capabilities.get("canCopy", False) if isinstance(capabilities, dict) else False
     )
     normalized["can_add_children"] = (
         capabilities.get("canAddChildren", False) if isinstance(capabilities, dict) else False
@@ -1158,6 +1229,54 @@ def _require_private_file(metadata: FileMetadata, user_email: str, *, expected_m
         _fail("unexpected_owner")
 
 
+def _require_copyable_source(
+    metadata: FileMetadata,
+    *,
+    expected_drive_id: str | None,
+) -> None:
+    if metadata.mime_type != MIME_DOC:
+        _fail("wrong_mime_type")
+    if metadata.drive_id != expected_drive_id:
+        _fail("source_drive_changed")
+    if not metadata.can_copy:
+        _fail("source_not_copyable")
+
+
+def _require_source_parent(
+    metadata: FileMetadata,
+    *,
+    expected_drive_id: str | None,
+) -> None:
+    if metadata.mime_type != MIME_FOLDER:
+        _fail("wrong_parent_mime_type")
+    if metadata.drive_id != expected_drive_id:
+        _fail("source_parent_drive_changed")
+
+
+async def _assert_private_destination(
+    drive_client: DriveResource,
+    destination_folder_id: FileId,
+    user_email: str,
+    *,
+    expected_permissions: tuple[PermissionEntry, ...] | None = None,
+) -> tuple[PermissionEntry, ...]:
+    metadata = _parse_file_metadata(
+        await asyncio.to_thread(_get_file_metadata, drive_client, destination_folder_id)
+    )
+    _require_private_file(metadata, user_email, expected_mime=MIME_FOLDER)
+    if not metadata.can_add_children:
+        _fail("destination_not_writable")
+    permissions = await asyncio.to_thread(
+        _permission_inventory,
+        drive_client,
+        destination_folder_id,
+    )
+    _require_private_permissions(permissions, user_email)
+    if expected_permissions is not None and permissions != expected_permissions:
+        _fail("destination permissions changed since corpus planning")
+    return permissions
+
+
 def _require_private_permissions(
     permissions: tuple[PermissionEntry, ...],
     user_email: str,
@@ -1206,6 +1325,7 @@ async def _execute_corpus(
             _require_result_binding(
                 source,
                 resumed,
+                destination_folder_id=manifest.destination_folder_id,
                 expected_release_sha=expected_release_sha,
                 artifacts_dir=artifacts_dir,
                 renderer_version=renderer_version,
@@ -1216,6 +1336,8 @@ async def _execute_corpus(
         try:
             result = await _execute_source(
                 source,
+                destination_folder_id=manifest.destination_folder_id,
+                destination_permissions=manifest.destination_permission_inventory,
                 mode=manifest.mode,
                 tasks=tasks,
                 ledger_path=ledger_path,
@@ -1265,6 +1387,8 @@ async def _execute_corpus(
 async def _execute_source(
     source: SourceEvidence,
     *,
+    destination_folder_id: FileId,
+    destination_permissions: tuple[PermissionEntry, ...],
     mode: TransformMode,
     tasks: dict[uuid.UUID, TaskId],
     ledger_path: Path,
@@ -1285,15 +1409,34 @@ async def _execute_source(
         gateway=gateway,
         user_email=user_email,
     )
+    await _assert_private_destination(
+        drive_client,
+        destination_folder_id,
+        user_email,
+        expected_permissions=destination_permissions,
+    )
     task_id = tasks.get(source.operation_key)
     if task_id is None:
-        submission = await _submit_transform(http, token, mode, source)
+        submission = await _submit_transform(
+            http,
+            token,
+            mode,
+            source,
+            destination_folder_id=destination_folder_id,
+        )
         await _verify_release(http, expected_release_sha)
         task_id = submission.task.id
         tasks[source.operation_key] = task_id
         _record_submission(ledger_path, source, task_id, replayed=submission.replayed)
         if source.ordinal == 1:
-            await _require_idempotent_replay(http, token, mode, source, task_id)
+            await _require_idempotent_replay(
+                http,
+                token,
+                mode,
+                source,
+                task_id,
+                destination_folder_id=destination_folder_id,
+            )
     terminal = await _poll_task(http, token, task_id)
     _append_ledger(
         ledger_path,
@@ -1309,6 +1452,8 @@ async def _execute_source(
     transform = _require_succeeded_transform(terminal)
     result = await _verify_result_and_drive(
         source=source,
+        destination_folder_id=destination_folder_id,
+        destination_permissions=destination_permissions,
         before_snapshot=before_state.snapshot,
         transform=transform,
         task_id=task_id,
@@ -1351,8 +1496,16 @@ async def _require_idempotent_replay(
     mode: TransformMode,
     source: SourceEvidence,
     task_id: TaskId,
+    *,
+    destination_folder_id: FileId,
 ) -> None:
-    replay = await _submit_transform(http, token, mode, source)
+    replay = await _submit_transform(
+        http,
+        token,
+        mode,
+        source,
+        destination_folder_id=destination_folder_id,
+    )
     if replay.task.id != task_id or not replay.replayed:
         _fail("production idempotency replay did not return the same task")
 
@@ -1371,6 +1524,8 @@ async def _submit_transform(
     token: str,
     mode: TransformMode,
     source: SourceEvidence,
+    *,
+    destination_folder_id: FileId,
 ) -> SubmissionResult:
     response = await http.post(
         f"{_API_BASE_URL}/document-transforms",
@@ -1386,6 +1541,8 @@ async def _submit_transform(
             },
             "mode": mode.value,
             "output_name": source.output_name,
+            "output_strategy": "copy",
+            "copy_destination_folder_id": destination_folder_id,
         },
     )
     if response.status_code != httpx.codes.ACCEPTED:
@@ -1426,7 +1583,12 @@ async def _assert_source_unchanged(
     metadata = _parse_file_metadata(
         await asyncio.to_thread(_get_file_metadata, drive_client, source.source_id)
     )
-    _require_private_file(metadata, user_email, expected_mime=MIME_DOC)
+    del user_email
+    _require_copyable_source(metadata, expected_drive_id=source.drive_id)
+    parent = _parse_file_metadata(
+        await asyncio.to_thread(_get_file_metadata, drive_client, source.parent_id)
+    )
+    _require_source_parent(parent, expected_drive_id=source.drive_id)
     permissions = await asyncio.to_thread(_permission_inventory, drive_client, source.source_id)
     parent_permissions = await asyncio.to_thread(
         _permission_inventory,
@@ -1453,13 +1615,15 @@ async def _assert_source_unchanged(
         permission_inventory_sha256(parent_permissions) == source.parent_permission_sha256,
     )
     if not all(checks):
-        _fail("source or private parent changed since corpus planning")
+        _fail("source or source parent changed since corpus planning")
     return VerifiedSourceState(snapshot, document, permissions, parent_permissions)
 
 
 async def _verify_result_and_drive(
     *,
     source: SourceEvidence,
+    destination_folder_id: FileId,
+    destination_permissions: tuple[PermissionEntry, ...],
     before_snapshot: SourceSnapshot,
     transform: DocumentTransformResult,
     task_id: TaskId,
@@ -1479,13 +1643,19 @@ async def _verify_result_and_drive(
         gateway=gateway,
         user_email=user_email,
     )
+    await _assert_private_destination(
+        drive_client,
+        destination_folder_id,
+        user_email,
+        expected_permissions=destination_permissions,
+    )
     output_id = transform.output.file_id
     metadata = _parse_file_metadata(
         await asyncio.to_thread(_get_file_metadata, drive_client, output_id)
     )
     _require_private_file(metadata, user_email, expected_mime=MIME_DOC)
-    if metadata.parents != (source.parent_id,) or metadata.name != source.output_name:
-        _fail("output is not the exact named sibling from the evidence manifest")
+    if metadata.parents != (destination_folder_id,) or metadata.name != source.output_name:
+        _fail("output is not in the exact private destination from the evidence manifest")
     permissions = await asyncio.to_thread(_permission_inventory, drive_client, output_id)
     _require_private_permissions(permissions, user_email)
     if metadata.modified_time is None:
@@ -1583,6 +1753,7 @@ def _require_result_binding(
     source: SourceEvidence,
     result: EvidenceResult,
     *,
+    destination_folder_id: FileId,
     expected_release_sha: str,
     artifacts_dir: Path | None,
     renderer_version: str | None,
@@ -1597,7 +1768,7 @@ def _require_result_binding(
         result.source_semantic_sha256_after == source.semantic_sha256,
         result.source_permission_inventory_after == source.permission_inventory,
         result.source_permission_sha256_after == source.permission_sha256,
-        result.output_parent_id == source.parent_id,
+        result.output_parent_id == destination_folder_id,
         result.output_id != source.source_id,
         result.release_sha_before == expected_release_sha,
         result.release_sha_after == expected_release_sha,
@@ -1616,8 +1787,6 @@ def _require_result_binding(
     )
     if not all(checks):
         _fail("verified result is not bound to its source, release, and visual evidence")
-    _require_private_permissions(source.permission_inventory, user_email)
-    _require_private_permissions(source.parent_permission_inventory, user_email)
     _require_private_permissions(result.output_permission_inventory, user_email)
     _require_visual_artifact_layout(source, evidence)
     if artifacts_dir is not None:

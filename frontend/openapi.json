@@ -446,6 +446,17 @@
       "DocumentTransformRequest": {
         "additionalProperties": false,
         "properties": {
+          "copy_destination_folder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copy Destination Folder Id"
+          },
           "mode": {
             "$ref": "#/components/schemas/TransformMode"
           },

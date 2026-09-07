@@ -114,9 +114,17 @@ class DocumentTransformRequest(StrictTransformModel):
     mode: TransformMode
     output_name: OutputName | None = None
     output_strategy: OutputStrategy = OutputStrategy.COPY
+    copy_destination_folder_id: FileId | None = None
 
     @model_validator(mode="after")
     def validate_output_strategy(self) -> Self:
+        if self.copy_destination_folder_id is not None and (
+            self.output_strategy is not OutputStrategy.COPY
+            or not isinstance(self.source, DriveFileSource)
+        ):
+            code = "copy_destination_source"
+            msg = "copy_destination_folder_id is allowed only for Drive file copies"
+            raise PydanticCustomError(code, msg)
         if self.output_strategy is OutputStrategy.COPY:
             return self
         if not isinstance(self.source, DriveFileSource):
@@ -310,6 +318,7 @@ class CopyCheckpoint(StrictTransformModel):
     source_modified_time: str | None
     source_revision_id: DocsRevisionId | None
     source_parent_folder_id: FileId
+    output_parent_folder_id: FileId | None = None
     brand_profile_id: BrandProfileId
     brand_profile_sha256: str
     pipeline_version: str
@@ -349,6 +358,13 @@ class CopyCheckpoint(StrictTransformModel):
             raise ValueError(msg)
         if (self.stage is CopyCheckpointStage.VERIFIED) != (self.result is not None):
             msg = "only a verified copy checkpoint contains a result"
+            raise ValueError(msg)
+        if (
+            self.output_parent_folder_id is not None
+            and self.output is not None
+            and self.output.parent_folder_id != self.output_parent_folder_id
+        ):
+            msg = "copy checkpoint output must remain in its planned destination"
             raise ValueError(msg)
         return self
 

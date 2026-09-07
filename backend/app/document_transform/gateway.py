@@ -212,6 +212,7 @@ class DocumentGateway(ABC):
         source: DriveFileSource,
         source_sha256: str,
         output_name: str,
+        parent_folder_id: FileId,
     ) -> OutputDraft: ...
 
     @abstractmethod
