@@ -16,6 +16,7 @@ from app.document_transform.qa_grants import (
     QaCapability,
     QaGrantError,
     consume_qa_grant,
+    delete_expired_qa_grants,
     issue_qa_grant,
     renew_qa_capability,
 )
@@ -334,3 +335,57 @@ async def test_real_postgres_concurrent_identical_renewal_is_idempotent(
 
     first, second = await asyncio.gather(renew(), renew())
     assert first == second
+
+
+async def test_real_postgres_cleanup_is_bounded_and_preserves_live_consumed_grant(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        first = await _issue(db, identity.user, identity.session)
+        second = await _issue(db, identity.user, identity.session)
+        live = await _issue(db, identity.user, identity.session)
+    async with sessions.begin() as db:
+        await _consume(db, live.token, "execution-a")
+        now = datetime.now(UTC)
+        for grant_id in (first.grant_id, second.grant_id):
+            grant = await db.get(DocumentTransformQaGrant, grant_id)
+            assert grant is not None
+            grant.created_at = now - timedelta(minutes=30)
+            grant.expires_at = now - timedelta(minutes=15)
+        consumed = await db.get(DocumentTransformQaGrant, live.grant_id)
+        assert consumed is not None
+        consumed.created_at = now - timedelta(minutes=30)
+        consumed.expires_at = now - timedelta(minutes=15)
+    async with sessions.begin() as db:
+        assert await delete_expired_qa_grants(db, limit=1) == 1
+    async with sessions.begin() as db:
+        assert await delete_expired_qa_grants(db, limit=1) == 1
+    async with sessions.begin() as db:
+        assert await delete_expired_qa_grants(db, limit=1) == 0
+        assert await db.get(DocumentTransformQaGrant, live.grant_id) is not None
+
+
+async def test_real_postgres_cleanup_deletes_consumed_grant_only_after_job_expiry(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        issued = await _issue(db, identity.user, identity.session)
+    async with sessions.begin() as db:
+        await _consume(db, issued.token, "execution-a")
+        grant = await db.get(DocumentTransformQaGrant, issued.grant_id)
+        assert grant is not None
+        now = datetime.now(UTC)
+        grant.capability_expires_at = now - timedelta(minutes=2)
+        grant.job_expires_at = now - timedelta(minutes=1)
+    async with sessions.begin() as db:
+        assert await delete_expired_qa_grants(db) == 1
+        assert await db.get(DocumentTransformQaGrant, issued.grant_id) is None
+
+
+@pytest.mark.parametrize("limit", [0, 101])
+async def test_cleanup_limit_is_validated_before_database_access(limit: int) -> None:
+    async with AsyncSession() as db:
+        with pytest.raises(QaGrantError):
+            await delete_expired_qa_grants(db, limit=limit)

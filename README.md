@@ -255,6 +255,11 @@ signing/encryption material, or Google OAuth client secret. Its only project rol
 bucket's `storage.objectUser` role and `aiplatform.user` for optional visual judging. The human gets
 only `run.jobsExecutorWithOverrides`; no Scheduler or CI trigger is attached.
 
+The pinned runner accepts only the production Wiki exchange URL. Before activation, corpus planning
+is also hard-bounded to exactly one canary document or exactly 20 corpus documents, at most 100
+folders and 100 aggregate folder-list pages, and 4 MiB of aggregate traversal metadata. Exceeding
+any bound fails closed before a transform is submitted.
+
 The authenticated same-site `POST /document-transforms/qa/grants` surface issues self-delegated
 grants only. Existing cookie-origin middleware rejects cross-site cookie requests. The audit row
 stores both issuer and subject user IDs, exact session and token version, release SHA, image digest,

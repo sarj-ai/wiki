@@ -6,7 +6,7 @@ import hmac
 import secrets
 import uuid
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.document_transform.schemas import TransformMode
@@ -28,6 +28,7 @@ _MAX_EXECUTION_NAME_LENGTH = 255
 _RELEASE_SHA_LENGTH = 40
 _IMAGE_DIGEST_LENGTH = 71
 _MIN_DERIVATION_KEY_BYTES = 32
+_MAX_CLEANUP_BATCH = 100
 
 
 class QaGrantError(Exception):
@@ -93,6 +94,7 @@ async def issue_qa_grant(
     _validate_binding(release_sha, image_digest, source_folder_id, destination_folder_id)
     if issuer_user_id != user_id or not timedelta(0) < lifetime <= MAX_GRANT_LIFETIME:
         raise QaGrantError
+    await delete_expired_qa_grants(db)
     row = (
         await db.execute(
             select(User, UserSession, func.clock_timestamp())
@@ -258,16 +260,33 @@ async def renew_qa_capability(
     return QaCapability(capability, renewed_expires_at, job_expires_at, user.id, user.email)
 
 
-async def delete_expired_qa_grants(db: AsyncSession) -> int:
+async def delete_expired_qa_grants(db: AsyncSession, *, limit: int = _MAX_CLEANUP_BATCH) -> int:
+    if not 1 <= limit <= _MAX_CLEANUP_BATCH:
+        raise QaGrantError
     now = await db.scalar(select(func.clock_timestamp()))
     if not isinstance(now, datetime):
         raise QaGrantError
+    expired = (
+        select(DocumentTransformQaGrant.id)
+        .where(
+            or_(
+                and_(
+                    DocumentTransformQaGrant.consumed_at.is_(None),
+                    DocumentTransformQaGrant.expires_at < now,
+                ),
+                and_(
+                    DocumentTransformQaGrant.consumed_at.is_not(None),
+                    DocumentTransformQaGrant.job_expires_at < now,
+                ),
+            )
+        )
+        .limit(limit)
+        .with_for_update(skip_locked=True)
+        .cte("expired_document_transform_qa_grants")
+    )
     result = await db.execute(
         delete(DocumentTransformQaGrant).where(
-            or_(
-                DocumentTransformQaGrant.expires_at < now,
-                DocumentTransformQaGrant.job_expires_at < now,
-            )
+            DocumentTransformQaGrant.id.in_(select(expired.c.id))
         )
     )
     return int(getattr(result, "rowcount", 0) or 0)
