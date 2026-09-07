@@ -151,27 +151,26 @@ async def test_interrupted_admission_rolls_back_and_releases_lock(
 ) -> None:
     entered = asyncio.Event()
     never = asyncio.Event()
-    original = native_admission._database_time
 
     async def blocked_time(_db: AsyncSession) -> datetime:
         entered.set()
         await never.wait()
         return lab.now
 
-    monkeypatch.setattr(native_admission, "_database_time", blocked_time)
-    if mode == "deadline":
-        monkeypatch.setattr(native_admission, "_ADMISSION_TIMEOUT", timedelta(milliseconds=50))
-    task = asyncio.create_task(PostgresRegistrationAdmission(lab.sessions).admit())
-    await entered.wait()
-    if mode == "cancel":
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
-    else:
-        with pytest.raises(RegistrationAdmissionUnavailableError):
-            await task
+    with monkeypatch.context() as interrupted:
+        interrupted.setattr(native_admission, "_database_time", blocked_time)
+        if mode == "deadline":
+            interrupted.setattr(native_admission, "_ADMISSION_TIMEOUT", timedelta(milliseconds=50))
+        task = asyncio.create_task(PostgresRegistrationAdmission(lab.sessions).admit())
+        await entered.wait()
+        if mode == "cancel":
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        else:
+            with pytest.raises(RegistrationAdmissionUnavailableError):
+                await task
     assert await lab.history() == []
-    monkeypatch.setattr(native_admission, "_database_time", original)
     await PostgresRegistrationAdmission(lab.sessions).admit()
     assert len(await lab.history()) == 1
 
