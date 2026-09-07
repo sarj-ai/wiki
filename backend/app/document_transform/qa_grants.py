@@ -52,6 +52,21 @@ class QaCapability:
 
 
 @dataclass(frozen=True, slots=True)
+class QaAuthority:
+    grant_id: DocumentTransformQaGrantId
+    user_id: UserId
+    user_email: str
+    execution_name: str
+    release_sha: str
+    image_digest: str
+    source_folder_id: FileId
+    destination_folder_id: FileId
+    mode: TransformMode
+    expires_at: datetime
+    job_expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class _LockedGrant:
     grant: DocumentTransformQaGrant
     user: User
@@ -260,6 +275,56 @@ async def renew_qa_capability(
     return QaCapability(capability, renewed_expires_at, job_expires_at, user.id, user.email)
 
 
+async def authorize_qa_capability(
+    db: AsyncSession,
+    *,
+    capability_token: str,
+    execution_name: str,
+    release_sha: str,
+    image_digest: str,
+    source_folder_id: FileId,
+    destination_folder_id: FileId,
+    mode: TransformMode,
+) -> QaAuthority:
+    _validate_runtime(execution_name)
+    _validate_binding(release_sha, image_digest, source_folder_id, destination_folder_id)
+    row = await _current_capability_grant(db, capability_digest=_digest(capability_token))
+    if row is None:
+        raise QaGrantError
+    grant, user, session, now = row.grant, row.user, row.session, row.now
+    if (
+        grant.consumed_by_execution != execution_name
+        or not _active_capability(grant, now)
+        or not _identity_is_live(grant, user, session, now)
+        or not _matches(
+            grant,
+            release_sha=release_sha,
+            image_digest=image_digest,
+            source_folder_id=source_folder_id,
+            destination_folder_id=destination_folder_id,
+            mode=mode,
+        )
+    ):
+        raise QaGrantError
+    capability_expires_at = grant.capability_expires_at
+    job_expires_at = grant.job_expires_at
+    if capability_expires_at is None or job_expires_at is None:  # pragma: no cover
+        raise QaGrantError
+    return QaAuthority(
+        grant_id=grant.id,
+        user_id=user.id,
+        user_email=user.email,
+        execution_name=execution_name,
+        release_sha=grant.release_sha,
+        image_digest=grant.image_digest,
+        source_folder_id=grant.source_folder_id,
+        destination_folder_id=grant.destination_folder_id,
+        mode=TransformMode(grant.mode),
+        expires_at=capability_expires_at,
+        job_expires_at=job_expires_at,
+    )
+
+
 async def delete_expired_qa_grants(db: AsyncSession, *, limit: int = _MAX_CLEANUP_BATCH) -> int:
     if not 1 <= limit <= _MAX_CLEANUP_BATCH:
         raise QaGrantError
@@ -416,6 +481,21 @@ async def _locked_grant(
             .join(UserSession, UserSession.id == DocumentTransformQaGrant.user_session_id)
             .where(predicate)
             .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).one_or_none()
+    return None if row is None else _LockedGrant(row[0], row[1], row[2], row[3])
+
+
+async def _current_capability_grant(
+    db: AsyncSession, *, capability_digest: bytes
+) -> _LockedGrant | None:
+    row = (
+        await db.execute(
+            select(DocumentTransformQaGrant, User, UserSession, func.clock_timestamp())
+            .join(User, User.id == DocumentTransformQaGrant.user_id)
+            .join(UserSession, UserSession.id == DocumentTransformQaGrant.user_session_id)
+            .where(DocumentTransformQaGrant.capability_digest.op("=")(capability_digest))
             .execution_options(populate_existing=True)
         )
     ).one_or_none()

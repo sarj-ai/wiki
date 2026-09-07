@@ -6,15 +6,17 @@ import uuid
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import pytest
-from sqlalchemy import Table
+from sqlalchemy import Table, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.schema import CreateSchema, DropSchema
 
 from app.document_transform.qa_grants import (
     IssuedQaGrant,
+    QaAuthority,
     QaCapability,
     QaGrantError,
+    authorize_qa_capability,
     consume_qa_grant,
     delete_expired_qa_grants,
     issue_qa_grant,
@@ -162,6 +164,21 @@ async def _renew(
     )
 
 
+async def _authorize(
+    db: AsyncSession, token: str, *, execution_name: str = "execution-a"
+) -> QaAuthority:
+    return await authorize_qa_capability(
+        db,
+        capability_token=token,
+        execution_name=execution_name,
+        release_sha="a" * 40,
+        image_digest="sha256:" + "c" * 64,
+        source_folder_id=_SOURCE_FOLDER_ID,
+        destination_folder_id=_DESTINATION_FOLDER_ID,
+        mode=TransformMode.BOTH,
+    )
+
+
 async def _invalid_issue(
     db: AsyncSession,
     *,
@@ -290,6 +307,59 @@ async def test_real_postgres_renewal_rotates_capability_and_rechecks_token_versi
     async with sessions.begin() as db:
         with pytest.raises(QaGrantError):
             await _renew(db, renewed.token)
+
+
+async def test_real_postgres_authorization_is_current_scoped_and_does_not_extend_lifetime(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        issued = await _issue(db, identity.user, identity.session)
+    async with sessions.begin() as db:
+        capability = await _consume(db, issued.token, "execution-a")
+    async with sessions.begin() as db:
+        authority = await _authorize(db, capability.token)
+    assert authority.user_id == identity.user.id
+    assert authority.source_folder_id == _SOURCE_FOLDER_ID
+    assert authority.destination_folder_id == _DESTINATION_FOLDER_ID
+    assert authority.mode is TransformMode.BOTH
+    assert authority.expires_at == capability.expires_at
+    assert authority.job_expires_at == capability.job_expires_at
+    async with sessions.begin() as db:
+        with pytest.raises(QaGrantError):
+            await _authorize(db, capability.token, execution_name="execution-b")
+    async with sessions.begin() as db:
+        renewed = await _renew(db, capability.token)
+    async with sessions.begin() as db:
+        with pytest.raises(QaGrantError):
+            await _authorize(db, capability.token)
+        renewed_authority = await _authorize(db, renewed.token)
+    assert renewed_authority.expires_at == renewed.expires_at
+
+
+@pytest.mark.parametrize("terminal_state", ["expired", "revoked"])
+async def test_real_postgres_authorization_rejects_inactive_capability(
+    sessions: async_sessionmaker[AsyncSession], terminal_state: str
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        issued = await _issue(db, identity.user, identity.session)
+    async with sessions.begin() as db:
+        capability = await _consume(db, issued.token, "execution-a")
+    async with sessions.begin() as db:
+        grant = await db.scalar(
+            select(DocumentTransformQaGrant).where(
+                DocumentTransformQaGrant.user_id == identity.user.id
+            )
+        )
+        assert grant is not None
+        if terminal_state == "expired":
+            grant.capability_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        else:
+            grant.revoked_at = datetime.now(UTC)
+    async with sessions.begin() as db:
+        with pytest.raises(QaGrantError):
+            await _authorize(db, capability.token)
 
 
 async def test_real_postgres_consume_response_loss_replays_exact_capability(

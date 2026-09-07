@@ -272,6 +272,15 @@ nonces: deterministic backend-only derivation replays the exact response after a
 is lost, while a one-generation previous-token overlap permits the same renewal retry and rejects a
 different nonce or older generation.
 
+The workload-authenticated `POST /internal/document-transform-qa/canary/session` endpoint is a
+read-only foundation for the future canary data plane. It accepts only the current capability in a
+header, authenticates workload OIDC before parsing that header or the JSON body, rechecks the exact
+execution and grant bindings plus the live user session, and returns only that immutable scope.
+Every response is `no-store`, and malformed capability values receive a generic error without being
+reflected. The endpoint does not extend capability lifetime, accept the one-generation renewal
+overlap, access Drive, submit a transformation, or render the Cloud Run entrypoint executable. Those
+mutation boundaries remain fail-closed pending separate review.
+
 This repository deliberately does not activate the job or provide an unauthenticated grant-issuer
 CLI. Activation is a separate reviewed operation:
 
