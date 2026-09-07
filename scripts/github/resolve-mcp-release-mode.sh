@@ -32,13 +32,13 @@ if [[ "$revision_service" != "$expected_service" ]] || ! jq -e \
 fi
 
 flag_count=$(jq '[.spec.containers[0].env[]? | select(.name == "MCP_NATIVE_ENABLED")] | length' "$revision_file")
-mode=$(jq -r '[.spec.containers[0].env[]? | select(.name == "MCP_NATIVE_ENABLED")][0].value // ""' "$revision_file")
-if [[ "$flag_count" != 1 || ( "$mode" != true && "$mode" != false ) ]]; then
+enabled_flag=$(jq -r '[.spec.containers[0].env[]? | select(.name == "MCP_NATIVE_ENABLED")][0].value // ""' "$revision_file")
+if [[ "$flag_count" != 1 || ( "$enabled_flag" != true && "$enabled_flag" != false ) ]]; then
   echo "The exact revision must contain one canonical MCP_NATIVE_ENABLED flag" >&2
   exit 1
 fi
 
-if [[ "$mode" == true ]]; then
+if [[ "$enabled_flag" == true ]]; then
   expected_issuer=${MCP_EXPECTED_ISSUER:-https://api-wiki.sarj.ai}
   jq -e --arg issuer "$expected_issuer" '
     def env($name): [.spec.containers[0].env[]? | select(.name == $name)];
@@ -57,6 +57,12 @@ if [[ "$mode" == true ]]; then
     echo "Enabled native MCP revision lacks its exact issuer, callback, or pinned key contract" >&2
     exit 1
   }
+fi
+
+if [[ "$enabled_flag" == true ]]; then
+  mode=enabled
+else
+  mode=disabled
 fi
 
 printf 'mode=%s\n' "$mode" >> "$GITHUB_OUTPUT"

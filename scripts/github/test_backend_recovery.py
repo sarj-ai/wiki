@@ -631,7 +631,8 @@ def test_mcp_mode_resolver_accepts_exact_revision_contract(
 ) -> None:
     result = _run_mcp_mode_resolver(tmp_path, _mcp_revision(enabled=enabled))
     assert result.returncode == 0, result.stderr
-    assert result.output == f"mode={str(enabled).lower()}\n"
+    expected_mode = "enabled" if enabled else "disabled"
+    assert result.output == f"mode={expected_mode}\n"
 
 
 def test_mcp_mode_resolver_rejects_missing_or_duplicate_flag(tmp_path: Path) -> None:
