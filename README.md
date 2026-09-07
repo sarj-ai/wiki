@@ -247,36 +247,36 @@ mutation.
 
 Terraform contains an opt-in `sarj-wiki-document-transform-qa` Cloud Run Job for authenticated
 corpus QA. It is absent unless `enable_document_transform_qa_job=true`; enabling it also requires
-an immutable QA image digest and one explicit human `user:` or `group:` invoker. The job has its own
-service account, IAM-authenticated Cloud SQL user, private VPC path, zero retries, and a dedicated
-public-access-prevented evidence bucket mounted with UID 1001 and `0600`/`0700` modes. Its identity
-can access only that bucket, Cloud SQL, Vertex AI, and the four existing secrets required to use the
-selected user's stored Google OAuth authorization and mint a short-lived Wiki access token. No
-Scheduler, GitHub Actions, public invoker, Drive service account, or permission-changing API is
-attached.
+an immutable image from the exact `sarj-docs-dammam/document-transform-qa` repository, its release
+SHA, and one explicit human `user:` or `group:` invoker. The job has its own service account, zero
+retries, and a dedicated public-access-prevented evidence bucket mounted with UID 1001 and
+`0600`/`0700` modes. It has no Cloud SQL identity, database grants, Secret Manager access, production
+signing/encryption material, or Google OAuth client secret. Its only project roles are the dedicated
+bucket's `storage.objectUser` role and `aiplatform.user` for optional visual judging. The human gets
+only `run.jobsExecutorWithOverrides`; no Scheduler or CI trigger is attached.
 
-Cloud execution additionally requires a database grant produced by
-`app.document_transform.qa_grants.issue_qa_grant`. A grant lasts at most 15 minutes, is stored only
-as a SHA-256 digest, binds the exact live user session, release SHA, source folder, destination
-folder, and transform mode, and is consumed once under a row lock before any Drive access. The
-runner requires the raw one-time token in `WIKI_QA_GRANT_TOKEN`; a mismatch, logout, expiration,
-replay, or concurrent second claim fails closed. Evidence paths must remain below
-`/var/lib/wiki-qa`. A reviewed execution must override the otherwise-empty job arguments with one
-of the exact canary/corpus commands above, using paths under that root.
+The authenticated same-site `POST /document-transforms/qa/grants` surface issues self-delegated
+grants only. Existing cookie-origin middleware rejects cross-site cookie requests. The audit row
+stores both issuer and subject user IDs, exact session and token version, release SHA, image digest,
+source and destination folders, mode, and a maximum 15-minute expiry. The workload-authenticated
+`POST /internal/document-transform-qa/exchange` endpoint atomically consumes a grant and returns an
+opaque five-minute capability. Renewal rotates that capability under the same row lock for at most
+the two-hour job lifetime and rechecks session revocation and token version every time. The job
+never reads or updates grant rows directly.
 
 This repository deliberately does not activate the job or provide an unauthenticated grant-issuer
 CLI. Activation is a separate reviewed operation:
 
-1. Build `backend/Dockerfile.qa`, attest it, and supply its digest (never a mutable tag).
-2. Apply migration `0018_transform_qa_grants`, then run
-   `backend/scripts/configure_document_transform_qa_role.sql` as the database owner with
-   `--set=qa_role=sarj-wiki-transform-qa@sarj-docs.iam`.
-3. Add a CSRF-protected, logged-in user consent surface that calls `issue_qa_grant`; never pass a
-   browser cookie, refresh token, or long-lived bearer token to the job.
-4. Review a real Terraform plan, enable the job for a named security QA principal, and read back
-   its IAM, image digest, mount options, secret references, and zero-retry policy.
-5. Run a one-document canary with a fresh grant, inspect its private evidence and owner-only Drive
-   output, and only then issue a separate grant for the full corpus.
+1. Implement dedicated backend capability operations for the runner's bounded Drive reads, PDF
+   exports, transform submission, and task polling. Until then Cloud execution deliberately fails
+   before grant consumption; local corpus execution is unchanged.
+2. Build and smoke-test `backend/Dockerfile.qa`, attest it, and supply the exact repository digest
+   and matching 40-character release SHA.
+3. Apply migration `0018_transform_qa_grants`, review a real Terraform plan, enable the job for a
+   named security QA principal, and read back every IAM binding, image/env binding, mount option,
+   absence of secrets/Cloud SQL access, and zero-retry policy.
+4. Use the logged-in issuer endpoint, run a one-document canary, inspect its private evidence and
+   owner-only output, and only then issue a separate grant for the full corpus.
 
 ## Document-transform dispatch recovery
 

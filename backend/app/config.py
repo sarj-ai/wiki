@@ -80,6 +80,11 @@ class Settings(DatabaseSettings):
     CLOUD_TASKS_LOCATION: NonEmptyStr | None = None
     CLOUD_TASKS_TARGET_URL: NonEmptyStr | None = None
     CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT: NonEmptyStr | None = None
+    DOCUMENT_TRANSFORM_QA_AUDIENCE: NonEmptyStr | None = None
+    DOCUMENT_TRANSFORM_QA_SERVICE_ACCOUNT: NonEmptyStr | None = None
+    DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST: Annotated[
+        str | None, Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    ] = None
 
     @property
     def frontend_origin(self) -> str:
@@ -111,6 +116,16 @@ class Settings(DatabaseSettings):
             value is not None for value in task_config
         ):
             msg = "Document Transform requires the shared Cloud Tasks settings"
+            raise ValueError(msg)
+        qa_config = (
+            self.DOCUMENT_TRANSFORM_QA_AUDIENCE,
+            self.DOCUMENT_TRANSFORM_QA_SERVICE_ACCOUNT,
+            self.DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST,
+        )
+        if any(value is not None for value in qa_config) and not all(
+            value is not None for value in qa_config
+        ):
+            msg = "Document Transform QA settings must be configured together"
             raise ValueError(msg)
         return self
 

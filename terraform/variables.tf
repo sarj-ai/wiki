@@ -182,9 +182,27 @@ variable "document_transform_qa_image" {
   validation {
     condition = (
       !var.enable_document_transform_qa_job ||
-      (var.document_transform_qa_image != null && can(regex("@sha256:[0-9a-f]{64}$", var.document_transform_qa_image)))
+      (var.document_transform_qa_image != null && can(regex(
+        "^${var.dammam_region}-docker[.]pkg[.]dev/${var.project_id}/sarj-docs-dammam/document-transform-qa@sha256:[0-9a-f]{64}$",
+        var.document_transform_qa_image,
+      )))
     )
-    error_message = "Enabled document-transform QA requires an immutable image digest."
+    error_message = "Enabled document-transform QA requires the exact sarj-docs-dammam/document-transform-qa repository digest."
+  }
+}
+
+variable "document_transform_qa_release_sha" {
+  description = "Exact backend/source release represented by the QA image"
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = (
+      !var.enable_document_transform_qa_job ||
+      (var.document_transform_qa_release_sha != null && can(regex("^[0-9a-f]{40}$", var.document_transform_qa_release_sha)))
+    )
+    error_message = "Enabled document-transform QA requires an exact 40-character release SHA."
   }
 }
 

@@ -24,9 +24,9 @@ run "qa_job_is_absent_by_default" {
       length(google_service_account.document_transform_qa) == 0,
       length(google_cloud_run_v2_job.document_transform_qa) == 0,
       length(google_storage_bucket.document_transform_qa) == 0,
-      length(google_sql_user.document_transform_qa) == 0,
       length(google_cloud_run_v2_job_iam_member.document_transform_qa_invoker) == 0,
-      length(google_secret_manager_secret_iam_member.document_transform_qa_existing_secrets) == 0,
+      length(google_project_iam_member.document_transform_qa_vertex) == 0,
+      length(google_storage_bucket_iam_member.document_transform_qa_objects) == 0,
     ])
     error_message = "Document-transform QA infrastructure must remain absent by default."
   }
@@ -38,7 +38,20 @@ run "enabled_job_is_private_single_task_and_digest_pinned" {
   variables {
     enable_document_transform_qa_job     = true
     document_transform_qa_image          = "me-central2-docker.pkg.dev/sarj-docs/sarj-docs-dammam/document-transform-qa@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    document_transform_qa_release_sha    = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     document_transform_qa_invoker_member = "group:security-qa@sarj.ai"
+  }
+
+  assert {
+    condition = alltrue([
+      length(google_service_account.document_transform_qa) == 1,
+      length(google_cloud_run_v2_job.document_transform_qa) == 1,
+      length(google_storage_bucket.document_transform_qa) == 1,
+      length(google_cloud_run_v2_job_iam_member.document_transform_qa_invoker) == 1,
+      length(google_project_iam_member.document_transform_qa_vertex) == 1,
+      length(google_storage_bucket_iam_member.document_transform_qa_objects) == 1,
+    ])
+    error_message = "Enabling QA must create exactly the reviewed six resources and IAM bindings."
   }
 
   assert {
@@ -80,29 +93,25 @@ run "enabled_job_is_private_single_task_and_digest_pinned" {
 
   assert {
     condition = (
-      google_project_iam_member.document_transform_qa_cloudsql_client[0].role == "roles/cloudsql.client" &&
-      google_project_iam_member.document_transform_qa_cloudsql_user[0].role == "roles/cloudsql.instanceUser" &&
       google_project_iam_member.document_transform_qa_vertex[0].role == "roles/aiplatform.user" &&
       google_storage_bucket_iam_member.document_transform_qa_objects[0].role == "roles/storage.objectUser"
     )
-    error_message = "QA must have only the explicit database, judge, and dedicated-bucket roles."
+    error_message = "QA must have only the explicit judge and dedicated-bucket roles."
   }
 
   assert {
     condition = (
       google_cloud_run_v2_job_iam_member.document_transform_qa_invoker[0].member == "group:security-qa@sarj.ai" &&
-      google_cloud_run_v2_job_iam_member.document_transform_qa_invoker[0].role == "roles/run.invoker"
+      google_cloud_run_v2_job_iam_member.document_transform_qa_invoker[0].role == "roles/run.jobsExecutorWithOverrides"
     )
     error_message = "Only the explicitly configured human principal may invoke QA."
   }
 
   assert {
-    condition = toset(keys(google_secret_manager_secret_iam_member.document_transform_qa_existing_secrets)) == toset([
-      "secret-key",
-      "fernet-key",
-      "google-client-id",
-      "google-client-secret",
+    condition = alltrue([
+      for env in google_cloud_run_v2_job.document_transform_qa[0].template[0].template[0].containers[0].env :
+      !contains(["SECRET_KEY", "FERNET_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "DB_IAM_USER", "DB_NAME", "DB_INSTANCE_CONNECTION_NAME"], env.name)
     ])
-    error_message = "QA may read only the four existing secrets needed for session and Google OAuth access."
+    error_message = "QA must receive neither production secrets nor database connectivity settings."
   }
 }

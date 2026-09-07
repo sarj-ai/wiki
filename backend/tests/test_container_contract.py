@@ -23,6 +23,8 @@ def test_application_container_does_not_run_database_migrations() -> None:
 def test_qa_container_reuses_corpus_runner_and_fails_closed_without_arguments() -> None:
     dockerfile = _QA_DOCKERFILE.read_text()
     assert "COPY scripts/ scripts/" in dockerfile
+    assert all("@sha256:" in line for line in dockerfile.splitlines() if line.startswith("FROM "))
+    assert dockerfile.count("FROM ") == 2
     assert "apk add --no-cache poppler-utils" in dockerfile
     assert "USER app" in dockerfile
     assert (

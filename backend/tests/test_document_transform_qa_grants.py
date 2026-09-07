@@ -12,11 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.schema import CreateSchema, DropSchema
 
 from app.document_transform.qa_grants import (
-    ConsumedQaGrant,
     IssuedQaGrant,
+    QaCapability,
     QaGrantError,
     consume_qa_grant,
     issue_qa_grant,
+    renew_qa_capability,
 )
 from app.document_transform.schemas import TransformMode
 from app.identifiers import (
@@ -103,9 +104,11 @@ async def _identity(db: AsyncSession) -> _Identity:
 async def _issue(db: AsyncSession, user: User, session: UserSession) -> IssuedQaGrant:
     return await issue_qa_grant(
         db,
+        issuer_user_id=user.id,
         user_id=user.id,
         session_id=session.id,
         release_sha="a" * 40,
+        image_digest="sha256:" + "c" * 64,
         source_folder_id=_SOURCE_FOLDER_ID,
         destination_folder_id=_DESTINATION_FOLDER_ID,
         mode=TransformMode.BOTH,
@@ -117,21 +120,34 @@ async def _consume(
     token: str,
     execution_name: str,
     *,
-    user_email: str = "qa@example.test",
     release_sha: str = "a" * 40,
+    image_digest: str = "sha256:" + "c" * 64,
     source_folder_id: FileId = _SOURCE_FOLDER_ID,
     destination_folder_id: FileId = _DESTINATION_FOLDER_ID,
     mode: TransformMode = TransformMode.BOTH,
-) -> ConsumedQaGrant:
+) -> QaCapability:
     return await consume_qa_grant(
         db,
         token=token,
         execution_name=execution_name,
-        user_email=user_email,
         release_sha=release_sha,
+        image_digest=image_digest,
         source_folder_id=source_folder_id,
         destination_folder_id=destination_folder_id,
         mode=mode,
+    )
+
+
+async def _renew(db: AsyncSession, token: str) -> QaCapability:
+    return await renew_qa_capability(
+        db,
+        capability_token=token,
+        execution_name="execution-a",
+        release_sha="a" * 40,
+        image_digest="sha256:" + "c" * 64,
+        source_folder_id=_SOURCE_FOLDER_ID,
+        destination_folder_id=_DESTINATION_FOLDER_ID,
+        mode=TransformMode.BOTH,
     )
 
 
@@ -157,7 +173,7 @@ async def test_real_postgres_grant_is_exact_single_use(
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("user_email", "other@example.test"),
+        ("image_digest", "sha256:" + "d" * 64),
         ("release_sha", "b" * 40),
         ("source_folder_id", "other-source"),
         ("destination_folder_id", "other-destination"),
@@ -171,7 +187,7 @@ async def test_real_postgres_mismatch_does_not_consume_grant(
         identity = await _identity(db)
         issued = await _issue(db, identity.user, identity.session)
     mismatch: dict[str, object] = {
-        "user_email": "qa@example.test",
+        "image_digest": "sha256:" + "c" * 64,
         "release_sha": "a" * 40,
         "source_folder_id": "source-folder",
         "destination_folder_id": "destination-folder",
@@ -184,8 +200,8 @@ async def test_real_postgres_mismatch_does_not_consume_grant(
                 db,
                 issued.token,
                 "wrong",
-                user_email=str(mismatch["user_email"]),
                 release_sha=str(mismatch["release_sha"]),
+                image_digest=str(mismatch["image_digest"]),
                 source_folder_id=FileId(str(mismatch["source_folder_id"])),
                 destination_folder_id=FileId(str(mismatch["destination_folder_id"])),
                 mode=TransformMode(str(mismatch["mode"])),
@@ -202,12 +218,14 @@ async def test_real_postgres_mismatch_does_not_consume_grant(
 async def test_grant_lifetime_is_bounded_before_database_access(lifetime: timedelta) -> None:
     async with AsyncSession() as db:
         with pytest.raises(QaGrantError):
-            await issue_qa_grant(
+            await issue_qa_grant(  # sarj-noqa: SARJ045 -- all binding fields are under test.
                 db,
+                issuer_user_id=UserId(uuid.uuid7()),
                 user_id=UserId(uuid.uuid7()),
                 session_id=AuthSessionId(uuid.uuid7()),
                 lifetime=lifetime,
                 release_sha="a" * 40,
+                image_digest="sha256:" + "c" * 64,
                 source_folder_id=FileId("source-folder"),
                 destination_folder_id=FileId("destination-folder"),
                 mode=TransformMode.BOTH,
@@ -217,12 +235,36 @@ async def test_grant_lifetime_is_bounded_before_database_access(lifetime: timede
 async def test_invalid_binding_is_rejected_before_database_access() -> None:
     async with AsyncSession() as db:
         with pytest.raises(QaGrantError):
-            await issue_qa_grant(
+            await issue_qa_grant(  # sarj-noqa: SARJ045 -- all binding fields are under test.
                 db,
+                issuer_user_id=UserId(uuid.uuid7()),
                 user_id=UserId(uuid.uuid7()),
                 session_id=AuthSessionId(uuid.uuid7()),
                 release_sha="latest",
+                image_digest="latest",
                 source_folder_id=FileId("same"),
                 destination_folder_id=FileId("same"),
                 mode=TransformMode.BOTH,
             )
+
+
+async def test_real_postgres_renewal_rotates_capability_and_rechecks_token_version(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        issued = await _issue(db, identity.user, identity.session)
+    async with sessions.begin() as db:
+        capability = await _consume(db, issued.token, "execution-a")
+    async with sessions.begin() as db:
+        renewed = await _renew(db, capability.token)
+    assert renewed.token != capability.token
+    async with sessions.begin() as db:
+        with pytest.raises(QaGrantError):
+            await _renew(db, capability.token)
+        user = await db.get(User, identity.user.id)
+        assert user is not None
+        user.token_version += 1
+    async with sessions.begin() as db:
+        with pytest.raises(QaGrantError):
+            await _renew(db, renewed.token)
