@@ -20,7 +20,12 @@ name: Deploy Backend
   workflow_dispatch:
     inputs:
       verification_run_id:
-        description: "Verification only: completed run ID with successful migration, traffic switch, and cleanup (empty deploys normally)"
+        description: "Verification only: completed run ID with successful migration, traffic switch, and cleanup (pair with its run attempt; leave both empty to deploy)"
+        type: string
+        required: false
+        default: ""
+      verification_run_attempt:
+        description: "Verification only: exact run attempt for verification_run_id (pair with its run ID; leave both empty to deploy)"
         type: string
         required: false
         default: ""
@@ -92,7 +97,7 @@ jobs:
         run: bash scripts/github/verify-release-gate.sh standards backend
 
   deploy:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && inputs.verification_run_id == ''
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.verification_run_id == '' && inputs.verification_run_attempt == ''))
     needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt]
     runs-on: ubuntu-latest
 
@@ -256,7 +261,7 @@ jobs:
         run: scripts/github/report-blocked-backend-release.sh
 
   verify-existing:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.verification_run_id != ''
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && (inputs.verification_run_id != '' || inputs.verification_run_attempt != '')
     needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -281,10 +286,12 @@ jobs:
       - name: Verify completed source mutation receipts
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ATTEMPT: ${{ inputs.verification_run_attempt }}
           SOURCE_RUN_ID: ${{ inputs.verification_run_id }}
         run: |
           uv run --no-project --python 3.14 python -m scripts.backend_release.recovery \
-            --sha "$GITHUB_SHA" source --run-id "$SOURCE_RUN_ID"
+            --sha "$GITHUB_SHA" source --run-id "$SOURCE_RUN_ID" \
+            --run-attempt "$SOURCE_RUN_ATTEMPT"
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
