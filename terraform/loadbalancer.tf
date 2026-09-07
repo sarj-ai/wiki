@@ -259,7 +259,7 @@ resource "google_compute_security_policy" "backend_armor" {
     preview  = true
     match {
       expr {
-        expression = "request.method != 'OPTIONS' && request.path.urlDecode().matches('^/(register|authorize|token|revoke)$') && origin.user_ip == origin.ip"
+        expression = "request.method != 'OPTIONS' && request.path.urlDecode().matches('^/register$|^/authorize$|^/token$|^/revoke$') && origin.user_ip == origin.ip"
       }
     }
     description = "preview MCP invalid visitor IP fallback rejection"
