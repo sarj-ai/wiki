@@ -287,6 +287,7 @@ async def test_actual_sdk_registration_public_only_no_remote_metadata() -> None:
         "grant_types": ["authorization_code", "refresh_token"],
         "response_types": ["code"],
         "client_name": "Codex",
+        "application_type": "native",
     }
     async with client(provider) as http:
         response = await http.post("/register", json=values)
@@ -295,6 +296,7 @@ async def test_actual_sdk_registration_public_only_no_remote_metadata() -> None:
         assert len(provider.clients) == 1
         for changed in (
             {"token_endpoint_auth_method": "client_secret_post"},
+            {"application_type": "web"},
             {"client_uri": "https://remote.test/metadata"},
             {"jwks_uri": "https://remote.test/keys"},
         ):

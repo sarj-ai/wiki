@@ -141,6 +141,7 @@ class _RegistrationBody(BaseModel):
     response_types: list[str] = Field(default_factory=lambda: ["code"])
     client_name: str = ""
     scope: str | None = None
+    application_type: str | None = None
 
 
 def _clean_response(
@@ -251,6 +252,8 @@ def _registration(raw: bytes, policy: McpRedirectPolicy) -> None:
         raise NativeOAuthRequestError
     name = value.client_name
     scope = value.scope
+    if value.application_type not in {None, "native"}:
+        raise NativeOAuthRequestError
     if len(name.encode()) > _CLIENT_NAME_LIMIT:
         raise NativeOAuthRequestError
     _scope(scope)
