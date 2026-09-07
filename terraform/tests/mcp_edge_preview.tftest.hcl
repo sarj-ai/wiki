@@ -36,9 +36,9 @@ run "native_oauth_preview_preserves_enforced_security" {
   assert {
     condition = alltrue([
       for rule in google_compute_security_policy.backend_armor.rule : rule.preview
-      if contains([551, 553, 554, 555, 556], rule.priority)
+      if contains([553, 554, 555, 556], rule.priority)
     ])
-    error_message = "All five MCP rules must remain non-enforcing previews."
+    error_message = "All four MCP rules must remain non-enforcing previews."
   }
 
   assert {
@@ -64,16 +64,6 @@ run "native_oauth_preview_preserves_enforced_security" {
   }
 
   assert {
-    condition = alltrue([
-      for rule in google_compute_security_policy.backend_armor.rule : (
-        rule.action == "deny(403)" && rule.preview &&
-        rule.match[0].expr[0].expression == "request.method != 'OPTIONS' && request.path.urlDecode().matches('^/register$|^/authorize$|^/token$|^/revoke$') && origin.user_ip == origin.ip"
-      ) if rule.priority == 551
-    ])
-    error_message = "Fallback sentinel must cover only exact OAuth paths and exclude OPTIONS."
-  }
-
-  assert {
     condition = (
       google_compute_security_policy.backend_armor.name == "sarj-docs-backend-armor" &&
       google_compute_security_policy.edge_armor.name == "sarj-docs-edge-armor" &&
@@ -88,8 +78,8 @@ run "native_oauth_preview_preserves_enforced_security" {
   assert {
     condition = toset([
       for rule in google_compute_security_policy.backend_armor.rule : rule.priority
-    ]) == toset([500, 510, 520, 530, 540, 550, 551, 553, 554, 555, 556, 560, 570, 580, 600, 610, 620, 2147483647])
-    error_message = "Preserve every existing priority and add only the five MCP previews, with no canary rule."
+    ]) == toset([500, 510, 520, 530, 540, 550, 553, 554, 555, 556, 560, 570, 580, 600, 610, 620, 2147483647])
+    error_message = "Preserve every existing priority and add only the four supported MCP previews."
   }
 
   assert {
