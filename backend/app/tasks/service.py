@@ -96,6 +96,7 @@ class TaskService(ABC):
         payload: BaseModel,
         admit: Callable[[], Awaitable[None]] | None = None,
         admit_new: Callable[[], None] | None = None,
+        admit_terminal_replay: Callable[[TaskRead], Awaitable[bool]] | None = None,
     ) -> TaskReservation: ...
 
     @abstractmethod
@@ -190,6 +191,7 @@ class PostgresTaskService(TaskService):
         payload: BaseModel,
         admit: Callable[[], Awaitable[None]] | None = None,
         admit_new: Callable[[], None] | None = None,
+        admit_terminal_replay: Callable[[TaskRead], Awaitable[bool]] | None = None,
     ) -> TaskReservation:
         serialized = _serialize(payload)
         request_hash = _request_hash(serialized)
@@ -283,6 +285,7 @@ class PostgresTaskService(TaskService):
                 kind=kind,
                 idempotency_key=idempotency_key,
                 request_hash=request_hash,
+                admit=admit_terminal_replay,
             )
             if terminal_replay is not None:
                 return terminal_replay
@@ -712,6 +715,7 @@ class PostgresTaskService(TaskService):
         kind: TaskKind,
         idempotency_key: IdempotencyKey,
         request_hash: str,
+        admit: Callable[[TaskRead], Awaitable[bool]] | None,
     ) -> TaskReservation | None:
         terminal = (
             await self._db.execute(
@@ -728,6 +732,45 @@ class PostgresTaskService(TaskService):
                 )
                 .order_by(Task.finished_at.desc(), Task.id.desc())
                 .limit(1)
+            )
+        ).scalar_one_or_none()
+        if terminal is None:
+            return None
+        try:
+            terminal_read = _to_read(terminal)
+        except BaseException:
+            await self._db.rollback()
+            raise
+        if admit is None:
+            await self._db.rollback()
+            message = "Terminal document-transform replay requires an admission callback"
+            raise RuntimeError(message)
+        try:
+            admitted = await admit(terminal_read)
+        except BaseException:
+            await self._db.rollback()
+            raise
+        if not admitted:
+            return None
+        # The provider check above is an external await. Re-read and lock the
+        # exact terminal row before publishing an alias so expiry, cancellation,
+        # or replacement during that await cannot create an immediately stale
+        # replay binding.
+        terminal = (
+            await self._db.execute(
+                select(Task)
+                .where(
+                    Task.id == terminal.id,
+                    Task.owner_user_id == owner_user_id,
+                    Task.kind == kind,
+                    Task.status == TaskStatus.SUCCEEDED,
+                    Task.request_hash == request_hash,
+                    Task.finished_at.is_not(None),
+                    Task.expires_at > func.clock_timestamp(),
+                    Task.result["pipeline_version"].astext.in_(CURRENT_PIPELINE_VERSIONS),
+                    Task.result["brand_profile_sha256"].astext == CURRENT_BRAND_MANIFEST.sha256,
+                )
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if terminal is None:

@@ -16,17 +16,24 @@ from app.document_transform.errors import (
 from app.document_transform.ir import parse_markdown
 from app.document_transform.schemas import (
     DocumentTransformRequest,
+    DocumentTransformResult,
     DriveFileSource,
     MarkdownSource,
     OutputStrategy,
 )
 from app.document_transform.word_gateway import WORD_MIME
 from app.drive.schemas import MIME_DOC, MIME_FOLDER
-from app.files.errors import FileNotInScopeError
+from app.files.errors import DriveUpstreamError, FileNotInScopeError
 from app.files.schemas import FileResponse
 from app.identifiers import FileId, IdempotencyKey
 from app.tasks.queue import TaskEnqueuer
-from app.tasks.schemas import PendingTaskRead, RunningTaskRead, TaskKind, TaskRead
+from app.tasks.schemas import (
+    PendingTaskRead,
+    RunningTaskRead,
+    SucceededTaskRead,
+    TaskKind,
+    TaskRead,
+)
 from app.tasks.service import TaskService
 
 
@@ -39,6 +46,9 @@ class TransformSubmission:
     task: TaskRead
     replayed: bool
     retry_after: int = 1
+
+
+SOURCE_CHANGED_ERROR_CODE = "document_transform_source_changed"
 
 
 async def submit_document_transform(
@@ -79,6 +89,9 @@ async def submit_document_transform(
     def admit_new() -> None:
         validate_transform_freshness(payload, authorized_source)
 
+    async def admit_terminal_replay(task: TaskRead) -> bool:
+        return await retained_transform_output_available(task, files)
+
     reservation = await tasks.create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
         owner_user_id=owner_user_id,
@@ -86,10 +99,29 @@ async def submit_document_transform(
         payload=payload,
         admit=admit,
         admit_new=admit_new,
+        admit_terminal_replay=admit_terminal_replay,
     )
     if isinstance(reservation.task, PendingTaskRead | RunningTaskRead):
         await enqueuer.enqueue_document_transform(reservation.task.id)
     return TransformSubmission(task=reservation.task, replayed=not reservation.created)
+
+
+async def retained_transform_output_available(task: TaskRead, files: DestinationFileReader) -> bool:
+    if not isinstance(task, SucceededTaskRead) or not isinstance(
+        task.result, DocumentTransformResult
+    ):
+        return False
+    if task.result.output_strategy is OutputStrategy.IN_PLACE:
+        return True
+    try:
+        await files.get(task.result.output.file_id)
+    except FileNotInScopeError:
+        return False
+    except DriveUpstreamError as exc:
+        if exc.http_status == status.HTTP_404_NOT_FOUND:
+            return False
+        raise
+    return True
 
 
 async def validate_transform_admission(
@@ -144,4 +176,5 @@ def validate_transform_freshness(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=SourceChangedError.public_detail,
+            headers={"X-Wiki-Error-Code": SOURCE_CHANGED_ERROR_CODE},
         )

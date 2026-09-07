@@ -2,15 +2,19 @@ import "server-only";
 
 import * as z from "zod";
 
+import type { ActionErrorCode } from "@/lib/action-result";
 import { API_URL } from "@/lib/env";
 import { boundedTransformText } from "@/lib/bounded-transform-text";
 
 const ErrorResponseSchema = z.object({ detail: z.string().optional() });
 const UPSTREAM_TIMEOUT_MS = 30_000;
+const ALLOWED_ERROR_CODES = new Set<ActionErrorCode>(["document_transform_source_changed"]);
 
 export interface SmartUpstreamResponse {
   body: string;
   error?: string;
+  errorCode?: ActionErrorCode;
+  idempotencyReplayed?: boolean;
   ok: boolean;
   status: number;
 }
@@ -36,12 +40,28 @@ export async function callSmartCreateApi(
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     const responseBody = await boundedTransformText(response.body);
-    if (response.ok) return { body: responseBody, ok: true, status: response.status };
+    if (response.ok) {
+      const replayHeader = response.headers.get("idempotency-replayed");
+      return {
+        body: responseBody,
+        ...(replayHeader === "true" || replayHeader === "false"
+          ? { idempotencyReplayed: replayHeader === "true" }
+          : {}),
+        ok: true,
+        status: response.status,
+      };
+    }
     const parsed = ErrorResponseSchema.safeParse(safeJson(responseBody));
     const error = parsed.success ? parsed.data.detail : undefined;
+    const rawErrorCode = response.headers.get("x-wiki-error-code");
+    const errorCode =
+      response.status === 409 && ALLOWED_ERROR_CODES.has(rawErrorCode as ActionErrorCode)
+        ? (rawErrorCode as ActionErrorCode)
+        : undefined;
     return {
       body: responseBody,
       ...(error === undefined ? {} : { error }),
+      ...(errorCode === undefined ? {} : { errorCode }),
       ok: false,
       status: response.status,
     };

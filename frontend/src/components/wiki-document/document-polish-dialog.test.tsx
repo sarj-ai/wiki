@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
+import { toast } from "sonner";
 
 import { ApiError } from "@/lib/api-error";
 import { BrowserUserContext } from "@/lib/browser-user-context";
@@ -487,6 +488,55 @@ describe("DocumentPolishDialog", () => {
     expect(document.body).toHaveTextContent(pending.id);
   });
 
+  it.each([
+    {
+      expectedToast: "Resumed the existing polish",
+      task: { id: "55555555-5555-4555-8555-555555555555", status: "running" } as const,
+    },
+    {
+      expectedToast: "Already polished — showing the existing result",
+      task: {
+        id: "55555555-5555-4555-8555-555555555555",
+        result: transformResult(),
+        status: "succeeded",
+      } as const,
+    },
+  ])("describes recovered $task.status task truthfully", async ({ expectedToast, task }) => {
+    const source = {
+      allowInPlace: false,
+      expectedModifiedTime: "revision",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+    } as const;
+    writeTransformRecovery("owner-1", "drive:source-1", {
+      createdAt: Date.now(),
+      key: "66666666-6666-4666-8666-666666666666",
+      mode: "format",
+      outputStrategy: "copy",
+      source: {
+        expectedModifiedTime: source.expectedModifiedTime,
+        fileId: source.fileId,
+        kind: "drive_file",
+        name: source.name,
+      },
+      taskId: task.id,
+    });
+    const success = vi.spyOn(toast, "success");
+    const create = vi.spyOn(documentTransformApi, "create");
+    vi.spyOn(documentTransformApi, "getTask").mockResolvedValue(task);
+    vi.spyOn(documentTransformApi, "waitForCompletion").mockResolvedValue(transformResult());
+    renderDialog(root, source, undefined, "owner-1");
+    await vi.waitFor(() => expect(findButtonNow("Resume checking")).toBeEnabled());
+
+    clickButton(findButtonNow("Resume checking"));
+
+    await vi.waitFor(() => expect(success).toHaveBeenCalledWith(expectedToast));
+    expect(success).not.toHaveBeenCalledWith(`Created “${transformResult().outputFile.name}”`);
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("does not create a task when unmounted during the metadata refresh", async () => {
     const refresh = deferred<string>();
     const create = vi.spyOn(documentTransformApi, "create");
@@ -512,6 +562,134 @@ describe("DocumentPolishDialog", () => {
     await Promise.resolve();
 
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it("admits only once when the polish button is clicked rapidly", async () => {
+    const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
+    const completion = deferred<DocumentTransformResult>();
+    const create = vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
+    vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(completion.promise);
+    renderDialog(root, {
+      allowInPlace: false,
+      expectedModifiedTime: "revision",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+    });
+    await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+    const button = findButtonNow("Create polished copy");
+
+    flushSync(() => {
+      button.click();
+      button.click();
+    });
+
+    await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
+    completion.resolve(transformResult());
+    await vi.waitFor(() => expect(document.body).toHaveTextContent("Polish complete"));
+  });
+
+  it("describes a retained terminal replay without claiming it created another copy", async () => {
+    const result = transformResult();
+    const success = vi.spyOn(toast, "success");
+    vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+      id: result.operationId,
+      replayed: true,
+      result,
+      status: "succeeded",
+    });
+    vi.spyOn(documentTransformApi, "waitForCompletion").mockResolvedValue(result);
+    renderDialog(root, {
+      allowInPlace: false,
+      expectedModifiedTime: "revision",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+    });
+    await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+
+    clickButton(findButtonNow("Create polished copy"));
+
+    await vi.waitFor(() =>
+      expect(success).toHaveBeenCalledWith("Already polished — showing the existing result"),
+    );
+    expect(success).not.toHaveBeenCalledWith(`Created “${result.outputFile.name}”`);
+    expect(document.body).toHaveTextContent("Polish complete");
+  });
+
+  it("describes an active replay as a resumed polish", async () => {
+    const result = transformResult();
+    const success = vi.spyOn(toast, "success");
+    vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+      id: result.operationId,
+      replayed: true,
+      status: "running",
+    });
+    vi.spyOn(documentTransformApi, "waitForCompletion").mockResolvedValue(result);
+    renderDialog(root, {
+      allowInPlace: false,
+      expectedModifiedTime: "revision",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+    });
+    await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+
+    clickButton(findButtonNow("Create polished copy"));
+
+    await vi.waitFor(() => expect(success).toHaveBeenCalledWith("Resumed the existing polish"));
+    expect(success).not.toHaveBeenCalledWith(`Created “${result.outputFile.name}”`);
+  });
+
+  it("shows actionable reload guidance when the source revision changed", async () => {
+    const message =
+      "The document changed since polishing was requested. Reload it before trying again.";
+    const create = vi
+      .spyOn(documentTransformApi, "create")
+      .mockRejectedValue(new ApiError(409, message, "document_transform_source_changed"));
+    const refreshExpectedModifiedTime = vi.fn().mockResolvedValue("latest-revision");
+    renderDialog(root, {
+      allowInPlace: false,
+      expectedModifiedTime: "revision",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+      refreshExpectedModifiedTime,
+    });
+    await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+
+    clickButton(findButtonNow("Create polished copy"));
+
+    await vi.waitFor(() => expect(document.body).toHaveTextContent(message));
+    expect(findButtonNow("Create polished copy")).toBeEnabled();
+    clickButton(findButtonNow("Create polished copy"));
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(2));
+    expect(refreshExpectedModifiedTime).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a fresh recovery reserved for an unrelated conflict", async () => {
+    const create = vi
+      .spyOn(documentTransformApi, "create")
+      .mockRejectedValue(new ApiError(409, "Document transform request could not be completed"));
+    renderDialog(root, {
+      allowInPlace: false,
+      expectedModifiedTime: "revision",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+    });
+    await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+
+    clickButton(findButtonNow("Create polished copy"));
+
+    await vi.waitFor(() => expect(findButtonNow("Resume checking")).toBeEnabled());
+    expect(document.body).toHaveTextContent("Your existing operation is still reserved");
+    expect(create).toHaveBeenCalledOnce();
   });
 
   it("names save-result toggles independently of their icons and descriptions", async () => {
@@ -732,6 +910,10 @@ describe("DocumentPolishDialog", () => {
   it.each([
     { error: new ApiError(422, "Invalid input"), released: true },
     { error: new ApiError(503, "Unavailable"), released: false },
+    {
+      error: new ApiError(503, "Unavailable", "document_transform_source_changed"),
+      released: false,
+    },
     { error: new Error("Network interruption"), released: false },
   ])(
     "only releases a definitive fresh rejection: $released $error.message",

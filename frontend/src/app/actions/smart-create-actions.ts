@@ -3,7 +3,7 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { cookies, headers } from "next/headers";
 
-import type { ActionResult } from "@/lib/action-result";
+import type { ActionErrorCode, ActionResult } from "@/lib/action-result";
 import { RATE_LIMIT_MESSAGE } from "@/lib/api-error";
 import { callSmartCreateApi, readSmartCreateApi } from "@/lib/smart-create-server-client";
 
@@ -113,11 +113,18 @@ async function runSmartOperation(
       response.status === 429
         ? RATE_LIMIT_MESSAGE
         : (response.error ?? "Smart Create could not complete the request"),
+      response.errorCode,
     );
   }
-  return { data: response.body, ok: true };
+  return {
+    data: response.body,
+    ...(response.idempotencyReplayed === undefined
+      ? {}
+      : { replayed: response.idempotencyReplayed }),
+    ok: true,
+  };
 }
 
-function failure(status: number, error: string): ActionResult<never> {
-  return { error, ok: false, status };
+function failure(status: number, error: string, code?: ActionErrorCode): ActionResult<never> {
+  return { ...(code === undefined ? {} : { code }), error, ok: false, status };
 }

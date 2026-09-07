@@ -6,7 +6,7 @@ import {
   getDocumentTransformCapabilitiesAction,
   getSmartCreateTaskAction,
 } from "@/app/actions/smart-create-actions";
-import type { ActionResult } from "@/lib/action-result";
+import type { ActionErrorCode, ActionResult } from "@/lib/action-result";
 import { boundedTransformText } from "@/lib/bounded-transform-text";
 import { readSmartCreateApi } from "@/lib/smart-create-server-client";
 
@@ -20,10 +20,18 @@ const RESPONSE_HEADERS = {
   "content-type": "application/json",
   "x-content-type-options": "nosniff",
 } as const;
+const SOURCE_CHANGED_MESSAGE =
+  "The document changed since polishing was requested. Reload it before trying again.";
 
-function failure(status: number): Response {
+function failure(status: number, code?: ActionErrorCode): Response {
+  const sourceChanged = status === 409 && code === "document_transform_source_changed";
   return Response.json(
-    { error: "Document transform request could not be completed" },
+    {
+      ...(sourceChanged ? { code } : {}),
+      error: sourceChanged
+        ? SOURCE_CHANGED_MESSAGE
+        : "Document transform request could not be completed",
+    },
     { status, headers: RESPONSE_HEADERS },
   );
 }
@@ -37,10 +45,13 @@ function trustedRequest(request: Request): boolean {
   );
 }
 
-function resultResponse(result: ActionResult<string>): Response {
-  return result.ok
-    ? new Response(result.data, { headers: RESPONSE_HEADERS })
-    : failure(result.status);
+function resultResponse(result: ActionResult<string>, exposeReplay = false): Response {
+  if (!result.ok) return failure(result.status, result.code);
+  const headers = new Headers(RESPONSE_HEADERS);
+  if (exposeReplay && result.replayed !== undefined) {
+    headers.set("Idempotency-Replayed", String(result.replayed));
+  }
+  return new Response(result.data, { headers });
 }
 
 async function post(request: Request, context: RouteContext): Promise<Response> {
@@ -54,7 +65,7 @@ async function post(request: Request, context: RouteContext): Promise<Response> 
     const body = await boundedTransformText(request.body);
     // Invoke the existing server-side auth and fail-closed edge limiter directly;
     // the browser references this stable route, not a deployment-specific action ID.
-    return resultResponse(await createDocumentTransformAction(body, key.data));
+    return resultResponse(await createDocumentTransformAction(body, key.data), true);
   } catch (error: unknown) {
     return failure(error instanceof RangeError ? 413 : 502);
   }
