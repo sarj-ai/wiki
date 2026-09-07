@@ -1,7 +1,10 @@
 import argparse
 from copy import deepcopy
+from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
+import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed repository verifier
 
 import pytest
 from scripts.backend_release import recovery
@@ -14,6 +17,12 @@ RUN_ATTEMPT = 2
 SOURCE_RUN_READ_COUNT = 2
 REVISION = "sarj-docs-backend-dammam-00001-test"
 DIGEST = "sha256:" + "b" * 64
+
+
+@dataclass(frozen=True)
+class _VerifierRun:
+    completed: subprocess.CompletedProcess[str]
+    trace: list[str]
 
 
 def receipts() -> dict:
@@ -378,6 +387,143 @@ def test_recovery_job_is_exclusive_and_contains_no_deployment_mutations() -> Non
         "scripts/github/verify-smart-create-queue.sh",
         'echo "started_at=$(date -u +\'%Y-%m-%dT%H:%M:%S.%NZ\')" >> "$GITHUB_OUTPUT"',
         "scripts/github/verify-backend-production-health.sh",
+        "scripts/github/verify-mcp-release.sh",
         "scripts/github/verify-backend-correlated-logs.sh",
         "bash scripts/backend_release/verify-serving.sh",
     ]
+
+
+def _run_mcp_verifier(tmp_path: Path, *, mode: str) -> _VerifierRun:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    trace = tmp_path / "trace"
+    fake_curl = fake_bin / "curl"
+    fake_curl.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+method=GET
+output=/dev/null
+headers=/dev/null
+hostile=false
+bearer=false
+url=
+while (($#)); do
+  case "$1" in
+    --request) method=$2; shift 2 ;;
+    --output) output=$2; shift 2 ;;
+    --dump-header) headers=$2; shift 2 ;;
+    --header)
+      [[ $2 == Host:* || $2 == Origin:* ]] && hostile=true
+      [[ $2 == Authorization:\\ Bearer* ]] && bearer=true
+      shift 2
+      ;;
+    --connect-timeout|--max-time|--write-out|--data) shift 2 ;;
+    --silent|--show-error) shift ;;
+    *) url=$1; shift ;;
+  esac
+done
+printf 'curl:%s:%s:hostile=%s:bearer=%s\\n' "$method" "$url" "$hostile" "$bearer" >> "$FAKE_TRACE"
+if [[ $FAKE_MCP_MODE == disabled ]]; then
+  : > "$output"
+  : > "$headers"
+  printf 404
+elif [[ $url == */.well-known/oauth-authorization-server ]]; then
+  printf '%s' '{"issuer":"https://api.example.test/","authorization_endpoint":"https://api.example.test/authorize","token_endpoint":"https://api.example.test/token","registration_endpoint":"https://api.example.test/register","revocation_endpoint":"https://api.example.test/revoke","authorization_response_iss_parameter_supported":true,"client_id_metadata_document_supported":false,"code_challenge_methods_supported":["S256"]}' > "$output"
+  printf 200
+elif [[ $url == */.well-known/oauth-protected-resource/mcp ]]; then
+  printf '%s' '{"resource":"https://api.example.test/mcp","authorization_servers":["https://api.example.test/"]}' > "$output"
+  printf 200
+elif [[ $hostile == true ]]; then
+  printf 403
+else
+  if [[ $bearer == false ]]; then
+    printf '%s\\r\\n' 'WWW-Authenticate: Bearer resource_metadata="https://api.example.test/.well-known/oauth-protected-resource/mcp"' > "$headers"
+  fi
+  printf 401
+fi
+"""
+    )
+    fake_gcloud = fake_bin / "gcloud"
+    fake_gcloud.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+printf 'gcloud:%s\\n' "$*" >> "$FAKE_TRACE"
+if [[ $1 == run && $2 == revisions && $3 == describe ]]; then
+  printf '{"metadata":{"name":"%s","labels":{"serving.knative.dev/service":"%s"}},"status":{"conditions":[{"type":"Ready","status":"True"}]}}\\n' "$MCP_VERIFIED_REVISION" "$SERVICE"
+else
+  printf '%s\\n' '[{"safe":true}]'
+fi
+"""
+    )
+    fake_date = fake_bin / "date"
+    fake_date.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' date >> "$FAKE_TRACE"
+printf '%s\\n' '2026-09-07T16:00:01.000000000Z'
+"""
+    )
+    fake_sleep = fake_bin / "sleep"
+    fake_sleep.write_text("#!/usr/bin/env bash\nexit 0\n")
+    for executable in (fake_curl, fake_gcloud, fake_date, fake_sleep):
+        executable.chmod(0o755)
+
+    environment = {
+        **os.environ,  # ruff: ignore[banned-api] -- controlled test subprocess environment
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",  # ruff: ignore[banned-api] -- isolated fakes first
+        "FAKE_TRACE": str(trace),
+        "FAKE_MCP_MODE": mode,
+        "MCP_VERIFY_MODE": mode,
+        "MCP_BASE_URL": "https://api.example.test",
+        "PROJECT_ID": "wiki-test",
+        "REGION": "us-central1",
+        "SERVICE": "wiki-backend",
+        "MCP_VERIFIED_REVISION": "wiki-backend-00001-test",
+        "MCP_LOG_WINDOW_START": "2026-09-07T16:00:00Z",
+    }
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed repository verifier
+        [str(Path(__file__).parent / "verify-mcp-release.sh")],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+    return _VerifierRun(completed, trace.read_text().splitlines())
+
+
+def test_mcp_release_verifier_uses_exact_revision_and_post_probe_log_bound(
+    tmp_path: Path,
+) -> None:
+    result = _run_mcp_verifier(tmp_path, mode="enabled")
+    assert result.completed.returncode == 0, result.completed.stderr
+    revision = next(
+        index
+        for index, event in enumerate(result.trace)
+        if "revisions describe" in event
+    )
+    bearer = next(
+        index for index, event in enumerate(result.trace) if "bearer=true" in event
+    )
+    bounded = result.trace.index("date")
+    logs = next(
+        index for index, event in enumerate(result.trace) if "logging read" in event
+    )
+    assert "wiki-backend-00001-test" in result.trace[revision]
+    assert revision < bearer < bounded < logs
+
+
+def test_mcp_disabled_inventory_covers_browser_route_shapes(tmp_path: Path) -> None:
+    result = _run_mcp_verifier(tmp_path, mode="disabled")
+    assert result.completed.returncode == 0, result.completed.stderr
+    observed = {
+        event.split(":", 3)[1]
+        + " "
+        + event.split("https://api.example.test", 1)[1].split(":", 1)[0]
+        for event in result.trace
+    }
+    assert {
+        "GET /integrations/mcp/consent/synthetic-intent",
+        "GET /integrations/mcp/consent/synthetic-intent/status",
+        "POST /integrations/mcp/consent/synthetic-intent",
+        "DELETE /integrations/mcp/connections/00000000-0000-0000-0000-000000000000",
+    }.issubset(observed)

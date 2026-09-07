@@ -215,10 +215,17 @@ class NativeWikiOAuthProvider(OAuthProvider):
             async with self.core.operations.operation(f"native-client:{client.client_id}") as db:
                 registered = await self.core.client(db, client.client_id)
                 redirect = str(params.redirect_uri)
-                self.redirects.validate_callback(redirect)
-                if redirect not in [
-                    str(uri) for uri in (registered.redirect_uris or [])
-                ] or not set(scopes).issubset((registered.scope or "").split()):
+                try:
+                    self.redirects.validate_authorization(
+                        client_id=client.client_id,
+                        uri=redirect,
+                        registered_callbacks=tuple(
+                            str(uri) for uri in (registered.redirect_uris or [])
+                        ),
+                    )
+                except ValueError as error:
+                    raise NativeOAuthError from error
+                if not set(scopes).issubset((registered.scope or "").split()):
                     raise NativeOAuthError
                 key = new_native_secret(NativePurpose.INTENT)
                 intent = NativeIntent(

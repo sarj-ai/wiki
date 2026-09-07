@@ -81,6 +81,70 @@ variable "cache_fernet_key_generation" {
   }
 }
 
+variable "provision_mcp_native_secrets" {
+  description = "Provision the native MCP secrets and attach them to the backend while MCP remains disabled"
+  type        = bool
+  default     = false
+
+  validation {
+    condition = (
+      var.provision_mcp_native_secrets == (var.mcp_native_fernet_keys != null) &&
+      var.provision_mcp_native_secrets == (var.mcp_native_lock_key != null)
+    )
+    error_message = "Set both native MCP secret values exactly when provision_mcp_native_secrets is true."
+  }
+}
+
+variable "mcp_native_fernet_keys" {
+  description = "Newest-first independent Fernet key ring for native MCP credential state"
+  type        = string
+  sensitive   = true
+  ephemeral   = true
+  nullable    = true
+  default     = null
+
+  validation {
+    condition     = var.mcp_native_fernet_keys == null || try(trimspace(var.mcp_native_fernet_keys) != "", false)
+    error_message = "mcp_native_fernet_keys must be null or non-empty."
+  }
+}
+
+variable "mcp_native_fernet_keys_generation" {
+  description = "Monotonic generation that publishes a new native MCP credential key-ring version"
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.mcp_native_fernet_keys_generation >= 1 && floor(var.mcp_native_fernet_keys_generation) == var.mcp_native_fernet_keys_generation
+    error_message = "mcp_native_fernet_keys_generation must be a positive integer."
+  }
+}
+
+variable "mcp_native_lock_key" {
+  description = "Independent stable Fernet key for native MCP database lock identities"
+  type        = string
+  sensitive   = true
+  ephemeral   = true
+  nullable    = true
+  default     = null
+
+  validation {
+    condition     = var.mcp_native_lock_key == null || try(trimspace(var.mcp_native_lock_key) != "", false)
+    error_message = "mcp_native_lock_key must be null or non-empty."
+  }
+}
+
+variable "mcp_native_lock_key_generation" {
+  description = "Monotonic generation for coordinated native MCP lock-key replacement"
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.mcp_native_lock_key_generation >= 1 && floor(var.mcp_native_lock_key_generation) == var.mcp_native_lock_key_generation
+    error_message = "mcp_native_lock_key_generation must be a positive integer."
+  }
+}
+
 variable "alert_email" {
   description = "Email address for monitoring alerts"
   type        = string

@@ -71,7 +71,7 @@ class Lab:
     other: WikiConsentIdentity
     client: OAuthClientInformationFull
 
-    async def intent(self) -> str:
+    async def intent(self, *, callback: str = _CALLBACK) -> str:
         request("authorize")
         url = await self.providers[0].authorize(
             self.client,
@@ -79,7 +79,7 @@ class Lab:
                 state="client-state",
                 scopes=list(McpCapability),
                 code_challenge="a" * 43,
-                redirect_uri=AnyUrl(_CALLBACK),
+                redirect_uri=AnyUrl(callback),
                 redirect_uri_provided_explicitly=True,
                 resource=_RESOURCE,
             ),
@@ -213,6 +213,16 @@ async def test_consent_read_and_cross_user_csrf_cannot_grant(lab: Lab) -> None:
     }
     with pytest.raises(NativeOAuthError):
         await core.decide(intent, identity=lab.user, browser=_BROWSER, csrf=view.csrf, approve=True)
+
+
+async def test_authorize_accepts_variable_loopback_port_but_not_host_or_path(lab: Lab) -> None:
+    assert await lab.intent(callback="http://127.0.0.1:9876/callback")
+    for callback in (
+        "http://localhost:9876/callback",
+        "http://127.0.0.1:9876/other",
+    ):
+        with pytest.raises(AuthorizeError):
+            await lab.intent(callback=callback)
 
 
 async def test_two_instance_code_and_refresh_race_never_reissues(lab: Lab) -> None:
