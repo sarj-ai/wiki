@@ -37,11 +37,11 @@ from app.document_transform.unslop import (
     UNSLOP_UPSTREAM_COMMIT,
     UNSLOP_UPSTREAM_VERSION,
 )
+from app.document_transform.versions import PRESENTATION_PIPELINE_VERSION
 from app.drive.schemas import MIME_SLIDE
 from app.identifiers import DocsRevisionId, ModelId
 
 
-PRESENTATION_PIPELINE_VERSION = "presentation-transform-v1"
 PRESENTATION_REQUEST_BUILDER_VERSION = "google-slides-requests-v1"
 _OUTPUT_SUFFIX = MappingProxyType(
     {

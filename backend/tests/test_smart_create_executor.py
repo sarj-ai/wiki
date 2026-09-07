@@ -114,6 +114,7 @@ class _Tasks(TaskService):
         idempotency_key: IdempotencyKey,
         payload: BaseModel,
         admit: Callable[[], Awaitable[None]] | None = None,
+        admit_new: Callable[[], None] | None = None,
     ) -> TaskReservation:
         raise NotImplementedError
 

@@ -8,7 +8,11 @@ from fastapi import HTTPException, status
 
 from app.config import settings
 from app.document_transform.docx_renderer import validate_markdown_import
-from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
+from app.document_transform.errors import (
+    SourceChangedError,
+    SourceTooLargeError,
+    UnsupportedSourceError,
+)
 from app.document_transform.ir import parse_markdown
 from app.document_transform.schemas import (
     DocumentTransformRequest,
@@ -66,8 +70,14 @@ async def submit_document_transform(
                 detail=exc.public_detail,
             ) from exc
 
+    authorized_source: FileResponse | None = None
+
     async def admit() -> None:
-        await validate_transform_admission(payload, files)
+        nonlocal authorized_source
+        authorized_source = await validate_transform_authorization(payload, files)
+
+    def admit_new() -> None:
+        validate_transform_freshness(payload, authorized_source)
 
     reservation = await tasks.create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -75,6 +85,7 @@ async def submit_document_transform(
         idempotency_key=idempotency_key,
         payload=payload,
         admit=admit,
+        admit_new=admit_new,
     )
     if isinstance(reservation.task, PendingTaskRead | RunningTaskRead):
         await enqueuer.enqueue_document_transform(reservation.task.id)
@@ -84,6 +95,13 @@ async def submit_document_transform(
 async def validate_transform_admission(
     payload: DocumentTransformRequest, files: DestinationFileReader
 ) -> None:
+    source = await validate_transform_authorization(payload, files)
+    validate_transform_freshness(payload, source)
+
+
+async def validate_transform_authorization(
+    payload: DocumentTransformRequest, files: DestinationFileReader
+) -> FileResponse | None:
     if isinstance(payload.source, MarkdownSource):
         destination = await files.get(payload.source.destination_folder_id)
         if destination.mime_type != MIME_FOLDER or not destination.can_add_children:
@@ -113,3 +131,17 @@ async def validate_transform_admission(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="In-place transformation is available only for native Google Docs",
             )
+        return source
+    return None
+
+
+def validate_transform_freshness(
+    payload: DocumentTransformRequest, source: FileResponse | None
+) -> None:
+    if isinstance(payload.source, DriveFileSource) and (
+        source is None or source.modified_time != payload.source.expected_modified_time
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=SourceChangedError.public_detail,
+        )
