@@ -66,6 +66,11 @@ previous immutable Dammam image revision; a data rollback uses Dammam PITR or th
 export. Database migrations must remain backward compatible because the deployment workflow runs
 them before switching Cloud Run traffic.
 
+Backend verification-only recovery requires both the completed deploy workflow run ID and its
+exact run-attempt number. Copy both values from the same GitHub Actions attempt; never reuse an
+older attempt after that run has been rerun. Leaving both inputs empty performs a normal deployment,
+while supplying only one fails closed without running deployment mutations.
+
 ## Document Transform and Markdown Import
 
 Document Transform creates a branded Google Doc or Google Slides sibling from an existing Drive

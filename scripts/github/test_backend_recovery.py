@@ -10,6 +10,8 @@ import yaml
 
 SHA = "a" * 40
 RUN_ID = 123
+RUN_ATTEMPT = 2
+SOURCE_RUN_READ_COUNT = 2
 REVISION = "sarj-docs-backend-dammam-00001-test"
 DIGEST = "sha256:" + "b" * 64
 
@@ -24,7 +26,7 @@ def receipts() -> dict:
         "head_branch": "main",
         "event": "push",
         "status": "completed",
-        "run_attempt": 1,
+        "run_attempt": RUN_ATTEMPT,
         "repository": repository,
         "head_repository": repository,
         "conclusion": "failure",
@@ -32,7 +34,7 @@ def receipts() -> dict:
     job = {
         "name": "deploy",
         "run_id": RUN_ID,
-        "run_attempt": 1,
+        "run_attempt": RUN_ATTEMPT,
         "head_sha": SHA,
         "status": "completed",
         "steps": [
@@ -42,7 +44,7 @@ def receipts() -> dict:
     }
     return {
         f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}": run,
-        f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}/attempts/1/jobs?per_page=100&page=1": {
+        f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}/attempts/{RUN_ATTEMPT}/jobs?per_page=100&page=1": {
             "total_count": 1,
             "jobs": [job],
         },
@@ -59,7 +61,7 @@ def service() -> dict:
 
 
 def test_completed_mutations_authorize_read_only_verification() -> None:
-    recovery.verify_source(receipts().__getitem__, SHA, RUN_ID)
+    recovery.verify_source(receipts().__getitem__, SHA, RUN_ID, RUN_ATTEMPT)
 
 
 @pytest.mark.parametrize("advance", [False, True])
@@ -77,7 +79,9 @@ def test_current_main_is_rechecked_after_receipt_reads(
         return data[endpoint]
 
     monkeypatch.setattr(recovery, "fetch_github", fetch)
-    args = argparse.Namespace(sha=SHA, phase="source", run_id=RUN_ID)
+    args = argparse.Namespace(
+        sha=SHA, phase="source", run_id=RUN_ID, run_attempt=RUN_ATTEMPT
+    )
     if advance:
         with pytest.raises(recovery.ReleaseBlockedError, match="main advanced"):
             recovery.verify_current_release(args)
@@ -98,14 +102,45 @@ def test_current_main_is_rechecked_after_receipt_reads(
         ("status", "in_progress"),
         ("repository", {}),
         ("head_repository", {}),
-        ("run_attempt", True),
     ],
 )
 def test_untrusted_source_is_rejected(field: str, value: object) -> None:
     data = receipts()
     data[f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}"][field] = value
     with pytest.raises(recovery.ReleaseBlockedError):
-        recovery.verify_source(data.__getitem__, SHA, RUN_ID)
+        recovery.verify_source(data.__getitem__, SHA, RUN_ID, RUN_ATTEMPT)
+
+
+@pytest.mark.parametrize("run_attempt", [0, -1, True])
+def test_invalid_requested_attempt_is_rejected(run_attempt: int) -> None:
+    with pytest.raises(recovery.ReleaseBlockedError):
+        recovery.verify_source(receipts().__getitem__, SHA, RUN_ID, run_attempt)
+
+
+def test_latest_attempt_must_match_requested_attempt() -> None:
+    data = receipts()
+    data[f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}"]["run_attempt"] = RUN_ATTEMPT + 1
+    with pytest.raises(recovery.ReleaseBlockedError, match="attempt changed"):
+        recovery.verify_source(data.__getitem__, SHA, RUN_ID, RUN_ATTEMPT)
+
+
+def test_attempt_is_rechecked_after_job_receipts() -> None:
+    data = receipts()
+    run_endpoint = f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}"
+    run_reads = 0
+
+    def fetch(endpoint: str) -> dict:
+        nonlocal run_reads
+        result = deepcopy(data[endpoint])
+        if endpoint == run_endpoint:
+            run_reads += 1
+            if run_reads == SOURCE_RUN_READ_COUNT:
+                result["run_attempt"] = RUN_ATTEMPT + 1
+        return result
+
+    with pytest.raises(recovery.ReleaseBlockedError, match="attempt changed"):
+        recovery.verify_source(fetch, SHA, RUN_ID, RUN_ATTEMPT)
+    assert run_reads == SOURCE_RUN_READ_COUNT
 
 
 @pytest.mark.parametrize("conclusion", ["failure", "skipped", "cancelled", None])
@@ -114,12 +149,14 @@ def test_incomplete_mutation_never_authorizes_recovery(
     step_name: str, conclusion: str | None
 ) -> None:
     data = receipts()
-    page = data[f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}/attempts/1/jobs?per_page=100&page=1"]
+    page = data[
+        f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}/attempts/{RUN_ATTEMPT}/jobs?per_page=100&page=1"
+    ]
     for step in page["jobs"][0]["steps"]:
         if step["name"] == step_name:
             step["conclusion"] = conclusion
     with pytest.raises(recovery.ReleaseBlockedError):
-        recovery.verify_source(data.__getitem__, SHA, RUN_ID)
+        recovery.verify_source(data.__getitem__, SHA, RUN_ID, RUN_ATTEMPT)
 
 
 @pytest.mark.parametrize(
@@ -136,7 +173,9 @@ def test_incomplete_mutation_never_authorizes_recovery(
 )
 def test_ambiguous_or_mismatched_job_receipts_block(case: str) -> None:
     data = receipts()
-    page = data[f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}/attempts/1/jobs?per_page=100&page=1"]
+    page = data[
+        f"{recovery.API_PREFIX}/actions/runs/{RUN_ID}/attempts/{RUN_ATTEMPT}/jobs?per_page=100&page=1"
+    ]
     job = page["jobs"][0]
     if case == "missing-job":
         job["name"] = "verify-existing"
@@ -154,7 +193,7 @@ def test_ambiguous_or_mismatched_job_receipts_block(case: str) -> None:
     else:
         job["steps"].append(deepcopy(job["steps"][0]))
     with pytest.raises(recovery.ReleaseBlockedError):
-        recovery.verify_source(data.__getitem__, SHA, RUN_ID)
+        recovery.verify_source(data.__getitem__, SHA, RUN_ID, RUN_ATTEMPT)
 
 
 def test_single_latest_ready_revision_is_required() -> None:
@@ -218,11 +257,24 @@ def test_serving_digest_is_checked_with_only_describe_commands(
 def test_recovery_job_is_exclusive_and_contains_no_deployment_mutations() -> None:
     root = Path(__file__).resolve().parents[2]
     workflow = yaml.safe_load((root / ".github/workflows/deploy-backend.yml").read_text())
+    inputs = workflow["on"]["workflow_dispatch"]["inputs"]
+    assert set(inputs) == {"verification_run_id", "verification_run_attempt"}
+    assert all(
+        isinstance(value["default"], str) and not value["default"]
+        for value in inputs.values()
+    )
     jobs = workflow["jobs"]
     verification = jobs["verify-existing"]
-    assert "inputs.verification_run_id == ''" in jobs["deploy"]["if"]
-    assert "inputs.verification_run_id != ''" in verification["if"]
-    assert "github.event_name == 'workflow_dispatch'" in verification["if"]
+    assert jobs["deploy"]["if"] == (
+        "github.ref == 'refs/heads/main' && (github.event_name == 'push' || "
+        "(github.event_name == 'workflow_dispatch' && "
+        "inputs.verification_run_id == '' && "
+        "inputs.verification_run_attempt == ''))"
+    )
+    assert verification["if"] == (
+        "github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && "
+        "(inputs.verification_run_id != '' || inputs.verification_run_attempt != '')"
+    )
     assert verification["needs"] == jobs["deploy"]["needs"]
     steps = verification["steps"]
     uses = [step["uses"].split("@")[0] for step in steps if "uses" in step]
@@ -235,7 +287,7 @@ def test_recovery_job_is_exclusive_and_contains_no_deployment_mutations() -> Non
     script_calls = [step["run"] for step in steps if "run" in step]
     assert script_calls == [
         "bash scripts/github/verify-release-gate.sh ready backend",
-        'uv run --no-project --python 3.14 python -m scripts.backend_release.recovery \\\n  --sha "$GITHUB_SHA" source --run-id "$SOURCE_RUN_ID"\n',
+        'uv run --no-project --python 3.14 python -m scripts.backend_release.recovery \\\n  --sha "$GITHUB_SHA" source --run-id "$SOURCE_RUN_ID" \\\n  --run-attempt "$SOURCE_RUN_ATTEMPT"\n',
         "bash scripts/backend_release/verify-serving.sh",
         "scripts/github/verify-smart-create-queue.sh",
         'echo "started_at=$(date -u +\'%Y-%m-%dT%H:%M:%S.%NZ\')" >> "$GITHUB_OUTPUT"',

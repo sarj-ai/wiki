@@ -36,8 +36,7 @@ MAX_JOBS = 100
 FULL_TRAFFIC = 100
 
 
-def verify_source(fetch: Fetch, sha: str, run_id: int) -> None:
-    require(run_id > 0, "Invalid source run")
+def verify_source_run(fetch: Fetch, sha: str, run_id: int, run_attempt: int) -> None:
     run = fetch(f"{API_PREFIX}/actions/runs/{run_id}")
     require(
         run.get("id") == run_id
@@ -55,8 +54,16 @@ def verify_source(fetch: Fetch, sha: str, run_id: int) -> None:
         run.get("conclusion") in {"success", "failure", "cancelled", "timed_out"},
         "Invalid source result",
     )
-    attempt = positive_id(run.get("run_attempt"))
-    page = fetch(f"{API_PREFIX}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100&page=1")
+    require(run.get("run_attempt") == run_attempt, "Source run attempt changed")
+
+
+def verify_source(fetch: Fetch, sha: str, run_id: int, run_attempt: int) -> None:
+    run_id = positive_id(run_id)
+    run_attempt = positive_id(run_attempt)
+    verify_source_run(fetch, sha, run_id, run_attempt)
+    page = fetch(
+        f"{API_PREFIX}/actions/runs/{run_id}/attempts/{run_attempt}/jobs?per_page=100&page=1"
+    )
     jobs = page.get("jobs")
     require(isinstance(jobs, list), "Invalid source jobs")
     if not isinstance(jobs, list):
@@ -77,7 +84,7 @@ def verify_source(fetch: Fetch, sha: str, run_id: int) -> None:
     job = deployments[0]
     require(
         job.get("run_id") == run_id
-        and job.get("run_attempt") == attempt
+        and job.get("run_attempt") == run_attempt
         and job.get("head_sha") == sha
         and job.get("status") == "completed",
         "Source deploy job identity changed",
@@ -104,6 +111,8 @@ def verify_source(fetch: Fetch, sha: str, run_id: int) -> None:
             "Release mutation did not complete successfully in order",
         )
         previous_number = number
+    # Fence a rerun starting while the pinned attempt's job receipts were read.
+    verify_source_run(fetch, sha, run_id, run_attempt)
 
 
 def serving_revision(service: JsonObject) -> str:
@@ -181,7 +190,7 @@ def verify_current_release(args: argparse.Namespace) -> None:
     require(re.fullmatch(r"[0-9a-f]{40}", args.sha), "Invalid release SHA")
     require_current_main(fetch_github, args.sha)
     if args.phase == "source":
-        verify_source(fetch_github, args.sha, args.run_id)
+        verify_source(fetch_github, args.sha, args.run_id, args.run_attempt)
     else:
         require(args.phase == "serving", "Invalid recovery phase")
         verify_serving(args)
@@ -194,6 +203,7 @@ def main() -> int:
     phases = parser.add_subparsers(dest="phase", required=True)
     source = phases.add_parser("source")
     source.add_argument("--run-id", type=int, required=True)
+    source.add_argument("--run-attempt", type=int, required=True)
     serving = phases.add_parser("serving")
     for name in ("project", "region", "repository", "service", "image"):
         serving.add_argument(f"--{name}", required=True)
