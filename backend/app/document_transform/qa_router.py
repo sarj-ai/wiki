@@ -1,8 +1,9 @@
 from datetime import datetime
 import hmac
 from typing import Annotated, Literal
+import uuid
 
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,6 +46,7 @@ class QaGrantExchange(QaGrantBinding):
     credential: str = Field(min_length=32, max_length=256)
     execution_name: str = Field(min_length=1, max_length=255)
     operation: Literal["consume", "renew"]
+    request_nonce: uuid.UUID
 
 
 class QaCapabilityResponse(_StrictModel):
@@ -107,6 +109,7 @@ async def issue_document_transform_qa_grant(
     request: Request,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    response: Response,
 ) -> QaGrantIssueResponse:
     _configured_binding(body)
     token = request.cookies.get("access_token")
@@ -137,6 +140,7 @@ async def issue_document_transform_qa_grant(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="QA grant could not be issued"
         ) from exc
+    _prevent_token_caching(response)
     return QaGrantIssueResponse(
         grant_id=str(grant.grant_id), grant_token=grant.token, expires_at=grant.expires_at
     )
@@ -148,6 +152,7 @@ async def issue_document_transform_qa_grant(
 async def exchange_document_transform_qa_grant(
     body: Annotated[QaGrantExchange, Body()],
     db: Annotated[AsyncSession, Depends(get_db)],
+    response: Response,
 ) -> QaCapabilityResponse:
     _configured_binding(body)
     try:
@@ -155,6 +160,8 @@ async def exchange_document_transform_qa_grant(
             await consume_qa_grant(
                 db,
                 token=body.credential,
+                request_nonce=body.request_nonce,
+                derivation_key=settings.SECRET_KEY.get_secret_value().encode(),
                 execution_name=body.execution_name,
                 release_sha=body.release_sha,
                 image_digest=body.image_digest,
@@ -166,6 +173,8 @@ async def exchange_document_transform_qa_grant(
             else await renew_qa_capability(
                 db,
                 capability_token=body.credential,
+                request_nonce=body.request_nonce,
+                derivation_key=settings.SECRET_KEY.get_secret_value().encode(),
                 execution_name=body.execution_name,
                 release_sha=body.release_sha,
                 image_digest=body.image_digest,
@@ -180,6 +189,7 @@ async def exchange_document_transform_qa_grant(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="QA credential is invalid"
         ) from exc
+    _prevent_token_caching(response)
     return _capability_response(capability)
 
 
@@ -190,3 +200,8 @@ def _capability_response(capability: QaCapability) -> QaCapabilityResponse:
         job_expires_at=capability.job_expires_at,
         user_email=capability.user_email,
     )
+
+
+def _prevent_token_caching(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"

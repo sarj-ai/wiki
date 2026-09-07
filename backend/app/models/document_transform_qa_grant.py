@@ -34,11 +34,19 @@ class DocumentTransformQaGrant(Base):
         ),
         CheckConstraint(
             "(consumed_at IS NULL AND consumed_by_execution IS NULL AND capability_digest IS NULL "
-            "AND capability_expires_at IS NULL AND job_expires_at IS NULL) OR "
+            "AND previous_capability_digest IS NULL AND consume_request_nonce IS NULL "
+            "AND renewal_request_nonce IS NULL AND capability_expires_at IS NULL "
+            "AND job_expires_at IS NULL) OR "
             "(consumed_at IS NOT NULL AND consumed_by_execution IS NOT NULL "
-            "AND capability_digest IS NOT NULL AND capability_expires_at IS NOT NULL "
+            "AND capability_digest IS NOT NULL AND consume_request_nonce IS NOT NULL "
+            "AND capability_expires_at IS NOT NULL "
             "AND job_expires_at IS NOT NULL AND capability_expires_at <= job_expires_at)",
             name="ck_document_transform_qa_grant_atomic_state",
+        ),
+        CheckConstraint(
+            "(previous_capability_digest IS NULL AND renewal_request_nonce IS NULL) OR "
+            "(previous_capability_digest IS NOT NULL AND renewal_request_nonce IS NOT NULL)",
+            name="ck_document_transform_qa_grant_renewal_replay_state",
         ),
         Index("ix_document_transform_qa_grants_expires_at", "expires_at"),
         Index("ix_document_transform_qa_grants_job_expires_at", "job_expires_at"),
@@ -66,6 +74,9 @@ class DocumentTransformQaGrant(Base):
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     consumed_by_execution: Mapped[str | None] = mapped_column(Text)
     capability_digest: Mapped[bytes | None] = mapped_column(LargeBinary(32), unique=True)
+    previous_capability_digest: Mapped[bytes | None] = mapped_column(LargeBinary(32))
+    consume_request_nonce: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    renewal_request_nonce: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     capability_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     job_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_renewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -35,6 +35,9 @@ from app.models.user import User
 
 _SOURCE_FOLDER_ID = FileId("source-folder")
 _DESTINATION_FOLDER_ID = FileId("destination-folder")
+_CONSUME_NONCE = uuid.UUID("11111111-1111-4111-8111-111111111111")
+_RENEW_NONCE = uuid.UUID("22222222-2222-4222-8222-222222222222")
+_DERIVATION_KEY = b"test-only-qa-capability-key-32!!"
 
 
 class _QaSettings(BaseSettings):
@@ -120,6 +123,7 @@ async def _consume(
     token: str,
     execution_name: str,
     *,
+    request_nonce: uuid.UUID = _CONSUME_NONCE,
     release_sha: str = "a" * 40,
     image_digest: str = "sha256:" + "c" * 64,
     source_folder_id: FileId = _SOURCE_FOLDER_ID,
@@ -129,6 +133,8 @@ async def _consume(
     return await consume_qa_grant(
         db,
         token=token,
+        request_nonce=request_nonce,
+        derivation_key=_DERIVATION_KEY,
         execution_name=execution_name,
         release_sha=release_sha,
         image_digest=image_digest,
@@ -138,10 +144,14 @@ async def _consume(
     )
 
 
-async def _renew(db: AsyncSession, token: str) -> QaCapability:
+async def _renew(
+    db: AsyncSession, token: str, *, request_nonce: uuid.UUID = _RENEW_NONCE
+) -> QaCapability:
     return await renew_qa_capability(
         db,
         capability_token=token,
+        request_nonce=request_nonce,
+        derivation_key=_DERIVATION_KEY,
         execution_name="execution-a",
         release_sha="a" * 40,
         image_digest="sha256:" + "c" * 64,
@@ -260,11 +270,59 @@ async def test_real_postgres_renewal_rotates_capability_and_rechecks_token_versi
         renewed = await _renew(db, capability.token)
     assert renewed.token != capability.token
     async with sessions.begin() as db:
+        replayed = await _renew(db, capability.token)
+    assert replayed == renewed
+    async with sessions.begin() as db:
         with pytest.raises(QaGrantError):
-            await _renew(db, capability.token)
+            await _renew(db, capability.token, request_nonce=uuid.uuid7())
         user = await db.get(User, identity.user.id)
         assert user is not None
         user.token_version += 1
     async with sessions.begin() as db:
         with pytest.raises(QaGrantError):
             await _renew(db, renewed.token)
+
+
+async def test_real_postgres_consume_response_loss_replays_exact_capability(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        issued = await _issue(db, identity.user, identity.session)
+    async with sessions.begin() as db:
+        first = await _consume(db, issued.token, "execution-a")
+    async with sessions.begin() as db:
+        replay = await _consume(db, issued.token, "execution-a")
+    assert replay == first
+
+
+async def test_real_postgres_concurrent_identical_consume_is_idempotent(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        issued = await _issue(db, identity.user, identity.session)
+
+    async def consume() -> QaCapability:
+        async with sessions.begin() as db:
+            return await _consume(db, issued.token, "execution-a")
+
+    first, second = await asyncio.gather(consume(), consume())
+    assert first == second
+
+
+async def test_real_postgres_concurrent_identical_renewal_is_idempotent(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        issued = await _issue(db, identity.user, identity.session)
+    async with sessions.begin() as db:
+        capability = await _consume(db, issued.token, "execution-a")
+
+    async def renew() -> QaCapability:
+        async with sessions.begin() as db:
+            return await _renew(db, capability.token)
+
+    first, second = await asyncio.gather(renew(), renew())
+    assert first == second

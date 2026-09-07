@@ -28,8 +28,7 @@ def test_qa_container_reuses_corpus_runner_and_fails_closed_without_arguments() 
     assert "apk add --no-cache poppler-utils" in dockerfile
     assert "USER app" in dockerfile
     assert (
-        'ENTRYPOINT [".venv/bin/python", "-m", "scripts.qa_document_transform_corpus"]'
-        in dockerfile
+        'ENTRYPOINT [".venv/bin/python", "-m", "scripts.qa_document_transform_cloud"]' in dockerfile
     )
     assert "CMD" not in dockerfile
 

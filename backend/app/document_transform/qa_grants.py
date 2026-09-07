@@ -1,3 +1,4 @@
+import base64
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import hashlib
@@ -26,6 +27,7 @@ _MAX_TOKEN_LENGTH = 256
 _MAX_EXECUTION_NAME_LENGTH = 255
 _RELEASE_SHA_LENGTH = 40
 _IMAGE_DIGEST_LENGTH = 71
+_MIN_DERIVATION_KEY_BYTES = 32
 
 
 class QaGrantError(Exception):
@@ -60,6 +62,19 @@ def _digest(token: str) -> bytes:
     if not token or len(token) > _MAX_TOKEN_LENGTH or not token.isascii():
         raise QaGrantError
     return hashlib.sha256(token.encode()).digest()
+
+
+def _derive_capability(
+    key: bytes,
+    grant_id: DocumentTransformQaGrantId,
+    operation: str,
+    credential: str,
+    request_nonce: uuid.UUID,
+) -> str:
+    if len(key) < _MIN_DERIVATION_KEY_BYTES:
+        raise QaGrantError
+    message = f"qa-capability\0{grant_id}\0{operation}\0{request_nonce}\0{credential}".encode()
+    return base64.urlsafe_b64encode(hmac.digest(key, message, "sha256")).rstrip(b"=").decode()
 
 
 async def issue_qa_grant(
@@ -118,6 +133,8 @@ async def consume_qa_grant(
     db: AsyncSession,
     *,
     token: str,
+    request_nonce: uuid.UUID,
+    derivation_key: bytes,
     execution_name: str,
     release_sha: str,
     image_digest: str,
@@ -131,9 +148,24 @@ async def consume_qa_grant(
     if row is None:
         raise QaGrantError
     grant, user, session, now = row.grant, row.user, row.session, row.now
+    capability = _derive_capability(derivation_key, grant.id, "consume", token, request_nonce)
+    if grant.consumed_at is not None:
+        return _replay_consumption(
+            grant,
+            user,
+            session,
+            now,
+            capability=capability,
+            request_nonce=request_nonce,
+            execution_name=execution_name,
+            release_sha=release_sha,
+            image_digest=image_digest,
+            source_folder_id=source_folder_id,
+            destination_folder_id=destination_folder_id,
+            mode=mode,
+        )
     if (
-        grant.consumed_at is not None
-        or grant.revoked_at is not None
+        grant.revoked_at is not None
         or not grant.created_at <= now < grant.expires_at
         or not _identity_is_live(grant, user, session, now)
         or not _matches(
@@ -146,9 +178,9 @@ async def consume_qa_grant(
         )
     ):
         raise QaGrantError
-    capability = secrets.token_urlsafe(_TOKEN_BYTES)
     grant.consumed_at = now
     grant.consumed_by_execution = execution_name
+    grant.consume_request_nonce = request_nonce
     grant.capability_digest = _digest(capability)
     job_expires_at = now + MAX_JOB_LIFETIME
     capability_expires_at = min(now + CAPABILITY_LIFETIME, job_expires_at)
@@ -162,6 +194,8 @@ async def renew_qa_capability(
     db: AsyncSession,
     *,
     capability_token: str,
+    request_nonce: uuid.UUID,
+    derivation_key: bytes,
     execution_name: str,
     release_sha: str,
     image_digest: str,
@@ -171,10 +205,29 @@ async def renew_qa_capability(
 ) -> QaCapability:
     _validate_runtime(execution_name)
     _validate_binding(release_sha, image_digest, source_folder_id, destination_folder_id)
-    row = await _locked_grant(db, capability_digest=_digest(capability_token))
+    supplied_digest = _digest(capability_token)
+    row = await _locked_grant(db, capability_digest=supplied_digest)
     if row is None:
         raise QaGrantError
     grant, user, session, now = row.grant, row.user, row.session, row.now
+    if grant.previous_capability_digest is not None and hmac.compare_digest(
+        grant.previous_capability_digest, supplied_digest
+    ):
+        return _replay_renewal(
+            grant,
+            user,
+            session,
+            now,
+            capability_token=capability_token,
+            request_nonce=request_nonce,
+            derivation_key=derivation_key,
+            execution_name=execution_name,
+            release_sha=release_sha,
+            image_digest=image_digest,
+            source_folder_id=source_folder_id,
+            destination_folder_id=destination_folder_id,
+            mode=mode,
+        )
     if (
         not _renewal_is_live(grant, execution_name, now)
         or not _identity_is_live(grant, user, session, now)
@@ -192,8 +245,12 @@ async def renew_qa_capability(
     job_expires_at = grant.job_expires_at
     if capability_expires_at is None or job_expires_at is None:  # pragma: no cover - checked above
         raise QaGrantError
-    capability = secrets.token_urlsafe(_TOKEN_BYTES)
+    capability = _derive_capability(
+        derivation_key, grant.id, "renew", capability_token, request_nonce
+    )
+    grant.previous_capability_digest = supplied_digest
     grant.capability_digest = _digest(capability)
+    grant.renewal_request_nonce = request_nonce
     renewed_expires_at = min(now + CAPABILITY_LIFETIME, job_expires_at)
     grant.capability_expires_at = renewed_expires_at
     grant.last_renewed_at = now
@@ -216,13 +273,122 @@ async def delete_expired_qa_grants(db: AsyncSession) -> int:
     return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
+def _replay_consumption(
+    grant: DocumentTransformQaGrant,
+    user: User,
+    session: UserSession,
+    now: datetime,
+    *,
+    capability: str,
+    request_nonce: uuid.UUID,
+    execution_name: str,
+    release_sha: str,
+    image_digest: str,
+    source_folder_id: FileId,
+    destination_folder_id: FileId,
+    mode: TransformMode,
+) -> QaCapability:
+    request_matches = (
+        grant.consume_request_nonce != request_nonce
+        or grant.consumed_by_execution != execution_name
+        or grant.previous_capability_digest is not None
+    )
+    if (
+        request_matches
+        or not _returned_capability_is_live(grant, capability, now)
+        or not _identity_is_live(grant, user, session, now)
+        or not _matches(
+            grant,
+            release_sha=release_sha,
+            image_digest=image_digest,
+            source_folder_id=source_folder_id,
+            destination_folder_id=destination_folder_id,
+            mode=mode,
+        )
+    ):
+        raise QaGrantError
+    return _capability_result(grant, user, capability)
+
+
+def _replay_renewal(
+    grant: DocumentTransformQaGrant,
+    user: User,
+    session: UserSession,
+    now: datetime,
+    *,
+    capability_token: str,
+    request_nonce: uuid.UUID,
+    derivation_key: bytes,
+    execution_name: str,
+    release_sha: str,
+    image_digest: str,
+    source_folder_id: FileId,
+    destination_folder_id: FileId,
+    mode: TransformMode,
+) -> QaCapability:
+    capability = _derive_capability(
+        derivation_key, grant.id, "renew", capability_token, request_nonce
+    )
+    request_mismatch = grant.renewal_request_nonce != request_nonce or (
+        grant.consumed_by_execution != execution_name
+    )
+    if (
+        request_mismatch
+        or not _returned_capability_is_live(grant, capability, now)
+        or not _identity_is_live(grant, user, session, now)
+        or not _matches(
+            grant,
+            release_sha=release_sha,
+            image_digest=image_digest,
+            source_folder_id=source_folder_id,
+            destination_folder_id=destination_folder_id,
+            mode=mode,
+        )
+    ):
+        raise QaGrantError
+    return _capability_result(grant, user, capability)
+
+
+def _returned_capability_is_live(
+    grant: DocumentTransformQaGrant, capability: str, now: datetime
+) -> bool:
+    return (
+        grant.capability_digest is not None
+        and hmac.compare_digest(grant.capability_digest, _digest(capability))
+        and _active_capability(grant, now)
+    )
+
+
+def _active_capability(grant: DocumentTransformQaGrant, now: datetime) -> bool:
+    return (
+        grant.revoked_at is None
+        and grant.capability_expires_at is not None
+        and grant.job_expires_at is not None
+        and now < grant.capability_expires_at
+        and now < grant.job_expires_at
+    )
+
+
+def _capability_result(
+    grant: DocumentTransformQaGrant, user: User, capability: str
+) -> QaCapability:
+    if grant.capability_expires_at is None or grant.job_expires_at is None:
+        raise QaGrantError
+    return QaCapability(
+        capability, grant.capability_expires_at, grant.job_expires_at, user.id, user.email
+    )
+
+
 async def _locked_grant(
     db: AsyncSession, *, token_digest: bytes | None = None, capability_digest: bytes | None = None
 ) -> _LockedGrant | None:
     predicate = (
         DocumentTransformQaGrant.token_digest.op("=")(token_digest)
         if token_digest is not None
-        else DocumentTransformQaGrant.capability_digest.op("=")(capability_digest)
+        else or_(
+            DocumentTransformQaGrant.capability_digest.op("=")(capability_digest),
+            DocumentTransformQaGrant.previous_capability_digest.op("=")(capability_digest),
+        )
     )
     row = (
         await db.execute(

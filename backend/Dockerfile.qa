@@ -39,4 +39,4 @@ USER app
 # The Terraform job intentionally supplies no arguments, so an accidental
 # execution fails closed in argparse. Cloud execution remains activation-blocked
 # until the backend-mediated Drive capability data plane is implemented.
-ENTRYPOINT [".venv/bin/python", "-m", "scripts.qa_document_transform_corpus"]
+ENTRYPOINT [".venv/bin/python", "-m", "scripts.qa_document_transform_cloud"]

@@ -40,6 +40,9 @@ def upgrade() -> None:
         sa.Column("consumed_at", sa.DateTime(timezone=True)),
         sa.Column("consumed_by_execution", sa.Text()),
         sa.Column("capability_digest", sa.LargeBinary(length=32), unique=True),
+        sa.Column("previous_capability_digest", sa.LargeBinary(length=32)),
+        sa.Column("consume_request_nonce", sa.UUID()),
+        sa.Column("renewal_request_nonce", sa.UUID()),
         sa.Column("capability_expires_at", sa.DateTime(timezone=True)),
         sa.Column("job_expires_at", sa.DateTime(timezone=True)),
         sa.Column("last_renewed_at", sa.DateTime(timezone=True)),
@@ -62,11 +65,19 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint(
             "(consumed_at IS NULL AND consumed_by_execution IS NULL AND capability_digest IS NULL "
-            "AND capability_expires_at IS NULL AND job_expires_at IS NULL) OR "
+            "AND previous_capability_digest IS NULL AND consume_request_nonce IS NULL "
+            "AND renewal_request_nonce IS NULL AND capability_expires_at IS NULL "
+            "AND job_expires_at IS NULL) OR "
             "(consumed_at IS NOT NULL AND consumed_by_execution IS NOT NULL "
-            "AND capability_digest IS NOT NULL AND capability_expires_at IS NOT NULL "
+            "AND capability_digest IS NOT NULL AND consume_request_nonce IS NOT NULL "
+            "AND capability_expires_at IS NOT NULL "
             "AND job_expires_at IS NOT NULL AND capability_expires_at <= job_expires_at)",
             name="ck_document_transform_qa_grant_atomic_state",
+        ),
+        sa.CheckConstraint(
+            "(previous_capability_digest IS NULL AND renewal_request_nonce IS NULL) OR "
+            "(previous_capability_digest IS NOT NULL AND renewal_request_nonce IS NOT NULL)",
+            name="ck_document_transform_qa_grant_renewal_replay_state",
         ),
     )
     op.create_index(

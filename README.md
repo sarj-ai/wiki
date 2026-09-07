@@ -262,7 +262,10 @@ source and destination folders, mode, and a maximum 15-minute expiry. The worklo
 `POST /internal/document-transform-qa/exchange` endpoint atomically consumes a grant and returns an
 opaque five-minute capability. Renewal rotates that capability under the same row lock for at most
 the two-hour job lifetime and rechecks session revocation and token version every time. The job
-never reads or updates grant rows directly.
+never reads or updates grant rows directly. Consume and renewal requests include UUID request
+nonces: deterministic backend-only derivation replays the exact response after a committed response
+is lost, while a one-generation previous-token overlap permits the same renewal retry and rejects a
+different nonce or older generation.
 
 This repository deliberately does not activate the job or provide an unauthenticated grant-issuer
 CLI. Activation is a separate reviewed operation:
