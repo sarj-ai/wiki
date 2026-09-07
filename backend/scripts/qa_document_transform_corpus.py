@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections import Counter
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
@@ -44,6 +45,15 @@ from app.document_transform.executor import PIPELINE_VERSION
 from app.document_transform.gateway import SourceSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import DocumentIR, parse_google_document
+from app.document_transform.qa_contract import (
+    PRODUCTION_WIKI_API_ORIGIN,
+    QA_MAX_FOLDER_LIST_PAGES,
+    QA_MAX_PERMISSION_LIST_PAGES,
+    QA_MAX_TRAVERSAL_METADATA_BYTES,
+    QA_MAX_TRAVERSED_FOLDERS,
+    QaCohort,
+    required_document_count,
+)
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import (
     DocumentTransformResult,
@@ -72,12 +82,11 @@ if TYPE_CHECKING:
 
     from googleapiclient._apis.drive.v3.resources import DriveResource
 
-_API_BASE_URL = "https://api-wiki.sarj.ai"
+_API_BASE_URL = PRODUCTION_WIKI_API_ORIGIN
 _ACCESS_TOKEN_ENV = "WIKI_QA_ACCESS_TOKEN"
 _CONFIRMATION = "CREATE_ALL_OWNER_ONLY_DESTINATION_COPIES"
 _CANARY_CONFIRMATION = "CREATE_1_PRIVATE_CANARY"
-_DEFAULT_COUNT = 20
-_MAX_LIST_PAGES = 100
+_DEFAULT_COUNT = required_document_count("corpus")
 _POLL_INTERVAL = timedelta(seconds=1)
 _TASK_TIMEOUT = timedelta(minutes=15)
 _COMMIT_SHA_LENGTH = 40
@@ -102,8 +111,6 @@ _MAX_RENDERED_BYTES = 250 * 1024 * 1024
 _CLOUD_RUN_JOB_ENV = "CLOUD_RUN_JOB"
 _DURABLE_ARTIFACT_ROOT_ENV = "WIKI_QA_DURABLE_ARTIFACT_ROOT"
 _APPROVED_JUDGE_MODELS = frozenset({"gemini-3.8-flash"})
-
-type QaCohort = Literal["canary", "corpus"]
 
 
 class _StrictModel(BaseModel):
@@ -263,8 +270,8 @@ class EvidenceManifest(_StrictModel):
     destination_permission_inventory: tuple[PermissionEntry, ...]
     destination_permission_sha256: str
     folder_source_ids: tuple[FileId, ...]
-    folder_source_count: Annotated[int, Field(ge=1)]
-    count: Annotated[int, Field(ge=1)]
+    folder_source_count: Annotated[int, Field(ge=1, le=required_document_count("corpus"))]
+    count: Annotated[int, Field(ge=1, le=required_document_count("corpus"))]
     user_email: EmailStr
     pipeline_version: str
     brand_profile_id: str
@@ -348,6 +355,32 @@ class JudgeResponse(_StrictModel):
 
 class QaError(RuntimeError):
     """A deterministic QA invariant failed."""
+
+
+@dataclass(slots=True)
+class _DriveTraversalBudget:
+    folders: int = 0
+    pages: int = 0
+    metadata_bytes: int = 0
+
+    def record_folder(self) -> None:
+        self.folders += 1
+        if self.folders > QA_MAX_TRAVERSED_FOLDERS:
+            _fail("Drive folder traversal exceeded the bounded folder limit")
+
+    def reserve_page(self) -> None:
+        if self.pages >= QA_MAX_FOLDER_LIST_PAGES:
+            _fail("Drive folder traversal exceeded the aggregate page limit")
+        self.pages += 1
+
+    def record_page_metadata(self, raw: dict[str, Any]) -> None:
+        self.record_metadata(raw)
+
+    def record_metadata(self, raw: dict[str, Any]) -> None:
+        encoded = json.dumps(raw, ensure_ascii=False, separators=(",", ":")).encode()
+        self.metadata_bytes += len(encoded)
+        if self.metadata_bytes > QA_MAX_TRAVERSAL_METADATA_BYTES:
+            _fail("Drive folder traversal exceeded the aggregate metadata limit")
 
 
 def _fail(message: str) -> NoReturn:
@@ -567,14 +600,14 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
         _fail("--source-folder-id is required")
     if not getattr(arguments, "destination_folder_id", None):
         _fail("--destination-folder-id is required")
-    if arguments.count < 1:
-        _fail("--count must be positive")
+    cohort: QaCohort = "canary" if arguments.canary else "corpus"
+    required_count = required_document_count(cohort)
+    if arguments.count != required_count:
+        _fail(f"--count must equal {required_count} for {cohort} QA")
     if arguments.execute:
         required_confirmation = _CANARY_CONFIRMATION if arguments.canary else _CONFIRMATION
         if arguments.confirm_live_copy != required_confirmation:
             _fail(f"--confirm-live-copy must equal {required_confirmation}")
-        if arguments.canary and arguments.count != 1:
-            _fail("--execute requires --count 1 for a canary folder")
         if arguments.mode != TransformMode.BOTH.value:
             _fail("--execute requires --mode both")
         if artifacts_dir is None:
@@ -756,7 +789,7 @@ def _require_matching_manifest(
     expected = (
         manifest.expected_release_sha == expected_release_sha,
         manifest.seed == seed,
-        manifest.count == (count if cohort == "canary" else manifest.folder_source_count),
+        manifest.count == count,
         manifest.source_folder_id == source_folder_id,
         manifest.destination_folder_id == destination_folder_id,
         manifest.mode is mode,
@@ -783,6 +816,8 @@ def _require_manifest_invariants(manifest: EvidenceManifest) -> None:
         == permission_inventory_sha256(manifest.destination_permission_inventory),
         len(sources) == manifest.count,
         manifest.folder_source_count == len(manifest.folder_source_ids),
+        manifest.count == required_document_count(manifest.cohort),
+        manifest.folder_source_count == required_document_count(manifest.cohort),
         len(set(manifest.folder_source_ids)) == manifest.folder_source_count,
         set(source_ids) == set(manifest.folder_source_ids),
         len(set(source_ids)) == len(source_ids),
@@ -915,8 +950,8 @@ async def _select_sources(
         _fail("source folder is not a Google Drive folder")
     candidates = await asyncio.to_thread(_list_folder_doc_metadata, drive_client, source_folder_id)
     ordered = seeded_order(candidates, seed)
-    if cohort == "canary" and len(ordered) != count:
-        _fail(f"canary folder must contain exactly {count} native Google Doc")
+    if len(ordered) != count:
+        _fail(f"{cohort} folder must contain exactly {count} native Google Docs")
     if not ordered:
         _fail("source folder contains no native Google Docs")
     selected: list[SourceEvidence] = []
@@ -1049,7 +1084,10 @@ def corpus_operation_key(
 def _list_folder_doc_metadata(
     drive_client: DriveResource, source_folder_id: FileId
 ) -> list[dict[str, Any]]:
-    root = _parse_file_metadata(_get_file_metadata(drive_client, source_folder_id))
+    budget = _DriveTraversalBudget()
+    raw_root = _get_file_metadata(drive_client, source_folder_id)
+    budget.record_metadata(raw_root)
+    root = _parse_file_metadata(raw_root)
     if root.mime_type != MIME_FOLDER:
         _fail("source folder is not a Google Drive folder")
     pending = [root.id]
@@ -1059,11 +1097,13 @@ def _list_folder_doc_metadata(
         folder_id = pending.pop(0)
         if folder_id in visited:
             _fail("Drive folder traversal contained a cycle")
+        budget.record_folder()
         visited.add(folder_id)
         children = _list_folder_children(
             drive_client,
             folder_id,
             shared_drive_id=root.drive_id,
+            budget=budget,
         )
         for child in children:
             metadata = _parse_file_metadata(child)
@@ -1073,6 +1113,8 @@ def _list_folder_doc_metadata(
                 pending.append(metadata.id)
             elif metadata.mime_type == MIME_DOC:
                 documents.append(child)
+                if len(documents) > required_document_count("corpus"):
+                    _fail("Drive folder traversal exceeded the 20-document corpus limit")
     return documents
 
 
@@ -1098,22 +1140,28 @@ def _list_folder_children(
     folder_id: FileId,
     *,
     shared_drive_id: str | None,
+    budget: _DriveTraversalBudget | None = None,
 ) -> list[dict[str, Any]]:
+    budget = budget or _DriveTraversalBudget()
     files: list[dict[str, Any]] = []
     page_token: str | None = None
-    for _page in range(_MAX_LIST_PAGES):
+    while True:
+        budget.reserve_page()
         request = drive_client.files().list(
             q=f"'{folder_id}' in parents and trashed=false",
             spaces="drive",
             includeItemsFromAllDrives=True,
             supportsAllDrives=True,
-            pageSize=1000,
+            pageSize=100,
             pageToken=page_token,
             fields=f"nextPageToken,incompleteSearch,files({_file_fields()})",
             corpora="drive" if shared_drive_id is not None else "user",
             driveId=shared_drive_id,
         )
         raw = execute_with_retry(request)
+        if not isinstance(raw, dict):
+            _fail("Drive returned invalid folder metadata")
+        budget.record_page_metadata(raw)
         if raw.get("incompleteSearch") is True:
             _fail("Drive returned an incomplete folder search")
         page_files = raw.get("files", [])
@@ -1128,7 +1176,6 @@ def _list_folder_children(
         if not isinstance(next_token, str):
             _fail("Drive returned an invalid folder page token")
         page_token = next_token
-    _fail("Drive folder traversal exceeded the bounded page limit")
 
 
 def _get_file_metadata(drive_client: DriveResource, file_id: FileId) -> dict[str, Any]:
@@ -1178,7 +1225,7 @@ def _permission_inventory(
 ) -> tuple[PermissionEntry, ...]:
     permissions: list[PermissionEntry] = []
     page_token: str | None = None
-    for _page in range(_MAX_LIST_PAGES):
+    for _page in range(QA_MAX_PERMISSION_LIST_PAGES):
         raw = execute_with_retry(
             drive_client.permissions().list(
                 fileId=file_id,

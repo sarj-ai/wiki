@@ -8,6 +8,8 @@ import sys
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.document_transform.qa_contract import PRODUCTION_QA_EXCHANGE_URL
+
 
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -18,6 +20,7 @@ class _RuntimeBinding(BaseSettings):
 
     release_sha: str = Field(default="", validation_alias="RELEASE_SHA")
     image_digest: str = Field(default="", validation_alias="WIKI_QA_IMAGE_DIGEST")
+    exchange_url: str = Field(default="", validation_alias="WIKI_QA_EXCHANGE_URL")
 
 
 def main() -> None:
@@ -32,6 +35,7 @@ def main() -> None:
         not _SHA.fullmatch(runtime.release_sha)
         or arguments.expected_release_sha != runtime.release_sha
         or not _DIGEST.fullmatch(runtime.image_digest)
+        or runtime.exchange_url != PRODUCTION_QA_EXCHANGE_URL
         or arguments.source_folder_id == arguments.destination_folder_id
     ):
         _fail("runtime_binding_preflight_failed")

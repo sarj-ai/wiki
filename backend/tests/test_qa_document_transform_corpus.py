@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterator
 from datetime import UTC, datetime
 import hashlib
 import json
@@ -17,6 +18,15 @@ from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.executor import PIPELINE_VERSION
 from app.document_transform.gateway import SourceSnapshot
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
+from app.document_transform.qa_contract import (
+    PRODUCTION_QA_EXCHANGE_URL,
+    PRODUCTION_WIKI_API_ORIGIN,
+    QA_CORPUS_DOCUMENT_COUNT,
+    QA_MAX_FOLDER_LIST_PAGES,
+    QA_MAX_TRAVERSAL_METADATA_BYTES,
+    QA_MAX_TRAVERSED_FOLDERS,
+    required_document_count,
+)
 from app.document_transform.schemas import (
     DocumentOutput,
     DocumentTransformResult,
@@ -119,7 +129,7 @@ def test_shared_drive_folder_listing_uses_complete_shared_drive_scope(
             "spaces": "drive",
             "includeItemsFromAllDrives": True,
             "supportsAllDrives": True,
-            "pageSize": 1000,
+            "pageSize": 100,
             "pageToken": None,
             "fields": calls[0]["fields"],
             "corpora": "drive",
@@ -174,8 +184,13 @@ def test_folder_enumeration_recurses_and_returns_every_native_doc(
     )
 
     def children(
-        _drive: object, folder_id: FileId, *, shared_drive_id: str | None
+        _drive: object,
+        folder_id: FileId,
+        *,
+        shared_drive_id: str | None,
+        budget: object,
     ) -> list[dict[str, Any]]:
+        del budget
         seen.append((folder_id, shared_drive_id))
         return pages[str(folder_id)]
 
@@ -239,6 +254,182 @@ def test_execution_revalidates_exact_complete_source_set(
     )
     with pytest.raises(QaError, match="complete source set changed"):
         _require_current_source_set(drive, manifest)
+
+
+def test_qa_contract_has_exact_document_and_traversal_bounds() -> None:
+    assert PRODUCTION_WIKI_API_ORIGIN == "https://api-wiki.sarj.ai"
+    assert PRODUCTION_QA_EXCHANGE_URL == (
+        "https://api-wiki.sarj.ai/internal/document-transform-qa/exchange"
+    )
+    assert required_document_count("canary") == 1
+    assert required_document_count("corpus") == QA_CORPUS_DOCUMENT_COUNT == 20
+    assert QA_MAX_TRAVERSED_FOLDERS == 100
+    assert QA_MAX_FOLDER_LIST_PAGES == 100
+    assert QA_MAX_TRAVERSAL_METADATA_BYTES == 4 * 1024 * 1024
+
+
+def test_folder_enumeration_rejects_more_than_twenty_documents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus._get_file_metadata",
+        lambda _drive, _file_id: {
+            "id": "root",
+            "name": "Security",
+            "mimeType": "application/vnd.google-apps.folder",
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus._list_folder_children",
+        lambda _drive, _folder_id, **_kwargs: [
+            {
+                "id": f"doc-{index}",
+                "name": f"Document {index}",
+                "mimeType": "application/vnd.google-apps.document",
+            }
+            for index in range(21)
+        ],
+    )
+    drive: Any = object()
+    with pytest.raises(QaError, match="20-document corpus limit"):
+        _list_folder_doc_metadata(drive, FileId("root"))
+
+
+def test_folder_listing_enforces_aggregate_page_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first_page: dict[str, object] = {"files": [], "nextPageToken": "next"}
+    last_page: dict[str, object] = {"files": []}
+    responses: Iterator[dict[str, object]] = iter((first_page, last_page))
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus.QA_MAX_FOLDER_LIST_PAGES",
+        1,
+    )
+    request_count = 0
+
+    def execute(_request: object) -> dict[str, object]:
+        nonlocal request_count
+        request_count += 1
+        return next(responses)
+
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus.execute_with_retry",
+        execute,
+    )
+
+    class Files:
+        @staticmethod
+        def list(**_kwargs: object) -> object:
+            return object()
+
+    class Drive:
+        @staticmethod
+        def files() -> Files:
+            return Files()
+
+    drive: Any = Drive()
+    with pytest.raises(QaError, match="aggregate page limit"):
+        _list_folder_children(drive, FileId("root"), shared_drive_id=None)
+    assert request_count == 1
+
+
+def test_folder_enumeration_shares_page_budget_across_nested_folders(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus._get_file_metadata",
+        lambda _drive, _file_id: {
+            "id": "root",
+            "name": "Security",
+            "mimeType": "application/vnd.google-apps.folder",
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus.QA_MAX_FOLDER_LIST_PAGES",
+        2,
+    )
+    request_count = 0
+
+    def execute(request: dict[str, object]) -> dict[str, object]:
+        nonlocal request_count
+        request_count += 1
+        if "'root' in parents" in str(request["q"]):
+            return {
+                "files": [
+                    {
+                        "id": "nested",
+                        "name": "Nested",
+                        "mimeType": "application/vnd.google-apps.folder",
+                    }
+                ]
+            }
+        return {"files": [], "nextPageToken": "more"}
+
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus.execute_with_retry",
+        execute,
+    )
+
+    class Files:
+        @staticmethod
+        def list(**kwargs: object) -> dict[str, object]:
+            return kwargs
+
+    class Drive:
+        @staticmethod
+        def files() -> Files:
+            return Files()
+
+    drive: Any = Drive()
+    with pytest.raises(QaError, match="aggregate page limit"):
+        _list_folder_doc_metadata(drive, FileId("root"))
+    assert request_count == 2
+
+
+def test_folder_enumeration_enforces_folder_and_metadata_budgets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = {
+        "id": "root",
+        "name": "Security",
+        "mimeType": "application/vnd.google-apps.folder",
+    }
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus._get_file_metadata",
+        lambda _drive, _file_id: root,
+    )
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus.QA_MAX_TRAVERSED_FOLDERS",
+        1,
+    )
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus._list_folder_children",
+        lambda _drive, folder_id, **_kwargs: (
+            [
+                {
+                    "id": "nested",
+                    "name": "Nested",
+                    "mimeType": "application/vnd.google-apps.folder",
+                }
+            ]
+            if folder_id == "root"
+            else []
+        ),
+    )
+    drive: Any = object()
+    with pytest.raises(QaError, match="bounded folder limit"):
+        _list_folder_doc_metadata(drive, FileId("root"))
+
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus.QA_MAX_TRAVERSED_FOLDERS",
+        QA_MAX_TRAVERSED_FOLDERS,
+    )
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus.QA_MAX_TRAVERSAL_METADATA_BYTES",
+        1,
+    )
+    with pytest.raises(QaError, match="aggregate metadata limit"):
+        _list_folder_doc_metadata(drive, FileId("root"))
 
 
 @pytest.mark.asyncio
@@ -416,7 +607,8 @@ def test_live_execution_is_hard_gated_to_all_folder_copies() -> None:
     }
     _validate_arguments(argparse.Namespace(**common))
 
-    _validate_arguments(argparse.Namespace(**{**common, "count": 19}))
+    with pytest.raises(QaError, match="must equal 20 for corpus"):
+        _validate_arguments(argparse.Namespace(**{**common, "count": 19}))
     with pytest.raises(QaError, match="source-folder-id"):
         _validate_arguments(argparse.Namespace(**{**common, "source_folder_id": ""}))
     with pytest.raises(QaError, match="requires --mode both"):
@@ -452,7 +644,7 @@ def test_canary_execution_has_distinct_one_document_gate() -> None:
                 }
             )
         )
-    with pytest.raises(QaError, match="requires --count 1"):
+    with pytest.raises(QaError, match="must equal 1 for canary"):
         _validate_arguments(argparse.Namespace(**{**common, "count": 20}))
     _validate_arguments(
         argparse.Namespace(
