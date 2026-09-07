@@ -173,6 +173,44 @@ describe("DocumentPolishDialog", () => {
     expect(NavigationMock.push).toHaveBeenCalledWith("/d/output-1");
   });
 
+  it("completes once and shows verified preservation details without a review alert", async () => {
+    const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
+    const create = vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
+    vi.spyOn(documentTransformApi, "waitForCompletion").mockResolvedValue({
+      ...transformResult(),
+      findings: [
+        {
+          blockId: "rich-1",
+          code: "native_rich_text_preserved",
+          detail: "Authored rich text was preserved safely.",
+          severity: "informational",
+        },
+      ],
+    });
+
+    renderDialog(root, {
+      allowInPlace: false,
+      expectedModifiedTime: "2026-09-03T12:00:00Z",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+    });
+    await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+    const submit = findButtonNow("Create polished copy");
+    clickButton(submit);
+    clickButton(submit);
+
+    await vi.waitFor(() => expect(document.body).toHaveTextContent("Polish complete"));
+    expect(document.body).toHaveTextContent("Preserved safely");
+    expect(document.body).toHaveTextContent("Authored rich text was preserved safely.");
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(document.body).not.toHaveTextContent("Review notes");
+    expect(create).toHaveBeenCalledOnce();
+    clickButton(findButtonNow("Open polished document"));
+    expect(NavigationMock.push).toHaveBeenCalledWith("/d/output-1");
+  });
+
   it.each(["failure", "review", "success", "no-op"] as const)(
     "reveals a new %s outcome once without disturbing the Markdown draft",
     async (outcome) => {

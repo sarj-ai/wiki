@@ -1269,6 +1269,15 @@ async def test_completed_operation_is_replayed_without_second_mutation() -> None
     ("mode", "verification", "expected_codes"),
     [
         (
+            TransformMode.FORMAT,
+            OutputVerification(
+                content_preserved=True,
+                structure_preserved=True,
+                brand_applied=True,
+            ),
+            set(),
+        ),
+        (
             TransformMode.UNSLOP,
             OutputVerification(content_preserved=False, structure_preserved=False),
             {"post_write_content_mismatch", "post_write_structure_mismatch"},
@@ -1283,7 +1292,7 @@ async def test_completed_operation_is_replayed_without_second_mutation() -> None
             {"post_write_brand_mismatch"},
         ),
     ],
-    ids=["content-and-structure", "brand"],
+    ids=["verified", "content-and-structure", "brand"],
 )
 @pytest.mark.parametrize("rich", [False, True], ids=["plain", "preserved-rich"])
 async def test_native_doc_post_write_mismatch_is_reported_for_review(
@@ -1356,12 +1365,19 @@ async def test_native_doc_post_write_mismatch_is_reported_for_review(
     assert await executor.execute(operation_id=operation_id, request=request) == result
     assert gateway.applies == applies
 
-    assert result.needs_review is True
+    assert result.needs_review is bool(expected_codes)
     assert result.validation.protected_content_preserved is verification.content_preserved
     assert result.validation.structure_preserved is verification.structure_preserved
     assert {finding.code for finding in result.findings} == expected_codes | (
         {"google_doc_text_target_unsupported"} if rich else set()
     )
+    rich_findings = [
+        finding
+        for finding in result.findings
+        if finding.code == "google_doc_text_target_unsupported"
+    ]
+    assert all(finding.severity.value == "informational" for finding in rich_findings)
+    assert result.validation.unsafe_patch_count == 0
 
 
 async def test_markdown_import_readback_mismatch_is_reported_for_review() -> None:

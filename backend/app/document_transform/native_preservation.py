@@ -1,7 +1,7 @@
 from typing import Any
 
 from app.document_transform.ir import DocumentIR, TextBlock
-from app.document_transform.schemas import TransformFinding, TransformMode
+from app.document_transform.schemas import FindingSeverity, TransformFinding, TransformMode
 
 
 def preserved_native_findings(
@@ -44,6 +44,7 @@ def preserved_native_findings(
                     if block.font_style_ranges and not block.preserved_font_family
                     else "Text and protected native elements in this paragraph were preserved without modification"
                 ),
+                severity=FindingSeverity.INFORMATIONAL,
             )
         )
     return tuple(result)

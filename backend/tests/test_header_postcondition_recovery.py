@@ -195,7 +195,8 @@ async def test_six_header_two_range_marker_recovers_once_without_relaxing_marker
     )
     result = await session.run(checkpoint)
     assert result.changed
-    assert result.needs_review is custom
+    assert not result.needs_review
+    assert all(finding.severity.value == "informational" for finding in result.findings)
     assert session.gateway.mutations == ["headers", "content"]
     assert await session.run(session.store.checkpoints[-1]) == result
     assert session.gateway.mutations == ["headers", "content"]

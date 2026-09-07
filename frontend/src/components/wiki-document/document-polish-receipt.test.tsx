@@ -57,3 +57,64 @@ it.each([0, 1, 2, 20])(
     expect(view).not.toContain("writing edits applied");
   },
 );
+
+it("separates verified preservation coverage from review notes", () => {
+  const result: DocumentTransformResult = {
+    accessScope: "owner_only",
+    appliedPatchCount: 0,
+    artifactKind: "document",
+    brandProfileId: "test",
+    brandProfileSha256: "test",
+    changed: true,
+    deterministicPatchCount: 0,
+    findings: [
+      {
+        blockId: "rich",
+        code: "native_rich_text_preserved",
+        detail: "Rich structure was preserved safely.",
+        severity: "informational",
+      },
+      {
+        blockId: null,
+        code: "brand_mismatch",
+        detail: "Review the header.",
+        severity: "review",
+      },
+    ],
+    llmInvoked: false,
+    mode: "format",
+    modelIds: [],
+    modelPatchCount: 0,
+    needsReview: true,
+    operationId: "55555555-5555-4555-8555-555555555555",
+    outputFile: {
+      id: "output",
+      name: "Review",
+      mimeType: MIME_DOC,
+      canEdit: true,
+      driveId: undefined,
+      modifiedTime: undefined,
+      parentFolderId: undefined,
+    },
+    outputRevisionId: null,
+    outputStrategy: "copy",
+    outputWebUrl: null,
+    pipelineVersion: "test",
+    promotedHeadingCount: 0,
+    sourceRevisionId: null,
+    sourceSha256: "test",
+    toolVersions: {},
+    validation: {
+      protectedContentPreserved: true,
+      sourceUnchanged: true,
+      structurePreserved: true,
+      unsafePatchCount: 1,
+    },
+  };
+
+  const view = renderToStaticMarkup(<DocumentPolishReceipt result={result} />);
+  expect(view).toContain("Preserved safely");
+  expect(view).toContain("Rich structure was preserved safely.");
+  expect(view).toContain("Review notes");
+  expect(view).toContain("Review the header.");
+});

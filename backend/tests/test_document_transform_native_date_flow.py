@@ -379,8 +379,9 @@ async def test_executor_persists_decline_and_reports_finding_on_recovery() -> No
     result = await _copy_executor(gateway=gateway, store=store, task_id=task_id).execute(
         operation_id=task_id, request=request
     )
-    assert result.needs_review
+    assert not result.needs_review
     assert [finding.code for finding in result.findings].count("native_date_provider_rejected") == 1
+    assert all(finding.severity.value == "informational" for finding in result.findings)
     # Resume the durable pre-final-verification checkpoint, not the cached result.
     declined = store.checkpoints[-2]
     assert declined.native_dates is not None

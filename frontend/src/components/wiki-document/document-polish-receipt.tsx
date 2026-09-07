@@ -10,10 +10,8 @@ import type { DocumentTransformResult } from "@/lib/document-transform-types";
 const VISIBLE_FINDINGS = 3;
 
 export function DocumentPolishReceipt({ result }: { result: DocumentTransformResult }) {
-  const findings = [
-    ...new Set(result.findings.map((finding) => finding.detail.trim()).filter(Boolean)),
-  ];
-  const remaining = findings.slice(VISIBLE_FINDINGS);
+  const informationalFindings = uniqueFindingDetails(result, "informational");
+  const reviewFindings = uniqueFindingDetails(result, "review");
   const alias = result.shortLinkStatus === "ready" ? result.shortLinkAlias : null;
 
   return (
@@ -27,28 +25,8 @@ export function DocumentPolishReceipt({ result }: { result: DocumentTransformRes
           ; label wording is unchanged.
         </p>
       ) : null}
-      {findings.length > 0 ? (
-        <div className="space-y-1 text-sm">
-          <p className="font-medium">Review notes</p>
-          <ul className="list-disc space-y-1 pl-5">
-            {findings.slice(0, VISIBLE_FINDINGS).map((detail) => (
-              <li key={detail}>{detail}</li>
-            ))}
-          </ul>
-          {remaining.length > 0 ? (
-            <details>
-              <summary className="cursor-pointer rounded-sm underline focus-visible:outline-2">
-                Show {remaining.length} more review {remaining.length === 1 ? "note" : "notes"}
-              </summary>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
-                {remaining.map((detail) => (
-                  <li key={detail}>{detail}</li>
-                ))}
-              </ul>
-            </details>
-          ) : null}
-        </div>
-      ) : null}
+      <FindingList details={informationalFindings} label="Preserved safely" noun="coverage note" />
+      <FindingList details={reviewFindings} label="Review notes" noun="review note" />
       {alias ? (
         <div className="flex flex-wrap items-center gap-3">
           <Button
@@ -83,6 +61,48 @@ export function DocumentPolishReceipt({ result }: { result: DocumentTransformRes
       <p className="text-muted-foreground text-xs">
         Short links do not change who can access the document.
       </p>
+    </div>
+  );
+}
+
+function uniqueFindingDetails(
+  result: DocumentTransformResult,
+  severity: "informational" | "review",
+): string[] {
+  return [
+    ...new Set(
+      result.findings
+        .filter((finding) => (finding.severity ?? "review") === severity)
+        .map((finding) => finding.detail.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function FindingList({ details, label, noun }: { details: string[]; label: string; noun: string }) {
+  if (details.length === 0) return null;
+  const remaining = details.slice(VISIBLE_FINDINGS);
+  return (
+    <div className="space-y-1 text-sm">
+      <p className="font-medium">{label}</p>
+      <ul className="list-disc space-y-1 pl-5">
+        {details.slice(0, VISIBLE_FINDINGS).map((detail) => (
+          <li key={detail}>{detail}</li>
+        ))}
+      </ul>
+      {remaining.length > 0 ? (
+        <details>
+          <summary className="cursor-pointer rounded-sm underline focus-visible:outline-2">
+            Show {remaining.length} more {noun}
+            {remaining.length === 1 ? "" : "s"}
+          </summary>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {remaining.map((detail) => (
+              <li key={detail}>{detail}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
     </div>
   );
 }

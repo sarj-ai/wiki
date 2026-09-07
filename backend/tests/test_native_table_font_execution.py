@@ -135,12 +135,13 @@ async def test_table_format_preserves_exact_styles_and_repeat_noop(
     before = deepcopy(document)
     result = await executor().execute(operation_id=operation, request=request)
     assert not result.changed
-    assert result.needs_review
+    assert not result.needs_review
     assert [finding.code for finding in result.findings] == (
         ["native_paragraph_layout_preserved", "table_font_preserved"]
         if preserve_alignment
         else ["table_font_preserved"]
     )
+    assert all(finding.severity.value == "informational" for finding in result.findings)
     assert events == []
     assert document == before
     assert all(checkpoint.table_font_plan is None for checkpoint in store.checkpoints)
@@ -150,7 +151,7 @@ async def test_table_format_preserves_exact_styles_and_repeat_noop(
     )
     again = await executor().execute(operation_id=uuid.uuid7(), request=request)
     assert not again.changed
-    assert again.needs_review
+    assert not again.needs_review
     assert events == []
     previous = store.checkpoints[-1].model_copy(
         update={"request_builder_version": "google-docs-requests-v24"}

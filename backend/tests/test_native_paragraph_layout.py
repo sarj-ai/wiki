@@ -328,8 +328,9 @@ async def test_in_place_layout_preservation_retry_and_repeat(
         operation_id=operation, request=request
     )
     assert result.changed
-    assert result.needs_review
+    assert not result.needs_review
     assert [finding.code for finding in result.findings] == ["native_paragraph_layout_preserved"]
+    assert result.findings[0].severity.value == "informational"
     assert _paragraph(document)["paragraphStyle"] == original_style
     assert (
         await executor(store.checkpoints[-1]).execute(operation_id=operation, request=request)
@@ -337,7 +338,7 @@ async def test_in_place_layout_preservation_retry_and_repeat(
     )
     again = await executor().execute(operation_id=uuid.uuid7(), request=request)
     assert not again.changed
-    assert again.needs_review
+    assert not again.needs_review
     assert writes == ["content"]
     missing = store.checkpoints[-1].model_copy(update={"paragraph_layout": ()})
     with pytest.raises(InPlaceNeedsReviewError):
@@ -422,7 +423,8 @@ async def test_layout_evidence_survives_header_creation_and_recovery(
         operation_id=operation, request=request
     )
     assert result.changed
-    assert result.needs_review
+    assert not result.needs_review
+    assert all(finding.severity.value == "informational" for finding in result.findings)
     assert events == ["headers", "content"]
     assert all(
         item.paragraph_layout == store.checkpoints[0].paragraph_layout for item in store.checkpoints

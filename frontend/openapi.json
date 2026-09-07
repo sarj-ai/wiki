@@ -1364,6 +1364,14 @@
         "title": "FileResponse",
         "type": "object"
       },
+      "FindingSeverity": {
+        "enum": [
+          "informational",
+          "review"
+        ],
+        "title": "FindingSeverity",
+        "type": "string"
+      },
       "FolderIconRead": {
         "properties": {
           "folder_drive_id": {
@@ -2474,6 +2482,10 @@
           "detail": {
             "title": "Detail",
             "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/FindingSeverity",
+            "default": "review"
           }
         },
         "required": [

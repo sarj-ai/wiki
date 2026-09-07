@@ -296,12 +296,13 @@ async def test_custom_body_format_then_repeat_is_noop_with_truthful_receipt(
         operation_id=operation, request=request
     )
     assert result.changed
-    assert result.needs_review
+    assert not result.needs_review
     assert [finding.code for finding in result.findings] == (
         ["native_rich_text_preserved", "custom_furniture_preserved"]
         if rich
         else ["custom_furniture_preserved"]
     )
+    assert all(finding.severity.value == "informational" for finding in result.findings)
     assert events.count("body") == 1
     assert (
         native._inspect_in_place_sync(_inspection_snapshot(document), "Decision").custom_furniture
@@ -311,7 +312,7 @@ async def test_custom_body_format_then_repeat_is_noop_with_truthful_receipt(
     assert replay == result
     again = await executor().execute(operation_id=uuid.uuid7(), request=request)
     assert not again.changed
-    assert again.needs_review
+    assert not again.needs_review
     assert events.count("body") == 1
 
 

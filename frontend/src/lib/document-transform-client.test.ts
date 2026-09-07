@@ -174,7 +174,14 @@ describe("documentTransformApi", () => {
           applied_patch_count: 1,
           promoted_heading_count: count,
           artifact_kind: "presentation",
-          findings: [{ block_id: "paragraph-1", code: "ai_phrase", detail: "Removed filler" }],
+          findings: [
+            {
+              block_id: "paragraph-1",
+              code: "native_rich_text_preserved",
+              detail: "Rich text was preserved",
+              severity: "informational",
+            },
+          ],
           mode: "unslop",
           model_ids: ["gemini-flash"],
           needs_review: false,
@@ -207,6 +214,14 @@ describe("documentTransformApi", () => {
       promotedHeadingCount: count ?? 0,
       accessScope: "inherited",
       artifactKind: "presentation",
+      findings: [
+        {
+          blockId: "paragraph-1",
+          code: "native_rich_text_preserved",
+          detail: "Rich text was preserved",
+          severity: "informational",
+        },
+      ],
       outputFile: {
         id: "output-1",
         mimeType: "application/vnd.google-apps.presentation",
@@ -216,6 +231,55 @@ describe("documentTransformApi", () => {
       validation: { sourceUnchanged: true },
     });
     expect(actionMocks.getTask).toHaveBeenCalledWith(taskId);
+  });
+
+  it("fails closed when a legacy review finding contradicts needs_review", async () => {
+    actionMocks.getTask.mockResolvedValue({
+      data: JSON.stringify({
+        ...task("succeeded"),
+        result: {
+          access_scope: "inherited",
+          applied_patch_count: 0,
+          findings: [
+            {
+              block_id: null,
+              code: "legacy_warning",
+              detail: "Review the preserved structure.",
+            },
+          ],
+          mode: "format",
+          model_ids: [],
+          needs_review: false,
+          operation_id: taskId,
+          output: {
+            file_id: "output-1",
+            name: "Review",
+            parent_folder_id: "folder-1",
+            web_url: "https://docs.google.com/document/d/output-1/edit",
+          },
+          pipeline_version: "sarj-v1",
+          source_sha256: "a".repeat(64),
+          tool_versions: {},
+          validation: {
+            protected_content_preserved: true,
+            source_unchanged: true,
+            structure_preserved: true,
+            unsafe_patch_count: 0,
+          },
+        },
+      }),
+      ok: true,
+    });
+
+    await expect(
+      documentTransformApi.waitForCompletion({ id: taskId, status: "running" }, undefined, 0),
+    ).rejects.toMatchObject({
+      name: "DocumentTransformNeedsReviewError",
+      result: {
+        needsReview: true,
+        findings: [{ code: "legacy_warning", severity: "review" }],
+      },
+    });
   });
 
   it("surfaces the review gate as a distinct outcome", async () => {
