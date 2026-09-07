@@ -24,6 +24,8 @@ jobs:
     name: IaC / Terraform validation
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      TF_PLUGIN_CACHE_DIR: /tmp/terraform-provider-cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,6 +36,17 @@ jobs:
         with:
           terraform_version: 1.15.8
           terraform_wrapper: false
+
+      - name: Prepare Terraform provider cache
+        run: mkdir -p "$TF_PLUGIN_CACHE_DIR"
+
+      - name: Restore Terraform providers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.TF_PLUGIN_CACHE_DIR }}
+          key: terraform-providers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('terraform/.terraform.lock.hcl') }}
+          restore-keys: |
+            terraform-providers-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Validate real provider schemas and offline preview wiring
         run: make check-iac
