@@ -33,3 +33,30 @@ def test_cloud_entrypoint_reaches_explicit_fail_closed_data_plane_error() -> Non
     assert '"error": "backend_capability_data_plane_not_implemented"' in result.stderr
     assert "DATABASE_URL" not in result.stderr
     assert "SECRET_KEY" not in result.stderr
+
+
+def test_cloud_entrypoint_rejects_unknown_overrides() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scripts.qa_document_transform_cloud",
+            "--expected-release-sha",
+            "a" * 40,
+            "--source-folder-id",
+            "source",
+            "--destination-folder-id",
+            "destination",
+            "--mode",
+            "both",
+            "--unexpected-override",
+            "value",
+        ],
+        cwd=Path(__file__).parents[1],
+        env={"PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "unrecognized arguments: --unexpected-override value" in result.stderr

@@ -159,7 +159,10 @@ jobs:
         run: uv run --locked alembic upgrade head
 
       - name: Exercise concurrent source reservations and durable replay keys
-        run: uv run --locked pytest tests/test_task_source_dedupe_postgres.py tests/test_header_provenance_postgres.py -q -rA
+        run: >-
+          uv run --locked pytest tests/test_task_source_dedupe_postgres.py
+          tests/test_header_provenance_postgres.py
+          tests/test_document_transform_qa_grants.py -q -rA
 
       - name: Exercise MCP storage and client grants across database sessions
         run: >-

@@ -17,7 +17,7 @@ def main() -> None:
     parser.add_argument("--source-folder-id", required=True)
     parser.add_argument("--destination-folder-id", required=True)
     parser.add_argument("--mode", choices=("format", "unslop", "both"), required=True)
-    arguments, _ = parser.parse_known_args()
+    arguments = parser.parse_args()
     release = os.environ.get("RELEASE_SHA", "")  # ruff: ignore[banned-api] -- stdlib-only bootstrap.
     image_digest = os.environ.get(  # ruff: ignore[banned-api] -- stdlib-only bootstrap.
         "WIKI_QA_IMAGE_DIGEST", ""
