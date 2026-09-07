@@ -6,6 +6,7 @@ from app.database import Base, build_engine, close_connector
 from app.database_config import database_settings
 from app.models import (
     auth_session,
+    document_transform_qa_grant,
     mcp_grant,
     mcp_native_state,
     mcp_oauth,

@@ -32,7 +32,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import select
 
 from app.auth.google_tokens import GoogleTokenManager
+from app.auth.jwt import create_access_token
 from app.cache.dependencies import cache_service_dep
+from app.cache.service import NullCacheService
 from app.config import settings
 from app.database import async_session
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
@@ -44,6 +46,7 @@ from app.document_transform.executor import PIPELINE_VERSION
 from app.document_transform.gateway import SourceSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import DocumentIR, parse_google_document
+from app.document_transform.qa_grants import QaGrantError, consume_qa_grant
 from app.document_transform.safety import validate_patches
 from app.document_transform.schemas import (
     DocumentTransformResult,
@@ -71,6 +74,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from googleapiclient._apis.drive.v3.resources import DriveResource
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 _API_BASE_URL = "https://api-wiki.sarj.ai"
 _ACCESS_TOKEN_ENV = "WIKI_QA_ACCESS_TOKEN"
@@ -101,6 +105,8 @@ _MAX_SCREENSHOT_BYTES = 25 * 1024 * 1024
 _MAX_RENDERED_BYTES = 250 * 1024 * 1024
 _CLOUD_RUN_JOB_ENV = "CLOUD_RUN_JOB"
 _DURABLE_ARTIFACT_ROOT_ENV = "WIKI_QA_DURABLE_ARTIFACT_ROOT"
+_GRANT_TOKEN_ENV = "WIKI_QA_GRANT_TOKEN"
+_CLOUD_RUN_EXECUTION_ENV = "CLOUD_RUN_EXECUTION"
 _APPROVED_JUDGE_MODELS = frozenset({"gemini-3.8-flash"})
 
 type QaCohort = Literal["canary", "corpus"]
@@ -136,6 +142,8 @@ class QaSecrets(BaseSettings):
         default=None,
         validation_alias=_DURABLE_ARTIFACT_ROOT_ENV,
     )
+    grant_token: SecretStr = Field(default=SecretStr(""), validation_alias=_GRANT_TOKEN_ENV)
+    cloud_run_execution: str | None = Field(default=None, validation_alias=_CLOUD_RUN_EXECUTION_ENV)
 
 
 class PermissionEntry(_StrictModel):
@@ -406,13 +414,18 @@ async def _run(arguments: argparse.Namespace) -> EvidenceManifest:
     mode = TransformMode(arguments.mode)
     cohort: QaCohort = "canary" if arguments.canary else "corpus"
     async with async_session() as db, httpx.AsyncClient(timeout=30) as http:
+        environment = QaSecrets()
+        access_token = await _qa_access_token(db, arguments, mode, environment)
         user = await db.scalar(select(User).where(User.email == arguments.user_email))
         if user is None:
             _fail("QA user is not present in the configured database")
         prepared = await GoogleTokenManager(db, http).prepare(user)
+        cache_service = (
+            NullCacheService() if environment.cloud_run_job is not None else cache_service_dep()
+        )
         drive = GoogleDriveService(
             prepared.user,
-            cache_service_dep(),
+            cache_service,
             refresh_handler=prepared.refresh_handler,
         )
         files = GoogleFilesService(user=prepared.user, drive=drive)
@@ -473,7 +486,42 @@ async def _run(arguments: argparse.Namespace) -> EvidenceManifest:
             http=http,
             drive_client=drive_client,
             gateway=gateway,
+            access_token=access_token,
         )
+
+
+async def _qa_access_token(
+    db: AsyncSession,
+    arguments: argparse.Namespace,
+    mode: TransformMode,
+    environment: QaSecrets,
+) -> str:
+    access_token = environment.access_token.get_secret_value()
+    if environment.cloud_run_job is None:
+        return access_token
+    grant_token = environment.grant_token.get_secret_value()
+    if not grant_token or not environment.cloud_run_execution:
+        _fail(f"{_GRANT_TOKEN_ENV} and {_CLOUD_RUN_EXECUTION_ENV} are required in Cloud Run")
+    try:
+        consumed = await consume_qa_grant(
+            db,
+            token=grant_token,
+            execution_name=environment.cloud_run_execution,
+            user_email=arguments.user_email,
+            release_sha=arguments.expected_release_sha,
+            source_folder_id=FileId(arguments.source_folder_id),
+            destination_folder_id=FileId(arguments.destination_folder_id),
+            mode=mode,
+        )
+        await db.commit()
+    except QaGrantError:
+        await db.rollback()
+        _fail("Cloud Run QA grant is invalid, expired, consumed, revoked, or mismatched")
+    return create_access_token(
+        consumed.user_id,
+        consumed.session_id,
+        token_version=consumed.user_session_revision,
+    )
 
 
 def _resolve_run_paths(arguments: argparse.Namespace) -> RunPaths:
@@ -503,6 +551,7 @@ async def _execute_planned_manifest(
     http: httpx.AsyncClient,
     drive_client: DriveResource,
     gateway: GoogleDocumentGateway,
+    access_token: str,
 ) -> EvidenceManifest:
     if paths.artifacts is None:  # pragma: no cover - argument invariant
         _fail("--artifacts-dir is required with --execute")
@@ -510,7 +559,7 @@ async def _execute_planned_manifest(
     if not isinstance(expected_renderer_version, str):
         _fail("--pdftoppm-version is required with --execute")
     renderer_version = await asyncio.to_thread(_require_pdftoppm, expected_renderer_version)
-    token = QaSecrets().access_token.get_secret_value()
+    token = access_token
     if not token:
         _fail(f"{_ACCESS_TOKEN_ENV} is required only with --execute")
     await _verify_api_identity(http, token=token, expected_email=arguments.user_email)

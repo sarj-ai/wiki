@@ -167,5 +167,41 @@ variable "github_repo" {
   default     = "sarj-ai/wiki"
 }
 
+variable "enable_document_transform_qa_job" {
+  description = "Provision the private, manually invoked document-transform corpus QA job"
+  type        = bool
+  default     = false
+}
+
+variable "document_transform_qa_image" {
+  description = "Digest-pinned QA runner image; required only when the default-off QA job is enabled"
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = (
+      !var.enable_document_transform_qa_job ||
+      (var.document_transform_qa_image != null && can(regex("@sha256:[0-9a-f]{64}$", var.document_transform_qa_image)))
+    )
+    error_message = "Enabled document-transform QA requires an immutable image digest."
+  }
+}
+
+variable "document_transform_qa_invoker_member" {
+  description = "Exact human user or group allowed to invoke the private QA job"
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = (
+      !var.enable_document_transform_qa_job ||
+      (var.document_transform_qa_invoker_member != null && can(regex("^(user|group):[^[:space:]]+@[^[:space:]]+$", var.document_transform_qa_invoker_member)))
+    )
+    error_message = "Enabled document-transform QA requires one explicit user: or group: invoker."
+  }
+}
+
 # Cloudflare WAF rules and DNS are managed manually in the Cloudflare
 # dashboard — no Terraform resources or API token required.

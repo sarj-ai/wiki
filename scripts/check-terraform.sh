@@ -17,7 +17,8 @@ export TF_DATA_DIR="$terraform_data_dir"
 terraform -chdir=terraform fmt -check -recursive
 terraform -chdir=terraform init -backend=false -input=false
 terraform -chdir=terraform validate -no-color
-# Both providers are mocked in this exact file; do not run the separate real-
-# provider recovery tests or an unfiltered Terraform test/plan/apply here.
+# Both providers are mocked in the exact filtered files below; do not run the
+# separate real-provider recovery tests or an unfiltered plan/apply here.
 terraform -chdir=terraform test -filter=tests/mcp_edge_preview.tftest.hcl -no-color
 terraform -chdir=terraform test -filter=tests/mcp_production_plumbing.tftest.hcl -no-color
+terraform -chdir=terraform test -filter=tests/document_transform_qa_job.tftest.hcl -no-color

@@ -2,6 +2,7 @@ from pathlib import Path
 
 
 _DOCKERFILE = Path(__file__).parents[1] / "Dockerfile"
+_QA_DOCKERFILE = Path(__file__).parents[1] / "Dockerfile.qa"
 _REPOSITORY_ROOT = Path(__file__).parents[2]
 _DEPLOY_WORKFLOW = _REPOSITORY_ROOT / ".github/workflows/deploy-backend.yml"
 _DEPLOY_CANDIDATE = _REPOSITORY_ROOT / "scripts/github/deploy-backend-candidate.sh"
@@ -17,6 +18,18 @@ def test_application_container_does_not_run_database_migrations() -> None:
         'CMD [".venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]'
         in dockerfile
     )
+
+
+def test_qa_container_reuses_corpus_runner_and_fails_closed_without_arguments() -> None:
+    dockerfile = _QA_DOCKERFILE.read_text()
+    assert "COPY scripts/ scripts/" in dockerfile
+    assert "apk add --no-cache poppler-utils" in dockerfile
+    assert "USER app" in dockerfile
+    assert (
+        'ENTRYPOINT [".venv/bin/python", "-m", "scripts.qa_document_transform_corpus"]'
+        in dockerfile
+    )
+    assert "CMD" not in dockerfile
 
 
 def test_deployment_runs_one_shot_migrations_before_traffic_switch() -> None:
