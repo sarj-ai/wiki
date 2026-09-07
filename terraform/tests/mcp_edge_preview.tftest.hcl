@@ -67,7 +67,7 @@ run "native_oauth_preview_preserves_enforced_security" {
     condition = alltrue([
       for rule in google_compute_security_policy.backend_armor.rule : (
         rule.action == "deny(403)" && rule.preview &&
-        rule.match[0].expr[0].expression == "request.method != 'OPTIONS' && request.path.urlDecode().matches('^/(register|authorize|token|revoke)$') && origin.user_ip == origin.ip"
+        rule.match[0].expr[0].expression == "request.method != 'OPTIONS' && request.path.urlDecode().matches('^/register$|^/authorize$|^/token$|^/revoke$') && origin.user_ip == origin.ip"
       ) if rule.priority == 551
     ])
     error_message = "Fallback sentinel must cover only exact OAuth paths and exclude OPTIONS."
