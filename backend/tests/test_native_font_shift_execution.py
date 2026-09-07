@@ -109,13 +109,14 @@ async def test_preceding_edit_preserves_shifted_rich_style_and_exact_replay(
         return
     result = await executor(checkpoint).execute(operation_id=operation, request=request)
     assert result.changed
-    assert result.needs_review
+    assert not result.needs_review
     assert attempts[0] == attempts[1]
     assert [block.text for block in parse_google_document(document, title="Source").blocks] == [
         "We approved.",
         "Alpha Beta",
     ]
     assert any(finding.code == "native_font_family_preserved" for finding in result.findings)
+    assert all(finding.severity.value == "informational" for finding in result.findings)
     replay = await executor(store.checkpoints[-1]).execute(operation_id=operation, request=request)
     assert replay == result
     assert len(attempts) == 2

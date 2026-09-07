@@ -14,6 +14,7 @@ from app.document_transform.ir import parse_google_document
 from app.document_transform.native_preservation import preserved_native_findings
 from app.document_transform.schemas import (
     DocumentTransformCheckpoint,
+    FindingSeverity,
     InPlaceCheckpoint,
     TransformFinding,
     TransformMode,
@@ -74,6 +75,24 @@ def _finding() -> TransformFinding:
     )
 
 
+def test_legacy_finding_payload_defaults_to_review() -> None:
+    finding = TransformFinding.model_validate(
+        {"code": "legacy_warning", "block_id": None, "detail": "Review required"}
+    )
+    assert finding.severity is FindingSeverity.REVIEW
+    assert "severity" not in finding.model_dump(mode="json")
+
+
+def test_informational_finding_payload_persists_severity() -> None:
+    finding = TransformFinding(
+        code="native_rich_text_preserved",
+        block_id="b0",
+        detail="Rich text was preserved.",
+        severity=FindingSeverity.INFORMATIONAL,
+    )
+    assert finding.model_dump(mode="json")["severity"] == "informational"
+
+
 @pytest.mark.parametrize("protected", [False, True])
 @pytest.mark.parametrize("mode", [TransformMode.FORMAT, TransformMode.BOTH])
 @pytest.mark.parametrize("font_family", ["Arial", "Nunito"])
@@ -98,6 +117,7 @@ def test_exact_preserved_blocks_receive_truthful_persistable_findings(
     assert result is not None
     assert result[0].code == "native_rich_text_preserved"
     assert result[0].block_id == "b0"
+    assert result[0].severity is FindingSeverity.INFORMATIONAL
     assert "preserved" in result[0].detail
     if not protected:
         assert result[0].detail == (
@@ -253,6 +273,8 @@ async def test_in_place_preservation_receipt_survives_interruption_and_completed
     assert checkpoint.findings[0].code == "native_rich_text_preserved"
     result = await executor(checkpoint).execute(operation_id=operation, request=request)
     assert result.findings == checkpoint.findings
+    assert result.findings[0].severity is FindingSeverity.INFORMATIONAL
+    assert not result.needs_review
     assert attempts[0] == attempts[1]
     completed = executor(store.checkpoints[-1])
     assert await completed.execute(operation_id=operation, request=request) == result

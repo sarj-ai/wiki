@@ -24,7 +24,12 @@ from app.document_transform.native_visual_authority import (
     apply_visual_authority,
     visual_authority_block_ids,
 )
-from app.document_transform.schemas import OutputStrategy, TransformMode
+from app.document_transform.schemas import (
+    CopyCheckpoint,
+    FindingSeverity,
+    OutputStrategy,
+    TransformMode,
+)
 from app.document_transform.tab_structure import plan_tab_structure
 from app.document_transform.tab_structure_execution import (
     StructureCheckpoint,
@@ -165,10 +170,26 @@ async def test_copy_plan_binds_fonts_findings_manifest_and_completed_replay(*, k
         any(finding.code == "native_font_family_preserved" for finding in result.findings)
         is not known
     )
+    if not known:
+        assert result.needs_review is False
+        assert all(
+            finding.severity is FindingSeverity.INFORMATIONAL
+            for finding in result.findings
+            if finding.code
+            in {"google_doc_text_target_unsupported", "native_font_family_preserved"}
+        )
+    serialized_checkpoint = checkpoint.model_dump(mode="json")
+    for finding, serialized_finding in zip(
+        checkpoint.findings, serialized_checkpoint["findings"], strict=True
+    ):
+        assert ("severity" in serialized_finding) is (
+            finding.severity is FindingSeverity.INFORMATIONAL
+        )
+    reloaded_checkpoint = CopyCheckpoint.model_validate(serialized_checkpoint)
     writes = gateway.applies, gateway.brand_prepares
     assert (
         await transform._copy_executor(
-            gateway=gateway, store=store, task_id=operation, checkpoint=checkpoint
+            gateway=gateway, store=store, task_id=operation, checkpoint=reloaded_checkpoint
         ).execute(operation_id=operation, request=request)
         == result
     )

@@ -108,6 +108,7 @@ from app.document_transform.schemas import (
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
+    FindingSeverity,
     InPlaceCheckpoint,
     InPlaceCheckpointStage,
     OutputStrategy,
@@ -320,6 +321,7 @@ class DocumentTransformExecutor:
                         code="native_visual_authority_preserved",
                         block_id=block_id,
                         detail="Authored title size, color, alignment, font family, and emphasis were preserved unchanged; wording cleanup was skipped for this paragraph. Full Sarj typography was not applied.",
+                        severity=FindingSeverity.INFORMATIONAL,
                     )
                     for block_id in _copy_visual_ids(original)
                 ),
@@ -601,6 +603,12 @@ class DocumentTransformExecutor:
                 operation_id=operation_id, checkpoint=checkpoint, draft=applied
             )
             checkpoint = self._copy_checkpoint_or_none() or checkpoint
+        findings = _classify_verified_copy_planner_findings(
+            findings,
+            planner_finding_count=len(outcome.findings),
+            protected_content_preserved=applied_validation.protected_content_preserved,
+            structure_preserved=applied_validation.structure_preserved,
+        )
         findings.extend(applied_validation.findings)
         if checkpoint.native_footer is not None and checkpoint.native_footer.coverage is not None:
             findings.extend(
@@ -611,6 +619,7 @@ class DocumentTransformExecutor:
                         "pageless": "Wiki footers were not added to pageless tabs.",
                         "unsupported_layout": "Wiki footers were not added where tab layout could not be safely verified.",
                     }[reason],
+                    severity=FindingSeverity.INFORMATIONAL,
                 )
                 for reason in sorted(
                     {skip.reason for skip in checkpoint.native_footer.coverage.skipped}
@@ -621,13 +630,17 @@ class DocumentTransformExecutor:
                 TransformFinding(
                     code="native_date_provider_rejected",
                     detail="Google rejected native date conversion; dates were preserved as text.",
+                    severity=FindingSeverity.INFORMATIONAL,
                 )
             )
         validation = ValidationSummary(
             source_unchanged=True,
             protected_content_preserved=applied_validation.protected_content_preserved,
             structure_preserved=applied_validation.structure_preserved,
-            unsafe_patch_count=len(outcome.findings),
+            unsafe_patch_count=sum(
+                finding.severity is FindingSeverity.REVIEW
+                for finding in findings[: len(outcome.findings)]
+            ),
         )
         result = DocumentTransformResult(
             promoted_heading_count=len(checkpoint.authored_labels),
@@ -655,7 +668,7 @@ class DocumentTransformExecutor:
                 "unslop_version": UNSLOP_UPSTREAM_VERSION,
             },
             pipeline_version=PIPELINE_VERSION,
-            needs_review=bool(findings),
+            needs_review=_findings_need_review(findings),
             brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
             brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
             deterministic_patch_count=outcome.deterministic_count,
@@ -1547,6 +1560,7 @@ class DocumentTransformExecutor:
                     code="native_visual_authority_preserved",
                     block_id=block_id,
                     detail="Authored title size, color, alignment, font family, and emphasis were preserved unchanged; wording cleanup was skipped for this paragraph. Full Sarj typography was not applied.",
+                    severity=FindingSeverity.INFORMATIONAL,
                 )
                 for block_id in visual_ids
             ]
@@ -1555,6 +1569,7 @@ class DocumentTransformExecutor:
                     code="native_font_family_preserved",
                     block_id=block_id,
                     detail="This paragraph's font family and authored styling were preserved unchanged because a safe, bounded font change could not be proved.",
+                    severity=FindingSeverity.INFORMATIONAL,
                 )
                 for block_id in preserved_font_ids
             ]
@@ -1563,6 +1578,7 @@ class DocumentTransformExecutor:
                     code="native_paragraph_layout_preserved",
                     block_id=item.block_id,
                     detail="Authored non-start paragraph alignment, spacing, and layout were preserved; supported typography was checked. Full Sarj paragraph layout was not applied.",
+                    severity=FindingSeverity.INFORMATIONAL,
                 )
                 for item in paragraph_layout
             ]
@@ -1572,6 +1588,7 @@ class DocumentTransformExecutor:
                     TransformFinding(
                         code="custom_furniture_preserved",
                         detail="Supported body formatting was applied; custom headers, footers, and page geometry were preserved. Full Sarj branding was not applied.",
+                        severity=FindingSeverity.INFORMATIONAL,
                     )
                 ]
                 if branded and inspection.custom_furniture and not inspection.fully_branded
@@ -1613,6 +1630,7 @@ class DocumentTransformExecutor:
                     TransformFinding(
                         code="table_font_preserved",
                         detail="Table typography was preserved unchanged because its safety proof or operation budget could not be established.",
+                        severity=FindingSeverity.INFORMATIONAL,
                     )
                 ]
             )
@@ -1622,6 +1640,7 @@ class DocumentTransformExecutor:
                     TransformFinding(
                         code="table_font_preserved",
                         detail="Table typography and geometry were preserved unchanged because bold and weight preservation for native table font updates has not been verified.",
+                        severity=FindingSeverity.INFORMATIONAL,
                     )
                 ]
             )
@@ -1721,7 +1740,7 @@ class DocumentTransformExecutor:
                 "unslop_version": UNSLOP_UPSTREAM_VERSION,
             },
             pipeline_version=PIPELINE_VERSION,
-            needs_review=bool(checkpoint.findings),
+            needs_review=_findings_need_review(checkpoint.findings),
             brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
             brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
             deterministic_patch_count=checkpoint.deterministic_patch_count,
@@ -1904,6 +1923,7 @@ def _copy_font_outcome(
                 code="native_font_family_preserved",
                 block_id=block_id,
                 detail="Authored font family was preserved because its complete bold and weight semantics could not be safely changed.",
+                severity=FindingSeverity.INFORMATIONAL,
             )
             for block_id in preserved_ids
             if block_id not in _copy_visual_ids(original)
@@ -2333,6 +2353,28 @@ def _brand_warning_detail(code: str) -> str:
     if code == "logo_unavailable":
         return "Typography and spacing were applied, but the logo URL was not publicly readable"
     return "Existing header preserved for review"
+
+
+def _findings_need_review(findings: list[TransformFinding]) -> bool:
+    return any(finding.severity is FindingSeverity.REVIEW for finding in findings)
+
+
+def _classify_verified_copy_planner_findings(
+    findings: list[TransformFinding],
+    *,
+    planner_finding_count: int,
+    protected_content_preserved: bool,
+    structure_preserved: bool,
+) -> list[TransformFinding]:
+    planner_findings = findings[:planner_finding_count]
+    if protected_content_preserved and structure_preserved:
+        planner_findings = [
+            finding.model_copy(update={"severity": FindingSeverity.INFORMATIONAL})
+            if finding.code == "google_doc_text_target_unsupported"
+            else finding
+            for finding in planner_findings
+        ]
+    return planner_findings + findings[planner_finding_count:]
 
 
 def _preserved_block_ids(checkpoint: InPlaceCheckpoint) -> tuple[str, ...]:

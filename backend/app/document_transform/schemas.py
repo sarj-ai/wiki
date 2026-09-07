@@ -55,6 +55,11 @@ class TransformPhase(StrEnum):
     UNSLOP = "unslop"
 
 
+class FindingSeverity(StrEnum):
+    INFORMATIONAL = "informational"
+    REVIEW = "review"
+
+
 class OutputStrategy(StrEnum):
     COPY = "copy"
     IN_PLACE = "in_place"
@@ -165,6 +170,10 @@ class TransformFinding(StrictTransformModel):
     code: str
     block_id: str | None = None
     detail: str
+    severity: FindingSeverity = Field(
+        default=FindingSeverity.REVIEW,
+        exclude_if=lambda value: value is FindingSeverity.REVIEW,
+    )
 
 
 class ValidationSummary(StrictTransformModel):

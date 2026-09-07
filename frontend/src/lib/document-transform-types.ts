@@ -50,6 +50,7 @@ export interface DocumentTransformFinding {
   blockId: null | string;
   code: string;
   detail: string;
+  severity?: "informational" | "review";
 }
 
 export interface DocumentTransformValidation {
