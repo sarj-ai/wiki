@@ -16,6 +16,7 @@ name: Deploy Backend
       - "scripts/github/verify-backend-production-health.sh"
       - "scripts/github/verify-backend-correlated-logs.sh"
       - "scripts/github/verify-mcp-release.sh"
+      - "scripts/github/resolve-mcp-release-mode.sh"
       - "scripts/github/verify-smart-create-queue.sh"
       - "scripts/backend_release/**"
   workflow_dispatch:
@@ -239,9 +240,17 @@ jobs:
         id: verify
         run: scripts/github/verify-backend-production-health.sh
 
-      - name: Verify native MCP remains disabled
+      - name: Resolve native MCP mode from exact revision
+        id: mcp-mode
         env:
-          MCP_VERIFY_MODE: disabled
+          MCP_VERIFIED_REVISION: ${{ steps.verify.outputs.new_revision }}
+        run: scripts/github/resolve-mcp-release-mode.sh
+
+      - name: Verify native MCP production contract
+        env:
+          MCP_VERIFY_MODE: ${{ steps.mcp-mode.outputs.mode }}
+          MCP_VERIFIED_REVISION: ${{ steps.verify.outputs.new_revision }}
+          MCP_LOG_WINDOW_START: ${{ steps.deploy.outputs.started_at }}
         run: scripts/github/verify-mcp-release.sh
 
       - name: Clear legacy global drive-tree cache after traffic switch
@@ -309,9 +318,17 @@ jobs:
       - name: Verify revision and production health
         id: verify
         run: scripts/github/verify-backend-production-health.sh
-      - name: Verify native MCP remains disabled
+      - name: Resolve native MCP mode from exact revision
+        id: mcp-mode
         env:
-          MCP_VERIFY_MODE: disabled
+          MCP_VERIFIED_REVISION: ${{ steps.verify.outputs.new_revision }}
+        run: scripts/github/resolve-mcp-release-mode.sh
+
+      - name: Verify native MCP production contract
+        env:
+          MCP_VERIFY_MODE: ${{ steps.mcp-mode.outputs.mode }}
+          MCP_VERIFIED_REVISION: ${{ steps.verify.outputs.new_revision }}
+          MCP_LOG_WINDOW_START: ${{ steps.window.outputs.started_at }}
         run: scripts/github/verify-mcp-release.sh
       - name: Verify correlated production logs
         env:

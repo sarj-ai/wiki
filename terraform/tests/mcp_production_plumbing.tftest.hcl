@@ -82,6 +82,16 @@ run "native_mcp_rejects_partial_explicit_provisioning" {
   expect_failures = [var.provision_mcp_native_secrets]
 }
 
+run "native_mcp_rejects_enablement_without_secrets" {
+  command = plan
+
+  variables {
+    enable_mcp_native = true
+  }
+
+  expect_failures = [var.enable_mcp_native]
+}
+
 run "native_mcp_rejects_implicit_secret_provisioning" {
   command = plan
 
@@ -192,5 +202,32 @@ run "native_mcp_is_provisioned_but_disabled" {
       )
     ])
     error_message = "Only the backend runtime identity may read native MCP key material."
+  }
+}
+
+run "native_mcp_can_be_explicitly_enabled_with_both_keys" {
+  command = plan
+
+  variables {
+    provision_mcp_native_secrets = true
+    enable_mcp_native            = true
+    mcp_native_fernet_keys       = "synthetic-mcp-ring"
+    mcp_native_lock_key          = "synthetic-mcp-lock"
+  }
+
+  assert {
+    condition = one([
+      for setting in google_cloud_run_v2_service.backend_dammam[0].template[0].containers[0].env : setting.value
+      if setting.name == "MCP_NATIVE_ENABLED"
+    ]) == "true"
+    error_message = "Native MCP must be enabled only through the explicit activation variable."
+  }
+
+  assert {
+    condition = length([
+      for setting in google_cloud_run_v2_service.backend_dammam[0].template[0].containers[0].env : setting
+      if contains(["MCP_NATIVE_FERNET_KEYS", "MCP_NATIVE_LOCK_KEY"], setting.name)
+    ]) == 2
+    error_message = "An enabled native MCP runtime must attach both independent key references."
   }
 }
