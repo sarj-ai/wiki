@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 import uuid
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,6 +19,7 @@ from app.document_transform.schemas import (
     TransformMode,
     ValidationSummary,
 )
+from app.document_transform.versions import DOCUMENT_PIPELINE_VERSION
 from app.identifiers import FileId, GoogleUserId, IdempotencyKey, UserId
 from app.models.task import Task
 from app.models.task_replay_key import TaskReplayKey
@@ -172,8 +173,184 @@ async def test_real_postgres_concurrent_source_dedupe(
                     admit=admit,
                 )
         deliberate = await reserve(IdempotencyKey(uuid.uuid7()))
-        assert deliberate.created
-        assert deliberate.task.id != task_id
+        if terminal is TaskStatus.SUCCEEDED:
+            assert not deliberate.created
+            assert deliberate.task.id == task_id
+        else:
+            assert deliberate.created
+            assert deliberate.task.id != task_id
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.parametrize("source_kind", ["drive", "markdown"])
+async def test_real_postgres_concurrent_verified_terminal_replay(source_kind: str) -> None:
+    engine = _qa_engine()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    owner = UserId(uuid.uuid7())
+    payload = (
+        _markdown_payload()
+        if source_kind == "markdown"
+        else DocumentTransformRequest(
+            source=DriveFileSource(
+                kind="drive_file",
+                file_id=FileId(f"qa-terminal-{uuid.uuid7()}"),
+                expected_modified_time="2026-09-07T00:00:00Z",
+            ),
+            mode=TransformMode.FORMAT,
+        )
+    )
+    admission_calls = 0
+    start = asyncio.Event()
+
+    async def admit() -> None:
+        nonlocal admission_calls
+        admission_calls += 1
+        await asyncio.sleep(0.01)
+
+    try:
+        async with sessions() as session:
+            session.add(
+                User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner)))
+            )
+            await session.commit()
+            canonical = await PostgresTaskService(db=session).create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=payload,
+            )
+            await session.execute(
+                update(Task)
+                .where(Task.id == canonical.task.id)
+                .values(
+                    status=TaskStatus.SUCCEEDED,
+                    started_at=func.now(),
+                    finished_at=func.now(),
+                    attempt_count=1,
+                    result=_completed_result(canonical.task.id, payload.mode).model_dump(
+                        mode="json"
+                    ),
+                )
+            )
+            await session.commit()
+
+        async def replay(key: IdempotencyKey):
+            await start.wait()
+            async with sessions() as session:
+                return await PostgresTaskService(db=session).create_or_replay(
+                    kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                    owner_user_id=owner,
+                    idempotency_key=key,
+                    payload=payload,
+                    admit=admit,
+                )
+
+        keys = [IdempotencyKey(uuid.uuid7()) for _ in range(12)]
+        pending = [asyncio.create_task(replay(key)) for key in keys]
+        start.set()
+        reservations = await asyncio.gather(*pending)
+
+        assert {reservation.task.id for reservation in reservations} == {canonical.task.id}
+        assert not any(reservation.created for reservation in reservations)
+        assert admission_calls == len(keys)
+        async with sessions() as session:
+            assert (
+                await session.scalar(
+                    select(func.count()).select_from(Task).where(Task.owner_user_id == owner)
+                )
+                == 1
+            )
+            assert await session.scalar(
+                select(func.count())
+                .select_from(TaskReplayKey)
+                .where(TaskReplayKey.task_id == canonical.task.id)
+            ) == len(keys)
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "terminal_case",
+    ["cancelled", "failed", "stale_pipeline", "stale_brand"],
+)
+async def test_real_postgres_unverified_terminal_never_semantically_replays(
+    terminal_case: str,
+) -> None:
+    engine = _qa_engine()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    owner = UserId(uuid.uuid7())
+    payload = _markdown_payload()
+    admissions: list[bool] = []
+
+    async def admit() -> None:
+        admissions.append(True)
+
+    try:
+        async with sessions() as session:
+            session.add(
+                User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner)))
+            )
+            await session.commit()
+            service = PostgresTaskService(db=session)
+            canonical = await service.create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=payload,
+            )
+            if terminal_case == "cancelled":
+                await service.cancel(canonical.task.id, owner_user_id=owner)
+            elif terminal_case == "failed":
+                await session.execute(
+                    update(Task)
+                    .where(Task.id == canonical.task.id)
+                    .values(
+                        status=TaskStatus.FAILED,
+                        started_at=func.now(),
+                        finished_at=func.now(),
+                        attempt_count=1,
+                        error_code="qa_failure",
+                    )
+                )
+                await session.commit()
+            else:
+                result = _completed_result(canonical.task.id, payload.mode)
+                finished_at = datetime.now(UTC)
+                if terminal_case == "stale_pipeline":
+                    result = result.model_copy(update={"pipeline_version": "legacy"})
+                else:
+                    result = result.model_copy(update={"brand_profile_sha256": "0" * 64})
+                await session.execute(
+                    update(Task)
+                    .where(Task.id == canonical.task.id)
+                    .values(
+                        status=TaskStatus.SUCCEEDED,
+                        started_at=finished_at,
+                        finished_at=finished_at,
+                        attempt_count=1,
+                        result=result.model_dump(mode="json"),
+                    )
+                )
+                await session.commit()
+
+        async with sessions() as session:
+            replacement = await PostgresTaskService(db=session).create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=payload,
+                admit=admit,
+            )
+            assert replacement.created
+            assert replacement.task.id != canonical.task.id
+            assert admissions == [True]
+            assert (
+                await session.scalar(
+                    select(func.count()).select_from(Task).where(Task.owner_user_id == owner)
+                )
+                == 2
+            )
     finally:
         await engine.dispose()
 
@@ -208,7 +385,7 @@ def _completed_result(operation_id: uuid.UUID, mode: TransformMode) -> DocumentT
         ),
         model_ids=[],
         tool_versions={},
-        pipeline_version="qa",
+        pipeline_version=DOCUMENT_PIPELINE_VERSION,
         needs_review=False,
     )
 

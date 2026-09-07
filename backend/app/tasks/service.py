@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.encryption import decrypt_cache, encrypt_cache
+from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import CheckpointTooLargeError, OutputConflictError
 from app.document_transform.schemas import (
     CopyCheckpoint,
@@ -29,6 +30,7 @@ from app.document_transform.schemas import (
     OutputStrategy,
     WordCopyCheckpoint,
 )
+from app.document_transform.versions import CURRENT_PIPELINE_VERSIONS
 from app.identifiers import FileId, IdempotencyKey, TaskId
 from app.models.task import Task
 from app.models.task_replay_key import TaskReplayKey
@@ -93,6 +95,7 @@ class TaskService(ABC):
         idempotency_key: IdempotencyKey,
         payload: BaseModel,
         admit: Callable[[], Awaitable[None]] | None = None,
+        admit_new: Callable[[], None] | None = None,
     ) -> TaskReservation: ...
 
     @abstractmethod
@@ -186,10 +189,10 @@ class PostgresTaskService(TaskService):
         idempotency_key: IdempotencyKey,
         payload: BaseModel,
         admit: Callable[[], Awaitable[None]] | None = None,
+        admit_new: Callable[[], None] | None = None,
     ) -> TaskReservation:
         serialized = _serialize(payload)
         request_hash = _request_hash(serialized)
-        persisted_payload = _payload_for_storage(kind=kind, payload=payload, serialized=serialized)
         document_transform_payload = (
             payload
             if kind is TaskKind.FILE_DOCUMENT_TRANSFORM
@@ -258,21 +261,37 @@ class PostgresTaskService(TaskService):
                 if active_row[1] or active.request_hash != request_hash:
                     await self._db.rollback()
                     raise TaskTargetBusyError
-                await self._db.execute(
-                    pg_insert(TaskReplayKey)
-                    .values(
-                        owner_user_id=owner_user_id,
-                        kind=kind,
-                        idempotency_key=idempotency_key,
-                        task_id=active.id,
-                    )
-                    .on_conflict_do_update(
-                        index_elements=["owner_user_id", "kind", "idempotency_key"],
-                        set_={"task_id": active.id},
-                    )
+                await self._bind_replay_key(
+                    owner_user_id=owner_user_id,
+                    kind=kind,
+                    idempotency_key=idempotency_key,
+                    task_id=active.id,
                 )
                 await self._db.commit()
                 return TaskReservation(task=_to_read(active), created=False)
+            # A fresh key is a fresh access request. Reauthorize before looking
+            # up a completed task so prior output existence is never disclosed
+            # after source or destination access has been revoked.
+            try:
+                if admit is not None:
+                    await admit()
+            except BaseException:
+                await self._db.rollback()
+                raise
+            terminal_replay = await self._maybe_retained_terminal_replay(
+                owner_user_id=owner_user_id,
+                kind=kind,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+            )
+            if terminal_replay is not None:
+                return terminal_replay
+            try:
+                if admit_new is not None:
+                    admit_new()
+            except BaseException:
+                await self._db.rollback()
+                raise
             active_count = (
                 await self._db.execute(
                     select(func.count())
@@ -310,10 +329,9 @@ class PostgresTaskService(TaskService):
                 if active_in_place_count >= _MAX_ACTIVE_IN_PLACE_TASKS_PER_OWNER:
                     await self._db.rollback()
                     raise TaskAdmissionLimitError
-        # Admission runs under the owner's transaction lock, before publishing a
-        # durable dispatch intent. Replays return above without revalidating a
-        # source which may have changed because this operation already succeeded.
-        if admit is not None:
+        # Non-document tasks do not take the document owner lock or participate
+        # in semantic replay, so their admission still runs here.
+        if admit is not None and document_transform_payload is None:
             try:
                 await admit()
             except BaseException:
@@ -338,7 +356,11 @@ class PostgresTaskService(TaskService):
                 kind=kind,
                 idempotency_key=idempotency_key,
                 request_hash=request_hash,
-                payload=persisted_payload,
+                payload=_payload_for_storage(
+                    kind=kind,
+                    payload=payload,
+                    serialized=serialized,
+                ),
                 dispatch_ready_at=now if admit is not None else None,
                 in_place_target=(in_place_source.file_id if in_place_source else None),
                 expires_at=now + _DEFAULT_RETENTION,
@@ -660,6 +682,65 @@ class PostgresTaskService(TaskService):
                 )
             )
         ).scalar_one_or_none()
+
+    async def _bind_replay_key(
+        self,
+        *,
+        owner_user_id: uuid.UUID,
+        kind: TaskKind,
+        idempotency_key: IdempotencyKey,
+        task_id: TaskId,
+    ) -> None:
+        await self._db.execute(
+            pg_insert(TaskReplayKey)
+            .values(
+                owner_user_id=owner_user_id,
+                kind=kind,
+                idempotency_key=idempotency_key,
+                task_id=task_id,
+            )
+            .on_conflict_do_update(
+                index_elements=["owner_user_id", "kind", "idempotency_key"],
+                set_={"task_id": task_id},
+            )
+        )
+
+    async def _maybe_retained_terminal_replay(
+        self,
+        *,
+        owner_user_id: uuid.UUID,
+        kind: TaskKind,
+        idempotency_key: IdempotencyKey,
+        request_hash: str,
+    ) -> TaskReservation | None:
+        terminal = (
+            await self._db.execute(
+                select(Task)
+                .where(
+                    Task.owner_user_id == owner_user_id,
+                    Task.kind == kind,
+                    Task.status == TaskStatus.SUCCEEDED,
+                    Task.request_hash == request_hash,
+                    Task.finished_at.is_not(None),
+                    Task.expires_at > func.now(),
+                    Task.result["pipeline_version"].astext.in_(CURRENT_PIPELINE_VERSIONS),
+                    Task.result["brand_profile_sha256"].astext == CURRENT_BRAND_MANIFEST.sha256,
+                )
+                .order_by(Task.finished_at.desc(), Task.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if terminal is None:
+            return None
+        terminal_read = _to_read(terminal)
+        await self._bind_replay_key(
+            owner_user_id=owner_user_id,
+            kind=kind,
+            idempotency_key=idempotency_key,
+            task_id=terminal.id,
+        )
+        await self._db.commit()
+        return TaskReservation(task=terminal_read, created=False)
 
     @override
     async def get_document_transform_admission(

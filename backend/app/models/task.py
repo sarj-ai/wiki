@@ -85,6 +85,15 @@ class Task(Base):
         Index("ix_tasks_owner_created", "owner_user_id", "created_at"),
         Index("ix_tasks_status_lease", "status", "lease_expires_at"),
         Index(
+            "ix_tasks_doc_transform_terminal_semantic",
+            "owner_user_id",
+            "kind",
+            "status",
+            "request_hash",
+            text("finished_at DESC"),
+            text("id DESC"),
+        ),
+        Index(
             "uq_tasks_active_in_place_target",
             "in_place_target",
             unique=True,

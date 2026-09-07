@@ -12,12 +12,16 @@ from sqlalchemy import Table
 from sqlalchemy.sql.elements import ClauseElement
 
 from app.document_transform.schemas import (
+    DocumentOutput,
     DocumentTransformRequest,
+    DocumentTransformResult,
     DriveFileSource,
     MarkdownSource,
     OutputStrategy,
     TransformMode,
+    ValidationSummary,
 )
+from app.document_transform.versions import DOCUMENT_PIPELINE_VERSION
 from app.files.schemas import FileResponse
 from app.identifiers import FileId, IdempotencyKey, TaskId
 from app.models.task import Task
@@ -143,10 +147,35 @@ def _success_result(task_id: TaskId) -> SmartCreateResult:
     )
 
 
+def _transform_success_result(task_id: TaskId, mode: TransformMode) -> DocumentTransformResult:
+    return DocumentTransformResult(
+        operation_id=task_id,
+        source_sha256="0" * 64,
+        output=DocumentOutput(
+            file_id=FileId("output"),
+            name="Decision",
+            parent_folder_id=FileId("folder"),
+        ),
+        mode=mode,
+        applied_patch_count=0,
+        findings=[],
+        validation=ValidationSummary(
+            source_unchanged=True,
+            protected_content_preserved=True,
+            structure_preserved=True,
+            unsafe_patch_count=0,
+        ),
+        model_ids=[],
+        tool_versions={},
+        pipeline_version=DOCUMENT_PIPELINE_VERSION,
+        needs_review=False,
+    )
+
+
 async def test_in_place_admission_reserves_target_before_queueing() -> None:
     row = _task(request_hash="0" * 64)
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, 0, 0, row)
+    session = _Session(None, None, None, None, 0, 0, row)
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -165,7 +194,7 @@ async def test_in_place_admission_reserves_target_before_queueing() -> None:
 async def test_admission_finishes_before_dispatch_intent_is_committed() -> None:
     row = _task(request_hash="0" * 64)
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, 0, 0, row)
+    session = _Session(None, None, None, None, 0, 0, row)
 
     async def admit() -> None:
         assert session.commits == 0
@@ -228,7 +257,7 @@ async def test_admitted_replay_does_not_revalidate_changed_provider_state() -> N
 
 async def test_distinct_active_in_place_task_for_same_target_is_rejected() -> None:
     row = _task(request_hash="0" * 64)
-    session = _Session(None, None, None, 0, 0, None, None, None)
+    session = _Session(None, None, None, None, 0, 0, None, None, None)
 
     with pytest.raises(TaskTargetBusyError):
         await _service(session).create_or_replay(
@@ -251,7 +280,7 @@ async def test_document_transform_admission_caps_all_active_owner_tasks() -> Non
         ),
         mode=TransformMode.UNSLOP,
     )
-    session = _Session(None, None, None, 20)
+    session = _Session(None, None, None, None, 20)
 
     with pytest.raises(TaskAdmissionLimitError):
         await _service(session).create_or_replay(
@@ -306,6 +335,9 @@ async def test_different_key_same_source_reuses_active_task(
         assert session.commits == 0
         assert "pg_advisory_xact_lock" in str(session.statements[0])
 
+    def admit_new() -> None:
+        pytest.fail("Active replay must not run new-task freshness admission")
+
     new_key = IdempotencyKey(uuid.uuid7())
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -313,6 +345,7 @@ async def test_different_key_same_source_reuses_active_task(
         idempotency_key=new_key,
         payload=payload,
         admit=admit,
+        admit_new=admit_new,
     )
     assert admitted
     assert not reservation.created
@@ -407,13 +440,58 @@ async def test_secondary_key_replay_query_retains_owner_and_terminal_history() -
     assert "tasks.expires_at >" in sql
 
 
+async def test_retained_verified_terminal_transform_replays_after_fresh_admission() -> None:
+    payload = _in_place_payload()
+    row = _task(
+        request_hash=task_service_module._request_hash(task_service_module._serialize(payload)),
+        status=TaskStatus.SUCCEEDED,
+    )
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    row.started_at = datetime.now(UTC)
+    row.finished_at = datetime.now(UTC)
+    row.attempt_count = 1
+    row.result = _transform_success_result(row.id, payload.mode).model_dump(mode="json")
+    session = _Session(None, None, None, row, None)
+    admissions: list[bool] = []
+
+    async def admit() -> None:
+        admissions.append(True)
+
+    def admit_new() -> None:
+        pytest.fail("Terminal replay must not run new-task freshness admission")
+
+    fresh_key = IdempotencyKey(uuid.uuid7())
+    reservation = await _service(session).create_or_replay(
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        owner_user_id=row.owner_user_id,
+        idempotency_key=fresh_key,
+        payload=payload,
+        admit=admit,
+        admit_new=admit_new,
+    )
+
+    assert admissions == [True]
+    assert not reservation.created
+    assert reservation.task.id == row.id
+    terminal_statement = session.statements[3]
+    assert isinstance(terminal_statement, ClauseElement)
+    terminal_sql = str(terminal_statement)
+    assert "tasks.status" in terminal_sql
+    assert "tasks.finished_at IS NOT NULL" in terminal_sql
+    terminal_params = terminal_statement.compile().params or {}
+    assert "pipeline_version" in terminal_params.values()
+    assert "brand_profile_sha256" in terminal_params.values()
+    assert "INSERT INTO task_replay_keys" in str(session.statements[4])
+    assert not any("INSERT INTO tasks " in str(statement) for statement in session.statements)
+
+
 async def test_markdown_task_persists_ciphertext_and_hash_without_plaintext() -> None:
     payload = _markdown_payload()
     assert isinstance(payload.source, MarkdownSource)
     serialized = task_service_module._serialize(payload)
     row = _task(request_hash=task_service_module._request_hash(serialized))
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, 0, row)
+    session = _Session(None, None, None, None, 0, row)
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -504,7 +582,7 @@ async def test_expired_transform_key_retries_identical_insert_once(
 ) -> None:
     row = _task(request_hash="0" * 64)
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, 0, None, None, row if insert_succeeds else None)
+    session = _Session(None, None, None, None, 0, None, None, row if insert_succeeds else None)
     admissions: list[bool] = []
 
     async def admit() -> None:
@@ -531,8 +609,8 @@ async def test_expired_transform_key_retries_identical_insert_once(
         assert session.commits == 0
         assert session.rollbacks == 1
     assert admissions == [True]
-    assert len(session.statements) == 7
-    assert session.statements[4] is session.statements[6]
+    assert len(session.statements) == 8
+    assert session.statements[5] is session.statements[7]
 
 
 async def test_worker_load_decrypts_markdown_and_accepts_legacy_payloads() -> None:

@@ -65,6 +65,9 @@ async def get_document_transform_capabilities(
     status_code=status.HTTP_202_ACCEPTED,
     operation_id="create_document_transform",
     responses={
+        status.HTTP_409_CONFLICT: {
+            "description": "The source changed after this transformation was requested"
+        },
         status.HTTP_413_CONTENT_TOO_LARGE: {
             "description": "Markdown input exceeds a bounded conversion limit"
         },

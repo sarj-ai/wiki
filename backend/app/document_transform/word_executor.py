@@ -24,6 +24,7 @@ from app.document_transform.schemas import (
     ValidationSummary,
     WordCopyCheckpoint,
 )
+from app.document_transform.versions import WORD_PIPELINE_VERSION
 from app.document_transform.word_gateway import WORD_MIME, WordGateway
 from app.document_transform.word_package import (
     TARGET_FONT,
@@ -33,7 +34,6 @@ from app.document_transform.word_package import (
 from app.identifiers import TaskId
 
 
-WORD_PIPELINE_VERSION = "word-format-copy-v1"
 _MAX_OUTPUT_STEM = 250
 
 

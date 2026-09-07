@@ -129,6 +129,7 @@ from app.document_transform.unslop import (
     UNSLOP_UPSTREAM_COMMIT,
     UNSLOP_UPSTREAM_VERSION,
 )
+from app.document_transform.versions import DOCUMENT_PIPELINE_VERSION
 from app.identifiers import DocsRevisionId, DocsSegmentId, FileId, ModelId, TaskId
 
 
@@ -139,7 +140,7 @@ class _TableFontScope(NamedTuple):
     findings: list[TransformFinding]
 
 
-PIPELINE_VERSION = "document-transform-v3"
+PIPELINE_VERSION = DOCUMENT_PIPELINE_VERSION
 REQUEST_BUILDER_VERSION = "google-docs-requests-v26"
 _COPY_REQUEST_BUILDER_VERSION = f"{REQUEST_BUILDER_VERSION}-visual-v1"
 _MAX_OUTPUT_NAME_LENGTH = 255

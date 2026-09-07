@@ -122,9 +122,12 @@ class _Tasks(TaskService):
         idempotency_key: IdempotencyKey,
         payload: BaseModel,
         admit: Callable[[], Awaitable[None]] | None = None,
+        admit_new: Callable[[], None] | None = None,
     ) -> TaskReservation:
         if self.created and admit is not None:
             await admit()
+        if self.created and admit_new is not None:
+            admit_new()
         self.requested_kind = kind
         task = _succeeded(self.task_id) if self.terminal else _pending(self.task_id, kind=kind)
         return TaskReservation(task=task, created=self.created)
@@ -225,7 +228,7 @@ def _destination_files(
             mime_type=mime_type,
             parent_folder_id=None,
             drive_id=None,
-            modified_time=None,
+            modified_time="time",
             can_add_children=can_add_children,
         )
     )
