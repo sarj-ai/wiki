@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from enum import StrEnum
 import re
 from typing import TYPE_CHECKING
@@ -47,6 +47,7 @@ class NativeElementProposal:
     source_range: SourceRange
     original_text: str
     kind: NativeElementKind
+    normalized_value: str
 
     def requests(self) -> list[DocsRequest]:
         # Never send a replacement independently of revision guards.
@@ -66,7 +67,7 @@ class NativeElementProposal:
                 "insertDate": {
                     "location": location,
                     "dateElementProperties": {
-                        "timestamp": f"{self.original_text}T00:00:00Z",
+                        "timestamp": f"{self.normalized_value}T00:00:00Z",
                         "timeZoneId": "Etc/UTC",
                         "locale": "en",
                         "dateFormat": "DATE_FORMAT_ISO8601",
@@ -122,6 +123,7 @@ def plan_native_elements(
                     source,
                     block.text,
                     kind,
+                    _native_value(block.text, kind),
                 ),
             )
         if len(proposals) >= policy.max_elements:
@@ -138,11 +140,7 @@ def plan_native_elements(
 
 
 def _native_kind(text: str, policy: NativeElementPolicy) -> NativeElementKind | None:
-    if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text):
-        try:
-            date.fromisoformat(text)
-        except ValueError:
-            return None
+    if _unambiguous_date(text) is not None:
         return NativeElementKind.DATE
     if text in policy.verified_person_emails and re.fullmatch(
         r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
@@ -164,4 +162,32 @@ def _native_kind(text: str, policy: NativeElementPolicy) -> NativeElementKind | 
         and not any(character.isspace() for character in text)
     ):
         return NativeElementKind.RESOURCE
+    return None
+
+
+def _native_value(text: str, kind: NativeElementKind) -> str:
+    if kind is NativeElementKind.DATE:
+        value = _unambiguous_date(text)
+        if value is None:
+            msg = "Date proposal lost its normalized value"
+            raise ValueError(msg)
+        return value.isoformat()
+    return text
+
+
+def _unambiguous_date(text: str) -> date | None:
+    formats = (
+        "%Y-%m-%d",
+        "%B %d, %Y",
+        "%B %d %Y",
+        "%b %d, %Y",
+        "%b %d %Y",
+        "%d %B %Y",
+        "%d %b %Y",
+    )
+    for format_value in formats:
+        try:
+            return datetime.strptime(text, format_value).replace(tzinfo=UTC).date()
+        except ValueError:
+            continue
     return None

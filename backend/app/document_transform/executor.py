@@ -56,7 +56,11 @@ from app.document_transform.ir import (
     rewrite_markdown,
 )
 from app.document_transform.models import PatchGenerator
-from app.document_transform.naming import suggested_document_title, title_case_document_name
+from app.document_transform.naming import (
+    polished_document_name,
+    suggested_document_title,
+    title_case_document_name,
+)
 from app.document_transform.native_font_defense import (
     apply_native_font_preservation,
     defend_native_font_requests,
@@ -1841,7 +1845,7 @@ def _copy_output_name(request: DocumentTransformRequest, original: DocumentIR) -
         return (
             request.output_name
             if request.mode is TransformMode.UNSLOP
-            else title_case_document_name(request.output_name)
+            else polished_document_name(request.output_name)
         )
     title = (
         original.title
@@ -1854,6 +1858,7 @@ def _copy_output_name(request: DocumentTransformRequest, original: DocumentIR) -
     base = title.strip()[: _MAX_OUTPUT_NAME_LENGTH - len(suffix)].rstrip()
     if request.mode is not TransformMode.UNSLOP:
         base = _strip_generated_copy_suffixes(base)
+        base = polished_document_name(base)
     name = f"{base}{suffix}"
     return name if request.mode is TransformMode.UNSLOP else title_case_document_name(name)
 

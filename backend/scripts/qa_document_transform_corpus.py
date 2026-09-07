@@ -1,8 +1,8 @@
 """Plan or run a resumable, private production transform corpus.
 
-Planning is read-only: it selects a deterministic corpus from private Google Docs
-owned by the QA user and writes a local evidence manifest. Execution requires an
-explicit confirmation and submits transformations through the live production
+Planning is read-only: it enumerates every native Google Doc below an explicitly
+bound private Drive folder and writes a local evidence manifest. Execution requires
+an explicit confirmation and submits transformations through the live production
 HTTP endpoint. The script never changes permissions or edits source documents.
 """
 
@@ -21,7 +21,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import TYPE_CHECKING, Annotated, Any, Literal, NamedTuple, NoReturn
+from typing import TYPE_CHECKING, Annotated, Any, Literal, NamedTuple, NoReturn, Protocol
 import uuid
 
 from google import genai
@@ -37,8 +37,6 @@ from app.config import settings
 from app.database import async_session
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.errors import (
-    InPlaceNeedsReviewError,
-    InPlaceNotAllowedError,
     SourceTooLargeError,
     UnsupportedSourceError,
 )
@@ -58,7 +56,7 @@ from app.drive.retry import execute_with_retry
 from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.drive.service import GoogleDriveService
 from app.files.service import GoogleFilesService
-from app.identifiers import DocsTabId, FileId, TaskId
+from app.identifiers import FileId, TaskId
 from app.models.user import User
 from app.tasks.schemas import (
     FailedTaskRead,
@@ -76,7 +74,7 @@ if TYPE_CHECKING:
 
 _API_BASE_URL = "https://api-wiki.sarj.ai"
 _ACCESS_TOKEN_ENV = "WIKI_QA_ACCESS_TOKEN"
-_CONFIRMATION = "CREATE_20_PRIVATE_SIBLINGS"
+_CONFIRMATION = "CREATE_ALL_PRIVATE_SIBLINGS"
 _CANARY_CONFIRMATION = "CREATE_1_PRIVATE_CANARY"
 _DEFAULT_COUNT = 20
 _MAX_LIST_PAGES = 100
@@ -88,8 +86,14 @@ _TRANSFORM_OPERATION_PROPERTY = "sarjTransformOperation"
 _TASK_ADAPTER: TypeAdapter[TaskRead] = TypeAdapter(TaskRead)
 _PDF_MIME_TYPE = "application/pdf"
 _MAX_EXPORTED_PDF_BYTES = 50 * 1024 * 1024
-_SCREENSHOT_DPI = 144
+_SCREENSHOT_DPI: Literal[144] = 144
 _MAX_JUDGE_SCREENSHOTS = 12
+
+
+class CopySourceGateway(Protocol):
+    async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot: ...
+
+
 _MIN_VISUAL_SCORE = 4
 _MAX_PDF_PAGES = 100
 _MAX_PAGE_POINTS = 36 * 72
@@ -241,7 +245,7 @@ class VisualJudgeEvidence(_StrictModel):
 
 
 class EvidenceManifest(_StrictModel):
-    schema_version: Literal[2] = 2
+    schema_version: Literal[3] = 3
     created_at: datetime
     api_base_url: Literal["https://api-wiki.sarj.ai"] = "https://api-wiki.sarj.ai"
     expected_release_sha: str
@@ -251,7 +255,10 @@ class EvidenceManifest(_StrictModel):
     seed: str
     seed_sha256: str
     mode: TransformMode
-    count: Annotated[int, Field(ge=1, le=_DEFAULT_COUNT)]
+    source_folder_id: FileId
+    folder_source_ids: tuple[FileId, ...]
+    folder_source_count: Annotated[int, Field(ge=1)]
+    count: Annotated[int, Field(ge=1)]
     user_email: EmailStr
     pipeline_version: str
     brand_profile_id: str
@@ -283,6 +290,7 @@ class VerifiedSourceState(NamedTuple):
 class SelectionResult(NamedTuple):
     sources: list[SourceEvidence]
     rejections: Counter[str]
+    folder_source_ids: tuple[FileId, ...]
 
 
 class SubmissionResult(NamedTuple):
@@ -369,7 +377,8 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--manifest", required=True, type=Path)
     parser.add_argument("--ledger", required=True, type=Path)
     parser.add_argument("--user-email", default="nasr@sarj.ai")
-    parser.add_argument("--count", type=int, default=_DEFAULT_COUNT)
+    parser.add_argument("--count", type=int, default=_DEFAULT_COUNT, help=argparse.SUPPRESS)
+    parser.add_argument("--source-folder-id", required=True)
     parser.add_argument("--mode", choices=[item.value for item in TransformMode], default="both")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--canary", action="store_true")
@@ -436,6 +445,7 @@ async def _run(arguments: argparse.Namespace) -> EvidenceManifest:
             expected_release_sha=arguments.expected_release_sha,
             seed=arguments.seed,
             count=arguments.count,
+            source_folder_id=FileId(arguments.source_folder_id),
             mode=mode,
             user_email=arguments.user_email,
             cohort=cohort,
@@ -522,15 +532,16 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
     artifacts_dir = getattr(arguments, "artifacts_dir", None)
     pdftoppm_version = getattr(arguments, "pdftoppm_version", None)
     judge_model = getattr(arguments, "judge_model", None)
-    if not 1 <= arguments.count <= _DEFAULT_COUNT:
-        _fail(f"--count must be between 1 and {_DEFAULT_COUNT}")
+    if not getattr(arguments, "source_folder_id", None):
+        _fail("--source-folder-id is required")
+    if arguments.count < 1:
+        _fail("--count must be positive")
     if arguments.execute:
-        required_count = 1 if arguments.canary else _DEFAULT_COUNT
         required_confirmation = _CANARY_CONFIRMATION if arguments.canary else _CONFIRMATION
         if arguments.confirm_live_copy != required_confirmation:
             _fail(f"--confirm-live-copy must equal {required_confirmation}")
-        if arguments.count != required_count:
-            _fail(f"--execute requires --count {required_count}")
+        if arguments.canary and arguments.count != 1:
+            _fail("--execute requires --count 1 for a canary folder")
         if arguments.mode != TransformMode.BOTH.value:
             _fail("--execute requires --mode both")
         if artifacts_dir is None:
@@ -613,6 +624,7 @@ async def _load_or_plan_manifest(
     expected_release_sha: str,
     seed: str,
     count: int,
+    source_folder_id: FileId,
     mode: TransformMode,
     user_email: str,
     cohort: QaCohort,
@@ -627,6 +639,7 @@ async def _load_or_plan_manifest(
             expected_release_sha=expected_release_sha,
             seed=seed,
             count=count,
+            source_folder_id=source_folder_id,
             mode=mode,
             user_email=user_email,
             cohort=cohort,
@@ -642,6 +655,7 @@ async def _load_or_plan_manifest(
         expected_release_sha=expected_release_sha,
         seed=seed,
         count=count,
+        source_folder_id=source_folder_id,
         mode=mode,
         user_email=user_email,
         cohort=cohort,
@@ -656,7 +670,10 @@ async def _load_or_plan_manifest(
         seed=seed,
         seed_sha256=_sha256_text(seed),
         mode=mode,
-        count=count,
+        count=len(selection.sources),
+        source_folder_id=source_folder_id,
+        folder_source_ids=selection.folder_source_ids,
+        folder_source_count=len(selection.folder_source_ids),
         user_email=user_email,
         pipeline_version=PIPELINE_VERSION,
         brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
@@ -683,6 +700,7 @@ def _require_matching_manifest(
     expected_release_sha: str,
     seed: str,
     count: int,
+    source_folder_id: FileId,
     mode: TransformMode,
     user_email: str,
     cohort: QaCohort,
@@ -692,7 +710,8 @@ def _require_matching_manifest(
     expected = (
         manifest.expected_release_sha == expected_release_sha,
         manifest.seed == seed,
-        manifest.count == count,
+        manifest.count == (count if cohort == "canary" else manifest.folder_source_count),
+        manifest.source_folder_id == source_folder_id,
         manifest.mode is mode,
         str(manifest.user_email).casefold() == user_email.casefold(),
         manifest.pipeline_version == PIPELINE_VERSION,
@@ -714,6 +733,9 @@ def _require_manifest_invariants(manifest: EvidenceManifest) -> None:
     checks = (
         manifest.seed_sha256 == _sha256_text(manifest.seed),
         len(sources) == manifest.count,
+        manifest.folder_source_count == len(manifest.folder_source_ids),
+        len(set(manifest.folder_source_ids)) == manifest.folder_source_count,
+        set(source_ids) == set(manifest.folder_source_ids),
         len(set(source_ids)) == len(source_ids),
         len(set(operation_keys)) == len(operation_keys),
         tuple(source.ordinal for source in sources) == tuple(range(1, manifest.count + 1)),
@@ -826,22 +848,24 @@ async def _select_sources(
     expected_release_sha: str,
     seed: str,
     count: int,
+    source_folder_id: FileId,
     mode: TransformMode,
     user_email: str,
     cohort: QaCohort,
     excluded_source_ids: frozenset[FileId],
 ) -> SelectionResult:
-    candidates = await asyncio.to_thread(_list_owned_doc_metadata, drive_client)
+    candidates = await asyncio.to_thread(_list_folder_doc_metadata, drive_client, source_folder_id)
     ordered = seeded_order(candidates, seed)
+    if cohort == "canary" and len(ordered) != count:
+        _fail(f"canary folder must contain exactly {count} native Google Doc")
+    if not ordered:
+        _fail("source folder contains no native Google Docs")
     selected: list[SourceEvidence] = []
     rejections: Counter[str] = Counter()
     for raw in ordered:
-        if len(selected) == count:
-            break
         raw_id = raw.get("id")
         if isinstance(raw_id, str) and FileId(raw_id) in excluded_source_ids:
-            rejections["canary_overlap"] += 1
-            continue
+            _fail("source folder overlaps the verified canary corpus")
         try:
             evidence = await _inspect_candidate(
                 raw=raw,
@@ -856,11 +880,14 @@ async def _select_sources(
             )
         except (QaError, SourceTooLargeError, UnsupportedSourceError) as exc:
             rejections[_safe_rejection(exc)] += 1
-            continue
+            _fail(f"folder source failed copy preflight: {_safe_rejection(exc)}")
         selected.append(evidence)
-    if len(selected) != count:
-        _fail(f"only {len(selected)} private, eligible Google Docs were available")
-    return SelectionResult(selected, rejections)
+    folder_source_ids = tuple(
+        FileId(raw["id"]) for raw in ordered if isinstance(raw.get("id"), str)
+    )
+    if len(folder_source_ids) != len(ordered):
+        _fail("Drive returned folder content without a stable file ID")
+    return SelectionResult(selected, rejections, folder_source_ids)
 
 
 async def _inspect_candidate(
@@ -868,7 +895,7 @@ async def _inspect_candidate(
     raw: dict[str, Any],
     ordinal: int,
     drive_client: DriveResource,
-    gateway: GoogleDocumentGateway,
+    gateway: CopySourceGateway,
     expected_release_sha: str,
     seed: str,
     mode: TransformMode,
@@ -906,11 +933,8 @@ async def _inspect_candidate(
             expected_modified_time=metadata.modified_time,
         )
     )
-    try:
-        inspection = await gateway.inspect_in_place(snapshot=snapshot, title=snapshot.title)
-    except InPlaceNeedsReviewError, InPlaceNotAllowedError:
-        _fail("copy_brand_preflight_failed")
-    _require_no_header_conflicts(inspection.unknown_header_tab_ids)
+    # Copy mode works on a provider-created sibling and preserves unsupported
+    # source furniture. In-place ownership/header eligibility is irrelevant here.
     document = _parse_snapshot(snapshot)
     operation_key = corpus_operation_key(
         expected_release_sha=expected_release_sha,
@@ -933,11 +957,6 @@ async def _inspect_candidate(
         operation_key=operation_key,
         output_name=_output_name(expected_release_sha, seed, ordinal, cohort=cohort),
     )
-
-
-def _require_no_header_conflicts(unknown_header_tab_ids: tuple[DocsTabId, ...]) -> None:
-    if unknown_header_tab_ids:
-        _fail("header_conflict")
 
 
 def seeded_order(candidates: Iterable[dict[str, Any]], seed: str) -> list[dict[str, Any]]:
@@ -963,33 +982,70 @@ def corpus_operation_key(
     )
 
 
-def _list_owned_doc_metadata(drive_client: DriveResource) -> list[dict[str, Any]]:
+def _list_folder_doc_metadata(
+    drive_client: DriveResource, source_folder_id: FileId
+) -> list[dict[str, Any]]:
+    root = _parse_file_metadata(_get_file_metadata(drive_client, source_folder_id))
+    if root.mime_type != MIME_FOLDER:
+        _fail("source folder is not a Google Drive folder")
+    pending = [root.id]
+    visited: set[FileId] = set()
+    documents: list[dict[str, Any]] = []
+    while pending:
+        folder_id = pending.pop(0)
+        if folder_id in visited:
+            _fail("Drive folder traversal contained a cycle")
+        visited.add(folder_id)
+        children = _list_folder_children(
+            drive_client,
+            folder_id,
+            shared_drive_id=root.drive_id,
+        )
+        for child in children:
+            metadata = _parse_file_metadata(child)
+            if metadata.mime_type == MIME_FOLDER:
+                pending.append(metadata.id)
+            elif metadata.mime_type == MIME_DOC:
+                documents.append(child)
+    return documents
+
+
+def _list_folder_children(
+    drive_client: DriveResource,
+    folder_id: FileId,
+    *,
+    shared_drive_id: str | None,
+) -> list[dict[str, Any]]:
     files: list[dict[str, Any]] = []
     page_token: str | None = None
     for _page in range(_MAX_LIST_PAGES):
         request = drive_client.files().list(
-            q=f"mimeType='{MIME_DOC}' and trashed=false and 'me' in owners",
-            corpora="user",
+            q=f"'{folder_id}' in parents and trashed=false",
             spaces="drive",
             includeItemsFromAllDrives=True,
             supportsAllDrives=True,
             pageSize=1000,
             pageToken=page_token,
             fields=f"nextPageToken,incompleteSearch,files({_file_fields()})",
+            corpora="drive" if shared_drive_id is not None else "user",
+            driveId=shared_drive_id,
         )
         raw = execute_with_retry(request)
         if raw.get("incompleteSearch") is True:
-            _fail("Drive returned an incomplete corpus search")
+            _fail("Drive returned an incomplete folder search")
         page_files = raw.get("files", [])
         if not isinstance(page_files, list) or not all(
             isinstance(item, dict) for item in page_files
         ):
-            _fail("Drive returned invalid corpus metadata")
+            _fail("Drive returned invalid folder metadata")
         files.extend(page_files)
-        page_token = raw.get("nextPageToken")
-        if not page_token:
+        next_token = raw.get("nextPageToken")
+        if not next_token:
             return files
-    _fail("Drive corpus exceeded the bounded page limit")
+        if not isinstance(next_token, str):
+            _fail("Drive returned an invalid folder page token")
+        page_token = next_token
+    _fail("Drive folder traversal exceeded the bounded page limit")
 
 
 def _get_file_metadata(drive_client: DriveResource, file_id: FileId) -> dict[str, Any]:

@@ -47,10 +47,26 @@ def test_date_request_preserves_iso_display_without_inventing_time() -> None:
 
 
 @pytest.mark.parametrize(
+    ("text", "timestamp"),
+    [
+        ("September 4, 2026", "2026-09-04T00:00:00Z"),
+        ("Sep 4 2026", "2026-09-04T00:00:00Z"),
+        ("4 September 2026", "2026-09-04T00:00:00Z"),
+    ],
+)
+def test_unambiguous_written_dates_use_native_date_elements(text: str, timestamp: str) -> None:
+    (proposal,) = plan_native_elements(_document(text))
+    assert proposal.original_text == text
+    assert proposal.requests()[1]["insertDate"]["dateElementProperties"]["timestamp"] == timestamp
+
+
+@pytest.mark.parametrize(
     "text",
     [
         "2026-02-30",
         "09/04/2026",
+        "04/09/2026",
+        "September 31, 2026",
         "tomorrow",
         "Due 2026-09-04",
         " 2026-09-04",

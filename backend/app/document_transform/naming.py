@@ -19,6 +19,16 @@ _MAX_HEADING_WORDS = 18
 _ALIAS_WORD_LENGTH = 10
 _ALIAS_SUFFIX_LENGTH = 10
 _MAX_ICON_JOINED_PARTS = 8
+_TRAILING_DOCUMENT_DATE = re.compile(
+    r"(?:\s*(?:[-\u2013\u2014|:]\s*)?(?:"
+    r"(?:19|20)\d{2}[-/.](?:0?[1-9]|1[0-2])[-/.](?:0?[1-9]|[12]\d|3[01])"
+    r"|(?:0?[1-9]|1[0-2])[-/.](?:0?[1-9]|[12]\d|3[01])[-/.](?:\d{2}|\d{4})"
+    r"|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|"
+    r"Dec(?:ember)?)\s+(?:0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?(?:,)?\s+(?:19|20)\d{2}"
+    r")\s*)$",
+    re.IGNORECASE,
+)
 _REGIONAL_FLAG = re.compile(r"[\U0001F1E6-\U0001F1FF]{2}")
 _ICON_PART = re.compile(
     r"[\U0001F300-\U0001FAFF\u2600-\u27bf©®™ℹ][\ufe0e\ufe0f]?[\U0001F3FB-\U0001F3FF]?"
@@ -87,6 +97,19 @@ def title_case_document_name(text: str) -> str:
         replacements.extend((text[previous : match.start()], word))
         previous = match.end()
     return "".join((*replacements, text[previous:]))
+
+
+def strip_trailing_document_date(text: str) -> str:
+    normalized = " ".join(text.split())
+    match = _TRAILING_DOCUMENT_DATE.search(normalized)
+    if match is None:
+        return normalized
+    stripped = normalized[: match.start()].rstrip(" -\u2013\u2014|:,()[]")
+    return stripped.strip()
+
+
+def polished_document_name(text: str) -> str:
+    return title_case_document_name(strip_trailing_document_date(text) or "Untitled")
 
 
 def tab_icon_emoji(text: str) -> str | None:
