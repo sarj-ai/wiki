@@ -68,6 +68,23 @@ class InPlaceNeedsReviewError(DocumentTransformError):
     public_detail = "The source needs review before it can be changed in place"
 
 
+class ActiveSuggestionsNeedsReviewError(InPlaceNeedsReviewError):
+    public_detail = "Resolve active Google Docs suggestions before polishing in place"
+
+
+class ComplexStructureNeedsReviewError(InPlaceNeedsReviewError):
+    public_detail = "This document's protected structure needs review before polishing in place"
+
+
+class CustomHeaderNeedsReviewError(InPlaceNeedsReviewError):
+    public_detail = "Custom headers or footers need review before Sarj branding can be applied"
+
+
+class BrandAssetUnavailableError(DocumentTransformError):
+    code = "brand_asset_unavailable"
+    public_detail = "Sarj branding is temporarily unavailable; the document was not changed"
+
+
 class CheckpointTooLargeError(DocumentTransformError):
     code = "checkpoint_too_large"
     public_detail = "The document transformation plan is too large to execute safely"

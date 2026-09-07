@@ -53,6 +53,7 @@ from app.document_transform.custom_furniture import (
 )
 from app.document_transform.docx_renderer import markdown_import_manifest
 from app.document_transform.errors import (
+    ActiveSuggestionsNeedsReviewError,
     DocumentGatewayError,
     IncompatiblePendingOutputError,
     InPlaceNeedsReviewError,
@@ -1030,7 +1031,7 @@ class GoogleDocumentGateway(DocumentGateway):
                 "document in-place preflight checks={checks}",
                 checks={"in_place_active_suggestions": True},
             )
-            raise InPlaceNeedsReviewError
+            raise ActiveSuggestionsNeedsReviewError
         header_title = (
             _trusted_header_identity_title(document, getattr(self, "_header_identity", None))
             or title

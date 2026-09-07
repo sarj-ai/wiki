@@ -29,6 +29,9 @@ from app.document_transform.copy_font_defense import (
 from app.document_transform.custom_furniture import custom_furniture_requests_safe
 from app.document_transform.docx_renderer import markdown_import_manifest, render_markdown_docx
 from app.document_transform.errors import (
+    BrandAssetUnavailableError,
+    ComplexStructureNeedsReviewError,
+    CustomHeaderNeedsReviewError,
     DocumentGatewayError,
     InPlaceNeedsReviewError,
     InPlaceNotAllowedError,
@@ -1447,17 +1450,22 @@ class DocumentTransformExecutor:
                 "document in-place preflight checks={checks}",
                 checks={"in_place_planner_findings": True},
             )
-            raise InPlaceNeedsReviewError
+            raise ComplexStructureNeedsReviewError
         branded = request.mode is not TransformMode.UNSLOP
-        if branded and (inspection.unknown_header_tab_ids or not inspection.logo_uri):
+        if branded and inspection.unknown_header_tab_ids:
             logger.info(
                 "document in-place preflight checks={checks}",
                 checks={
-                    "in_place_unknown_header": bool(inspection.unknown_header_tab_ids),
-                    "in_place_missing_logo": not bool(inspection.logo_uri),
+                    "in_place_unknown_header": True,
                 },
             )
-            raise InPlaceNeedsReviewError
+            raise CustomHeaderNeedsReviewError
+        if branded and not inspection.logo_uri:
+            logger.info(
+                "document in-place preflight checks={checks}",
+                checks={"in_place_missing_logo": True},
+            )
+            raise BrandAssetUnavailableError
         replacements = {
             block.id: transformed.text
             for block, transformed in zip(original.blocks, outcome.document.blocks, strict=True)
