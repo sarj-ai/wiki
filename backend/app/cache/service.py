@@ -61,6 +61,45 @@ class CacheService(ABC):
     async def delete(self, namespace: CacheNamespace, key: str) -> None: ...
 
 
+class NullCacheService(CacheService):
+    @override
+    async def get(self, namespace: CacheNamespace, key: str) -> JsonValue | None:
+        return None
+
+    @override
+    async def get_many(
+        self,
+        namespace: CacheNamespace,
+        keys: list[str],
+    ) -> dict[str, JsonValue]:
+        return {}
+
+    @override
+    async def put(
+        self,
+        namespace: CacheNamespace,
+        key: str,
+        value: JsonValue,
+        *,
+        ttl: timedelta,
+    ) -> None:
+        return None
+
+    @override
+    async def put_many(
+        self,
+        namespace: CacheNamespace,
+        values: Mapping[str, JsonValue],
+        *,
+        ttl: timedelta,
+    ) -> None:
+        return None
+
+    @override
+    async def delete(self, namespace: CacheNamespace, key: str) -> None:
+        return None
+
+
 class CachePSqlService(CacheService):
     def __init__(
         self,

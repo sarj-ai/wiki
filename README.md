@@ -243,6 +243,44 @@ at the first failed invariant, retains successful labeled outputs in the bound Q
 inspection, renders every eligible page, and never edits a source or calls a Drive permission
 mutation.
 
+### Default-off Cloud Run corpus runner
+
+Terraform contains an opt-in `sarj-wiki-document-transform-qa` Cloud Run Job for authenticated
+corpus QA. It is absent unless `enable_document_transform_qa_job=true`; enabling it also requires
+an immutable image from the exact `sarj-docs-dammam/document-transform-qa` repository, its release
+SHA, and one explicit human `user:` or `group:` invoker. The job has its own service account, zero
+retries, and a dedicated public-access-prevented evidence bucket mounted with UID 1001 and
+`0600`/`0700` modes. It has no Cloud SQL identity, database grants, Secret Manager access, production
+signing/encryption material, or Google OAuth client secret. Its only project roles are the dedicated
+bucket's `storage.objectUser` role and `aiplatform.user` for optional visual judging. The human gets
+only `run.jobsExecutorWithOverrides`; no Scheduler or CI trigger is attached.
+
+The authenticated same-site `POST /document-transforms/qa/grants` surface issues self-delegated
+grants only. Existing cookie-origin middleware rejects cross-site cookie requests. The audit row
+stores both issuer and subject user IDs, exact session and token version, release SHA, image digest,
+source and destination folders, mode, and a maximum 15-minute expiry. The workload-authenticated
+`POST /internal/document-transform-qa/exchange` endpoint atomically consumes a grant and returns an
+opaque five-minute capability. Renewal rotates that capability under the same row lock for at most
+the two-hour job lifetime and rechecks session revocation and token version every time. The job
+never reads or updates grant rows directly. Consume and renewal requests include UUID request
+nonces: deterministic backend-only derivation replays the exact response after a committed response
+is lost, while a one-generation previous-token overlap permits the same renewal retry and rejects a
+different nonce or older generation.
+
+This repository deliberately does not activate the job or provide an unauthenticated grant-issuer
+CLI. Activation is a separate reviewed operation:
+
+1. Implement dedicated backend capability operations for the runner's bounded Drive reads, PDF
+   exports, transform submission, and task polling. Until then Cloud execution deliberately fails
+   before grant consumption; local corpus execution is unchanged.
+2. Build and smoke-test `backend/Dockerfile.qa`, attest it, and supply the exact repository digest
+   and matching 40-character release SHA.
+3. Apply migration `0018_transform_qa_grants`, review a real Terraform plan, enable the job for a
+   named security QA principal, and read back every IAM binding, image/env binding, mount option,
+   absence of secrets/Cloud SQL access, and zero-retry policy.
+4. Use the logged-in issuer endpoint, run a one-document canary, inspect its private evidence and
+   owner-only output, and only then issue a separate grant for the full corpus.
+
 ## Document-transform dispatch recovery
 
 The Dammam Scheduler job calls the authenticated reconcile endpoint every five minutes.

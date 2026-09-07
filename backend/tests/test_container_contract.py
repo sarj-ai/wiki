@@ -2,12 +2,14 @@ from pathlib import Path
 
 
 _DOCKERFILE = Path(__file__).parents[1] / "Dockerfile"
+_QA_DOCKERFILE = Path(__file__).parents[1] / "Dockerfile.qa"
 _REPOSITORY_ROOT = Path(__file__).parents[2]
 _DEPLOY_WORKFLOW = _REPOSITORY_ROOT / ".github/workflows/deploy-backend.yml"
 _DEPLOY_CANDIDATE = _REPOSITORY_ROOT / "scripts/github/deploy-backend-candidate.sh"
 _RUN_MIGRATIONS = _REPOSITORY_ROOT / "scripts/github/run-backend-migrations.sh"
 _VERIFY_LOGS = _REPOSITORY_ROOT / "scripts/github/verify-backend-correlated-logs.sh"
 _MIGRATIONS_TERRAFORM = _REPOSITORY_ROOT / "terraform/dammam.tf"
+_BACKEND_CI = _REPOSITORY_ROOT / ".github/workflows/ci-backend.yml"
 
 
 def test_application_container_does_not_run_database_migrations() -> None:
@@ -17,6 +19,30 @@ def test_application_container_does_not_run_database_migrations() -> None:
         'CMD [".venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]'
         in dockerfile
     )
+
+
+def test_qa_container_reuses_corpus_runner_and_fails_closed_without_arguments() -> None:
+    dockerfile = _QA_DOCKERFILE.read_text()
+    assert "COPY scripts/ scripts/" in dockerfile
+    assert all("@sha256:" in line for line in dockerfile.splitlines() if line.startswith("FROM "))
+    assert dockerfile.count("FROM ") == 2
+    assert "apk add --no-cache poppler-utils" in dockerfile
+    assert "USER app" in dockerfile
+    assert (
+        'ENTRYPOINT [".venv/bin/python", "-m", "scripts.qa_document_transform_cloud"]' in dockerfile
+    )
+    assert "CMD" not in dockerfile
+
+
+def test_qa_grant_concurrency_suite_is_in_required_postgres_ci() -> None:
+    workflow = _BACKEND_CI.read_text()
+    postgres_job = workflow[
+        workflow.index("  postgres-concurrency:") : workflow.index("\n  image:\n")
+    ]
+    assert "tests/test_document_transform_qa_grants.py" in postgres_job
+    required = workflow[workflow.index("  required:") :]
+    assert "needs: [lint-and-typecheck, test, postgres-concurrency, image]" in required
+    assert 'test "$POSTGRES_RESULT" = success' in required
 
 
 def test_deployment_runs_one_shot_migrations_before_traffic_switch() -> None:

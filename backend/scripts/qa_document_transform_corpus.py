@@ -406,13 +406,16 @@ async def _run(arguments: argparse.Namespace) -> EvidenceManifest:
     mode = TransformMode(arguments.mode)
     cohort: QaCohort = "canary" if arguments.canary else "corpus"
     async with async_session() as db, httpx.AsyncClient(timeout=30) as http:
+        environment = QaSecrets()
+        access_token = _qa_access_token(environment)
         user = await db.scalar(select(User).where(User.email == arguments.user_email))
         if user is None:
             _fail("QA user is not present in the configured database")
         prepared = await GoogleTokenManager(db, http).prepare(user)
+        cache_service = cache_service_dep()
         drive = GoogleDriveService(
             prepared.user,
-            cache_service_dep(),
+            cache_service,
             refresh_handler=prepared.refresh_handler,
         )
         files = GoogleFilesService(user=prepared.user, drive=drive)
@@ -473,7 +476,18 @@ async def _run(arguments: argparse.Namespace) -> EvidenceManifest:
             http=http,
             drive_client=drive_client,
             gateway=gateway,
+            access_token=access_token,
         )
+
+
+def _qa_access_token(environment: QaSecrets) -> str:
+    access_token = environment.access_token.get_secret_value()
+    if environment.cloud_run_job is None:
+        return access_token
+    _fail(
+        "Cloud Run corpus execution remains disabled until the backend-mediated "
+        "Drive and transform capability data plane is implemented"
+    )
 
 
 def _resolve_run_paths(arguments: argparse.Namespace) -> RunPaths:
@@ -503,6 +517,7 @@ async def _execute_planned_manifest(
     http: httpx.AsyncClient,
     drive_client: DriveResource,
     gateway: GoogleDocumentGateway,
+    access_token: str,
 ) -> EvidenceManifest:
     if paths.artifacts is None:  # pragma: no cover - argument invariant
         _fail("--artifacts-dir is required with --execute")
@@ -510,7 +525,7 @@ async def _execute_planned_manifest(
     if not isinstance(expected_renderer_version, str):
         _fail("--pdftoppm-version is required with --execute")
     renderer_version = await asyncio.to_thread(_require_pdftoppm, expected_renderer_version)
-    token = QaSecrets().access_token.get_secret_value()
+    token = access_token
     if not token:
         _fail(f"{_ACCESS_TOKEN_ENV} is required only with --execute")
     await _verify_api_identity(http, token=token, expected_email=arguments.user_email)

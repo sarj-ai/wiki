@@ -353,7 +353,7 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
       }
 
       dynamic "env" {
-        for_each = {
+        for_each = merge({
           ALLOWED_DOMAIN                      = "sarj.ai"
           COOKIE_DOMAIN                       = "sarj.ai"
           FRONTEND_URL                        = var.frontend_url
@@ -379,7 +379,11 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
           MCP_NATIVE_HTTPS_CALLBACKS          = jsonencode([])
           MCP_NATIVE_ISSUER                   = "https://${var.backend_domain}"
           MCP_NATIVE_LOOPBACK_PATHS           = jsonencode(["/callback"])
-        }
+          }, local.document_transform_qa_enabled ? {
+          DOCUMENT_TRANSFORM_QA_AUDIENCE        = "https://${var.backend_domain}/internal/document-transform-qa/exchange"
+          DOCUMENT_TRANSFORM_QA_SERVICE_ACCOUNT = google_service_account.document_transform_qa[0].email
+          DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST    = split("@", var.document_transform_qa_image)[1]
+        } : {})
         content {
           name  = env.key
           value = env.value

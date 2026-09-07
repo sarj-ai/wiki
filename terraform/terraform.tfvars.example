@@ -25,3 +25,9 @@ provision_mcp_native_secrets = false
 # mcp_native_lock_key    = "<stable-independent-mcp-lock-key>"
 
 alert_email = "alerts@sarj.ai"
+
+# Document-transform corpus QA remains absent by default. Activation requires a
+# reviewed digest-pinned QA image and one explicit human user/group invoker.
+enable_document_transform_qa_job = false
+# document_transform_qa_image = "me-central2-docker.pkg.dev/sarj-docs/sarj-docs-dammam/document-transform-qa@sha256:<64-hex-digest>"
+# document_transform_qa_invoker_member = "group:security-qa@sarj.ai"

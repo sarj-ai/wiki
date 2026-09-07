@@ -1701,6 +1701,70 @@
         "title": "ProposalDestination",
         "type": "object"
       },
+      "QaGrantBinding": {
+        "additionalProperties": false,
+        "properties": {
+          "destination_folder_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Destination Folder Id",
+            "type": "string"
+          },
+          "image_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "title": "Image Digest",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/TransformMode"
+          },
+          "release_sha": {
+            "pattern": "^[0-9a-f]{40}$",
+            "title": "Release Sha",
+            "type": "string"
+          },
+          "source_folder_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Source Folder Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "release_sha",
+          "image_digest",
+          "source_folder_id",
+          "destination_folder_id",
+          "mode"
+        ],
+        "title": "QaGrantBinding",
+        "type": "object"
+      },
+      "QaGrantIssueResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "grant_id": {
+            "title": "Grant Id",
+            "type": "string"
+          },
+          "grant_token": {
+            "title": "Grant Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "grant_id",
+          "grant_token",
+          "expires_at"
+        ],
+        "title": "QaGrantIssueResponse",
+        "type": "object"
+      },
       "RecentDocumentAlias": {
         "properties": {
           "alias": {
@@ -3335,6 +3399,61 @@
         "summary": "Get Document Transform Capabilities",
         "tags": [
           "document-transforms"
+        ]
+      }
+    },
+    "/document-transforms/qa/grants": {
+      "post": {
+        "operationId": "issue_document_transform_qa_grant_document_transforms_qa_grants_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QaGrantBinding"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QaGrantIssueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "A same-site login is required"
+          },
+          "409": {
+            "description": "Binding mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Issue Document Transform Qa Grant",
+        "tags": [
+          "document-transform-qa"
         ]
       }
     },
