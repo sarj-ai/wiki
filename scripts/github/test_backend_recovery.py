@@ -25,6 +25,13 @@ class _VerifierRun:
     trace: list[str]
 
 
+@dataclass(frozen=True)
+class _ModeResolverRun:
+    returncode: int
+    stderr: str
+    output: str
+
+
 def receipts() -> dict:
     repository = {"id": 1183627122, "full_name": "sarj-ai/wiki"}
     run = {
@@ -387,10 +394,34 @@ def test_recovery_job_is_exclusive_and_contains_no_deployment_mutations() -> Non
         "scripts/github/verify-smart-create-queue.sh",
         'echo "started_at=$(date -u +\'%Y-%m-%dT%H:%M:%S.%NZ\')" >> "$GITHUB_OUTPUT"',
         "scripts/github/verify-backend-production-health.sh",
+        "scripts/github/resolve-mcp-release-mode.sh",
         "scripts/github/verify-mcp-release.sh",
         "scripts/github/verify-backend-correlated-logs.sh",
         "bash scripts/backend_release/verify-serving.sh",
     ]
+    for job_name, revision_start in (
+        ("deploy", "${{ steps.deploy.outputs.started_at }}"),
+        ("verify-existing", "${{ steps.window.outputs.started_at }}"),
+    ):
+        resolver_step = next(
+            step
+            for step in jobs[job_name]["steps"]
+            if step.get("run") == "scripts/github/resolve-mcp-release-mode.sh"
+        )
+        assert resolver_step["id"] == "mcp-mode"
+        assert resolver_step["env"] == {
+            "MCP_VERIFIED_REVISION": "${{ steps.verify.outputs.new_revision }}"
+        }
+        mcp_step = next(
+            step
+            for step in jobs[job_name]["steps"]
+            if step.get("run") == "scripts/github/verify-mcp-release.sh"
+        )
+        assert mcp_step["env"] == {
+            "MCP_VERIFY_MODE": "${{ steps.mcp-mode.outputs.mode }}",
+            "MCP_VERIFIED_REVISION": "${{ steps.verify.outputs.new_revision }}",
+            "MCP_LOG_WINDOW_START": revision_start,
+        }
 
 
 def _run_mcp_verifier(tmp_path: Path, *, mode: str) -> _VerifierRun:
@@ -527,3 +558,116 @@ def test_mcp_disabled_inventory_covers_browser_route_shapes(tmp_path: Path) -> N
         "POST /integrations/mcp/consent/synthetic-intent",
         "DELETE /integrations/mcp/connections/00000000-0000-0000-0000-000000000000",
     }.issubset(observed)
+
+
+def _mcp_revision(*, enabled: bool) -> dict:
+    env = [{"name": "MCP_NATIVE_ENABLED", "value": str(enabled).lower()}]
+    if enabled:
+        env.extend(
+            [
+                {"name": "MCP_NATIVE_ISSUER", "value": "https://api-wiki.sarj.ai"},
+                {"name": "MCP_NATIVE_LOOPBACK_PATHS", "value": '["/callback"]'},
+                {"name": "MCP_NATIVE_HTTPS_CALLBACKS", "value": "[]"},
+                {
+                    "name": "MCP_NATIVE_FERNET_KEYS",
+                    "valueFrom": {
+                        "secretKeyRef": {"name": "mcp-fernet", "key": "1"}
+                    },
+                },
+                {
+                    "name": "MCP_NATIVE_LOCK_KEY",
+                    "valueFrom": {
+                        "secretKeyRef": {"name": "mcp-lock", "key": "2"}
+                    },
+                },
+            ]
+        )
+    return {
+        "metadata": {
+            "name": REVISION,
+            "labels": {"serving.knative.dev/service": "wiki-backend"},
+        },
+        "spec": {"containers": [{"env": env}]},
+        "status": {"conditions": [{"type": "Ready", "status": "True"}]},
+    }
+
+
+def _run_mcp_mode_resolver(tmp_path: Path, revision: dict) -> _ModeResolverRun:
+    fake_bin = tmp_path / "resolver-bin"
+    fake_bin.mkdir(parents=True)
+    fake_gcloud = fake_bin / "gcloud"
+    fake_gcloud.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s' \"$FAKE_REVISION_JSON\"\n"
+    )
+    fake_gcloud.chmod(0o755)
+    output = tmp_path / "github-output"
+    root = Path(__file__).resolve().parents[2]
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed repository resolver
+        [str(root / "scripts/github/resolve-mcp-release-mode.sh")],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,  # ruff: ignore[banned-api] -- controlled test subprocess environment
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",  # ruff: ignore[banned-api] -- isolated fake first
+            "FAKE_REVISION_JSON": json.dumps(revision),
+            "GITHUB_OUTPUT": str(output),
+            "PROJECT_ID": "wiki-test",
+            "REGION": "us-central1",
+            "SERVICE": "wiki-backend",
+            "MCP_VERIFIED_REVISION": REVISION,
+        },
+    )
+    return _ModeResolverRun(
+        returncode=completed.returncode,
+        stderr=completed.stderr,
+        output=output.read_text() if output.exists() else "",
+    )
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_mcp_mode_resolver_accepts_exact_revision_contract(
+    tmp_path: Path, *, enabled: bool
+) -> None:
+    result = _run_mcp_mode_resolver(tmp_path, _mcp_revision(enabled=enabled))
+    assert result.returncode == 0, result.stderr
+    assert result.output == f"mode={str(enabled).lower()}\n"
+
+
+def test_mcp_mode_resolver_rejects_missing_or_duplicate_flag(tmp_path: Path) -> None:
+    missing = _mcp_revision(enabled=False)
+    missing["spec"]["containers"][0]["env"] = []
+    result = _run_mcp_mode_resolver(tmp_path / "missing", missing)
+    assert result.returncode != 0
+
+    duplicate = _mcp_revision(enabled=False)
+    duplicate["spec"]["containers"][0]["env"].append(
+        {"name": "MCP_NATIVE_ENABLED", "value": "true"}
+    )
+    result = _run_mcp_mode_resolver(tmp_path / "duplicate", duplicate)
+    assert result.returncode != 0
+
+
+def test_mcp_mode_resolver_rejects_partial_enabled_key_contract(tmp_path: Path) -> None:
+    revision = _mcp_revision(enabled=True)
+    revision["spec"]["containers"][0]["env"] = [
+        setting
+        for setting in revision["spec"]["containers"][0]["env"]
+        if setting["name"] != "MCP_NATIVE_LOCK_KEY"
+    ]
+    result = _run_mcp_mode_resolver(tmp_path, revision)
+    assert result.returncode != 0
+
+
+def test_mcp_mode_resolver_rejects_wrong_service_or_unready_revision(
+    tmp_path: Path,
+) -> None:
+    wrong_service = _mcp_revision(enabled=False)
+    wrong_service["metadata"]["labels"]["serving.knative.dev/service"] = "other"
+    result = _run_mcp_mode_resolver(tmp_path / "service", wrong_service)
+    assert result.returncode != 0
+
+    unready = _mcp_revision(enabled=False)
+    unready["status"]["conditions"][0]["status"] = "False"
+    result = _run_mcp_mode_resolver(tmp_path / "ready", unready)
+    assert result.returncode != 0

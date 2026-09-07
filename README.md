@@ -288,11 +288,13 @@ typed counts or booleans and validated references, never raw logs or document co
 
 ## Codex MCP integration
 
-**Disabled by default; production connection is not verified.** Native OAuth, consent,
-connection management and Streamable HTTP are wired behind `MCP_NATIVE_ENABLED=false`.
-When disabled, no backend MCP, OAuth, discovery or consent routes are exposed. The
-frontend shows setup instructions only after the authenticated connections API succeeds.
-The following is the release target, not a claim of live Codex acceptance.
+**Disabled by default; production connection is not yet verified.** Native OAuth,
+consent, connection management and Streamable HTTP remain disabled in the current
+production release and in a default Terraform plan. Activation requires an explicit, reviewed
+`enable_mcp_native=true` apply with both independent MCP keys attached. The release
+pipeline resolves the flag and key references from the exact candidate revision; its verifier
+then requires discovery, OAuth challenge, hostile transport rejection, the
+exact serving revision and correlated secret-log hygiene to pass.
 
 ### Connect after release
 
@@ -300,12 +302,10 @@ Obtain the exact HTTPS endpoint from the released Wiki integration screen or ver
 release record. Replace the deliberately nonfunctional placeholder:
 
 ```sh
-codex mcp add sarj-wiki --url VERIFIED_WIKI_MCP_URL \
-  --oauth-client-registration dcr --oauth-resource VERIFIED_WIKI_MCP_URL
+codex mcp add sarj-wiki --url VERIFIED_WIKI_MCP_URL && codex mcp login sarj-wiki
 ```
 
-If login does not start automatically, run `codex mcp login sarj-wiki`. Verify the
-Wiki-linked Google account and client in browser consent; start read-only. No local
+Verify the Wiki-linked Google account and client in browser consent; start read-only. No local
 daemon, additional npm package, secret paste, or manual TOML rewrite should be needed.
 
 Before adding, check `codex mcp --help` and inspect only the chosen entry locally with

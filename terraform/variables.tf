@@ -95,6 +95,17 @@ variable "provision_mcp_native_secrets" {
   }
 }
 
+variable "enable_mcp_native" {
+  description = "Expose the native MCP and OAuth routes after secrets are explicitly provisioned"
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.enable_mcp_native || var.provision_mcp_native_secrets
+    error_message = "enable_mcp_native requires provision_mcp_native_secrets so both independent key references are present."
+  }
+}
+
 variable "mcp_native_fernet_keys" {
   description = "Newest-first independent Fernet key ring for native MCP credential state"
   type        = string

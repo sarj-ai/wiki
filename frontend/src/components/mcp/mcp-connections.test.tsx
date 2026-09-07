@@ -88,7 +88,9 @@ describe("McpConnections", () => {
     pending.resolve({ csrf: INITIAL.csrf, connections: [] });
     await vi.waitFor(() => expect(container).toHaveTextContent("No active app connections."));
     expect(container.querySelector("code")).toHaveTextContent("codex mcp add sarj-wiki");
-    expect(container.querySelector("code")).toHaveTextContent("--oauth-client-registration dcr");
+    expect(container.querySelector("code")).toHaveTextContent("--url");
+    expect(container.querySelector("code")).toHaveTextContent("codex mcp login sarj-wiki");
+    expect(container.querySelector("code")).not.toHaveTextContent("--oauth-client-registration");
     expect(buttons("Disconnect")).toHaveLength(0);
   });
 

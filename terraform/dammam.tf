@@ -375,7 +375,7 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
           DOCUMENT_TRANSFORM_IN_PLACE_ENABLED = "true"
           LOG_JSON                            = "true"
           MAINTENANCE_MODE                    = tostring(var.maintenance_mode)
-          MCP_NATIVE_ENABLED                  = "false"
+          MCP_NATIVE_ENABLED                  = tostring(var.enable_mcp_native)
           MCP_NATIVE_HTTPS_CALLBACKS          = jsonencode([])
           MCP_NATIVE_ISSUER                   = "https://${var.backend_domain}"
           MCP_NATIVE_LOOPBACK_PATHS           = jsonencode(["/callback"])

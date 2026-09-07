@@ -90,7 +90,7 @@ export function McpConnections() {
   }
 
   const resource = `${API_URL}/mcp`;
-  const command = `codex mcp add sarj-wiki --url ${quoteShell(resource)} --oauth-client-registration dcr --oauth-resource ${quoteShell(resource)}`;
+  const command = `codex mcp add sarj-wiki --url ${quoteShell(resource)} && codex mcp login sarj-wiki`;
 
   async function copyCommand(): Promise<void> {
     try {
