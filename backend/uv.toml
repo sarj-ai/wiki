@@ -18,6 +18,8 @@ ruff = "2026-08-28T00:00:00Z"
 sarj-iac-lint = "2100-01-01T00:00:00Z"
 sarj-python-lint = "2100-01-01T00:00:00Z"
 sarj-sql-lint = "2100-01-01T00:00:00Z"
+# sarj-python-lint 0.81.6 pins 30.18.0; remove after 2026-09-10T13:13:00Z.
+sqlglot = "2026-09-03T13:13:00Z"
 ty = "2026-08-04T00:00:00Z"
 uvicorn = "2026-08-04T00:00:00Z"
 virtualenv = "2026-08-04T00:00:00Z"
