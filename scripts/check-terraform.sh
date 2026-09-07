@@ -20,3 +20,4 @@ terraform -chdir=terraform validate -no-color
 # Both providers are mocked in this exact file; do not run the separate real-
 # provider recovery tests or an unfiltered Terraform test/plan/apply here.
 terraform -chdir=terraform test -filter=tests/mcp_edge_preview.tftest.hcl -no-color
+terraform -chdir=terraform test -filter=tests/mcp_production_plumbing.tftest.hcl -no-color

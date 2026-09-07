@@ -15,6 +15,7 @@ name: Deploy Backend
       - "scripts/github/switch-backend-production-traffic.sh"
       - "scripts/github/verify-backend-production-health.sh"
       - "scripts/github/verify-backend-correlated-logs.sh"
+      - "scripts/github/verify-mcp-release.sh"
       - "scripts/github/verify-smart-create-queue.sh"
       - "scripts/backend_release/**"
   workflow_dispatch:
@@ -238,6 +239,11 @@ jobs:
         id: verify
         run: scripts/github/verify-backend-production-health.sh
 
+      - name: Verify native MCP remains disabled
+        env:
+          MCP_VERIFY_MODE: disabled
+        run: scripts/github/verify-mcp-release.sh
+
       - name: Clear legacy global drive-tree cache after traffic switch
         env:
           RELEASE_IMAGE: ${{ steps.deploy.outputs.release_image }}
@@ -303,6 +309,10 @@ jobs:
       - name: Verify revision and production health
         id: verify
         run: scripts/github/verify-backend-production-health.sh
+      - name: Verify native MCP remains disabled
+        env:
+          MCP_VERIFY_MODE: disabled
+        run: scripts/github/verify-mcp-release.sh
       - name: Verify correlated production logs
         env:
           CANARY_ID: ${{ steps.verify.outputs.canary_id }}

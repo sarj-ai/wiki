@@ -375,6 +375,10 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
           DOCUMENT_TRANSFORM_IN_PLACE_ENABLED = "true"
           LOG_JSON                            = "true"
           MAINTENANCE_MODE                    = tostring(var.maintenance_mode)
+          MCP_NATIVE_ENABLED                  = "false"
+          MCP_NATIVE_HTTPS_CALLBACKS          = jsonencode([])
+          MCP_NATIVE_ISSUER                   = "https://${var.backend_domain}"
+          MCP_NATIVE_LOOPBACK_PATHS           = jsonencode(["/callback"])
         }
         content {
           name  = env.key
@@ -409,6 +413,28 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
           }
         }
       }
+
+      dynamic "env" {
+        for_each = var.provision_mcp_native_secrets ? {
+          MCP_NATIVE_FERNET_KEYS = {
+            secret  = google_secret_manager_secret.mcp_native_fernet_keys[0].secret_id
+            version = google_secret_manager_secret_version.mcp_native_fernet_keys[0].version
+          }
+          MCP_NATIVE_LOCK_KEY = {
+            secret  = google_secret_manager_secret.mcp_native_lock_key[0].secret_id
+            version = google_secret_manager_secret_version.mcp_native_lock_key[0].version
+          }
+        } : {}
+        content {
+          name = env.key
+          value_source {
+            secret_key_ref {
+              secret  = env.value.secret
+              version = env.value.version
+            }
+          }
+        }
+      }
     }
   }
 
@@ -416,6 +442,8 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
     google_project_iam_member.backend_cloudsql,
     google_secret_manager_secret_iam_member.backend_access,
     google_secret_manager_secret_iam_member.backend_cache_key_access,
+    google_secret_manager_secret_iam_member.backend_mcp_native_fernet_keys_access,
+    google_secret_manager_secret_iam_member.backend_mcp_native_lock_key_access,
     google_cloud_tasks_queue_iam_member.backend_enqueuer_dammam,
     google_cloud_tasks_queue_iam_member.backend_document_transform_enqueuer_dammam,
   ]
