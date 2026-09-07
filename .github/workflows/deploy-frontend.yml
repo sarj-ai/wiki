@@ -89,6 +89,12 @@ jobs:
         with:
           version-file: backend/uv.toml
 
+      - name: Restore prerequisite pre-commit environments
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
       - name: Recheck immutable main release before credentials
         working-directory: .
         env:
