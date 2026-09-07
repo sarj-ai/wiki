@@ -3199,7 +3199,17 @@
             "description": "Authentication is required or the session is invalid."
           },
           "409": {
-            "description": "The source changed after this transformation was requested"
+            "description": "The source changed after this transformation was requested",
+            "headers": {
+              "X-Wiki-Error-Code": {
+                "schema": {
+                  "enum": [
+                    "document_transform_source_changed"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
           },
           "413": {
             "description": "Markdown input exceeds a bounded conversion limit"

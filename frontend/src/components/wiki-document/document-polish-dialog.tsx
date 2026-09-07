@@ -422,6 +422,7 @@ export function DocumentPolishDialog({
     };
     let operation = candidateOperation;
     let knownTaskId = operation.taskId;
+    let replayedSubmission: "active" | "terminal" | null = null;
     const reserve = async (candidate: TransformRecovery) => {
       const reserved = await claimTransformRecovery(owner, sourceIdentity, candidate);
       controller.signal.throwIfAborted();
@@ -452,7 +453,8 @@ export function DocumentPolishDialog({
         // earlier request, even if today's validation rejects its payload.
         if (
           error instanceof ApiError &&
-          error.status === 422 &&
+          ((error.status === 409 && error.code === "document_transform_source_changed") ||
+            error.status === 422) &&
           unresolved === null &&
           operation === candidateOperation &&
           operation.taskId === null
@@ -466,9 +468,13 @@ export function DocumentPolishDialog({
     const perform = async () => {
       operation = await reserve(candidateOperation);
       knownTaskId = operation.taskId;
+      const recoveredTask = operation.taskId !== null;
       const task = operation.taskId
         ? await documentTransformApi.getTask(operation.taskId, controller.signal)
         : await submitTask();
+      if (recoveredTask || task.replayed === true) {
+        replayedSubmission = task.status === "succeeded" ? "terminal" : "active";
+      }
       knownTaskId = task.id;
       saveRecovery({ ...operation, taskId: task.id });
       await recordTransformTask(owner, sourceIdentity, { ...operation, taskId: task.id });
@@ -494,10 +500,24 @@ export function DocumentPolishDialog({
         await queryClient.invalidateQueries({ queryKey: wikiKeys.file(result.outputFile.id) });
         if (!isCurrent()) return;
         onInPlaceComplete?.();
-        toast.success(result.changed ? `Updated “${result.outputFile.name}”` : "No changes needed");
+        toast.success(
+          replayedSubmission === "terminal"
+            ? "Already polished — showing the existing result"
+            : replayedSubmission === "active"
+              ? "Resumed the existing polish"
+              : result.changed
+                ? `Updated “${result.outputFile.name}”`
+                : "No changes needed",
+        );
       } else {
         injectNewFileIntoCaches(queryClient, result.outputFile);
-        toast.success(`Created “${result.outputFile.name}”`);
+        toast.success(
+          replayedSubmission === "terminal"
+            ? "Already polished — showing the existing result"
+            : replayedSubmission === "active"
+              ? "Resumed the existing polish"
+              : `Created “${result.outputFile.name}”`,
+        );
       }
       setCompletedResult(result);
     };

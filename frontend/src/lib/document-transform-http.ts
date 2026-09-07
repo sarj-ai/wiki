@@ -1,5 +1,7 @@
-import type { ActionResult } from "@/lib/action-result";
+import type { ActionErrorCode, ActionResult } from "@/lib/action-result";
 import { boundedTransformText } from "@/lib/bounded-transform-text";
+
+const GENERIC_ERROR = "Document transform request could not be completed";
 
 export async function transformHttp(
   path: string,
@@ -19,12 +21,44 @@ export async function transformHttp(
     signal: AbortSignal.timeout(35_000),
   });
   if (!response.ok) {
-    await response.body?.cancel();
+    let error = GENERIC_ERROR;
+    let code: ActionErrorCode | undefined;
+    try {
+      const parsed: unknown = JSON.parse(await boundedTransformText(response.body));
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        "error" in parsed &&
+        typeof parsed.error === "string"
+      ) {
+        error = parsed.error;
+      }
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        "code" in parsed &&
+        parsed.code === "document_transform_source_changed"
+      ) {
+        code = parsed.code;
+      }
+    } catch {
+      // The same-origin route owns error text; malformed responses stay redacted.
+    }
     return {
       ok: false,
       status: response.status,
-      error: "Document transform request could not be completed",
+      error,
+      ...(code === undefined ? {} : { code }),
     };
   }
-  return { ok: true, data: await boundedTransformText(response.body) };
+  const replayHeader = response.headers.get("idempotency-replayed");
+  return {
+    ok: true,
+    data: await boundedTransformText(response.body),
+    ...(body === undefined
+      ? {}
+      : replayHeader === "true" || replayHeader === "false"
+        ? { replayed: replayHeader === "true" }
+        : {}),
+  };
 }

@@ -6,7 +6,7 @@ import uuid
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import pytest
-from sqlalchemy import func, select, update
+from sqlalchemy import func, null, select, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
@@ -79,6 +79,9 @@ async def test_real_postgres_concurrent_source_dedupe(
         admission_calls += 1
         await asyncio.sleep(0.02)
 
+    async def admit_terminal_replay(_task: object) -> bool:
+        return True
+
     async def reserve(key: IdempotencyKey):
         await start.wait()
         async with sessions() as session:
@@ -88,6 +91,7 @@ async def test_real_postgres_concurrent_source_dedupe(
                 idempotency_key=key,
                 payload=payload,
                 admit=admit,
+                admit_terminal_replay=admit_terminal_replay,
             )
 
     try:
@@ -201,12 +205,18 @@ async def test_real_postgres_concurrent_verified_terminal_replay(source_kind: st
         )
     )
     admission_calls = 0
+    retained_output_checks = 0
     start = asyncio.Event()
 
     async def admit() -> None:
         nonlocal admission_calls
         admission_calls += 1
         await asyncio.sleep(0.01)
+
+    async def admit_terminal_replay(_task: object) -> bool:
+        nonlocal retained_output_checks
+        retained_output_checks += 1
+        return True
 
     try:
         async with sessions() as session:
@@ -244,6 +254,7 @@ async def test_real_postgres_concurrent_verified_terminal_replay(source_kind: st
                     idempotency_key=key,
                     payload=payload,
                     admit=admit,
+                    admit_terminal_replay=admit_terminal_replay,
                 )
 
         keys = [IdempotencyKey(uuid.uuid7()) for _ in range(12)]
@@ -254,6 +265,7 @@ async def test_real_postgres_concurrent_verified_terminal_replay(source_kind: st
         assert {reservation.task.id for reservation in reservations} == {canonical.task.id}
         assert not any(reservation.created for reservation in reservations)
         assert admission_calls == len(keys)
+        assert retained_output_checks == len(keys)
         async with sessions() as session:
             assert (
                 await session.scalar(
@@ -266,6 +278,167 @@ async def test_real_postgres_concurrent_verified_terminal_replay(source_kind: st
                 .select_from(TaskReplayKey)
                 .where(TaskReplayKey.task_id == canonical.task.id)
             ) == len(keys)
+    finally:
+        await engine.dispose()
+
+
+async def test_real_postgres_concurrent_missing_terminal_output_creates_one_replacement() -> None:
+    engine = _qa_engine()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    owner = UserId(uuid.uuid7())
+    payload = _markdown_payload()
+    output_checks = 0
+    start = asyncio.Event()
+
+    async def reject_missing_output(_task: object) -> bool:
+        nonlocal output_checks
+        output_checks += 1
+        await asyncio.sleep(0.01)
+        return False
+
+    try:
+        async with sessions() as session:
+            session.add(
+                User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner)))
+            )
+            await session.commit()
+            canonical = await PostgresTaskService(db=session).create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=payload,
+            )
+            await session.execute(
+                update(Task)
+                .where(Task.id == canonical.task.id)
+                .values(
+                    status=TaskStatus.SUCCEEDED,
+                    started_at=func.now(),
+                    finished_at=func.now(),
+                    attempt_count=1,
+                    result=_completed_result(canonical.task.id, payload.mode).model_dump(
+                        mode="json"
+                    ),
+                )
+            )
+            await session.commit()
+
+        async def replay(key: IdempotencyKey):
+            await start.wait()
+            async with sessions() as session:
+                return await PostgresTaskService(db=session).create_or_replay(
+                    kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                    owner_user_id=owner,
+                    idempotency_key=key,
+                    payload=payload,
+                    admit_terminal_replay=reject_missing_output,
+                )
+
+        keys = [IdempotencyKey(uuid.uuid7()) for _ in range(12)]
+        pending = [asyncio.create_task(replay(key)) for key in keys]
+        start.set()
+        reservations = await asyncio.gather(*pending)
+
+        replacement_ids = {reservation.task.id for reservation in reservations}
+        assert canonical.task.id not in replacement_ids
+        assert len(replacement_ids) == 1
+        assert sum(reservation.created for reservation in reservations) == 1
+        assert output_checks == 1
+        replacement_id = replacement_ids.pop()
+        async with sessions() as session:
+            assert (
+                await session.scalar(
+                    select(func.count()).select_from(Task).where(Task.owner_user_id == owner)
+                )
+                == 2
+            )
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(TaskReplayKey)
+                    .where(TaskReplayKey.task_id == replacement_id)
+                )
+                == len(keys) - 1
+            )
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.parametrize("terminal_change", ["expiry", "status"])
+async def test_real_postgres_terminal_change_during_output_admission_creates_replacement(
+    terminal_change: str,
+) -> None:
+    engine = _qa_engine()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    owner = UserId(uuid.uuid7())
+    payload = _markdown_payload()
+
+    try:
+        async with sessions() as session:
+            session.add(
+                User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner)))
+            )
+            await session.commit()
+            canonical = await PostgresTaskService(db=session).create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=payload,
+            )
+            await session.execute(
+                update(Task)
+                .where(Task.id == canonical.task.id)
+                .values(
+                    created_at=func.now() - timedelta(days=8),
+                    expires_at=func.now() + timedelta(hours=1),
+                    status=TaskStatus.SUCCEEDED,
+                    started_at=func.now(),
+                    finished_at=func.now(),
+                    attempt_count=1,
+                    result=_completed_result(canonical.task.id, payload.mode).model_dump(
+                        mode="json"
+                    ),
+                )
+            )
+            await session.commit()
+
+        async def change_terminal(_task: object) -> bool:
+            async with sessions() as session:
+                values = (
+                    {"expires_at": func.now()}
+                    if terminal_change == "expiry"
+                    else {
+                        "error_code": "qa_terminal_changed",
+                        "result": null(),
+                        "status": TaskStatus.FAILED,
+                    }
+                )
+                await session.execute(
+                    update(Task).where(Task.id == canonical.task.id).values(**values)
+                )
+                await session.commit()
+            return True
+
+        async with sessions() as session:
+            replacement = await PostgresTaskService(db=session).create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=payload,
+                admit_terminal_replay=change_terminal,
+            )
+
+        assert replacement.created
+        assert replacement.task.id != canonical.task.id
+        async with sessions() as session:
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(TaskReplayKey)
+                    .where(TaskReplayKey.task_id == canonical.task.id)
+                )
+                == 0
+            )
     finally:
         await engine.dispose()
 

@@ -123,7 +123,9 @@ class _Tasks(TaskService):
         payload: BaseModel,
         admit: Callable[[], Awaitable[None]] | None = None,
         admit_new: Callable[[], None] | None = None,
+        admit_terminal_replay: Callable[[TaskRead], Awaitable[bool]] | None = None,
     ) -> TaskReservation:
+        del admit_terminal_replay
         if self.created and admit is not None:
             await admit()
         if self.created and admit_new is not None:

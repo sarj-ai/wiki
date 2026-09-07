@@ -3,7 +3,7 @@ import * as z from "zod";
 import { transformHttp } from "@/lib/document-transform-http";
 import { ApiError } from "@/lib/api-error";
 import { preservedInPlaceOutcome } from "@/lib/document-transform-outcome";
-import { runAction } from "@/lib/action-client";
+import { runAction, runActionResult } from "@/lib/action-client";
 import {
   DocumentTransformNeedsReviewError,
   DocumentTransformTerminalError,
@@ -146,8 +146,13 @@ export const documentTransformApi = {
       output_strategy: outputStrategy,
       source: serializeSource(source),
     });
-    const responseBody = await runAction(async () => await transformHttp("", body, idempotencyKey));
-    return parseTask(ZTask.parse(JSON.parse(responseBody)));
+    const response = await runActionResult(
+      async () => await transformHttp("", body, idempotencyKey),
+    );
+    return {
+      ...parseTask(ZTask.parse(JSON.parse(response.data))),
+      ...(response.replayed === undefined ? {} : { replayed: response.replayed }),
+    };
   },
 
   getTask: async (taskId: string, signal?: AbortSignal): Promise<DocumentTransformTask> => {

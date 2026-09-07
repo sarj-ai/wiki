@@ -7,7 +7,11 @@ from pydantic import BaseModel
 import pytest
 
 from app.config import settings
-from app.document_transform.application import submit_document_transform
+from app.document_transform.application import (
+    SOURCE_CHANGED_ERROR_CODE,
+    retained_transform_output_available,
+    submit_document_transform,
+)
 from app.document_transform.schemas import (
     DocumentOutput,
     DocumentTransformRequest,
@@ -19,7 +23,7 @@ from app.document_transform.schemas import (
 )
 from app.document_transform.versions import DOCUMENT_PIPELINE_VERSION
 from app.drive.schemas import MIME_DOC, MIME_FOLDER
-from app.files.errors import FileNotInScopeError
+from app.files.errors import DriveUpstreamError, FileNotInScopeError
 from app.files.schemas import FileResponse
 from app.identifiers import FileId, IdempotencyKey, TaskId
 from app.tasks.errors import (
@@ -28,7 +32,7 @@ from app.tasks.errors import (
     TaskIdempotencyConflictError,
     TaskTargetBusyError,
 )
-from app.tasks.schemas import TaskKind, TaskReservation
+from app.tasks.schemas import TaskKind, TaskRead, TaskReservation
 from tests.support import dependency
 
 
@@ -49,6 +53,7 @@ class SubmissionHarness:
         created: bool = True,
         status: str = "pending",
         reauthorize_replay: bool = False,
+        strategy: OutputStrategy = OutputStrategy.COPY,
     ) -> None:
         now = datetime.now(UTC)
         task_id = TaskId(uuid.uuid7())
@@ -75,6 +80,7 @@ class SubmissionHarness:
                 tool_versions={},
                 pipeline_version=DOCUMENT_PIPELINE_VERSION,
                 needs_review=False,
+                output_strategy=strategy,
             ).model_dump(mode="json")
         self.reservation = TaskReservation.model_validate(
             {
@@ -94,13 +100,14 @@ class SubmissionHarness:
                 },
             }
         )
-        self.request = payload()
+        self.request = payload(strategy)
         self.owner = uuid.uuid7()
         self.key = IdempotencyKey(uuid.uuid7())
         self.calls: list[str] = []
         self.error: Exception | None = None
         self.enqueue_error: Exception | None = None
         self.file_error: Exception | None = None
+        self.output_file_error: Exception | None = None
         self.source_mime_type = MIME_DOC
         self.source_modified_time = "unchanged-time"
         self.destination_can_add_children = True
@@ -115,6 +122,7 @@ class SubmissionHarness:
         payload: BaseModel,
         admit: Callable[[], Awaitable[None]],
         admit_new: Callable[[], None] | None = None,
+        admit_terminal_replay: Callable[[TaskRead], Awaitable[bool]] | None = None,
     ) -> TaskReservation:
         self.calls.append("reserve")
         assert kind is TaskKind.FILE_DOCUMENT_TRANSFORM
@@ -129,6 +137,9 @@ class SubmissionHarness:
                 admit_new()
         elif self.reauthorize_replay:
             await admit()
+            if self.reservation.task.status == "succeeded":
+                assert admit_terminal_replay is not None
+                assert await admit_terminal_replay(self.reservation.task)
         return self.reservation
 
     async def enqueue_document_transform(self, task_id: TaskId) -> None:
@@ -141,6 +152,17 @@ class SubmissionHarness:
         self.calls.append("file")
         if self.file_error is not None:
             raise self.file_error
+        if file_id == "output":
+            if self.output_file_error is not None:
+                raise self.output_file_error
+            return FileResponse(
+                id=file_id,
+                name="Polished source",
+                mime_type=MIME_DOC,
+                parent_folder_id=FileId("folder"),
+                drive_id=None,
+                modified_time="output-time",
+            )
         if file_id == "destination":
             return FileResponse(
                 id=file_id,
@@ -204,7 +226,28 @@ async def test_terminal_semantic_replay_is_never_enqueued() -> None:
 
     assert result.replayed
     assert result.task.status == "succeeded"
-    assert harness.calls == ["reserve", "file"]
+    assert harness.calls == ["reserve", "file", "file"]
+
+
+async def test_terminal_semantic_replay_provider_failure_is_not_enqueued() -> None:
+    harness = SubmissionHarness(
+        created=False,
+        status="succeeded",
+        reauthorize_replay=True,
+    )
+    harness.output_file_error = DriveUpstreamError(503)
+
+    with pytest.raises(DriveUpstreamError):
+        await submit_document_transform(
+            payload=harness.request,
+            owner_user_id=harness.owner,
+            idempotency_key=harness.key,
+            tasks=dependency(harness),
+            enqueuer=dependency(harness),
+            files=harness,
+        )
+
+    assert harness.calls == ["reserve", "file", "file"]
 
 
 @pytest.mark.parametrize("status", ["running", "succeeded"])
@@ -216,8 +259,8 @@ async def test_in_place_replay_allows_the_transform_own_modified_time(
         created=False,
         status=status,
         reauthorize_replay=True,
+        strategy=OutputStrategy.IN_PLACE,
     )
-    harness.request = payload(OutputStrategy.IN_PLACE)
     harness.source_modified_time = "changed-by-canonical-transform"
 
     result = await submit_document_transform(
@@ -318,7 +361,48 @@ async def test_changed_source_revision_is_rejected_before_dispatch() -> None:
         )
     assert caught.value.status_code == 409
     assert caught.value.detail == "The source changed after the transformation was requested"
+    assert caught.value.headers == {"X-Wiki-Error-Code": SOURCE_CHANGED_ERROR_CODE}
     assert harness.calls == ["reserve", "file"]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(FileNotInScopeError("Gone"), id="outside-scope"),
+        pytest.param(DriveUpstreamError(404), id="provider-not-found"),
+    ],
+)
+async def test_terminal_copy_replay_treats_definitively_unavailable_output_as_missing(
+    error: Exception,
+) -> None:
+    harness = SubmissionHarness(created=False, status="succeeded")
+    harness.output_file_error = error
+
+    assert not await retained_transform_output_available(harness.reservation.task, harness)
+    assert harness.calls == ["file"]
+
+
+@pytest.mark.parametrize("status_code", [401, 403, 429, 500, 503])
+async def test_terminal_copy_replay_fails_closed_on_provider_or_auth_error(
+    status_code: int,
+) -> None:
+    harness = SubmissionHarness(created=False, status="succeeded")
+    harness.output_file_error = DriveUpstreamError(status_code)
+
+    with pytest.raises(DriveUpstreamError):
+        await retained_transform_output_available(harness.reservation.task, harness)
+    assert harness.calls == ["file"]
+
+
+async def test_terminal_in_place_replay_relies_on_source_authorization() -> None:
+    harness = SubmissionHarness(
+        created=False,
+        status="succeeded",
+        strategy=OutputStrategy.IN_PLACE,
+    )
+
+    assert await retained_transform_output_available(harness.reservation.task, harness)
+    assert harness.calls == []
 
 
 async def test_copy_destination_admits_native_doc_and_writable_folder() -> None:

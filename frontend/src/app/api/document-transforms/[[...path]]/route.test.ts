@@ -40,6 +40,67 @@ it("forwards exact body/KEY through existing authenticated rate-limited operatio
   expect(Mocks.create).toHaveBeenCalledExactlyOnceWith(body, KEY);
 });
 
+it("exposes only the typed replay bit on a successful submission", async () => {
+  Mocks.create.mockResolvedValue({ ok: true, data: '{"id":"task"}', replayed: true });
+  const response = await POST(new Request(URL, { method: "POST", headers, body: "{}" }), {
+    params: Promise.resolve({}),
+  });
+
+  expect(response.headers.get("idempotency-replayed")).toBe("true");
+  expect(await response.text()).toBe('{"id":"task"}');
+});
+
+it("returns allowlisted reload guidance for a source revision conflict", async () => {
+  Mocks.create.mockResolvedValue({
+    code: "document_transform_source_changed",
+    error: "private upstream details",
+    ok: false,
+    status: 409,
+  });
+  const response = await POST(new Request(URL, { method: "POST", headers, body: "{}" }), {
+    params: Promise.resolve({}),
+  });
+
+  expect(response.status).toBe(409);
+  await expect(response.json()).resolves.toEqual({
+    code: "document_transform_source_changed",
+    error: "The document changed since polishing was requested. Reload it before trying again.",
+  });
+});
+
+it("keeps unrelated conflict details and codes redacted", async () => {
+  Mocks.create.mockResolvedValue({
+    error: "This document already has an active transformation",
+    ok: false,
+    status: 409,
+  });
+  const response = await POST(new Request(URL, { method: "POST", headers, body: "{}" }), {
+    params: Promise.resolve({}),
+  });
+
+  expect(response.status).toBe(409);
+  await expect(response.json()).resolves.toEqual({
+    error: "Document transform request could not be completed",
+  });
+});
+
+it("does not expose a source-change code on a non-conflict response", async () => {
+  Mocks.create.mockResolvedValue({
+    code: "document_transform_source_changed",
+    error: "private upstream details",
+    ok: false,
+    status: 503,
+  });
+  const response = await POST(new Request(URL, { method: "POST", headers, body: "{}" }), {
+    params: Promise.resolve({}),
+  });
+
+  expect(response.status).toBe(503);
+  await expect(response.json()).resolves.toEqual({
+    error: "Document transform request could not be completed",
+  });
+});
+
 it.each([
   { origin: "https://attacker.example" },
   { origin: "null" },

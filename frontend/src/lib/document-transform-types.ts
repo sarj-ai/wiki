@@ -60,7 +60,7 @@ export interface DocumentTransformValidation {
   unsafePatchCount: number;
 }
 
-export type DocumentTransformTask =
+export type DocumentTransformTask = (
   | {
       errorCode: string;
       errorDetail?: string;
@@ -76,7 +76,8 @@ export type DocumentTransformTask =
   | {
       id: string;
       status: "cancelled" | "pending" | "running";
-    };
+    }
+) & { replayed?: boolean };
 
 export class DocumentTransformNeedsReviewError extends Error {
   readonly result: DocumentTransformResult | undefined;

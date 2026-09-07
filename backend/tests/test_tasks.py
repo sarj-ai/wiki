@@ -34,7 +34,7 @@ from app.tasks.errors import (
     TaskNotFoundError,
     TaskTargetBusyError,
 )
-from app.tasks.schemas import TaskKind, TaskStatus
+from app.tasks.schemas import TaskKind, TaskRead, TaskStatus
 from app.tasks.service import PostgresTaskService
 
 
@@ -451,14 +451,19 @@ async def test_retained_verified_terminal_transform_replays_after_fresh_admissio
     row.finished_at = datetime.now(UTC)
     row.attempt_count = 1
     row.result = _transform_success_result(row.id, payload.mode).model_dump(mode="json")
-    session = _Session(None, None, None, row, None)
+    session = _Session(None, None, None, row, row, None)
     admissions: list[bool] = []
+    retained_output_checks: list[TaskId] = []
 
     async def admit() -> None:
         admissions.append(True)
 
     def admit_new() -> None:
         pytest.fail("Terminal replay must not run new-task freshness admission")
+
+    async def admit_terminal_replay(task: TaskRead) -> bool:
+        retained_output_checks.append(task.id)
+        return True
 
     fresh_key = IdempotencyKey(uuid.uuid7())
     reservation = await _service(session).create_or_replay(
@@ -468,9 +473,11 @@ async def test_retained_verified_terminal_transform_replays_after_fresh_admissio
         payload=payload,
         admit=admit,
         admit_new=admit_new,
+        admit_terminal_replay=admit_terminal_replay,
     )
 
     assert admissions == [True]
+    assert retained_output_checks == [row.id]
     assert not reservation.created
     assert reservation.task.id == row.id
     terminal_statement = session.statements[3]
@@ -481,7 +488,161 @@ async def test_retained_verified_terminal_transform_replays_after_fresh_admissio
     terminal_params = terminal_statement.compile().params or {}
     assert "pipeline_version" in terminal_params.values()
     assert "brand_profile_sha256" in terminal_params.values()
-    assert "INSERT INTO task_replay_keys" in str(session.statements[4])
+    locked_terminal_statement = session.statements[4]
+    assert isinstance(locked_terminal_statement, ClauseElement)
+    assert "FOR UPDATE" in str(locked_terminal_statement)
+    assert "INSERT INTO task_replay_keys" in str(session.statements[5])
+    assert not any("INSERT INTO tasks " in str(statement) for statement in session.statements)
+
+
+@pytest.mark.parametrize("changed_field", ["expires_at", "status"])
+async def test_terminal_changed_during_output_admission_creates_replacement(
+    changed_field: str,
+) -> None:
+    payload = _markdown_payload()
+    request_hash = task_service_module._request_hash(task_service_module._serialize(payload))
+    terminal = _task(request_hash=request_hash, status=TaskStatus.SUCCEEDED)
+    terminal.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    terminal.started_at = datetime.now(UTC)
+    terminal.finished_at = datetime.now(UTC)
+    terminal.attempt_count = 1
+    terminal.result = _transform_success_result(terminal.id, payload.mode).model_dump(mode="json")
+    replacement = _task(request_hash=request_hash)
+    replacement.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    session = _Session(None, None, None, terminal, None, 0, replacement)
+    new_admissions: list[bool] = []
+
+    async def admit_terminal_replay(_task: TaskRead) -> bool:
+        if changed_field == "expires_at":
+            terminal.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        else:
+            terminal.status = TaskStatus.CANCELLED
+        return True
+
+    def admit_new() -> None:
+        new_admissions.append(True)
+
+    reservation = await _service(session).create_or_replay(
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        owner_user_id=terminal.owner_user_id,
+        idempotency_key=IdempotencyKey(uuid.uuid7()),
+        payload=payload,
+        admit_new=admit_new,
+        admit_terminal_replay=admit_terminal_replay,
+    )
+
+    assert reservation.created
+    assert reservation.task.id == replacement.id
+    assert new_admissions == [True]
+    locked_terminal_statement = session.statements[4]
+    assert isinstance(locked_terminal_statement, ClauseElement)
+    locked_sql = str(locked_terminal_statement)
+    assert "FOR UPDATE" in locked_sql
+    assert "tasks.status" in locked_sql
+    assert "tasks.expires_at >" in locked_sql
+    assert not any(
+        "INSERT INTO task_replay_keys" in str(statement) for statement in session.statements
+    )
+
+
+async def test_missing_terminal_output_creates_exactly_one_replacement() -> None:
+    payload = _markdown_payload()
+    request_hash = task_service_module._request_hash(task_service_module._serialize(payload))
+    terminal = _task(request_hash=request_hash, status=TaskStatus.SUCCEEDED)
+    terminal.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    terminal.started_at = datetime.now(UTC)
+    terminal.finished_at = datetime.now(UTC)
+    terminal.attempt_count = 1
+    terminal.result = _transform_success_result(terminal.id, payload.mode).model_dump(mode="json")
+    replacement = _task(request_hash=request_hash)
+    replacement.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    session = _Session(None, None, None, terminal, 0, replacement)
+    output_checks: list[TaskId] = []
+    new_admissions: list[bool] = []
+
+    async def admit_terminal_replay(task: TaskRead) -> bool:
+        output_checks.append(task.id)
+        return False
+
+    def admit_new() -> None:
+        new_admissions.append(True)
+
+    reservation = await _service(session).create_or_replay(
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        owner_user_id=terminal.owner_user_id,
+        idempotency_key=IdempotencyKey(uuid.uuid7()),
+        payload=payload,
+        admit_new=admit_new,
+        admit_terminal_replay=admit_terminal_replay,
+    )
+
+    assert reservation.created
+    assert reservation.task.id == replacement.id
+    assert output_checks == [terminal.id]
+    assert new_admissions == [True]
+    assert session.commits == 1
+    assert not any(
+        "INSERT INTO task_replay_keys" in str(statement) for statement in session.statements
+    )
+    assert "INSERT INTO tasks " in str(session.statements[-1])
+
+
+async def test_terminal_output_check_failure_rolls_back_without_binding_or_replacement() -> None:
+    payload = _markdown_payload()
+    request_hash = task_service_module._request_hash(task_service_module._serialize(payload))
+    terminal = _task(request_hash=request_hash, status=TaskStatus.SUCCEEDED)
+    terminal.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    terminal.started_at = datetime.now(UTC)
+    terminal.finished_at = datetime.now(UTC)
+    terminal.attempt_count = 1
+    terminal.result = _transform_success_result(terminal.id, payload.mode).model_dump(mode="json")
+    session = _Session(None, None, None, terminal)
+
+    async def admit_terminal_replay(_task: TaskRead) -> bool:
+        message = "Provider unavailable"
+        raise ConnectionError(message)
+
+    with pytest.raises(ConnectionError, match="Provider unavailable"):
+        await _service(session).create_or_replay(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            owner_user_id=terminal.owner_user_id,
+            idempotency_key=IdempotencyKey(uuid.uuid7()),
+            payload=payload,
+            admit_terminal_replay=admit_terminal_replay,
+        )
+
+    assert session.rollbacks == 1
+    assert session.commits == 0
+    assert not any(
+        "INSERT INTO task_replay_keys" in str(statement) for statement in session.statements
+    )
+    assert not any("INSERT INTO tasks " in str(statement) for statement in session.statements)
+
+
+async def test_terminal_replay_without_output_admission_fails_closed() -> None:
+    payload = _markdown_payload()
+    request_hash = task_service_module._request_hash(task_service_module._serialize(payload))
+    terminal = _task(request_hash=request_hash, status=TaskStatus.SUCCEEDED)
+    terminal.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    terminal.started_at = datetime.now(UTC)
+    terminal.finished_at = datetime.now(UTC)
+    terminal.attempt_count = 1
+    terminal.result = _transform_success_result(terminal.id, payload.mode).model_dump(mode="json")
+    session = _Session(None, None, None, terminal)
+
+    with pytest.raises(RuntimeError, match="requires an admission callback"):
+        await _service(session).create_or_replay(
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            owner_user_id=terminal.owner_user_id,
+            idempotency_key=IdempotencyKey(uuid.uuid7()),
+            payload=payload,
+        )
+
+    assert session.rollbacks == 1
+    assert session.commits == 0
+    assert not any(
+        "INSERT INTO task_replay_keys" in str(statement) for statement in session.statements
+    )
     assert not any("INSERT INTO tasks " in str(statement) for statement in session.statements)
 
 

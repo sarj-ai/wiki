@@ -6,6 +6,12 @@ import { deduplicatedRefresh } from "@/lib/session-client";
 import { notifyTerminalUnauthorized } from "@/lib/session-events";
 
 export async function runAction<T>(action: () => Promise<ActionResult<T>>): Promise<T> {
+  return (await runActionResult(action)).data;
+}
+
+export async function runActionResult<T>(
+  action: () => Promise<ActionResult<T>>,
+): Promise<Extract<ActionResult<T>, { ok: true }>> {
   let settled = await action();
   if (!settled.ok && settled.status === 401) {
     const refresh = await deduplicatedRefresh();
@@ -16,7 +22,7 @@ export async function runAction<T>(action: () => Promise<ActionResult<T>>): Prom
   }
   if (!settled.ok) {
     if (settled.status === 401) notifyTerminalUnauthorized();
-    throw new ApiError(settled.status, settled.error);
+    throw new ApiError(settled.status, settled.error, settled.code);
   }
-  return settled.data;
+  return settled;
 }

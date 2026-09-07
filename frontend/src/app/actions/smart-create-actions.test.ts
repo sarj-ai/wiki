@@ -145,6 +145,38 @@ describe("Smart Create edge actions", () => {
     );
   });
 
+  it("preserves document-transform replay metadata", async () => {
+    mocks.callApi.mockResolvedValue({
+      body: '{"id":"task"}',
+      idempotencyReplayed: true,
+      ok: true,
+      status: 202,
+    });
+
+    await expect(
+      createDocumentTransformAction("{}", "66666666-6666-4666-8666-666666666666"),
+    ).resolves.toEqual({ data: '{"id":"task"}', ok: true, replayed: true });
+  });
+
+  it("preserves only the typed document-transform source conflict", async () => {
+    mocks.callApi.mockResolvedValue({
+      body: "{}",
+      error: "safe detail",
+      errorCode: "document_transform_source_changed",
+      ok: false,
+      status: 409,
+    });
+
+    await expect(
+      createDocumentTransformAction("{}", "66666666-6666-4666-8666-666666666666"),
+    ).resolves.toEqual({
+      code: "document_transform_source_changed",
+      error: "safe detail",
+      ok: false,
+      status: 409,
+    });
+  });
+
   it("reads transform capabilities, tasks, and templates with authentication", async () => {
     await expect(getDocumentTransformCapabilitiesAction()).resolves.toEqual({
       data: "{}",

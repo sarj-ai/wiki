@@ -90,6 +90,27 @@ describe("documentTransformApi", () => {
     );
   });
 
+  it("marks a retained task returned by a replayed submission", async () => {
+    actionMocks.create.mockResolvedValue({
+      data: JSON.stringify(task("pending")),
+      ok: true,
+      replayed: true,
+    });
+
+    await expect(
+      documentTransformApi.create(
+        {
+          expectedModifiedTime: "2026-09-03T12:00:00Z",
+          fileId: "doc-1",
+          kind: "drive_file",
+          name: "Source",
+        },
+        "both",
+        "66666666-6666-4666-8666-666666666666",
+      ),
+    ).resolves.toEqual({ id: taskId, replayed: true, status: "pending" });
+  });
+
   it("sends the explicit copy name without changing the source", async () => {
     actionMocks.create.mockResolvedValue({ data: JSON.stringify(task("pending")), ok: true });
     await documentTransformApi.create(

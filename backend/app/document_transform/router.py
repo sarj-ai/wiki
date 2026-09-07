@@ -66,7 +66,15 @@ async def get_document_transform_capabilities(
     operation_id="create_document_transform",
     responses={
         status.HTTP_409_CONFLICT: {
-            "description": "The source changed after this transformation was requested"
+            "description": "The source changed after this transformation was requested",
+            "headers": {
+                "X-Wiki-Error-Code": {
+                    "schema": {
+                        "type": "string",
+                        "enum": ["document_transform_source_changed"],
+                    }
+                }
+            },
         },
         status.HTTP_413_CONTENT_TOO_LARGE: {
             "description": "Markdown input exceeds a bounded conversion limit"
