@@ -69,7 +69,9 @@ them before switching Cloud Run traffic.
 Backend verification-only recovery requires both the completed deploy workflow run ID and its
 exact run-attempt number. Copy both values from the same GitHub Actions attempt; never reuse an
 older attempt after that run has been rerun. Leaving both inputs empty performs a normal deployment,
-while supplying only one fails closed without running deployment mutations.
+while supplying only one fails closed without running deployment mutations. Recovery validates the
+source attempt's exact Standards, backend, frontend, IaC, and quality job receipts before obtaining
+cloud credentials, so it does not rerun suites already proven for the same immutable main commit.
 
 ## Document Transform and Markdown Import
 
