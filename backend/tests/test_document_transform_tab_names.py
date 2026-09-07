@@ -70,6 +70,16 @@ def test_authored_titles_are_preserved_and_collisions_are_bounded():
     assert [rename.title for rename in plan.renames] == ["Risks", "Risks (2)", "RISKS (3)"]
 
 
+def test_existing_tab_title_is_title_cased_and_trailing_date_is_removed_once():
+    document = _document("Security review")
+    tabs = _tabs("security review 2026-09-04")
+    plan = plan_tab_names(document, tabs)
+    assert [rename.title for rename in plan.renames] == ["Security Review"]
+    result = (replace(tabs[0], title="Security Review", icon_emoji="🔒"),)
+    assert plan.matches_result(result)
+    assert plan_tab_names(document, result).renames == ()
+
+
 def test_nested_siblings_use_separate_title_namespaces():
     document = _document("Risks", "Risks")
     tabs = _tabs("Tab 1", "Tab 2")
@@ -108,7 +118,7 @@ def test_exact_result_verification_rejects_concurrent_rename_or_topology_change(
     plan = plan_tab_names(document, tabs)
     result = (
         replace(tabs[0], title="Roadmap", icon_emoji="📄"),
-        replace(tabs[1], title="Existing author title", icon_emoji="📄"),
+        replace(tabs[1], title="Existing Author Title", icon_emoji="📄"),
     )
     assert plan.matches_result(result)
     assert not plan.matches_result((result[0], replace(result[1], title="User rename")))
@@ -196,7 +206,7 @@ def test_authored_tab_and_multiple_headingless_tabs_never_receive_document_title
     document = _notes("Project follow-up")
     assert [
         rename.title for rename in plan_tab_names(document, _tabs("Personal decisions")).renames
-    ] == ["Personal decisions"]
+    ] == ["Personal Decisions"]
     document = replace(document, tab_ids=(DocsTabId("t0"), DocsTabId("t1")))
     assert [
         rename.title for rename in plan_tab_names(document, _tabs("Tab 1", "Tab 2")).renames

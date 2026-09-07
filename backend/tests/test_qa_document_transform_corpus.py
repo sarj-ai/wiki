@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
-from typing import Literal
+from typing import Any, Literal, Never
 from unittest.mock import create_autospec
 import uuid
 
@@ -15,14 +15,16 @@ import pytest
 
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.executor import PIPELINE_VERSION
+from app.document_transform.gateway import SourceSnapshot
 from app.document_transform.ir import BlockKind, DocumentIR, TextBlock
 from app.document_transform.schemas import (
     DocumentOutput,
     DocumentTransformResult,
+    DriveFileSource,
     TransformMode,
     ValidationSummary,
 )
-from app.identifiers import DocsTabId, FileId, TaskId
+from app.identifiers import DocsRevisionId, FileId, TaskId
 from scripts.qa_document_transform_corpus import (
     ArtifactFile,
     EvidenceManifest,
@@ -39,6 +41,9 @@ from scripts.qa_document_transform_corpus import (
     _capture_visual_evidence,
     _ensure_manifest_ledger,
     _evenly_sample,
+    _inspect_candidate,
+    _list_folder_children,
+    _list_folder_doc_metadata,
     _load_ledger,
     _load_verified_canary,
     _manifest_plan_sha256,
@@ -48,7 +53,6 @@ from scripts.qa_document_transform_corpus import (
     _render_pdf,
     _require_artifact_file,
     _require_manifest_invariants,
-    _require_no_header_conflicts,
     _require_private_file,
     _require_private_permissions,
     _require_result_binding,
@@ -79,11 +83,178 @@ def test_seeded_order_is_stable_across_drive_page_order() -> None:
     assert seeded_order(forward, "release-seed") != seeded_order(forward, "another-seed")
 
 
-def test_copy_corpus_preflight_rejects_existing_header_content() -> None:
-    with pytest.raises(QaError, match="header_conflict"):
-        _require_no_header_conflicts((DocsTabId("tab-with-header"),))
+def test_shared_drive_folder_listing_uses_complete_shared_drive_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
 
-    _require_no_header_conflicts(())
+    class Request:
+        pass
+
+    class Files:
+        def list(self, **kwargs: object) -> Request:
+            calls.append(kwargs)
+            return Request()
+
+    class Drive:
+        @staticmethod
+        def files() -> Files:
+            return Files()
+
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus.execute_with_retry",
+        lambda _request: {"files": [{"id": "doc-a"}]},
+    )
+
+    drive: Any = Drive()
+    assert _list_folder_children(drive, FileId("folder-a"), shared_drive_id="drive-a") == [
+        {"id": "doc-a"}
+    ]
+    assert calls == [
+        {
+            "q": "'folder-a' in parents and trashed=false",
+            "spaces": "drive",
+            "includeItemsFromAllDrives": True,
+            "supportsAllDrives": True,
+            "pageSize": 1000,
+            "pageToken": None,
+            "fields": calls[0]["fields"],
+            "corpora": "drive",
+            "driveId": "drive-a",
+        }
+    ]
+
+
+def test_folder_enumeration_recurses_and_returns_every_native_doc(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    folder = {
+        "id": "root",
+        "name": "Security",
+        "mimeType": "application/vnd.google-apps.folder",
+        "driveId": "drive-a",
+    }
+    pages = {
+        "root": [
+            {"id": "doc-a", "name": "A", "mimeType": "application/vnd.google-apps.document"},
+            {"id": "nested", "name": "Nested", "mimeType": "application/vnd.google-apps.folder"},
+            {
+                "id": "sheet",
+                "name": "Ignored",
+                "mimeType": "application/vnd.google-apps.spreadsheet",
+            },
+        ],
+        "nested": [
+            {"id": "doc-b", "name": "B", "mimeType": "application/vnd.google-apps.document"}
+        ],
+    }
+    seen: list[tuple[FileId, str | None]] = []
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus._get_file_metadata",
+        lambda _drive, _file_id: folder,
+    )
+
+    def children(
+        _drive: object, folder_id: FileId, *, shared_drive_id: str | None
+    ) -> list[dict[str, Any]]:
+        seen.append((folder_id, shared_drive_id))
+        return pages[str(folder_id)]
+
+    monkeypatch.setattr("scripts.qa_document_transform_corpus._list_folder_children", children)
+
+    drive: Any = object()
+    assert [item["id"] for item in _list_folder_doc_metadata(drive, FileId("root"))] == [
+        "doc-a",
+        "doc-b",
+    ]
+    assert seen == [(FileId("root"), "drive-a"), (FileId("nested"), "drive-a")]
+
+
+@pytest.mark.asyncio
+async def test_copy_preflight_does_not_require_in_place_eligibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = PermissionEntry(id="owner-1", principal_type="user", role="owner", email_address=_EMAIL)
+    parent = {
+        "id": "folder",
+        "name": "Security",
+        "mimeType": "application/vnd.google-apps.folder",
+        "ownedByMe": True,
+        "shared": False,
+        "capabilities": {"canEdit": True, "canAddChildren": True},
+        "owners": [{"emailAddress": _EMAIL}],
+    }
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus._get_file_metadata",
+        lambda _drive, _file_id: parent,
+    )
+    monkeypatch.setattr(
+        "scripts.qa_document_transform_corpus._permission_inventory",
+        lambda _drive, _file_id: (owner,),
+    )
+
+    class CopyGateway:
+        @staticmethod
+        async def load_drive_source(source: DriveFileSource) -> SourceSnapshot:
+            del source
+            return SourceSnapshot(
+                title="Existing custom header",
+                parent_folder_id=FileId("folder"),
+                modified_time="2026-09-03T00:00:00Z",
+                revision_id=DocsRevisionId("revision-1"),
+                media_type="application/vnd.google-apps.document",
+                google_document={
+                    "revisionId": "revision-1",
+                    "tabs": [
+                        {
+                            "tabProperties": {"tabId": "tab-1"},
+                            "documentTab": {
+                                "body": {
+                                    "content": [
+                                        {
+                                            "startIndex": 1,
+                                            "endIndex": 6,
+                                            "paragraph": {
+                                                "elements": [{"textRun": {"content": "Text\n"}}]
+                                            },
+                                        }
+                                    ]
+                                },
+                                "headers": {"custom-header": {"content": []}},
+                            },
+                        }
+                    ],
+                },
+            )
+
+        @staticmethod
+        async def inspect_in_place(**_kwargs: object) -> Never:
+            raise AssertionError
+
+    drive_client: Any = object()
+    evidence = await _inspect_candidate(
+        raw={
+            "id": "doc-a",
+            "name": "Policy",
+            "mimeType": "application/vnd.google-apps.document",
+            "parents": ["folder"],
+            "modifiedTime": "2026-09-03T00:00:00Z",
+            "ownedByMe": True,
+            "shared": False,
+            "capabilities": {"canEdit": True},
+            "owners": [{"emailAddress": _EMAIL}],
+        },
+        ordinal=1,
+        drive_client=drive_client,
+        gateway=CopyGateway(),
+        expected_release_sha="a" * 40,
+        seed="folder-copy",
+        mode=TransformMode.BOTH,
+        user_email=_EMAIL,
+        cohort="corpus",
+    )
+
+    assert evidence.source_id == FileId("doc-a")
 
 
 def test_uuid5_operation_key_is_stable_and_scoped() -> None:
@@ -119,11 +290,12 @@ def test_uuid5_operation_key_is_stable_and_scoped() -> None:
     )
 
 
-def test_live_execution_is_hard_gated_to_twenty_both_mode_copies() -> None:
+def test_live_execution_is_hard_gated_to_all_folder_copies() -> None:
     common = {
         "canary": False,
-        "confirm_live_copy": "CREATE_20_PRIVATE_SIBLINGS",
+        "confirm_live_copy": "CREATE_ALL_PRIVATE_SIBLINGS",
         "count": 20,
+        "source_folder_id": "security-folder",
         "execute": True,
         "expected_release_sha": "a" * 40,
         "mode": "both",
@@ -136,8 +308,9 @@ def test_live_execution_is_hard_gated_to_twenty_both_mode_copies() -> None:
     }
     _validate_arguments(argparse.Namespace(**common))
 
-    with pytest.raises(QaError, match="requires --count 20"):
-        _validate_arguments(argparse.Namespace(**{**common, "count": 19}))
+    _validate_arguments(argparse.Namespace(**{**common, "count": 19}))
+    with pytest.raises(QaError, match="source-folder-id"):
+        _validate_arguments(argparse.Namespace(**{**common, "source_folder_id": ""}))
     with pytest.raises(QaError, match="requires --mode both"):
         _validate_arguments(argparse.Namespace(**{**common, "mode": "format"}))
     with pytest.raises(QaError, match="exact pinned model"):
@@ -151,6 +324,7 @@ def test_canary_execution_has_distinct_one_document_gate() -> None:
         "canary": True,
         "confirm_live_copy": "CREATE_1_PRIVATE_CANARY",
         "count": 1,
+        "source_folder_id": "canary-folder",
         "execute": True,
         "expected_release_sha": "a" * 40,
         "mode": "both",
@@ -162,7 +336,7 @@ def test_canary_execution_has_distinct_one_document_gate() -> None:
 
     with pytest.raises(QaError, match="CREATE_1_PRIVATE_CANARY"):
         _validate_arguments(
-            argparse.Namespace(**{**common, "confirm_live_copy": "CREATE_20_PRIVATE_SIBLINGS"})
+            argparse.Namespace(**{**common, "confirm_live_copy": "CREATE_ALL_PRIVATE_SIBLINGS"})
         )
     with pytest.raises(QaError, match="requires --count 1"):
         _validate_arguments(argparse.Namespace(**{**common, "count": 20}))
@@ -501,6 +675,10 @@ def test_manifest_invariants_reject_tampered_source_binding() -> None:
     )
 
     _require_manifest_invariants(manifest)
+    with pytest.raises(QaError, match="structural invariants"):
+        _require_manifest_invariants(
+            manifest.model_copy(update={"folder_source_ids": (FileId("different"),)})
+        )
     with pytest.raises(QaError, match="source binding"):
         _require_manifest_invariants(
             manifest.model_copy(
@@ -799,6 +977,9 @@ def _evidence_manifest(
         seed=seed,
         seed_sha256=hashlib.sha256(seed.encode()).hexdigest(),
         mode=TransformMode.BOTH,
+        source_folder_id=FileId("folder"),
+        folder_source_ids=(source.source_id,),
+        folder_source_count=1,
         count=1,
         user_email=_EMAIL,
         pipeline_version=PIPELINE_VERSION,

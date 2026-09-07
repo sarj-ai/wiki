@@ -2438,8 +2438,15 @@ def _copy_executor(
         ("Untitled", TransformMode.FORMAT, None, "Capacity Review — Sarj Formatted"),
         ("Untitled", TransformMode.BOTH, None, "Capacity Review — Sarj Polished"),
         ("Untitled", TransformMode.UNSLOP, None, "Untitled — Unslopped"),
-        ("Board  Pack", TransformMode.FORMAT, None, "Board  Pack — Sarj Formatted"),
+        ("Board  Pack", TransformMode.FORMAT, None, "Board Pack — Sarj Formatted"),
+        (
+            "security review 2026-09-04",
+            TransformMode.BOTH,
+            None,
+            "Security Review — Sarj Polished",
+        ),
         ("Untitled", TransformMode.FORMAT, "Approved packet", "Approved Packet"),
+        ("Untitled", TransformMode.FORMAT, "approved packet — Sep 4, 2026", "Approved Packet"),
         ("x" * 255, TransformMode.FORMAT, None, "X" + "x" * 237 + " — Sarj Formatted"),
     ],
 )

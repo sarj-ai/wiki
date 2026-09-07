@@ -7,9 +7,10 @@ import unicodedata
 
 from app.document_transform.ir import BlockKind, DocumentIR, utf16_length
 from app.document_transform.naming import (
+    polished_document_name,
+    strip_trailing_document_date,
     supported_tab_icon,
     tab_icon_emoji,
-    title_case_document_name,
 )
 from app.identifiers import DocsTabId
 
@@ -114,9 +115,19 @@ def plan_tab_names(
     renames: list[TabRename] = []
     for tab in tabs:
         if not _is_generic(tab.title):
-            icon = _relevant_icon(tab, tab.title)
-            if icon is not None and icon != tab.icon_emoji:
-                renames.append(TabRename(tab.tab_id, tab.title, tab.title, tab.icon_emoji, icon))
+            normalized = _truncate(
+                polished_document_name(_clean_title(tab.title)), MAX_TAB_TITLE_UNITS
+            )
+            sibling_conflict = any(
+                other.tab_id != tab.tab_id
+                and other.parent_tab_id == tab.parent_tab_id
+                and _name_key(other.title) == _name_key(normalized)
+                for other in tabs
+            )
+            title = tab.title if not normalized or sibling_conflict else normalized
+            icon = _relevant_icon(tab, title)
+            if title != tab.title or (icon is not None and icon != tab.icon_emoji):
+                renames.append(TabRename(tab.tab_id, tab.title, title, tab.icon_emoji, icon))
             continue
         single_root_tab = len(tabs) == 1 and tab.parent_tab_id is None
         if prefer_document_title:
@@ -126,7 +137,7 @@ def plan_tab_names(
         if not candidate:
             candidate = _clean_title(tab.title) or "Tab"
         icon_hint = candidate
-        candidate = _truncate(title_case_document_name(candidate), MAX_TAB_TITLE_UNITS)
+        candidate = _truncate(polished_document_name(candidate), MAX_TAB_TITLE_UNITS)
         if not candidate or not any(character.isalpha() for character in candidate):
             if tab.title and utf16_length(tab.title) <= MAX_TAB_TITLE_UNITS:
                 icon = _relevant_icon(tab, icon_hint) or tab_icon_emoji(tab.title)
@@ -201,7 +212,7 @@ def _meaningful_fallback_title(text: str) -> str:
 
 
 def _is_generic(title: str) -> bool:
-    cleaned = title.strip()
+    cleaned = strip_trailing_document_date(title)
     return not cleaned or _GENERIC_TITLE.fullmatch(cleaned) is not None
 
 

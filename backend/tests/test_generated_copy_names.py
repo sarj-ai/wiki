@@ -43,7 +43,8 @@ def test_automatic_copy_names_are_bounded_idempotent_and_preserve_source(
         " — Sarj Formatted" if mode is TransformMode.FORMAT else " — Sarj Polished"
     )
     if title == "Review 2026-09-05":
-        assert named.startswith(title)
+        assert named.startswith("Review —")
+        assert "2026-09-05" not in named
     elif title == "Review — Sarj polished draft":
         assert named.startswith("Review — Sarj Polished Draft")
     elif title != "x" * 255:
