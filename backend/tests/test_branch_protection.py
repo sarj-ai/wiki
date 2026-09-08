@@ -60,7 +60,11 @@ def apply(policy: dict[str, Any], expected: str) -> None:
 def test_canonical_matches_live_fixture_and_is_app_bound(lab: Lab) -> None:
     policy, fake = lab.policy, lab.github
     assert MODULE["check"](policy, "sarj-ai/wiki", "main")
-    assert len(policy["required_status_checks"]["checks"]) == 7
+    assert len(policy["required_status_checks"]["checks"]) == 8
+    assert any(
+        check == {"context": "commit-policy-v1", "app_id": 15368}
+        for check in policy["required_status_checks"]["checks"]
+    )
     assert {check["app_id"] for check in policy["required_status_checks"]["checks"]} == {15368}
     fake.remote["required_status_checks"]["checks"].reverse()
     assert MODULE["check"](policy, "sarj-ai/wiki", "main")

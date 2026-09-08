@@ -8,6 +8,7 @@
         "context": "pre-commit (actionlint, hygiene, sarj rules)",
         "app_id": 15368
       },
+      { "context": "commit-policy-v1", "app_id": 15368 },
       { "context": "standards", "app_id": 15368 },
       { "context": "Backend / required", "app_id": 15368 },
       { "context": "Frontend / required", "app_id": 15368 },
