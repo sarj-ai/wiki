@@ -389,6 +389,8 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
           DOCUMENT_TRANSFORM_QA_RELEASE_SHA             = var.document_transform_qa_release_sha
           DOCUMENT_TRANSFORM_QA_BACKEND_SERVICE_ACCOUNT = google_service_account.backend.email
           DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS         = jsonencode(var.document_transform_qa_operator_emails)
+          } : {}, var.document_transform_qa_corpus_source_folder_id != null ? {
+          DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID = var.document_transform_qa_corpus_source_folder_id
         } : {})
         content {
           name  = env.key

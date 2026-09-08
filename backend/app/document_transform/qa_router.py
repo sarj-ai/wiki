@@ -26,6 +26,7 @@ from app.document_transform.qa_contract import (
     QA_MAX_STORED_RESULT_BYTES,
     QA_MAX_STORED_TOOL_VERSIONS,
 )
+from app.document_transform.qa_corpus import QaCorpusPlan
 from app.document_transform.qa_grants import (
     QaAuthority,
     QaBootstrapResult,
@@ -690,6 +691,32 @@ async def plan_document_transform_qa_canary(
         source_name=plan.source_name,
         source_modified_time=plan.source_modified_time,
     )
+
+
+@workload_router.post("/corpus/plan", response_model=QaCorpusPlan)
+async def plan_document_transform_qa_corpus(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    broker: Annotated[QaCanaryBroker, Depends(qa_canary_broker_dep)],
+    response: Response,
+) -> QaCorpusPlan:
+    """Snapshot the complete source corpus bound into the current capability."""
+    authority = await _authorize_canary_request(request, db)
+    configured_source = settings.DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID
+    if configured_source is None:
+        raise _no_store_http_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "QA corpus planning is disabled"
+        )
+    if not hmac.compare_digest(str(authority.source_folder_id), configured_source):
+        raise _no_store_http_error(status.HTTP_409_CONFLICT, "QA corpus source binding mismatch")
+    try:
+        plan = await broker.plan_corpus(authority)
+    except QaGrantError as exc:
+        raise _no_store_http_error(
+            status.HTTP_409_CONFLICT, "QA corpus could not be planned"
+        ) from exc
+    _prevent_token_caching(response)
+    return plan
 
 
 @workload_router.post(

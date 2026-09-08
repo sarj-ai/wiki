@@ -15,6 +15,7 @@ from app.database import get_db
 from app.document_transform import qa_router
 from app.document_transform.application import TransformSubmission
 from app.document_transform.qa_broker import QaCanaryPlan
+from app.document_transform.qa_corpus import QaCorpusPlan, QaCorpusSourceFolder
 from app.document_transform.qa_grants import (
     IssuedQaGrant,
     PreparedQaLaunch,
@@ -37,6 +38,7 @@ from app.files.schemas import FileResponse
 from app.identifiers import (
     AuthSessionId,
     DocsRevisionId,
+    DriveId,
     FileId,
     GoogleUserId,
     IdempotencyKey,
@@ -1284,6 +1286,191 @@ async def test_canary_plan_reauthorizes_and_returns_server_selected_copy(
     assert response.json()["plan_id"] == response.json()["idempotency_key"]
     assert "z" * 43 not in response.text
     assert "grant_id" not in response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+
+
+@pytest.mark.parametrize(
+    ("configured_source", "expected_status"),
+    [(None, 503), ("different-security-folder", 409)],
+)
+async def test_corpus_plan_is_default_off_and_rejects_nonconfigured_source(
+    monkeypatch: pytest.MonkeyPatch,
+    configured_source: str | None,
+    expected_status: int,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(
+        settings,
+        "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID",
+        configured_source,
+    )
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    now = datetime.now(UTC)
+
+    async def authorize(_db: object, **_kwargs: object) -> QaAuthority:
+        return QaAuthority(
+            grant_id=DocumentTransformQaGrantId(uuid.UUID("44444444-4444-4444-8444-444444444444")),
+            user_id=_user().id,
+            user_email="qa@example.test",
+            execution_name="job/executions/one",
+            release_sha=_RELEASE,
+            image_digest=_DIGEST,
+            source_folder_id=FileId("source"),
+            destination_folder_id=FileId("destination"),
+            mode=TransformMode.BOTH,
+            expires_at=now + timedelta(minutes=5),
+            job_expires_at=now + timedelta(hours=2),
+        )
+
+    class Broker:
+        async def plan_corpus(self, _authority: QaAuthority) -> QaCorpusPlan:
+            pytest.fail("Drive must not be read for a disabled or mismatched source")
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    application = _application(_Db(), _user())
+    application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/corpus/plan",
+            json=_issuer_body() | {"execution_name": "job/executions/one"},
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+
+    assert response.status_code == expected_status
+    assert response.headers["cache-control"] == "no-store"
+
+
+async def test_corpus_plan_uses_capability_bound_configured_security_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID", "source")
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    now = datetime.now(UTC)
+
+    async def authorize(_db: object, **_kwargs: object) -> QaAuthority:
+        return QaAuthority(
+            grant_id=DocumentTransformQaGrantId(uuid.UUID("44444444-4444-4444-8444-444444444444")),
+            user_id=_user().id,
+            user_email="qa@example.test",
+            execution_name="job/executions/one",
+            release_sha=_RELEASE,
+            image_digest=_DIGEST,
+            source_folder_id=FileId("source"),
+            destination_folder_id=FileId("destination"),
+            mode=TransformMode.BOTH,
+            expires_at=now + timedelta(minutes=5),
+            job_expires_at=now + timedelta(hours=2),
+        )
+
+    class Broker:
+        async def plan_corpus(self, authority: QaAuthority) -> QaCorpusPlan:
+            assert authority.source_folder_id == "source"
+            return QaCorpusPlan(
+                plan_id=QaPlanId(uuid.UUID("55555555-5555-4555-8555-555555555555")),
+                source_folder_id=FileId("source"),
+                source_drive_id=DriveId("drive"),
+                source_folder=QaCorpusSourceFolder(
+                    file_id=FileId("source"),
+                    name="Security",
+                    mime_type="application/vnd.google-apps.folder",
+                    parent_folder_id=None,
+                    drive_id=DriveId("drive"),
+                    modified_time=None,
+                    version="1",
+                ),
+                documents=(),
+                unsupported_files=(),
+                member_versions=(),
+                observed_item_count=0,
+                traversed_folder_count=1,
+            )
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    application = _application(_Db(), _user())
+    application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/corpus/plan",
+            json=_issuer_body() | {"execution_name": "job/executions/one"},
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["source_folder_id"] == "source"
+    assert "user_email" not in response.text
+    assert "destination_folder_id" not in response.text
+    assert response.headers["cache-control"] == "no-store"
+
+
+async def test_corpus_plan_returns_generic_bounded_conflict_for_provider_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID", "source")
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+
+    async def authorize(_db: object, **_kwargs: object) -> QaAuthority:
+        return _result_authority(datetime.now(UTC))
+
+    class Broker:
+        async def plan_corpus(self, _authority: QaAuthority) -> QaCorpusPlan:
+            raise QaGrantError from TimeoutError("private provider and credential detail")
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    application = _application(_Db(), _user())
+    application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/corpus/plan",
+            json=_issuer_body() | {"execution_name": "job/executions/one"},
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "QA corpus could not be planned"}
+    assert len(response.content) < 256
+    assert "private provider" not in response.text
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["pragma"] == "no-cache"
 
