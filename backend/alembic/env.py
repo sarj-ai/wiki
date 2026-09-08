@@ -7,6 +7,7 @@ from app.database_config import database_settings
 from app.models import (
     auth_session,
     document_transform_qa_grant,
+    document_transform_qa_corpus,
     document_transform_qa_run,
     mcp_grant,
     mcp_native_state,
