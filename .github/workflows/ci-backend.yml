@@ -158,7 +158,8 @@ jobs:
           uv run --locked pytest tests/test_task_source_dedupe_postgres.py
           tests/test_header_provenance_postgres.py
           tests/test_document_transform_qa_grants.py
-          tests/test_document_transform_qa_submit_postgres.py -q -rA
+          tests/test_document_transform_qa_submit_postgres.py
+          tests/test_document_transform_qa_corpus_postgres.py -q -rA
 
       - name: Exercise MCP storage and client grants across database sessions
         run: >-
