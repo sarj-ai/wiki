@@ -70,12 +70,14 @@ from app.document_transform.schemas import (
     DocumentTransformCheckpoint,
     DocumentTransformRequest,
     DriveFileSource,
+    FindingSeverity,
     InPlaceCheckpoint,
     InPlaceCheckpointStage,
     MarkdownSource,
     OutputStrategy,
     TabNamingCheckpoint,
     TextPatch,
+    TransformFinding,
     TransformMode,
     TransformPhase,
 )
@@ -198,6 +200,26 @@ def test_bounded_drive_markdown_download_stops_when_unknown_total_crosses_limit(
         )
 
     assert calls == MAX_MARKDOWN_BYTES // google_gateway_module._MARKDOWN_DOWNLOAD_CHUNK_BYTES + 1
+
+
+def test_supported_brand_only_downgrades_verified_header_conflicts() -> None:
+    findings = [
+        TransformFinding(
+            code="header_conflict:tab-a",
+            detail="Existing header preserved for review",
+        ),
+        TransformFinding(code="separate_review", detail="Still requires review"),
+    ]
+
+    classified = executor_module._classify_supported_copy_brand_findings(
+        findings,
+        supported_brand_applied=True,
+    )
+
+    assert [finding.severity for finding in classified] == [
+        FindingSeverity.INFORMATIONAL,
+        FindingSeverity.REVIEW,
+    ]
 
 
 @pytest.mark.parametrize(
@@ -1058,6 +1080,7 @@ class _Gateway(DocumentGateway):
             structure_preserved=self.verification.structure_preserved,
             brand_applied=self.verification.brand_applied,
             revision_id=draft.revision_id,
+            supported_brand_applied=self.verification.supported_brand_applied,
         )
 
     @override
@@ -1271,7 +1294,7 @@ async def test_completed_operation_is_replayed_without_second_mutation() -> None
 
 
 @pytest.mark.parametrize(
-    ("mode", "verification", "expected_codes"),
+    ("mode", "verification", "expected_codes", "expected_review"),
     [
         (
             TransformMode.FORMAT,
@@ -1281,11 +1304,13 @@ async def test_completed_operation_is_replayed_without_second_mutation() -> None
                 brand_applied=True,
             ),
             set(),
+            False,
         ),
         (
             TransformMode.UNSLOP,
             OutputVerification(content_preserved=False, structure_preserved=False),
             {"post_write_content_mismatch", "post_write_structure_mismatch"},
+            True,
         ),
         (
             TransformMode.FORMAT,
@@ -1295,15 +1320,28 @@ async def test_completed_operation_is_replayed_without_second_mutation() -> None
                 brand_applied=False,
             ),
             {"post_write_brand_mismatch"},
+            True,
+        ),
+        (
+            TransformMode.FORMAT,
+            OutputVerification(
+                content_preserved=True,
+                structure_preserved=True,
+                brand_applied=False,
+                supported_brand_applied=True,
+            ),
+            {"custom_furniture_preserved"},
+            False,
         ),
     ],
-    ids=["verified", "content-and-structure", "brand"],
+    ids=["verified", "content-and-structure", "brand", "supported-brand"],
 )
 @pytest.mark.parametrize("rich", [False, True], ids=["plain", "preserved-rich"])
 async def test_native_doc_post_write_mismatch_is_reported_for_review(
     mode: TransformMode,
     verification: OutputVerification,
     expected_codes: set[str],
+    expected_review: bool,
     rich: bool,
 ) -> None:
     document: dict[str, Any] = {
@@ -1370,7 +1408,7 @@ async def test_native_doc_post_write_mismatch_is_reported_for_review(
     assert await executor.execute(operation_id=operation_id, request=request) == result
     assert gateway.applies == applies
 
-    assert result.needs_review is bool(expected_codes)
+    assert result.needs_review is expected_review
     assert result.validation.protected_content_preserved is verification.content_preserved
     assert result.validation.structure_preserved is verification.structure_preserved
     assert {finding.code for finding in result.findings} == expected_codes | (
@@ -1382,6 +1420,12 @@ async def test_native_doc_post_write_mismatch_is_reported_for_review(
         if finding.code == "google_doc_text_target_unsupported"
     ]
     assert all(finding.severity.value == "informational" for finding in rich_findings)
+    if verification.supported_brand_applied:
+        supported = next(
+            finding for finding in result.findings if finding.code == "custom_furniture_preserved"
+        )
+        assert supported.severity.value == "informational"
+        assert "Complete Sarj branding was not applied" in supported.detail
     assert result.validation.unsafe_patch_count == 0
 
 
