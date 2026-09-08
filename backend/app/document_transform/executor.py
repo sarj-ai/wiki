@@ -31,7 +31,6 @@ from app.document_transform.custom_furniture import custom_furniture_requests_sa
 from app.document_transform.docx_renderer import markdown_import_manifest, render_markdown_docx
 from app.document_transform.errors import (
     BrandAssetUnavailableError,
-    ComplexStructureNeedsReviewError,
     CustomHeaderNeedsReviewError,
     DestinationAccessChangedError,
     DocumentGatewayError,
@@ -89,6 +88,7 @@ from app.document_transform.native_pagination import (
     plan_native_pagination,
 )
 from app.document_transform.native_paragraph_layout import (
+    NativeParagraphLayout,
     apply_paragraph_layout,
     capture_paragraph_layout,
     paragraph_layout_requests_safe,
@@ -1219,6 +1219,10 @@ class DocumentTransformExecutor:
                     raise InPlaceNeedsReviewError from error
             elif any(finding.code == "table_font_scope" for finding in checkpoint.findings):
                 raise InPlaceNeedsReviewError
+            if _claims_complex_structure_safe_noop(
+                checkpoint
+            ) and not _is_complex_structure_safe_noop(checkpoint):
+                raise InPlaceNeedsReviewError
             if {item.block_id for item in checkpoint.paragraph_layout} != {
                 finding.block_id
                 for finding in checkpoint.findings
@@ -1226,7 +1230,11 @@ class DocumentTransformExecutor:
             } or not verify_paragraph_layout(
                 snapshot.google_document,
                 checkpoint.paragraph_layout,
-                applied=True if checkpoint.stage is InPlaceCheckpointStage.COMPLETE else None,
+                applied=(
+                    not _is_complex_structure_safe_noop(checkpoint)
+                    if checkpoint.stage is InPlaceCheckpointStage.COMPLETE
+                    else None
+                ),
             ):
                 raise InPlaceNeedsReviewError
             if checkpoint.native_font_proof is None and (
@@ -1268,7 +1276,10 @@ class DocumentTransformExecutor:
                 preserved_block_ids=_preserved_block_ids(checkpoint),
                 diagnostic_stage="resume",
                 font_policy=NativeFontVerificationPolicy(
-                    require_target_family=checkpoint.stage is InPlaceCheckpointStage.COMPLETE,
+                    require_target_family=(
+                        checkpoint.stage is InPlaceCheckpointStage.COMPLETE
+                        and not _is_complex_structure_safe_noop(checkpoint)
+                    ),
                     preserved_family_block_ids=checkpoint.preserved_font_block_ids,
                 ),
             ):
@@ -1276,7 +1287,16 @@ class DocumentTransformExecutor:
             if checkpoint.stage is InPlaceCheckpointStage.COMPLETE:
                 if snapshot.revision_id != checkpoint.current_revision_id:
                     raise InPlaceNeedsReviewError
-                if (
+                if _is_complex_structure_safe_noop(checkpoint):
+                    if not _matches_complex_structure_safe_noop(
+                        snapshot,
+                        await self._gateway.inspect_in_place(
+                            snapshot=snapshot, title=snapshot.title
+                        ),
+                        checkpoint,
+                    ):
+                        raise InPlaceNeedsReviewError
+                elif (
                     checkpoint.custom_furniture
                     and (
                         await self._gateway.inspect_in_place(
@@ -1317,6 +1337,18 @@ class DocumentTransformExecutor:
                 snapshot=snapshot,
                 inspection=inspection,
             )
+            if checkpoint.stage is InPlaceCheckpointStage.COMPLETE:
+                return self._in_place_result(
+                    operation_id=operation_id,
+                    request=request,
+                    checkpoint=checkpoint,
+                    output=DocumentOutput(
+                        file_id=request.source.file_id,
+                        name=snapshot.title,
+                        parent_folder_id=snapshot.parent_folder_id,
+                        web_url=snapshot.web_url,
+                    ),
+                )
 
         if (
             checkpoint.stage is InPlaceCheckpointStage.HEADERS
@@ -1653,12 +1685,6 @@ class DocumentTransformExecutor:
             native_document=snapshot.google_document,
             mode=request.mode,
         )
-        if preserved_findings is None:
-            logger.info(
-                "document in-place preflight checks={checks}",
-                checks={"in_place_planner_findings": True},
-            )
-            raise ComplexStructureNeedsReviewError
         branded = request.mode is not TransformMode.UNSLOP
         if branded and inspection.unknown_header_tab_ids:
             logger.info(
@@ -1739,6 +1765,18 @@ class DocumentTransformExecutor:
             )
         except (KeyError, IndexError, TypeError, ValueError, AttributeError) as error:
             raise InPlaceNeedsReviewError from error
+        if preserved_findings is None:
+            return await self._complete_complex_structure_safe_noop(
+                source=source,
+                snapshot=snapshot,
+                inspection=inspection,
+                original=original,
+                outcome=outcome,
+                pagination=pagination,
+                visual_ids=visual_ids,
+                preserved_font_ids=preserved_font_ids,
+                branded=branded,
+            )
         checkpoint = InPlaceCheckpoint(
             visual_authority_block_ids=tuple(NativeFontBlockId(item) for item in visual_ids),
             preserved_font_block_ids=tuple(NativeFontBlockId(item) for item in preserved_font_ids),
@@ -1823,6 +1861,94 @@ class DocumentTransformExecutor:
                 str(header.tab_id): str(header.header_id) for header in inspection.preserved_headers
             },
             changed=bool(requests),
+        )
+        return await self._save_checkpoint(checkpoint)
+
+    async def _complete_complex_structure_safe_noop(
+        self,
+        *,
+        source: DriveFileSource,
+        snapshot: SourceSnapshot,
+        inspection: InPlaceInspection,
+        original: DocumentIR,
+        outcome: TransformOutcome,
+        pagination: tuple[NativePaginationRule, ...],
+        visual_ids: tuple[str, ...],
+        preserved_font_ids: tuple[str, ...],
+        branded: bool,
+    ) -> InPlaceCheckpoint:
+        if snapshot.revision_id is None:
+            raise InPlaceNeedsReviewError
+        try:
+            paragraph_layout = capture_paragraph_layout(
+                snapshot.google_document, original, original
+            )
+            native_font_proof = capture_native_font_proof(
+                snapshot.google_document,
+                original,
+                target_font_family=self._brand.font_family if branded else None,
+                transformed=original,
+                preserved_family_block_ids=preserved_font_ids,
+                visual_authority=NativeVisualAuthoritySelection(visual_ids),
+            )
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError) as error:
+            raise InPlaceNeedsReviewError from error
+        final_snapshot = await self._gateway.load_drive_source(source)
+        final_inspection = await self._gateway.inspect_in_place(
+            snapshot=final_snapshot, title=final_snapshot.title
+        )
+        checkpoint = InPlaceCheckpoint(
+            visual_authority_block_ids=tuple(NativeFontBlockId(item) for item in visual_ids),
+            preserved_font_block_ids=tuple(NativeFontBlockId(item) for item in preserved_font_ids),
+            paragraph_layout=paragraph_layout,
+            native_font_proof=native_font_proof,
+            custom_furniture=inspection.custom_furniture,
+            pagination=pagination,
+            header_identity=inspection.header_identity,
+            document_id=source.file_id,
+            source_title=snapshot.title,
+            source_sha256=_source_sha256(snapshot, original),
+            source_modified_time=source.expected_modified_time,
+            brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
+            brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
+            pipeline_version=PIPELINE_VERSION,
+            request_builder_version=REQUEST_BUILDER_VERSION,
+            unslop_catalog_sha256=UNSLOP_CATALOG_SHA256,
+            original_semantic_sha256=original.semantic_sha256,
+            expected_semantic_sha256=original.semantic_sha256,
+            structural_sha256=inspection.structural_sha256,
+            protected_structure_sha256=inspection.protected_structure_sha256,
+            body_sha256=inspection.body_sha256,
+            header_safe_sha256=inspection.header_safe_sha256,
+            source_revision_id=snapshot.revision_id,
+            current_revision_id=snapshot.revision_id,
+            stage=InPlaceCheckpointStage.COMPLETE,
+            replacements={},
+            findings=_complex_structure_safe_noop_findings(
+                visual_ids=visual_ids,
+                preserved_font_ids=preserved_font_ids,
+                paragraph_layout=paragraph_layout,
+            ),
+            applied_patch_count=0,
+            deterministic_patch_count=0,
+            model_patch_count=0,
+            llm_invoked=outcome.llm_invoked,
+            model_ids=[ModelId(value) for value in self._generator.model_ids]
+            if outcome.llm_invoked
+            else [],
+            headers={str(header.tab_id): str(header.header_id) for header in inspection.headers},
+            preserved_headers={
+                str(header.tab_id): str(header.header_id) for header in inspection.preserved_headers
+            },
+            changed=False,
+        )
+        if final_inspection != inspection or not _matches_complex_structure_safe_noop(
+            final_snapshot, final_inspection, checkpoint
+        ):
+            raise InPlaceNeedsReviewError
+        logger.info(
+            "document in-place preflight checks={checks}",
+            checks={"in_place_complex_structure_preserved": True},
         )
         return await self._save_checkpoint(checkpoint)
 
@@ -2592,6 +2718,125 @@ def _matches_pre_header_checkpoint(
         and {str(header.tab_id): str(header.header_id) for header in inspection.preserved_headers}
         == checkpoint.preserved_headers
         and inspection.marker_range == checkpoint.marker_range
+    )
+
+
+def _is_complex_structure_safe_noop(checkpoint: InPlaceCheckpoint) -> bool:
+    return (
+        checkpoint.stage is InPlaceCheckpointStage.COMPLETE
+        and checkpoint.changed is False
+        and not checkpoint.requests
+        and not checkpoint.replacements
+        and checkpoint.marker_name is None
+        and checkpoint.marker_range is None
+        and checkpoint.mutation_sha256 is None
+        and checkpoint.table_font_plan is None
+        and checkpoint.tab_naming is None
+        and checkpoint.tab_naming_declined_reason is None
+        and checkpoint.applied_patch_count == 0
+        and checkpoint.deterministic_patch_count == 0
+        and checkpoint.model_patch_count == 0
+        and checkpoint.expected_semantic_sha256 == checkpoint.original_semantic_sha256
+        and checkpoint.findings
+        == _complex_structure_safe_noop_findings(
+            visual_ids=checkpoint.visual_authority_block_ids,
+            preserved_font_ids=checkpoint.preserved_font_block_ids,
+            paragraph_layout=checkpoint.paragraph_layout,
+        )
+    )
+
+
+def _claims_complex_structure_safe_noop(checkpoint: InPlaceCheckpoint) -> bool:
+    return any(
+        finding.code == "complex_native_structure_preserved" for finding in checkpoint.findings
+    )
+
+
+def _complex_structure_safe_noop_findings(
+    *,
+    visual_ids: tuple[str, ...],
+    preserved_font_ids: tuple[str, ...],
+    paragraph_layout: tuple[NativeParagraphLayout, ...],
+) -> list[TransformFinding]:
+    return [
+        TransformFinding(
+            code="complex_native_structure_preserved",
+            detail=(
+                "Complex rich text and protected native structure were preserved unchanged "
+                "because a safe in-place transformation could not be proved."
+            ),
+            severity=FindingSeverity.REVIEW,
+        ),
+        *[
+            TransformFinding(
+                code="native_visual_authority_preserved",
+                block_id=block_id,
+                detail="Authored visual styling was preserved unchanged.",
+                severity=FindingSeverity.INFORMATIONAL,
+            )
+            for block_id in visual_ids
+        ],
+        *[
+            TransformFinding(
+                code="native_font_family_preserved",
+                block_id=block_id,
+                detail="This paragraph's authored font family was preserved unchanged.",
+                severity=FindingSeverity.INFORMATIONAL,
+            )
+            for block_id in preserved_font_ids
+        ],
+        *[
+            TransformFinding(
+                code="native_paragraph_layout_preserved",
+                block_id=item.block_id,
+                detail="This paragraph's authored layout was preserved unchanged.",
+                severity=FindingSeverity.INFORMATIONAL,
+            )
+            for item in paragraph_layout
+        ],
+    ]
+
+
+def _matches_complex_structure_safe_noop(
+    snapshot: SourceSnapshot,
+    inspection: InPlaceInspection,
+    checkpoint: InPlaceCheckpoint,
+) -> bool:
+    if not _is_complex_structure_safe_noop(checkpoint) or snapshot.revision_id is None:
+        return False
+    document = _to_ir(snapshot)
+    return (
+        snapshot.title == checkpoint.source_title
+        and snapshot.modified_time == checkpoint.source_modified_time
+        and snapshot.revision_id == checkpoint.source_revision_id
+        and snapshot.revision_id == checkpoint.current_revision_id
+        and _source_sha256(snapshot, document) == checkpoint.source_sha256
+        and document.semantic_sha256 == checkpoint.original_semantic_sha256
+        and existing_native_pagination(snapshot.google_document, document) == checkpoint.pagination
+        and inspection.structural_sha256 == checkpoint.structural_sha256
+        and inspection.protected_structure_sha256 == checkpoint.protected_structure_sha256
+        and inspection.body_sha256 == checkpoint.body_sha256
+        and inspection.header_safe_sha256 == checkpoint.header_safe_sha256
+        and inspection.custom_furniture == checkpoint.custom_furniture
+        and inspection.header_identity == checkpoint.header_identity
+        and not inspection.missing_header_tab_ids
+        and not inspection.unknown_header_tab_ids
+        and {str(header.tab_id): str(header.header_id) for header in inspection.headers}
+        == checkpoint.headers
+        and {str(header.tab_id): str(header.header_id) for header in inspection.preserved_headers}
+        == checkpoint.preserved_headers
+        and verify_paragraph_layout(
+            snapshot.google_document, checkpoint.paragraph_layout, applied=False
+        )
+        and checkpoint.native_font_proof is not None
+        and verify_native_font_proof(
+            snapshot.google_document,
+            checkpoint.native_font_proof,
+            preserved_block_ids=_preserved_block_ids(checkpoint),
+            font_policy=NativeFontVerificationPolicy(
+                preserved_family_block_ids=checkpoint.preserved_font_block_ids,
+            ),
+        )
     )
 
 
