@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.identifiers import DriveId, FileId
@@ -39,6 +41,12 @@ class GoogleDrive(_GoogleModel):
     hidden: bool = False
 
 
+class GooglePermissionDetail(_GoogleModel):
+    permission_type: Literal["file", "member"] = Field(alias="permissionType")
+    role: Literal["owner", "organizer", "fileOrganizer", "writer", "commenter", "reader"]
+    inherited: bool
+
+
 class GooglePermission(_GoogleModel):
     id: str
     type: str
@@ -50,6 +58,27 @@ class GooglePermission(_GoogleModel):
     expiration_time: str | None = Field(default=None, alias="expirationTime")
     deleted: bool = False
     pending_owner: bool = Field(default=False, alias="pendingOwner")
+    permission_details: list[GooglePermissionDetail] = Field(
+        default_factory=list,
+        alias="permissionDetails",
+    )
+
+
+class GoogleOwner(_GoogleModel):
+    email_address: str = Field(alias="emailAddress")
+
+
+class GoogleFilePermissionMetadata(_GoogleModel):
+    id: FileId
+    mime_type: str = Field(alias="mimeType")
+    drive_id: DriveId | None = Field(default=None, alias="driveId")
+    parents: list[FileId] = Field(default_factory=list)
+    version: str
+    owned_by_me: bool = Field(alias="ownedByMe")
+    shared: bool
+    capabilities: GoogleFileCapabilities
+    owners: list[GoogleOwner] = Field(default_factory=list)
+    app_properties: dict[str, str] = Field(default_factory=dict, alias="appProperties")
 
 
 class GoogleFileProbe(_GoogleModel):

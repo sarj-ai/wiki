@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 import hashlib
 import hmac
+import json
 from typing import Protocol
 import uuid
 
@@ -18,6 +20,8 @@ from app.cache.service import CacheService
 from app.document_transform.application import TransformSubmission, submit_document_transform
 from app.document_transform.qa_contract import (
     QA_MAX_FOLDER_LIST_PAGES,
+    QA_MAX_PERMISSION_EVIDENCE_BYTES,
+    QA_MAX_PERMISSION_LIST_PAGES,
     QA_MAX_STORED_FINDINGS,
     QA_MAX_STORED_MODEL_IDS,
     QA_MAX_STORED_RESULT_BYTES,
@@ -32,12 +36,14 @@ from app.document_transform.qa_corpus import (
 from app.document_transform.qa_grants import QaAuthority, QaGrantError, QaSubmittedCanary
 from app.document_transform.schemas import (
     DocumentOutput,
-    DocumentTransformRequest,
     DriveFileSource,
     OutputStrategy,
+    QaCopyPermissionEvidence,
+    QaDestinationPermissionBinding,
+    QaDocumentTransformRequest,
 )
-from app.drive.errors import DriveTraversalIncompleteError
-from app.drive.schemas import MIME_DOC, MIME_FOLDER, DriveNode
+from app.drive.errors import DrivePermissionsError, DriveTraversalIncompleteError
+from app.drive.schemas import MIME_DOC, MIME_FOLDER, DriveNode, FilePermissionSnapshot
 from app.drive.service import GoogleDriveService
 from app.files.errors import FilesError
 from app.files.schemas import FileResponse
@@ -51,6 +57,10 @@ from app.tasks.service import TaskService
 
 
 _MAX_CANARY_PLAN_CHILDREN = 1_000
+_MAX_CANARY_DESTINATION_PERMISSIONS = 1_000
+_MAX_DRIVE_VERSION_LENGTH = 64
+_OPERATION_PROPERTY = "sarjTransformOperation"
+_SOURCE_HASH_PROPERTY = "sarjTransformSourceHash"
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +70,8 @@ class QaCanaryPlan:
     source_file_id: FileId
     source_name: str
     source_modified_time: str
+    destination_version: str
+    destination_permission_sha256: str
     output_strategy: OutputStrategy
 
 
@@ -78,6 +90,14 @@ class QaDriveReader(Protocol):
         max_children: int,
     ) -> list[DriveNode]: ...
 
+    async def read_file_permissions_bounded(
+        self,
+        file_id: FileId,
+        *,
+        max_pages: int,
+        max_permissions: int,
+    ) -> FilePermissionSnapshot: ...
+
 
 class QaFileReader(Protocol):
     async def get(self, file_id: FileId) -> FileResponse: ...
@@ -94,6 +114,7 @@ class QaCanaryBroker:
         try:
             plan = await plan_qa_canary(authority, drive=services.drive, files=services.files)
         except (
+            DrivePermissionsError,
             DriveTraversalIncompleteError,
             FilesError,
             NotImplementedError,
@@ -131,6 +152,7 @@ class QaCanaryBroker:
         try:
             plan = await plan_qa_canary(authority, drive=services.drive, files=services.files)
         except (
+            DrivePermissionsError,
             DriveTraversalIncompleteError,
             FilesError,
             NotImplementedError,
@@ -142,11 +164,14 @@ class QaCanaryBroker:
                 authority,
                 plan=plan,
                 plan_id=plan_id,
+                drive=services.drive,
                 files=services.files,
                 tasks=tasks,
                 enqueuer=enqueuer,
             )
         except (
+            DrivePermissionsError,
+            DriveTraversalIncompleteError,
             FilesError,
             GoogleReauthenticationRequiredError,
             GoogleTokenUnavailableError,
@@ -192,6 +217,22 @@ class QaCanaryBroker:
         except (FilesError, NotImplementedError, ValueError) as exc:
             raise QaGrantError from exc
 
+    @staticmethod
+    async def read_permission_evidence(
+        authority: QaAuthority,
+        *,
+        submission: QaSubmittedCanary,
+        tasks: TaskService,
+    ) -> QaCopyPermissionEvidence:
+        try:
+            return await tasks.get_qa_permission_evidence(
+                submission.task_id,
+                authority.user_id,
+                max_evidence_bytes=QA_MAX_PERMISSION_EVIDENCE_BYTES,
+            )
+        except (TaskError, ValueError) as exc:
+            raise QaGrantError from exc
+
     async def _services(self, authority: QaAuthority) -> _QaBrokerServices:
         user = await self._db.get(User, authority.user_id)
         if user is None or user.email.casefold() != authority.user_email.casefold():
@@ -230,6 +271,7 @@ async def submit_planned_qa_canary(
         authority,
         plan=plan,
         plan_id=plan_id,
+        drive=drive,
         files=files,
         tasks=tasks,
         enqueuer=enqueuer,
@@ -300,13 +342,27 @@ async def _submit_qa_canary_plan(
     *,
     plan: QaCanaryPlan,
     plan_id: QaPlanId,
+    drive: QaDriveReader,
     files: QaFileReader,
     tasks: TaskService,
     enqueuer: TaskEnqueuer,
 ) -> TransformSubmission:
     if not hmac.compare_digest(plan.plan_id.bytes, plan_id.bytes):
         raise QaGrantError
-    payload = DocumentTransformRequest(
+    permission_readback = await read_owner_only_file_permission_proof(
+        file_id=authority.destination_folder_id,
+        expectation=QaPermissionProofExpectation(
+            user_email=authority.user_email,
+            mime_type=MIME_FOLDER,
+        ),
+        drive=drive,
+    )
+    if permission_readback.version != plan.destination_version or not hmac.compare_digest(
+        permission_readback.sha256,
+        plan.destination_permission_sha256,
+    ):
+        raise QaGrantError
+    payload = QaDocumentTransformRequest(
         source=DriveFileSource(
             kind="drive_file",
             file_id=plan.source_file_id,
@@ -315,6 +371,10 @@ async def _submit_qa_canary_plan(
         mode=authority.mode,
         output_strategy=OutputStrategy.COPY,
         copy_destination_folder_id=authority.destination_folder_id,
+        qa_destination_permission=QaDestinationPermissionBinding(
+            version=plan.destination_version,
+            sha256=plan.destination_permission_sha256,
+        ),
     )
     return await submit_document_transform(
         payload=payload,
@@ -352,13 +412,23 @@ async def plan_qa_canary(
     selected = documents[0]
     if selected.modified_time is None:
         raise QaGrantError
-    operation = _operation_id(authority, selected)
+    destination_proof = await read_owner_only_file_permission_proof(
+        file_id=authority.destination_folder_id,
+        expectation=QaPermissionProofExpectation(
+            user_email=authority.user_email,
+            mime_type=MIME_FOLDER,
+        ),
+        drive=drive,
+    )
+    operation = _operation_id(authority, selected, destination_proof)
     return QaCanaryPlan(
         plan_id=QaPlanId(operation),
         idempotency_key=IdempotencyKey(operation),
         source_file_id=selected.id,
         source_name=selected.name,
         source_modified_time=selected.modified_time,
+        destination_version=destination_proof.version,
+        destination_permission_sha256=destination_proof.sha256,
         output_strategy=OutputStrategy.COPY,
     )
 
@@ -401,12 +471,108 @@ async def _bounded_native_docs(
     return documents
 
 
-def _operation_id(authority: QaAuthority, source: DriveNode) -> uuid.UUID:
+@dataclass(frozen=True, slots=True)
+class QaDestinationPermissionProof:
+    file_id: FileId
+    mime_type: str
+    parent_folder_id: FileId | None
+    version: str
+    sha256: str
+    observed_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class QaPermissionProofExpectation:
+    user_email: str
+    mime_type: str
+    parent_id: FileId | None = None
+    operation_id: uuid.UUID | None = None
+    source_sha256: str | None = None
+
+
+async def read_owner_only_file_permission_proof(
+    *,
+    file_id: FileId,
+    expectation: QaPermissionProofExpectation,
+    drive: QaDriveReader,
+) -> QaDestinationPermissionProof:
+    snapshot = await drive.read_file_permissions_bounded(
+        file_id,
+        max_pages=QA_MAX_PERMISSION_LIST_PAGES,
+        max_permissions=_MAX_CANARY_DESTINATION_PERMISSIONS,
+    )
+    active_permissions = tuple(
+        permission for permission in snapshot.permissions if not permission.deleted
+    )
+    owner_emails = tuple(email.casefold() for email in snapshot.owner_emails)
+    expected_email = expectation.user_email.casefold()
+    if (
+        snapshot.file_id != file_id
+        or snapshot.mime_type != expectation.mime_type
+        or snapshot.drive_id is not None
+        or not snapshot.version.isdigit()
+        or len(snapshot.version) > _MAX_DRIVE_VERSION_LENGTH
+    ):
+        raise QaGrantError
+    if expectation.parent_id is not None and snapshot.parent_ids != (expectation.parent_id,):
+        raise QaGrantError
+    if (
+        not snapshot.owned_by_me
+        or snapshot.shared
+        or (expectation.mime_type == MIME_FOLDER and not snapshot.can_add_children)
+    ):
+        raise QaGrantError
+    if owner_emails != (expected_email,) or len(active_permissions) != 1:
+        raise QaGrantError
+    owner = active_permissions[0]
+    if (
+        owner.inherited
+        or len(owner.permission_details) != 1
+        or owner.permission_details[0].permission_type != "file"
+        or owner.permission_details[0].role != "owner"
+        or owner.permission_details[0].inherited
+    ):
+        raise QaGrantError
+    if (
+        owner.principal_type != "user"
+        or owner.role != "owner"
+        or owner.pending_owner
+        or owner.email_address is None
+        or owner.email_address.casefold() != expected_email
+    ):
+        raise QaGrantError
+    if (expectation.operation_id is None) != (expectation.source_sha256 is None):
+        raise ValueError
+    if expectation.operation_id is not None and (
+        snapshot.app_properties.get(_OPERATION_PROPERTY) != str(expectation.operation_id)
+        or snapshot.app_properties.get(_SOURCE_HASH_PROPERTY) != expectation.source_sha256
+    ):
+        raise QaGrantError
+    payload = snapshot.model_dump(mode="json")
+    digest = hashlib.sha256(
+        json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return QaDestinationPermissionProof(
+        file_id=snapshot.file_id,
+        mime_type=snapshot.mime_type,
+        parent_folder_id=snapshot.parent_ids[0] if snapshot.parent_ids else None,
+        version=snapshot.version,
+        sha256=digest,
+        observed_at=datetime.now(UTC),
+    )
+
+
+def _operation_id(
+    authority: QaAuthority,
+    source: DriveNode,
+    destination: QaDestinationPermissionProof,
+) -> uuid.UUID:
     key = hashlib.sha256(authority.image_digest.encode()).digest()
     message = (
         f"qa-canary-copy\0{authority.grant_id}\0{authority.release_sha}"
         f"\0{authority.source_folder_id}\0{source.id}\0{source.modified_time}"
-        f"\0{authority.destination_folder_id}\0{authority.mode.value}"
+        f"\0{authority.destination_folder_id}\0{destination.version}"
+        f"\0{destination.sha256}\0{authority.mode.value}"
     ).encode()
     digest = bytearray(hmac.digest(key, message, "sha256")[:16])
     digest[6] = (digest[6] & 0x0F) | 0x50

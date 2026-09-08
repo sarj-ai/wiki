@@ -15,7 +15,7 @@ from tenacity import wait_none
 
 from app.auth.encryption import encrypt_text
 from app.cache.service import CacheNamespace, CacheService
-from app.drive.errors import DriveTraversalIncompleteError
+from app.drive.errors import DrivePermissionsUpstreamError, DriveTraversalIncompleteError
 from app.drive.schemas import (
     MIME_FOLDER,
     MIME_SHORTCUT,
@@ -89,6 +89,7 @@ class _FakeFilesListable(_FakeListable):
         self._children = _FakeListable(children_pages, captured)
         self._root_page = root_page
 
+    @override
     def list(self, **kwargs: Any) -> _FakePendingCall:
         q = str(kwargs.get("q", ""))
         if "in parents" in q or q.startswith("trashed=false"):
@@ -263,6 +264,9 @@ async def test_list_drive_permissions_maps_page_and_requests_private_fields(
                         "id": "permission-1",
                         "role": "fileOrganizer",
                         "type": "group",
+                        "permissionDetails": [
+                            {"permissionType": "member", "role": "fileOrganizer", "inherited": True}
+                        ],
                     }
                 ],
             }
@@ -278,6 +282,7 @@ async def test_list_drive_permissions_maps_page_and_requests_private_fields(
     assert page.next_page_token == next_page_token
     assert page.permissions[0].principal_type == "group"
     assert page.permissions[0].role == "fileOrganizer"
+    assert page.permissions[0].inherited
     call = client.permissions_captured[0]
     assert call["fileId"] == "d1"
     assert call["pageToken"] == "incoming"
@@ -285,6 +290,7 @@ async def test_list_drive_permissions_maps_page_and_requests_private_fields(
     assert call["supportsAllDrives"] is True
     assert call["useDomainAdminAccess"] is False
     assert "emailAddress" in call["fields"]
+    assert "permissionDetails" in call["fields"]
 
 
 async def test_my_drive_permissions_are_item_specific_without_google_acl_call(
@@ -298,6 +304,282 @@ async def test_my_drive_permissions_are_item_specific_without_google_acl_call(
     assert page.access_model == "item_specific"
     assert page.permissions == []
     assert client.permissions_captured == []
+
+
+async def test_file_permission_snapshot_is_live_complete_and_bounded(
+    patch_drive_client: Any,
+) -> None:
+    client = _FakeClient(
+        files_pages=[
+            {
+                "id": "folder",
+                "mimeType": MIME_FOLDER,
+                "version": "17",
+                "ownedByMe": True,
+                "shared": False,
+                "capabilities": {"canAddChildren": True},
+                "owners": [{"emailAddress": "qa@example.test"}],
+            },
+            {
+                "id": "folder",
+                "mimeType": MIME_FOLDER,
+                "version": "17",
+                "ownedByMe": True,
+                "shared": False,
+                "capabilities": {"canAddChildren": True},
+                "owners": [{"emailAddress": "qa@example.test"}],
+            },
+        ],
+        permissions_pages=[
+            {
+                "nextPageToken": "page-2",
+                "permissions": [
+                    {
+                        "id": "deleted-reader",
+                        "type": "user",
+                        "role": "reader",
+                        "emailAddress": "old@example.test",
+                        "deleted": True,
+                        "permissionDetails": [
+                            {"permissionType": "file", "role": "reader", "inherited": False}
+                        ],
+                    }
+                ],
+            },
+            {
+                "permissions": [
+                    {
+                        "id": "owner",
+                        "type": "user",
+                        "role": "owner",
+                        "emailAddress": "qa@example.test",
+                        "permissionDetails": [
+                            {"permissionType": "file", "role": "owner", "inherited": False}
+                        ],
+                    }
+                ]
+            },
+        ],
+    )
+    patch_drive_client(client)
+
+    snapshot = await _svc().read_file_permissions_bounded(
+        FileId("folder"), max_pages=2, max_permissions=10
+    )
+
+    assert snapshot.file_id == "folder"
+    assert snapshot.drive_id is None
+    assert snapshot.version == "17"
+    assert snapshot.owner_emails == ("qa@example.test",)
+    assert [permission.id for permission in snapshot.permissions] == ["deleted-reader", "owner"]
+    metadata_call = client.files_captured[0]
+    assert metadata_call["fileId"] == "folder"
+    assert metadata_call["supportsAllDrives"] is True
+    assert "ownedByMe" in metadata_call["fields"]
+    assert "owners(emailAddress)" in metadata_call["fields"]
+    assert client.permissions_captured[0]["useDomainAdminAccess"] is False
+    assert client.permissions_captured[1]["pageToken"] == "page-2"
+
+
+@pytest.mark.parametrize(
+    "permissions_pages",
+    [
+        [{"permissions": "not-a-list"}],
+        [{"permissions": [{"id": "missing-role", "type": "user"}]}],
+        [{"permissions": [{"id": "owner", "type": "user", "role": "owner"}]}],
+        [
+            {
+                "permissions": [
+                    {
+                        "id": "owner",
+                        "type": "user",
+                        "role": "owner",
+                        "permissionDetails": [{"permissionType": "file", "role": "owner"}],
+                    }
+                ]
+            }
+        ],
+        [
+            {
+                "permissions": [
+                    {
+                        "id": "owner",
+                        "type": "user",
+                        "role": "owner",
+                        "permissionDetails": [{"role": "owner", "inherited": False}],
+                    }
+                ]
+            }
+        ],
+        [
+            {
+                "permissions": [
+                    {
+                        "id": "owner",
+                        "type": "user",
+                        "role": "owner",
+                        "permissionDetails": [{"permissionType": "file", "inherited": False}],
+                    }
+                ]
+            }
+        ],
+        [
+            {
+                "nextPageToken": "same",
+                "permissions": [{"id": "one", "type": "user", "role": "owner"}],
+            },
+            {
+                "nextPageToken": "same",
+                "permissions": [{"id": "two", "type": "user", "role": "reader"}],
+            },
+        ],
+        [
+            {
+                "permissions": [
+                    {"id": "duplicate", "type": "user", "role": "owner"},
+                    {"id": "duplicate", "type": "user", "role": "reader"},
+                ]
+            }
+        ],
+    ],
+    ids=(
+        "invalid-list",
+        "invalid-entry",
+        "missing-effective-details",
+        "missing-inherited",
+        "missing-permission-type",
+        "missing-detail-role",
+        "repeated-page-token",
+        "duplicate-id",
+    ),
+)
+async def test_file_permission_snapshot_fails_closed_on_incomplete_or_invalid_inventory(
+    patch_drive_client: Any,
+    permissions_pages: list[dict[str, Any]],
+) -> None:
+    client = _FakeClient(
+        files_pages=[
+            {
+                "id": "folder",
+                "mimeType": MIME_FOLDER,
+                "version": "17",
+                "ownedByMe": True,
+                "shared": False,
+                "capabilities": {"canAddChildren": True},
+                "owners": [{"emailAddress": "qa@example.test"}],
+            },
+            {
+                "id": "folder",
+                "mimeType": MIME_FOLDER,
+                "version": "17",
+                "ownedByMe": True,
+                "shared": False,
+                "capabilities": {"canAddChildren": True},
+                "owners": [{"emailAddress": "qa@example.test"}],
+            },
+        ],
+        permissions_pages=permissions_pages,
+    )
+    patch_drive_client(client)
+
+    with pytest.raises((DrivePermissionsUpstreamError, DriveTraversalIncompleteError)):
+        await _svc().read_file_permissions_bounded(
+            FileId("folder"), max_pages=2, max_permissions=10
+        )
+
+
+async def test_file_permission_snapshot_refuses_truncated_inventory(
+    patch_drive_client: Any,
+) -> None:
+    client = _FakeClient(
+        files_pages=[
+            {
+                "id": "folder",
+                "mimeType": MIME_FOLDER,
+                "version": "17",
+                "ownedByMe": True,
+                "shared": False,
+                "capabilities": {"canAddChildren": True},
+                "owners": [{"emailAddress": "qa@example.test"}],
+            },
+            {
+                "id": "folder",
+                "mimeType": MIME_FOLDER,
+                "version": "17",
+                "ownedByMe": True,
+                "shared": False,
+                "capabilities": {"canAddChildren": True},
+                "owners": [{"emailAddress": "qa@example.test"}],
+            },
+        ],
+        permissions_pages=[
+            {
+                "nextPageToken": "more",
+                "permissions": [
+                    {
+                        "id": "owner",
+                        "type": "user",
+                        "role": "owner",
+                        "permissionDetails": [
+                            {"permissionType": "file", "role": "owner", "inherited": False}
+                        ],
+                    }
+                ],
+            }
+        ],
+    )
+    patch_drive_client(client)
+
+    with pytest.raises(DriveTraversalIncompleteError):
+        await _svc().read_file_permissions_bounded(FileId("folder"), max_pages=1, max_permissions=1)
+
+
+async def test_file_permission_snapshot_rejects_metadata_change_during_inventory(
+    patch_drive_client: Any,
+) -> None:
+    client = _FakeClient(
+        files_pages=[
+            {
+                "id": "folder",
+                "mimeType": MIME_FOLDER,
+                "version": "17",
+                "ownedByMe": True,
+                "shared": False,
+                "capabilities": {"canAddChildren": True},
+                "owners": [{"emailAddress": "qa@example.test"}],
+            },
+            {
+                "id": "folder",
+                "mimeType": MIME_FOLDER,
+                "version": "18",
+                "ownedByMe": True,
+                "shared": True,
+                "capabilities": {"canAddChildren": True},
+                "owners": [{"emailAddress": "qa@example.test"}],
+            },
+        ],
+        permissions_pages=[
+            {
+                "permissions": [
+                    {
+                        "id": "owner",
+                        "type": "user",
+                        "role": "owner",
+                        "emailAddress": "qa@example.test",
+                        "permissionDetails": [
+                            {"permissionType": "file", "role": "owner", "inherited": False}
+                        ],
+                    }
+                ]
+            }
+        ],
+    )
+    patch_drive_client(client)
+
+    with pytest.raises(DriveTraversalIncompleteError):
+        await _svc().read_file_permissions_bounded(
+            FileId("folder"), max_pages=2, max_permissions=10
+        )
 
 
 async def test_list_drives_skips_entries_missing_fields(patch_drive_client: Any) -> None:

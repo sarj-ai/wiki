@@ -11,6 +11,7 @@ from app.document_transform.schemas import (
     DocumentTransformCheckpoint,
     DocumentTransformRequest,
     DocumentTransformResult,
+    QaDocumentTransformRequest,
 )
 from app.identifiers import FileId, TaskId
 from app.smart_create.schemas import SmartCreateResult, SmartFileCreate
@@ -129,7 +130,7 @@ class SmartCreateTaskRecord(BaseModel):
 class DocumentTransformTaskRecord(BaseModel):
     owner_user_id: uuid.UUID
     task: TaskRead
-    payload: DocumentTransformRequest | None
+    payload: DocumentTransformRequest | QaDocumentTransformRequest | None
     checkpoint: DocumentTransformCheckpoint | None = None
     checkpoint_generation: int = Field(default=0, ge=0)
 

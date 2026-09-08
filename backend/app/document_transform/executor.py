@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
+from datetime import UTC, datetime
 import hashlib
 import json
 from types import MappingProxyType
@@ -32,6 +33,7 @@ from app.document_transform.errors import (
     BrandAssetUnavailableError,
     ComplexStructureNeedsReviewError,
     CustomHeaderNeedsReviewError,
+    DestinationAccessChangedError,
     DocumentGatewayError,
     InPlaceNeedsReviewError,
     InPlaceNotAllowedError,
@@ -47,6 +49,7 @@ from app.document_transform.gateway import (
     InPlaceInspection,
     InPlaceStageResult,
     OutputDraft,
+    OutputVerification,
     SourceSnapshot,
     TabHeader,
 )
@@ -116,6 +119,11 @@ from app.document_transform.schemas import (
     InPlaceCheckpoint,
     InPlaceCheckpointStage,
     OutputStrategy,
+    QaCopyPermissionEvidence,
+    QaDestinationPermissionBinding,
+    QaDocumentTransformRequest,
+    QaDocumentTransformResult,
+    QaQuarantinedOutputEvidence,
     TabNamingDeclinedReason,
     TransformFinding,
     TransformMode,
@@ -225,6 +233,37 @@ class DocumentTransformCheckpointStore(Protocol):
     ) -> None: ...
 
 
+class QaDestinationPermissionVerifier(Protocol):
+    async def __call__(
+        self,
+        destination_folder_id: FileId,
+        binding: QaDestinationPermissionBinding,
+    ) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class QaCreatedCopyPermissionRequest:
+    output_file_id: FileId
+    destination_folder_id: FileId
+    operation_id: uuid.UUID
+    source_sha256: str
+    output_revision_id: DocsRevisionId
+    binding: QaDestinationPermissionBinding
+
+
+@dataclass(frozen=True, slots=True)
+class AttestedCopy:
+    result: DocumentTransformResult
+    checkpoint: CopyCheckpoint
+
+
+class QaCreatedCopyVerifier(Protocol):
+    async def __call__(
+        self,
+        request: QaCreatedCopyPermissionRequest,
+    ) -> QaCopyPermissionEvidence: ...
+
+
 class DocumentTransformExecutor:
     def __init__(
         self,
@@ -239,6 +278,8 @@ class DocumentTransformExecutor:
         lease_token: uuid.UUID | None = None,
         checkpoint: DocumentTransformCheckpoint | None = None,
         checkpoint_generation: int = 0,
+        qa_destination_permission_verifier: QaDestinationPermissionVerifier | None = None,
+        qa_created_copy_verifier: QaCreatedCopyVerifier | None = None,
     ) -> None:
         self._gateway = gateway
         self._generator = generator
@@ -254,6 +295,8 @@ class DocumentTransformExecutor:
         self._lease_token = lease_token
         self._checkpoint = checkpoint
         self._checkpoint_generation = checkpoint_generation
+        self._qa_destination_permission_verifier = qa_destination_permission_verifier
+        self._qa_created_copy_verifier = qa_created_copy_verifier
 
     async def execute(
         self,
@@ -291,11 +334,32 @@ class DocumentTransformExecutor:
         )
         source_sha256 = _source_sha256(snapshot, original)
         recovered = await self._gateway.recover_output(operation_id)
+        checkpoint = self._copy_checkpoint_or_none()
         if recovered is not None and recovered.output.parent_folder_id != _copy_output_parent(
             request, snapshot
         ):
+            # A QA recovery candidate is untrusted until its current effective ACL
+            # and exact destination parent have been proved.  Do not let the
+            # generic conflict shortcut bypass that proof.
+            if _qa_destination_permission(request) is not None:
+                try:
+                    await self._require_qa_created_copy_permission(
+                        operation_id=operation_id,
+                        source_sha256=source_sha256,
+                        request=request,
+                        draft=recovered,
+                    )
+                except DestinationAccessChangedError:
+                    if checkpoint is not None:
+                        await self._record_qa_quarantine(
+                            checkpoint=checkpoint,
+                            operation_id=operation_id,
+                            source_sha256=source_sha256,
+                            request=request,
+                            draft=recovered,
+                        )
+                    raise
             raise OutputConflictError
-        checkpoint = self._copy_checkpoint_or_none()
         if checkpoint is None:
             if recovered is not None:
                 # Legacy/incomplete outputs without a durable plan cannot be
@@ -390,7 +454,7 @@ class DocumentTransformExecutor:
             )
         ):
             raise OutputConflictError
-        if checkpoint.stage is CopyCheckpointStage.VERIFIED:
+        if checkpoint.stage in {CopyCheckpointStage.VERIFIED, CopyCheckpointStage.ATTESTED}:
             if recovered is None or checkpoint.result is None:
                 raise OutputConflictError
             snapshot, original = _structure_inputs(snapshot, outcome.document, checkpoint)
@@ -430,6 +494,7 @@ class DocumentTransformExecutor:
                 raise DocumentGatewayError(retryable=True)
             if checkpoint.stage is not CopyCheckpointStage.PLANNED:
                 raise OutputConflictError
+            await self._require_qa_destination_permission(request)
             checkpoint = await self._save_copy_checkpoint(
                 checkpoint.model_copy(update={"stage": CopyCheckpointStage.CREATING})
             )
@@ -470,6 +535,22 @@ class DocumentTransformExecutor:
                         }
                     )
                 )
+        try:
+            await self._require_qa_created_copy_permission(
+                operation_id=operation_id,
+                source_sha256=source_sha256,
+                request=request,
+                draft=draft,
+            )
+        except DestinationAccessChangedError:
+            await self._record_qa_quarantine(
+                checkpoint=checkpoint,
+                operation_id=operation_id,
+                source_sha256=source_sha256,
+                request=request,
+                draft=draft,
+            )
+            raise
         if (
             snapshot.google_document is not None
             and isinstance(request.source, DriveFileSource)
@@ -690,6 +771,9 @@ class DocumentTransformExecutor:
             model_patch_count=outcome.model_count,
             llm_invoked=outcome.llm_invoked,
             output_revision_id=applied.revision_id,
+            access_scope=(
+                "owner_only" if _qa_destination_permission(request) is not None else "inherited"
+            ),
         )
         checkpoint = await self._save_copy_checkpoint(
             checkpoint.model_copy(
@@ -908,7 +992,7 @@ class DocumentTransformExecutor:
             draft, native_footer=checkpoint.native_footer, native_dates=checkpoint.native_dates
         )
         if (
-            checkpoint.stage is not CopyCheckpointStage.VERIFIED
+            checkpoint.stage not in {CopyCheckpointStage.VERIFIED, CopyCheckpointStage.ATTESTED}
             or checkpoint.output is None
             or checkpoint.output_revision_id is None
             or result is None
@@ -930,7 +1014,7 @@ class DocumentTransformExecutor:
             or revision_id != checkpoint.output_revision_id
         ):
             raise OutputVerificationError
-        serialized_result = result.model_dump(mode="json")
+        serialized_result = _public_result_payload(result)
         expected_result_sha256 = _json_sha256(serialized_result)
         expected_revision_sha256 = hashlib.sha256(revision_id.encode()).hexdigest()
         if not draft.completed:
@@ -969,6 +1053,17 @@ class DocumentTransformExecutor:
             or final_revision != checkpoint.output_revision_id
         ):
             raise OutputVerificationError
+        attested = await self._attest_completed_qa_copy(
+            operation_id=operation_id,
+            request=request,
+            snapshot=snapshot,
+            expected=expected,
+            terminal_verification=final_verification,
+            checkpoint=checkpoint,
+            draft=replace(draft, revision_id=final_revision),
+            result=result,
+        )
+        result, checkpoint = attested.result, attested.checkpoint
         if result.header_identity is not None:
             await self._save_copy_checkpoint(
                 checkpoint.model_copy(
@@ -981,6 +1076,89 @@ class DocumentTransformExecutor:
                 )
             )
         return result
+
+    async def _attest_completed_qa_copy(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        request: DocumentTransformRequest,
+        snapshot: SourceSnapshot,
+        expected: DocumentIR,
+        terminal_verification: OutputVerification,
+        checkpoint: CopyCheckpoint,
+        draft: OutputDraft,
+        result: DocumentTransformResult,
+    ) -> AttestedCopy:
+        if _qa_destination_permission(request) is None:
+            return AttestedCopy(result=result, checkpoint=checkpoint)
+        try:
+            permission_evidence = await self._require_qa_created_copy_permission(
+                operation_id=operation_id,
+                source_sha256=result.source_sha256,
+                request=request,
+                draft=draft,
+            )
+        except DestinationAccessChangedError:
+            await self._record_qa_quarantine(
+                checkpoint=checkpoint,
+                operation_id=operation_id,
+                source_sha256=result.source_sha256,
+                request=request,
+                draft=draft,
+            )
+            raise
+        if permission_evidence is None:  # pragma: no cover - internal binding invariant
+            raise DestinationAccessChangedError
+        post_acl_verification = await self._gateway.verify_output(
+            draft=draft,
+            source=snapshot,
+            expected=expected,
+            verify_brand=request.mode is not TransformMode.UNSLOP,
+            header_title=checkpoint.output_name,
+        )
+        post_acl_revision = post_acl_verification.revision_id or draft.revision_id
+        verification_failed = (
+            not post_acl_verification.content_preserved
+            or not post_acl_verification.structure_preserved
+        )
+        revision_changed = (
+            post_acl_revision != draft.revision_id or post_acl_revision != result.output_revision_id
+        )
+        brand_changed = (
+            post_acl_verification.brand_applied != terminal_verification.brand_applied
+            or post_acl_verification.supported_brand_applied
+            != terminal_verification.supported_brand_applied
+        )
+        if verification_failed or revision_changed or brand_changed:
+            await self._record_qa_quarantine(
+                checkpoint=checkpoint,
+                operation_id=operation_id,
+                source_sha256=result.source_sha256,
+                request=request,
+                draft=replace(draft, revision_id=post_acl_revision),
+            )
+            raise OutputVerificationError
+        attested = QaDocumentTransformResult.model_validate(
+            _public_result_payload(result)
+            | {
+                "access_scope": "owner_only",
+                "qa_permission_evidence": permission_evidence,
+            }
+        )
+        saved = await self._save_copy_checkpoint(
+            CopyCheckpoint.model_validate(
+                checkpoint.model_dump(mode="python")
+                | {
+                    "stage": CopyCheckpointStage.ATTESTED,
+                    "output": draft.output,
+                    "output_revision_id": draft.revision_id,
+                    "result": attested,
+                    "qa_permission_evidence": permission_evidence,
+                    "qa_quarantine": None,
+                }
+            )
+        )
+        return AttestedCopy(result=attested, checkpoint=saved)
 
     async def _execute_in_place(
         self,
@@ -1920,6 +2098,95 @@ class DocumentTransformExecutor:
             imported_docx=imported_docx,
         )
 
+    async def _require_qa_destination_permission(
+        self,
+        request: DocumentTransformRequest,
+    ) -> None:
+        binding = _qa_destination_permission(request)
+        if binding is None:
+            return
+        destination_folder_id = request.copy_destination_folder_id
+        verifier = self._qa_destination_permission_verifier
+        if destination_folder_id is None or verifier is None:
+            raise DestinationAccessChangedError
+        await verifier(destination_folder_id, binding)
+
+    async def _require_qa_created_copy_permission(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        source_sha256: str,
+        request: DocumentTransformRequest,
+        draft: OutputDraft,
+    ) -> QaCopyPermissionEvidence | None:
+        binding = _qa_destination_permission(request)
+        if binding is None:
+            return None
+        destination_folder_id = request.copy_destination_folder_id
+        verifier = self._qa_created_copy_verifier
+        if destination_folder_id is None or verifier is None:
+            raise DestinationAccessChangedError
+        return await verifier(
+            QaCreatedCopyPermissionRequest(
+                output_file_id=draft.output.file_id,
+                destination_folder_id=destination_folder_id,
+                operation_id=operation_id,
+                source_sha256=source_sha256,
+                output_revision_id=draft.revision_id,
+                binding=binding,
+            )
+        )
+
+    async def _record_qa_quarantine(
+        self,
+        *,
+        checkpoint: CopyCheckpoint,
+        operation_id: uuid.UUID,
+        source_sha256: str,
+        request: DocumentTransformRequest,
+        draft: OutputDraft,
+    ) -> None:
+        destination_folder_id = request.copy_destination_folder_id
+        if destination_folder_id is None:  # pragma: no cover - schema invariant
+            raise DestinationAccessChangedError
+        quarantine = QaQuarantinedOutputEvidence(
+            operation_id=operation_id,
+            source_sha256=source_sha256,
+            output_file_id=draft.output.file_id,
+            destination_folder_id=destination_folder_id,
+            output_revision_id=draft.revision_id,
+            observed_at=datetime.now(UTC),
+        )
+        await self._save_copy_checkpoint(
+            CopyCheckpoint.model_validate(
+                checkpoint.model_dump(mode="python")
+                | {
+                    "stage": CopyCheckpointStage.QUARANTINED,
+                    "output": draft.output,
+                    "output_revision_id": draft.revision_id,
+                    "result": None,
+                    "qa_permission_evidence": None,
+                    "qa_quarantine": quarantine,
+                }
+            )
+        )
+
+
+def _public_result_payload(result: DocumentTransformResult) -> dict[str, Any]:
+    payload = result.model_dump(mode="json")
+    payload.pop("qa_permission_evidence", None)
+    return payload
+
+
+def _qa_destination_permission(
+    request: DocumentTransformRequest,
+) -> QaDestinationPermissionBinding | None:
+    return (
+        request.qa_destination_permission
+        if isinstance(request, QaDocumentTransformRequest)
+        else None
+    )
+
 
 def _copy_output_name(request: DocumentTransformRequest, original: DocumentIR) -> str:
     if request.output_name is not None:
@@ -2045,6 +2312,7 @@ def _new_copy_checkpoint(
         source_revision_id=snapshot.revision_id,
         source_parent_folder_id=snapshot.parent_folder_id,
         output_parent_folder_id=request.copy_destination_folder_id or snapshot.parent_folder_id,
+        qa_destination_permission=_qa_destination_permission(request),
         brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
         brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
         pipeline_version=PIPELINE_VERSION,
@@ -2089,6 +2357,7 @@ def _validate_copy_checkpoint(
         snapshot.revision_id,
         snapshot.parent_folder_id,
         request.copy_destination_folder_id or snapshot.parent_folder_id,
+        _qa_destination_permission(request),
         CURRENT_BRAND_MANIFEST.profile_id,
         CURRENT_BRAND_MANIFEST.sha256,
         PIPELINE_VERSION,
@@ -2105,6 +2374,7 @@ def _validate_copy_checkpoint(
         checkpoint.source_revision_id,
         checkpoint.source_parent_folder_id,
         checkpoint.output_parent_folder_id or checkpoint.source_parent_folder_id,
+        checkpoint.qa_destination_permission,
         checkpoint.brand_profile_id,
         checkpoint.brand_profile_sha256,
         checkpoint.pipeline_version,

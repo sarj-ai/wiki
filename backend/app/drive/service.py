@@ -25,6 +25,7 @@ from app.auth.encryption import decrypt_text
 from app.auth.google_tokens import GoogleRefreshResult
 from app.cache.service import CacheNamespace, CacheService
 from app.drive.errors import (
+    DrivePermissionsError,
     DrivePermissionsForbiddenError,
     DrivePermissionsNotFoundError,
     DrivePermissionsUpstreamError,
@@ -35,6 +36,7 @@ from app.drive.google_schemas import (
     GoogleFile,
     GoogleFileLocation,
     GoogleFileMetadata,
+    GoogleFilePermissionMetadata,
     GoogleFileProbe,
     GooglePermission,
 )
@@ -46,9 +48,11 @@ from app.drive.schemas import (
     BoundedFolderMembers,
     DriveNode,
     DrivePermission,
+    DrivePermissionDetail,
     DrivePermissionsPage,
     DriveSummary,
     DriveTree,
+    FilePermissionSnapshot,
     SearchResult,
     ShortcutProbe,
     SnippetResult,
@@ -209,6 +213,15 @@ class DriveService(ABC):
         *,
         page_token: str | None = None,
     ) -> DrivePermissionsPage:
+        raise NotImplementedError
+
+    async def read_file_permissions_bounded(
+        self,
+        file_id: FileId,
+        *,
+        max_pages: int,
+        max_permissions: int,
+    ) -> FilePermissionSnapshot:
         raise NotImplementedError
 
 
@@ -567,6 +580,23 @@ class GoogleDriveService(DriveService):
             self._list_drive_permissions_sync,
             drive_id,
             page_token,
+        )
+
+    @override
+    async def read_file_permissions_bounded(
+        self,
+        file_id: FileId,
+        *,
+        max_pages: int,
+        max_permissions: int,
+    ) -> FilePermissionSnapshot:
+        if max_pages <= 0 or max_permissions <= 0:
+            raise ValueError
+        return await asyncio.to_thread(
+            self._read_file_permissions_bounded_sync,
+            file_id,
+            max_pages,
+            max_permissions,
         )
 
     async def _resolve_shortcut_nodes(self, nodes: list[DriveNode]) -> list[DriveNode]:
@@ -1162,7 +1192,8 @@ class GoogleDriveService(DriveService):
         params: dict[str, Any] = {
             "fields": (
                 "nextPageToken,permissions(id,type,role,displayName,emailAddress,domain,"
-                "allowFileDiscovery,expirationTime,deleted,pendingOwner)"
+                "allowFileDiscovery,expirationTime,deleted,pendingOwner,"
+                "permissionDetails(inherited,inheritedFrom,permissionType,role))"
             ),
             "fileId": drive_id,
             "pageSize": 100,
@@ -1198,6 +1229,15 @@ class GoogleDriveService(DriveService):
                     expiration_time=permission.expiration_time,
                     id=permission.id,
                     pending_owner=permission.pending_owner,
+                    inherited=any(detail.inherited for detail in permission.permission_details),
+                    permission_details=tuple(
+                        DrivePermissionDetail(
+                            permission_type=detail.permission_type,
+                            role=detail.role,
+                            inherited=detail.inherited,
+                        )
+                        for detail in permission.permission_details
+                    ),
                     principal_type=permission.type,
                     role=permission.role,
                 )
@@ -1207,6 +1247,116 @@ class GoogleDriveService(DriveService):
             drive_id=drive_id,
             next_page_token=raw.get("nextPageToken"),
             permissions=permissions,
+        )
+
+    def _read_file_permissions_bounded_sync(
+        self,
+        file_id: FileId,
+        max_pages: int,
+        max_permissions: int,
+    ) -> FilePermissionSnapshot:
+        client = self._client()
+        metadata = _read_file_permission_metadata(client, file_id)
+
+        permissions: list[DrivePermission] = []
+        permission_ids: set[str] = set()
+        page_token: str | None = None
+        seen_page_tokens: set[str] = set()
+        for _page in range(max_pages):
+            params: dict[str, Any] = {
+                "fileId": file_id,
+                "supportsAllDrives": True,
+                "useDomainAdminAccess": False,
+                "pageSize": min(100, max_permissions - len(permissions)),
+                "fields": (
+                    "nextPageToken,permissions(id,type,role,displayName,emailAddress,domain,"
+                    "allowFileDiscovery,expirationTime,deleted,pendingOwner,"
+                    "permissionDetails(inherited,inheritedFrom,permissionType,role))"
+                ),
+            }
+            if page_token is not None:
+                params["pageToken"] = page_token
+            try:
+                raw_page = execute_with_retry(client.permissions().list(**params))
+            except HttpError as exc:
+                raise _file_permission_error(exc) from None
+            if not isinstance(raw_page, dict):
+                raise DrivePermissionsUpstreamError
+            raw_permissions = raw_page.get("permissions")
+            if not isinstance(raw_permissions, list):
+                raise DrivePermissionsUpstreamError
+            for raw_permission in raw_permissions:
+                try:
+                    permission = GooglePermission.model_validate(raw_permission)
+                except ValidationError as exc:
+                    raise DrivePermissionsUpstreamError from exc
+                # Google documents permissionDetails as the complete direct and
+                # inherited role inventory.  An omitted/empty field cannot prove
+                # effective owner-only access, even when the top-level role looks
+                # safe, so the strict QA readback fails closed.
+                if (
+                    not permission.id
+                    or not permission.permission_details
+                    or permission.id in permission_ids
+                ):
+                    raise DrivePermissionsUpstreamError
+                permission_ids.add(permission.id)
+                permissions.append(
+                    DrivePermission(
+                        id=permission.id,
+                        principal_type=permission.type,
+                        role=permission.role,
+                        display_name=permission.display_name,
+                        email_address=permission.email_address,
+                        domain=permission.domain,
+                        allow_file_discovery=permission.allow_file_discovery,
+                        expiration_time=permission.expiration_time,
+                        deleted=permission.deleted,
+                        pending_owner=permission.pending_owner,
+                        inherited=any(detail.inherited for detail in permission.permission_details),
+                        permission_details=tuple(
+                            DrivePermissionDetail(
+                                permission_type=detail.permission_type,
+                                role=detail.role,
+                                inherited=detail.inherited,
+                            )
+                            for detail in permission.permission_details
+                        ),
+                    )
+                )
+                if len(permissions) > max_permissions:
+                    raise DriveTraversalIncompleteError
+            next_page_token = raw_page.get("nextPageToken")
+            if next_page_token is None:
+                break
+            if len(permissions) >= max_permissions:
+                raise DriveTraversalIncompleteError
+            if (
+                not isinstance(next_page_token, str)
+                or not next_page_token
+                or next_page_token in seen_page_tokens
+            ):
+                raise DriveTraversalIncompleteError
+            seen_page_tokens.add(next_page_token)
+            page_token = next_page_token
+        else:
+            raise DriveTraversalIncompleteError
+
+        if _read_file_permission_metadata(client, file_id) != metadata:
+            raise DriveTraversalIncompleteError
+
+        return FilePermissionSnapshot(
+            file_id=metadata.id,
+            mime_type=metadata.mime_type,
+            drive_id=metadata.drive_id,
+            parent_ids=tuple(metadata.parents),
+            version=metadata.version,
+            owned_by_me=metadata.owned_by_me,
+            shared=metadata.shared,
+            can_add_children=metadata.capabilities.can_add_children,
+            owner_emails=tuple(owner.email_address or "" for owner in metadata.owners),
+            permissions=tuple(sorted(permissions, key=_drive_permission_id)),
+            app_properties=metadata.app_properties,
         )
 
     def _export_text_sync(self, file_id: FileId) -> str | None:
@@ -1296,6 +1446,41 @@ def _log_provider_failure(operation: str, exc: BaseException) -> None:
         operation=operation,
         status=status if isinstance(status, int) else "unknown",
     )
+
+
+def _file_permission_error(exc: HttpError) -> DrivePermissionsError:
+    status = getattr(exc.resp, "status", None)
+    if status == 403:
+        return DrivePermissionsForbiddenError()
+    if status == 404:
+        return DrivePermissionsNotFoundError()
+    return DrivePermissionsUpstreamError()
+
+
+def _read_file_permission_metadata(
+    client: DriveResource,
+    file_id: FileId,
+) -> GoogleFilePermissionMetadata:
+    try:
+        raw_metadata = execute_with_retry(
+            client.files().get(
+                fileId=file_id,
+                supportsAllDrives=True,
+                fields=(
+                    "id,mimeType,driveId,parents,version,ownedByMe,shared,"
+                    "capabilities(canAddChildren),owners(emailAddress),appProperties"
+                ),
+            )
+        )
+        return GoogleFilePermissionMetadata.model_validate(raw_metadata)
+    except HttpError as exc:
+        raise _file_permission_error(exc) from None
+    except ValidationError as exc:
+        raise DrivePermissionsUpstreamError from exc
+
+
+def _drive_permission_id(permission: DrivePermission) -> str:
+    return permission.id
 
 
 def _log_invalid_provider_response(operation: str) -> None:

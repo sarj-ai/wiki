@@ -54,6 +54,12 @@ class DriveSummary(BaseModel):
     is_personal: bool = False
 
 
+class DrivePermissionDetail(BaseModel):
+    permission_type: str
+    role: str
+    inherited: bool
+
+
 class DrivePermission(BaseModel):
     id: str
     principal_type: str
@@ -65,6 +71,8 @@ class DrivePermission(BaseModel):
     expiration_time: str | None = None
     deleted: bool = False
     pending_owner: bool = False
+    inherited: bool = False
+    permission_details: tuple[DrivePermissionDetail, ...] = ()
 
 
 class DrivePermissionsPage(BaseModel):
@@ -72,6 +80,20 @@ class DrivePermissionsPage(BaseModel):
     access_model: str
     permissions: list[DrivePermission]
     next_page_token: str | None = None
+
+
+class FilePermissionSnapshot(BaseModel):
+    file_id: FileId
+    mime_type: str
+    drive_id: DriveId | None
+    parent_ids: tuple[FileId, ...]
+    version: str
+    owned_by_me: bool
+    shared: bool
+    can_add_children: bool
+    owner_emails: tuple[str, ...]
+    permissions: tuple[DrivePermission, ...]
+    app_properties: dict[str, str] = Field(default_factory=dict)
 
 
 class DriveNode(BaseModel):

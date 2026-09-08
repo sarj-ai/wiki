@@ -7,21 +7,30 @@ from pydantic import BaseModel
 import pytest
 
 from app.document_transform.qa_broker import (
+    QaPermissionProofExpectation,
     authorize_qa_canary_output,
     authorize_qa_canary_scope,
     plan_qa_canary,
+    read_owner_only_file_permission_proof,
     read_submitted_qa_canary_task,
     submit_planned_qa_canary,
 )
 from app.document_transform.qa_grants import QaAuthority, QaGrantError, QaSubmittedCanary
 from app.document_transform.schemas import (
     DocumentOutput,
-    DocumentTransformRequest,
     DriveFileSource,
     OutputStrategy,
+    QaDocumentTransformRequest,
     TransformMode,
 )
-from app.drive.schemas import MIME_DOC, MIME_FOLDER, DriveNode
+from app.drive.schemas import (
+    MIME_DOC,
+    MIME_FOLDER,
+    DriveNode,
+    DrivePermission,
+    DrivePermissionDetail,
+    FilePermissionSnapshot,
+)
 from app.files.schemas import FileResponse
 from app.identifiers import DriveId, FileId, IdempotencyKey, QaPlanId, TaskId, UserId
 from app.models.document_transform_qa_grant import DocumentTransformQaGrantId
@@ -102,8 +111,15 @@ class _Files:
 
 
 class _Drive:
-    def __init__(self, children: dict[FileId, list[DriveNode]]) -> None:
+    def __init__(
+        self,
+        children: dict[FileId, list[DriveNode]],
+        *,
+        permission_snapshots: list[FilePermissionSnapshot] | None = None,
+    ) -> None:
         self._children = children
+        self.permission_snapshots = permission_snapshots or [_permission_snapshot()]
+        self.permission_reads = 0
 
     async def list_folder_children_bounded(
         self,
@@ -116,10 +132,63 @@ class _Drive:
         assert max_children > 0
         return self._children.get(folder_id, [])
 
+    async def read_file_permissions_bounded(
+        self,
+        file_id: FileId,
+        *,
+        max_pages: int,
+        max_permissions: int,
+    ) -> FilePermissionSnapshot:
+        assert max_pages > 0
+        assert max_permissions > 0
+        index = min(self.permission_reads, len(self.permission_snapshots) - 1)
+        self.permission_reads += 1
+        return self.permission_snapshots[index]
+
+
+def _permission_snapshot(
+    *,
+    file_id: FileId = _DESTINATION,
+    mime_type: str = MIME_FOLDER,
+    parent_ids: tuple[FileId, ...] = (),
+    version: str = "17",
+    drive_id: DriveId | None = None,
+    owned_by_me: bool = True,
+    shared: bool = False,
+    can_add_children: bool = True,
+    owner_emails: tuple[str, ...] = ("qa@example.test",),
+    permissions: tuple[DrivePermission, ...] | None = None,
+    app_properties: dict[str, str] | None = None,
+) -> FilePermissionSnapshot:
+    return FilePermissionSnapshot(
+        file_id=file_id,
+        mime_type=mime_type,
+        drive_id=drive_id,
+        parent_ids=parent_ids,
+        version=version,
+        owned_by_me=owned_by_me,
+        shared=shared,
+        can_add_children=can_add_children,
+        owner_emails=owner_emails,
+        permissions=permissions
+        or (
+            DrivePermission(
+                id="owner-permission",
+                principal_type="user",
+                role="owner",
+                email_address="qa@example.test",
+                permission_details=(
+                    DrivePermissionDetail(permission_type="file", role="owner", inherited=False),
+                ),
+            ),
+        ),
+        app_properties=app_properties or {},
+    )
+
 
 class _Tasks(TaskService):
     def __init__(self) -> None:
-        self.payloads: list[DocumentTransformRequest] = []
+        self.payloads: list[QaDocumentTransformRequest] = []
         self.task_id = TaskId(uuid.UUID("33333333-3333-4333-8333-333333333333"))
         self.read_keys: list[tuple[uuid.UUID, IdempotencyKey]] = []
 
@@ -136,7 +205,7 @@ class _Tasks(TaskService):
         admit_terminal_replay: Callable[[TaskRead], Awaitable[bool]] | None = None,
     ) -> TaskReservation:
         del kind, owner_user_id, idempotency_key, admit_terminal_replay
-        assert isinstance(payload, DocumentTransformRequest)
+        assert isinstance(payload, QaDocumentTransformRequest)
         if admit is not None:
             await admit()
         if admit_new is not None:
@@ -282,6 +351,8 @@ async def test_plan_selects_only_server_discovered_doc_and_forces_copy() -> None
     assert first == replay
     assert first.source_file_id == "doc-1"
     assert first.source_modified_time == "2026-09-07T12:00:00Z"
+    assert first.destination_version == "17"
+    assert len(first.destination_permission_sha256) == 64
     assert first.output_strategy is OutputStrategy.COPY
     assert first.plan_id == first.idempotency_key
 
@@ -323,6 +394,241 @@ async def test_plan_key_changes_when_source_version_changes() -> None:
     assert first.plan_id != changed.plan_id
 
 
+async def test_plan_key_changes_when_destination_permission_version_changes() -> None:
+    first = await plan_qa_canary(
+        _authority(), drive=_Drive({_SOURCE: [_node("doc-1")]}), files=_Files()
+    )
+    changed = await plan_qa_canary(
+        _authority(),
+        drive=_Drive(
+            {_SOURCE: [_node("doc-1")]},
+            permission_snapshots=[_permission_snapshot(version="18")],
+        ),
+        files=_Files(),
+    )
+
+    assert first.plan_id != changed.plan_id
+    assert first.destination_permission_sha256 != changed.destination_permission_sha256
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        _permission_snapshot(drive_id=DriveId("shared-drive"), shared=True),
+        _permission_snapshot(owned_by_me=False),
+        _permission_snapshot(shared=True),
+        _permission_snapshot(can_add_children=False),
+        _permission_snapshot(owner_emails=("someone-else@example.test",)),
+        _permission_snapshot(
+            permissions=(
+                DrivePermission(
+                    id="owner-permission",
+                    principal_type="user",
+                    role="owner",
+                    email_address="qa@example.test",
+                ),
+                DrivePermission(
+                    id="domain-permission",
+                    principal_type="domain",
+                    role="reader",
+                    domain="example.test",
+                ),
+            )
+        ),
+        _permission_snapshot(
+            permissions=(
+                DrivePermission(
+                    id="inherited-owner",
+                    principal_type="user",
+                    role="owner",
+                    email_address="qa@example.test",
+                    inherited=True,
+                ),
+            )
+        ),
+        _permission_snapshot(
+            permissions=(
+                DrivePermission(
+                    id="owner-permission",
+                    principal_type="user",
+                    role="owner",
+                    email_address="qa@example.test",
+                ),
+                DrivePermission(
+                    id="user-collaborator",
+                    principal_type="user",
+                    role="writer",
+                    email_address="collaborator@example.test",
+                ),
+            )
+        ),
+        _permission_snapshot(
+            permissions=(
+                DrivePermission(
+                    id="owner-permission",
+                    principal_type="user",
+                    role="owner",
+                    email_address="qa@example.test",
+                ),
+                DrivePermission(
+                    id="inherited-group",
+                    principal_type="group",
+                    role="reader",
+                    email_address="security@example.test",
+                ),
+            )
+        ),
+        _permission_snapshot(
+            permissions=(
+                DrivePermission(
+                    id="anyone-permission",
+                    principal_type="anyone",
+                    role="reader",
+                ),
+            )
+        ),
+        _permission_snapshot(
+            permissions=(
+                DrivePermission(
+                    id="pending-owner",
+                    principal_type="user",
+                    role="owner",
+                    email_address="qa@example.test",
+                    pending_owner=True,
+                ),
+            )
+        ),
+    ],
+    ids=(
+        "shared-drive",
+        "not-owned",
+        "shared",
+        "not-writable",
+        "wrong-metadata-owner",
+        "domain-collaborator",
+        "inherited-owner",
+        "user-collaborator",
+        "inherited-group-collaborator",
+        "anyone",
+        "pending-owner",
+    ),
+)
+async def test_plan_rejects_every_non_owner_only_destination(
+    snapshot: FilePermissionSnapshot,
+) -> None:
+    drive = _Drive({_SOURCE: [_node("doc-1")]}, permission_snapshots=[snapshot])
+
+    with pytest.raises(QaGrantError):
+        await plan_qa_canary(_authority(), drive=drive, files=_Files())
+
+
+async def test_created_copy_proof_requires_exact_destination_parent() -> None:
+    output_id = FileId("new-qa-copy")
+    snapshot = _permission_snapshot(
+        file_id=output_id,
+        mime_type=MIME_DOC,
+        parent_ids=(_DESTINATION,),
+        can_add_children=False,
+    )
+
+    proof = await read_owner_only_file_permission_proof(
+        file_id=output_id,
+        expectation=QaPermissionProofExpectation(
+            user_email="qa@example.test", mime_type=MIME_DOC, parent_id=_DESTINATION
+        ),
+        drive=_Drive({}, permission_snapshots=[snapshot]),
+    )
+
+    assert proof.version == snapshot.version
+
+
+async def test_created_copy_proof_binds_exact_operation_and_source_properties() -> None:
+    output_id = FileId("new-qa-copy")
+    operation_id = uuid.UUID("77777777-7777-4777-8777-777777777777")
+    source_sha256 = "d" * 64
+    snapshot = _permission_snapshot(
+        file_id=output_id,
+        mime_type=MIME_DOC,
+        parent_ids=(_DESTINATION,),
+        can_add_children=False,
+        app_properties={
+            "sarjTransformOperation": str(operation_id),
+            "sarjTransformSourceHash": source_sha256,
+            "sarjTransformState": "incomplete",
+        },
+    )
+
+    proof = await read_owner_only_file_permission_proof(
+        file_id=output_id,
+        expectation=QaPermissionProofExpectation(
+            user_email="qa@example.test",
+            mime_type=MIME_DOC,
+            parent_id=_DESTINATION,
+            operation_id=operation_id,
+            source_sha256=source_sha256,
+        ),
+        drive=_Drive({}, permission_snapshots=[snapshot]),
+    )
+
+    assert proof.file_id == output_id
+    assert proof.parent_folder_id == _DESTINATION
+    assert proof.observed_at.tzinfo is not None
+
+
+@pytest.mark.parametrize("changed", ["operation", "source"])
+async def test_created_copy_proof_rejects_wrong_operation_or_source_property(changed: str) -> None:
+    output_id = FileId("new-qa-copy")
+    operation_id = uuid.UUID("77777777-7777-4777-8777-777777777777")
+    source_sha256 = "d" * 64
+    properties = {
+        "sarjTransformOperation": str(operation_id),
+        "sarjTransformSourceHash": source_sha256,
+    }
+    properties[
+        "sarjTransformOperation" if changed == "operation" else "sarjTransformSourceHash"
+    ] = "wrong"
+    snapshot = _permission_snapshot(
+        file_id=output_id,
+        mime_type=MIME_DOC,
+        parent_ids=(_DESTINATION,),
+        can_add_children=False,
+        app_properties=properties,
+    )
+
+    with pytest.raises(QaGrantError):
+        await read_owner_only_file_permission_proof(
+            file_id=output_id,
+            expectation=QaPermissionProofExpectation(
+                user_email="qa@example.test",
+                mime_type=MIME_DOC,
+                parent_id=_DESTINATION,
+                operation_id=operation_id,
+                source_sha256=source_sha256,
+            ),
+            drive=_Drive({}, permission_snapshots=[snapshot]),
+        )
+
+
+async def test_created_copy_proof_rejects_wrong_or_multiple_parents() -> None:
+    output_id = FileId("new-qa-copy")
+
+    for parents in ((FileId("wrong-folder"),), (_DESTINATION, FileId("other-folder"))):
+        snapshot = _permission_snapshot(
+            file_id=output_id,
+            mime_type=MIME_DOC,
+            parent_ids=parents,
+            can_add_children=False,
+        )
+        with pytest.raises(QaGrantError):
+            await read_owner_only_file_permission_proof(
+                file_id=output_id,
+                expectation=QaPermissionProofExpectation(
+                    user_email="qa@example.test", mime_type=MIME_DOC, parent_id=_DESTINATION
+                ),
+                drive=_Drive({}, permission_snapshots=[snapshot]),
+            )
+
+
 async def test_submit_recomputes_plan_and_forces_server_bound_copy() -> None:
     authority = _authority()
     drive = _Drive({_SOURCE: [_node("doc-1")]})
@@ -355,6 +661,9 @@ async def test_submit_recomputes_plan_and_forces_server_bound_copy() -> None:
     payload = task_store.payloads[0]
     assert payload.output_strategy is OutputStrategy.COPY
     assert payload.copy_destination_folder_id == _DESTINATION
+    assert payload.qa_destination_permission is not None
+    assert payload.qa_destination_permission.version == plan.destination_version
+    assert payload.qa_destination_permission.sha256 == plan.destination_permission_sha256
     assert isinstance(payload.source, DriveFileSource)
     assert payload.source.file_id == "doc-1"
     assert payload.source.expected_modified_time == "2026-09-07T12:00:00Z"
@@ -496,3 +805,30 @@ async def test_output_read_rejects_deleted_moved_or_revoked_output(failure: str)
             ),
             files=OutputFiles(),
         )
+
+
+async def test_submit_rejects_destination_change_during_permission_readback() -> None:
+    authority = _authority()
+    drive = _Drive(
+        {_SOURCE: [_node("doc-1")]},
+        permission_snapshots=[
+            _permission_snapshot(),
+            _permission_snapshot(),
+            _permission_snapshot(version="18"),
+        ],
+    )
+    plan = await plan_qa_canary(authority, drive=drive, files=_Files())
+    task_store = _Tasks()
+
+    with pytest.raises(QaGrantError):
+        await submit_planned_qa_canary(
+            authority,
+            plan_id=plan.plan_id,
+            drive=drive,
+            files=_Files(),
+            tasks=task_store,
+            enqueuer=_Enqueuer(),
+        )
+
+    assert drive.permission_reads == 3
+    assert task_store.payloads == []
