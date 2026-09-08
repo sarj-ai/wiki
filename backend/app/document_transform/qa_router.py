@@ -20,6 +20,13 @@ from app.cache.service import CacheService
 from app.config import settings
 from app.database import get_db
 from app.document_transform.qa_broker import QaCanaryBroker
+from app.document_transform.qa_campaigns import (
+    CreatedQaCorpusCampaign,
+    QaCorpusCampaignError,
+    QaCorpusCampaignRead,
+    create_or_load_qa_corpus_campaign,
+    load_qa_corpus_campaign_for_authority,
+)
 from app.document_transform.qa_contract import (
     QA_MAX_STORED_FINDINGS,
     QA_MAX_STORED_MODEL_IDS,
@@ -61,6 +68,10 @@ from app.document_transform.schemas import (
 from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.files.schemas import FileResponse
 from app.identifiers import DocsRevisionId, FileId, QaPlanId, QaRunId, TaskId
+from app.models.document_transform_qa_corpus import (
+    DocumentTransformQaCorpusCampaignId,
+    DocumentTransformQaCorpusMemberId,
+)
 from app.models.user import User
 from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
 from app.tasks.errors import TaskError
@@ -161,6 +172,33 @@ class QaCanaryReadAuthorization(QaCapabilityAuthorization):
     pass
 
 
+class QaCorpusCampaignMemberResponse(_StrictModel):
+    id: DocumentTransformQaCorpusMemberId
+    ordinal: int = Field(ge=0, le=19)
+    source_file_id: FileId
+    source_name: str = Field(min_length=1, max_length=1024)
+    mime_type: str
+    source_parent_folder_id: FileId
+    source_version: str
+    source_modified_time: str
+    task_plan_id: QaPlanId
+
+
+class QaCorpusCampaignResponse(_StrictModel):
+    campaign_id: DocumentTransformQaCorpusCampaignId
+    corpus_plan_id: QaPlanId
+    state: str
+    source_folder_id: FileId
+    destination_folder_id: FileId
+    mode: TransformMode
+    created_at: datetime
+    members: tuple[QaCorpusCampaignMemberResponse, ...]
+
+
+class QaCorpusCampaignCreateResponse(QaCorpusCampaignResponse):
+    replayed: bool
+
+
 class QaCanaryTaskResponse(_StrictModel):
     task_id: TaskId
     task_status: TaskStatus
@@ -239,6 +277,7 @@ _UUID_VERSION_7 = 7
 _MAX_QA_TASK_RESPONSE_BYTES = 4 * 1024
 _MAX_QA_RESULT_RESPONSE_BYTES = 8 * 1024
 _MAX_QA_EVIDENCE_RESPONSE_BYTES = 64 * 1024
+_MAX_QA_CORPUS_CAMPAIGN_RESPONSE_BYTES = 64 * 1024
 _MAX_QA_EVIDENCE_FINDINGS = 100
 _MAX_QA_STORED_METADATA_UTF8_BYTES = 128 * 1024
 _MAX_QA_STORED_METADATA_NODES = 10_000
@@ -301,6 +340,16 @@ def _configured_binding(body: QaGrantBinding) -> None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="QA release binding mismatch"
         )
+
+
+def _require_configured_corpus_source(authority: QaAuthority) -> None:
+    configured_source = settings.DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID
+    if configured_source is None:
+        raise _no_store_http_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "QA corpus planning is disabled"
+        )
+    if not hmac.compare_digest(str(authority.source_folder_id), configured_source):
+        raise _no_store_http_error(status.HTTP_409_CONFLICT, "QA corpus source binding mismatch")
 
 
 def _require_legacy_qa_flow() -> None:
@@ -711,13 +760,7 @@ async def plan_document_transform_qa_corpus(
 ) -> QaCorpusPlan:
     """Snapshot the complete source corpus bound into the current capability."""
     authority = await _authorize_canary_request(request, db)
-    configured_source = settings.DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID
-    if configured_source is None:
-        raise _no_store_http_error(
-            status.HTTP_503_SERVICE_UNAVAILABLE, "QA corpus planning is disabled"
-        )
-    if not hmac.compare_digest(str(authority.source_folder_id), configured_source):
-        raise _no_store_http_error(status.HTTP_409_CONFLICT, "QA corpus source binding mismatch")
+    _require_configured_corpus_source(authority)
     try:
         plan = await broker.plan_corpus(authority)
     except QaGrantError as exc:
@@ -726,6 +769,58 @@ async def plan_document_transform_qa_corpus(
         ) from exc
     _prevent_token_caching(response)
     return plan
+
+
+@workload_router.post("/corpus/campaign", response_model=QaCorpusCampaignCreateResponse)
+async def create_document_transform_qa_corpus_campaign(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    broker: Annotated[QaCanaryBroker, Depends(qa_canary_broker_dep)],
+    response: Response,
+) -> QaCorpusCampaignCreateResponse:
+    """Freeze one exact campaign after reauthorizing its Drive-derived plan."""
+    authorized = await _authorize_canary_request_as(request, db, QaCapabilityAuthorization)
+    _require_configured_corpus_source(authorized.authority)
+    try:
+        created = await _create_or_replay_corpus_campaign(
+            request=request,
+            db=db,
+            broker=broker,
+            initial_authority=authorized.authority,
+        )
+        campaign_response = _bounded_campaign_response(
+            _campaign_create_response(created.campaign, replayed=created.replayed)
+        )
+        await db.commit()
+    except (IntegrityError, QaCorpusCampaignError, QaGrantError) as exc:
+        await db.rollback()
+        raise _no_store_http_error(
+            status.HTTP_409_CONFLICT, "QA corpus campaign could not be created"
+        ) from exc
+    _prevent_token_caching(response)
+    return campaign_response
+
+
+@workload_router.post("/corpus/campaign/read", response_model=QaCorpusCampaignResponse)
+async def read_document_transform_qa_corpus_campaign(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    response: Response,
+) -> QaCorpusCampaignResponse:
+    """Read one campaign only through the current capability and owner binding."""
+    authorized = await _authorize_canary_request_as(request, db, QaCapabilityAuthorization)
+    _require_configured_corpus_source(authorized.authority)
+    try:
+        campaign = await load_qa_corpus_campaign_for_authority(db, authority=authorized.authority)
+        campaign = _require_corpus_campaign(campaign)
+        campaign_response = _bounded_campaign_response(_campaign_response(campaign))
+    except (QaCorpusCampaignError, QaGrantError) as exc:
+        await db.rollback()
+        raise _no_store_http_error(
+            status.HTTP_409_CONFLICT, "QA corpus campaign is unavailable"
+        ) from exc
+    _prevent_token_caching(response)
+    return campaign_response
 
 
 @workload_router.post(
@@ -1177,6 +1272,80 @@ def _canary_session_response(authority: QaAuthority) -> QaCanarySessionResponse:
         job_expires_at=authority.job_expires_at,
         user_email=authority.user_email,
     )
+
+
+async def _create_or_replay_corpus_campaign(
+    *,
+    request: Request,
+    db: AsyncSession,
+    broker: QaCanaryBroker,
+    initial_authority: QaAuthority,
+) -> CreatedQaCorpusCampaign:
+    existing = await load_qa_corpus_campaign_for_authority(db, authority=initial_authority)
+    if existing is not None:
+        return CreatedQaCorpusCampaign(campaign=existing, replayed=True)
+    candidate = await broker.plan_corpus_campaign(initial_authority)
+    refreshed = await _authorize_canary_request_as(request, db, QaCapabilityAuthorization)
+    _require_configured_corpus_source(refreshed.authority)
+    if refreshed.authority != initial_authority:
+        raise QaGrantError
+    return await create_or_load_qa_corpus_campaign(
+        db,
+        authority=refreshed.authority,
+        plan=candidate.plan,
+        destination=candidate.destination,
+    )
+
+
+def _campaign_response(campaign: QaCorpusCampaignRead) -> QaCorpusCampaignResponse:
+    return QaCorpusCampaignResponse(
+        campaign_id=campaign.id,
+        corpus_plan_id=campaign.corpus_plan_id,
+        state=campaign.state,
+        source_folder_id=campaign.source_folder_id,
+        destination_folder_id=campaign.destination_folder_id,
+        mode=TransformMode(campaign.mode),
+        created_at=campaign.created_at,
+        members=tuple(
+            QaCorpusCampaignMemberResponse(
+                id=member.id,
+                ordinal=member.ordinal,
+                source_file_id=member.source_file_id,
+                source_name=member.source_name,
+                mime_type=member.mime_type,
+                source_parent_folder_id=member.source_parent_folder_id,
+                source_version=member.source_version,
+                source_modified_time=member.source_modified_time,
+                task_plan_id=member.task_plan_id,
+            )
+            for member in campaign.members
+        ),
+    )
+
+
+def _require_corpus_campaign(
+    campaign: QaCorpusCampaignRead | None,
+) -> QaCorpusCampaignRead:
+    if campaign is None:
+        raise QaCorpusCampaignError
+    return campaign
+
+
+def _campaign_create_response(
+    campaign: QaCorpusCampaignRead, *, replayed: bool
+) -> QaCorpusCampaignCreateResponse:
+    return QaCorpusCampaignCreateResponse(
+        **_campaign_response(campaign).model_dump(),
+        replayed=replayed,
+    )
+
+
+def _bounded_campaign_response[CampaignResponse: QaCorpusCampaignResponse](
+    response: CampaignResponse,
+) -> CampaignResponse:
+    if len(response.model_dump_json().encode()) > _MAX_QA_CORPUS_CAMPAIGN_RESPONSE_BYTES:
+        raise QaCorpusCampaignError
+    return response
 
 
 def _prevent_token_caching(response: Response) -> None:
