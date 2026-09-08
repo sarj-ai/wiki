@@ -14,6 +14,15 @@ PRODUCTION_QA_CANARY_PLAN_URL = (
 PRODUCTION_QA_CANARY_SUBMIT_URL = (
     f"{PRODUCTION_WIKI_API_ORIGIN}/internal/document-transform-qa/canary/submit"
 )
+PRODUCTION_QA_CANARY_TASK_URL = (
+    f"{PRODUCTION_WIKI_API_ORIGIN}/internal/document-transform-qa/canary/task"
+)
+PRODUCTION_QA_CANARY_RESULT_URL = (
+    f"{PRODUCTION_WIKI_API_ORIGIN}/internal/document-transform-qa/canary/result"
+)
+PRODUCTION_QA_CANARY_EVIDENCE_URL = (
+    f"{PRODUCTION_WIKI_API_ORIGIN}/internal/document-transform-qa/canary/evidence"
+)
 
 QA_CANARY_DOCUMENT_COUNT = 1
 QA_CORPUS_DOCUMENT_COUNT = 20

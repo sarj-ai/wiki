@@ -29,6 +29,7 @@ from app.document_transform.qa_launcher import QaExecutionAttestation
 from app.document_transform.schemas import (
     DocumentOutput,
     DocumentTransformResult,
+    FindingSeverity,
     OutputStrategy,
     QaCopyPermissionEvidence,
     QaFilePermissionEvidence,
@@ -1782,7 +1783,11 @@ def _transform_result(
         model_patch_count=250,
         promoted_heading_count=2,
         findings=[
-            TransformFinding(code=f"finding-{index:03d}", detail=f"Finding {index}")
+            TransformFinding(
+                code=f"finding-{index:03d}",
+                detail=f"Finding {index}",
+                severity=(FindingSeverity.INFORMATIONAL if index < 100 else FindingSeverity.REVIEW),
+            )
             for index in range(finding_count)
         ],
         validation=ValidationSummary(
@@ -1990,9 +1995,13 @@ async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_st
     )
     assert result.json()["applied_patch_count"] == 750
     assert result.json()["short_link_alias"] == "security-review"
+    assert result.json()["result_sha256"] == evidence.json()["result_sha256"]
     assert evidence.json()["source_revision_id"] == "source-revision"
     assert len(evidence.json()["findings"]) == 100
     assert evidence.json()["finding_total_count"] == 150
+    # The review findings are all beyond the bounded 100-item response. The
+    # aggregate keeps omitted findings fail-closed for the workload verifier.
+    assert evidence.json()["review_finding_count"] == 50
     assert evidence.json()["findings_truncated"] is True
     assert evidence.json()["findings"][0]["code"] == "finding-000"
     assert evidence.json()["findings"][-1]["code"] == "finding-099"
@@ -2073,6 +2082,7 @@ def test_task_and_result_response_total_byte_guards(response_kind: str) -> None:
         else qa_router.QaCanaryResultResponse(
             **task_response.model_dump(),
             operation_id=task_response.task_id,
+            result_sha256="d" * 64,
             output=qa_router.QaCanaryResultOutput(
                 file_id=FileId("output"),
                 web_url="https://docs.google.com/document/d/output/edit",

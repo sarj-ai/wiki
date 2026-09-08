@@ -177,6 +177,7 @@ class QaCanaryResultOutput(_StrictModel):
 
 class QaCanaryResultResponse(QaCanaryTaskResponse):
     operation_id: uuid.UUID
+    result_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     output: QaCanaryResultOutput
     output_strategy: Literal["copy"] = "copy"
     changed: bool
@@ -205,6 +206,7 @@ class QaCanaryEvidenceResponse(QaCanaryTaskResponse):
     validation: ValidationSummary
     findings: list[QaCanaryFinding] = Field(max_length=100)
     finding_total_count: int = Field(ge=0)
+    review_finding_count: int = Field(ge=0)
     findings_truncated: bool
     artifact_kind: str = Field(min_length=1, max_length=32)
     qa_permission_evidence: QaCopyPermissionEvidence
@@ -818,6 +820,7 @@ async def read_document_transform_qa_canary_result(
         result_response = QaCanaryResultResponse(
             **_task_response(read.task).model_dump(),
             operation_id=result.operation_id,
+            result_sha256=_result_sha256(result),
             output=QaCanaryResultOutput(
                 file_id=verified_output.id,
                 web_url=(
@@ -1023,6 +1026,7 @@ def _evidence_response(
     if source_revision_id is None or output_revision_id is None:
         raise _canary_state_unavailable()
     total_count = len(result.findings)
+    review_count = sum(finding.severity is FindingSeverity.REVIEW for finding in result.findings)
     findings = [_finding_response(item) for item in result.findings[:_MAX_QA_EVIDENCE_FINDINGS]]
     while True:
         try:
@@ -1036,6 +1040,7 @@ def _evidence_response(
                 validation=result.validation,
                 findings=findings,
                 finding_total_count=total_count,
+                review_finding_count=review_count,
                 findings_truncated=len(findings) < total_count,
                 artifact_kind=result.artifact_kind,
                 qa_permission_evidence=permission_evidence,
