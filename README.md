@@ -286,22 +286,23 @@ platform-provided `CLOUD_RUN_EXECUTION` only as a stale/orphan selector; the bac
 resolves the sole bound run, reads that execution back from Cloud Run, and requires the exact stored
 UID, job, image, and release before atomically issuing the first capability. The canary broker then
 server-selects one bounded source document and submits an idempotent forced-copy transform. An HTTP
-202 means only `submitted`: until terminal task-result polling and private evidence verification are
-implemented, the worker prints `{"status":"submitted"}` and exits nonzero so Cloud Run cannot record
-the QA execution as successfully completed.
+202 means only `submitted`: the worker remains active, renews its bound capability before expiry,
+and polls the exact task through a bounded terminal deadline. It reports `{"status":"verified"}` only
+after the task succeeds and the result and private evidence agree on the task, operation, source,
+destination, output revision, permission digest, finding counts, and result digest. Failed,
+cancelled, expired, malformed, oversized, mismatched, unsafe, or incomplete evidence exits nonzero,
+so Cloud Run cannot record an unverified QA execution as successful.
 
 This repository deliberately does not activate the job or provide an unauthenticated grant-issuer
 CLI. Activation is a separate reviewed operation:
 
-1. Implement and review bounded terminal task-result polling plus private evidence verification.
-   Until then a brokered canary can be submitted, but Cloud execution deliberately remains
-   incomplete and cannot be treated as QA success.
-2. Build and smoke-test `backend/Dockerfile.qa`, attest it, and supply the exact repository digest
+1. Build and smoke-test `backend/Dockerfile.qa`, attest it, and supply the exact repository digest
    and matching 40-character release SHA.
-3. Apply through migration `0020_qa_attestation`, review a real Terraform plan, enable the job with a
+2. Confirm migrations `0020_qa_attestation` and `0021_qa_run_submissions` are applied, review a real
+   Terraform plan, enable the job with a
    named operator allowlist, and read back every IAM binding, image/env binding, mount option,
    absence of secrets/Cloud SQL access, empty command/arguments, and zero-retry policy.
-4. Use the logged-in launcher endpoint for a one-document canary, require terminal result and
+3. Use the logged-in launcher endpoint for a one-document canary, require terminal result and
    evidence verification, and inspect its private evidence and owner-only output before expanding
    corpus coverage.
 
