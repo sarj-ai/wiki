@@ -53,10 +53,12 @@ from app.document_transform.qa_launcher import (
 from app.document_transform.schemas import (
     DocumentTransformResult,
     FindingSeverity,
+    QaCopyPermissionEvidence,
     TransformFinding,
     TransformMode,
     ValidationSummary,
 )
+from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.files.schemas import FileResponse
 from app.identifiers import DocsRevisionId, FileId, QaPlanId, QaRunId, TaskId
 from app.models.user import User
@@ -138,6 +140,8 @@ class QaCanaryPlanResponse(QaCanarySessionResponse):
     source_file_id: FileId
     source_name: str
     source_modified_time: str
+    destination_version: str
+    destination_permission_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     output_strategy: Literal["copy"] = "copy"
 
 
@@ -173,6 +177,7 @@ class QaCanaryResultOutput(_StrictModel):
 
 class QaCanaryResultResponse(QaCanaryTaskResponse):
     operation_id: uuid.UUID
+    result_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     output: QaCanaryResultOutput
     output_strategy: Literal["copy"] = "copy"
     changed: bool
@@ -201,8 +206,10 @@ class QaCanaryEvidenceResponse(QaCanaryTaskResponse):
     validation: ValidationSummary
     findings: list[QaCanaryFinding] = Field(max_length=100)
     finding_total_count: int = Field(ge=0)
+    review_finding_count: int = Field(ge=0)
     findings_truncated: bool
     artifact_kind: str = Field(min_length=1, max_length=32)
+    qa_permission_evidence: QaCopyPermissionEvidence
 
 
 @dataclass(frozen=True, slots=True)
@@ -690,6 +697,8 @@ async def plan_document_transform_qa_canary(
         source_file_id=plan.source_file_id,
         source_name=plan.source_name,
         source_modified_time=plan.source_modified_time,
+        destination_version=plan.destination_version,
+        destination_permission_sha256=plan.destination_permission_sha256,
     )
 
 
@@ -800,11 +809,18 @@ async def read_document_transform_qa_canary_result(
         authority=read.authorized.authority,
     )
     verified_output = await _authorize_canary_output(request, db, broker, read, result)
+    permission_evidence = await _read_canary_permission_evidence(request, db, broker, tasks, read)
+    _require_permission_evidence_binding(
+        result,
+        permission_evidence,
+        authority=read.authorized.authority,
+    )
     _prevent_token_caching(response)
     try:
         result_response = QaCanaryResultResponse(
             **_task_response(read.task).model_dump(),
             operation_id=result.operation_id,
+            result_sha256=_result_sha256(result),
             output=QaCanaryResultOutput(
                 file_id=verified_output.id,
                 web_url=(
@@ -841,9 +857,20 @@ async def read_document_transform_qa_canary_evidence(
         authority=read.authorized.authority,
     )
     await _authorize_canary_output(request, db, broker, read, result)
+    permission_evidence = await _read_canary_permission_evidence(request, db, broker, tasks, read)
+    _require_permission_evidence_binding(
+        result,
+        permission_evidence,
+        authority=read.authorized.authority,
+    )
     result_sha256 = _result_sha256(result)
     _prevent_token_caching(response)
-    return _evidence_response(read.task, result, result_sha256=result_sha256)
+    return _evidence_response(
+        read.task,
+        result,
+        permission_evidence=permission_evidence,
+        result_sha256=result_sha256,
+    )
 
 
 async def _read_canary_task(
@@ -881,6 +908,25 @@ async def _authorize_canary_output(
     return output
 
 
+async def _read_canary_permission_evidence(
+    request: Request,
+    db: AsyncSession,
+    broker: QaCanaryBroker,
+    tasks: TaskService,
+    read: _ReadCanaryTask,
+) -> QaCopyPermissionEvidence:
+    try:
+        evidence = await broker.read_permission_evidence(
+            read.authorized.authority,
+            submission=read.submission,
+            tasks=tasks,
+        )
+        await _authorize_canary_request_as(request, db, QaCanaryReadAuthorization)
+    except (QaGrantError, TaskError) as exc:
+        raise _canary_state_unavailable() from exc
+    return evidence
+
+
 def _task_response(task: TaskRead) -> QaCanaryTaskResponse:
     try:
         return QaCanaryTaskResponse(
@@ -914,6 +960,7 @@ def _require_succeeded_transform(
         or result.mode is not authority.mode
         or result.output_strategy.value != "copy"
         or result.output.parent_folder_id != authority.destination_folder_id
+        or result.access_scope != "owner_only"
     )
     missing_revision = result.source_revision_id is None or result.output_revision_id is None
     if binding_mismatch or missing_revision:
@@ -971,6 +1018,7 @@ def _evidence_response(
     task: TaskRead,
     result: DocumentTransformResult,
     *,
+    permission_evidence: QaCopyPermissionEvidence,
     result_sha256: str,
 ) -> QaCanaryEvidenceResponse:
     source_revision_id = result.source_revision_id
@@ -978,6 +1026,7 @@ def _evidence_response(
     if source_revision_id is None or output_revision_id is None:
         raise _canary_state_unavailable()
     total_count = len(result.findings)
+    review_count = sum(finding.severity is FindingSeverity.REVIEW for finding in result.findings)
     findings = [_finding_response(item) for item in result.findings[:_MAX_QA_EVIDENCE_FINDINGS]]
     while True:
         try:
@@ -991,8 +1040,10 @@ def _evidence_response(
                 validation=result.validation,
                 findings=findings,
                 finding_total_count=total_count,
+                review_finding_count=review_count,
                 findings_truncated=len(findings) < total_count,
                 artifact_kind=result.artifact_kind,
+                qa_permission_evidence=permission_evidence,
             )
         except ValidationError as exc:
             raise _canary_state_unavailable() from exc
@@ -1001,6 +1052,31 @@ def _evidence_response(
         if not findings:
             raise _canary_state_unavailable()
         findings.pop()
+
+
+def _require_permission_evidence_binding(
+    result: DocumentTransformResult,
+    permission_evidence: QaCopyPermissionEvidence,
+    *,
+    authority: QaAuthority,
+) -> None:
+    destination_binding = (
+        permission_evidence.destination.file_id,
+        permission_evidence.destination.mime_type,
+    ) == (authority.destination_folder_id, MIME_FOLDER)
+    output_binding = (
+        permission_evidence.output.file_id,
+        permission_evidence.output.mime_type,
+        permission_evidence.output.parent_folder_id,
+    ) == (result.output.file_id, MIME_DOC, authority.destination_folder_id)
+    if (
+        permission_evidence.operation_id != result.operation_id
+        or permission_evidence.source_sha256 != result.source_sha256
+        or permission_evidence.output_revision_id != result.output_revision_id
+        or not destination_binding
+        or not output_binding
+    ):
+        raise _canary_state_unavailable()
 
 
 def _finding_response(finding: TransformFinding) -> QaCanaryFinding:

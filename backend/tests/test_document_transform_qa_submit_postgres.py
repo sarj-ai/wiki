@@ -19,12 +19,19 @@ from app.document_transform.qa_broker import (
 )
 from app.document_transform.qa_grants import QaAuthority, QaSubmittedCanary
 from app.document_transform.schemas import (
-    DocumentTransformRequest,
     DriveFileSource,
     OutputStrategy,
+    QaDocumentTransformRequest,
     TransformMode,
 )
-from app.drive.schemas import MIME_DOC, MIME_FOLDER, DriveNode
+from app.drive.schemas import (
+    MIME_DOC,
+    MIME_FOLDER,
+    DriveNode,
+    DrivePermission,
+    DrivePermissionDetail,
+    FilePermissionSnapshot,
+)
 from app.files.schemas import FileResponse
 from app.identifiers import DriveId, FileId, GoogleUserId, TaskId, UserId
 from app.models.document_transform_qa_grant import DocumentTransformQaGrantId
@@ -61,6 +68,9 @@ def _qa_engine() -> AsyncEngine:
 
 
 class _Drive:
+    def __init__(self, owner_email: str) -> None:
+        self._owner_email = owner_email
+
     async def list_folder_children_bounded(
         self,
         folder_id: FileId,
@@ -80,6 +90,41 @@ class _Drive:
                 modified_time=_MODIFIED,
             )
         ]
+
+    async def read_file_permissions_bounded(
+        self,
+        file_id: FileId,
+        *,
+        max_pages: int,
+        max_permissions: int,
+    ) -> FilePermissionSnapshot:
+        assert file_id == _DESTINATION
+        assert max_pages > 0
+        assert max_permissions > 0
+        return FilePermissionSnapshot(
+            file_id=file_id,
+            mime_type=MIME_FOLDER,
+            drive_id=None,
+            parent_ids=(),
+            version="17",
+            owned_by_me=True,
+            shared=False,
+            can_add_children=True,
+            owner_emails=(self._owner_email,),
+            permissions=(
+                DrivePermission(
+                    id="owner",
+                    principal_type="user",
+                    role="owner",
+                    email_address=self._owner_email,
+                    permission_details=(
+                        DrivePermissionDetail(
+                            permission_type="file", role="owner", inherited=False
+                        ),
+                    ),
+                ),
+            ),
+        )
 
 
 class _Files:
@@ -144,7 +189,7 @@ async def test_real_postgres_concurrent_qa_submit_creates_one_forced_copy_task()
         expires_at=datetime.now(UTC) + timedelta(minutes=5),
         job_expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
-    drive = _Drive()
+    drive = _Drive(authority.user_email)
     files = _Files()
     plan = await plan_qa_canary(authority, drive=drive, files=files)
     queue = _Enqueuer()
@@ -197,7 +242,7 @@ async def test_real_postgres_concurrent_qa_submit_creates_one_forced_copy_task()
             )
             task = await db.get(Task, task_id)
             assert task is not None
-            payload = DocumentTransformRequest.model_validate(task.payload)
+            payload = QaDocumentTransformRequest.model_validate(task.payload)
             assert payload.output_strategy is OutputStrategy.COPY
             assert payload.copy_destination_folder_id == _DESTINATION
             source = payload.source

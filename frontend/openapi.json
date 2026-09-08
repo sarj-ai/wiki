@@ -895,10 +895,23 @@
             "title": "Id",
             "type": "string"
           },
+          "inherited": {
+            "default": false,
+            "title": "Inherited",
+            "type": "boolean"
+          },
           "pending_owner": {
             "default": false,
             "title": "Pending Owner",
             "type": "boolean"
+          },
+          "permission_details": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DrivePermissionDetail"
+            },
+            "title": "Permission Details",
+            "type": "array"
           },
           "principal_type": {
             "title": "Principal Type",
@@ -915,6 +928,29 @@
           "role"
         ],
         "title": "DrivePermission",
+        "type": "object"
+      },
+      "DrivePermissionDetail": {
+        "properties": {
+          "inherited": {
+            "title": "Inherited",
+            "type": "boolean"
+          },
+          "permission_type": {
+            "title": "Permission Type",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "permission_type",
+          "role",
+          "inherited"
+        ],
+        "title": "DrivePermissionDetail",
         "type": "object"
       },
       "DrivePermissionsPage": {
@@ -2921,6 +2957,67 @@
           }
         ],
         "summary": "Save File Alias",
+        "tags": [
+          "aliases"
+        ]
+      }
+    },
+    "/aliases/files/{file_id}/ensure": {
+      "post": {
+        "operationId": "ensure_file_alias",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentAliasRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ensure File Alias",
         "tags": [
           "aliases"
         ]

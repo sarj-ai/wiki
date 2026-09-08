@@ -29,7 +29,10 @@ from app.document_transform.qa_launcher import QaExecutionAttestation
 from app.document_transform.schemas import (
     DocumentOutput,
     DocumentTransformResult,
+    FindingSeverity,
     OutputStrategy,
+    QaCopyPermissionEvidence,
+    QaFilePermissionEvidence,
     TransformFinding,
     TransformMode,
     ValidationSummary,
@@ -1259,6 +1262,8 @@ async def test_canary_plan_reauthorizes_and_returns_server_selected_copy(
                 source_file_id=FileId("server-selected-doc"),
                 source_name="Security Review",
                 source_modified_time="2026-09-07T12:00:00Z",
+                destination_version="17",
+                destination_permission_sha256="c" * 64,
                 output_strategy=OutputStrategy.COPY,
             )
 
@@ -1284,6 +1289,8 @@ async def test_canary_plan_reauthorizes_and_returns_server_selected_copy(
     assert response.json()["source_file_id"] == "server-selected-doc"
     assert response.json()["output_strategy"] == "copy"
     assert response.json()["plan_id"] == response.json()["idempotency_key"]
+    assert response.json()["destination_version"] == "17"
+    assert response.json()["destination_permission_sha256"] == "c" * 64
     assert "z" * 43 not in response.text
     assert "grant_id" not in response.text
     assert response.headers["cache-control"] == "no-store"
@@ -1523,6 +1530,65 @@ async def test_canary_plan_rejects_caller_selected_file_before_authorization(
     assert db.commits == db.rollbacks == 0
 
 
+async def test_canary_plan_permission_failure_is_generic_and_no_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    now = datetime.now(UTC)
+    sensitive_error_detail = "domain-reader@example.test"
+
+    async def authorize(_db: object, **_kwargs: object) -> QaAuthority:
+        return QaAuthority(
+            grant_id=DocumentTransformQaGrantId(uuid.UUID("44444444-4444-4444-8444-444444444444")),
+            user_id=_user().id,
+            user_email="qa@example.test",
+            execution_name="job/executions/one",
+            release_sha=_RELEASE,
+            image_digest=_DIGEST,
+            source_folder_id=FileId("source"),
+            destination_folder_id=FileId("destination"),
+            mode=TransformMode.BOTH,
+            expires_at=now + timedelta(minutes=5),
+            job_expires_at=now + timedelta(hours=2),
+        )
+
+    class Broker:
+        async def plan(self, _authority: QaAuthority) -> QaCanaryPlan:
+            raise QaGrantError(sensitive_error_detail)
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    db = _Db()
+    application = _application(db, _user())
+    application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
+    body = _issuer_body() | {"execution_name": "job/executions/one"}
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/canary/plan",
+            json=body,
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "QA canary could not be planned"}
+    assert sensitive_error_detail not in response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+
+
 async def test_canary_submit_reauthorizes_and_returns_only_bounded_admission(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1717,7 +1783,11 @@ def _transform_result(
         model_patch_count=250,
         promoted_heading_count=2,
         findings=[
-            TransformFinding(code=f"finding-{index:03d}", detail=f"Finding {index}")
+            TransformFinding(
+                code=f"finding-{index:03d}",
+                detail=f"Finding {index}",
+                severity=(FindingSeverity.INFORMATIONAL if index < 100 else FindingSeverity.REVIEW),
+            )
             for index in range(finding_count)
         ],
         validation=ValidationSummary(
@@ -1735,6 +1805,33 @@ def _transform_result(
         output_revision_id=DocsRevisionId("output-revision"),
         short_link_alias="security-review",
         short_link_status="ready",
+        access_scope="owner_only",
+    )
+
+
+def _permission_evidence(*, operation_id: uuid.UUID | None = None) -> QaCopyPermissionEvidence:
+    operation_id = operation_id or uuid.UUID("66666666-6666-4666-8666-666666666666")
+    observed_at = datetime(2026, 9, 8, 1, 0, tzinfo=UTC)
+    return QaCopyPermissionEvidence(
+        operation_id=operation_id,
+        source_sha256="c" * 64,
+        output_revision_id=DocsRevisionId("output-revision"),
+        destination=QaFilePermissionEvidence(
+            file_id=FileId("destination"),
+            mime_type="application/vnd.google-apps.folder",
+            parent_folder_id=None,
+            version="17",
+            permission_sha256="d" * 64,
+            observed_at=observed_at,
+        ),
+        output=QaFilePermissionEvidence(
+            file_id=FileId("server-derived-output"),
+            mime_type="application/vnd.google-apps.document",
+            parent_folder_id=FileId("destination"),
+            version="18",
+            permission_sha256="e" * 64,
+            observed_at=observed_at,
+        ),
     )
 
 
@@ -1819,6 +1916,13 @@ async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_st
         output_available = True
         output_parent = FileId("destination")
 
+        async def read_permission_evidence(
+            self, authority: QaAuthority, **kwargs: object
+        ) -> QaCopyPermissionEvidence:
+            assert authority.user_id == _user().id
+            assert kwargs["submission"] == QaSubmittedCanary(plan_id=operation, task_id=task_id)
+            return _permission_evidence(operation_id=task_id)
+
         async def read_task(self, authority: QaAuthority, **kwargs: object) -> SucceededTaskRead:
             nonlocal read_calls
             read_calls += 1
@@ -1882,7 +1986,7 @@ async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_st
 
     assert task.status_code == result.status_code == evidence.status_code == 200
     assert operation != task_id
-    assert authorization_calls == 8
+    assert authorization_calls == 10
     assert read_calls == 3
     assert task.json()["task_id"] == result.json()["task_id"] == str(task_id)
     assert result.json()["output"]["file_id"] == "server-derived-output"
@@ -1891,15 +1995,25 @@ async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_st
     )
     assert result.json()["applied_patch_count"] == 750
     assert result.json()["short_link_alias"] == "security-review"
+    assert result.json()["result_sha256"] == evidence.json()["result_sha256"]
     assert evidence.json()["source_revision_id"] == "source-revision"
     assert len(evidence.json()["findings"]) == 100
     assert evidence.json()["finding_total_count"] == 150
+    # The review findings are all beyond the bounded 100-item response. The
+    # aggregate keeps omitted findings fail-closed for the workload verifier.
+    assert evidence.json()["review_finding_count"] == 50
     assert evidence.json()["findings_truncated"] is True
     assert evidence.json()["findings"][0]["code"] == "finding-000"
     assert evidence.json()["findings"][-1]["code"] == "finding-099"
     assert len(evidence.json()["result_sha256"]) == 64
+    permission_evidence = evidence.json()["qa_permission_evidence"]
+    assert permission_evidence["status"] == "verified_owner_only"
+    assert permission_evidence["operation_id"] == str(task_id)
+    assert permission_evidence["source_sha256"] == "c" * 64
+    assert permission_evidence["output_revision_id"] == "output-revision"
+    assert permission_evidence["destination"]["file_id"] == "destination"
+    assert permission_evidence["output"]["file_id"] == "server-derived-output"
     assert "access_scope" not in evidence.text
-    assert "owner_only" not in evidence.text
     for response in (task, result, evidence):
         assert response.headers["cache-control"] == "no-store"
         assert response.headers["pragma"] == "no-cache"
@@ -1924,7 +2038,7 @@ async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_st
             "/internal/document-transform-qa/canary/evidence", json=body, headers=headers
         )
 
-    assert authorization_calls == 12
+    assert authorization_calls == 14
     assert read_calls == 5
     for response in (forged_result, forged_evidence):
         assert response.status_code == 409
@@ -1968,6 +2082,7 @@ def test_task_and_result_response_total_byte_guards(response_kind: str) -> None:
         else qa_router.QaCanaryResultResponse(
             **task_response.model_dump(),
             operation_id=task_response.task_id,
+            result_sha256="d" * 64,
             output=qa_router.QaCanaryResultOutput(
                 file_id=FileId("output"),
                 web_url="https://docs.google.com/document/d/output/edit",
@@ -1992,7 +2107,12 @@ def test_evidence_response_total_byte_guard(monkeypatch: pytest.MonkeyPatch) -> 
     task = _succeeded_task(result, now=now)
     monkeypatch.setattr(qa_router, "_MAX_QA_EVIDENCE_RESPONSE_BYTES", 1)
     with pytest.raises(HTTPException, match="QA canary state is unavailable"):
-        qa_router._evidence_response(task, result, result_sha256="d" * 64)
+        qa_router._evidence_response(
+            task,
+            result,
+            permission_evidence=_permission_evidence(),
+            result_sha256="d" * 64,
+        )
 
 
 def test_stored_result_hash_total_byte_guard(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2050,6 +2170,46 @@ def test_result_requires_exact_source_and_output_revisions(revision_field: str) 
 
     with pytest.raises(HTTPException, match="QA canary state is unavailable"):
         qa_router._require_succeeded_transform(task, authority=authority)
+
+
+def test_result_requires_exact_owner_only_permission_evidence_bindings() -> None:
+    now = datetime.now(UTC)
+    task_id = TaskId(uuid.UUID("66666666-6666-4666-8666-666666666666"))
+    valid = _transform_result(operation_id=task_id)
+    evidence = _permission_evidence(operation_id=task_id)
+    task = _succeeded_task(valid, now=now, task_id=task_id)
+    authority = _result_authority(now)
+    qa_router._require_succeeded_transform(task, authority=authority)
+    mismatches = [
+        evidence.model_copy(
+            update={"operation_id": uuid.UUID("77777777-7777-4777-8777-777777777777")}
+        ),
+        evidence.model_copy(update={"source_sha256": "f" * 64}),
+        evidence.model_copy(update={"output_revision_id": DocsRevisionId("different-revision")}),
+        evidence.model_copy(
+            update={
+                "destination": evidence.destination.model_copy(
+                    update={"file_id": FileId("different-destination")}
+                )
+            }
+        ),
+        evidence.model_copy(
+            update={
+                "output": evidence.output.model_copy(update={"file_id": FileId("different-output")})
+            }
+        ),
+        evidence.model_copy(
+            update={
+                "output": evidence.output.model_copy(
+                    update={"parent_folder_id": FileId("different-destination")}
+                )
+            }
+        ),
+    ]
+
+    for mismatch in mismatches:
+        with pytest.raises(HTTPException, match="QA canary state is unavailable"):
+            qa_router._require_permission_evidence_binding(valid, mismatch, authority=authority)
 
 
 async def test_canary_reads_reject_caller_selected_task_and_file_before_authorization(

@@ -55,6 +55,22 @@ async def save_file_alias(
     return result
 
 
+@router.post(
+    "/files/{file_id}/ensure",
+    status_code=status.HTTP_200_OK,
+    operation_id="ensure_file_alias",
+)
+async def ensure_file_alias(
+    file_id: Annotated[FileId, Path(min_length=1)],
+    svc: Annotated[AliasService, Depends(alias_service_dep)],
+    response: Response,
+) -> DocumentAliasRead:
+    response.headers["Cache-Control"] = "private, no-store"
+    result = await svc.ensure_polish_for_file(file_id)
+    logger.info("document alias ensured")
+    return result
+
+
 @router.delete(
     "/files/{file_id}",
     status_code=status.HTTP_204_NO_CONTENT,

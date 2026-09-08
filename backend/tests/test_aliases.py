@@ -14,6 +14,7 @@ from app.aliases.errors import (
 )
 from app.aliases.schemas import DocumentAliasWrite
 from app.aliases.service import PostgresAliasService
+from app.document_transform.naming import polish_alias_candidates
 from app.drive.schemas import DriveSummary
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
@@ -198,6 +199,20 @@ async def test_ensure_alias_preserves_existing_choice() -> None:
     assert session.execute_calls == 1
     assert session.commits == session.flushes == session.rollbacks == 0
     assert row.retired_at is None
+
+
+@pytest.mark.asyncio
+async def test_ensure_polish_alias_derives_deterministic_candidates_from_fresh_file() -> None:
+    expected = polish_alias_candidates(FileId("file-1"), "Document")[0]
+    session = _EnsureSession([None, _alias_row(expected)])
+    files = _Files()
+    service = _service(session, files)
+
+    result = await service.ensure_polish_for_file(FileId("file-1"))
+
+    assert result.file_id == "file-1"
+    assert result.alias == expected
+    assert files.get_calls == ["file-1"]
 
 
 @pytest.mark.asyncio

@@ -157,7 +157,12 @@ class Harness:
 async def test_word_copy_is_durable_encrypted_and_completed_replay_is_read_only():
     h = Harness()
     result = await h.run()
-    assert [c.stage for c in h.checkpoints] == list(CopyCheckpointStage)
+    assert [c.stage for c in h.checkpoints] == [
+        CopyCheckpointStage.PLANNED,
+        CopyCheckpointStage.CREATING,
+        CopyCheckpointStage.CREATED,
+        CopyCheckpointStage.VERIFIED,
+    ]
     assert result.output.media_type == WORD_MIME
     assert result.needs_review
     assert not result.llm_invoked

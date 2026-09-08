@@ -6,6 +6,7 @@ import {
   copyFile as copyFileRequest,
   createFile as createFileRequest,
   deleteFile as deleteFileRequest,
+  ensureFileAlias,
   getBootstrap as getBootstrapRequest,
   getCurrentUser,
   getDriveTree,
@@ -153,6 +154,9 @@ export function makeWikiApi(client?: Client) {
 
     getDocumentAlias: async (fileId: string): Promise<DocumentAliasForFile> =>
       call(getFileAlias, { path: { file_id: fileId } }, documentAliasForFile),
+
+    ensureDocumentAlias: async (fileId: string): Promise<DocumentAlias> =>
+      call(ensureFileAlias, { path: { file_id: fileId } }, documentAlias),
 
     getDriveFolders: async (driveId: string): Promise<DriveTree> =>
       call(getDriveTree, { path: { drive_id: driveId } }, driveTree),
