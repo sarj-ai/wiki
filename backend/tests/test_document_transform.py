@@ -26,7 +26,6 @@ from app.document_transform.errors import (
     ActiveSuggestionsNeedsReviewError,
     BrandAssetUnavailableError,
     CheckpointTooLargeError,
-    ComplexStructureNeedsReviewError,
     CustomHeaderNeedsReviewError,
     DestinationAccessChangedError,
     DocumentGatewayError,
@@ -3865,14 +3864,129 @@ async def test_in_place_custom_header_is_actionable_non_success() -> None:
     assert gateway.events == []
 
 
-async def test_in_place_unprovable_structure_is_actionable_non_success(
+async def test_in_place_unprovable_structure_is_durable_safe_noop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    gateway = _InPlaceGateway("Source")
+    class ReadbackGateway(_InPlaceGateway):
+        def __init__(self) -> None:
+            super().__init__("Source")
+            self.loads = 0
+            self.inspections = 0
+
+        @override
+        async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot:
+            self.loads += 1
+            return await super().load_drive_source(source)
+
+        @override
+        async def inspect_in_place(
+            self,
+            *,
+            snapshot: SourceSnapshot,
+            title: str,
+            table_font_plan: TableFontPlan | None = None,
+        ) -> InPlaceInspection:
+            self.inspections += 1
+            return await super().inspect_in_place(
+                snapshot=snapshot, title=title, table_font_plan=table_font_plan
+            )
+
+    gateway = ReadbackGateway()
+    paragraph_style = gateway.document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"][
+        "paragraphStyle"
+    ]
+    paragraph_style.update(
+        alignment="CENTER",
+        spaceAbove={"magnitude": 24, "unit": "PT"},
+    )
+    store = _CheckpointStore(gateway.events)
+    generator = _Generator()
+    task_id = TaskId(uuid.uuid7())
+    operation_id = uuid.uuid7()
+    request = _in_place_request(TransformMode.FORMAT)
+    monkeypatch.setattr(executor_module, "preserved_native_findings", lambda **_kwargs: None)
+
+    result = await _replay_executor(
+        gateway=gateway,
+        generator=generator,
+        store=store,
+        task_id=task_id,
+    ).execute(operation_id=operation_id, request=request)
+
+    assert result.changed is False
+    assert result.needs_review is True
+    assert result.applied_patch_count == 0
+    assert result.source_revision_id == result.output_revision_id == "revision-1"
+    assert [finding.code for finding in result.findings] == [
+        "complex_native_structure_preserved",
+        "native_paragraph_layout_preserved",
+    ]
+    assert gateway.loads == 2
+    assert gateway.inspections == 2
+    assert gateway.events == [f"checkpoint:{InPlaceCheckpointStage.COMPLETE}"]
+    checkpoint = store.checkpoints[-1]
+    assert len(checkpoint.paragraph_layout) == 1
+
+    replay = await _replay_executor(
+        gateway=gateway,
+        generator=generator,
+        store=store,
+        task_id=task_id,
+        checkpoint=checkpoint,
+    ).execute(operation_id=operation_id, request=request)
+
+    assert replay == result
+    assert gateway.loads == 3
+    assert gateway.inspections == 3
+    assert gateway.events == [f"checkpoint:{InPlaceCheckpointStage.COMPLETE}"]
+
+
+@pytest.mark.parametrize("drift", ["revision", "structure", "protected", "body_hash"])
+async def test_in_place_complex_safe_noop_rejects_concurrent_readback_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    drift: str,
+) -> None:
+    class DriftGateway(_InPlaceGateway):
+        def __init__(self) -> None:
+            super().__init__("Source")
+            self.loads = 0
+            self.inspections = 0
+
+        @override
+        async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot:
+            self.loads += 1
+            snapshot = await super().load_drive_source(source)
+            if self.loads == 2 and drift == "revision":
+                return replace(snapshot, revision_id=DocsRevisionId("revision-2"))
+            return snapshot
+
+        @override
+        async def inspect_in_place(
+            self,
+            *,
+            snapshot: SourceSnapshot,
+            title: str,
+            table_font_plan: TableFontPlan | None = None,
+        ) -> InPlaceInspection:
+            self.inspections += 1
+            inspection = await super().inspect_in_place(
+                snapshot=snapshot, title=title, table_font_plan=table_font_plan
+            )
+            if self.inspections != 2:
+                return inspection
+            updates = {
+                "structure": {"structural_sha256": "changed-structure"},
+                "protected": {"protected_structure_sha256": "changed-protected"},
+                "body_hash": {"body_sha256": "changed-body"},
+            }.get(drift, {})
+            return replace(inspection, **updates)
+
+    gateway = DriftGateway()
     store = _CheckpointStore(gateway.events)
     monkeypatch.setattr(executor_module, "preserved_native_findings", lambda **_kwargs: None)
 
-    with pytest.raises(ComplexStructureNeedsReviewError) as caught:
+    expected_error = SourceChangedError if drift == "revision" else InPlaceNeedsReviewError
+    with pytest.raises(expected_error):
         await _replay_executor(
             gateway=gateway,
             generator=_Generator(),
@@ -3880,8 +3994,130 @@ async def test_in_place_unprovable_structure_is_actionable_non_success(
             task_id=TaskId(uuid.uuid7()),
         ).execute(operation_id=uuid.uuid7(), request=_in_place_request(TransformMode.FORMAT))
 
-    assert caught.value.code == "needs_review"
     assert gateway.events == []
+
+
+async def test_in_place_complex_safe_noop_keeps_unknown_header_hard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class UnknownHeaderGateway(_InPlaceGateway):
+        @override
+        async def inspect_in_place(
+            self,
+            *,
+            snapshot: SourceSnapshot,
+            title: str,
+            table_font_plan: TableFontPlan | None = None,
+        ) -> InPlaceInspection:
+            inspection = await super().inspect_in_place(
+                snapshot=snapshot, title=title, table_font_plan=table_font_plan
+            )
+            return replace(
+                inspection,
+                headers=(),
+                missing_header_tab_ids=(),
+                unknown_header_tab_ids=(DocsTabId("tab-1"),),
+            )
+
+    gateway = UnknownHeaderGateway("Source")
+    store = _CheckpointStore(gateway.events)
+    monkeypatch.setattr(executor_module, "preserved_native_findings", lambda **_kwargs: None)
+
+    with pytest.raises(CustomHeaderNeedsReviewError):
+        await _replay_executor(
+            gateway=gateway,
+            generator=_Generator(),
+            store=store,
+            task_id=TaskId(uuid.uuid7()),
+        ).execute(operation_id=uuid.uuid7(), request=_in_place_request(TransformMode.FORMAT))
+
+    assert gateway.events == []
+
+
+async def test_in_place_complex_safe_noop_keeps_font_proof_failure_hard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = _InPlaceGateway("Source")
+    store = _CheckpointStore(gateway.events)
+    monkeypatch.setattr(executor_module, "preserved_native_findings", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        executor_module,
+        "capture_native_font_proof",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError),
+    )
+
+    with pytest.raises(InPlaceNeedsReviewError):
+        await _replay_executor(
+            gateway=gateway,
+            generator=_Generator(),
+            store=store,
+            task_id=TaskId(uuid.uuid7()),
+        ).execute(operation_id=uuid.uuid7(), request=_in_place_request(TransformMode.FORMAT))
+
+    assert gateway.events == []
+
+
+async def test_in_place_complex_safe_noop_keeps_pagination_failure_hard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = _InPlaceGateway("Source")
+    store = _CheckpointStore(gateway.events)
+    document = parse_google_document(gateway.document, title="Source")
+    block = document.blocks[0]
+    pagination = executor_module.NativePaginationRule(
+        block_id=block.id,
+        text_sha256=block.sha256,
+        keep_with_next=True,
+    )
+    monkeypatch.setattr(executor_module, "preserved_native_findings", lambda **_kwargs: None)
+    monkeypatch.setattr(executor_module, "existing_native_pagination", lambda *_args: (pagination,))
+
+    with pytest.raises(InPlaceNeedsReviewError):
+        await _replay_executor(
+            gateway=gateway,
+            generator=_Generator(),
+            store=store,
+            task_id=TaskId(uuid.uuid7()),
+        ).execute(operation_id=uuid.uuid7(), request=_in_place_request(TransformMode.FORMAT))
+
+    assert gateway.events == []
+
+
+async def test_in_place_complex_safe_noop_rejects_malformed_checkpoint_claim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = _InPlaceGateway("Source")
+    gateway.document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["paragraphStyle"][
+        "alignment"
+    ] = "CENTER"
+    store = _CheckpointStore(gateway.events)
+    task_id = TaskId(uuid.uuid7())
+    request = _in_place_request(TransformMode.FORMAT)
+    monkeypatch.setattr(executor_module, "preserved_native_findings", lambda **_kwargs: None)
+    await _replay_executor(
+        gateway=gateway,
+        generator=_Generator(),
+        store=store,
+        task_id=task_id,
+    ).execute(operation_id=task_id, request=request)
+    checkpoint = store.checkpoints[-1]
+    assert len(checkpoint.paragraph_layout) == 1
+    malformed = checkpoint.model_copy(
+        update={
+            "findings": [checkpoint.findings[0].model_copy(update={"detail": "untrusted detail"})]
+        }
+    )
+
+    with pytest.raises(InPlaceNeedsReviewError):
+        await _replay_executor(
+            gateway=gateway,
+            generator=_Generator(),
+            store=store,
+            task_id=task_id,
+            checkpoint=malformed,
+        ).execute(operation_id=task_id, request=request)
+
+    assert gateway.events == [f"checkpoint:{InPlaceCheckpointStage.COMPLETE}"]
 
 
 async def test_in_place_missing_brand_asset_is_failure_without_mutation() -> None:
