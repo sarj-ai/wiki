@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ _DEPLOY_NEEDS = {
     "ci-iac",
     "standards-receipt",
 }
+_READY_FENCE_COUNTS = {"backend": 1, "frontend": 2}
 
 
 def _workflow(name: str) -> dict[str, Any]:
@@ -68,46 +70,140 @@ def test_standalone_quality_skips_only_exact_domain_deploy_paths_on_main() -> No
     assert quality["on"]["workflow_call"] is None
 
 
-def test_deploys_restore_the_prerequisite_pre_commit_cache() -> None:
-    quality_steps = _workflow("ci-quality.yml")["jobs"]["pre-commit"]["steps"]
-    producer = _named_step(quality_steps, "Cache pre-commit environments")
-    expected_cache = {
-        "path": producer["with"]["path"],
-        "key": producer["with"]["key"],
+def test_deploys_trust_exact_sha_gates_without_repeating_generic_validation() -> None:
+    duplicate_steps = {
+        "deploy-backend.yml": {
+            "Restore prerequisite pre-commit environments",
+            "Set up Python",
+            "Install dependencies",
+            "Run pre-commit custom standards",
+            "Ruff check",
+            "Ruff format check",
+            "Identify Mypy cache toolchain",
+            "Restore prerequisite Mypy incremental data",
+            "Mypy strict",
+            "Basedpyright strict",
+            "ty check",
+            "Vulture dead-code check",
+            "Import contracts",
+            "pip-audit",
+            "Unit tests",
+        },
+        "deploy-frontend.yml": {
+            "Restore prerequisite pre-commit environments",
+            "Install analysis and frontend dependencies",
+            "Bootstrap analysis inputs",
+            "Run pre-commit custom standards",
+            "Prettier check",
+            "TypeScript check",
+            "ESLint",
+            "Knip",
+            "Type coverage",
+            "npm audit",
+            "Run vitest",
+        },
+    }
+    retained_release_steps = {
+        "deploy-backend.yml": {
+            "Build and push image",
+            "Trivy image scan",
+            "Deploy candidate without traffic",
+            "Run database migrations once",
+            "Switch production traffic",
+            "Verify revision and production health",
+            "Resolve native MCP mode from exact revision",
+            "Verify native MCP production contract",
+            "Clear legacy global drive-tree cache after traffic switch",
+            "Verify correlated production logs",
+            "Report blocked release without rollback",
+        },
+        "deploy-frontend.yml": {
+            "Build for Cloudflare Workers",
+            "Capture current production version",
+            "Deploy to Cloudflare",
+            "Verify exact production revision",
+            "Roll back an unverified frontend release",
+        },
     }
 
-    for name in ("deploy-backend.yml", "deploy-frontend.yml"):
-        deploy = _workflow(name)["jobs"]["deploy"]
+    for workflow_name, forbidden in duplicate_steps.items():
+        deploy = _workflow(workflow_name)["jobs"]["deploy"]
         steps = deploy["steps"]
-        consumer = _named_step(steps, "Restore prerequisite pre-commit environments")
+        names = {step.get("name") for step in steps}
+        commands = "\n".join(str(step.get("run", "")) for step in steps)
 
         assert set(deploy["needs"]) == _DEPLOY_NEEDS
-        assert consumer["uses"] == _CACHE_RESTORE_ACTION
-        assert consumer["with"] == expected_cache
-        assert _step_index(
-            steps, "Restore prerequisite pre-commit environments"
-        ) < _step_index(steps, "Run pre-commit custom standards")
+        assert names.isdisjoint(forbidden)
+        assert retained_release_steps[workflow_name] <= names
+        if workflow_name == "deploy-backend.yml":
+            assert not any(
+                command in commands
+                for command in (
+                    "pre-commit run",
+                    "ruff check",
+                    "ruff format",
+                    "mypy",
+                    "basedpyright",
+                    "ty check",
+                    "vulture",
+                    "lint-imports",
+                    "pip-audit",
+                    "pytest",
+                    "uv python install",
+                    "uv sync",
+                )
+            )
+        else:
+            assert not any(
+                command in commands
+                for command in (
+                    "pre-commit run",
+                    "format:check",
+                    "run typecheck",
+                    "run lint",
+                    "run knip",
+                    "type-coverage",
+                    "npm audit",
+                    "npm test",
+                    "run generate:api",
+                    "uv sync",
+                )
+            )
+
+    frontend_steps = _workflow("deploy-frontend.yml")["jobs"]["deploy"]["steps"]
+    frontend_install = _named_step(frontend_steps, "Install frontend dependencies")
+    assert frontend_install["run"] == "npm ci --prefix frontend"
+    assert "generate:api" in _workflow_script("frontend/package.json", "postinstall")
 
 
-def test_backend_deploy_restores_the_prerequisite_mypy_cache() -> None:
-    backend_ci = _workflow("ci-backend.yml")
-    producer_steps = backend_ci["jobs"]["lint-and-typecheck"]["steps"]
-    producer = _named_step(producer_steps, "Restore Mypy incremental data")
+def _workflow_script(path: str, name: str) -> str:
+    package = json.loads((ROOT / path).read_text())
+    return str(package["scripts"][name])
 
-    deploy = _workflow("deploy-backend.yml")["jobs"]["deploy"]
-    steps = deploy["steps"]
-    consumer = _named_step(steps, "Restore prerequisite Mypy incremental data")
 
-    assert consumer["uses"] == producer["uses"] == _CACHE_RESTORE_ACTION
-    assert consumer["with"] == producer["with"]
-    assert (
-        _step_index(steps, "Identify Mypy cache toolchain")
-        < _step_index(steps, "Restore prerequisite Mypy incremental data")
-        < _step_index(steps, "Mypy strict")
-    )
-    assert not any(
-        step.get("uses", "").startswith("actions/cache/save@") for step in steps
-    )
+def test_deploy_ready_fences_remain_before_credentials_and_mutation() -> None:
+    for component in ("backend", "frontend"):
+        steps = _workflow(f"deploy-{component}.yml")["jobs"]["deploy"]["steps"]
+        ready = [
+            index
+            for index, step in enumerate(steps)
+            if step.get("run")
+            == f"bash scripts/github/verify-release-gate.sh ready {component}"
+        ]
+        assert len(ready) == _READY_FENCE_COUNTS[component]
+
+        if component == "backend":
+            auth = next(
+                index
+                for index, step in enumerate(steps)
+                if step.get("uses", "").startswith("google-github-actions/auth@")
+            )
+            assert ready[0] < auth < _step_index(steps, "Deploy candidate without traffic")
+        else:
+            build = _step_index(steps, "Build for Cloudflare Workers")
+            capture = _step_index(steps, "Capture current production version")
+            deploy = _step_index(steps, "Deploy to Cloudflare")
+            assert ready[0] < build < ready[1] < capture < deploy
 
 
 def test_frontend_build_restores_next_cache_but_only_trusted_main_saves() -> None:

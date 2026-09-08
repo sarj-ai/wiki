@@ -84,8 +84,8 @@ def test_workflow_requires_all_local_gates_without_cloud_secrets(
         if step.get("run")
         == f"bash scripts/github/verify-release-gate.sh ready {component}"
     ]
-    initial_check, final_check = verification
-    assert initial_check is not final_check
+    expected_fences = 1 if component == "backend" else 2
+    assert len(verification) == expected_fences
     assert all(
         step["env"]["RELEASE_NEEDS"] == "${{ toJSON(needs) }}" for step in verification
     )
@@ -121,6 +121,8 @@ def test_gate_bootstraps_python_before_every_invocation(
     assert invocations
     assert all(installer < invocation for invocation in invocations)
     assert steps[installer]["with"]["version-file"] == "backend/uv.toml"
+    if job_name == "deploy":
+        assert "enable-cache" not in steps[installer]["with"]
     wrapper = (root / "scripts/github/verify-release-gate.sh").read_text()
     commands = shlex.split(wrapper, comments=True)
     invocation = commands[commands.index("|") + 1 :]
