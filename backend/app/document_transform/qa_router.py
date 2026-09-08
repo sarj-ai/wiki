@@ -20,6 +20,12 @@ from app.cache.service import CacheService
 from app.config import settings
 from app.database import get_db
 from app.document_transform.qa_broker import QaCanaryBroker
+from app.document_transform.qa_contract import (
+    QA_MAX_STORED_FINDINGS,
+    QA_MAX_STORED_MODEL_IDS,
+    QA_MAX_STORED_RESULT_BYTES,
+    QA_MAX_STORED_TOOL_VERSIONS,
+)
 from app.document_transform.qa_grants import (
     QaAuthority,
     QaBootstrapResult,
@@ -28,15 +34,14 @@ from app.document_transform.qa_grants import (
     QaSubmittedCanary,
     authorize_qa_capability,
     bind_qa_bootstrap_execution,
-    bootstrap_attested_qa_execution,
     bind_qa_canary_submission,
-    bootstrap_qa_run,
+    bootstrap_attested_qa_execution,
     consume_qa_grant,
     fail_qa_bootstrap_launch,
     issue_qa_grant,
+    load_qa_canary_submission,
     prepare_idempotent_qa_launch,
     read_active_qa_execution,
-    load_qa_canary_submission,
     renew_qa_capability,
 )
 from app.document_transform.qa_launcher import (
@@ -90,6 +95,12 @@ class QaGrantExchange(QaGrantBinding):
     credential: str = Field(min_length=32, max_length=256)
     execution_name: str = Field(min_length=1, max_length=255)
     operation: Literal["consume", "renew"]
+    request_nonce: uuid.UUID
+
+
+class QaLauncherRenewal(QaGrantBinding):
+    credential: str = Field(min_length=32, max_length=256)
+    execution_name: str = Field(min_length=1, max_length=255)
     request_nonce: uuid.UUID
 
 
@@ -184,14 +195,13 @@ class QaCanaryEvidenceResponse(QaCanaryTaskResponse):
     operation_id: uuid.UUID
     result_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    source_revision_id: DocsRevisionId | None = Field(default=None, max_length=255)
-    output_revision_id: DocsRevisionId | None = Field(default=None, max_length=255)
+    source_revision_id: DocsRevisionId = Field(max_length=255)
+    output_revision_id: DocsRevisionId = Field(max_length=255)
     validation: ValidationSummary
     findings: list[QaCanaryFinding] = Field(max_length=100)
     finding_total_count: int = Field(ge=0)
     findings_truncated: bool
     artifact_kind: str = Field(min_length=1, max_length=32)
-    access_scope: str = Field(min_length=1, max_length=32)
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,6 +232,8 @@ _MAX_QA_TASK_RESPONSE_BYTES = 4 * 1024
 _MAX_QA_RESULT_RESPONSE_BYTES = 8 * 1024
 _MAX_QA_EVIDENCE_RESPONSE_BYTES = 64 * 1024
 _MAX_QA_EVIDENCE_FINDINGS = 100
+_MAX_QA_STORED_METADATA_UTF8_BYTES = 128 * 1024
+_MAX_QA_STORED_METADATA_NODES = 10_000
 
 
 def qa_canary_broker_dep(
@@ -285,6 +297,16 @@ def _configured_binding(body: QaGrantBinding) -> None:
 
 def _require_legacy_qa_flow() -> None:
     if settings.DOCUMENT_TRANSFORM_QA_JOB is not None:
+        raise _no_store_http_error(
+            status.HTTP_410_GONE,
+            "Legacy QA grant flow is disabled when the backend launcher is configured",
+        )
+
+
+def _require_exchange_flow(request: Request) -> None:
+    if settings.DOCUMENT_TRANSFORM_QA_JOB is None:
+        return
+    if list(request.query_params.multi_items()) != [("operation", "renew")]:
         raise _no_store_http_error(
             status.HTTP_410_GONE,
             "Legacy QA grant flow is disabled when the backend launcher is configured",
@@ -498,43 +520,22 @@ async def launch_document_transform_qa_run(
 @workload_router.post(
     "/exchange",
     response_model=QaCapabilityResponse,
-    dependencies=[Depends(_require_legacy_qa_flow), Depends(_require_qa_workload)],
+    dependencies=[Depends(_require_exchange_flow), Depends(_require_qa_workload)],
 )
 async def exchange_document_transform_qa_grant(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     response: Response,
 ) -> QaCapabilityResponse:
-    body = await _parse_legacy_body(request, QaGrantExchange)
+    launcher_renewal = settings.DOCUMENT_TRANSFORM_QA_JOB is not None
+    body = (
+        await _parse_legacy_body(request, QaLauncherRenewal)
+        if launcher_renewal
+        else await _parse_legacy_body(request, QaGrantExchange)
+    )
     _configured_binding(body)
     try:
-        capability = (
-            await consume_qa_grant(
-                db,
-                token=body.credential,
-                request_nonce=body.request_nonce,
-                derivation_key=settings.SECRET_KEY.get_secret_value().encode(),
-                execution_name=body.execution_name,
-                release_sha=body.release_sha,
-                image_digest=body.image_digest,
-                source_folder_id=body.source_folder_id,
-                destination_folder_id=body.destination_folder_id,
-                mode=body.mode,
-            )
-            if body.operation == "consume"
-            else await renew_qa_capability(
-                db,
-                capability_token=body.credential,
-                request_nonce=body.request_nonce,
-                derivation_key=settings.SECRET_KEY.get_secret_value().encode(),
-                execution_name=body.execution_name,
-                release_sha=body.release_sha,
-                image_digest=body.image_digest,
-                source_folder_id=body.source_folder_id,
-                destination_folder_id=body.destination_folder_id,
-                mode=body.mode,
-            )
-        )
+        capability = await _exchange_capability(db, body)
         await db.commit()
     except QaGrantError as exc:
         await db.rollback()
@@ -543,6 +544,51 @@ async def exchange_document_transform_qa_grant(
         ) from exc
     _prevent_token_caching(response)
     return _capability_response(capability)
+
+
+async def _exchange_capability(
+    db: AsyncSession,
+    body: QaGrantExchange | QaLauncherRenewal,
+) -> QaCapability:
+    if isinstance(body, QaLauncherRenewal):
+        return await renew_qa_capability(
+            db,
+            capability_token=body.credential,
+            request_nonce=body.request_nonce,
+            derivation_key=settings.SECRET_KEY.get_secret_value().encode(),
+            execution_name=body.execution_name,
+            release_sha=body.release_sha,
+            image_digest=body.image_digest,
+            source_folder_id=body.source_folder_id,
+            destination_folder_id=body.destination_folder_id,
+            mode=body.mode,
+            require_submitted_task=True,
+        )
+    if body.operation == "consume":
+        return await consume_qa_grant(
+            db,
+            token=body.credential,
+            request_nonce=body.request_nonce,
+            derivation_key=settings.SECRET_KEY.get_secret_value().encode(),
+            execution_name=body.execution_name,
+            release_sha=body.release_sha,
+            image_digest=body.image_digest,
+            source_folder_id=body.source_folder_id,
+            destination_folder_id=body.destination_folder_id,
+            mode=body.mode,
+        )
+    return await renew_qa_capability(
+        db,
+        capability_token=body.credential,
+        request_nonce=body.request_nonce,
+        derivation_key=settings.SECRET_KEY.get_secret_value().encode(),
+        execution_name=body.execution_name,
+        release_sha=body.release_sha,
+        image_digest=body.image_digest,
+        source_folder_id=body.source_folder_id,
+        destination_folder_id=body.destination_folder_id,
+        mode=body.mode,
+    )
 
 
 @workload_router.post("/bootstrap", response_model=QaBootstrapResponse)
@@ -768,10 +814,7 @@ async def read_document_transform_qa_canary_evidence(
         authority=read.authorized.authority,
     )
     await _authorize_canary_output(request, db, broker, read, result)
-    serialized = result.model_dump(mode="json")
-    result_sha256 = hashlib.sha256(
-        json.dumps(serialized, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
-    ).hexdigest()
+    result_sha256 = _result_sha256(result)
     _prevent_token_caching(response)
     return _evidence_response(read.task, result, result_sha256=result_sha256)
 
@@ -835,14 +878,66 @@ def _require_succeeded_transform(
     ):
         raise _canary_state_unavailable()
     result = task.result
-    if (
+    _require_bounded_stored_result(result)
+    resource_id = task.resource_id
+    binding_mismatch = (
         not hmac.compare_digest(result.operation_id.bytes, task.id.bytes)
+        or resource_id is None
+        or not hmac.compare_digest(str(resource_id).encode(), str(result.output.file_id).encode())
         or result.mode is not authority.mode
         or result.output_strategy.value != "copy"
         or result.output.parent_folder_id != authority.destination_folder_id
-    ):
+    )
+    missing_revision = result.source_revision_id is None or result.output_revision_id is None
+    if binding_mismatch or missing_revision:
         raise _canary_state_unavailable()
     return result
+
+
+def _require_bounded_stored_result(result: DocumentTransformResult) -> None:
+    if (
+        len(result.findings) > QA_MAX_STORED_FINDINGS
+        or len(result.model_ids) > QA_MAX_STORED_MODEL_IDS
+        or len(result.tool_versions) > QA_MAX_STORED_TOOL_VERSIONS
+    ):
+        raise _canary_state_unavailable()
+    remaining_bytes = _MAX_QA_STORED_METADATA_UTF8_BYTES
+    remaining_nodes = _MAX_QA_STORED_METADATA_NODES
+    pending: list[object] = [result]
+    while pending:
+        remaining_nodes -= 1
+        if remaining_nodes < 0:
+            raise _canary_state_unavailable()
+        value = pending.pop()
+        match value:
+            case str():
+                # UTF-8 is never shorter than its character count. This avoids
+                # an unbounded encoding allocation before the byte budget.
+                if len(value) > remaining_bytes:
+                    raise _canary_state_unavailable()
+                remaining_bytes -= len(value.encode("utf-8", errors="strict"))
+                if remaining_bytes < 0:
+                    raise _canary_state_unavailable()
+            case BaseModel():
+                pending.extend(value.__dict__.values())
+            case dict():
+                pending.extend(value.keys())
+                pending.extend(value.values())
+            case list() | tuple():
+                pending.extend(value)
+            case _:
+                pass
+
+
+def _result_sha256(result: DocumentTransformResult) -> str:
+    _require_bounded_stored_result(result)
+    serialized = result.model_dump(mode="json")
+    canonical = json.dumps(
+        serialized, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode()
+    if len(canonical) > QA_MAX_STORED_RESULT_BYTES:
+        raise _canary_state_unavailable()
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def _evidence_response(
@@ -851,6 +946,10 @@ def _evidence_response(
     *,
     result_sha256: str,
 ) -> QaCanaryEvidenceResponse:
+    source_revision_id = result.source_revision_id
+    output_revision_id = result.output_revision_id
+    if source_revision_id is None or output_revision_id is None:
+        raise _canary_state_unavailable()
     total_count = len(result.findings)
     findings = [_finding_response(item) for item in result.findings[:_MAX_QA_EVIDENCE_FINDINGS]]
     while True:
@@ -860,14 +959,13 @@ def _evidence_response(
                 operation_id=result.operation_id,
                 result_sha256=result_sha256,
                 source_sha256=result.source_sha256,
-                source_revision_id=result.source_revision_id,
-                output_revision_id=result.output_revision_id,
+                source_revision_id=source_revision_id,
+                output_revision_id=output_revision_id,
                 validation=result.validation,
                 findings=findings,
                 finding_total_count=total_count,
                 findings_truncated=len(findings) < total_count,
                 artifact_kind=result.artifact_kind,
-                access_scope=result.access_scope,
             )
         except ValidationError as exc:
             raise _canary_state_unavailable() from exc

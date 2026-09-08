@@ -20,19 +20,20 @@ from app.document_transform.qa_grants import (
     QaGrantError,
     authorize_qa_capability,
     bind_qa_bootstrap_execution,
-    bootstrap_attested_qa_execution,
     bind_qa_canary_submission,
+    bootstrap_attested_qa_execution,
     bootstrap_qa_run,
     consume_qa_grant,
     delete_expired_qa_grants,
     fail_qa_bootstrap_launch,
     issue_qa_grant,
-    prepare_idempotent_qa_launch,
     load_qa_canary_submission,
+    prepare_idempotent_qa_launch,
     prepare_qa_bootstrap_run,
     renew_qa_capability,
 )
 from app.document_transform.schemas import TransformMode
+from app.files.schemas import FileRename
 from app.identifiers import (
     AuthSessionFamilyId,
     AuthSessionId,
@@ -52,6 +53,7 @@ from app.models.task import Task
 from app.models.task_replay_key import TaskReplayKey
 from app.models.user import User
 from app.tasks.schemas import TaskKind, TaskStatus
+from app.tasks.service import PostgresTaskService
 
 
 _SOURCE_FOLDER_ID = FileId("source-folder")
@@ -278,7 +280,11 @@ async def _bootstrap(
 
 
 async def _renew(
-    db: AsyncSession, token: str, *, request_nonce: uuid.UUID = _RENEW_NONCE
+    db: AsyncSession,
+    token: str,
+    *,
+    request_nonce: uuid.UUID = _RENEW_NONCE,
+    require_submitted_task: bool = False,
 ) -> QaCapability:
     return await renew_qa_capability(
         db,
@@ -291,6 +297,23 @@ async def _renew(
         source_folder_id=_SOURCE_FOLDER_ID,
         destination_folder_id=_DESTINATION_FOLDER_ID,
         mode=TransformMode.BOTH,
+        require_submitted_task=require_submitted_task,
+    )
+
+
+def _submission_task(*, user_id: UserId, plan_id: QaPlanId, task_id: TaskId) -> Task:
+    now = datetime.now(UTC)
+    return Task(
+        id=task_id,
+        owner_user_id=user_id,
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        status=TaskStatus.PENDING,
+        idempotency_key=IdempotencyKey(plan_id),
+        request_hash="d" * 64,
+        payload={},
+        attempt_count=0,
+        created_at=now,
+        expires_at=now + timedelta(hours=1),
     )
 
 
@@ -429,21 +452,7 @@ async def test_real_postgres_submission_binding_is_atomic_immutable_and_replayab
         prepared = await _prepared_bound_run(db, identity.user, identity.session)
         capability = await _bootstrap(db, prepared.run_id)
         authority = await _authorize(db, capability.token)
-        now = datetime.now(UTC)
-        db.add(
-            Task(
-                id=task_id,
-                owner_user_id=identity.user.id,
-                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-                status=TaskStatus.PENDING,
-                idempotency_key=IdempotencyKey(plan_id),
-                request_hash="d" * 64,
-                payload={},
-                attempt_count=0,
-                created_at=now,
-                expires_at=now + timedelta(hours=1),
-            )
-        )
+        db.add(_submission_task(user_id=identity.user.id, plan_id=plan_id, task_id=task_id))
         await db.flush()
         first = await bind_qa_canary_submission(
             db,
@@ -474,6 +483,75 @@ async def test_real_postgres_submission_binding_is_atomic_immutable_and_replayab
                 plan_id=QaPlanId(uuid.uuid7()),
                 task_id=task_id,
             )
+
+
+async def test_bound_task_snapshot_does_not_block_expiry_cleanup_or_unrelated_admission(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    plan_id = QaPlanId(uuid.uuid7())
+    task_id = TaskId(uuid.uuid7())
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        prepared = await _prepared_bound_run(db, identity.user, identity.session)
+        capability = await _bootstrap(db, prepared.run_id)
+        authority = await _authorize(db, capability.token)
+        task = _submission_task(user_id=identity.user.id, plan_id=plan_id, task_id=task_id)
+        db.add(task)
+        await db.flush()
+        await bind_qa_canary_submission(
+            db,
+            authority=authority,
+            plan_id=plan_id,
+            task_id=task_id,
+        )
+        expired_at = datetime.now(UTC) - timedelta(seconds=1)
+        task.created_at = expired_at - timedelta(hours=1)
+        task.expires_at = expired_at
+
+    unrelated_key = IdempotencyKey(uuid.uuid7())
+    async with sessions() as db:
+        admitted = await PostgresTaskService(db=db).create_or_replay(
+            kind=TaskKind.FILE_SMART_CREATE,
+            owner_user_id=identity.user.id,
+            idempotency_key=unrelated_key,
+            payload=FileRename(name="Unrelated admission"),
+        )
+        assert admitted.created is True
+
+    async with sessions.begin() as db:
+        assert await db.get(Task, task_id) is None
+        run = await db.get(DocumentTransformQaRun, prepared.run_id)
+        assert run is not None
+        assert run.submitted_plan_id == plan_id
+        assert run.submitted_task_id == task_id
+        assert await db.get(Task, admitted.task.id) is not None
+
+
+async def test_launcher_renewal_requires_the_exact_bound_submission_task(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    plan_id = QaPlanId(uuid.uuid7())
+    task_id = TaskId(uuid.uuid7())
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        prepared = await _prepared_bound_run(db, identity.user, identity.session)
+        capability = await _bootstrap(db, prepared.run_id)
+    async with sessions.begin() as db:
+        with pytest.raises(QaGrantError):
+            await _renew(db, capability.token, require_submitted_task=True)
+    async with sessions.begin() as db:
+        authority = await _authorize(db, capability.token)
+        db.add(_submission_task(user_id=identity.user.id, plan_id=plan_id, task_id=task_id))
+        await db.flush()
+        await bind_qa_canary_submission(
+            db,
+            authority=authority,
+            plan_id=plan_id,
+            task_id=task_id,
+        )
+    async with sessions.begin() as db:
+        renewed = await _renew(db, capability.token, require_submitted_task=True)
+    assert renewed.token != capability.token
 
 
 async def test_real_postgres_secretless_bootstrap_state_is_database_atomic(

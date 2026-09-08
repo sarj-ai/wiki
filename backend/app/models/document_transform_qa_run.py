@@ -155,7 +155,7 @@ class DocumentTransformQaRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     bootstrapped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     submitted_plan_id: Mapped[QaPlanId | None] = mapped_column(UUID(as_uuid=True))
-    submitted_task_id: Mapped[TaskId | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="RESTRICT")
-    )
+    # Historical identity snapshot, deliberately not a task FK: task retention
+    # must be able to expire the submitted task without erasing QA audit state.
+    submitted_task_id: Mapped[TaskId | None] = mapped_column(UUID(as_uuid=True))
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

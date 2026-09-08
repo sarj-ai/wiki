@@ -18,6 +18,10 @@ from app.cache.service import CacheService
 from app.document_transform.application import TransformSubmission, submit_document_transform
 from app.document_transform.qa_contract import (
     QA_MAX_FOLDER_LIST_PAGES,
+    QA_MAX_STORED_FINDINGS,
+    QA_MAX_STORED_MODEL_IDS,
+    QA_MAX_STORED_RESULT_BYTES,
+    QA_MAX_STORED_TOOL_VERSIONS,
     QA_MAX_TRAVERSED_FOLDERS,
 )
 from app.document_transform.qa_grants import QaAuthority, QaGrantError, QaSubmittedCanary
@@ -222,7 +226,14 @@ async def read_submitted_qa_canary_task(
     )
     if not hmac.compare_digest(admission.task_id.bytes, submission.task_id.bytes):
         raise QaGrantError
-    task = await tasks.get_for_owner(submission.task_id, authority.user_id)
+    task = await tasks.get_for_owner_bounded_result(
+        submission.task_id,
+        authority.user_id,
+        max_result_bytes=QA_MAX_STORED_RESULT_BYTES,
+        max_findings=QA_MAX_STORED_FINDINGS,
+        max_model_entries=QA_MAX_STORED_MODEL_IDS,
+        max_tool_entries=QA_MAX_STORED_TOOL_VERSIONS,
+    )
     if not hmac.compare_digest(task.id.bytes, submission.task_id.bytes):
         raise QaGrantError
     return task

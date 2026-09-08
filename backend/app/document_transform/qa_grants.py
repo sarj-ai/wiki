@@ -730,6 +730,7 @@ async def renew_qa_capability(
     source_folder_id: FileId,
     destination_folder_id: FileId,
     mode: TransformMode,
+    require_submitted_task: bool = False,
 ) -> QaCapability:
     _validate_runtime(execution_name)
     _validate_binding(release_sha, image_digest, source_folder_id, destination_folder_id)
@@ -738,6 +739,16 @@ async def renew_qa_capability(
     if row is None:
         raise QaGrantError
     grant, user, session, now = row.grant, row.user, row.session, row.now
+    if require_submitted_task:
+        run_row = await _locked_run_by_grant(db, grant.id)
+        if (
+            run_row is None
+            or run_row.run.state != "bootstrapped"
+            or run_row.run.execution_name != execution_name
+            or not _run_capability_matches_grant(run_row.run, grant)
+            or not await _submitted_task_is_bound(db, run_row.run, user_id=user.id)
+        ):
+            raise QaGrantError
     if grant.previous_capability_digest is not None and hmac.compare_digest(
         grant.previous_capability_digest, supplied_digest
     ):
@@ -784,6 +795,37 @@ async def renew_qa_capability(
     grant.last_renewed_at = now
     await db.flush()
     return QaCapability(capability, renewed_expires_at, job_expires_at, user.id, user.email)
+
+
+async def _submitted_task_is_bound(
+    db: AsyncSession,
+    run: DocumentTransformQaRun,
+    *,
+    user_id: UserId,
+) -> bool:
+    submitted = _submitted_canary(run)
+    if submitted is None:
+        return False
+    bound_task_id = await db.scalar(
+        select(Task.id).where(
+            Task.id == submitted.task_id,
+            Task.owner_user_id == user_id,
+            Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+            or_(
+                Task.idempotency_key == submitted.plan_id,
+                Task.id.in_(
+                    select(TaskReplayKey.task_id).where(
+                        TaskReplayKey.owner_user_id == user_id,
+                        TaskReplayKey.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+                        TaskReplayKey.idempotency_key == submitted.plan_id,
+                    )
+                ),
+            ),
+        )
+    )
+    return bound_task_id is not None and hmac.compare_digest(
+        bound_task_id.bytes, submitted.task_id.bytes
+    )
 
 
 async def authorize_qa_capability(

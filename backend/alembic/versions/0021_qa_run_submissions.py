@@ -16,11 +16,9 @@ def upgrade() -> None:
     op.add_column("document_transform_qa_runs", sa.Column("submitted_plan_id", sa.UUID()))
     op.add_column(
         "document_transform_qa_runs",
-        sa.Column(
-            "submitted_task_id",
-            sa.UUID(),
-            sa.ForeignKey("tasks.id", ondelete="RESTRICT"),
-        ),
+        # Snapshot-only audit identity. Tasks have a bounded retention window,
+        # while the QA run/grant lifecycle is independent.
+        sa.Column("submitted_task_id", sa.UUID()),
     )
     op.add_column(
         "document_transform_qa_runs",

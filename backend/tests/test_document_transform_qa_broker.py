@@ -218,6 +218,20 @@ class _Tasks(TaskService):
         )
 
     @override
+    async def get_for_owner_bounded_result(
+        self,
+        task_id: TaskId,
+        owner_user_id: uuid.UUID,
+        *,
+        max_result_bytes: int,
+        max_findings: int,
+        max_model_entries: int,
+        max_tool_entries: int,
+    ) -> TaskRead:
+        assert min(max_result_bytes, max_findings, max_model_entries, max_tool_entries) > 0
+        return await self.get_for_owner(task_id, owner_user_id)
+
+    @override
     async def get_document_transform_admission(
         self, owner_user_id: uuid.UUID, idempotency_key: IdempotencyKey
     ) -> DocumentTransformAdmission:

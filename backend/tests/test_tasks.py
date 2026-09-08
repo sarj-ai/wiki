@@ -23,7 +23,7 @@ from app.document_transform.schemas import (
 )
 from app.document_transform.versions import DOCUMENT_PIPELINE_VERSION
 from app.files.schemas import FileResponse
-from app.identifiers import FileId, IdempotencyKey, TaskId
+from app.identifiers import FileId, IdempotencyKey, TaskId, UserId
 from app.models.task import Task
 from app.smart_create.schemas import SmartCreateResult
 from app.tasks import service as task_service_module
@@ -999,7 +999,7 @@ async def test_task_lookup_is_owner_isolated_and_expiry_enforced() -> None:
     session = _Session(None)
 
     with pytest.raises(TaskNotFoundError):
-        await _service(session).get_for_owner(row.id, other_owner)
+        await _service(session).get_for_owner(row.id, UserId(other_owner))
 
     sql = str(session.statements[0])
     assert "tasks.id" in sql

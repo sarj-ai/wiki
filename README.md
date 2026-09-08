@@ -267,9 +267,13 @@ launch only while its bound grant or job authority remains live; expiry cleanup,
 explicitly reviewed reconciliation mechanism, releases that boundary.
 
 When the backend-owned launcher is configured, the legacy
-`POST /document-transforms/qa/grants` and `POST /internal/document-transform-qa/exchange` flow is
-disabled. It remains available only for installations that have not configured the launcher, so an
-older deployment can be retired deliberately rather than silently changing behavior. Migration
+`POST /document-transforms/qa/grants` and credential-consume exchange flow is disabled. The exchange
+endpoint accepts only the exact `?operation=renew` selector for a workload-authenticated launcher
+renewal, and only after the capability is bound to the bootstrapped execution and its persisted
+submission task; absent, duplicate, or alternate selectors fail before request-body parsing or OIDC.
+The complete legacy exchange remains available only for installations that have not configured the
+launcher, so an older deployment can be retired deliberately rather than silently changing
+behavior. Migration
 `0020_qa_attestation` revokes grants associated with pre-attestation 0019 runs and preserves those
 runs as audit-only `retired` rows; their missing Cloud Run UID and job identity are never guessed or
 backfilled. Routine expired-grant cleanup excludes grants referenced by retired rows so the foreign

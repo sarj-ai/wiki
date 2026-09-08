@@ -58,6 +58,7 @@ _AUDIENCE = "https://api.example.test/internal/document-transform-qa/exchange"
 _SERVICE_ACCOUNT = "qa@example-project.iam.gserviceaccount.com"
 _NONCE = "11111111-1111-4111-8111-111111111111"
 _IDEMPOTENCY = "019c4f83-9556-7c56-9a5a-7583c478ce24"
+_OUTPUT_FILE_ID = FileId("server-derived-output")
 
 
 class _Db:
@@ -93,6 +94,10 @@ def _body(*, operation: str = "consume") -> dict[str, str]:
         "mode": "both",
         "operation": operation,
     }
+
+
+def _launcher_renewal_body() -> dict[str, str]:
+    return {key: value for key, value in _body(operation="renew").items() if key != "operation"}
 
 
 def _issuer_body() -> dict[str, str]:
@@ -685,6 +690,91 @@ async def test_launcher_mode_retires_legacy_exchange_before_sensitive_body_parsi
     assert secret not in response.text
     assert response.headers["cache-control"] == "no-store"
     assert db.commits == db.rollbacks == 0
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["operation=consume", "operation=renew&extra=1", "operation=renew&operation=renew"],
+)
+async def test_launcher_mode_rejects_wrong_exchange_selector_before_oidc_or_body(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", "configured-job")
+
+    def unexpected_authenticator(**_kwargs: object) -> object:
+        pytest.fail("wrong launcher exchange selector reached workload authentication")
+
+    monkeypatch.setattr(qa_router, "GoogleOidcTaskRequestAuthenticator", unexpected_authenticator)
+    db = _Db()
+    application = _application(db, _user())
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            f"/internal/document-transform-qa/exchange?{query}",
+            content=b"{sensitive malformed body",
+            headers={"Content-Type": "application/json"},
+        )
+
+    assert response.status_code == 410
+    assert response.headers["cache-control"] == "no-store"
+    assert db.commits == db.rollbacks == 0
+
+
+async def test_launcher_mode_exchange_allows_only_strict_submitted_task_renewal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", "configured-job")
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    captured: dict[str, object] = {}
+
+    async def renew(_db: object, **kwargs: object) -> QaCapability:
+        captured.update(kwargs)
+        now = datetime.now(UTC)
+        return QaCapability(
+            "renewed-capability",
+            now + timedelta(minutes=5),
+            now + timedelta(hours=1),
+            _user().id,
+            "qa@example.test",
+        )
+
+    monkeypatch.setattr(qa_router, "renew_qa_capability", renew)
+    db = _Db()
+    application = _application(db, _user())
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/exchange?operation=renew",
+            json=_launcher_renewal_body(),
+            headers={"Authorization": "Bearer oidc"},
+        )
+        rejected_extra = await http.post(
+            "/internal/document-transform-qa/exchange?operation=renew",
+            json=_body(operation="renew"),
+            headers={"Authorization": "Bearer oidc"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["capability_token"] == "renewed-capability"
+    assert captured["capability_token"] == "c" * 43
+    assert captured["execution_name"] == "job/executions/one"
+    assert captured["require_submitted_task"] is True
+    assert rejected_extra.status_code == 422
+    assert db.commits == 1
+    assert db.rollbacks == 0
 
 
 def test_bootstrap_has_no_production_prepare_or_bind_route() -> None:
@@ -1461,6 +1551,45 @@ def _transform_result(
     )
 
 
+def _succeeded_task(
+    result: DocumentTransformResult,
+    *,
+    now: datetime,
+    task_id: TaskId | None = None,
+    resource_id: FileId | None = _OUTPUT_FILE_ID,
+) -> SucceededTaskRead:
+    resolved_task_id = task_id or TaskId(uuid.UUID("66666666-6666-4666-8666-666666666666"))
+    return SucceededTaskRead(
+        id=resolved_task_id,
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        status=TaskStatus.SUCCEEDED,
+        result=result,
+        resource_id=resource_id,
+        error_code=None,
+        error_detail=None,
+        attempt_count=1,
+        started_at=now,
+        finished_at=now + timedelta(seconds=5),
+        created_at=now - timedelta(seconds=1),
+    )
+
+
+def _result_authority(now: datetime) -> QaAuthority:
+    return QaAuthority(
+        grant_id=DocumentTransformQaGrantId(uuid.uuid7()),
+        user_id=_user().id,
+        user_email="qa@example.test",
+        execution_name="job/executions/one",
+        release_sha=_RELEASE,
+        image_digest=_DIGEST,
+        source_folder_id=FileId("source"),
+        destination_folder_id=FileId("destination"),
+        mode=TransformMode.BOTH,
+        expires_at=now + timedelta(minutes=5),
+        job_expires_at=now + timedelta(hours=2),
+    )
+
+
 async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_store(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1499,6 +1628,7 @@ async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_st
 
     class Broker:
         forged_operation = False
+        task_resource_id: FileId | None = FileId("server-derived-output")
         output_available = True
         output_parent = FileId("destination")
 
@@ -1507,24 +1637,17 @@ async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_st
             read_calls += 1
             assert authority.user_id == _user().id
             assert kwargs["submission"] == QaSubmittedCanary(plan_id=operation, task_id=task_id)
-            return SucceededTaskRead(
-                id=task_id,
-                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-                status=TaskStatus.SUCCEEDED,
-                result=_transform_result(
+            return _succeeded_task(
+                _transform_result(
                     operation_id=(
                         uuid.UUID("77777777-7777-4777-8777-777777777777")
                         if self.forged_operation
                         else task_id
                     )
                 ),
-                resource_id=FileId("server-derived-output"),
-                error_code=None,
-                error_detail=None,
-                attempt_count=1,
-                started_at=now,
-                finished_at=now + timedelta(seconds=5),
-                created_at=now - timedelta(seconds=1),
+                now=now,
+                task_id=task_id,
+                resource_id=self.task_resource_id,
             )
 
         async def authorize_output(self, authority: QaAuthority, **kwargs: object) -> FileResponse:
@@ -1588,6 +1711,8 @@ async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_st
     assert evidence.json()["findings"][0]["code"] == "finding-000"
     assert evidence.json()["findings"][-1]["code"] == "finding-099"
     assert len(evidence.json()["result_sha256"]) == 64
+    assert "access_scope" not in evidence.text
+    assert "owner_only" not in evidence.text
     for response in (task, result, evidence):
         assert response.headers["cache-control"] == "no-store"
         assert response.headers["pragma"] == "no-cache"
@@ -1620,6 +1745,23 @@ async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_st
         assert response.headers["cache-control"] == "no-store"
         assert response.headers["pragma"] == "no-cache"
         assert "77777777" not in response.text
+
+    Broker.forged_operation = False
+    for forged_resource_id in (None, FileId("different-output")):
+        Broker.task_resource_id = forged_resource_id
+        async with AsyncClient(
+            transport=ASGITransport(app=application), base_url="http://api.test"
+        ) as http:
+            forged_result = await http.post(
+                "/internal/document-transform-qa/canary/result", json=body, headers=headers
+            )
+            forged_evidence = await http.post(
+                "/internal/document-transform-qa/canary/evidence", json=body, headers=headers
+            )
+        for response in (forged_result, forged_evidence):
+            assert response.status_code == 409
+            assert response.json() == {"detail": "QA canary state is unavailable"}
+            assert "different-output" not in response.text
 
 
 @pytest.mark.parametrize("response_kind", ["task", "result"])
@@ -1660,22 +1802,67 @@ def test_task_and_result_response_total_byte_guards(response_kind: str) -> None:
 def test_evidence_response_total_byte_guard(monkeypatch: pytest.MonkeyPatch) -> None:
     now = datetime.now(UTC)
     result = _transform_result(finding_count=0)
-    task = SucceededTaskRead(
-        id=TaskId(uuid.UUID("66666666-6666-4666-8666-666666666666")),
-        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-        status=TaskStatus.SUCCEEDED,
-        result=result,
-        resource_id=FileId("server-derived-output"),
-        error_code=None,
-        error_detail=None,
-        attempt_count=1,
-        started_at=now,
-        finished_at=now,
-        created_at=now,
-    )
+    task = _succeeded_task(result, now=now)
     monkeypatch.setattr(qa_router, "_MAX_QA_EVIDENCE_RESPONSE_BYTES", 1)
     with pytest.raises(HTTPException, match="QA canary state is unavailable"):
         qa_router._evidence_response(task, result, result_sha256="d" * 64)
+
+
+def test_stored_result_hash_total_byte_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+    result = _transform_result(finding_count=0)
+    monkeypatch.setattr(qa_router, "QA_MAX_STORED_RESULT_BYTES", 1)
+    with pytest.raises(HTTPException, match="QA canary state is unavailable"):
+        qa_router._result_sha256(result)
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        _transform_result(finding_count=qa_router.QA_MAX_STORED_FINDINGS + 1),
+        _transform_result(finding_count=0).model_copy(
+            update={"pipeline_version": "x" * (128 * 1024 + 1)}
+        ),
+        _transform_result(finding_count=0).model_copy(
+            update={
+                "model_ids": [
+                    f"model-{index}" for index in range(qa_router.QA_MAX_STORED_MODEL_IDS + 1)
+                ]
+            }
+        ),
+        _transform_result(finding_count=0).model_copy(
+            update={
+                "tool_versions": {
+                    f"tool-{index}": "1"
+                    for index in range(qa_router.QA_MAX_STORED_TOOL_VERSIONS + 1)
+                }
+            }
+        ),
+    ],
+    ids=("findings", "utf8-metadata", "model-ids", "tool-versions"),
+)
+def test_succeeded_result_rejects_oversized_retained_metadata(
+    result: DocumentTransformResult,
+) -> None:
+    now = datetime.now(UTC)
+    task_id = TaskId(uuid.UUID("66666666-6666-4666-8666-666666666666"))
+    result = result.model_copy(update={"operation_id": task_id})
+    task = _succeeded_task(result, now=now, task_id=task_id)
+    authority = _result_authority(now)
+
+    with pytest.raises(HTTPException, match="QA canary state is unavailable"):
+        qa_router._require_succeeded_transform(task, authority=authority)
+
+
+@pytest.mark.parametrize("revision_field", ["source_revision_id", "output_revision_id"])
+def test_result_requires_exact_source_and_output_revisions(revision_field: str) -> None:
+    now = datetime.now(UTC)
+    task_id = TaskId(uuid.UUID("66666666-6666-4666-8666-666666666666"))
+    result = _transform_result(operation_id=task_id).model_copy(update={revision_field: None})
+    task = _succeeded_task(result, now=now, task_id=task_id)
+    authority = _result_authority(now)
+
+    with pytest.raises(HTTPException, match="QA canary state is unavailable"):
+        qa_router._require_succeeded_transform(task, authority=authority)
 
 
 async def test_canary_reads_reject_caller_selected_task_and_file_before_authorization(
