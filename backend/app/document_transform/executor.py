@@ -199,6 +199,7 @@ def _structure_inputs(
 class AppliedValidation:
     protected_content_preserved: bool
     structure_preserved: bool
+    supported_brand_applied: bool
     findings: tuple[TransformFinding, ...]
     revision_id: DocsRevisionId
 
@@ -612,6 +613,10 @@ class DocumentTransformExecutor:
             planner_finding_count=len(outcome.findings),
             protected_content_preserved=applied_validation.protected_content_preserved,
             structure_preserved=applied_validation.structure_preserved,
+        )
+        findings = _classify_supported_copy_brand_findings(
+            findings,
+            supported_brand_applied=applied_validation.supported_brand_applied,
         )
         findings.extend(applied_validation.findings)
         if checkpoint.native_footer is not None and checkpoint.native_footer.coverage is not None:
@@ -1799,13 +1804,27 @@ class DocumentTransformExecutor:
         if not verification.brand_applied:
             findings.append(
                 TransformFinding(
-                    code="post_write_brand_mismatch",
-                    detail="Output did not contain the complete pinned Sarj brand treatment",
+                    code=(
+                        "custom_furniture_preserved"
+                        if verification.supported_brand_applied
+                        else "post_write_brand_mismatch"
+                    ),
+                    detail=(
+                        "Supported body formatting was applied; existing custom headers, footers, and page geometry were preserved. Complete Sarj branding was not applied."
+                        if verification.supported_brand_applied
+                        else "Output did not contain the complete pinned Sarj brand treatment"
+                    ),
+                    severity=(
+                        FindingSeverity.INFORMATIONAL
+                        if verification.supported_brand_applied
+                        else FindingSeverity.REVIEW
+                    ),
                 )
             )
         return AppliedValidation(
             protected_content_preserved=verification.content_preserved,
             structure_preserved=verification.structure_preserved,
+            supported_brand_applied=verification.supported_brand_applied,
             findings=tuple(findings),
             revision_id=verification.revision_id or draft.revision_id,
         )
@@ -2384,6 +2403,19 @@ def _classify_verified_copy_planner_findings(
             for finding in planner_findings
         ]
     return planner_findings + findings[planner_finding_count:]
+
+
+def _classify_supported_copy_brand_findings(
+    findings: list[TransformFinding], *, supported_brand_applied: bool
+) -> list[TransformFinding]:
+    if not supported_brand_applied:
+        return findings
+    return [
+        finding.model_copy(update={"severity": FindingSeverity.INFORMATIONAL})
+        if finding.code.startswith("header_conflict:")
+        else finding
+        for finding in findings
+    ]
 
 
 def _preserved_block_ids(checkpoint: InPlaceCheckpoint) -> tuple[str, ...]:

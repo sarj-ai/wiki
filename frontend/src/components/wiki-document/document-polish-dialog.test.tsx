@@ -212,6 +212,41 @@ describe("DocumentPolishDialog", () => {
     expect(NavigationMock.push).toHaveBeenCalledWith("/d/output-1");
   });
 
+  it("reports a supported custom-header copy as partial branding without false review", async () => {
+    const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
+    vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
+    vi.spyOn(documentTransformApi, "waitForCompletion").mockResolvedValue({
+      ...transformResult(),
+      mode: "format",
+      appliedPatchCount: 0,
+      findings: [
+        {
+          blockId: null,
+          code: "custom_furniture_preserved",
+          detail:
+            "Supported body formatting was applied; existing custom headers, footers, and page geometry were preserved. Complete Sarj branding was not applied.",
+          severity: "informational",
+        },
+      ],
+    });
+
+    renderDialog(root, {
+      allowInPlace: false,
+      expectedModifiedTime: "2026-09-03T12:00:00Z",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+    });
+    await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+    clickButton(findButtonNow("Create polished copy"));
+
+    await vi.waitFor(() => expect(document.body).toHaveTextContent("Polish complete"));
+    expect(document.body).toHaveTextContent("Complete Sarj branding was not applied");
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(document.body).not.toHaveTextContent("This document needs review");
+  });
+
   it.each(["failure", "review", "success", "no-op"] as const)(
     "reveals a new %s outcome once without disturbing the Markdown draft",
     async (outcome) => {

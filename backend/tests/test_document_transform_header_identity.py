@@ -168,7 +168,7 @@ async def test_copy_auto_title_and_header_agree_and_retry_keeps_identity() -> No
 
 
 @pytest.mark.parametrize("header_title", [None, "Chosen Title — Sarj Formatted"])
-async def test_copy_gateway_verifies_header_against_supplied_durable_title(
+async def test_copy_gateway_verifies_header_once_against_supplied_durable_title(
     monkeypatch: pytest.MonkeyPatch,
     header_title: str | None,
 ) -> None:
@@ -208,4 +208,5 @@ async def test_copy_gateway_verifies_header_against_supplied_durable_title(
             verify_brand=True,
             header_title=header_title,
         )
+    # Each output readback performs exactly one brand-verifier pass.
     assert observed == [header_title or "Platform reliability plan"] * 2

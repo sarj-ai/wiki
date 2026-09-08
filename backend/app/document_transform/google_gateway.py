@@ -174,6 +174,12 @@ class ParagraphRangeKey:
     end_index: int
 
 
+@dataclass(frozen=True, slots=True)
+class _CopyBrandVerification:
+    brand_applied: bool
+    supported_brand_applied: bool
+
+
 if TYPE_CHECKING:
     from googleapiclient._apis.drive.v3.resources import DriveResource
 
@@ -1693,13 +1699,13 @@ class GoogleDocumentGateway(DocumentGateway):
             protected_preserved = copy_list_identity_equivalent
             if copy_list_identity_equivalent:
                 parsed = align_verified_copy_list_metadata(parsed, expected)
-        headers_preserved = source_document is None or _occupied_headers_preserved(
-            source_document, output_document
-        )
         structure_preserved = (
             structural_preserved
             and protected_preserved
-            and headers_preserved
+            and (
+                source_document is None
+                or _occupied_headers_preserved(source_document, output_document)
+            )
             and (
                 not verify_brand
                 or verify_copy_visual_authority(source_document, structure_document, expected)
@@ -1725,6 +1731,16 @@ class GoogleDocumentGateway(DocumentGateway):
         content_preserved = _typography_content_preserved(
             parsed, expected, verify_brand=verify_brand
         )
+        brand_verification = _copy_brand_verification(
+            source_document,
+            output_document,
+            _typography_verification_ir(parsed, expected),
+            source_title=source.title,
+            fallback_title=expected.title,
+            header_title=header_title,
+            brand_warnings=draft.brand_warnings,
+            verify_brand=verify_brand,
+        )
         if not content_preserved or not structure_preserved:
             logger.warning(
                 "document copy verification failed checks={checks}",
@@ -1733,7 +1749,8 @@ class GoogleDocumentGateway(DocumentGateway):
                     "structural_inventory_preserved": structural_preserved,
                     "protected_inventory_preserved": protected_preserved,
                     "copy_list_identity_equivalent": copy_list_identity_equivalent,
-                    "occupied_headers_preserved": headers_preserved,
+                    "occupied_headers_preserved": source_document is None
+                    or _occupied_headers_preserved(source_document, output_document),
                     "visual_authority_preserved": not verify_brand
                     or verify_copy_visual_authority(source_document, structure_document, expected),
                 },
@@ -1770,22 +1787,11 @@ class GoogleDocumentGateway(DocumentGateway):
         return OutputVerification(
             content_preserved=content_preserved,
             structure_preserved=structure_preserved,
-            brand_applied=not verify_brand
-            or verify_brand_application(
-                output_document,
-                _typography_verification_ir(parsed, expected),
-                expected_header_title=(
-                    header_title
-                    if header_title is not None
-                    else (
-                        suggested_document_title(
-                            parse_google_document(source_document, title=source.title)
-                        )
-                        if source_document is not None
-                        else expected.title
-                    )
-                ),
-            ),
+            brand_applied=brand_verification.brand_applied,
+            supported_brand_applied=verify_brand
+            and content_preserved
+            and structure_preserved
+            and brand_verification.supported_brand_applied,
             revision_id=DocsRevisionId(_required_string(output_document, "revisionId")),
         )
 
@@ -2677,6 +2683,111 @@ def _occupied_headers_preserved(original: dict[str, Any], actual: dict[str, Any]
                 ):
                     return False
     return True
+
+
+def _copy_brand_verification(
+    original: dict[str, Any] | None,
+    actual: dict[str, Any],
+    parsed: DocumentIR,
+    *,
+    source_title: str,
+    fallback_title: str,
+    header_title: str | None,
+    brand_warnings: tuple[str, ...],
+    verify_brand: bool,
+) -> _CopyBrandVerification:
+    if not verify_brand:
+        return _CopyBrandVerification(brand_applied=True, supported_brand_applied=False)
+    expected_header_title = _expected_copy_header_title(
+        original,
+        source_title=source_title,
+        fallback_title=fallback_title,
+        header_title=header_title,
+    )
+    if brand_warnings and all(warning.startswith("header_conflict:") for warning in brand_warnings):
+        return _CopyBrandVerification(
+            brand_applied=False,
+            supported_brand_applied=original is not None
+            and _copy_supported_brand_applied(
+                original,
+                actual,
+                parsed,
+                expected_header_title=expected_header_title,
+                brand_warnings=brand_warnings,
+            ),
+        )
+    brand_applied = verify_brand_application(
+        actual,
+        parsed,
+        expected_header_title=expected_header_title,
+    )
+    return _CopyBrandVerification(
+        brand_applied=brand_applied,
+        supported_brand_applied=False,
+    )
+
+
+def _copy_supported_brand_applied(
+    original: dict[str, Any],
+    actual: dict[str, Any],
+    parsed: DocumentIR,
+    *,
+    expected_header_title: str,
+    brand_warnings: tuple[str, ...],
+) -> bool:
+    prefix = "header_conflict:"
+    if not brand_warnings or any(not warning.startswith(prefix) for warning in brand_warnings):
+        return False
+    tab_ids = tuple(warning.removeprefix(prefix) for warning in brand_warnings)
+    if any(not tab_id for tab_id in tab_ids) or len(set(tab_ids)) != len(tab_ids):
+        return False
+    original_tabs = dict(_document_tabs(original))
+    bindings: list[CustomFurnitureBinding] = []
+    for raw_tab_id in tab_ids:
+        source_tab = original_tabs.get(raw_tab_id)
+        if source_tab is None:
+            return False
+        headers = source_tab.get("headers")
+        style = source_tab.get("documentStyle")
+        header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
+        if (
+            not isinstance(headers, dict)
+            or any(not isinstance(key, str) or not key for key in headers)
+            or not isinstance(header_id, str)
+            or not _segment_has_content(headers, header_id)
+        ):
+            return False
+        binding = _custom_furniture_binding(
+            original,
+            DocsTabId(raw_tab_id),
+            source_tab,
+            tuple(sorted(headers)),
+        )
+        if binding is None or DocsSegmentId(header_id) not in binding.header_ids:
+            return False
+        bindings.append(binding)
+    evidence = tuple(bindings)
+    return _custom_furniture_matches(actual, evidence) and verify_brand_application(
+        actual,
+        parsed,
+        expected_header_title=expected_header_title,
+        preserved_furniture_tabs=frozenset(binding.tab_id for binding in evidence),
+        preserved_header_tabs=frozenset(binding.tab_id for binding in evidence),
+    )
+
+
+def _expected_copy_header_title(
+    original: dict[str, Any] | None,
+    *,
+    source_title: str,
+    fallback_title: str,
+    header_title: str | None,
+) -> str:
+    if header_title is not None:
+        return header_title
+    if original is not None:
+        return suggested_document_title(parse_google_document(original, title=source_title))
+    return fallback_title
 
 
 def _immutable_tab_payload(document_tab: dict[str, Any], content: list[Any]) -> dict[str, Any]:
