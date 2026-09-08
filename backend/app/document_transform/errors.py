@@ -68,6 +68,10 @@ class InPlaceNeedsReviewError(DocumentTransformError):
     public_detail = "The source needs review before it can be changed in place"
 
 
+class UnsupportedTabMetadataError(InPlaceNeedsReviewError):
+    public_detail = "This document's tab metadata cannot be safely renamed"
+
+
 class ActiveSuggestionsNeedsReviewError(InPlaceNeedsReviewError):
     public_detail = "Resolve active Google Docs suggestions before polishing in place"
 

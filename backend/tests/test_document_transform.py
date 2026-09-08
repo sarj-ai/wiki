@@ -35,6 +35,7 @@ from app.document_transform.errors import (
     SourceChangedError,
     SourceTooLargeError,
     UnsupportedSourceError,
+    UnsupportedTabMetadataError,
 )
 from app.document_transform.executor import REQUEST_BUILDER_VERSION, DocumentTransformExecutor
 from app.document_transform.gateway import (
@@ -3514,6 +3515,163 @@ async def test_in_place_tab_checkpoint_resume_never_replays_content(
     ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
     assert result.output_revision_id == "revision-4"
     assert len(calls) == 2
+
+
+async def test_in_place_unsupported_tab_metadata_is_durable_decline_after_verified_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = _CrashReplayInPlaceGateway("Moreover, we approved the plan.", crash_stage="never")
+    store = _CheckpointStore(gateway.events)
+    operation_id = uuid.uuid7()
+    task_id = TaskId(uuid.uuid7())
+    naming_attempts = 0
+
+    async def decline_tabs(**_kwargs: object) -> None:
+        nonlocal naming_attempts
+        naming_attempts += 1
+        raise UnsupportedTabMetadataError
+
+    monkeypatch.setattr(gateway, "plan_tab_naming", decline_tabs)
+    result = await _replay_executor(
+        gateway=gateway,
+        generator=_Generator(),
+        store=store,
+        task_id=task_id,
+    ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
+
+    assert gateway.mutations == {"headers": 1, "content": 1}
+    assert store.checkpoints[-1].stage is InPlaceCheckpointStage.COMPLETE
+    assert store.checkpoints[-1].tab_naming_declined_reason == "unsupported_metadata"
+    assert [(finding.code, finding.severity) for finding in result.findings] == [
+        ("tab_naming_preserved", FindingSeverity.INFORMATIONAL)
+    ]
+    assert not result.needs_review
+
+    replayed = await _replay_executor(
+        gateway=gateway,
+        generator=_Generator(),
+        store=store,
+        task_id=task_id,
+        checkpoint=store.checkpoints[-1],
+    ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
+    assert replayed.findings == result.findings
+    assert replayed.output_revision_id == result.output_revision_id
+    assert replayed.validation == result.validation
+    assert naming_attempts == 1
+    assert gateway.mutations == {"headers": 1, "content": 1}
+
+
+async def test_in_place_decline_crash_replay_never_reenters_verified_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = _CrashReplayInPlaceGateway("Moreover, we approved the plan.", crash_stage="never")
+    store = _CheckpointStore(gateway.events)
+    operation_id = uuid.uuid7()
+    task_id = TaskId(uuid.uuid7())
+    original_save = store.save_document_transform_checkpoint
+    crashed = False
+    crash_message = "simulated crash after durable tab decline"
+
+    async def decline_tabs(**_kwargs: object) -> None:
+        raise UnsupportedTabMetadataError
+
+    async def crash_after_decline(
+        saved_task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        expected_generation: int,
+        checkpoint: DocumentTransformCheckpoint,
+    ) -> int:
+        nonlocal crashed
+        generation = await original_save(
+            saved_task_id,
+            lease_token=lease_token,
+            expected_generation=expected_generation,
+            checkpoint=checkpoint,
+        )
+        if (
+            isinstance(checkpoint, InPlaceCheckpoint)
+            and checkpoint.tab_naming_declined_reason is not None
+            and not crashed
+        ):
+            crashed = True
+            raise RuntimeError(crash_message)
+        return generation
+
+    monkeypatch.setattr(gateway, "plan_tab_naming", decline_tabs)
+    monkeypatch.setattr(store, "save_document_transform_checkpoint", crash_after_decline)
+    with pytest.raises(RuntimeError, match="durable tab decline"):
+        await _replay_executor(
+            gateway=gateway,
+            generator=_Generator(),
+            store=store,
+            task_id=task_id,
+        ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
+
+    persisted = store.checkpoints[-1]
+    assert persisted.stage is InPlaceCheckpointStage.CONTENT
+    assert persisted.tab_naming_declined_reason == "unsupported_metadata"
+    assert gateway.mutations == {"headers": 1, "content": 1}
+
+    async def reject_body_reentry(**_kwargs: object) -> Never:
+        pytest.fail("verified body stage must not be re-entered after a durable tab decline")
+
+    monkeypatch.setattr(gateway, "apply_in_place_stage", reject_body_reentry)
+    result = await _replay_executor(
+        gateway=gateway,
+        generator=_Generator(),
+        store=store,
+        task_id=task_id,
+        checkpoint=persisted,
+    ).execute(operation_id=operation_id, request=_in_place_request(TransformMode.BOTH))
+    assert [finding.code for finding in result.findings] == ["tab_naming_preserved"]
+    assert store.checkpoints[-1].stage is InPlaceCheckpointStage.COMPLETE
+    assert gateway.mutations == {"headers": 1, "content": 1}
+
+
+async def test_copy_unsupported_tab_metadata_is_durable_decline_after_verified_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = _native_copy_gateway()
+    gateway.verification = OutputVerification(
+        content_preserved=True,
+        structure_preserved=True,
+        brand_applied=True,
+    )
+    store = _CopyCheckpointStore()
+    operation_id = uuid.uuid7()
+    task_id = TaskId(uuid.uuid7())
+    naming_attempts = 0
+
+    async def decline_tabs(**_kwargs: object) -> None:
+        nonlocal naming_attempts
+        naming_attempts += 1
+        raise UnsupportedTabMetadataError
+
+    monkeypatch.setattr(gateway, "plan_tab_naming", decline_tabs)
+    request = _native_copy_request().model_copy(update={"mode": TransformMode.FORMAT})
+    result = await _copy_executor(gateway=gateway, store=store, task_id=task_id).execute(
+        operation_id=operation_id,
+        request=request,
+    )
+
+    assert gateway.applies == 1
+    assert store.checkpoints[-1].stage is CopyCheckpointStage.VERIFIED
+    assert store.checkpoints[-1].tab_naming_declined_reason == "unsupported_metadata"
+    assert [(finding.code, finding.severity) for finding in result.findings] == [
+        ("tab_naming_preserved", FindingSeverity.INFORMATIONAL)
+    ]
+    assert not result.needs_review
+
+    replayed = await _copy_executor(
+        gateway=gateway,
+        store=store,
+        task_id=task_id,
+        checkpoint=store.checkpoints[-1],
+    ).execute(operation_id=operation_id, request=request)
+    assert replayed == result
+    assert naming_attempts == 1
+    assert gateway.applies == 1
 
 
 async def test_in_place_header_retry_rebases_metadata_only_revision_drift() -> None:

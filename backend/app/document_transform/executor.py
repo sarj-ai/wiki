@@ -40,6 +40,7 @@ from app.document_transform.errors import (
     SourceChangedError,
     SourceTooLargeError,
     UnsupportedSourceError,
+    UnsupportedTabMetadataError,
 )
 from app.document_transform.gateway import (
     DocumentGateway,
@@ -115,6 +116,7 @@ from app.document_transform.schemas import (
     InPlaceCheckpoint,
     InPlaceCheckpointStage,
     OutputStrategy,
+    TabNamingDeclinedReason,
     TransformFinding,
     TransformMode,
     ValidationSummary,
@@ -619,6 +621,10 @@ class DocumentTransformExecutor:
             supported_brand_applied=applied_validation.supported_brand_applied,
         )
         findings.extend(applied_validation.findings)
+        findings = _with_tab_naming_decline(
+            findings,
+            declined_reason=checkpoint.tab_naming_declined_reason,
+        )
         if checkpoint.native_footer is not None and checkpoint.native_footer.coverage is not None:
             findings.extend(
                 TransformFinding(
@@ -818,15 +824,25 @@ class DocumentTransformExecutor:
         draft: OutputDraft,
         source_has_native_title: bool,
     ) -> OutputDraft:
+        if checkpoint.tab_naming_declined_reason is not None:
+            return draft
         if checkpoint.tab_naming is None:
-            tab_naming = await self._gateway.plan_tab_naming(
-                document_id=draft.document_id,
-                title=checkpoint.source_title,
-                operation_id=operation_id,
-                required_revision_id=draft.revision_id,
-                prefer_document_title=bool(checkpoint.authored_labels)
-                and not source_has_native_title,
-            )
+            try:
+                tab_naming = await self._gateway.plan_tab_naming(
+                    document_id=draft.document_id,
+                    title=checkpoint.source_title,
+                    operation_id=operation_id,
+                    required_revision_id=draft.revision_id,
+                    prefer_document_title=bool(checkpoint.authored_labels)
+                    and not source_has_native_title,
+                )
+            except UnsupportedTabMetadataError:
+                await self._save_copy_checkpoint(
+                    checkpoint.model_copy(
+                        update={"tab_naming_declined_reason": "unsupported_metadata"}
+                    )
+                )
+                return draft
             if tab_naming is None:
                 return draft
             checkpoint = await self._save_copy_checkpoint(
@@ -1265,7 +1281,7 @@ class DocumentTransformExecutor:
         )
         if expected_content.semantic_sha256 != checkpoint.expected_semantic_sha256:
             raise InPlaceNeedsReviewError
-        if checkpoint.tab_naming is not None:
+        if checkpoint.tab_naming is not None or checkpoint.tab_naming_declined_reason is not None:
             if snapshot.google_document is None or snapshot.revision_id is None:
                 raise InPlaceNeedsReviewError
             stage_result = InPlaceStageResult(snapshot.revision_id, snapshot.google_document)
@@ -1344,13 +1360,22 @@ class DocumentTransformExecutor:
     ) -> InPlaceCheckpoint:
         if request.mode is TransformMode.UNSLOP:
             return checkpoint
+        if checkpoint.tab_naming_declined_reason is not None:
+            return checkpoint
         if checkpoint.tab_naming is None:
-            tab_naming = await self._gateway.plan_tab_naming(
-                document_id=checkpoint.document_id,
-                title=checkpoint.source_title,
-                operation_id=operation_id,
-                required_revision_id=checkpoint.current_revision_id,
-            )
+            try:
+                tab_naming = await self._gateway.plan_tab_naming(
+                    document_id=checkpoint.document_id,
+                    title=checkpoint.source_title,
+                    operation_id=operation_id,
+                    required_revision_id=checkpoint.current_revision_id,
+                )
+            except UnsupportedTabMetadataError:
+                return await self._save_checkpoint(
+                    checkpoint.model_copy(
+                        update={"tab_naming_declined_reason": "unsupported_metadata"}
+                    )
+                )
             if tab_naming is None:
                 return checkpoint
             checkpoint = await self._save_checkpoint(
@@ -1734,13 +1759,17 @@ class DocumentTransformExecutor:
         checkpoint: InPlaceCheckpoint,
         output: DocumentOutput,
     ) -> DocumentTransformResult:
+        findings = _with_tab_naming_decline(
+            checkpoint.findings,
+            declined_reason=checkpoint.tab_naming_declined_reason,
+        )
         return DocumentTransformResult(
             operation_id=operation_id,
             source_sha256=checkpoint.source_sha256,
             output=output,
             mode=request.mode,
             applied_patch_count=checkpoint.applied_patch_count,
-            findings=checkpoint.findings,
+            findings=findings,
             validation=ValidationSummary(
                 source_unchanged=True,
                 protected_content_preserved=True,
@@ -1754,7 +1783,7 @@ class DocumentTransformExecutor:
                 "unslop_version": UNSLOP_UPSTREAM_VERSION,
             },
             pipeline_version=PIPELINE_VERSION,
-            needs_review=_findings_need_review(checkpoint.findings),
+            needs_review=_findings_need_review(findings),
             brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
             brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
             deterministic_patch_count=checkpoint.deterministic_patch_count,
@@ -2385,6 +2414,26 @@ def _brand_warning_detail(code: str) -> str:
 
 def _findings_need_review(findings: list[TransformFinding]) -> bool:
     return any(finding.severity is FindingSeverity.REVIEW for finding in findings)
+
+
+def _with_tab_naming_decline(
+    findings: list[TransformFinding], *, declined_reason: TabNamingDeclinedReason | None
+) -> list[TransformFinding]:
+    if declined_reason is None or any(
+        finding.code == "tab_naming_preserved" for finding in findings
+    ):
+        return findings
+    return [
+        *findings,
+        TransformFinding(
+            code="tab_naming_preserved",
+            detail=(
+                "Tab names and icons were preserved because this document's tab metadata "
+                "could not be safely renamed."
+            ),
+            severity=FindingSeverity.INFORMATIONAL,
+        ),
+    ]
 
 
 def _classify_verified_copy_planner_findings(

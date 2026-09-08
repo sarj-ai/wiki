@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from app.document_transform.errors import InPlaceNeedsReviewError
+from app.document_transform.errors import InPlaceNeedsReviewError, UnsupportedTabMetadataError
 from app.document_transform.gateway import InPlaceStageResult
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.schemas import TabNamingCheckpoint
@@ -156,3 +156,11 @@ def test_tab_metadata_nested_topology_and_full_content_invariant():
     document["tabs"][0]["childTabs"] = [child]
     assert native_tab_properties(document)[1].parent_tab_id == "t1"
     assert tab_naming_invariant_sha256(document) != original_hash
+
+
+def test_unknown_tab_metadata_is_a_typed_optional_enhancement_decline() -> None:
+    document = _document()
+    document["tabs"][0]["tabProperties"]["futureProviderField"] = "preserve"
+
+    with pytest.raises(UnsupportedTabMetadataError):
+        native_tab_properties(document)
