@@ -1,15 +1,34 @@
-from datetime import UTC, datetime
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
+from typing import override
 import uuid
 
+from pydantic import BaseModel
 import pytest
 
-from app.document_transform.qa_broker import plan_qa_canary
+from app.document_transform.qa_broker import plan_qa_canary, submit_planned_qa_canary
 from app.document_transform.qa_grants import QaAuthority, QaGrantError
-from app.document_transform.schemas import OutputStrategy, TransformMode
+from app.document_transform.schemas import (
+    DocumentTransformRequest,
+    DriveFileSource,
+    OutputStrategy,
+    TransformMode,
+)
 from app.drive.schemas import MIME_DOC, MIME_FOLDER, DriveNode
 from app.files.schemas import FileResponse
-from app.identifiers import DriveId, FileId, UserId
+from app.identifiers import DriveId, FileId, IdempotencyKey, QaPlanId, TaskId, UserId
 from app.models.document_transform_qa_grant import DocumentTransformQaGrantId
+from app.tasks.queue import TaskEnqueuer
+from app.tasks.schemas import (
+    PendingTaskRead,
+    SmartCreateTaskRecord,
+    TaskClaim,
+    TaskKind,
+    TaskRead,
+    TaskReservation,
+    TaskStatus,
+)
+from app.tasks.service import TaskService
 
 
 _SOURCE = FileId("source-folder")
@@ -44,6 +63,15 @@ class _Files:
                 drive_id=_DRIVE,
                 modified_time=None,
             )
+        if file_id == FileId("doc-1"):
+            return FileResponse(
+                id=file_id,
+                name="Document doc-1",
+                mime_type=MIME_DOC,
+                parent_folder_id=_SOURCE,
+                drive_id=_DRIVE,
+                modified_time="2026-09-07T12:00:00Z",
+            )
         return FileResponse(
             id=file_id,
             name="Destination",
@@ -69,6 +97,109 @@ class _Drive:
         assert max_pages > 0
         assert max_children > 0
         return self._children.get(folder_id, [])
+
+
+class _Tasks(TaskService):
+    def __init__(self) -> None:
+        self.payloads: list[DocumentTransformRequest] = []
+        self.task_id = TaskId(uuid.UUID("33333333-3333-4333-8333-333333333333"))
+
+    @override
+    async def create_or_replay(
+        self,
+        *,
+        kind: TaskKind,
+        owner_user_id: uuid.UUID,
+        idempotency_key: IdempotencyKey,
+        payload: BaseModel,
+        admit: Callable[[], Awaitable[None]] | None = None,
+        admit_new: Callable[[], None] | None = None,
+        admit_terminal_replay: Callable[[TaskRead], Awaitable[bool]] | None = None,
+    ) -> TaskReservation:
+        del kind, owner_user_id, idempotency_key, admit_terminal_replay
+        assert isinstance(payload, DocumentTransformRequest)
+        if admit is not None:
+            await admit()
+        if admit_new is not None:
+            admit_new()
+        created = not self.payloads
+        self.payloads.append(payload)
+        return TaskReservation(
+            task=PendingTaskRead(
+                id=self.task_id,
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                status=TaskStatus.PENDING,
+                result=None,
+                resource_id=None,
+                error_code=None,
+                error_detail=None,
+                attempt_count=0,
+                started_at=None,
+                finished_at=None,
+                created_at=datetime(2026, 9, 7, 12, tzinfo=UTC),
+            ),
+            created=created,
+        )
+
+    @override
+    async def claim(self, task_id: TaskId, *, lease_duration: timedelta) -> TaskClaim:
+        raise NotImplementedError
+
+    @override
+    async def defer(self, task_id: TaskId, *, lease_token: uuid.UUID) -> TaskRead:
+        raise NotImplementedError
+
+    @override
+    async def record_resource(
+        self, task_id: TaskId, *, lease_token: uuid.UUID, resource_id: FileId
+    ) -> None:
+        raise NotImplementedError
+
+    @override
+    async def succeed(
+        self, task_id: TaskId, *, lease_token: uuid.UUID, result: BaseModel
+    ) -> TaskRead:
+        raise NotImplementedError
+
+    @override
+    async def fail(
+        self,
+        task_id: TaskId,
+        *,
+        lease_token: uuid.UUID,
+        error_code: str,
+        error_detail: str | None,
+    ) -> TaskRead:
+        raise NotImplementedError
+
+    @override
+    async def discard_pending(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> bool:
+        raise NotImplementedError
+
+    @override
+    async def cancel(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> TaskRead:
+        raise NotImplementedError
+
+    @override
+    async def get_for_owner(self, task_id: TaskId, owner_user_id: uuid.UUID) -> TaskRead:
+        raise NotImplementedError
+
+    @override
+    async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord:
+        raise NotImplementedError
+
+
+class _Enqueuer(TaskEnqueuer):
+    def __init__(self) -> None:
+        self.task_ids: list[TaskId] = []
+
+    @override
+    async def enqueue_smart_create(self, task_id: TaskId) -> None:
+        raise NotImplementedError
+
+    @override
+    async def enqueue_document_transform(self, task_id: TaskId) -> None:
+        self.task_ids.append(task_id)
 
 
 def _node(
@@ -136,3 +267,55 @@ async def test_plan_key_changes_when_source_version_changes() -> None:
     )
 
     assert first.plan_id != changed.plan_id
+
+
+async def test_submit_recomputes_plan_and_forces_server_bound_copy() -> None:
+    authority = _authority()
+    drive = _Drive({_SOURCE: [_node("doc-1")]})
+    files = _Files()
+    plan = await plan_qa_canary(authority, drive=drive, files=files)
+    task_store = _Tasks()
+    queue = _Enqueuer()
+
+    first = await submit_planned_qa_canary(
+        authority,
+        plan_id=plan.plan_id,
+        drive=drive,
+        files=files,
+        tasks=task_store,
+        enqueuer=queue,
+    )
+    replay = await submit_planned_qa_canary(
+        authority,
+        plan_id=plan.plan_id,
+        drive=drive,
+        files=files,
+        tasks=task_store,
+        enqueuer=queue,
+    )
+
+    assert not first.replayed
+    assert replay.replayed
+    assert first.task.id == replay.task.id
+    assert queue.task_ids == [first.task.id, first.task.id]
+    payload = task_store.payloads[0]
+    assert payload.output_strategy is OutputStrategy.COPY
+    assert payload.copy_destination_folder_id == _DESTINATION
+    assert isinstance(payload.source, DriveFileSource)
+    assert payload.source.file_id == "doc-1"
+    assert payload.source.expected_modified_time == "2026-09-07T12:00:00Z"
+    assert payload.mode is authority.mode
+
+
+async def test_submit_rejects_stale_or_forged_plan_before_task_admission() -> None:
+    task_store = _Tasks()
+    with pytest.raises(QaGrantError):
+        await submit_planned_qa_canary(
+            _authority(),
+            plan_id=QaPlanId(uuid.UUID("99999999-9999-4999-8999-999999999999")),
+            drive=_Drive({_SOURCE: [_node("doc-1")]}),
+            files=_Files(),
+            tasks=task_store,
+            enqueuer=_Enqueuer(),
+        )
+    assert task_store.payloads == []

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 import hmac
 from typing import Annotated, Literal
@@ -25,9 +26,14 @@ from app.document_transform.qa_grants import (
     renew_qa_capability,
 )
 from app.document_transform.schemas import TransformMode
-from app.identifiers import FileId, QaPlanId
+from app.identifiers import FileId, QaPlanId, TaskId
 from app.models.user import User
+from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
+from app.tasks.errors import TaskError
 from app.tasks.internal_auth import GoogleOidcTaskRequestAuthenticator
+from app.tasks.queue import TaskEnqueuer
+from app.tasks.schemas import TaskStatus
+from app.tasks.service import TaskService
 
 
 class _StrictModel(BaseModel):
@@ -80,6 +86,24 @@ class QaCanaryPlanResponse(QaCanarySessionResponse):
     source_name: str
     source_modified_time: str
     output_strategy: Literal["copy"] = "copy"
+
+
+class QaCanarySubmissionAuthorization(QaCapabilityAuthorization):
+    plan_id: QaPlanId
+
+
+class QaCanarySubmissionResponse(QaCanarySessionResponse):
+    plan_id: QaPlanId
+    task_id: TaskId
+    task_status: TaskStatus
+    replayed: bool
+    output_strategy: Literal["copy"] = "copy"
+
+
+@dataclass(frozen=True, slots=True)
+class _AuthorizedCanaryRequest[QaAuthorization: QaCapabilityAuthorization]:
+    authority: QaAuthority
+    body: QaAuthorization
 
 
 issuer_router = APIRouter(prefix="/document-transforms/qa", tags=["document-transform-qa"])
@@ -277,7 +301,57 @@ async def plan_document_transform_qa_canary(
     )
 
 
+@workload_router.post(
+    "/canary/submit",
+    response_model=QaCanarySubmissionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def submit_document_transform_qa_canary(
+    *,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    broker: Annotated[QaCanaryBroker, Depends(qa_canary_broker_dep)],
+    tasks: Annotated[TaskService, Depends(task_service_dep)],
+    enqueuer: Annotated[TaskEnqueuer, Depends(task_enqueuer_dep)],
+    response: Response,
+) -> QaCanarySubmissionResponse:
+    """Recompute a server-selected plan and submit only its forced-copy task."""
+    authorized = await _authorize_canary_request_as(request, db, QaCanarySubmissionAuthorization)
+    try:
+        submission = await broker.submit(
+            authorized.authority,
+            plan_id=authorized.body.plan_id,
+            tasks=tasks,
+            enqueuer=enqueuer,
+        )
+    except QaGrantError as exc:
+        raise _no_store_http_error(
+            status.HTTP_409_CONFLICT, "QA canary plan is no longer current"
+        ) from exc
+    except HTTPException as exc:
+        raise _no_store_http_error(exc.status_code, "QA canary could not be submitted") from exc
+    except TaskError as exc:
+        raise _no_store_http_error(exc.http_status, "QA canary could not be submitted") from exc
+    _prevent_token_caching(response)
+    return QaCanarySubmissionResponse(
+        **_canary_session_response(authorized.authority).model_dump(),
+        plan_id=authorized.body.plan_id,
+        task_id=submission.task.id,
+        task_status=submission.task.status,
+        replayed=submission.replayed,
+    )
+
+
 async def _authorize_canary_request(request: Request, db: AsyncSession) -> QaAuthority:
+    authorized = await _authorize_canary_request_as(request, db, QaCapabilityAuthorization)
+    return authorized.authority
+
+
+async def _authorize_canary_request_as[QaAuthorization: QaCapabilityAuthorization](
+    request: Request,
+    db: AsyncSession,
+    body_type: type[QaAuthorization],
+) -> _AuthorizedCanaryRequest[QaAuthorization]:
     try:
         await _require_qa_workload(request.headers.get("Authorization"))
     except HTTPException as exc:
@@ -288,14 +362,14 @@ async def _authorize_canary_request(request: Request, db: AsyncSession) -> QaAut
     ):
         raise _invalid_qa_credential()
     try:
-        body = QaCapabilityAuthorization.model_validate(await request.json())
+        body = body_type.model_validate(await request.json())
     except (ValueError, ValidationError) as exc:
         raise _no_store_http_error(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "QA request is invalid"
         ) from exc
     try:
         _configured_binding(body)
-        return await authorize_qa_capability(
+        authority = await authorize_qa_capability(
             db,
             capability_token=capability_token,
             execution_name=body.execution_name,
@@ -310,6 +384,7 @@ async def _authorize_canary_request(request: Request, db: AsyncSession) -> QaAut
     except QaGrantError as exc:
         await db.rollback()
         raise _invalid_qa_credential() from exc
+    return _AuthorizedCanaryRequest(authority=authority, body=body)
 
 
 def _capability_response(capability: QaCapability) -> QaCapabilityResponse:
