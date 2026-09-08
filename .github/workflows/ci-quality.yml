@@ -49,12 +49,14 @@ jobs:
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
 
       - name: Cache pre-commit environments
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/pre-commit
-          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          key: pre-commit-v4.6.2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('backend/.python-version', 'backend/uv.toml', 'backend/uv.lock', '.pre-commit-config.yaml') }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -94,12 +96,12 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           if [[ -z "$BASE_SHA" ]]; then
-            uvx --python 3.14 pre-commit run --all-files --show-diff-on-failure
+            uvx --python 3.14.7 'pre-commit==4.6.2' run --all-files --show-diff-on-failure
             exit 0
           elif [[ "$BASE_SHA" =~ ^0+$ ]]; then
             BASE_SHA=$(git rev-list --max-parents=0 HEAD)
           fi
-          uvx --python 3.14 pre-commit run --from-ref "$BASE_SHA" --to-ref "$HEAD_SHA" --show-diff-on-failure
+          uvx --python 3.14.7 'pre-commit==4.6.2' run --from-ref "$BASE_SHA" --to-ref "$HEAD_SHA" --show-diff-on-failure
 
   api-contract:
     name: OpenAPI spec in sync
@@ -132,6 +134,13 @@ jobs:
           persist-credentials: false
 
       - name: Run gitleaks
+        env:
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          GITLEAKS_VERSION: 8.30.1
         run: |
-          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar -xz gitleaks
+          curl --fail --location --silent --show-error \
+            --output gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check --strict
+          tar -xzf gitleaks.tar.gz gitleaks
           ./gitleaks detect --source . --redact --verbose
