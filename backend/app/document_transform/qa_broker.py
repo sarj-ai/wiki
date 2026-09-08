@@ -15,12 +15,17 @@ from app.auth.google_tokens import (
     GoogleTokenUnavailableError,
 )
 from app.cache.service import CacheService
+from app.document_transform.application import TransformSubmission, submit_document_transform
 from app.document_transform.qa_contract import (
     QA_MAX_FOLDER_LIST_PAGES,
     QA_MAX_TRAVERSED_FOLDERS,
 )
 from app.document_transform.qa_grants import QaAuthority, QaGrantError
-from app.document_transform.schemas import OutputStrategy
+from app.document_transform.schemas import (
+    DocumentTransformRequest,
+    DriveFileSource,
+    OutputStrategy,
+)
 from app.drive.errors import DriveTraversalIncompleteError
 from app.drive.schemas import MIME_DOC, MIME_FOLDER, DriveNode
 from app.drive.service import GoogleDriveService
@@ -29,6 +34,8 @@ from app.files.schemas import FileResponse
 from app.files.service import GoogleFilesService
 from app.identifiers import DriveId, FileId, IdempotencyKey, QaPlanId
 from app.models.user import User
+from app.tasks.queue import TaskEnqueuer
+from app.tasks.service import TaskService
 
 
 _MAX_CANARY_PLAN_CHILDREN = 1_000
@@ -42,6 +49,12 @@ class QaCanaryPlan:
     source_name: str
     source_modified_time: str
     output_strategy: OutputStrategy
+
+
+@dataclass(frozen=True, slots=True)
+class _QaBrokerServices:
+    drive: GoogleDriveService
+    files: GoogleFilesService
 
 
 class QaDriveReader(Protocol):
@@ -65,6 +78,53 @@ class QaCanaryBroker:
         self._cache = cache
 
     async def plan(self, authority: QaAuthority) -> QaCanaryPlan:
+        services = await self._services(authority)
+        try:
+            plan = await plan_qa_canary(authority, drive=services.drive, files=services.files)
+        except (
+            DriveTraversalIncompleteError,
+            FilesError,
+            NotImplementedError,
+            ValueError,
+        ) as exc:
+            raise QaGrantError from exc
+        return plan
+
+    async def submit(
+        self,
+        authority: QaAuthority,
+        *,
+        plan_id: QaPlanId,
+        tasks: TaskService,
+        enqueuer: TaskEnqueuer,
+    ) -> TransformSubmission:
+        services = await self._services(authority)
+        try:
+            plan = await plan_qa_canary(authority, drive=services.drive, files=services.files)
+        except (
+            DriveTraversalIncompleteError,
+            FilesError,
+            NotImplementedError,
+            ValueError,
+        ) as exc:
+            raise QaGrantError from exc
+        try:
+            return await _submit_qa_canary_plan(
+                authority,
+                plan=plan,
+                plan_id=plan_id,
+                files=services.files,
+                tasks=tasks,
+                enqueuer=enqueuer,
+            )
+        except (
+            FilesError,
+            GoogleReauthenticationRequiredError,
+            GoogleTokenUnavailableError,
+        ) as exc:
+            raise QaGrantError from exc
+
+    async def _services(self, authority: QaAuthority) -> _QaBrokerServices:
         user = await self._db.get(User, authority.user_id)
         if user is None or user.email.casefold() != authority.user_email.casefold():
             raise QaGrantError
@@ -76,7 +136,6 @@ class QaCanaryBroker:
                 refresh_handler=prepared.refresh_handler,
             )
             files = GoogleFilesService(user=prepared.user, drive=drive)
-            return await plan_qa_canary(authority, drive=drive, files=files)
         except (
             DriveTraversalIncompleteError,
             FilesError,
@@ -86,6 +145,58 @@ class QaCanaryBroker:
             ValueError,
         ) as exc:
             raise QaGrantError from exc
+        return _QaBrokerServices(drive=drive, files=files)
+
+
+async def submit_planned_qa_canary(
+    authority: QaAuthority,
+    *,
+    plan_id: QaPlanId,
+    drive: QaDriveReader,
+    files: QaFileReader,
+    tasks: TaskService,
+    enqueuer: TaskEnqueuer,
+) -> TransformSubmission:
+    plan = await plan_qa_canary(authority, drive=drive, files=files)
+    return await _submit_qa_canary_plan(
+        authority,
+        plan=plan,
+        plan_id=plan_id,
+        files=files,
+        tasks=tasks,
+        enqueuer=enqueuer,
+    )
+
+
+async def _submit_qa_canary_plan(
+    authority: QaAuthority,
+    *,
+    plan: QaCanaryPlan,
+    plan_id: QaPlanId,
+    files: QaFileReader,
+    tasks: TaskService,
+    enqueuer: TaskEnqueuer,
+) -> TransformSubmission:
+    if not hmac.compare_digest(plan.plan_id.bytes, plan_id.bytes):
+        raise QaGrantError
+    payload = DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=plan.source_file_id,
+            expected_modified_time=plan.source_modified_time,
+        ),
+        mode=authority.mode,
+        output_strategy=OutputStrategy.COPY,
+        copy_destination_folder_id=authority.destination_folder_id,
+    )
+    return await submit_document_transform(
+        payload=payload,
+        owner_user_id=authority.user_id,
+        idempotency_key=plan.idempotency_key,
+        tasks=tasks,
+        enqueuer=enqueuer,
+        files=files,
+    )
 
 
 async def plan_qa_canary(

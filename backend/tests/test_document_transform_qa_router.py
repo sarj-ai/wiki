@@ -12,6 +12,7 @@ from app.config import settings
 from app.csrf import CookieOriginMiddleware
 from app.database import get_db
 from app.document_transform import qa_router
+from app.document_transform.application import TransformSubmission
 from app.document_transform.qa_broker import QaCanaryPlan
 from app.document_transform.qa_grants import (
     IssuedQaGrant,
@@ -20,10 +21,20 @@ from app.document_transform.qa_grants import (
     QaGrantError,
 )
 from app.document_transform.schemas import OutputStrategy, TransformMode
-from app.identifiers import AuthSessionId, FileId, GoogleUserId, IdempotencyKey, QaPlanId, UserId
+from app.identifiers import (
+    AuthSessionId,
+    FileId,
+    GoogleUserId,
+    IdempotencyKey,
+    QaPlanId,
+    TaskId,
+    UserId,
+)
 from app.models.document_transform_qa_grant import DocumentTransformQaGrantId
 from app.models.user import User
+from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
 from app.tasks.internal_auth import GoogleOidcTaskRequestAuthenticator
+from app.tasks.schemas import PendingTaskRead, TaskKind, TaskStatus
 
 
 _RELEASE = "a" * 40
@@ -715,4 +726,166 @@ async def test_canary_plan_rejects_caller_selected_file_before_authorization(
     assert "attacker-selected-doc" not in response.text
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["pragma"] == "no-cache"
+    assert db.commits == db.rollbacks == 0
+
+
+async def test_canary_submit_reauthorizes_and_returns_only_bounded_admission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    now = datetime.now(UTC)
+    authorization_calls = 0
+    submit_calls = 0
+    operation = uuid.UUID("55555555-5555-4555-8555-555555555555")
+    task_id = TaskId(uuid.UUID("66666666-6666-4666-8666-666666666666"))
+
+    async def authorize(_db: object, **_kwargs: object) -> QaAuthority:
+        nonlocal authorization_calls
+        authorization_calls += 1
+        return QaAuthority(
+            grant_id=DocumentTransformQaGrantId(uuid.UUID("44444444-4444-4444-8444-444444444444")),
+            user_id=_user().id,
+            user_email="qa@example.test",
+            execution_name="job/executions/one",
+            release_sha=_RELEASE,
+            image_digest=_DIGEST,
+            source_folder_id=FileId("source"),
+            destination_folder_id=FileId("destination"),
+            mode=TransformMode.BOTH,
+            expires_at=now + timedelta(minutes=5),
+            job_expires_at=now + timedelta(hours=2),
+        )
+
+    class Broker:
+        async def submit(self, authority: QaAuthority, **kwargs: object) -> TransformSubmission:
+            nonlocal submit_calls
+            submit_calls += 1
+            assert authority.source_folder_id == "source"
+            if kwargs["plan_id"] != operation:
+                raise QaGrantError
+            return TransformSubmission(
+                task=PendingTaskRead(
+                    id=task_id,
+                    kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                    status=TaskStatus.PENDING,
+                    result=None,
+                    resource_id=None,
+                    error_code=None,
+                    error_detail=None,
+                    attempt_count=0,
+                    started_at=None,
+                    finished_at=None,
+                    created_at=now,
+                ),
+                replayed=submit_calls > 1,
+            )
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    db = _Db()
+    application = _application(db, _user())
+    application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
+    application.dependency_overrides[task_service_dep] = object
+    application.dependency_overrides[task_enqueuer_dep] = object
+    body = _issuer_body() | {
+        "execution_name": "job/executions/one",
+        "plan_id": str(operation),
+    }
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        first = await http.post(
+            "/internal/document-transform-qa/canary/submit",
+            json=body,
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+        replay = await http.post(
+            "/internal/document-transform-qa/canary/submit",
+            json=body,
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+        stale = await http.post(
+            "/internal/document-transform-qa/canary/submit",
+            json=body | {"plan_id": "77777777-7777-4777-8777-777777777777"},
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+
+    assert first.status_code == replay.status_code == 202
+    assert stale.status_code == 409
+    assert authorization_calls == submit_calls == 3
+    assert first.json()["task_id"] == replay.json()["task_id"] == str(task_id)
+    assert first.json()["task_status"] == replay.json()["task_status"] == "pending"
+    assert not first.json()["replayed"]
+    assert replay.json()["replayed"]
+    assert first.json()["output_strategy"] == "copy"
+    assert "source_file_id" not in first.text
+    assert first.headers["cache-control"] == replay.headers["cache-control"] == "no-store"
+    assert stale.headers["cache-control"] == "no-store"
+    assert stale.headers["pragma"] == "no-cache"
+
+
+async def test_canary_submit_rejects_caller_selected_file_before_capability_authorization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+
+    async def authorize(*_args: object, **_kwargs: object) -> QaAuthority:
+        pytest.fail("caller-selected source reached capability authorization")
+
+    class Broker:
+        async def submit(self, *_args: object, **_kwargs: object) -> TransformSubmission:
+            pytest.fail("caller-selected source reached task submission")
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    db = _Db()
+    application = _application(db, _user())
+    application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
+    application.dependency_overrides[task_service_dep] = object
+    application.dependency_overrides[task_enqueuer_dep] = object
+    body = _issuer_body() | {
+        "execution_name": "job/executions/one",
+        "plan_id": "55555555-5555-4555-8555-555555555555",
+        "source_file_id": "attacker-selected-doc",
+    }
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/canary/submit",
+            json=body,
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+
+    assert response.status_code == 422
+    assert "attacker-selected-doc" not in response.text
+    assert response.headers["cache-control"] == "no-store"
     assert db.commits == db.rollbacks == 0
