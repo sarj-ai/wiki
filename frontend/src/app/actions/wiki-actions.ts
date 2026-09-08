@@ -197,6 +197,12 @@ export async function saveDocumentAliasAction(
   return await resultOf(async () => await serverWikiApi.saveDocumentAlias(fileId, alias));
 }
 
+export async function ensureDocumentAliasAction(
+  fileId: string,
+): Promise<ActionResult<DocumentAlias>> {
+  return await resultOf(async () => await serverWikiApi.ensureDocumentAlias(fileId));
+}
+
 export async function retireDocumentAliasAction(fileId: string): Promise<ActionResult<null>> {
   return resultOf(async () => {
     await serverWikiApi.retireDocumentAlias(fileId);

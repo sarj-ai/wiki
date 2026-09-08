@@ -1,6 +1,7 @@
 "use client";
 
-import { Copy } from "lucide-react";
+import { Copy, Loader2, RotateCw } from "lucide-react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -9,10 +10,23 @@ import type { DocumentTransformResult } from "@/lib/document-transform-types";
 
 const VISIBLE_FINDINGS = 3;
 
-export function DocumentPolishReceipt({ result }: { result: DocumentTransformResult }) {
+export function DocumentPolishReceipt({
+  onRetryShortLink,
+  result,
+}: {
+  onRetryShortLink?: () => Promise<void>;
+  result: DocumentTransformResult;
+}) {
+  const [retrying, setRetrying] = useState(false);
+  const retryLatch = useRef(false);
   const informationalFindings = uniqueFindingDetails(result, "informational");
   const reviewFindings = uniqueFindingDetails(result, "review");
   const alias = result.shortLinkStatus === "ready" ? result.shortLinkAlias : null;
+  const retryAllowed =
+    result.shortLinkStatus === "unavailable" &&
+    result.validation.protectedContentPreserved &&
+    result.validation.structurePreserved &&
+    onRetryShortLink !== undefined;
 
   return (
     <div className="mt-3 space-y-3">
@@ -51,12 +65,43 @@ export function DocumentPolishReceipt({ result }: { result: DocumentTransformRes
           </a>
         </div>
       ) : (
-        <p className="text-muted-foreground text-sm">
-          {result.shortLinkStatus === "unavailable"
-            ? "The short link could not be created."
-            : "No automatic short link is available for this result."}{" "}
-          Open the document and choose Short link to create one without polishing again.
-        </p>
+        <div className="space-y-2">
+          <p className="text-muted-foreground text-sm">
+            {result.shortLinkStatus === "unavailable"
+              ? "The short link could not be created."
+              : "No automatic short link is available for this result."}
+          </p>
+          {retryAllowed ? (
+            <Button
+              disabled={retrying}
+              onClick={() => {
+                if (retryLatch.current) return;
+                retryLatch.current = true;
+                setRetrying(true);
+                void onRetryShortLink()
+                  .then(() => toast.success("Short link created"))
+                  .catch(() => toast.error("Couldn’t create the short link"))
+                  .finally(() => {
+                    retryLatch.current = false;
+                    setRetrying(false);
+                  });
+              }}
+              type="button"
+              variant="outline"
+            >
+              {retrying ? (
+                <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+              ) : (
+                <RotateCw aria-hidden="true" className="size-4" />
+              )}
+              {retrying ? "Creating short link…" : "Retry short link"}
+            </Button>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              Open the document and choose Short link to create one without polishing again.
+            </p>
+          )}
+        </div>
       )}
       <p className="text-muted-foreground text-xs">
         Short links do not change who can access the document.

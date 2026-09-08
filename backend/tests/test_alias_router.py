@@ -7,7 +7,12 @@ from httpx import ASGITransport, AsyncClient
 import pytest
 
 from app.aliases.dependencies import alias_service_dep
-from app.aliases.errors import AliasConflictError, AliasNotFoundError
+from app.aliases.errors import (
+    AliasConflictError,
+    AliasEditForbiddenError,
+    AliasNotFoundError,
+    AliasTargetUnsupportedError,
+)
 from app.aliases.schemas import (
     DocumentAliasForFile,
     DocumentAliasRead,
@@ -43,6 +48,16 @@ class _Aliases(AliasService):
     async def retire(self, file_id: str) -> None:
         del file_id
         self.current = None
+
+    async def ensure_polish_for_file(self, file_id: FileId) -> DocumentAliasRead:
+        if file_id == "forbidden":
+            raise AliasEditForbiddenError
+        if file_id == "unsupported":
+            raise AliasTargetUnsupportedError
+        if file_id == "conflict":
+            raise AliasConflictError
+        self.current = self.current or "generated-link"
+        return DocumentAliasRead(alias=self.current, file_id=file_id)
 
     async def resolve_recent(self, aliases: list[DocumentAliasValue]) -> list[RecentDocumentAlias]:
         if "eng-onboarding" not in aliases:
@@ -98,6 +113,45 @@ async def test_alias_api_round_trip(client: AsyncClient) -> None:
     assert renamed.json() == {"alias": "people-org-chart", "file_id": "google-file-id"}
     assert resolved.json() == {"alias": "people-org-chart", "file_id": "google-file-id"}
     assert retired.status_code == 204
+
+
+async def test_alias_api_ensures_without_transform_submission(client: AsyncClient) -> None:
+    async with client:
+        response = await client.post("/aliases/files/google-file-id/ensure")
+
+    assert response.status_code == 200
+    assert response.json() == {"alias": "eng-onboarding", "file_id": "google-file-id"}
+    assert response.headers["cache-control"] == "private, no-store"
+
+
+@pytest.mark.parametrize(
+    ("file_id", "expected_status", "expected_code"),
+    [
+        ("forbidden", 403, "alias_edit_forbidden"),
+        ("unsupported", 400, "alias_target_unsupported"),
+        ("conflict", 409, "alias_conflict"),
+    ],
+)
+async def test_alias_ensure_maps_fresh_authorization_and_candidate_failures(
+    client: AsyncClient, file_id: str, expected_status: int, expected_code: str
+) -> None:
+    async with client:
+        response = await client.post(f"/aliases/files/{file_id}/ensure")
+
+    assert response.status_code == expected_status
+    assert response.json()["code"] == expected_code
+
+
+async def test_alias_ensure_requires_authentication(aliases: _Aliases) -> None:
+    app.dependency_overrides[get_current_user] = _unauthorized
+    app.dependency_overrides[alias_service_dep] = lambda: aliases
+    client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+    async with client:
+        response = await client.post("/aliases/files/google-file-id/ensure")
+
+    assert response.status_code == 401
+    assert response.headers.get("location") is None
 
 
 async def test_alias_api_maps_conflicts_and_validates_format(client: AsyncClient) -> None:

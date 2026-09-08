@@ -20,9 +20,11 @@ from app.aliases.schemas import (
     DocumentAliasValue,
     RecentDocumentAlias,
 )
+from app.document_transform.naming import polish_alias_candidates
 from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT, NAVIGATOR_SUPPORTED_MIME_TYPES
 from app.drive.service import DriveService
 from app.files.errors import FilesError
+from app.files.schemas import FileResponse
 from app.files.service import FilesService
 from app.identifiers import FileId
 from app.models.user import User
@@ -43,6 +45,9 @@ class AliasService(ABC):
     async def retire(self, file_id: FileId) -> None: ...
 
     async def resolve_recent(self, aliases: list[DocumentAliasValue]) -> list[RecentDocumentAlias]:
+        raise NotImplementedError
+
+    async def ensure_polish_for_file(self, file_id: FileId) -> DocumentAliasRead:
         raise NotImplementedError
 
 
@@ -119,6 +124,11 @@ class PostgresAliasService(AliasService):
         # Retired aliases remain reserved. Never change Drive permissions or
         # replace an editor's chosen link.
         file = await self._files.get(file_id)
+        return await self._ensure_for_validated_file(file, candidates)
+
+    async def _ensure_for_validated_file(
+        self, file: FileResponse, candidates: tuple[DocumentAliasValue, ...]
+    ) -> DocumentAliasRead:
         if file.mime_type not in NAVIGATOR_SUPPORTED_MIME_TYPES or file.mime_type in {
             MIME_FOLDER,
             MIME_SHORTCUT,
@@ -127,12 +137,12 @@ class PostgresAliasService(AliasService):
         if not file.can_edit:
             raise AliasEditForbiddenError
         for alias in candidates:
-            existing = await self._active_for_file(file_id)
+            existing = await self._active_for_file(file.id)
             if existing is not None:
                 return _to_read(existing)
             statement = (
                 pg_insert(DocumentAlias)
-                .values(alias=alias, file_id=file_id, created_by=self._user.id)
+                .values(alias=alias, file_id=file.id, created_by=self._user.id)
                 .on_conflict_do_nothing()
                 .returning(DocumentAlias)
             )
@@ -142,10 +152,20 @@ class PostgresAliasService(AliasService):
                 return _to_read(row)
             # Under READ COMMITTED this new query observes a concurrent winner
             # after ON CONFLICT has waited for that transaction to finish.
-            existing = await self._active_for_file(file_id)
+            existing = await self._active_for_file(file.id)
             if existing is not None:
                 return _to_read(existing)
         raise AliasConflictError
+
+    @override
+    async def ensure_polish_for_file(self, file_id: FileId) -> DocumentAliasRead:
+        # Derive candidates from a fresh, authorization-checked Drive read. This
+        # is deliberately separate from transform submission so retrying link
+        # creation can never polish the document a second time.
+        file = await self._files.get(file_id)
+        return await self._ensure_for_validated_file(
+            file, polish_alias_candidates(file_id, file.name)
+        )
 
     @override
     async def retire(self, file_id: FileId) -> None:

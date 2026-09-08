@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { toast } from "sonner";
 
+import * as wikiActions from "@/app/actions/wiki-actions";
 import { ApiError } from "@/lib/api-error";
 import { BrowserUserContext } from "@/lib/browser-user-context";
 import { documentTransformApi } from "@/lib/document-transform-client";
@@ -317,13 +318,24 @@ describe("DocumentPolishDialog", () => {
     async (shortLinkStatus) => {
       const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
       const create = vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
-      vi.spyOn(documentTransformApi, "waitForCompletion").mockResolvedValue({
-        ...transformResult(),
-        changed: false,
-        shortLinkAlias: shortLinkStatus === "ready" ? "architecture-review" : null,
-        shortLinkStatus,
-      });
+      const waitForCompletion = vi
+        .spyOn(documentTransformApi, "waitForCompletion")
+        .mockResolvedValue({
+          ...transformResult(),
+          changed: false,
+          shortLinkAlias: shortLinkStatus === "ready" ? "architecture-review" : null,
+          shortLinkStatus,
+        });
       const copy = vi.fn().mockResolvedValue(undefined);
+      const ensureCompletion =
+        deferred<Awaited<ReturnType<typeof wikiActions.ensureDocumentAliasAction>>>();
+      const ensured = {
+        data: { alias: "architecture-review", fileId: "output-1" },
+        ok: true,
+      } as const;
+      const ensure = vi
+        .spyOn(wikiActions, "ensureDocumentAliasAction")
+        .mockImplementation(async () => await ensureCompletion.promise);
       vi.stubGlobal("navigator", { clipboard: { writeText: copy }, locks: navigator.locks });
       try {
         renderDialog(root, {
@@ -339,22 +351,72 @@ describe("DocumentPolishDialog", () => {
         await vi.waitFor(() => expect(document.body).toHaveTextContent("No changes needed"));
         expect(findButtonNow("Formatting")).toBeDisabled();
         expect(document.body).toHaveTextContent("do not change who can access");
+        let retryWasDisabled = false;
         if (shortLinkStatus === "ready") {
           clickButton(findButtonNow("Copy short link"));
+        } else {
+          const retry = findButtonNow("Retry short link");
+          clickButton(retry);
+          clickButton(retry);
+          retryWasDisabled = findButtonNow("Creating short link…").disabled;
+          ensureCompletion.resolve(ensured);
         }
+        await vi.waitFor(() => expect(document.body).toHaveTextContent("Copy short link"));
         expect(copy.mock.calls).toEqual(
           shortLinkStatus === "ready" ? [[`${window.location.origin}/go/architecture-review`]] : [],
         );
-        expect(document.body).toHaveTextContent(
-          shortLinkStatus === "ready" ? "Copy short link" : "short link could not be created",
-        );
+        expect(document.body).toHaveTextContent("Copy short link");
+        expect(retryWasDisabled).toBe(shortLinkStatus === "unavailable");
         expect(create).toHaveBeenCalledOnce();
+        expect(waitForCompletion).toHaveBeenCalledOnce();
+        expect(ensure).toHaveBeenCalledTimes(shortLinkStatus === "ready" ? 0 : 1);
         expect(NavigationMock.push).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllGlobals();
       }
     },
   );
+
+  it("re-enables a failed alias-only retry without resubmitting polish", async () => {
+    const create = vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+      id: "55555555-5555-4555-8555-555555555555",
+      status: "pending",
+    });
+    const waitForCompletion = vi
+      .spyOn(documentTransformApi, "waitForCompletion")
+      .mockResolvedValue({
+        ...transformResult(),
+        shortLinkAlias: null,
+        shortLinkStatus: "unavailable",
+      });
+    const ensure = vi
+      .spyOn(wikiActions, "ensureDocumentAliasAction")
+      .mockResolvedValueOnce({ error: "Unavailable", ok: false, status: 503 })
+      .mockResolvedValueOnce({
+        data: { alias: "architecture-review", fileId: "output-1" },
+        ok: true,
+      });
+    renderDialog(root, {
+      allowInPlace: false,
+      expectedModifiedTime: "2026-09-03T12:00:00Z",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+    });
+
+    await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+    clickButton(findButtonNow("Create polished copy"));
+    await vi.waitFor(() => expect(findButtonNow("Retry short link")).toBeEnabled());
+    clickButton(findButtonNow("Retry short link"));
+    await vi.waitFor(() => expect(findButtonNow("Retry short link")).toBeEnabled());
+    clickButton(findButtonNow("Retry short link"));
+    await vi.waitFor(() => expect(document.body).toHaveTextContent("Copy short link"));
+
+    expect(ensure).toHaveBeenCalledTimes(2);
+    expect(create).toHaveBeenCalledOnce();
+    expect(waitForCompletion).toHaveBeenCalledOnce();
+  });
 
   it("refreshes Drive metadata before creating a transform", async () => {
     const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
@@ -1184,8 +1246,11 @@ describe("DocumentPolishDialog", () => {
           linkStatus === "ready" ? [[`${window.location.origin}/go/review-copy`]] : [],
         );
         expect(document.body.textContent.includes("Copy short link")).toBe(linkStatus === "ready");
+        expect(document.body.textContent.includes("Retry short link")).toBe(
+          linkStatus === "unavailable",
+        );
         expect(document.body.textContent.includes("choose Short link")).toBe(
-          linkStatus !== "ready",
+          linkStatus === undefined,
         );
         expect(findButtonNow("Create polished copy")).toBeDisabled();
         expect(create).toHaveBeenCalledOnce();

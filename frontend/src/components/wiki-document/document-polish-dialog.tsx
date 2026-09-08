@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { ensureDocumentAliasAction } from "@/app/actions/wiki-actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -30,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FolderPickerDialog } from "@/components/wiki-sidebar/folder-picker-dialog";
+import { documentAliasKey } from "@/hooks/use-document-alias";
 import { ApiError } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
 import { documentTransformApi } from "@/lib/document-transform-client";
@@ -231,6 +233,20 @@ export function DocumentPolishDialog({
     queryClient.setQueryData(recoveryKey, operation);
     if (owner && sourceIdentity === "markdown" && (!operation || operation.taskId))
       clearMarkdownRecovery(owner);
+  };
+  const ensureShortLink = async (
+    result: DocumentTransformResult,
+  ): Promise<DocumentTransformResult> => {
+    const ensured = await ensureDocumentAliasAction(result.outputFile.id);
+    if (!ensured.ok) throw new Error(ensured.error);
+    queryClient.setQueryData(documentAliasKey(result.outputFile.id), {
+      alias: ensured.data.alias,
+    });
+    return {
+      ...result,
+      shortLinkAlias: ensured.data.alias,
+      shortLinkStatus: "ready",
+    };
   };
 
   useEffect(() => {
@@ -656,7 +672,21 @@ export function DocumentPolishDialog({
                     Task reference: <code className="break-all select-all">{terminalTaskId}</code>
                   </p>
                 ) : null}
-                {reviewResult ? <DocumentPolishReceipt result={reviewResult} /> : null}
+                {reviewResult ? (
+                  <DocumentPolishReceipt
+                    {...(reviewResult.shortLinkStatus === "unavailable"
+                      ? {
+                          onRetryShortLink: async () => {
+                            const updated = await ensureShortLink(reviewResult);
+                            setReviewResult((current) =>
+                              current?.operationId === updated.operationId ? updated : current,
+                            );
+                          },
+                        }
+                      : {})}
+                    result={reviewResult}
+                  />
+                ) : null}
                 {reviewResult ? (
                   <Button
                     className="mt-2 px-0"
@@ -700,7 +730,19 @@ export function DocumentPolishDialog({
                   Task reference:{" "}
                   <code className="break-all select-all">{completedResult.operationId}</code>
                 </p>
-                <DocumentPolishReceipt result={completedResult} />
+                <DocumentPolishReceipt
+                  {...(completedResult.shortLinkStatus === "unavailable"
+                    ? {
+                        onRetryShortLink: async () => {
+                          const updated = await ensureShortLink(completedResult);
+                          setCompletedResult((current) =>
+                            current?.operationId === updated.operationId ? updated : current,
+                          );
+                        },
+                      }
+                    : {})}
+                  result={completedResult}
+                />
               </div>
             ) : null}
             {sessionIdentityUnavailable ? (
