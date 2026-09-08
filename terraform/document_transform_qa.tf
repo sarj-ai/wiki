@@ -103,7 +103,11 @@ resource "google_cloud_run_v2_job" "document_transform_qa" {
           value = "/var/lib/wiki-qa"
         }
         env {
-          name  = "WIKI_QA_EXCHANGE_URL"
+          name  = "WIKI_QA_BOOTSTRAP_URL"
+          value = "https://${var.backend_domain}/internal/document-transform-qa/bootstrap"
+        }
+        env {
+          name  = "WIKI_QA_AUDIENCE"
           value = "https://${var.backend_domain}/internal/document-transform-qa/exchange"
         }
         env {
@@ -124,11 +128,20 @@ resource "google_cloud_run_v2_job" "document_transform_qa" {
   ]
 }
 
-resource "google_cloud_run_v2_job_iam_member" "document_transform_qa_invoker" {
+resource "google_cloud_run_v2_job_iam_member" "document_transform_qa_launcher" {
   count    = local.document_transform_qa_enabled ? 1 : 0
   project  = var.project_id
   location = var.dammam_region
   name     = google_cloud_run_v2_job.document_transform_qa[0].name
-  role     = "roles/run.jobsExecutorWithOverrides"
-  member   = var.document_transform_qa_invoker_member
+  role     = "roles/run.jobsExecutor"
+  member   = "serviceAccount:${google_service_account.backend.email}"
+}
+
+resource "google_cloud_run_v2_job_iam_member" "document_transform_qa_attestor" {
+  count    = local.document_transform_qa_enabled ? 1 : 0
+  project  = var.project_id
+  location = var.dammam_region
+  name     = google_cloud_run_v2_job.document_transform_qa[0].name
+  role     = "roles/run.viewer"
+  member   = "serviceAccount:${google_service_account.backend.email}"
 }

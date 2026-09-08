@@ -23,6 +23,7 @@ from app.models.user import User
 MAX_GRANT_LIFETIME = timedelta(minutes=15)
 CAPABILITY_LIFETIME = timedelta(minutes=5)
 MAX_JOB_LIFETIME = timedelta(hours=2)
+MAX_LAUNCH_LEASE = timedelta(minutes=1)
 _TOKEN_BYTES = 32
 _MAX_TOKEN_LENGTH = 256
 _MAX_EXECUTION_NAME_LENGTH = 255
@@ -30,6 +31,7 @@ _RELEASE_SHA_LENGTH = 40
 _IMAGE_DIGEST_LENGTH = 71
 _MIN_DERIVATION_KEY_BYTES = 32
 _MAX_CLEANUP_BATCH = 100
+_QA_LAUNCH_ADVISORY_LOCK = 0x51414C41554E4348
 
 
 class QaGrantError(Exception):
@@ -70,6 +72,127 @@ class QaAuthority:
 @dataclass(frozen=True, slots=True)
 class PreparedQaRun:
     run_id: QaRunId
+
+
+@dataclass(frozen=True, slots=True)
+class QaBootstrapResult:
+    capability: QaCapability
+    execution_name: str
+    release_sha: str
+    image_digest: str
+    source_folder_id: FileId
+    destination_folder_id: FileId
+    mode: TransformMode
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedQaLaunch:
+    run_id: QaRunId
+    state: str
+    execution_name: str | None
+    owns_launch_claim: bool
+
+
+@dataclass(frozen=True, slots=True)
+class QaExecutionIdentity:
+    execution_name: str
+    execution_uid: uuid.UUID
+    execution_job_name: str
+    release_sha: str
+    image_digest: str
+
+
+async def prepare_idempotent_qa_launch(
+    db: AsyncSession,
+    *,
+    idempotency_key: uuid.UUID,
+    issuer_user_id: UserId,
+    user_id: UserId,
+    session_id: AuthSessionId,
+    release_sha: str,
+    image_digest: str,
+    source_folder_id: FileId,
+    destination_folder_id: FileId,
+    mode: TransformMode,
+) -> PreparedQaLaunch:
+    # The workload identity is shared by every execution of the configured job.
+    # Serialize all launch preparation, in addition to the database uniqueness
+    # constraint, so only one execution can ever be bootstrap-eligible at once.
+    await db.execute(select(func.pg_advisory_xact_lock(_QA_LAUNCH_ADVISORY_LOCK)))
+    lock_key = idempotency_key.int & ((1 << 63) - 1)
+    await db.execute(select(func.pg_advisory_xact_lock(lock_key)))
+    existing = await db.scalar(
+        select(DocumentTransformQaRun)
+        .where(DocumentTransformQaRun.launch_idempotency_key == idempotency_key)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if existing is not None:
+        row = await _locked_run(db, existing.id)
+        if (
+            row is None
+            or user_id != issuer_user_id
+            or row.run.user_id != user_id
+            or not _run_matches(
+                row.run,
+                row.grant,
+                release_sha=release_sha,
+                image_digest=image_digest,
+                source_folder_id=source_folder_id,
+                destination_folder_id=destination_folder_id,
+                mode=mode,
+            )
+        ):
+            raise QaGrantError
+        if (
+            row.run.state == "launch_claimed"
+            and row.run.launch_lease_expires_at is not None
+            and row.run.launch_lease_expires_at <= row.now
+        ):
+            row.run.state = "launch_failed"
+            row.run.launch_lease_expires_at = None
+            row.run.launch_failed_at = row.now
+            await db.flush()
+        return PreparedQaLaunch(
+            row.run.id,
+            row.run.state,
+            row.run.execution_name,
+            owns_launch_claim=False,
+        )
+    issued = await issue_qa_grant(
+        db,
+        issuer_user_id=issuer_user_id,
+        user_id=user_id,
+        session_id=session_id,
+        release_sha=release_sha,
+        image_digest=image_digest,
+        source_folder_id=source_folder_id,
+        destination_folder_id=destination_folder_id,
+        mode=mode,
+    )
+    prepared = await prepare_qa_bootstrap_run(
+        db,
+        grant_id=issued.grant_id,
+        release_sha=release_sha,
+        image_digest=image_digest,
+        source_folder_id=source_folder_id,
+        destination_folder_id=destination_folder_id,
+        mode=mode,
+    )
+    row = await _locked_run(db, prepared.run_id)
+    if row is None:
+        raise QaGrantError
+    row.run.launch_idempotency_key = idempotency_key
+    row.run.launch_claimed_at = row.now
+    row.run.launch_lease_expires_at = row.now + MAX_LAUNCH_LEASE
+    row.run.state = "launch_claimed"
+    await db.flush()
+    return PreparedQaLaunch(
+        prepared.run_id,
+        "launch_claimed",
+        None,
+        owns_launch_claim=True,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,13 +360,15 @@ async def bind_qa_bootstrap_execution(
     *,
     run_id: QaRunId,
     execution_name: str,
+    execution_uid: uuid.UUID,
+    execution_job_name: str,
     release_sha: str,
     image_digest: str,
     source_folder_id: FileId,
     destination_folder_id: FileId,
     mode: TransformMode,
 ) -> None:
-    _validate_runtime(execution_name)
+    _validate_runtime(execution_name, execution_job_name)
     _validate_binding(release_sha, image_digest, source_folder_id, destination_folder_id)
     row = await _locked_run(db, run_id)
     if row is None:
@@ -260,9 +385,13 @@ async def bind_qa_bootstrap_execution(
     ):
         raise QaGrantError
     execution_matches = hmac.compare_digest(run.execution_name or "", execution_name)
+    attestation_matches = run.execution_uid == execution_uid and hmac.compare_digest(
+        run.execution_job_name or "", execution_job_name
+    )
     if run.state == "bootstrapped":
         if not (
             execution_matches
+            and attestation_matches
             and _active_capability(grant, now)
             and _run_capability_matches_grant(run, grant)
             and _identity_is_live(grant, user, session, now)
@@ -271,13 +400,101 @@ async def bind_qa_bootstrap_execution(
         return
     if not _grant_is_prepared(grant, user, session, now):
         raise QaGrantError
-    if run.state == "created":
+    if run.state == "launch_claimed":
         run.state = "execution_bound"
+        run.launch_lease_expires_at = None
         run.execution_name = execution_name
+        run.execution_uid = execution_uid
+        run.execution_job_name = execution_job_name
         await db.flush()
         return
-    if run.state != "execution_bound" or not execution_matches:
+    if run.state != "execution_bound" or not execution_matches or not attestation_matches:
         raise QaGrantError
+
+
+async def fail_qa_bootstrap_launch(db: AsyncSession, *, run_id: QaRunId) -> None:
+    row = await _locked_run(db, run_id)
+    if (
+        row is None
+        or row.run.state != "launch_claimed"
+        or not _grant_is_prepared(row.grant, row.user, row.session, row.now)
+    ):
+        raise QaGrantError
+    row.run.state = "launch_failed"
+    row.run.launch_lease_expires_at = None
+    row.run.launch_failed_at = row.now
+    await db.flush()
+
+
+async def bootstrap_attested_qa_execution(
+    db: AsyncSession,
+    *,
+    execution_uid: uuid.UUID,
+    execution_name: str,
+    execution_job_name: str,
+    request_nonce: uuid.UUID,
+    derivation_key: bytes,
+    release_sha: str,
+    image_digest: str,
+) -> QaBootstrapResult:
+    _validate_runtime(execution_name, execution_job_name)
+    row = await _locked_active_launch_run(db)
+    if row is None:
+        raise QaGrantError
+    run = row.run
+    attestation_matches = all(
+        (
+            run.execution_name is not None,
+            hmac.compare_digest(run.execution_name or "", execution_name),
+            run.execution_uid == execution_uid,
+            hmac.compare_digest(run.execution_job_name or "", execution_job_name),
+            hmac.compare_digest(run.release_sha, release_sha),
+            hmac.compare_digest(run.image_digest, image_digest),
+        )
+    )
+    if not attestation_matches:
+        raise QaGrantError
+    mode = TransformMode(run.mode)
+    capability = await bootstrap_qa_run(
+        db,
+        run_id=run.id,
+        execution_name=execution_name,
+        request_nonce=request_nonce,
+        derivation_key=derivation_key,
+        release_sha=run.release_sha,
+        image_digest=run.image_digest,
+        source_folder_id=run.source_folder_id,
+        destination_folder_id=run.destination_folder_id,
+        mode=mode,
+    )
+    return QaBootstrapResult(
+        capability=capability,
+        execution_name=execution_name,
+        release_sha=run.release_sha,
+        image_digest=run.image_digest,
+        source_folder_id=run.source_folder_id,
+        destination_folder_id=run.destination_folder_id,
+        mode=mode,
+    )
+
+
+async def read_active_qa_execution(db: AsyncSession) -> QaExecutionIdentity:
+    row = await _locked_active_launch_run(db)
+    if row is None:
+        raise QaGrantError
+    run = row.run
+    execution_name = run.execution_name
+    execution_uid = run.execution_uid
+    execution_job_name = run.execution_job_name
+    if execution_name is None or execution_uid is None or execution_job_name is None:
+        raise QaGrantError
+    return QaExecutionIdentity(
+        execution_name=execution_name,
+        execution_uid=execution_uid,
+        execution_job_name=execution_job_name,
+        release_sha=run.release_sha,
+        image_digest=run.image_digest,
+    )
 
 
 async def bootstrap_qa_run(
@@ -562,7 +779,13 @@ async def delete_expired_qa_grants(db: AsyncSession, *, limit: int = _MAX_CLEANU
                     DocumentTransformQaGrant.consumed_at.is_not(None),
                     DocumentTransformQaGrant.job_expires_at < now,
                 ),
+            ),
+            ~select(DocumentTransformQaRun.id)
+            .where(
+                DocumentTransformQaRun.grant_id == DocumentTransformQaGrant.id,
+                DocumentTransformQaRun.state == "retired",
             )
+            .exists(),
         )
         .limit(limit)
         .with_for_update(skip_locked=True)
@@ -780,6 +1003,61 @@ async def _locked_run(db: AsyncSession, run_id: QaRunId) -> _LockedRun | None:
     return _LockedRun(row[0], row[1], row[2], row[3], row[4])
 
 
+async def _locked_run_by_execution(db: AsyncSession, execution_name: str) -> _LockedRun | None:
+    row = (
+        await db.execute(
+            select(
+                DocumentTransformQaRun,
+                DocumentTransformQaGrant,
+                User,
+                UserSession,
+                func.clock_timestamp(),
+            )
+            .join(
+                DocumentTransformQaGrant,
+                DocumentTransformQaGrant.id == DocumentTransformQaRun.grant_id,
+            )
+            .join(User, User.id == DocumentTransformQaRun.user_id)
+            .join(UserSession, UserSession.id == DocumentTransformQaRun.user_session_id)
+            .where(DocumentTransformQaRun.execution_name == execution_name)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    return _LockedRun(row[0], row[1], row[2], row[3], row[4])
+
+
+async def _locked_active_launch_run(db: AsyncSession) -> _LockedRun | None:
+    row = (
+        await db.execute(
+            select(
+                DocumentTransformQaRun,
+                DocumentTransformQaGrant,
+                User,
+                UserSession,
+                func.clock_timestamp(),
+            )
+            .join(
+                DocumentTransformQaGrant,
+                DocumentTransformQaGrant.id == DocumentTransformQaRun.grant_id,
+            )
+            .join(User, User.id == DocumentTransformQaRun.user_id)
+            .join(UserSession, UserSession.id == DocumentTransformQaRun.user_session_id)
+            .where(
+                DocumentTransformQaRun.launch_idempotency_key.is_not(None),
+                DocumentTransformQaRun.state.in_(("execution_bound", "bootstrapped")),
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    return _LockedRun(row[0], row[1], row[2], row[3], row[4])
+
+
 async def _current_capability_grant(
     db: AsyncSession, *, capability_digest: bytes
 ) -> _LockedGrant | None:
@@ -900,12 +1178,19 @@ def _renewal_is_live(grant: DocumentTransformQaGrant, execution_name: str, now: 
     )
 
 
-def _validate_runtime(execution_name: str) -> None:
+def _validate_runtime(execution_name: str, execution_job_name: str | None = None) -> None:
     if (
         not execution_name
         or len(execution_name) > _MAX_EXECUTION_NAME_LENGTH
         or not execution_name.isprintable()
         or execution_name.strip() != execution_name
+    ):
+        raise QaGrantError
+    if execution_job_name is not None and (
+        not execution_job_name
+        or len(execution_job_name) > _MAX_EXECUTION_NAME_LENGTH
+        or not execution_job_name.isprintable()
+        or execution_job_name.strip() != execution_job_name
     ):
         raise QaGrantError
 

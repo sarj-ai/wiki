@@ -24,7 +24,8 @@ run "qa_job_is_absent_by_default" {
       length(google_service_account.document_transform_qa) == 0,
       length(google_cloud_run_v2_job.document_transform_qa) == 0,
       length(google_storage_bucket.document_transform_qa) == 0,
-      length(google_cloud_run_v2_job_iam_member.document_transform_qa_invoker) == 0,
+      length(google_cloud_run_v2_job_iam_member.document_transform_qa_launcher) == 0,
+      length(google_cloud_run_v2_job_iam_member.document_transform_qa_attestor) == 0,
       length(google_project_iam_member.document_transform_qa_vertex) == 0,
       length(google_storage_bucket_iam_member.document_transform_qa_objects) == 0,
     ])
@@ -36,10 +37,10 @@ run "enabled_job_is_private_single_task_and_digest_pinned" {
   command = plan
 
   variables {
-    enable_document_transform_qa_job     = true
-    document_transform_qa_image          = "me-central2-docker.pkg.dev/sarj-docs/sarj-docs-dammam/document-transform-qa@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    document_transform_qa_release_sha    = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    document_transform_qa_invoker_member = "group:security-qa@sarj.ai"
+    enable_document_transform_qa_job      = true
+    document_transform_qa_image           = "me-central2-docker.pkg.dev/sarj-docs/sarj-docs-dammam/document-transform-qa@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    document_transform_qa_release_sha     = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    document_transform_qa_operator_emails = ["security-qa@sarj.ai"]
   }
 
   assert {
@@ -47,11 +48,12 @@ run "enabled_job_is_private_single_task_and_digest_pinned" {
       length(google_service_account.document_transform_qa) == 1,
       length(google_cloud_run_v2_job.document_transform_qa) == 1,
       length(google_storage_bucket.document_transform_qa) == 1,
-      length(google_cloud_run_v2_job_iam_member.document_transform_qa_invoker) == 1,
+      length(google_cloud_run_v2_job_iam_member.document_transform_qa_launcher) == 1,
+      length(google_cloud_run_v2_job_iam_member.document_transform_qa_attestor) == 1,
       length(google_project_iam_member.document_transform_qa_vertex) == 1,
       length(google_storage_bucket_iam_member.document_transform_qa_objects) == 1,
     ])
-    error_message = "Enabling QA must create exactly the reviewed six resources and IAM bindings."
+    error_message = "Enabling QA must create exactly the reviewed resources and backend-only IAM bindings."
   }
 
   assert {
@@ -101,17 +103,22 @@ run "enabled_job_is_private_single_task_and_digest_pinned" {
 
   assert {
     condition = (
-      google_cloud_run_v2_job_iam_member.document_transform_qa_invoker[0].member == "group:security-qa@sarj.ai" &&
-      google_cloud_run_v2_job_iam_member.document_transform_qa_invoker[0].role == "roles/run.jobsExecutorWithOverrides"
+      google_cloud_run_v2_job_iam_member.document_transform_qa_launcher[0].role == "roles/run.jobsExecutor" &&
+      google_cloud_run_v2_job_iam_member.document_transform_qa_attestor[0].role == "roles/run.viewer"
     )
-    error_message = "Only the explicitly configured human principal may invoke QA."
+    error_message = "Only the backend may launch without overrides and read back the immutable execution."
   }
 
   assert {
     condition = alltrue([
       for env in google_cloud_run_v2_job.document_transform_qa[0].template[0].template[0].containers[0].env :
-      !contains(["SECRET_KEY", "FERNET_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "DB_IAM_USER", "DB_NAME", "DB_INSTANCE_CONNECTION_NAME"], env.name)
+      !contains(["SECRET_KEY", "FERNET_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "DB_IAM_USER", "DB_NAME", "DB_INSTANCE_CONNECTION_NAME", "CAPABILITY_TOKEN", "GRANT_TOKEN", "RUN_ID"], env.name)
     ])
     error_message = "QA must receive neither production secrets nor database connectivity settings."
+  }
+
+  assert {
+    condition     = google_cloud_run_v2_job.document_transform_qa[0].template[0].template[0].containers[0].args == null
+    error_message = "QA launch must transport no run IDs, capabilities, or secrets in container arguments."
   }
 }

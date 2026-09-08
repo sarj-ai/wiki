@@ -1765,6 +1765,32 @@
         "title": "QaGrantIssueResponse",
         "type": "object"
       },
+      "QaLaunchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "execution_name": {
+            "title": "Execution Name",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "execution_bound",
+            "default": "execution_bound",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "execution_name"
+        ],
+        "title": "QaLaunchResponse",
+        "type": "object"
+      },
       "RecentDocumentAlias": {
         "properties": {
           "alias": {
@@ -3432,15 +3458,11 @@
           "409": {
             "description": "Binding mismatch"
           },
+          "410": {
+            "description": "The legacy grant flow is disabled in launcher mode"
+          },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "The legacy grant request is invalid"
           }
         },
         "security": [
@@ -3452,6 +3474,82 @@
           }
         ],
         "summary": "Issue Document Transform Qa Grant",
+        "tags": [
+          "document-transform-qa"
+        ]
+      }
+    },
+    "/document-transforms/qa/launch": {
+      "post": {
+        "description": "Launch only the configured job and bind its server-issued execution identity.",
+        "operationId": "launch_document_transform_qa_run_document_transforms_qa_launch_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QaGrantBinding"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QaLaunchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "A same-site login is required"
+          },
+          "403": {
+            "description": "The authenticated user is not an allowed QA operator"
+          },
+          "409": {
+            "description": "Binding mismatch"
+          },
+          "422": {
+            "description": "A UUIDv7 idempotency key is required"
+          },
+          "502": {
+            "description": "The execution could not be safely launched or attested"
+          },
+          "503": {
+            "description": "The default-off launcher is disabled"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Launch Document Transform Qa Run",
         "tags": [
           "document-transform-qa"
         ]

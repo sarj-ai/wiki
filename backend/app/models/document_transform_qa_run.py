@@ -1,7 +1,7 @@
 from datetime import datetime
 import uuid
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, LargeBinary, Text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, LargeBinary, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,20 +30,52 @@ class DocumentTransformQaRun(Base):
             name="ck_document_transform_qa_run_distinct_folders",
         ),
         CheckConstraint(
-            "state IN ('created', 'execution_bound', 'bootstrapped')",
+            "state IN ('created', 'launch_claimed', 'execution_bound', 'bootstrapped', "
+            "'launch_failed', 'retired')",
             name="ck_document_transform_qa_run_state",
         ),
         CheckConstraint(
-            "(state = 'created' AND execution_name IS NULL "
+            "(state = 'created' AND execution_name IS NULL AND execution_uid IS NULL "
+            "AND execution_job_name IS NULL AND launch_claimed_at IS NULL "
+            "AND launch_lease_expires_at IS NULL "
+            "AND launch_failed_at IS NULL "
             "AND bootstrap_request_nonce IS NULL AND bootstrap_capability_digest IS NULL "
             "AND bootstrapped_at IS NULL) OR "
+            "(state = 'launch_claimed' AND execution_name IS NULL AND execution_uid IS NULL "
+            "AND execution_job_name IS NULL AND launch_claimed_at IS NOT NULL "
+            "AND launch_lease_expires_at IS NOT NULL "
+            "AND launch_failed_at IS NULL AND bootstrap_request_nonce IS NULL "
+            "AND bootstrap_capability_digest IS NULL AND bootstrapped_at IS NULL) OR "
             "(state = 'execution_bound' AND execution_name IS NOT NULL "
+            "AND execution_uid IS NOT NULL AND execution_job_name IS NOT NULL "
+            "AND launch_lease_expires_at IS NULL AND launch_failed_at IS NULL "
             "AND bootstrap_request_nonce IS NULL AND bootstrap_capability_digest IS NULL "
             "AND bootstrapped_at IS NULL) OR "
             "(state = 'bootstrapped' AND execution_name IS NOT NULL "
+            "AND execution_uid IS NOT NULL AND execution_job_name IS NOT NULL "
+            "AND launch_lease_expires_at IS NULL AND launch_failed_at IS NULL "
             "AND bootstrap_request_nonce IS NOT NULL AND bootstrap_capability_digest IS NOT NULL "
-            "AND bootstrapped_at IS NOT NULL)",
+            "AND bootstrapped_at IS NOT NULL) OR "
+            "(state = 'launch_failed' AND execution_name IS NULL AND execution_uid IS NULL "
+            "AND execution_job_name IS NULL AND launch_claimed_at IS NOT NULL "
+            "AND launch_lease_expires_at IS NULL AND launch_failed_at IS NOT NULL "
+            "AND bootstrap_request_nonce IS NULL AND bootstrap_capability_digest IS NULL "
+            "AND bootstrapped_at IS NULL) OR "
+            "(state = 'retired' AND execution_uid IS NULL AND execution_job_name IS NULL "
+            "AND launch_idempotency_key IS NULL AND launch_claimed_at IS NULL "
+            "AND launch_lease_expires_at IS NULL AND launch_failed_at IS NULL AND "
+            "((execution_name IS NULL AND bootstrap_request_nonce IS NULL "
+            "AND bootstrap_capability_digest IS NULL AND bootstrapped_at IS NULL) OR "
+            "(execution_name IS NOT NULL AND bootstrap_request_nonce IS NULL "
+            "AND bootstrap_capability_digest IS NULL AND bootstrapped_at IS NULL) OR "
+            "(execution_name IS NOT NULL AND bootstrap_request_nonce IS NOT NULL "
+            "AND bootstrap_capability_digest IS NOT NULL AND bootstrapped_at IS NOT NULL)))",
             name="ck_document_transform_qa_run_atomic_state",
+        ),
+        CheckConstraint(
+            "(launch_idempotency_key IS NULL AND launch_claimed_at IS NULL) OR "
+            "(launch_idempotency_key IS NOT NULL AND launch_claimed_at IS NOT NULL)",
+            name="ck_document_transform_qa_run_launch_claim",
         ),
         CheckConstraint(
             "execution_name IS NULL OR (char_length(execution_name) BETWEEN 1 AND 255)",
@@ -54,6 +86,22 @@ class DocumentTransformQaRun(Base):
             name="ck_document_transform_qa_run_capability_digest_length",
         ),
         Index("ix_document_transform_qa_runs_created_at", "created_at"),
+        Index(
+            "uq_document_transform_qa_runs_launch_idempotency_key",
+            "launch_idempotency_key",
+            unique=True,
+            postgresql_where=text("launch_idempotency_key IS NOT NULL"),
+        ),
+        Index(
+            "uq_document_transform_qa_runs_single_active_launch",
+            text("((1))"),
+            unique=True,
+            postgresql_where=text(
+                "launch_idempotency_key IS NOT NULL "
+                "AND state IN ('launch_claimed', 'execution_bound', 'bootstrapped', "
+                "'launch_failed')"
+            ),
+        ),
     )
 
     id: Mapped[QaRunId] = mapped_column(UUID(as_uuid=True), primary_key=True)
@@ -77,6 +125,12 @@ class DocumentTransformQaRun(Base):
     mode: Mapped[str] = mapped_column(Text, nullable=False)
     state: Mapped[str] = mapped_column(Text, nullable=False)
     execution_name: Mapped[str | None] = mapped_column(Text, unique=True)
+    launch_idempotency_key: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    execution_uid: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), unique=True)
+    execution_job_name: Mapped[str | None] = mapped_column(Text)
+    launch_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    launch_lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    launch_failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     bootstrap_request_nonce: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     bootstrap_capability_digest: Mapped[bytes | None] = mapped_column(LargeBinary(32), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
