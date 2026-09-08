@@ -10,6 +10,7 @@ _RUN_MIGRATIONS = _REPOSITORY_ROOT / "scripts/github/run-backend-migrations.sh"
 _VERIFY_LOGS = _REPOSITORY_ROOT / "scripts/github/verify-backend-correlated-logs.sh"
 _MIGRATIONS_TERRAFORM = _REPOSITORY_ROOT / "terraform/dammam.tf"
 _BACKEND_CI = _REPOSITORY_ROOT / ".github/workflows/ci-backend.yml"
+_QA_TERRAFORM = _REPOSITORY_ROOT / "terraform/document_transform_qa.tf"
 
 
 def test_application_container_does_not_run_database_migrations() -> None:
@@ -21,7 +22,7 @@ def test_application_container_does_not_run_database_migrations() -> None:
     )
 
 
-def test_qa_container_reuses_corpus_runner_and_fails_closed_without_arguments() -> None:
+def test_qa_container_uses_secretless_static_entrypoint_without_runtime_arguments() -> None:
     dockerfile = _QA_DOCKERFILE.read_text()
     assert "COPY scripts/ scripts/" in dockerfile
     assert all("@sha256:" in line for line in dockerfile.splitlines() if line.startswith("FROM "))
@@ -32,6 +33,32 @@ def test_qa_container_reuses_corpus_runner_and_fails_closed_without_arguments() 
         'ENTRYPOINT [".venv/bin/python", "-m", "scripts.qa_document_transform_cloud"]' in dockerfile
     )
     assert "CMD" not in dockerfile
+
+
+def test_qa_job_is_backend_launched_without_override_permissions_or_transport_secrets() -> None:
+    terraform = _QA_TERRAFORM.read_text()
+    launcher = terraform[
+        terraform.index(
+            'resource "google_cloud_run_v2_job_iam_member" "document_transform_qa_launcher"'
+        ) : terraform.index(
+            'resource "google_cloud_run_v2_job_iam_member" "document_transform_qa_attestor"'
+        )
+    ]
+    assert 'role     = "roles/run.jobsExecutor"' in launcher
+    assert "roles/run.jobsExecutorWithOverrides" not in terraform
+    assert 'member   = "serviceAccount:${google_service_account.backend.email}"' in launcher
+    job = terraform[
+        terraform.index(
+            'resource "google_cloud_run_v2_job" "document_transform_qa"'
+        ) : terraform.index(
+            'resource "google_cloud_run_v2_job_iam_member" "document_transform_qa_launcher"'
+        )
+    ]
+    assert "args" not in job
+    assert all(
+        secret not in job
+        for secret in ("CAPABILITY_TOKEN", "GRANT_TOKEN", "RUN_ID", "SECRET_KEY", "FERNET_KEY")
+    )
 
 
 def test_qa_grant_concurrency_suite_is_in_required_postgres_ci() -> None:

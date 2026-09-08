@@ -206,18 +206,20 @@ variable "document_transform_qa_release_sha" {
   }
 }
 
-variable "document_transform_qa_invoker_member" {
-  description = "Exact human user or group allowed to invoke the private QA job"
-  type        = string
-  default     = null
-  nullable    = true
+variable "document_transform_qa_operator_emails" {
+  description = "Exact lowercase sarj.ai operators allowed to request a backend-owned QA launch"
+  type        = list(string)
+  default     = []
 
   validation {
     condition = (
       !var.enable_document_transform_qa_job ||
-      (var.document_transform_qa_invoker_member != null && can(regex("^(user|group):[^[:space:]]+@[^[:space:]]+$", var.document_transform_qa_invoker_member)))
+      (length(var.document_transform_qa_operator_emails) > 0 && alltrue([
+        for email in var.document_transform_qa_operator_emails :
+        can(regex("^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@sarj[.]ai$", email)) && email == lower(email)
+      ]))
     )
-    error_message = "Enabled document-transform QA requires one explicit user: or group: invoker."
+    error_message = "Enabled document-transform QA requires at least one exact lowercase sarj.ai operator."
   }
 }
 

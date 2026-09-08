@@ -81,10 +81,28 @@ class Settings(DatabaseSettings):
     CLOUD_TASKS_TARGET_URL: NonEmptyStr | None = None
     CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT: NonEmptyStr | None = None
     DOCUMENT_TRANSFORM_QA_AUDIENCE: NonEmptyStr | None = None
+    DOCUMENT_TRANSFORM_QA_BOOTSTRAP_URL: NonEmptyStr | None = None
     DOCUMENT_TRANSFORM_QA_SERVICE_ACCOUNT: NonEmptyStr | None = None
     DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST: Annotated[
         str | None, Field(pattern=r"^sha256:[0-9a-f]{64}$")
     ] = None
+    DOCUMENT_TRANSFORM_QA_JOB: Annotated[
+        str | None,
+        Field(
+            pattern=r"^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/locations/[a-z0-9-]+/jobs/[a-z][a-z0-9-]{0,61}[a-z0-9]$"
+        ),
+    ] = None
+    DOCUMENT_TRANSFORM_QA_IMAGE: Annotated[
+        str | None,
+        Field(
+            pattern=r"^[a-z0-9-]+-docker[.]pkg[.]dev/[a-z0-9-]+/[a-z0-9-]+/[a-z0-9-]+@sha256:[0-9a-f]{64}$"
+        ),
+    ] = None
+    DOCUMENT_TRANSFORM_QA_RELEASE_SHA: Annotated[str | None, Field(pattern=r"^[0-9a-f]{40}$")] = (
+        None
+    )
+    DOCUMENT_TRANSFORM_QA_BACKEND_SERVICE_ACCOUNT: NonEmptyStr | None = None
+    DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS: tuple[str, ...] = ()
 
     @property
     def frontend_origin(self) -> str:
@@ -117,15 +135,40 @@ class Settings(DatabaseSettings):
         ):
             msg = "Document Transform requires the shared Cloud Tasks settings"
             raise ValueError(msg)
-        qa_config = (
+        qa_base_config = (
             self.DOCUMENT_TRANSFORM_QA_AUDIENCE,
             self.DOCUMENT_TRANSFORM_QA_SERVICE_ACCOUNT,
             self.DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST,
         )
-        if any(value is not None for value in qa_config) and not all(
-            value is not None for value in qa_config
+        qa_launcher_config = (
+            self.DOCUMENT_TRANSFORM_QA_BOOTSTRAP_URL,
+            self.DOCUMENT_TRANSFORM_QA_JOB,
+            self.DOCUMENT_TRANSFORM_QA_IMAGE,
+            self.DOCUMENT_TRANSFORM_QA_RELEASE_SHA,
+            self.DOCUMENT_TRANSFORM_QA_BACKEND_SERVICE_ACCOUNT,
+        )
+        base_configured = any(value is not None for value in qa_base_config)
+        launcher_configured = any(value is not None for value in qa_launcher_config) or bool(
+            self.DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS
+        )
+        if base_configured and not all(value is not None for value in qa_base_config):
+            msg = "Document Transform QA legacy base settings must be configured together"
+            raise ValueError(msg)
+        if launcher_configured and (
+            not all(value is not None for value in qa_base_config)
+            or not all(value is not None for value in qa_launcher_config)
+            or not self.DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS
         ):
-            msg = "Document Transform QA settings must be configured together"
+            msg = "Document Transform QA launcher settings and operator allowlist must be complete"
+            raise ValueError(msg)
+        if (
+            self.DOCUMENT_TRANSFORM_QA_IMAGE is not None
+            and self.DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST is not None
+            and not self.DOCUMENT_TRANSFORM_QA_IMAGE.endswith(
+                f"@{self.DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST}"
+            )
+        ):
+            msg = "Document Transform QA image and digest must identify the same immutable image"
             raise ValueError(msg)
         return self
 
@@ -140,6 +183,23 @@ class Settings(DatabaseSettings):
             msg = "Document Transform requires an exact Gemini model ID"
             raise ValueError(msg)
         return value
+
+    @field_validator("DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS")
+    @classmethod
+    def qa_operator_emails_are_exact(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        if any(
+            not value
+            or value != value.casefold()
+            or not value.endswith("@sarj.ai")
+            or any(character.isspace() for character in value)
+            for value in values
+        ):
+            msg = "Document Transform QA operators must be lowercase sarj.ai email addresses"
+            raise ValueError(msg)
+        if len(values) != len(set(values)):
+            msg = "Document Transform QA operators must be unique"
+            raise ValueError(msg)
+        return values
 
     @model_validator(mode="after")
     def cookie_domain_matches_application_hosts(self) -> Self:

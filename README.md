@@ -248,52 +248,58 @@ mutation.
 Terraform contains an opt-in `sarj-wiki-document-transform-qa` Cloud Run Job for authenticated
 corpus QA. It is absent unless `enable_document_transform_qa_job=true`; enabling it also requires
 an immutable image from the exact `sarj-docs-dammam/document-transform-qa` repository, its release
-SHA, and one explicit human `user:` or `group:` invoker. The job has its own service account, zero
-retries, and a dedicated public-access-prevented evidence bucket mounted with UID 1001 and
+SHA, and an explicit lowercase `@sarj.ai` operator allowlist. The backend service account is the
+only job launcher and viewer; operators never receive Cloud Run IAM or runtime-override rights.
+The job has its own service account, zero retries, and a dedicated public-access-prevented evidence
+bucket mounted with UID 1001 and
 `0600`/`0700` modes. It has no Cloud SQL identity, database grants, Secret Manager access, production
 signing/encryption material, or Google OAuth client secret. Its only project roles are the dedicated
-bucket's `storage.objectUser` role and `aiplatform.user` for optional visual judging. The human gets
-only `run.jobsExecutorWithOverrides`; no Scheduler or CI trigger is attached.
+bucket's `storage.objectUser` role and `aiplatform.user` for optional visual judging. No Scheduler or
+CI trigger is attached.
 
-The pinned runner accepts only the production Wiki exchange URL. Before activation, corpus planning
-is also hard-bounded to exactly one canary document or exactly 20 corpus documents, at most 100
-folders and 100 aggregate folder-list pages, and 4 MiB of aggregate traversal metadata. Exceeding
-any bound fails closed before a transform is submitted.
+An allowlisted, logged-in operator calls the same-site
+`POST /document-transforms/qa/launch` endpoint with a UUIDv7 `Idempotency-Key`. The backend owns the
+launch, accepts no job or execution ID from the operator, runs the statically configured job with an
+empty request body, and polls Cloud Run for its immutable execution identity. It binds the exact
+execution name, UID, job, image digest, and release SHA to a single-active-run ledger before the
+worker can receive a capability. A claimed, failed, bound, or bootstrapped run blocks a different-key
+launch only while its bound grant or job authority remains live; expiry cleanup, or a future
+explicitly reviewed reconciliation mechanism, releases that boundary.
 
-The authenticated same-site `POST /document-transforms/qa/grants` surface issues self-delegated
-grants only. Existing cookie-origin middleware rejects cross-site cookie requests. The audit row
-stores both issuer and subject user IDs, exact session and token version, release SHA, image digest,
-source and destination folders, mode, and a maximum 15-minute expiry. The workload-authenticated
-`POST /internal/document-transform-qa/exchange` endpoint atomically consumes a grant and returns an
-opaque five-minute capability. Renewal rotates that capability under the same row lock for at most
-the two-hour job lifetime and rechecks session revocation and token version every time. The job
-never reads or updates grant rows directly. Consume and renewal requests include UUID request
-nonces: deterministic backend-only derivation replays the exact response after a committed response
-is lost, while a one-generation previous-token overlap permits the same renewal retry and rejects a
-different nonce or older generation.
+When the backend-owned launcher is configured, the legacy
+`POST /document-transforms/qa/grants` and `POST /internal/document-transform-qa/exchange` flow is
+disabled. It remains available only for installations that have not configured the launcher, so an
+older deployment can be retired deliberately rather than silently changing behavior. Migration
+`0020_qa_attestation` revokes grants associated with pre-attestation 0019 runs and preserves those
+runs as audit-only `retired` rows; their missing Cloud Run UID and job identity are never guessed or
+backfilled. Routine expired-grant cleanup excludes grants referenced by retired rows so the foreign
+key cannot cascade-delete that audit history. Downgrading through 0020 intentionally deletes retired
+runs because the 0019 state constraint cannot represent them; that rollback therefore loses this
+audit history and requires explicit review and external retention before execution.
 
-The workload-authenticated `POST /internal/document-transform-qa/canary/session` endpoint is a
-read-only foundation for the future canary data plane. It accepts only the current capability in a
-header, authenticates workload OIDC before parsing that header or the JSON body, rechecks the exact
-execution and grant bindings plus the live user session, and returns only that immutable scope.
-Every response is `no-store`, and malformed capability values receive a generic error without being
-reflected. The endpoint does not extend capability lifetime, accept the one-generation renewal
-overlap, access Drive, submit a transformation, or render the Cloud Run entrypoint executable. Those
-mutation boundaries remain fail-closed pending separate review.
+The pinned worker accepts only the production bootstrap URL and OIDC audience. It sends its
+platform-provided `CLOUD_RUN_EXECUTION` only as a stale/orphan selector; the backend independently
+resolves the sole bound run, reads that execution back from Cloud Run, and requires the exact stored
+UID, job, image, and release before atomically issuing the first capability. The canary broker then
+server-selects one bounded source document and submits an idempotent forced-copy transform. An HTTP
+202 means only `submitted`: until terminal task-result polling and private evidence verification are
+implemented, the worker prints `{"status":"submitted"}` and exits nonzero so Cloud Run cannot record
+the QA execution as successfully completed.
 
 This repository deliberately does not activate the job or provide an unauthenticated grant-issuer
 CLI. Activation is a separate reviewed operation:
 
-1. Implement dedicated backend capability operations for the runner's bounded Drive reads, PDF
-   exports, transform submission, and task polling. Until then Cloud execution deliberately fails
-   before grant consumption; local corpus execution is unchanged.
+1. Implement and review bounded terminal task-result polling plus private evidence verification.
+   Until then a brokered canary can be submitted, but Cloud execution deliberately remains
+   incomplete and cannot be treated as QA success.
 2. Build and smoke-test `backend/Dockerfile.qa`, attest it, and supply the exact repository digest
    and matching 40-character release SHA.
-3. Apply migration `0018_transform_qa_grants`, review a real Terraform plan, enable the job for a
-   named security QA principal, and read back every IAM binding, image/env binding, mount option,
-   absence of secrets/Cloud SQL access, and zero-retry policy.
-4. Use the logged-in issuer endpoint, run a one-document canary, inspect its private evidence and
-   owner-only output, and only then issue a separate grant for the full corpus.
+3. Apply through migration `0020_qa_attestation`, review a real Terraform plan, enable the job with a
+   named operator allowlist, and read back every IAM binding, image/env binding, mount option,
+   absence of secrets/Cloud SQL access, empty command/arguments, and zero-retry policy.
+4. Use the logged-in launcher endpoint for a one-document canary, require terminal result and
+   evidence verification, and inspect its private evidence and owner-only output before expanding
+   corpus coverage.
 
 ## Document-transform dispatch recovery
 

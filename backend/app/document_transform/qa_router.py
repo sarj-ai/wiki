@@ -7,6 +7,7 @@ import uuid
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, Response, status
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user, http_client_dep
@@ -18,13 +19,23 @@ from app.database import get_db
 from app.document_transform.qa_broker import QaCanaryBroker
 from app.document_transform.qa_grants import (
     QaAuthority,
+    QaBootstrapResult,
     QaCapability,
     QaGrantError,
     authorize_qa_capability,
-    bootstrap_qa_run,
+    bind_qa_bootstrap_execution,
+    bootstrap_attested_qa_execution,
     consume_qa_grant,
+    fail_qa_bootstrap_launch,
     issue_qa_grant,
+    prepare_idempotent_qa_launch,
+    read_active_qa_execution,
     renew_qa_capability,
+)
+from app.document_transform.qa_launcher import (
+    ApplicationDefaultAccessTokenProvider,
+    CloudRunQaLauncher,
+    QaLaunchError,
 )
 from app.document_transform.schemas import TransformMode
 from app.identifiers import FileId, QaPlanId, QaRunId, TaskId
@@ -55,6 +66,12 @@ class QaGrantIssueResponse(_StrictModel):
     expires_at: datetime
 
 
+class QaLaunchResponse(_StrictModel):
+    run_id: QaRunId
+    execution_name: str
+    status: Literal["execution_bound"] = "execution_bound"
+
+
 class QaGrantExchange(QaGrantBinding):
     credential: str = Field(min_length=32, max_length=256)
     execution_name: str = Field(min_length=1, max_length=255)
@@ -73,9 +90,13 @@ class QaCapabilityAuthorization(QaGrantBinding):
     execution_name: str = Field(min_length=1, max_length=255)
 
 
-class QaBootstrapRequest(QaCapabilityAuthorization):
-    run_id: uuid.UUID
+class QaBootstrapRequest(_StrictModel):
+    execution_name: str = Field(min_length=1, max_length=255)
     request_nonce: uuid.UUID
+
+
+class QaBootstrapResponse(QaCapabilityResponse, QaGrantBinding):
+    execution_name: str
 
 
 class QaCanarySessionResponse(QaGrantBinding):
@@ -122,6 +143,7 @@ workload_router = APIRouter(
 _NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 _MIN_CAPABILITY_TOKEN_LENGTH = 32
 _MAX_CAPABILITY_TOKEN_LENGTH = 256
+_UUID_VERSION_7 = 7
 
 
 def qa_canary_broker_dep(
@@ -132,6 +154,39 @@ def qa_canary_broker_dep(
     return QaCanaryBroker(db=db, http=http, cache=cache)
 
 
+def qa_launcher_dep(
+    http: Annotated[httpx.AsyncClient, Depends(http_client_dep)],
+) -> CloudRunQaLauncher:
+    project = settings.GOOGLE_CLOUD_PROJECT
+    job = settings.DOCUMENT_TRANSFORM_QA_JOB
+    image = settings.DOCUMENT_TRANSFORM_QA_IMAGE
+    release = settings.DOCUMENT_TRANSFORM_QA_RELEASE_SHA
+    worker = settings.DOCUMENT_TRANSFORM_QA_SERVICE_ACCOUNT
+    backend = settings.DOCUMENT_TRANSFORM_QA_BACKEND_SERVICE_ACCOUNT
+    bootstrap_url = settings.DOCUMENT_TRANSFORM_QA_BOOTSTRAP_URL
+    if project is None or job is None or image is None or release is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="QA launcher is disabled",
+        )
+    if worker is None or backend is None or bootstrap_url is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="QA launcher is disabled",
+        )
+    return CloudRunQaLauncher(
+        http=http,
+        token_provider=ApplicationDefaultAccessTokenProvider(),
+        job_name=job,
+        image=image,
+        release_sha=release,
+        worker_service_account=worker,
+        backend_service_account=backend,
+        project=project,
+        bootstrap_url=bootstrap_url,
+    )
+
+
 def _configured_binding(body: QaGrantBinding) -> None:
     if (
         settings.DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST is None
@@ -140,13 +195,36 @@ def _configured_binding(body: QaGrantBinding) -> None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="QA grants are disabled"
         )
+    configured_release = settings.DOCUMENT_TRANSFORM_QA_RELEASE_SHA or settings.RELEASE_SHA
     if (
-        body.release_sha != settings.RELEASE_SHA
+        body.release_sha != configured_release
         or body.image_digest != settings.DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST
     ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="QA release binding mismatch"
         )
+
+
+def _require_legacy_qa_flow() -> None:
+    if settings.DOCUMENT_TRANSFORM_QA_JOB is not None:
+        raise _no_store_http_error(
+            status.HTTP_410_GONE,
+            "Legacy QA grant flow is disabled when the backend launcher is configured",
+        )
+
+
+async def _parse_legacy_body[Body: BaseModel](request: Request, schema: type[Body]) -> Body:
+    try:
+        return schema.model_validate(await request.json())
+    except (ValueError, ValidationError) as exc:
+        raise _no_store_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Legacy QA request is invalid"
+        ) from exc
+
+
+def _require_execution_selector(identity: str, requested: str) -> None:
+    if not hmac.compare_digest(identity, requested):
+        raise QaLaunchError
 
 
 async def _require_qa_workload(authorization: Annotated[str | None, Header()] = None) -> None:
@@ -167,18 +245,29 @@ async def _require_qa_workload(authorization: Annotated[str | None, Header()] = 
     "/grants",
     response_model=QaGrantIssueResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_require_legacy_qa_flow)],
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {"schema": {"$ref": "#/components/schemas/QaGrantBinding"}}
+            },
+        }
+    },
     responses={
         401: {"description": "A same-site login is required"},
         409: {"description": "Binding mismatch"},
+        410: {"description": "The legacy grant flow is disabled in launcher mode"},
+        422: {"description": "The legacy grant request is invalid"},
     },
 )
 async def issue_document_transform_qa_grant(
-    body: Annotated[QaGrantBinding, Body()],
     request: Request,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     response: Response,
 ) -> QaGrantIssueResponse:
+    body = await _parse_legacy_body(request, QaGrantBinding)
     _configured_binding(body)
     token = request.cookies.get("access_token")
     if token is None or request.headers.get("origin") != settings.frontend_origin:
@@ -214,14 +303,131 @@ async def issue_document_transform_qa_grant(
     )
 
 
+@issuer_router.post(
+    "/launch",
+    response_model=QaLaunchResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        401: {"description": "A same-site login is required"},
+        403: {"description": "The authenticated user is not an allowed QA operator"},
+        409: {"description": "Binding mismatch"},
+        422: {"description": "A UUIDv7 idempotency key is required"},
+        502: {"description": "The execution could not be safely launched or attested"},
+        503: {"description": "The default-off launcher is disabled"},
+    },
+)
+async def launch_document_transform_qa_run(
+    *,
+    body: Annotated[QaGrantBinding, Body()],
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    launcher: Annotated[CloudRunQaLauncher, Depends(qa_launcher_dep)],
+    response: Response,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> QaLaunchResponse:
+    """Launch only the configured job and bind its server-issued execution identity."""
+    _configured_binding(body)
+    if user.email.casefold() not in settings.DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="QA operator required")
+    try:
+        launch_key = uuid.UUID(idempotency_key or "")
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="A UUIDv7 Idempotency-Key is required",
+        ) from exc
+    if launch_key.version != _UUID_VERSION_7:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="A UUIDv7 Idempotency-Key is required",
+        )
+    token = request.cookies.get("access_token")
+    if token is None or request.headers.get("origin") != settings.frontend_origin:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    payload = decode_token(token)
+    if (
+        payload.type != "access"
+        or payload.sub != user.id
+        or not hmac.compare_digest(str(payload.tv), str(user.token_version))
+    ):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    try:
+        prepared = await prepare_idempotent_qa_launch(
+            db,
+            idempotency_key=launch_key,
+            issuer_user_id=user.id,
+            user_id=user.id,
+            session_id=payload.sid,
+            release_sha=body.release_sha,
+            image_digest=body.image_digest,
+            source_folder_id=body.source_folder_id,
+            destination_folder_id=body.destination_folder_id,
+            mode=body.mode,
+        )
+        await db.commit()
+    except (IntegrityError, QaGrantError) as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="QA run could not be prepared"
+        ) from exc
+    if prepared.state in {"execution_bound", "bootstrapped"} and prepared.execution_name:
+        _prevent_token_caching(response)
+        return QaLaunchResponse(run_id=prepared.run_id, execution_name=prepared.execution_name)
+    if not prepared.owns_launch_claim:
+        if prepared.state == "launch_claimed":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="QA launch is in progress",
+                headers={**_NO_STORE_HEADERS, "Retry-After": "2"},
+            )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="QA launch is not retryable"
+        )
+    try:
+        attestation = await launcher.launch()
+    except QaLaunchError as exc:
+        await _record_launch_failure(db, prepared.run_id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="QA execution could not be safely attested",
+        ) from exc
+    try:
+        await bind_qa_bootstrap_execution(
+            db,
+            run_id=prepared.run_id,
+            execution_name=attestation.execution_name,
+            execution_uid=attestation.execution_uid,
+            execution_job_name=attestation.job_name,
+            release_sha=body.release_sha,
+            image_digest=body.image_digest,
+            source_folder_id=body.source_folder_id,
+            destination_folder_id=body.destination_folder_id,
+            mode=body.mode,
+        )
+        await db.commit()
+    except (IntegrityError, QaGrantError) as exc:
+        await db.rollback()
+        await _record_launch_failure(db, prepared.run_id)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="QA execution could not be bound",
+        ) from exc
+    _prevent_token_caching(response)
+    return QaLaunchResponse(run_id=prepared.run_id, execution_name=attestation.execution_name)
+
+
 @workload_router.post(
-    "/exchange", response_model=QaCapabilityResponse, dependencies=[Depends(_require_qa_workload)]
+    "/exchange",
+    response_model=QaCapabilityResponse,
+    dependencies=[Depends(_require_legacy_qa_flow), Depends(_require_qa_workload)],
 )
 async def exchange_document_transform_qa_grant(
-    body: Annotated[QaGrantExchange, Body()],
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     response: Response,
 ) -> QaCapabilityResponse:
+    body = await _parse_legacy_body(request, QaGrantExchange)
     _configured_binding(body)
     try:
         capability = (
@@ -261,17 +467,14 @@ async def exchange_document_transform_qa_grant(
     return _capability_response(capability)
 
 
-@workload_router.post("/bootstrap", response_model=QaCapabilityResponse)
+@workload_router.post("/bootstrap", response_model=QaBootstrapResponse)
 async def bootstrap_document_transform_qa_run(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
+    launcher: Annotated[CloudRunQaLauncher, Depends(qa_launcher_dep)],
     response: Response,
-) -> QaCapabilityResponse:
-    """Bootstrap a previously bound execution without transporting a grant secret.
-
-    No production route can prepare or bind a run in this release. The endpoint
-    therefore remains fail-closed until the separately reviewed launcher exists.
-    """
+) -> QaBootstrapResponse:
+    """Bootstrap the sole bound execution without accepting caller-selected IDs."""
     try:
         await _require_qa_workload(request.headers.get("Authorization"))
     except HTTPException as exc:
@@ -283,27 +486,40 @@ async def bootstrap_document_transform_qa_run(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "QA request is invalid"
         ) from exc
     try:
-        _configured_binding(body)
-        capability = await bootstrap_qa_run(
+        identity = await read_active_qa_execution(db)
+        _require_execution_selector(identity.execution_name, body.execution_name)
+        attestation = await launcher.attest_execution(identity.execution_name)
+        result = await bootstrap_attested_qa_execution(
             db,
-            run_id=QaRunId(body.run_id),
+            execution_uid=attestation.execution_uid,
             execution_name=body.execution_name,
+            execution_job_name=attestation.job_name,
             request_nonce=body.request_nonce,
             derivation_key=settings.SECRET_KEY.get_secret_value().encode(),
-            release_sha=body.release_sha,
-            image_digest=body.image_digest,
-            source_folder_id=body.source_folder_id,
-            destination_folder_id=body.destination_folder_id,
-            mode=body.mode,
+            release_sha=attestation.release_sha,
+            image_digest=attestation.image.rsplit("@", 1)[1],
         )
         await db.commit()
     except HTTPException as exc:
         raise _no_store_http_error(exc.status_code, str(exc.detail)) from exc
-    except QaGrantError as exc:
+    except QaLaunchError as exc:
         await db.rollback()
         raise _invalid_qa_credential() from exc
+    except QaGrantError as exc:
+        await db.rollback()
+        raise _no_store_http_error(
+            status.HTTP_409_CONFLICT, "QA execution is not bound yet"
+        ) from exc
     _prevent_token_caching(response)
-    return _capability_response(capability)
+    return _bootstrap_response(result)
+
+
+async def _record_launch_failure(db: AsyncSession, run_id: QaRunId) -> None:
+    try:
+        await fail_qa_bootstrap_launch(db, run_id=run_id)
+        await db.commit()
+    except QaGrantError:
+        await db.rollback()
 
 
 @workload_router.post(
@@ -444,6 +660,22 @@ def _capability_response(capability: QaCapability) -> QaCapabilityResponse:
         expires_at=capability.expires_at,
         job_expires_at=capability.job_expires_at,
         user_email=capability.user_email,
+    )
+
+
+def _bootstrap_response(result: QaBootstrapResult) -> QaBootstrapResponse:
+    capability = result.capability
+    return QaBootstrapResponse(
+        capability_token=capability.token,
+        expires_at=capability.expires_at,
+        job_expires_at=capability.job_expires_at,
+        user_email=capability.user_email,
+        execution_name=result.execution_name,
+        release_sha=result.release_sha,
+        image_digest=result.image_digest,
+        source_folder_id=result.source_folder_id,
+        destination_folder_id=result.destination_folder_id,
+        mode=result.mode,
     )
 
 

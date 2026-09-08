@@ -6,6 +6,7 @@ import uuid
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from app.auth.dependencies import get_current_user
 from app.config import settings
@@ -16,10 +17,13 @@ from app.document_transform.application import TransformSubmission
 from app.document_transform.qa_broker import QaCanaryPlan
 from app.document_transform.qa_grants import (
     IssuedQaGrant,
+    PreparedQaLaunch,
     QaAuthority,
+    QaBootstrapResult,
     QaCapability,
     QaGrantError,
 )
+from app.document_transform.qa_launcher import QaExecutionAttestation
 from app.document_transform.schemas import OutputStrategy, TransformMode
 from app.identifiers import (
     AuthSessionId,
@@ -27,6 +31,7 @@ from app.identifiers import (
     GoogleUserId,
     IdempotencyKey,
     QaPlanId,
+    QaRunId,
     TaskId,
     UserId,
 )
@@ -42,6 +47,7 @@ _DIGEST = "sha256:" + "b" * 64
 _AUDIENCE = "https://api.example.test/internal/document-transform-qa/exchange"
 _SERVICE_ACCOUNT = "qa@example-project.iam.gserviceaccount.com"
 _NONCE = "11111111-1111-4111-8111-111111111111"
+_IDEMPOTENCY = "019c4f83-9556-7c56-9a5a-7583c478ce24"
 
 
 class _Db:
@@ -85,11 +91,18 @@ def _issuer_body() -> dict[str, str]:
 
 
 def _bootstrap_body() -> dict[str, str]:
-    return _issuer_body() | {
-        "execution_name": "job/executions/one",
-        "request_nonce": _NONCE,
-        "run_id": "55555555-5555-4555-8555-555555555555",
-    }
+    return {"execution_name": "job/executions/one", "request_nonce": _NONCE}
+
+
+class _AttestedLauncher:
+    async def attest_execution(self, execution_name: str) -> QaExecutionAttestation:
+        return QaExecutionAttestation(
+            execution_name=execution_name,
+            execution_uid=uuid.UUID("12345678-1234-4234-8234-123456789abc"),
+            job_name="projects/test/locations/me-central2/jobs/qa",
+            image="image@" + _DIGEST,
+            release_sha=_RELEASE,
+        )
 
 
 def _application(db: _Db, user: User) -> FastAPI:
@@ -99,6 +112,7 @@ def _application(db: _Db, user: User) -> FastAPI:
     application.include_router(qa_router.workload_router)
     application.dependency_overrides[get_current_user] = lambda: user
     application.dependency_overrides[get_db] = lambda: db
+    application.dependency_overrides[qa_router.qa_launcher_dep] = _AttestedLauncher
     return application
 
 
@@ -107,6 +121,8 @@ def _configure(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_IMAGE_DIGEST", _DIGEST)
     monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_AUDIENCE", _AUDIENCE)
     monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_SERVICE_ACCOUNT", _SERVICE_ACCOUNT)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_RELEASE_SHA", _RELEASE)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS", ("qa@example.test",))
 
 
 def _oidc(monkeypatch: pytest.MonkeyPatch, claims: dict[str, Any]) -> None:
@@ -168,6 +184,7 @@ async def test_issuer_binds_exact_cookie_user_session_and_disables_caching(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", None)
     user = _user()
     session_id = AuthSessionId(uuid.UUID("33333333-3333-4333-8333-333333333333"))
     monkeypatch.setattr(
@@ -202,6 +219,265 @@ async def test_issuer_binds_exact_cookie_user_session_and_disables_caching(
     assert captured["session_id"] == session_id
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["pragma"] == "no-cache"
+
+
+async def test_launcher_mode_disables_legacy_grant_issuer_before_database_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", "configured-job")
+    db = _Db()
+    application = _application(db, _user())
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/document-transforms/qa/grants",
+            json=_issuer_body(),
+            headers={"Origin": settings.frontend_origin},
+            cookies={"access_token": "cookie"},
+        )
+
+    assert response.status_code == 410
+    assert response.headers["cache-control"] == "no-store"
+    assert db.commits == db.rollbacks == 0
+
+
+async def test_launcher_mode_retires_legacy_issuer_before_sensitive_body_parsing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", "configured-job")
+    db = _Db()
+    application = _application(db, _user())
+    secret = "malformed-legacy-grant-secret"
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/document-transforms/qa/grants",
+            content=("{" + secret).encode(),
+            headers={"Content-Type": "application/json", "Origin": settings.frontend_origin},
+            cookies={"access_token": "cookie"},
+        )
+
+    assert response.status_code == 410
+    assert secret not in response.text
+    assert db.commits == db.rollbacks == 0
+
+
+async def test_backend_owned_launcher_prepares_launches_attests_then_binds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    user = _user()
+    session_id = AuthSessionId(uuid.UUID("33333333-3333-4333-8333-333333333333"))
+    run_id = uuid.UUID("55555555-5555-4555-8555-555555555555")
+    execution_name = "projects/test/locations/me-central2/jobs/qa/executions/one"
+    monkeypatch.setattr(
+        qa_router,
+        "decode_token",
+        lambda _token: SimpleNamespace(type="access", sub=user.id, sid=session_id, tv=3),
+    )
+    captured: dict[str, object] = {}
+    captured_bind: dict[str, object] = {}
+
+    async def issue(_db: object, **_kwargs: object) -> IssuedQaGrant:
+        return IssuedQaGrant(
+            grant_id=DocumentTransformQaGrantId(uuid.UUID("44444444-4444-4444-8444-444444444444")),
+            token="never-transported-grant-token",
+            expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        )
+
+    async def prepare(_db: object, **kwargs: object) -> PreparedQaLaunch:
+        captured["prepare"] = kwargs
+        return PreparedQaLaunch(
+            run_id=QaRunId(run_id),
+            state="launch_claimed",
+            execution_name=None,
+            owns_launch_claim=True,
+        )
+
+    async def bind(_db: object, **kwargs: object) -> None:
+        captured_bind.update(kwargs)
+
+    class _Launcher:
+        async def launch(self) -> QaExecutionAttestation:
+            return QaExecutionAttestation(
+                execution_name=execution_name,
+                execution_uid=uuid.UUID("12345678-1234-4234-8234-123456789abc"),
+                job_name="projects/test/locations/me-central2/jobs/qa",
+                image="image@" + _DIGEST,
+                release_sha=_RELEASE,
+            )
+
+    monkeypatch.setattr(qa_router, "issue_qa_grant", issue)
+    monkeypatch.setattr(qa_router, "prepare_idempotent_qa_launch", prepare)
+    monkeypatch.setattr(qa_router, "bind_qa_bootstrap_execution", bind)
+    db = _Db()
+    application = _application(db, user)
+    application.dependency_overrides[qa_router.qa_launcher_dep] = _Launcher
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/document-transforms/qa/launch",
+            json=_issuer_body(),
+            headers={"Origin": settings.frontend_origin, "Idempotency-Key": _IDEMPOTENCY},
+            cookies={"access_token": "cookie"},
+        )
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "run_id": str(run_id),
+        "execution_name": execution_name,
+        "status": "execution_bound",
+    }
+    assert db.commits == 2
+    assert captured_bind["execution_name"] == execution_name
+    assert "never-transported-grant-token" not in response.text
+
+
+async def test_backend_owned_launcher_is_default_off_before_ledger_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", None)
+    db = _Db()
+    application = _application(db, _user())
+    application.dependency_overrides.pop(qa_router.qa_launcher_dep)
+    application.dependency_overrides[qa_router.http_client_dep] = lambda: None
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/document-transforms/qa/launch",
+            json=_issuer_body(),
+            headers={"Origin": settings.frontend_origin, "Idempotency-Key": _IDEMPOTENCY},
+            cookies={"access_token": "cookie"},
+        )
+    assert response.status_code == 503
+    assert db.commits == db.rollbacks == 0
+
+
+async def test_launcher_rejects_non_operator_before_ledger_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS", ("other@sarj.ai",))
+    db = _Db()
+    application = _application(db, _user())
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/document-transforms/qa/launch",
+            json=_issuer_body(),
+            headers={"Origin": settings.frontend_origin, "Idempotency-Key": _IDEMPOTENCY},
+            cookies={"access_token": "cookie"},
+        )
+    assert response.status_code == 403
+    assert db.commits == db.rollbacks == 0
+
+
+@pytest.mark.parametrize("key", [None, "not-a-uuid", "11111111-1111-4111-8111-111111111111"])
+async def test_launcher_requires_uuid7_idempotency_before_ledger_mutation(
+    monkeypatch: pytest.MonkeyPatch, key: str | None
+) -> None:
+    _configure(monkeypatch)
+    db = _Db()
+    application = _application(db, _user())
+    headers = {"Origin": settings.frontend_origin}
+    if key is not None:
+        headers["Idempotency-Key"] = key
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/document-transforms/qa/launch",
+            json=_issuer_body(),
+            headers=headers,
+            cookies={"access_token": "cookie"},
+        )
+    assert response.status_code == 422
+    assert db.commits == db.rollbacks == 0
+
+
+async def test_launcher_global_single_flight_collision_never_starts_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    user = _user()
+    session_id = AuthSessionId(uuid.UUID("33333333-3333-4333-8333-333333333333"))
+    monkeypatch.setattr(
+        qa_router,
+        "decode_token",
+        lambda _token: SimpleNamespace(type="access", sub=user.id, sid=session_id, tv=3),
+    )
+
+    async def prepare(*_args: object, **_kwargs: object) -> PreparedQaLaunch:
+        statement = "active QA launch"
+        raise IntegrityError(statement, {}, RuntimeError())
+
+    monkeypatch.setattr(qa_router, "prepare_idempotent_qa_launch", prepare)
+    db = _Db()
+    application = _application(db, user)
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/document-transforms/qa/launch",
+            json=_issuer_body(),
+            headers={"Origin": settings.frontend_origin, "Idempotency-Key": _IDEMPOTENCY},
+            cookies={"access_token": "cookie"},
+        )
+    assert response.status_code == 409
+    assert db.commits == 0
+    assert db.rollbacks == 1
+
+
+async def test_launcher_same_key_replay_cannot_launch_while_claim_is_in_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    user = _user()
+    session_id = AuthSessionId(uuid.UUID("33333333-3333-4333-8333-333333333333"))
+    monkeypatch.setattr(
+        qa_router,
+        "decode_token",
+        lambda _token: SimpleNamespace(type="access", sub=user.id, sid=session_id, tv=3),
+    )
+
+    async def prepare(*_args: object, **_kwargs: object) -> PreparedQaLaunch:
+        return PreparedQaLaunch(
+            run_id=QaRunId(uuid.UUID("55555555-5555-4555-8555-555555555555")),
+            state="launch_claimed",
+            execution_name=None,
+            owns_launch_claim=False,
+        )
+
+    class _NeverLauncher:
+        async def launch(self) -> QaExecutionAttestation:
+            raise AssertionError
+
+    monkeypatch.setattr(qa_router, "prepare_idempotent_qa_launch", prepare)
+    db = _Db()
+    application = _application(db, user)
+    application.dependency_overrides[qa_router.qa_launcher_dep] = _NeverLauncher
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/document-transforms/qa/launch",
+            json=_issuer_body(),
+            headers={"Origin": settings.frontend_origin, "Idempotency-Key": _IDEMPOTENCY},
+            cookies={"access_token": "cookie"},
+        )
+    assert response.status_code == 409
+    assert response.json() == {"detail": "QA launch is in progress"}
+    assert response.headers["retry-after"] == "2"
+    assert response.headers["cache-control"] == "no-store"
+    assert db.commits == 1
 
 
 async def test_default_off_exchange_is_503_before_database_mutation(
@@ -307,6 +583,7 @@ async def test_exchange_success_is_no_store_and_passes_nonce(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", None)
     _oidc(
         monkeypatch,
         {
@@ -345,6 +622,59 @@ async def test_exchange_success_is_no_store_and_passes_nonce(
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["pragma"] == "no-cache"
     assert db.commits == 1
+
+
+async def test_launcher_mode_disables_legacy_exchange_before_database_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", "configured-job")
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    db = _Db()
+    application = _application(db, _user())
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/exchange",
+            json=_body(),
+            headers={"Authorization": "Bearer oidc"},
+        )
+
+    assert response.status_code == 410
+    assert response.headers["cache-control"] == "no-store"
+    assert db.commits == db.rollbacks == 0
+
+
+async def test_launcher_mode_retires_legacy_exchange_before_sensitive_body_parsing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_JOB", "configured-job")
+    db = _Db()
+    application = _application(db, _user())
+    secret = "malformed-legacy-exchange-secret"
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/exchange",
+            content=("{" + secret).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+
+    assert response.status_code == 410
+    assert secret not in response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert db.commits == db.rollbacks == 0
 
 
 def test_bootstrap_has_no_production_prepare_or_bind_route() -> None:
@@ -427,18 +757,30 @@ async def test_bootstrap_success_commits_exact_binding_and_is_no_store(
     )
     captured: dict[str, object] = {}
 
-    async def bootstrap(_db: object, **kwargs: object) -> QaCapability:
+    async def read_identity(_db: object) -> object:
+        return SimpleNamespace(execution_name="job/executions/one")
+
+    async def bootstrap(_db: object, **kwargs: object) -> QaBootstrapResult:
         captured.update(kwargs)
         now = datetime.now(UTC)
-        return QaCapability(
-            "server-derived-capability",
-            now + timedelta(minutes=5),
-            now + timedelta(hours=2),
-            _user().id,
-            "qa@example.test",
+        return QaBootstrapResult(
+            capability=QaCapability(
+                "server-derived-capability",
+                now + timedelta(minutes=5),
+                now + timedelta(hours=2),
+                _user().id,
+                "qa@example.test",
+            ),
+            execution_name="job/executions/one",
+            release_sha=_RELEASE,
+            image_digest=_DIGEST,
+            source_folder_id=FileId("source"),
+            destination_folder_id=FileId("destination"),
+            mode=TransformMode.BOTH,
         )
 
-    monkeypatch.setattr(qa_router, "bootstrap_qa_run", bootstrap)
+    monkeypatch.setattr(qa_router, "read_active_qa_execution", read_identity)
+    monkeypatch.setattr(qa_router, "bootstrap_attested_qa_execution", bootstrap)
     db = _Db()
     application = _application(db, _user())
     async with AsyncClient(
@@ -450,22 +792,18 @@ async def test_bootstrap_success_commits_exact_binding_and_is_no_store(
             headers={"Authorization": "Bearer oidc"},
         )
     assert response.status_code == 200
-    assert captured["run_id"] == uuid.UUID(_bootstrap_body()["run_id"])
-    assert captured["execution_name"] == "job/executions/one"
     assert captured["request_nonce"] == uuid.UUID(_NONCE)
     assert captured["release_sha"] == _RELEASE
     assert captured["image_digest"] == _DIGEST
-    assert captured["source_folder_id"] == "source"
-    assert captured["destination_folder_id"] == "destination"
-    assert captured["mode"] is TransformMode.BOTH
     assert response.json()["capability_token"] == "server-derived-capability"
+    assert response.json()["execution_name"] == "job/executions/one"
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["pragma"] == "no-cache"
     assert db.commits == 1
     assert db.rollbacks == 0
 
 
-async def test_bootstrap_invalid_run_is_generic_no_store_and_does_not_reflect_input(
+async def test_bootstrap_stale_execution_selector_cannot_burn_bound_run_capability(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _configure(monkeypatch)
@@ -479,10 +817,14 @@ async def test_bootstrap_invalid_run_is_generic_no_store_and_does_not_reflect_in
         },
     )
 
-    async def bootstrap(*_args: object, **_kwargs: object) -> QaCapability:
-        raise QaGrantError
+    async def read_identity(_db: object) -> object:
+        return SimpleNamespace(execution_name="job/executions/current")
 
-    monkeypatch.setattr(qa_router, "bootstrap_qa_run", bootstrap)
+    async def bootstrap(*_args: object, **_kwargs: object) -> QaBootstrapResult:
+        raise AssertionError
+
+    monkeypatch.setattr(qa_router, "read_active_qa_execution", read_identity)
+    monkeypatch.setattr(qa_router, "bootstrap_attested_qa_execution", bootstrap)
     db = _Db()
     application = _application(db, _user())
     secret_execution = "job/executions/sensitive-name"
@@ -498,7 +840,6 @@ async def test_bootstrap_invalid_run_is_generic_no_store_and_does_not_reflect_in
     assert response.status_code == 403
     assert response.json() == {"detail": "QA credential is invalid"}
     assert secret_execution not in response.text
-    assert body["run_id"] not in response.text
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["pragma"] == "no-cache"
     assert db.commits == 0

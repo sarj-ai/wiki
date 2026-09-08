@@ -20,10 +20,13 @@ from app.document_transform.qa_grants import (
     QaGrantError,
     authorize_qa_capability,
     bind_qa_bootstrap_execution,
+    bootstrap_attested_qa_execution,
     bootstrap_qa_run,
     consume_qa_grant,
     delete_expired_qa_grants,
+    fail_qa_bootstrap_launch,
     issue_qa_grant,
+    prepare_idempotent_qa_launch,
     prepare_qa_bootstrap_run,
     renew_qa_capability,
 )
@@ -48,6 +51,8 @@ _DESTINATION_FOLDER_ID = FileId("destination-folder")
 _CONSUME_NONCE = uuid.UUID("11111111-1111-4111-8111-111111111111")
 _RENEW_NONCE = uuid.UUID("22222222-2222-4222-8222-222222222222")
 _DERIVATION_KEY = b"test-only-qa-capability-key-32!!"
+_EXECUTION_UID = uuid.UUID("12345678-1234-4234-8234-123456789abc")
+_EXECUTION_JOB = "projects/test-project/locations/me-central2/jobs/qa"
 
 
 class _QaSettings(BaseSettings):
@@ -177,17 +182,58 @@ async def _prepared_bound_run(
         destination_folder_id=_DESTINATION_FOLDER_ID,
         mode=TransformMode.BOTH,
     )
+    run = await db.get(DocumentTransformQaRun, prepared.run_id)
+    assert run is not None
+    claimed_at = datetime.now(UTC)
+    run.launch_idempotency_key = uuid.uuid7()
+    run.launch_claimed_at = claimed_at
+    run.launch_lease_expires_at = claimed_at + timedelta(minutes=1)
+    run.state = "launch_claimed"
+    await _bind_launch(db, prepared.run_id, execution_name=execution_name)
+    return _PreparedBoundRun(issued, prepared.run_id)
+
+
+async def _bind_launch(
+    db: AsyncSession,
+    run_id: QaRunId,
+    *,
+    execution_name: str = "execution-a",
+    execution_uid: uuid.UUID = _EXECUTION_UID,
+    execution_job_name: str = _EXECUTION_JOB,
+) -> None:
     await bind_qa_bootstrap_execution(
         db,
-        run_id=prepared.run_id,
+        run_id=run_id,
         execution_name=execution_name,
+        execution_uid=execution_uid,
+        execution_job_name=execution_job_name,
         release_sha="a" * 40,
         image_digest="sha256:" + "c" * 64,
         source_folder_id=_SOURCE_FOLDER_ID,
         destination_folder_id=_DESTINATION_FOLDER_ID,
         mode=TransformMode.BOTH,
     )
-    return _PreparedBoundRun(issued, prepared.run_id)
+
+
+async def _prepare_launch(
+    db: AsyncSession,
+    user: User,
+    session: UserSession,
+    *,
+    idempotency_key: uuid.UUID,
+):
+    return await prepare_idempotent_qa_launch(
+        db,
+        idempotency_key=idempotency_key,
+        issuer_user_id=user.id,
+        user_id=user.id,
+        session_id=session.id,
+        release_sha="a" * 40,
+        image_digest="sha256:" + "c" * 64,
+        source_folder_id=_SOURCE_FOLDER_ID,
+        destination_folder_id=_DESTINATION_FOLDER_ID,
+        mode=TransformMode.BOTH,
+    )
 
 
 async def _bootstrap(
@@ -373,6 +419,168 @@ async def test_real_postgres_secretless_bootstrap_state_is_database_atomic(
 
     with pytest.raises(IntegrityError):
         await violate_atomic_state()
+
+
+async def test_real_postgres_distinct_idempotency_keys_cannot_create_two_active_launches(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+
+    async def prepare(key: uuid.UUID) -> bool:
+        try:
+            async with sessions.begin() as db:
+                await _prepare_launch(db, identity.user, identity.session, idempotency_key=key)
+        except IntegrityError:
+            return False
+        return True
+
+    outcomes = await asyncio.gather(prepare(uuid.uuid7()), prepare(uuid.uuid7()))
+    assert sorted(outcomes) == [False, True]
+
+
+async def test_real_postgres_same_idempotency_key_has_one_durable_launch_claimer(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+    key = uuid.uuid7()
+
+    async def prepare():
+        async with sessions.begin() as db:
+            return await _prepare_launch(db, identity.user, identity.session, idempotency_key=key)
+
+    first, second = await asyncio.gather(prepare(), prepare())
+    assert first.run_id == second.run_id
+    assert first.state == second.state == "launch_claimed"
+    assert sorted((first.owns_launch_claim, second.owns_launch_claim)) == [False, True]
+
+
+async def test_real_postgres_expired_launch_claim_fails_closed_without_relaunch(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        key = uuid.uuid7()
+        claimed = await _prepare_launch(db, identity.user, identity.session, idempotency_key=key)
+    async with sessions.begin() as db:
+        run = await db.get(DocumentTransformQaRun, claimed.run_id)
+        assert run is not None
+        run.launch_lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    async with sessions.begin() as db:
+        replay = await _prepare_launch(db, identity.user, identity.session, idempotency_key=key)
+    assert replay.run_id == claimed.run_id
+    assert replay.state == "launch_failed"
+    assert replay.owns_launch_claim is False
+    async with sessions.begin() as db:
+        with pytest.raises(IntegrityError):
+            await _prepare_launch(
+                db,
+                identity.user,
+                identity.session,
+                idempotency_key=uuid.uuid7(),
+            )
+
+
+async def test_real_postgres_failed_orphan_blocks_every_new_launch_key(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        claimed = await _prepare_launch(
+            db, identity.user, identity.session, idempotency_key=uuid.uuid7()
+        )
+    async with sessions.begin() as db:
+        await fail_qa_bootstrap_launch(db, run_id=claimed.run_id)
+    async with sessions.begin() as db:
+        with pytest.raises(IntegrityError):
+            await _prepare_launch(
+                db,
+                identity.user,
+                identity.session,
+                idempotency_key=uuid.uuid7(),
+            )
+
+
+async def test_real_postgres_unclaimed_legacy_run_cannot_bind_launcher_execution(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        issued = await _issue(db, identity.user, identity.session)
+        prepared = await prepare_qa_bootstrap_run(
+            db,
+            grant_id=issued.grant_id,
+            release_sha="a" * 40,
+            image_digest="sha256:" + "c" * 64,
+            source_folder_id=_SOURCE_FOLDER_ID,
+            destination_folder_id=_DESTINATION_FOLDER_ID,
+            mode=TransformMode.BOTH,
+        )
+        with pytest.raises(QaGrantError):
+            await _bind_launch(db, prepared.run_id)
+
+
+async def test_real_postgres_execution_attestation_is_first_binding_wins(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    job = "projects/test-project/locations/me-central2/jobs/qa"
+    execution = f"{job}/executions/one"
+    uid = uuid.UUID("12345678-1234-4234-8234-123456789abc")
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        prepared = await _prepare_launch(
+            db, identity.user, identity.session, idempotency_key=uuid.uuid7()
+        )
+    async with sessions.begin() as db:
+        await _bind_launch(
+            db,
+            prepared.run_id,
+            execution_name=execution,
+            execution_uid=uid,
+            execution_job_name=job,
+        )
+    async with sessions.begin() as db:
+        with pytest.raises(QaGrantError):
+            await _bind_launch(
+                db,
+                prepared.run_id,
+                execution_name=execution.replace("one", "two"),
+                execution_uid=uuid.UUID("22345678-1234-4234-8234-123456789abc"),
+                execution_job_name=job,
+            )
+
+
+@pytest.mark.parametrize("spoof", ["uid", "job"])
+async def test_real_postgres_bootstrap_rejects_spoofed_server_attestation(
+    sessions: async_sessionmaker[AsyncSession], spoof: str
+) -> None:
+    job = "projects/test-project/locations/me-central2/jobs/qa"
+    uid = uuid.UUID("12345678-1234-4234-8234-123456789abc")
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        prepared = await _prepare_launch(
+            db, identity.user, identity.session, idempotency_key=uuid.uuid7()
+        )
+        await _bind_launch(
+            db,
+            prepared.run_id,
+            execution_name=f"{job}/executions/one",
+            execution_uid=uid,
+            execution_job_name=job,
+        )
+    async with sessions.begin() as db:
+        with pytest.raises(QaGrantError):
+            await bootstrap_attested_qa_execution(
+                db,
+                execution_uid=(uuid.uuid7() if spoof == "uid" else uid),
+                execution_name=f"{job}/executions/one",
+                execution_job_name=(f"{job}-hostile" if spoof == "job" else job),
+                request_nonce=_CONSUME_NONCE,
+                derivation_key=_DERIVATION_KEY,
+                release_sha="a" * 40,
+                image_digest="sha256:" + "c" * 64,
+            )
 
 
 @pytest.mark.parametrize(
@@ -679,6 +887,32 @@ async def test_real_postgres_cleanup_deletes_consumed_grant_only_after_job_expir
     async with sessions.begin() as db:
         assert await delete_expired_qa_grants(db) == 1
         assert await db.get(DocumentTransformQaGrant, issued.grant_id) is None
+
+
+async def test_real_postgres_cleanup_preserves_retired_run_and_its_revoked_grant(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        prepared = await _prepared_bound_run(db, identity.user, identity.session)
+        run = await db.get(DocumentTransformQaRun, prepared.run_id)
+        grant = await db.get(DocumentTransformQaGrant, prepared.issued.grant_id)
+        assert run is not None
+        assert grant is not None
+        now = datetime.now(UTC)
+        run.state = "retired"
+        run.launch_idempotency_key = None
+        run.execution_uid = None
+        run.execution_job_name = None
+        run.launch_claimed_at = None
+        grant.created_at = now - timedelta(minutes=30)
+        grant.expires_at = now - timedelta(minutes=15)
+        grant.revoked_at = now
+
+    async with sessions.begin() as db:
+        assert await delete_expired_qa_grants(db) == 0
+        assert await db.get(DocumentTransformQaRun, prepared.run_id) is not None
+        assert await db.get(DocumentTransformQaGrant, prepared.issued.grant_id) is not None
 
 
 @pytest.mark.parametrize("limit", [0, 101])
