@@ -8,6 +8,11 @@ class SourceChangedError(DocumentTransformError):
     public_detail = "The source changed after the transformation was requested"
 
 
+class DestinationAccessChangedError(DocumentTransformError):
+    code = "destination_access_changed"
+    public_detail = "The copy destination access changed after the transformation was requested"
+
+
 class SourceTooLargeError(DocumentTransformError):
     code = "source_too_large"
     public_detail = "The source exceeds the document transformation limit"

@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal, Self
 import uuid
 
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -115,6 +116,41 @@ class MarkdownSource(StrictTransformModel):
 TransformSource = Annotated[DriveFileSource | MarkdownSource, Field(discriminator="kind")]
 
 
+class QaDestinationPermissionBinding(StrictTransformModel):
+    version: Annotated[str, StringConstraints(pattern=r"^[0-9]+$", max_length=64)]
+    sha256: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+
+
+class QaFilePermissionEvidence(StrictTransformModel):
+    file_id: FileId
+    mime_type: str = Field(min_length=1, max_length=255)
+    parent_folder_id: FileId | None
+    version: Annotated[str, StringConstraints(pattern=r"^[0-9]+$", max_length=64)]
+    permission_sha256: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+    observed_at: AwareDatetime
+
+
+class QaCopyPermissionEvidence(StrictTransformModel):
+    status: Literal["verified_owner_only"] = "verified_owner_only"
+    operation_id: uuid.UUID
+    source_sha256: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+    output_revision_id: DocsRevisionId
+    destination: QaFilePermissionEvidence
+    output: QaFilePermissionEvidence
+
+
+class QaQuarantinedOutputEvidence(StrictTransformModel):
+    status: Literal["quarantined_unverified"] = "quarantined_unverified"
+    operation_id: uuid.UUID
+    source_sha256: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+    output_file_id: FileId
+    destination_folder_id: FileId
+    output_revision_id: DocsRevisionId
+    observed_at: AwareDatetime
+    reason: Literal["owner_only_readback_failed"] = "owner_only_readback_failed"
+    manual_recovery_required: Literal[True] = True
+
+
 class DocumentTransformRequest(StrictTransformModel):
     source: TransformSource
     mode: TransformMode
@@ -144,6 +180,23 @@ class DocumentTransformRequest(StrictTransformModel):
         if self.output_name is not None:
             code = "in_place_output_name"
             msg = "output_name is not allowed for in-place transformation"
+            raise PydanticCustomError(code, msg)
+        return self
+
+
+class QaDocumentTransformRequest(DocumentTransformRequest):
+    qa_contract: Literal["owner_only_v1"] = "owner_only_v1"
+    qa_destination_permission: QaDestinationPermissionBinding
+
+    @model_validator(mode="after")
+    def validate_qa_destination(self) -> Self:
+        if (
+            self.copy_destination_folder_id is None
+            or self.output_strategy is not OutputStrategy.COPY
+            or not isinstance(self.source, DriveFileSource)
+        ):
+            code = "qa_destination_permission_source"
+            msg = "QA permission binding requires a Drive file copy destination"
             raise PydanticCustomError(code, msg)
         return self
 
@@ -227,6 +280,17 @@ class DocumentTransformResult(StrictTransformModel):
     @property
     def file(self) -> DocumentOutput:
         return self.output
+
+
+class QaDocumentTransformResult(DocumentTransformResult):
+    qa_permission_evidence: QaCopyPermissionEvidence
+
+    @model_validator(mode="after")
+    def validate_owner_only_scope(self) -> Self:
+        if self.access_scope != "owner_only":
+            msg = "QA transform result requires owner-only access scope"
+            raise ValueError(msg)
+        return self
 
 
 class TabNamingCheckpoint(StrictTransformModel):
@@ -314,6 +378,8 @@ class CopyCheckpointStage(StrEnum):
     CREATING = "creating"
     CREATED = "created"
     VERIFIED = "verified"
+    ATTESTED = "attested"
+    QUARANTINED = "quarantined"
 
 
 class CopyCheckpoint(StrictTransformModel):
@@ -337,6 +403,12 @@ class CopyCheckpoint(StrictTransformModel):
     source_revision_id: DocsRevisionId | None
     source_parent_folder_id: FileId
     output_parent_folder_id: FileId | None = None
+    qa_destination_permission: QaDestinationPermissionBinding | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    qa_permission_evidence: QaCopyPermissionEvidence | None = None
+    qa_quarantine: QaQuarantinedOutputEvidence | None = None
     brand_profile_id: BrandProfileId
     brand_profile_sha256: str
     pipeline_version: str
@@ -358,7 +430,7 @@ class CopyCheckpoint(StrictTransformModel):
     stage: CopyCheckpointStage
     output: DocumentOutput | None = None
     output_revision_id: DocsRevisionId | None = None
-    result: DocumentTransformResult | None = None
+    result: DocumentTransformResult | QaDocumentTransformResult | None = None
     tab_naming: TabNamingCheckpoint | None = None
     tab_naming_declined_reason: TabNamingDeclinedReason | None = None
     native_footer: NativeFooterCheckpoint | None = None
@@ -371,15 +443,49 @@ class CopyCheckpoint(StrictTransformModel):
             msg = "tab naming cannot be both planned and declined"
             raise ValueError(msg)
         has_output = self.output is not None and self.output_revision_id is not None
-        if self.stage in {CopyCheckpointStage.CREATED, CopyCheckpointStage.VERIFIED}:
+        if self.stage in {
+            CopyCheckpointStage.CREATED,
+            CopyCheckpointStage.VERIFIED,
+            CopyCheckpointStage.ATTESTED,
+            CopyCheckpointStage.QUARANTINED,
+        }:
             if not has_output:
                 msg = "created copy checkpoint requires an output and revision"
                 raise ValueError(msg)
         elif self.output is not None or self.output_revision_id is not None:
             msg = "pre-create copy checkpoint cannot contain an output"
             raise ValueError(msg)
-        if (self.stage is CopyCheckpointStage.VERIFIED) != (self.result is not None):
-            msg = "only a verified copy checkpoint contains a result"
+        if (self.stage in {CopyCheckpointStage.VERIFIED, CopyCheckpointStage.ATTESTED}) != (
+            self.result is not None
+        ):
+            msg = "only a verified or attested copy checkpoint contains a result"
+            raise ValueError(msg)
+        if self.qa_permission_evidence is not None and self.qa_quarantine is not None:
+            msg = "copy checkpoint cannot be both permission-verified and quarantined"
+            raise ValueError(msg)
+        if self.stage is CopyCheckpointStage.ATTESTED and self.qa_destination_permission is None:
+            msg = "attested copy checkpoint requires an internal QA permission binding"
+            raise ValueError(msg)
+        if (
+            self.qa_destination_permission is not None
+            and self.stage is CopyCheckpointStage.ATTESTED
+        ):
+            if self.qa_permission_evidence is None or not isinstance(
+                self.result, QaDocumentTransformResult
+            ):
+                msg = "attested QA copy requires owner-only permission evidence"
+                raise ValueError(msg)
+            if self.result.qa_permission_evidence != self.qa_permission_evidence:
+                msg = "QA permission evidence must match the terminal result"
+                raise ValueError(msg)
+        if self.qa_quarantine is not None and self.stage is not CopyCheckpointStage.QUARANTINED:
+            msg = "quarantine evidence requires a quarantined checkpoint"
+            raise ValueError(msg)
+        if self.stage is CopyCheckpointStage.QUARANTINED and self.qa_quarantine is None:
+            msg = "quarantined copy checkpoint requires recovery evidence"
+            raise ValueError(msg)
+        if self.stage is CopyCheckpointStage.QUARANTINED and self.qa_destination_permission is None:
+            msg = "quarantined copy checkpoint requires an internal QA permission binding"
             raise ValueError(msg)
         if (
             self.output_parent_folder_id is not None

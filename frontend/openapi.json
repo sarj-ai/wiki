@@ -895,10 +895,23 @@
             "title": "Id",
             "type": "string"
           },
+          "inherited": {
+            "default": false,
+            "title": "Inherited",
+            "type": "boolean"
+          },
           "pending_owner": {
             "default": false,
             "title": "Pending Owner",
             "type": "boolean"
+          },
+          "permission_details": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DrivePermissionDetail"
+            },
+            "title": "Permission Details",
+            "type": "array"
           },
           "principal_type": {
             "title": "Principal Type",
@@ -915,6 +928,29 @@
           "role"
         ],
         "title": "DrivePermission",
+        "type": "object"
+      },
+      "DrivePermissionDetail": {
+        "properties": {
+          "inherited": {
+            "title": "Inherited",
+            "type": "boolean"
+          },
+          "permission_type": {
+            "title": "Permission Type",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "permission_type",
+          "role",
+          "inherited"
+        ],
+        "title": "DrivePermissionDetail",
         "type": "object"
       },
       "DrivePermissionsPage": {
