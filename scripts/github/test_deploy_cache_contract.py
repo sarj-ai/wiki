@@ -27,6 +27,31 @@ def _step_index(steps: list[dict[str, Any]], name: str) -> int:
     return steps.index(_named_step(steps, name))
 
 
+def test_component_ci_runs_once_on_main_through_its_deploy_workflow() -> None:
+    components = {
+        "backend": "backend/**",
+        "frontend": "frontend/**",
+    }
+
+    for component, source_path in components.items():
+        ci_name = f"ci-{component}.yml"
+        deploy_name = f"deploy-{component}.yml"
+        ci_workflow = _workflow(ci_name)
+        ci_triggers = ci_workflow["on"]
+        deploy_workflow = _workflow(deploy_name)
+        deploy_push = deploy_workflow["on"]["push"]
+        callable_job = deploy_workflow["jobs"][f"ci-{component}"]
+
+        assert "workflow_call" in ci_triggers
+        assert "pull_request" in ci_triggers
+        assert "push" not in ci_triggers
+        assert deploy_push["branches"] == ["main"]
+        assert source_path in deploy_push["paths"]
+        assert f".github/workflows/{ci_name}" in deploy_push["paths"]
+        assert callable_job["uses"] == f"./.github/workflows/{ci_name}"
+        assert f"ci-{component}" in deploy_workflow["jobs"]["deploy"]["needs"]
+
+
 def test_deploys_restore_the_prerequisite_pre_commit_cache() -> None:
     quality_steps = _workflow("ci-quality.yml")["jobs"]["pre-commit"]["steps"]
     producer = _named_step(quality_steps, "Cache pre-commit environments")

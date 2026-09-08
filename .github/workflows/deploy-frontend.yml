@@ -5,6 +5,7 @@ name: Deploy Frontend
     branches: [main]
     paths:
       - "frontend/**"
+      - ".github/workflows/ci-frontend.yml"
       - ".github/workflows/deploy-frontend.yml"
       - "scripts/github/release_gate.py"
       - "scripts/github/verify-release-gate.sh"
