@@ -10,12 +10,13 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.document_transform.schemas import TransformMode
-from app.identifiers import AuthSessionId, FileId, UserId
+from app.identifiers import AuthSessionId, FileId, QaRunId, UserId
 from app.models.auth_session import UserSession
 from app.models.document_transform_qa_grant import (
     DocumentTransformQaGrant,
     DocumentTransformQaGrantId,
 )
+from app.models.document_transform_qa_run import DocumentTransformQaRun
 from app.models.user import User
 
 
@@ -67,7 +68,21 @@ class QaAuthority:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedQaRun:
+    run_id: QaRunId
+
+
+@dataclass(frozen=True, slots=True)
 class _LockedGrant:
+    grant: DocumentTransformQaGrant
+    user: User
+    session: UserSession
+    now: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class _LockedRun:
+    run: DocumentTransformQaRun
     grant: DocumentTransformQaGrant
     user: User
     session: UserSession
@@ -144,6 +159,210 @@ async def issue_qa_grant(
     db.add(grant)
     await db.flush()
     return IssuedQaGrant(grant.id, token, expires_at)
+
+
+async def prepare_qa_bootstrap_run(
+    db: AsyncSession,
+    *,
+    grant_id: DocumentTransformQaGrantId,
+    release_sha: str,
+    image_digest: str,
+    source_folder_id: FileId,
+    destination_folder_id: FileId,
+    mode: TransformMode,
+) -> PreparedQaRun:
+    _validate_binding(release_sha, image_digest, source_folder_id, destination_folder_id)
+    row = await _locked_grant_by_id(db, grant_id)
+    if row is None:
+        raise QaGrantError
+    grant, user, session, now = row.grant, row.user, row.session, row.now
+    if not _matches(
+        grant,
+        release_sha=release_sha,
+        image_digest=image_digest,
+        source_folder_id=source_folder_id,
+        destination_folder_id=destination_folder_id,
+        mode=mode,
+    ):
+        raise QaGrantError
+    existing = await db.scalar(
+        select(DocumentTransformQaRun)
+        .where(DocumentTransformQaRun.grant_id == grant.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if existing is not None:
+        if not _run_matches(
+            existing,
+            grant,
+            release_sha=release_sha,
+            image_digest=image_digest,
+            source_folder_id=source_folder_id,
+            destination_folder_id=destination_folder_id,
+            mode=mode,
+        ):
+            raise QaGrantError
+        identity_is_live = _identity_is_live(grant, user, session, now)
+        grant_state_is_live = (
+            _active_capability(grant, now) and _run_capability_matches_grant(existing, grant)
+            if existing.state == "bootstrapped"
+            else _grant_is_prepared(grant, user, session, now)
+        )
+        if not identity_is_live or not grant_state_is_live:
+            raise QaGrantError
+        return PreparedQaRun(existing.id)
+    if not _grant_is_prepared(grant, user, session, now):
+        raise QaGrantError
+    run = DocumentTransformQaRun(
+        id=QaRunId(uuid.uuid7()),
+        grant_id=grant.id,
+        user_id=grant.user_id,
+        user_session_id=grant.user_session_id,
+        user_session_revision=grant.user_session_revision,
+        release_sha=grant.release_sha,
+        image_digest=grant.image_digest,
+        source_folder_id=grant.source_folder_id,
+        destination_folder_id=grant.destination_folder_id,
+        mode=grant.mode,
+        state="created",
+        created_at=now,
+    )
+    db.add(run)
+    await db.flush()
+    return PreparedQaRun(run.id)
+
+
+async def bind_qa_bootstrap_execution(
+    db: AsyncSession,
+    *,
+    run_id: QaRunId,
+    execution_name: str,
+    release_sha: str,
+    image_digest: str,
+    source_folder_id: FileId,
+    destination_folder_id: FileId,
+    mode: TransformMode,
+) -> None:
+    _validate_runtime(execution_name)
+    _validate_binding(release_sha, image_digest, source_folder_id, destination_folder_id)
+    row = await _locked_run(db, run_id)
+    if row is None:
+        raise QaGrantError
+    run, grant, user, session, now = row.run, row.grant, row.user, row.session, row.now
+    if not _run_matches(
+        run,
+        grant,
+        release_sha=release_sha,
+        image_digest=image_digest,
+        source_folder_id=source_folder_id,
+        destination_folder_id=destination_folder_id,
+        mode=mode,
+    ):
+        raise QaGrantError
+    execution_matches = hmac.compare_digest(run.execution_name or "", execution_name)
+    if run.state == "bootstrapped":
+        if not (
+            execution_matches
+            and _active_capability(grant, now)
+            and _run_capability_matches_grant(run, grant)
+            and _identity_is_live(grant, user, session, now)
+        ):
+            raise QaGrantError
+        return
+    if not _grant_is_prepared(grant, user, session, now):
+        raise QaGrantError
+    if run.state == "created":
+        run.state = "execution_bound"
+        run.execution_name = execution_name
+        await db.flush()
+        return
+    if run.state != "execution_bound" or not execution_matches:
+        raise QaGrantError
+
+
+async def bootstrap_qa_run(
+    db: AsyncSession,
+    *,
+    run_id: QaRunId,
+    execution_name: str,
+    request_nonce: uuid.UUID,
+    derivation_key: bytes,
+    release_sha: str,
+    image_digest: str,
+    source_folder_id: FileId,
+    destination_folder_id: FileId,
+    mode: TransformMode,
+) -> QaCapability:
+    _validate_runtime(execution_name)
+    _validate_binding(release_sha, image_digest, source_folder_id, destination_folder_id)
+    row = await _locked_run(db, run_id)
+    if row is None:
+        raise QaGrantError
+    run, grant, user, session, now = row.run, row.grant, row.user, row.session, row.now
+    if (
+        run.state not in {"execution_bound", "bootstrapped"}
+        or not hmac.compare_digest(run.execution_name or "", execution_name)
+        or not _run_matches(
+            run,
+            grant,
+            release_sha=release_sha,
+            image_digest=image_digest,
+            source_folder_id=source_folder_id,
+            destination_folder_id=destination_folder_id,
+            mode=mode,
+        )
+    ):
+        raise QaGrantError
+    capability = _derive_bootstrap_capability(
+        derivation_key,
+        run_id=run.id,
+        grant_id=grant.id,
+        execution_name=execution_name,
+        request_nonce=request_nonce,
+    )
+    if run.state == "bootstrapped":
+        return _replay_bootstrap(
+            run,
+            grant,
+            user,
+            session,
+            now,
+            capability=capability,
+            request_nonce=request_nonce,
+        )
+    if not _grant_is_prepared(grant, user, session, now):
+        raise QaGrantError
+    capability_digest = _digest(capability)
+    job_expires_at = now + MAX_JOB_LIFETIME
+    capability_expires_at = min(now + CAPABILITY_LIFETIME, job_expires_at)
+    grant.consumed_at = now
+    grant.consumed_by_execution = execution_name
+    grant.consume_request_nonce = request_nonce
+    grant.capability_digest = capability_digest
+    grant.capability_expires_at = capability_expires_at
+    grant.job_expires_at = job_expires_at
+    run.state = "bootstrapped"
+    run.bootstrap_request_nonce = request_nonce
+    run.bootstrap_capability_digest = capability_digest
+    run.bootstrapped_at = now
+    await db.flush()
+    return QaCapability(capability, capability_expires_at, job_expires_at, user.id, user.email)
+
+
+def _derive_bootstrap_capability(
+    key: bytes,
+    *,
+    run_id: QaRunId,
+    grant_id: DocumentTransformQaGrantId,
+    execution_name: str,
+    request_nonce: uuid.UUID,
+) -> str:
+    if len(key) < _MIN_DERIVATION_KEY_BYTES:
+        raise QaGrantError
+    message = (
+        f"qa-bootstrap-capability\0{run_id}\0{grant_id}\0{execution_name}\0{request_nonce}"
+    ).encode()
+    return base64.urlsafe_b64encode(hmac.digest(key, message, "sha256")).rstrip(b"=").decode()
 
 
 async def consume_qa_grant(
@@ -357,6 +576,38 @@ async def delete_expired_qa_grants(db: AsyncSession, *, limit: int = _MAX_CLEANU
     return int(getattr(result, "rowcount", 0) or 0)
 
 
+def _replay_bootstrap(
+    run: DocumentTransformQaRun,
+    grant: DocumentTransformQaGrant,
+    user: User,
+    session: UserSession,
+    now: datetime,
+    *,
+    capability: str,
+    request_nonce: uuid.UUID,
+) -> QaCapability:
+    capability_digest = _digest(capability)
+    run_digest_matches = run.bootstrap_capability_digest is not None and hmac.compare_digest(
+        run.bootstrap_capability_digest, capability_digest
+    )
+    grant_digest_matches = grant.capability_digest is not None and hmac.compare_digest(
+        grant.capability_digest, capability_digest
+    )
+    checks = (
+        run.bootstrap_request_nonce == request_nonce,
+        run_digest_matches,
+        grant.consume_request_nonce == request_nonce,
+        grant.consumed_by_execution == run.execution_name,
+        grant.previous_capability_digest is None,
+        grant_digest_matches,
+        _active_capability(grant, now),
+        _identity_is_live(grant, user, session, now),
+    )
+    if not all(checks):
+        raise QaGrantError
+    return _capability_result(grant, user, capability)
+
+
 def _replay_consumption(
     grant: DocumentTransformQaGrant,
     user: User,
@@ -487,6 +738,48 @@ async def _locked_grant(
     return None if row is None else _LockedGrant(row[0], row[1], row[2], row[3])
 
 
+async def _locked_grant_by_id(
+    db: AsyncSession, grant_id: DocumentTransformQaGrantId
+) -> _LockedGrant | None:
+    row = (
+        await db.execute(
+            select(DocumentTransformQaGrant, User, UserSession, func.clock_timestamp())
+            .join(User, User.id == DocumentTransformQaGrant.user_id)
+            .join(UserSession, UserSession.id == DocumentTransformQaGrant.user_session_id)
+            .where(DocumentTransformQaGrant.id == grant_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).one_or_none()
+    return None if row is None else _LockedGrant(row[0], row[1], row[2], row[3])
+
+
+async def _locked_run(db: AsyncSession, run_id: QaRunId) -> _LockedRun | None:
+    row = (
+        await db.execute(
+            select(
+                DocumentTransformQaRun,
+                DocumentTransformQaGrant,
+                User,
+                UserSession,
+                func.clock_timestamp(),
+            )
+            .join(
+                DocumentTransformQaGrant,
+                DocumentTransformQaGrant.id == DocumentTransformQaRun.grant_id,
+            )
+            .join(User, User.id == DocumentTransformQaRun.user_id)
+            .join(UserSession, UserSession.id == DocumentTransformQaRun.user_session_id)
+            .where(DocumentTransformQaRun.id == run_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    return _LockedRun(row[0], row[1], row[2], row[3], row[4])
+
+
 async def _current_capability_grant(
     db: AsyncSession, *, capability_digest: bytes
 ) -> _LockedGrant | None:
@@ -521,6 +814,60 @@ def _identity_is_live_values(
         and session.expires_at > now
         and hmac.compare_digest(str(user.token_version), str(token_version))
         and bool(user.encrypted_refresh_token)
+    )
+
+
+def _grant_is_prepared(
+    grant: DocumentTransformQaGrant,
+    user: User,
+    session: UserSession,
+    now: datetime,
+) -> bool:
+    return (
+        grant.revoked_at is None
+        and grant.consumed_at is None
+        and grant.consumed_by_execution is None
+        and grant.capability_digest is None
+        and grant.previous_capability_digest is None
+        and grant.consume_request_nonce is None
+        and grant.renewal_request_nonce is None
+        and grant.capability_expires_at is None
+        and grant.job_expires_at is None
+        and grant.created_at <= now < grant.expires_at
+        and _identity_is_live(grant, user, session, now)
+    )
+
+
+def _run_matches(
+    run: DocumentTransformQaRun,
+    grant: DocumentTransformQaGrant,
+    *,
+    release_sha: str,
+    image_digest: str,
+    source_folder_id: FileId,
+    destination_folder_id: FileId,
+    mode: TransformMode,
+) -> bool:
+    return (
+        run.grant_id == grant.id
+        and run.user_id == grant.user_id
+        and run.user_session_id == grant.user_session_id
+        and run.user_session_revision == grant.user_session_revision
+        and run.release_sha == grant.release_sha == release_sha
+        and run.image_digest == grant.image_digest == image_digest
+        and run.source_folder_id == grant.source_folder_id == source_folder_id
+        and run.destination_folder_id == grant.destination_folder_id == destination_folder_id
+        and run.mode == grant.mode == mode.value
+    )
+
+
+def _run_capability_matches_grant(
+    run: DocumentTransformQaRun, grant: DocumentTransformQaGrant
+) -> bool:
+    return (
+        run.bootstrap_capability_digest is not None
+        and grant.capability_digest is not None
+        and hmac.compare_digest(run.bootstrap_capability_digest, grant.capability_digest)
     )
 
 

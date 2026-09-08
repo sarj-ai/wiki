@@ -84,6 +84,14 @@ def _issuer_body() -> dict[str, str]:
     return {key: value for key, value in _body().items() if key not in excluded}
 
 
+def _bootstrap_body() -> dict[str, str]:
+    return _issuer_body() | {
+        "execution_name": "job/executions/one",
+        "request_nonce": _NONCE,
+        "run_id": "55555555-5555-4555-8555-555555555555",
+    }
+
+
 def _application(db: _Db, user: User) -> FastAPI:
     application = FastAPI()
     application.add_middleware(CookieOriginMiddleware, allowed_origin=settings.frontend_origin)
@@ -337,6 +345,164 @@ async def test_exchange_success_is_no_store_and_passes_nonce(
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["pragma"] == "no-cache"
     assert db.commits == 1
+
+
+def test_bootstrap_has_no_production_prepare_or_bind_route() -> None:
+    paths = {
+        getattr(route, "path", "")
+        for router in (qa_router.issuer_router, qa_router.workload_router)
+        for route in router.routes
+    }
+    assert "/document-transforms/qa/runs" not in paths
+    assert "/internal/document-transform-qa/bootstrap/bind" not in paths
+    assert "/internal/document-transform-qa/bootstrap" in paths
+
+
+async def test_bootstrap_authenticates_before_parsing_or_reflecting_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    db = _Db()
+    application = _application(db, _user())
+    secret = "not-json-secret-that-must-not-be-reflected"
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/bootstrap",
+            content=("{" + secret).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+    assert response.status_code == 401
+    assert secret not in response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert db.commits == db.rollbacks == 0
+
+
+async def test_bootstrap_authenticated_malformed_json_is_generic_and_no_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    db = _Db()
+    application = _application(db, _user())
+    secret = "not-json-secret-that-must-not-be-reflected"
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/bootstrap",
+            content=("{" + secret).encode(),
+            headers={"Authorization": "Bearer oidc", "Content-Type": "application/json"},
+        )
+    assert response.status_code == 422
+    assert response.json() == {"detail": "QA request is invalid"}
+    assert secret not in response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert db.commits == db.rollbacks == 0
+
+
+async def test_bootstrap_success_commits_exact_binding_and_is_no_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    captured: dict[str, object] = {}
+
+    async def bootstrap(_db: object, **kwargs: object) -> QaCapability:
+        captured.update(kwargs)
+        now = datetime.now(UTC)
+        return QaCapability(
+            "server-derived-capability",
+            now + timedelta(minutes=5),
+            now + timedelta(hours=2),
+            _user().id,
+            "qa@example.test",
+        )
+
+    monkeypatch.setattr(qa_router, "bootstrap_qa_run", bootstrap)
+    db = _Db()
+    application = _application(db, _user())
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/bootstrap",
+            json=_bootstrap_body(),
+            headers={"Authorization": "Bearer oidc"},
+        )
+    assert response.status_code == 200
+    assert captured["run_id"] == uuid.UUID(_bootstrap_body()["run_id"])
+    assert captured["execution_name"] == "job/executions/one"
+    assert captured["request_nonce"] == uuid.UUID(_NONCE)
+    assert captured["release_sha"] == _RELEASE
+    assert captured["image_digest"] == _DIGEST
+    assert captured["source_folder_id"] == "source"
+    assert captured["destination_folder_id"] == "destination"
+    assert captured["mode"] is TransformMode.BOTH
+    assert response.json()["capability_token"] == "server-derived-capability"
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert db.commits == 1
+    assert db.rollbacks == 0
+
+
+async def test_bootstrap_invalid_run_is_generic_no_store_and_does_not_reflect_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+
+    async def bootstrap(*_args: object, **_kwargs: object) -> QaCapability:
+        raise QaGrantError
+
+    monkeypatch.setattr(qa_router, "bootstrap_qa_run", bootstrap)
+    db = _Db()
+    application = _application(db, _user())
+    secret_execution = "job/executions/sensitive-name"
+    body = _bootstrap_body() | {"execution_name": secret_execution}
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/bootstrap",
+            json=body,
+            headers={"Authorization": "Bearer oidc"},
+        )
+    assert response.status_code == 403
+    assert response.json() == {"detail": "QA credential is invalid"}
+    assert secret_execution not in response.text
+    assert body["run_id"] not in response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert db.commits == 0
+    assert db.rollbacks == 1
 
 
 async def test_canary_session_requires_capability_without_database_authorization(

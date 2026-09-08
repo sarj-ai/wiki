@@ -21,12 +21,13 @@ from app.document_transform.qa_grants import (
     QaCapability,
     QaGrantError,
     authorize_qa_capability,
+    bootstrap_qa_run,
     consume_qa_grant,
     issue_qa_grant,
     renew_qa_capability,
 )
 from app.document_transform.schemas import TransformMode
-from app.identifiers import FileId, QaPlanId, TaskId
+from app.identifiers import FileId, QaPlanId, QaRunId, TaskId
 from app.models.user import User
 from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
 from app.tasks.errors import TaskError
@@ -70,6 +71,11 @@ class QaCapabilityResponse(_StrictModel):
 
 class QaCapabilityAuthorization(QaGrantBinding):
     execution_name: str = Field(min_length=1, max_length=255)
+
+
+class QaBootstrapRequest(QaCapabilityAuthorization):
+    run_id: uuid.UUID
+    request_nonce: uuid.UUID
 
 
 class QaCanarySessionResponse(QaGrantBinding):
@@ -251,6 +257,51 @@ async def exchange_document_transform_qa_grant(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="QA credential is invalid"
         ) from exc
+    _prevent_token_caching(response)
+    return _capability_response(capability)
+
+
+@workload_router.post("/bootstrap", response_model=QaCapabilityResponse)
+async def bootstrap_document_transform_qa_run(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    response: Response,
+) -> QaCapabilityResponse:
+    """Bootstrap a previously bound execution without transporting a grant secret.
+
+    No production route can prepare or bind a run in this release. The endpoint
+    therefore remains fail-closed until the separately reviewed launcher exists.
+    """
+    try:
+        await _require_qa_workload(request.headers.get("Authorization"))
+    except HTTPException as exc:
+        raise _no_store_http_error(exc.status_code, str(exc.detail)) from exc
+    try:
+        body = QaBootstrapRequest.model_validate(await request.json())
+    except (ValueError, ValidationError) as exc:
+        raise _no_store_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "QA request is invalid"
+        ) from exc
+    try:
+        _configured_binding(body)
+        capability = await bootstrap_qa_run(
+            db,
+            run_id=QaRunId(body.run_id),
+            execution_name=body.execution_name,
+            request_nonce=body.request_nonce,
+            derivation_key=settings.SECRET_KEY.get_secret_value().encode(),
+            release_sha=body.release_sha,
+            image_digest=body.image_digest,
+            source_folder_id=body.source_folder_id,
+            destination_folder_id=body.destination_folder_id,
+            mode=body.mode,
+        )
+        await db.commit()
+    except HTTPException as exc:
+        raise _no_store_http_error(exc.status_code, str(exc.detail)) from exc
+    except QaGrantError as exc:
+        await db.rollback()
+        raise _invalid_qa_credential() from exc
     _prevent_token_caching(response)
     return _capability_response(capability)
 
