@@ -6,7 +6,11 @@ import uuid
 from pydantic import BaseModel
 import pytest
 
-from app.document_transform.qa_broker import plan_qa_canary, submit_planned_qa_canary
+from app.document_transform.qa_broker import (
+    plan_qa_canary,
+    read_planned_qa_canary_task,
+    submit_planned_qa_canary,
+)
 from app.document_transform.qa_grants import QaAuthority, QaGrantError
 from app.document_transform.schemas import (
     DocumentTransformRequest,
@@ -20,6 +24,7 @@ from app.identifiers import DriveId, FileId, IdempotencyKey, QaPlanId, TaskId, U
 from app.models.document_transform_qa_grant import DocumentTransformQaGrantId
 from app.tasks.queue import TaskEnqueuer
 from app.tasks.schemas import (
+    DocumentTransformAdmission,
     PendingTaskRead,
     SmartCreateTaskRecord,
     TaskClaim,
@@ -103,6 +108,7 @@ class _Tasks(TaskService):
     def __init__(self) -> None:
         self.payloads: list[DocumentTransformRequest] = []
         self.task_id = TaskId(uuid.UUID("33333333-3333-4333-8333-333333333333"))
+        self.read_keys: list[tuple[uuid.UUID, IdempotencyKey]] = []
 
     @override
     async def create_or_replay(
@@ -182,7 +188,28 @@ class _Tasks(TaskService):
 
     @override
     async def get_for_owner(self, task_id: TaskId, owner_user_id: uuid.UUID) -> TaskRead:
-        raise NotImplementedError
+        assert task_id == self.task_id
+        assert owner_user_id == _authority().user_id
+        return PendingTaskRead(
+            id=self.task_id,
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            status=TaskStatus.PENDING,
+            result=None,
+            resource_id=None,
+            error_code=None,
+            error_detail=None,
+            attempt_count=0,
+            started_at=None,
+            finished_at=None,
+            created_at=datetime(2026, 9, 7, 12, tzinfo=UTC),
+        )
+
+    @override
+    async def get_document_transform_admission(
+        self, owner_user_id: uuid.UUID, idempotency_key: IdempotencyKey
+    ) -> DocumentTransformAdmission:
+        self.read_keys.append((owner_user_id, idempotency_key))
+        return DocumentTransformAdmission(task_id=self.task_id, status=TaskStatus.PENDING)
 
     @override
     async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord:
@@ -319,3 +346,43 @@ async def test_submit_rejects_stale_or_forged_plan_before_task_admission() -> No
             enqueuer=_Enqueuer(),
         )
     assert task_store.payloads == []
+
+
+async def test_read_resolves_only_current_plan_and_owner_scoped_task() -> None:
+    authority = _authority()
+    plan = await plan_qa_canary(
+        authority,
+        drive=_Drive({_SOURCE: [_node("doc-1")]}),
+        files=_Files(),
+    )
+    tasks = _Tasks()
+
+    task = await read_planned_qa_canary_task(
+        authority,
+        plan=plan,
+        plan_id=plan.plan_id,
+        tasks=tasks,
+    )
+
+    assert task.id == tasks.task_id
+    assert tasks.read_keys == [(authority.user_id, IdempotencyKey(plan.plan_id))]
+
+
+async def test_read_rejects_cross_run_plan_before_any_task_lookup() -> None:
+    authority = _authority()
+    plan = await plan_qa_canary(
+        authority,
+        drive=_Drive({_SOURCE: [_node("doc-1")]}),
+        files=_Files(),
+    )
+    tasks = _Tasks()
+
+    with pytest.raises(QaGrantError):
+        await read_planned_qa_canary_task(
+            authority,
+            plan=plan,
+            plan_id=QaPlanId(uuid.UUID("99999999-9999-4999-8999-999999999999")),
+            tasks=tasks,
+        )
+
+    assert tasks.read_keys == []

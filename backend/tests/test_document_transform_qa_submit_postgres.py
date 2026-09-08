@@ -12,7 +12,11 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.document_transform.application import TransformSubmission
-from app.document_transform.qa_broker import plan_qa_canary, submit_planned_qa_canary
+from app.document_transform.qa_broker import (
+    plan_qa_canary,
+    read_planned_qa_canary_task,
+    submit_planned_qa_canary,
+)
 from app.document_transform.qa_grants import QaAuthority
 from app.document_transform.schemas import (
     DocumentTransformRequest,
@@ -177,6 +181,15 @@ async def test_real_postgres_concurrent_qa_submit_creates_one_forced_copy_task()
         assert sum(not submission.replayed for submission in submissions) == 1
         assert queue.task_ids == [task_id] * len(submissions)
         async with sessions() as db:
+            assert (
+                await read_planned_qa_canary_task(
+                    authority,
+                    plan=plan,
+                    plan_id=plan.plan_id,
+                    tasks=PostgresTaskService(db=db),
+                )
+                == submissions[0].task
+            )
             assert (
                 await db.scalar(
                     select(func.count()).select_from(Task).where(Task.owner_user_id == owner)

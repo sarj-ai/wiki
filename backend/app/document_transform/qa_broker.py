@@ -34,7 +34,9 @@ from app.files.schemas import FileResponse
 from app.files.service import GoogleFilesService
 from app.identifiers import DriveId, FileId, IdempotencyKey, QaPlanId
 from app.models.user import User
+from app.tasks.errors import TaskError
 from app.tasks.queue import TaskEnqueuer
+from app.tasks.schemas import TaskRead
 from app.tasks.service import TaskService
 
 
@@ -124,6 +126,31 @@ class QaCanaryBroker:
         ) as exc:
             raise QaGrantError from exc
 
+    async def read_task(
+        self,
+        authority: QaAuthority,
+        *,
+        plan_id: QaPlanId,
+        tasks: TaskService,
+    ) -> TaskRead:
+        services = await self._services(authority)
+        try:
+            plan = await plan_qa_canary(authority, drive=services.drive, files=services.files)
+            return await read_planned_qa_canary_task(
+                authority,
+                plan=plan,
+                plan_id=plan_id,
+                tasks=tasks,
+            )
+        except (
+            DriveTraversalIncompleteError,
+            FilesError,
+            NotImplementedError,
+            TaskError,
+            ValueError,
+        ) as exc:
+            raise QaGrantError from exc
+
     async def _services(self, authority: QaAuthority) -> _QaBrokerServices:
         user = await self._db.get(User, authority.user_id)
         if user is None or user.email.casefold() != authority.user_email.casefold():
@@ -166,6 +193,22 @@ async def submit_planned_qa_canary(
         tasks=tasks,
         enqueuer=enqueuer,
     )
+
+
+async def read_planned_qa_canary_task(
+    authority: QaAuthority,
+    *,
+    plan: QaCanaryPlan,
+    plan_id: QaPlanId,
+    tasks: TaskService,
+) -> TaskRead:
+    if not hmac.compare_digest(plan.plan_id.bytes, plan_id.bytes):
+        raise QaGrantError
+    admission = await tasks.get_document_transform_admission(
+        authority.user_id,
+        IdempotencyKey(plan.plan_id),
+    )
+    return await tasks.get_for_owner(admission.task_id, authority.user_id)
 
 
 async def _submit_qa_canary_plan(
