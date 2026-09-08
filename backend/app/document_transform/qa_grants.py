@@ -10,14 +10,17 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.document_transform.schemas import TransformMode
-from app.identifiers import AuthSessionId, FileId, QaRunId, UserId
+from app.identifiers import AuthSessionId, FileId, QaPlanId, QaRunId, TaskId, UserId
 from app.models.auth_session import UserSession
 from app.models.document_transform_qa_grant import (
     DocumentTransformQaGrant,
     DocumentTransformQaGrantId,
 )
 from app.models.document_transform_qa_run import DocumentTransformQaRun
+from app.models.task import Task
+from app.models.task_replay_key import TaskReplayKey
 from app.models.user import User
+from app.tasks.schemas import TaskKind
 
 
 MAX_GRANT_LIFETIME = timedelta(minutes=15)
@@ -193,6 +196,12 @@ async def prepare_idempotent_qa_launch(
         None,
         owns_launch_claim=True,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class QaSubmittedCanary:
+    plan_id: QaPlanId
+    task_id: TaskId
 
 
 @dataclass(frozen=True, slots=True)
@@ -566,6 +575,72 @@ async def bootstrap_qa_run(
     return QaCapability(capability, capability_expires_at, job_expires_at, user.id, user.email)
 
 
+async def bind_qa_canary_submission(
+    db: AsyncSession,
+    *,
+    authority: QaAuthority,
+    plan_id: QaPlanId,
+    task_id: TaskId,
+) -> QaSubmittedCanary:
+    row = await _locked_run_by_grant(db, authority.grant_id)
+    if row is None or not _authority_matches_run(row, authority):
+        raise QaGrantError
+    run = row.run
+    if run.state != "bootstrapped":
+        raise QaGrantError
+    existing = _submitted_canary(run)
+    if existing is not None:
+        if not (
+            hmac.compare_digest(existing.plan_id.bytes, plan_id.bytes)
+            and hmac.compare_digest(existing.task_id.bytes, task_id.bytes)
+        ):
+            raise QaGrantError
+        return existing
+    if any(
+        value is not None
+        for value in (run.submitted_plan_id, run.submitted_task_id, run.submitted_at)
+    ):
+        raise QaGrantError
+    bound_task_id = await db.scalar(
+        select(Task.id).where(
+            Task.id == task_id,
+            Task.owner_user_id == authority.user_id,
+            Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+            or_(
+                Task.idempotency_key == plan_id,
+                Task.id.in_(
+                    select(TaskReplayKey.task_id).where(
+                        TaskReplayKey.owner_user_id == authority.user_id,
+                        TaskReplayKey.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+                        TaskReplayKey.idempotency_key == plan_id,
+                    )
+                ),
+            ),
+        )
+    )
+    if bound_task_id is None or not hmac.compare_digest(bound_task_id.bytes, task_id.bytes):
+        raise QaGrantError
+    run.submitted_plan_id = plan_id
+    run.submitted_task_id = task_id
+    run.submitted_at = row.now
+    await db.flush()
+    return QaSubmittedCanary(plan_id=plan_id, task_id=task_id)
+
+
+async def load_qa_canary_submission(
+    db: AsyncSession,
+    *,
+    authority: QaAuthority,
+) -> QaSubmittedCanary:
+    row = await _run_by_grant(db, authority.grant_id, lock=False)
+    if row is None or not _authority_matches_run(row, authority):
+        raise QaGrantError
+    submitted = _submitted_canary(row.run)
+    if submitted is None:
+        raise QaGrantError
+    return submitted
+
+
 def _derive_bootstrap_capability(
     key: bytes,
     *,
@@ -655,6 +730,7 @@ async def renew_qa_capability(
     source_folder_id: FileId,
     destination_folder_id: FileId,
     mode: TransformMode,
+    require_submitted_task: bool = False,
 ) -> QaCapability:
     _validate_runtime(execution_name)
     _validate_binding(release_sha, image_digest, source_folder_id, destination_folder_id)
@@ -663,6 +739,16 @@ async def renew_qa_capability(
     if row is None:
         raise QaGrantError
     grant, user, session, now = row.grant, row.user, row.session, row.now
+    if require_submitted_task:
+        run_row = await _locked_run_by_grant(db, grant.id)
+        if (
+            run_row is None
+            or run_row.run.state != "bootstrapped"
+            or run_row.run.execution_name != execution_name
+            or not _run_capability_matches_grant(run_row.run, grant)
+            or not await _submitted_task_is_bound(db, run_row.run, user_id=user.id)
+        ):
+            raise QaGrantError
     if grant.previous_capability_digest is not None and hmac.compare_digest(
         grant.previous_capability_digest, supplied_digest
     ):
@@ -709,6 +795,37 @@ async def renew_qa_capability(
     grant.last_renewed_at = now
     await db.flush()
     return QaCapability(capability, renewed_expires_at, job_expires_at, user.id, user.email)
+
+
+async def _submitted_task_is_bound(
+    db: AsyncSession,
+    run: DocumentTransformQaRun,
+    *,
+    user_id: UserId,
+) -> bool:
+    submitted = _submitted_canary(run)
+    if submitted is None:
+        return False
+    bound_task_id = await db.scalar(
+        select(Task.id).where(
+            Task.id == submitted.task_id,
+            Task.owner_user_id == user_id,
+            Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+            or_(
+                Task.idempotency_key == submitted.plan_id,
+                Task.id.in_(
+                    select(TaskReplayKey.task_id).where(
+                        TaskReplayKey.owner_user_id == user_id,
+                        TaskReplayKey.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+                        TaskReplayKey.idempotency_key == submitted.plan_id,
+                    )
+                ),
+            ),
+        )
+    )
+    return bound_task_id is not None and hmac.compare_digest(
+        bound_task_id.bytes, submitted.task_id.bytes
+    )
 
 
 async def authorize_qa_capability(
@@ -1029,6 +1146,43 @@ async def _locked_run_by_execution(db: AsyncSession, execution_name: str) -> _Lo
     return _LockedRun(row[0], row[1], row[2], row[3], row[4])
 
 
+async def _locked_run_by_grant(
+    db: AsyncSession, grant_id: DocumentTransformQaGrantId
+) -> _LockedRun | None:
+    return await _run_by_grant(db, grant_id, lock=True)
+
+
+async def _run_by_grant(
+    db: AsyncSession,
+    grant_id: DocumentTransformQaGrantId,
+    *,
+    lock: bool,
+) -> _LockedRun | None:
+    statement = (
+        select(
+            DocumentTransformQaRun,
+            DocumentTransformQaGrant,
+            User,
+            UserSession,
+            func.clock_timestamp(),
+        )
+        .join(
+            DocumentTransformQaGrant,
+            DocumentTransformQaGrant.id == DocumentTransformQaRun.grant_id,
+        )
+        .join(User, User.id == DocumentTransformQaRun.user_id)
+        .join(UserSession, UserSession.id == DocumentTransformQaRun.user_session_id)
+        .where(DocumentTransformQaRun.grant_id == grant_id)
+        .execution_options(populate_existing=True)
+    )
+    if lock:
+        statement = statement.with_for_update()
+    row = (await db.execute(statement)).one_or_none()
+    if row is None:
+        return None
+    return _LockedRun(row[0], row[1], row[2], row[3], row[4])
+
+
 async def _locked_active_launch_run(db: AsyncSession) -> _LockedRun | None:
     row = (
         await db.execute(
@@ -1147,6 +1301,41 @@ def _run_capability_matches_grant(
         and grant.capability_digest is not None
         and hmac.compare_digest(run.bootstrap_capability_digest, grant.capability_digest)
     )
+
+
+def _authority_matches_run(row: _LockedRun, authority: QaAuthority) -> bool:
+    run, grant, user, session, now = row.run, row.grant, row.user, row.session, row.now
+    return (
+        run.state == "bootstrapped"
+        and grant.id == authority.grant_id
+        and user.id == authority.user_id
+        and user.email.casefold() == authority.user_email.casefold()
+        and hmac.compare_digest(run.execution_name or "", authority.execution_name)
+        and _run_matches(
+            run,
+            grant,
+            release_sha=authority.release_sha,
+            image_digest=authority.image_digest,
+            source_folder_id=authority.source_folder_id,
+            destination_folder_id=authority.destination_folder_id,
+            mode=authority.mode,
+        )
+        and _active_capability(grant, now)
+        and _identity_is_live(grant, user, session, now)
+    )
+
+
+def _submitted_canary(run: DocumentTransformQaRun) -> QaSubmittedCanary | None:
+    values = (run.submitted_plan_id, run.submitted_task_id, run.submitted_at)
+    if all(value is None for value in values):
+        return None
+    if any(value is None for value in values):
+        raise QaGrantError
+    plan_id = run.submitted_plan_id
+    task_id = run.submitted_task_id
+    if plan_id is None or task_id is None:  # pragma: no cover - narrowed above
+        raise QaGrantError
+    return QaSubmittedCanary(plan_id=plan_id, task_id=task_id)
 
 
 def _matches(

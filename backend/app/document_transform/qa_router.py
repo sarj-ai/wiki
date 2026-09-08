@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime
+import hashlib
 import hmac
+import json
 from typing import Annotated, Literal
+from urllib.parse import quote
 import uuid
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, Response, status
@@ -17,17 +20,26 @@ from app.cache.service import CacheService
 from app.config import settings
 from app.database import get_db
 from app.document_transform.qa_broker import QaCanaryBroker
+from app.document_transform.qa_contract import (
+    QA_MAX_STORED_FINDINGS,
+    QA_MAX_STORED_MODEL_IDS,
+    QA_MAX_STORED_RESULT_BYTES,
+    QA_MAX_STORED_TOOL_VERSIONS,
+)
 from app.document_transform.qa_grants import (
     QaAuthority,
     QaBootstrapResult,
     QaCapability,
     QaGrantError,
+    QaSubmittedCanary,
     authorize_qa_capability,
     bind_qa_bootstrap_execution,
+    bind_qa_canary_submission,
     bootstrap_attested_qa_execution,
     consume_qa_grant,
     fail_qa_bootstrap_launch,
     issue_qa_grant,
+    load_qa_canary_submission,
     prepare_idempotent_qa_launch,
     read_active_qa_execution,
     renew_qa_capability,
@@ -37,14 +49,21 @@ from app.document_transform.qa_launcher import (
     CloudRunQaLauncher,
     QaLaunchError,
 )
-from app.document_transform.schemas import TransformMode
-from app.identifiers import FileId, QaPlanId, QaRunId, TaskId
+from app.document_transform.schemas import (
+    DocumentTransformResult,
+    FindingSeverity,
+    TransformFinding,
+    TransformMode,
+    ValidationSummary,
+)
+from app.files.schemas import FileResponse
+from app.identifiers import DocsRevisionId, FileId, QaPlanId, QaRunId, TaskId
 from app.models.user import User
 from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
 from app.tasks.errors import TaskError
 from app.tasks.internal_auth import GoogleOidcTaskRequestAuthenticator
 from app.tasks.queue import TaskEnqueuer
-from app.tasks.schemas import TaskStatus
+from app.tasks.schemas import SucceededTaskRead, TaskRead, TaskStatus
 from app.tasks.service import TaskService
 
 
@@ -76,6 +95,12 @@ class QaGrantExchange(QaGrantBinding):
     credential: str = Field(min_length=32, max_length=256)
     execution_name: str = Field(min_length=1, max_length=255)
     operation: Literal["consume", "renew"]
+    request_nonce: uuid.UUID
+
+
+class QaLauncherRenewal(QaGrantBinding):
+    credential: str = Field(min_length=32, max_length=256)
+    execution_name: str = Field(min_length=1, max_length=255)
     request_nonce: uuid.UUID
 
 
@@ -127,10 +152,69 @@ class QaCanarySubmissionResponse(QaCanarySessionResponse):
     output_strategy: Literal["copy"] = "copy"
 
 
+class QaCanaryReadAuthorization(QaCapabilityAuthorization):
+    pass
+
+
+class QaCanaryTaskResponse(_StrictModel):
+    task_id: TaskId
+    task_status: TaskStatus
+    attempt_count: int = Field(ge=0)
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+class QaCanaryResultOutput(_StrictModel):
+    file_id: FileId = Field(min_length=1, max_length=255)
+    web_url: str = Field(max_length=2_048)
+
+
+class QaCanaryResultResponse(QaCanaryTaskResponse):
+    operation_id: uuid.UUID
+    output: QaCanaryResultOutput
+    output_strategy: Literal["copy"] = "copy"
+    changed: bool
+    needs_review: bool
+    applied_patch_count: int = Field(ge=0)
+    deterministic_patch_count: int = Field(ge=0)
+    model_patch_count: int = Field(ge=0)
+    promoted_heading_count: int = Field(ge=0, le=20)
+    short_link_alias: str | None = Field(default=None, max_length=63)
+    short_link_status: Literal["ready", "unavailable"] | None
+
+
+class QaCanaryFinding(_StrictModel):
+    code: str = Field(min_length=1, max_length=128)
+    block_id: str | None = Field(default=None, max_length=255)
+    detail: str = Field(max_length=512)
+    severity: FindingSeverity
+
+
+class QaCanaryEvidenceResponse(QaCanaryTaskResponse):
+    operation_id: uuid.UUID
+    result_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_revision_id: DocsRevisionId = Field(max_length=255)
+    output_revision_id: DocsRevisionId = Field(max_length=255)
+    validation: ValidationSummary
+    findings: list[QaCanaryFinding] = Field(max_length=100)
+    finding_total_count: int = Field(ge=0)
+    findings_truncated: bool
+    artifact_kind: str = Field(min_length=1, max_length=32)
+
+
 @dataclass(frozen=True, slots=True)
 class _AuthorizedCanaryRequest[QaAuthorization: QaCapabilityAuthorization]:
     authority: QaAuthority
     body: QaAuthorization
+
+
+@dataclass(frozen=True, slots=True)
+class _ReadCanaryTask:
+    authorized: _AuthorizedCanaryRequest[QaCanaryReadAuthorization]
+    submission: QaSubmittedCanary
+    task: TaskRead
 
 
 issuer_router = APIRouter(prefix="/document-transforms/qa", tags=["document-transform-qa"])
@@ -144,6 +228,12 @@ _NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 _MIN_CAPABILITY_TOKEN_LENGTH = 32
 _MAX_CAPABILITY_TOKEN_LENGTH = 256
 _UUID_VERSION_7 = 7
+_MAX_QA_TASK_RESPONSE_BYTES = 4 * 1024
+_MAX_QA_RESULT_RESPONSE_BYTES = 8 * 1024
+_MAX_QA_EVIDENCE_RESPONSE_BYTES = 64 * 1024
+_MAX_QA_EVIDENCE_FINDINGS = 100
+_MAX_QA_STORED_METADATA_UTF8_BYTES = 128 * 1024
+_MAX_QA_STORED_METADATA_NODES = 10_000
 
 
 def qa_canary_broker_dep(
@@ -207,6 +297,16 @@ def _configured_binding(body: QaGrantBinding) -> None:
 
 def _require_legacy_qa_flow() -> None:
     if settings.DOCUMENT_TRANSFORM_QA_JOB is not None:
+        raise _no_store_http_error(
+            status.HTTP_410_GONE,
+            "Legacy QA grant flow is disabled when the backend launcher is configured",
+        )
+
+
+def _require_exchange_flow(request: Request) -> None:
+    if settings.DOCUMENT_TRANSFORM_QA_JOB is None:
+        return
+    if list(request.query_params.multi_items()) != [("operation", "renew")]:
         raise _no_store_http_error(
             status.HTTP_410_GONE,
             "Legacy QA grant flow is disabled when the backend launcher is configured",
@@ -420,43 +520,22 @@ async def launch_document_transform_qa_run(
 @workload_router.post(
     "/exchange",
     response_model=QaCapabilityResponse,
-    dependencies=[Depends(_require_legacy_qa_flow), Depends(_require_qa_workload)],
+    dependencies=[Depends(_require_exchange_flow), Depends(_require_qa_workload)],
 )
 async def exchange_document_transform_qa_grant(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     response: Response,
 ) -> QaCapabilityResponse:
-    body = await _parse_legacy_body(request, QaGrantExchange)
+    launcher_renewal = settings.DOCUMENT_TRANSFORM_QA_JOB is not None
+    body = (
+        await _parse_legacy_body(request, QaLauncherRenewal)
+        if launcher_renewal
+        else await _parse_legacy_body(request, QaGrantExchange)
+    )
     _configured_binding(body)
     try:
-        capability = (
-            await consume_qa_grant(
-                db,
-                token=body.credential,
-                request_nonce=body.request_nonce,
-                derivation_key=settings.SECRET_KEY.get_secret_value().encode(),
-                execution_name=body.execution_name,
-                release_sha=body.release_sha,
-                image_digest=body.image_digest,
-                source_folder_id=body.source_folder_id,
-                destination_folder_id=body.destination_folder_id,
-                mode=body.mode,
-            )
-            if body.operation == "consume"
-            else await renew_qa_capability(
-                db,
-                capability_token=body.credential,
-                request_nonce=body.request_nonce,
-                derivation_key=settings.SECRET_KEY.get_secret_value().encode(),
-                execution_name=body.execution_name,
-                release_sha=body.release_sha,
-                image_digest=body.image_digest,
-                source_folder_id=body.source_folder_id,
-                destination_folder_id=body.destination_folder_id,
-                mode=body.mode,
-            )
-        )
+        capability = await _exchange_capability(db, body)
         await db.commit()
     except QaGrantError as exc:
         await db.rollback()
@@ -465,6 +544,51 @@ async def exchange_document_transform_qa_grant(
         ) from exc
     _prevent_token_caching(response)
     return _capability_response(capability)
+
+
+async def _exchange_capability(
+    db: AsyncSession,
+    body: QaGrantExchange | QaLauncherRenewal,
+) -> QaCapability:
+    if isinstance(body, QaLauncherRenewal):
+        return await renew_qa_capability(
+            db,
+            capability_token=body.credential,
+            request_nonce=body.request_nonce,
+            derivation_key=settings.SECRET_KEY.get_secret_value().encode(),
+            execution_name=body.execution_name,
+            release_sha=body.release_sha,
+            image_digest=body.image_digest,
+            source_folder_id=body.source_folder_id,
+            destination_folder_id=body.destination_folder_id,
+            mode=body.mode,
+            require_submitted_task=True,
+        )
+    if body.operation == "consume":
+        return await consume_qa_grant(
+            db,
+            token=body.credential,
+            request_nonce=body.request_nonce,
+            derivation_key=settings.SECRET_KEY.get_secret_value().encode(),
+            execution_name=body.execution_name,
+            release_sha=body.release_sha,
+            image_digest=body.image_digest,
+            source_folder_id=body.source_folder_id,
+            destination_folder_id=body.destination_folder_id,
+            mode=body.mode,
+        )
+    return await renew_qa_capability(
+        db,
+        capability_token=body.credential,
+        request_nonce=body.request_nonce,
+        derivation_key=settings.SECRET_KEY.get_secret_value().encode(),
+        execution_name=body.execution_name,
+        release_sha=body.release_sha,
+        image_digest=body.image_digest,
+        source_folder_id=body.source_folder_id,
+        destination_folder_id=body.destination_folder_id,
+        mode=body.mode,
+    )
 
 
 @workload_router.post("/bootstrap", response_model=QaBootstrapResponse)
@@ -591,7 +715,18 @@ async def submit_document_transform_qa_canary(
             tasks=tasks,
             enqueuer=enqueuer,
         )
+        await bind_qa_canary_submission(
+            db,
+            authority=authorized.authority,
+            plan_id=authorized.body.plan_id,
+            task_id=submission.task.id,
+        )
+        await db.commit()
+        authorized = await _authorize_canary_request_as(
+            request, db, QaCanarySubmissionAuthorization
+        )
     except QaGrantError as exc:
+        await db.rollback()
         raise _no_store_http_error(
             status.HTTP_409_CONFLICT, "QA canary plan is no longer current"
         ) from exc
@@ -607,6 +742,255 @@ async def submit_document_transform_qa_canary(
         task_status=submission.task.status,
         replayed=submission.replayed,
     )
+
+
+@workload_router.post("/canary/task", response_model=QaCanaryTaskResponse)
+async def read_document_transform_qa_canary_task(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    broker: Annotated[QaCanaryBroker, Depends(qa_canary_broker_dep)],
+    tasks: Annotated[TaskService, Depends(task_service_dep)],
+    response: Response,
+) -> QaCanaryTaskResponse:
+    """Read the task derived from the current authority and its server plan."""
+    read = await _read_canary_task(request, db, broker, tasks)
+    _prevent_token_caching(response)
+    return _bounded_response(_task_response(read.task), _MAX_QA_TASK_RESPONSE_BYTES)
+
+
+@workload_router.post("/canary/result", response_model=QaCanaryResultResponse)
+async def read_document_transform_qa_canary_result(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    broker: Annotated[QaCanaryBroker, Depends(qa_canary_broker_dep)],
+    tasks: Annotated[TaskService, Depends(task_service_dep)],
+    response: Response,
+) -> QaCanaryResultResponse:
+    """Return a bounded result only for this capability's successful canary."""
+    read = await _read_canary_task(request, db, broker, tasks)
+    result = _require_succeeded_transform(
+        read.task,
+        authority=read.authorized.authority,
+    )
+    verified_output = await _authorize_canary_output(request, db, broker, read, result)
+    _prevent_token_caching(response)
+    try:
+        result_response = QaCanaryResultResponse(
+            **_task_response(read.task).model_dump(),
+            operation_id=result.operation_id,
+            output=QaCanaryResultOutput(
+                file_id=verified_output.id,
+                web_url=(
+                    "https://docs.google.com/document/d/"
+                    f"{quote(str(verified_output.id), safe='')}/edit"
+                ),
+            ),
+            changed=result.changed,
+            needs_review=result.needs_review,
+            applied_patch_count=result.applied_patch_count,
+            deterministic_patch_count=result.deterministic_patch_count,
+            model_patch_count=result.model_patch_count,
+            promoted_heading_count=result.promoted_heading_count,
+            short_link_alias=result.short_link_alias,
+            short_link_status=result.short_link_status,
+        )
+    except ValidationError as exc:
+        raise _canary_state_unavailable() from exc
+    return _bounded_response(result_response, _MAX_QA_RESULT_RESPONSE_BYTES)
+
+
+@workload_router.post("/canary/evidence", response_model=QaCanaryEvidenceResponse)
+async def read_document_transform_qa_canary_evidence(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    broker: Annotated[QaCanaryBroker, Depends(qa_canary_broker_dep)],
+    tasks: Annotated[TaskService, Depends(task_service_dep)],
+    response: Response,
+) -> QaCanaryEvidenceResponse:
+    """Return bounded structured evidence; raw PDF artifacts are never transported."""
+    read = await _read_canary_task(request, db, broker, tasks)
+    result = _require_succeeded_transform(
+        read.task,
+        authority=read.authorized.authority,
+    )
+    await _authorize_canary_output(request, db, broker, read, result)
+    result_sha256 = _result_sha256(result)
+    _prevent_token_caching(response)
+    return _evidence_response(read.task, result, result_sha256=result_sha256)
+
+
+async def _read_canary_task(
+    request: Request,
+    db: AsyncSession,
+    broker: QaCanaryBroker,
+    tasks: TaskService,
+) -> _ReadCanaryTask:
+    authorized = await _authorize_canary_request_as(request, db, QaCanaryReadAuthorization)
+    try:
+        submission = await load_qa_canary_submission(db, authority=authorized.authority)
+        task = await broker.read_task(
+            authorized.authority,
+            submission=submission,
+            tasks=tasks,
+        )
+        authorized = await _authorize_canary_request_as(request, db, QaCanaryReadAuthorization)
+    except (QaGrantError, TaskError) as exc:
+        raise _canary_state_unavailable() from exc
+    return _ReadCanaryTask(authorized=authorized, submission=submission, task=task)
+
+
+async def _authorize_canary_output(
+    request: Request,
+    db: AsyncSession,
+    broker: QaCanaryBroker,
+    read: _ReadCanaryTask,
+    result: DocumentTransformResult,
+) -> FileResponse:
+    try:
+        output = await broker.authorize_output(read.authorized.authority, output=result.output)
+        await _authorize_canary_request_as(request, db, QaCanaryReadAuthorization)
+    except (QaGrantError, TaskError) as exc:
+        raise _canary_state_unavailable() from exc
+    return output
+
+
+def _task_response(task: TaskRead) -> QaCanaryTaskResponse:
+    try:
+        return QaCanaryTaskResponse(
+            task_id=task.id,
+            task_status=task.status,
+            attempt_count=task.attempt_count,
+            created_at=task.created_at,
+            started_at=task.started_at,
+            finished_at=task.finished_at,
+        )
+    except ValidationError as exc:
+        raise _canary_state_unavailable() from exc
+
+
+def _require_succeeded_transform(
+    task: TaskRead,
+    *,
+    authority: QaAuthority,
+) -> DocumentTransformResult:
+    if not isinstance(task, SucceededTaskRead) or not isinstance(
+        task.result, DocumentTransformResult
+    ):
+        raise _canary_state_unavailable()
+    result = task.result
+    _require_bounded_stored_result(result)
+    resource_id = task.resource_id
+    binding_mismatch = (
+        not hmac.compare_digest(result.operation_id.bytes, task.id.bytes)
+        or resource_id is None
+        or not hmac.compare_digest(str(resource_id).encode(), str(result.output.file_id).encode())
+        or result.mode is not authority.mode
+        or result.output_strategy.value != "copy"
+        or result.output.parent_folder_id != authority.destination_folder_id
+    )
+    missing_revision = result.source_revision_id is None or result.output_revision_id is None
+    if binding_mismatch or missing_revision:
+        raise _canary_state_unavailable()
+    return result
+
+
+def _require_bounded_stored_result(result: DocumentTransformResult) -> None:
+    if (
+        len(result.findings) > QA_MAX_STORED_FINDINGS
+        or len(result.model_ids) > QA_MAX_STORED_MODEL_IDS
+        or len(result.tool_versions) > QA_MAX_STORED_TOOL_VERSIONS
+    ):
+        raise _canary_state_unavailable()
+    remaining_bytes = _MAX_QA_STORED_METADATA_UTF8_BYTES
+    remaining_nodes = _MAX_QA_STORED_METADATA_NODES
+    pending: list[object] = [result]
+    while pending:
+        remaining_nodes -= 1
+        if remaining_nodes < 0:
+            raise _canary_state_unavailable()
+        value = pending.pop()
+        match value:
+            case str():
+                # UTF-8 is never shorter than its character count. This avoids
+                # an unbounded encoding allocation before the byte budget.
+                if len(value) > remaining_bytes:
+                    raise _canary_state_unavailable()
+                remaining_bytes -= len(value.encode("utf-8", errors="strict"))
+                if remaining_bytes < 0:
+                    raise _canary_state_unavailable()
+            case BaseModel():
+                pending.extend(value.__dict__.values())
+            case dict():
+                pending.extend(value.keys())
+                pending.extend(value.values())
+            case list() | tuple():
+                pending.extend(value)
+            case _:
+                pass
+
+
+def _result_sha256(result: DocumentTransformResult) -> str:
+    _require_bounded_stored_result(result)
+    serialized = result.model_dump(mode="json")
+    canonical = json.dumps(
+        serialized, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode()
+    if len(canonical) > QA_MAX_STORED_RESULT_BYTES:
+        raise _canary_state_unavailable()
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _evidence_response(
+    task: TaskRead,
+    result: DocumentTransformResult,
+    *,
+    result_sha256: str,
+) -> QaCanaryEvidenceResponse:
+    source_revision_id = result.source_revision_id
+    output_revision_id = result.output_revision_id
+    if source_revision_id is None or output_revision_id is None:
+        raise _canary_state_unavailable()
+    total_count = len(result.findings)
+    findings = [_finding_response(item) for item in result.findings[:_MAX_QA_EVIDENCE_FINDINGS]]
+    while True:
+        try:
+            evidence = QaCanaryEvidenceResponse(
+                **_task_response(task).model_dump(),
+                operation_id=result.operation_id,
+                result_sha256=result_sha256,
+                source_sha256=result.source_sha256,
+                source_revision_id=source_revision_id,
+                output_revision_id=output_revision_id,
+                validation=result.validation,
+                findings=findings,
+                finding_total_count=total_count,
+                findings_truncated=len(findings) < total_count,
+                artifact_kind=result.artifact_kind,
+            )
+        except ValidationError as exc:
+            raise _canary_state_unavailable() from exc
+        if len(evidence.model_dump_json().encode()) <= _MAX_QA_EVIDENCE_RESPONSE_BYTES:
+            return evidence
+        if not findings:
+            raise _canary_state_unavailable()
+        findings.pop()
+
+
+def _finding_response(finding: TransformFinding) -> QaCanaryFinding:
+    return QaCanaryFinding(
+        code=finding.code[:128] or "unknown",
+        block_id=finding.block_id[:255] if finding.block_id is not None else None,
+        detail=finding.detail[:512],
+        severity=finding.severity,
+    )
+
+
+def _bounded_response[ResponseModel: BaseModel](
+    response: ResponseModel, maximum_bytes: int
+) -> ResponseModel:
+    if len(response.model_dump_json().encode()) > maximum_bytes:
+        raise _canary_state_unavailable()
+    return response
 
 
 async def _authorize_canary_request(request: Request, db: AsyncSession) -> QaAuthority:
@@ -698,6 +1082,10 @@ def _prevent_token_caching(response: Response) -> None:
 
 def _invalid_qa_credential() -> HTTPException:
     return _no_store_http_error(status.HTTP_403_FORBIDDEN, "QA credential is invalid")
+
+
+def _canary_state_unavailable() -> HTTPException:
+    return _no_store_http_error(status.HTTP_409_CONFLICT, "QA canary state is unavailable")
 
 
 def _no_store_http_error(status_code: int, detail: str) -> HTTPException:

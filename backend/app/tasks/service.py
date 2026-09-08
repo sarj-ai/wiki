@@ -10,7 +10,7 @@ from typing import override
 import uuid
 
 from pydantic import BaseModel, JsonValue, TypeAdapter
-from sqlalchemy import and_, case, delete, func, literal, or_, select, update
+from sqlalchemy import Text, and_, case, cast, delete, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,7 +31,7 @@ from app.document_transform.schemas import (
     WordCopyCheckpoint,
 )
 from app.document_transform.versions import CURRENT_PIPELINE_VERSIONS
-from app.identifiers import FileId, IdempotencyKey, TaskId
+from app.identifiers import FileId, IdempotencyKey, TaskId, UserId
 from app.models.task import Task
 from app.models.task_replay_key import TaskReplayKey
 from app.models.wiki import DocumentHeaderProvenance
@@ -140,7 +140,21 @@ class TaskService(ABC):
     async def cancel(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> TaskRead: ...
 
     @abstractmethod
-    async def get_for_owner(self, task_id: TaskId, owner_user_id: uuid.UUID) -> TaskRead: ...
+    async def get_for_owner(self, task_id: TaskId, owner_user_id: UserId) -> TaskRead: ...
+
+    async def get_for_owner_bounded_result(
+        self,
+        task_id: TaskId,
+        owner_user_id: UserId,
+        *,
+        max_result_bytes: int,
+        max_findings: int,
+        max_model_entries: int,
+        max_tool_entries: int,
+    ) -> TaskRead:
+        del self, task_id, owner_user_id, max_result_bytes, max_findings, max_model_entries
+        del max_tool_entries
+        raise NotImplementedError
 
     @abstractmethod
     async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord: ...
@@ -559,7 +573,7 @@ class PostgresTaskService(TaskService):
         return _to_read(task)
 
     @override
-    async def get_for_owner(self, task_id: TaskId, owner_user_id: uuid.UUID) -> TaskRead:
+    async def get_for_owner(self, task_id: TaskId, owner_user_id: UserId) -> TaskRead:
         task = (
             await self._db.execute(
                 select(Task).where(
@@ -572,6 +586,68 @@ class PostgresTaskService(TaskService):
         if task is None:
             raise TaskNotFoundError
         return _to_read(task)
+
+    @override
+    async def get_for_owner_bounded_result(
+        self,
+        task_id: TaskId,
+        owner_user_id: UserId,
+        *,
+        max_result_bytes: int,
+        max_findings: int,
+        max_model_entries: int,
+        max_tool_entries: int,
+    ) -> TaskRead:
+        if min(max_result_bytes, max_findings, max_model_entries, max_tool_entries) < 1:
+            raise ValueError
+        findings = Task.result["findings"]
+        model_ids = Task.result["model_ids"]
+        row = (
+            await self._db.execute(
+                select(
+                    Task.status,
+                    # Measure the uncompressed JSON text in PostgreSQL before
+                    # asyncpg can materialize it in the application process.
+                    func.coalesce(func.octet_length(cast(Task.result, Text)), 0).label(
+                        "result_bytes"
+                    ),
+                    func.jsonb_typeof(Task.result).label("result_type"),
+                    case(
+                        (func.jsonb_typeof(findings) == "array", func.jsonb_array_length(findings)),
+                        else_=-1,
+                    ).label("finding_count"),
+                    case(
+                        (
+                            func.jsonb_typeof(model_ids) == "array",
+                            func.jsonb_array_length(model_ids),
+                        ),
+                        else_=-1,
+                    ).label("model_id_count"),
+                )
+                .where(
+                    Task.id == task_id,
+                    Task.owner_user_id == owner_user_id,
+                    Task.expires_at > func.now(),
+                )
+                # Hold a read lock through the following typed fetch so a task
+                # cannot transition to an oversized terminal result in between.
+                .with_for_update(read=True)
+            )
+        ).one_or_none()
+        if row is None:
+            raise TaskNotFoundError
+        result_size_valid = 1 <= row.result_bytes <= max_result_bytes
+        collection_counts_valid = all(
+            (
+                0 <= row.finding_count <= max_findings,
+                0 <= row.model_id_count <= max_model_entries,
+            )
+        )
+        if row.status == TaskStatus.SUCCEEDED and not (
+            row.result_type == "object" and result_size_valid and collection_counts_valid
+        ):
+            raise TaskNotFoundError
+        return await self.get_for_owner(task_id, owner_user_id)
 
     @override
     async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord:

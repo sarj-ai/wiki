@@ -6,6 +6,7 @@ from app.config import settings
 from app.document_transform.schemas import DocumentTransformResult
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
+from app.identifiers import UserId
 from app.mcp.context import McpApplicationContext
 from app.mcp.schemas import (
     MAX_EXCERPT_CHARACTERS,
@@ -85,7 +86,7 @@ class McpReadService:
     async def get_task(self, request: TaskInput) -> TaskResponse:
         self._require_read()
         task = await self._context.tasks.get_for_owner(
-            request.task_id, self._context.principal.user_id
+            request.task_id, UserId(self._context.principal.user_id)
         )
         if task.kind is not TaskKind.FILE_DOCUMENT_TRANSFORM:
             raise TaskNotFoundError

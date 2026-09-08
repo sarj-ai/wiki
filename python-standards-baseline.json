@@ -19,7 +19,7 @@
     "SARJ096": 1
   },
   "backend/app/tasks/service.py": {
-    "SARJ093": 6
+    "SARJ093": 4
   },
   "backend/tests/test_sidebar_cache.py": {
     "SARJ428": 2

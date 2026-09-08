@@ -18,10 +18,15 @@ from app.cache.service import CacheService
 from app.document_transform.application import TransformSubmission, submit_document_transform
 from app.document_transform.qa_contract import (
     QA_MAX_FOLDER_LIST_PAGES,
+    QA_MAX_STORED_FINDINGS,
+    QA_MAX_STORED_MODEL_IDS,
+    QA_MAX_STORED_RESULT_BYTES,
+    QA_MAX_STORED_TOOL_VERSIONS,
     QA_MAX_TRAVERSED_FOLDERS,
 )
-from app.document_transform.qa_grants import QaAuthority, QaGrantError
+from app.document_transform.qa_grants import QaAuthority, QaGrantError, QaSubmittedCanary
 from app.document_transform.schemas import (
+    DocumentOutput,
     DocumentTransformRequest,
     DriveFileSource,
     OutputStrategy,
@@ -34,7 +39,9 @@ from app.files.schemas import FileResponse
 from app.files.service import GoogleFilesService
 from app.identifiers import DriveId, FileId, IdempotencyKey, QaPlanId
 from app.models.user import User
+from app.tasks.errors import TaskError
 from app.tasks.queue import TaskEnqueuer
+from app.tasks.schemas import TaskRead
 from app.tasks.service import TaskService
 
 
@@ -124,6 +131,45 @@ class QaCanaryBroker:
         ) as exc:
             raise QaGrantError from exc
 
+    async def read_task(
+        self,
+        authority: QaAuthority,
+        *,
+        submission: QaSubmittedCanary,
+        tasks: TaskService,
+    ) -> TaskRead:
+        services = await self._services(authority)
+        try:
+            await authorize_qa_canary_scope(authority, files=services.files)
+            return await read_submitted_qa_canary_task(
+                authority,
+                submission=submission,
+                tasks=tasks,
+            )
+        except (
+            FilesError,
+            NotImplementedError,
+            TaskError,
+            ValueError,
+        ) as exc:
+            raise QaGrantError from exc
+
+    async def authorize_output(
+        self,
+        authority: QaAuthority,
+        *,
+        output: DocumentOutput,
+    ) -> FileResponse:
+        services = await self._services(authority)
+        try:
+            return await authorize_qa_canary_output(
+                authority,
+                output=output,
+                files=services.files,
+            )
+        except (FilesError, NotImplementedError, ValueError) as exc:
+            raise QaGrantError from exc
+
     async def _services(self, authority: QaAuthority) -> _QaBrokerServices:
         user = await self._db.get(User, authority.user_id)
         if user is None or user.email.casefold() != authority.user_email.casefold():
@@ -166,6 +212,65 @@ async def submit_planned_qa_canary(
         tasks=tasks,
         enqueuer=enqueuer,
     )
+
+
+async def read_submitted_qa_canary_task(
+    authority: QaAuthority,
+    *,
+    submission: QaSubmittedCanary,
+    tasks: TaskService,
+) -> TaskRead:
+    admission = await tasks.get_document_transform_admission(
+        authority.user_id,
+        IdempotencyKey(submission.plan_id),
+    )
+    if not hmac.compare_digest(admission.task_id.bytes, submission.task_id.bytes):
+        raise QaGrantError
+    task = await tasks.get_for_owner_bounded_result(
+        submission.task_id,
+        authority.user_id,
+        max_result_bytes=QA_MAX_STORED_RESULT_BYTES,
+        max_findings=QA_MAX_STORED_FINDINGS,
+        max_model_entries=QA_MAX_STORED_MODEL_IDS,
+        max_tool_entries=QA_MAX_STORED_TOOL_VERSIONS,
+    )
+    if not hmac.compare_digest(task.id.bytes, submission.task_id.bytes):
+        raise QaGrantError
+    return task
+
+
+async def authorize_qa_canary_scope(
+    authority: QaAuthority,
+    *,
+    files: QaFileReader,
+) -> None:
+    source = await files.get(authority.source_folder_id)
+    destination = await files.get(authority.destination_folder_id)
+    if (
+        source.id != authority.source_folder_id
+        or source.mime_type != MIME_FOLDER
+        or destination.id != authority.destination_folder_id
+        or destination.mime_type != MIME_FOLDER
+        or not destination.can_add_children
+    ):
+        raise QaGrantError
+
+
+async def authorize_qa_canary_output(
+    authority: QaAuthority,
+    *,
+    output: DocumentOutput,
+    files: QaFileReader,
+) -> FileResponse:
+    current = await files.get(output.file_id)
+    if (
+        current.id != output.file_id
+        or current.mime_type != MIME_DOC
+        or current.parent_folder_id != authority.destination_folder_id
+        or output.parent_folder_id != authority.destination_folder_id
+    ):
+        raise QaGrantError
+    return current
 
 
 async def _submit_qa_canary_plan(
