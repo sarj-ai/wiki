@@ -6,6 +6,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 _CACHE_RESTORE_ACTION = "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9"
+_CACHE_SAVE_ACTION = "actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9"
 _DEPLOY_NEEDS = {
     "ci-backend",
     "ci-frontend",
@@ -91,6 +92,45 @@ def test_backend_deploy_restores_the_prerequisite_mypy_cache() -> None:
     )
     assert not any(
         step.get("uses", "").startswith("actions/cache/save@") for step in steps
+    )
+
+
+def test_frontend_build_restores_next_cache_but_only_trusted_main_saves() -> None:
+    workflow = _workflow("ci-frontend.yml")
+    assert workflow["permissions"] == {"contents": "read"}
+    build = workflow["jobs"]["build"]
+    assert "permissions" not in build
+    steps = build["steps"]
+    restore = _named_step(steps, "Restore Next.js incremental build cache")
+    save = _named_step(steps, "Save trusted main Next.js incremental build cache")
+    expected_path = "frontend/.next/cache"
+    expected_prefix = (
+        "nextjs-v1-${{ runner.os }}-${{ runner.arch }}-"
+        "${{ hashFiles('frontend/package-lock.json') }}-"
+    )
+
+    assert restore["id"] == "next-cache"
+    assert restore["uses"] == _CACHE_RESTORE_ACTION
+    assert restore["with"] == {
+        "path": expected_path,
+        "key": expected_prefix + "${{ github.sha }}",
+        "restore-keys": expected_prefix + "\n",
+    }
+    assert save["uses"] == _CACHE_SAVE_ACTION
+    assert save["if"] == (
+        "${{ success() && github.event_name == 'push' && "
+        "github.ref == 'refs/heads/main' && "
+        "steps.next-cache.outputs.cache-hit != 'true' }}"
+    )
+    assert save["with"] == {
+        "path": expected_path,
+        "key": "${{ steps.next-cache.outputs.cache-primary-key }}",
+    }
+    assert (
+        _step_index(steps, "Restore Next.js incremental build cache")
+        < _step_index(steps, "Install dependencies")
+        < _step_index(steps, "Build")
+        < _step_index(steps, "Save trusted main Next.js incremental build cache")
     )
 
 
