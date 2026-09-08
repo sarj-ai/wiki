@@ -2,12 +2,14 @@ import asyncio
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+import hashlib
 import uuid
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import pytest
 from sqlalchemy import Table, select
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.schema import CreateSchema, DropSchema
 
@@ -17,9 +19,12 @@ from app.document_transform.qa_grants import (
     QaCapability,
     QaGrantError,
     authorize_qa_capability,
+    bind_qa_bootstrap_execution,
+    bootstrap_qa_run,
     consume_qa_grant,
     delete_expired_qa_grants,
     issue_qa_grant,
+    prepare_qa_bootstrap_run,
     renew_qa_capability,
 )
 from app.document_transform.schemas import TransformMode
@@ -28,11 +33,13 @@ from app.identifiers import (
     AuthSessionId,
     FileId,
     GoogleUserId,
+    QaRunId,
     TokenId,
     UserId,
 )
 from app.models.auth_session import UserSession
 from app.models.document_transform_qa_grant import DocumentTransformQaGrant
+from app.models.document_transform_qa_run import DocumentTransformQaRun
 from app.models.user import User
 
 
@@ -54,6 +61,12 @@ class _Identity:
     session: UserSession
 
 
+@dataclass(frozen=True, slots=True)
+class _PreparedBoundRun:
+    issued: IssuedQaGrant
+    run_id: QaRunId
+
+
 @pytest.fixture
 async def sessions() -> AsyncGenerator[async_sessionmaker[AsyncSession]]:
     dsn = _QaSettings().database_url
@@ -73,7 +86,7 @@ async def sessions() -> AsyncGenerator[async_sessionmaker[AsyncSession]]:
     try:
         async with engine.begin() as connection:
             await connection.execute(CreateSchema(schema))
-            for model in (User, UserSession, DocumentTransformQaGrant):
+            for model in (User, UserSession, DocumentTransformQaGrant, DocumentTransformQaRun):
                 table = model.__table__
                 assert isinstance(table, Table)
                 await connection.run_sync(table.create)
@@ -139,6 +152,62 @@ async def _consume(
         request_nonce=request_nonce,
         derivation_key=_DERIVATION_KEY,
         execution_name=execution_name,
+        release_sha=release_sha,
+        image_digest=image_digest,
+        source_folder_id=source_folder_id,
+        destination_folder_id=destination_folder_id,
+        mode=mode,
+    )
+
+
+async def _prepared_bound_run(
+    db: AsyncSession,
+    user: User,
+    session: UserSession,
+    *,
+    execution_name: str = "execution-a",
+) -> _PreparedBoundRun:
+    issued = await _issue(db, user, session)
+    prepared = await prepare_qa_bootstrap_run(
+        db,
+        grant_id=issued.grant_id,
+        release_sha="a" * 40,
+        image_digest="sha256:" + "c" * 64,
+        source_folder_id=_SOURCE_FOLDER_ID,
+        destination_folder_id=_DESTINATION_FOLDER_ID,
+        mode=TransformMode.BOTH,
+    )
+    await bind_qa_bootstrap_execution(
+        db,
+        run_id=prepared.run_id,
+        execution_name=execution_name,
+        release_sha="a" * 40,
+        image_digest="sha256:" + "c" * 64,
+        source_folder_id=_SOURCE_FOLDER_ID,
+        destination_folder_id=_DESTINATION_FOLDER_ID,
+        mode=TransformMode.BOTH,
+    )
+    return _PreparedBoundRun(issued, prepared.run_id)
+
+
+async def _bootstrap(
+    db: AsyncSession,
+    run_id: QaRunId,
+    *,
+    execution_name: str = "execution-a",
+    request_nonce: uuid.UUID = _CONSUME_NONCE,
+    release_sha: str = "a" * 40,
+    image_digest: str = "sha256:" + "c" * 64,
+    source_folder_id: FileId = _SOURCE_FOLDER_ID,
+    destination_folder_id: FileId = _DESTINATION_FOLDER_ID,
+    mode: TransformMode = TransformMode.BOTH,
+) -> QaCapability:
+    return await bootstrap_qa_run(
+        db,
+        run_id=run_id,
+        execution_name=execution_name,
+        request_nonce=request_nonce,
+        derivation_key=_DERIVATION_KEY,
         release_sha=release_sha,
         image_digest=image_digest,
         source_folder_id=source_folder_id,
@@ -219,6 +288,164 @@ async def test_real_postgres_grant_is_exact_single_use(
 
     outcomes = await asyncio.gather(consume("execution-a"), consume("execution-b"))
     assert sorted(outcomes) == [False, True]
+
+
+async def test_real_postgres_secretless_bootstrap_replays_only_same_execution_and_nonce(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        prepared = await _prepared_bound_run(db, identity.user, identity.session)
+        issued, run_id = prepared.issued, prepared.run_id
+    async with sessions.begin() as db:
+        first = await _bootstrap(db, run_id)
+    async with sessions.begin() as db:
+        replay = await _bootstrap(db, run_id)
+    assert replay == first
+    async with sessions.begin() as db:
+        with pytest.raises(QaGrantError):
+            await _bootstrap(db, run_id, request_nonce=uuid.uuid7())
+        with pytest.raises(QaGrantError):
+            await _bootstrap(db, run_id, execution_name="execution-b")
+        with pytest.raises(QaGrantError):
+            await _consume(db, issued.token, "execution-a")
+        authority = await _authorize(db, first.token)
+    assert authority.user_id == identity.user.id
+    async with sessions.begin() as db:
+        renewed = await _renew(db, first.token)
+    assert renewed.token != first.token
+
+
+async def test_real_postgres_concurrent_secretless_bootstrap_has_one_exact_winner(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        run_id = (await _prepared_bound_run(db, identity.user, identity.session)).run_id
+    nonces = (_CONSUME_NONCE, _RENEW_NONCE)
+
+    async def bootstrap(nonce: uuid.UUID) -> bool:
+        async with sessions.begin() as db:
+            try:
+                await _bootstrap(db, run_id, request_nonce=nonce)
+            except QaGrantError:
+                return False
+            return True
+
+    outcomes = await asyncio.gather(*(bootstrap(nonce) for nonce in nonces))
+    assert sorted(outcomes) == [False, True]
+
+
+async def test_real_postgres_secretless_bootstrap_persists_only_digests(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        prepared = await _prepared_bound_run(db, identity.user, identity.session)
+        issued, run_id = prepared.issued, prepared.run_id
+    async with sessions.begin() as db:
+        capability = await _bootstrap(db, run_id)
+    async with sessions.begin() as db:
+        grant = await db.get(DocumentTransformQaGrant, issued.grant_id)
+        run = await db.get(DocumentTransformQaRun, run_id)
+        assert grant is not None
+        assert run is not None
+        expected = hashlib.sha256(capability.token.encode()).digest()
+        assert grant.capability_digest == run.bootstrap_capability_digest == expected
+        assert issued.token.encode() not in bytes(grant.token_digest)
+        assert capability.token.encode() not in bytes(expected)
+        assert run.bootstrap_request_nonce == _CONSUME_NONCE
+        assert run.state == "bootstrapped"
+
+
+async def test_real_postgres_secretless_bootstrap_state_is_database_atomic(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        run_id = (await _prepared_bound_run(db, identity.user, identity.session)).run_id
+
+    async def violate_atomic_state() -> None:
+        async with sessions.begin() as db:
+            run = await db.get(DocumentTransformQaRun, run_id)
+            assert run is not None
+            run.state = "bootstrapped"
+
+    with pytest.raises(IntegrityError):
+        await violate_atomic_state()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("execution_name", "execution-b"),
+        ("image_digest", "sha256:" + "d" * 64),
+        ("release_sha", "b" * 40),
+        ("source_folder_id", "other-source"),
+        ("destination_folder_id", "other-destination"),
+        ("mode", TransformMode.FORMAT),
+    ],
+)
+async def test_real_postgres_secretless_bootstrap_rejects_every_binding_mismatch(
+    sessions: async_sessionmaker[AsyncSession], field: str, value: object
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        run_id = (await _prepared_bound_run(db, identity.user, identity.session)).run_id
+    arguments: dict[str, object] = {
+        "execution_name": "execution-a",
+        "image_digest": "sha256:" + "c" * 64,
+        "release_sha": "a" * 40,
+        "source_folder_id": _SOURCE_FOLDER_ID,
+        "destination_folder_id": _DESTINATION_FOLDER_ID,
+        "mode": TransformMode.BOTH,
+    }
+    arguments[field] = value
+    async with sessions.begin() as db:
+        with pytest.raises(QaGrantError):
+            await _bootstrap(
+                db,
+                run_id,
+                execution_name=str(arguments["execution_name"]),
+                release_sha=str(arguments["release_sha"]),
+                image_digest=str(arguments["image_digest"]),
+                source_folder_id=FileId(str(arguments["source_folder_id"])),
+                destination_folder_id=FileId(str(arguments["destination_folder_id"])),
+                mode=TransformMode(str(arguments["mode"])),
+            )
+    async with sessions.begin() as db:
+        capability = await _bootstrap(db, run_id)
+    assert capability.user_id == identity.user.id
+
+
+@pytest.mark.parametrize("inactive", ["grant-expired", "session-expired", "revoked", "revision"])
+async def test_real_postgres_secretless_bootstrap_rechecks_current_identity_and_expiry(
+    sessions: async_sessionmaker[AsyncSession], inactive: str
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        prepared = await _prepared_bound_run(db, identity.user, identity.session)
+        issued, run_id = prepared.issued, prepared.run_id
+    async with sessions.begin() as db:
+        grant = await db.get(DocumentTransformQaGrant, issued.grant_id)
+        session = await db.get(UserSession, identity.session.id)
+        user = await db.get(User, identity.user.id)
+        assert grant is not None
+        assert session is not None
+        assert user is not None
+        if inactive == "grant-expired":
+            now = datetime.now(UTC)
+            grant.created_at = now - timedelta(minutes=20)
+            grant.expires_at = now - timedelta(minutes=5)
+        elif inactive == "session-expired":
+            session.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        elif inactive == "revoked":
+            session.revoked_at = datetime.now(UTC)
+        else:
+            user.token_version += 1
+    async with sessions.begin() as db:
+        with pytest.raises(QaGrantError):
+            await _bootstrap(db, run_id)
 
 
 @pytest.mark.parametrize(
