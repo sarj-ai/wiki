@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from typing import Any
 import uuid
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -22,6 +22,7 @@ from app.document_transform.qa_grants import (
     QaBootstrapResult,
     QaCapability,
     QaGrantError,
+    QaSubmittedCanary,
 )
 from app.document_transform.qa_launcher import QaExecutionAttestation
 from app.document_transform.schemas import (
@@ -32,6 +33,7 @@ from app.document_transform.schemas import (
     TransformMode,
     ValidationSummary,
 )
+from app.files.schemas import FileResponse
 from app.identifiers import (
     AuthSessionId,
     DocsRevisionId,
@@ -1260,6 +1262,7 @@ async def test_canary_submit_reauthorizes_and_returns_only_bounded_admission(
     now = datetime.now(UTC)
     authorization_calls = 0
     submit_calls = 0
+    bind_calls = 0
     operation = uuid.UUID("55555555-5555-4555-8555-555555555555")
     task_id = TaskId(uuid.UUID("66666666-6666-4666-8666-666666666666"))
 
@@ -1304,7 +1307,15 @@ async def test_canary_submit_reauthorizes_and_returns_only_bounded_admission(
                 replayed=submit_calls > 1,
             )
 
+    async def bind(_db: object, **kwargs: object) -> QaSubmittedCanary:
+        nonlocal bind_calls
+        bind_calls += 1
+        assert kwargs["plan_id"] == operation
+        assert kwargs["task_id"] == task_id
+        return QaSubmittedCanary(plan_id=QaPlanId(operation), task_id=task_id)
+
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    monkeypatch.setattr(qa_router, "bind_qa_canary_submission", bind)
     db = _Db()
     application = _application(db, _user())
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
@@ -1344,7 +1355,9 @@ async def test_canary_submit_reauthorizes_and_returns_only_bounded_admission(
 
     assert first.status_code == replay.status_code == 202
     assert stale.status_code == 409
-    assert authorization_calls == submit_calls == 3
+    assert authorization_calls == 5
+    assert submit_calls == 3
+    assert bind_calls == 2
     assert first.json()["task_id"] == replay.json()["task_id"] == str(task_id)
     assert first.json()["task_status"] == replay.json()["task_status"] == "pending"
     assert not first.json()["replayed"]
@@ -1406,22 +1419,30 @@ async def test_canary_submit_rejects_caller_selected_file_before_capability_auth
     assert db.commits == db.rollbacks == 0
 
 
-def _transform_result() -> DocumentTransformResult:
+def _transform_result(
+    *,
+    operation_id: uuid.UUID | None = None,
+    finding_count: int = 150,
+) -> DocumentTransformResult:
+    operation_id = operation_id or uuid.UUID("66666666-6666-4666-8666-666666666666")
     return DocumentTransformResult(
-        operation_id=uuid.UUID("55555555-5555-4555-8555-555555555555"),
+        operation_id=operation_id,
         source_sha256="c" * 64,
         output=DocumentOutput(
             file_id=FileId("server-derived-output"),
             name="Security Review — Polished",
             parent_folder_id=FileId("destination"),
-            web_url="https://docs.google.com/document/d/server-derived-output/edit",
+            web_url="https://attacker.invalid/stored-provider-url",
         ),
         mode=TransformMode.BOTH,
-        applied_patch_count=3,
-        deterministic_patch_count=2,
-        model_patch_count=1,
+        applied_patch_count=750,
+        deterministic_patch_count=500,
+        model_patch_count=250,
         promoted_heading_count=2,
-        findings=[TransformFinding(code="tab_naming_preserved", detail="Preserved")],
+        findings=[
+            TransformFinding(code=f"finding-{index:03d}", detail=f"Finding {index}")
+            for index in range(finding_count)
+        ],
         validation=ValidationSummary(
             source_unchanged=True,
             protected_content_preserved=True,
@@ -1477,16 +1498,26 @@ async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_st
         )
 
     class Broker:
+        forged_operation = False
+        output_available = True
+        output_parent = FileId("destination")
+
         async def read_task(self, authority: QaAuthority, **kwargs: object) -> SucceededTaskRead:
             nonlocal read_calls
             read_calls += 1
             assert authority.user_id == _user().id
-            assert kwargs["plan_id"] == operation
+            assert kwargs["submission"] == QaSubmittedCanary(plan_id=operation, task_id=task_id)
             return SucceededTaskRead(
                 id=task_id,
                 kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
                 status=TaskStatus.SUCCEEDED,
-                result=_transform_result(),
+                result=_transform_result(
+                    operation_id=(
+                        uuid.UUID("77777777-7777-4777-8777-777777777777")
+                        if self.forged_operation
+                        else task_id
+                    )
+                ),
                 resource_id=FileId("server-derived-output"),
                 error_code=None,
                 error_detail=None,
@@ -1496,15 +1527,32 @@ async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_st
                 created_at=now - timedelta(seconds=1),
             )
 
+        async def authorize_output(self, authority: QaAuthority, **kwargs: object) -> FileResponse:
+            assert authority.destination_folder_id == "destination"
+            if not self.output_available or self.output_parent != authority.destination_folder_id:
+                raise QaGrantError
+            output = kwargs["output"]
+            assert isinstance(output, DocumentOutput)
+            return FileResponse(
+                id=output.file_id,
+                name="Fresh Provider Name",
+                mime_type="application/vnd.google-apps.document",
+                parent_folder_id=self.output_parent,
+                drive_id=None,
+                modified_time="2026-09-08T01:00:00Z",
+                can_edit=True,
+            )
+
+    async def load_submission(_db: object, **_kwargs: object) -> QaSubmittedCanary:
+        return QaSubmittedCanary(plan_id=operation, task_id=task_id)
+
     monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    monkeypatch.setattr(qa_router, "load_qa_canary_submission", load_submission)
     db = _Db()
     application = _application(db, _user())
     application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
     application.dependency_overrides[task_service_dep] = object
-    body = _issuer_body() | {
-        "execution_name": "job/executions/one",
-        "plan_id": str(operation),
-    }
+    body = _issuer_body() | {"execution_name": "job/executions/one"}
     headers = {
         "Authorization": "Bearer oidc",
         "X-Wiki-QA-Capability": "z" * 43,
@@ -1523,19 +1571,22 @@ async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_st
         )
 
     assert task.status_code == result.status_code == evidence.status_code == 200
-    assert authorization_calls == read_calls == 3
+    assert operation != task_id
+    assert authorization_calls == 8
+    assert read_calls == 3
     assert task.json()["task_id"] == result.json()["task_id"] == str(task_id)
     assert result.json()["output"]["file_id"] == "server-derived-output"
+    assert result.json()["output"]["web_url"] == (
+        "https://docs.google.com/document/d/server-derived-output/edit"
+    )
+    assert result.json()["applied_patch_count"] == 750
     assert result.json()["short_link_alias"] == "security-review"
     assert evidence.json()["source_revision_id"] == "source-revision"
-    assert evidence.json()["findings"] == [
-        {
-            "code": "tab_naming_preserved",
-            "block_id": None,
-            "detail": "Preserved",
-            "severity": "review",
-        }
-    ]
+    assert len(evidence.json()["findings"]) == 100
+    assert evidence.json()["finding_total_count"] == 150
+    assert evidence.json()["findings_truncated"] is True
+    assert evidence.json()["findings"][0]["code"] == "finding-000"
+    assert evidence.json()["findings"][-1]["code"] == "finding-099"
     assert len(evidence.json()["result_sha256"]) == 64
     for response in (task, result, evidence):
         assert response.headers["cache-control"] == "no-store"
@@ -1543,6 +1594,88 @@ async def test_canary_task_result_and_evidence_reauthorize_and_are_bounded_no_st
         assert len(response.content) < 64 * 1024
         assert "error_detail" not in response.text
         assert "pdf" not in response.text.casefold()
+        assert "release_sha" not in response.text
+        assert "image_digest" not in response.text
+        assert "source_folder_id" not in response.text
+        assert "destination_folder_id" not in response.text
+        assert "user_email" not in response.text
+        assert "capability_expires_at" not in response.text
+
+    Broker.forged_operation = True
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        forged_result = await http.post(
+            "/internal/document-transform-qa/canary/result", json=body, headers=headers
+        )
+        forged_evidence = await http.post(
+            "/internal/document-transform-qa/canary/evidence", json=body, headers=headers
+        )
+
+    assert authorization_calls == 12
+    assert read_calls == 5
+    for response in (forged_result, forged_evidence):
+        assert response.status_code == 409
+        assert response.json() == {"detail": "QA canary state is unavailable"}
+        assert response.headers["cache-control"] == "no-store"
+        assert response.headers["pragma"] == "no-cache"
+        assert "77777777" not in response.text
+
+
+@pytest.mark.parametrize("response_kind", ["task", "result"])
+def test_task_and_result_response_total_byte_guards(response_kind: str) -> None:
+    now = datetime.now(UTC)
+    task_response = qa_router.QaCanaryTaskResponse(
+        task_id=TaskId(uuid.UUID("66666666-6666-4666-8666-666666666666")),
+        task_status=TaskStatus.SUCCEEDED,
+        attempt_count=1,
+        created_at=now,
+        started_at=now,
+        finished_at=now,
+    )
+    response = (
+        task_response
+        if response_kind == "task"
+        else qa_router.QaCanaryResultResponse(
+            **task_response.model_dump(),
+            operation_id=task_response.task_id,
+            output=qa_router.QaCanaryResultOutput(
+                file_id=FileId("output"),
+                web_url="https://docs.google.com/document/d/output/edit",
+            ),
+            changed=True,
+            needs_review=False,
+            applied_patch_count=750,
+            deterministic_patch_count=500,
+            model_patch_count=250,
+            promoted_heading_count=20,
+            short_link_alias=None,
+            short_link_status=None,
+        )
+    )
+    with pytest.raises(HTTPException, match="QA canary state is unavailable"):
+        qa_router._bounded_response(response, 1)
+
+
+def test_evidence_response_total_byte_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+    now = datetime.now(UTC)
+    result = _transform_result(finding_count=0)
+    task = SucceededTaskRead(
+        id=TaskId(uuid.UUID("66666666-6666-4666-8666-666666666666")),
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        status=TaskStatus.SUCCEEDED,
+        result=result,
+        resource_id=FileId("server-derived-output"),
+        error_code=None,
+        error_detail=None,
+        attempt_count=1,
+        started_at=now,
+        finished_at=now,
+        created_at=now,
+    )
+    monkeypatch.setattr(qa_router, "_MAX_QA_EVIDENCE_RESPONSE_BYTES", 1)
+    with pytest.raises(HTTPException, match="QA canary state is unavailable"):
+        qa_router._evidence_response(task, result, result_sha256="d" * 64)
 
 
 async def test_canary_reads_reject_caller_selected_task_and_file_before_authorization(

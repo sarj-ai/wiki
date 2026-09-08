@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 from typing import Annotated, Literal
+from urllib.parse import quote
 import uuid
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, Response, status
@@ -24,14 +25,18 @@ from app.document_transform.qa_grants import (
     QaBootstrapResult,
     QaCapability,
     QaGrantError,
+    QaSubmittedCanary,
     authorize_qa_capability,
     bind_qa_bootstrap_execution,
     bootstrap_attested_qa_execution,
+    bind_qa_canary_submission,
+    bootstrap_qa_run,
     consume_qa_grant,
     fail_qa_bootstrap_launch,
     issue_qa_grant,
     prepare_idempotent_qa_launch,
     read_active_qa_execution,
+    load_qa_canary_submission,
     renew_qa_capability,
 )
 from app.document_transform.qa_launcher import (
@@ -42,9 +47,11 @@ from app.document_transform.qa_launcher import (
 from app.document_transform.schemas import (
     DocumentTransformResult,
     FindingSeverity,
+    TransformFinding,
     TransformMode,
     ValidationSummary,
 )
+from app.files.schemas import FileResponse
 from app.identifiers import DocsRevisionId, FileId, QaPlanId, QaRunId, TaskId
 from app.models.user import User
 from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
@@ -135,14 +142,13 @@ class QaCanarySubmissionResponse(QaCanarySessionResponse):
 
 
 class QaCanaryReadAuthorization(QaCapabilityAuthorization):
-    plan_id: QaPlanId
+    pass
 
 
-class QaCanaryTaskResponse(QaCanarySessionResponse):
-    plan_id: QaPlanId
+class QaCanaryTaskResponse(_StrictModel):
     task_id: TaskId
     task_status: TaskStatus
-    attempt_count: int = Field(ge=0, le=100)
+    attempt_count: int = Field(ge=0)
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
@@ -150,10 +156,7 @@ class QaCanaryTaskResponse(QaCanarySessionResponse):
 
 class QaCanaryResultOutput(_StrictModel):
     file_id: FileId = Field(min_length=1, max_length=255)
-    name: str = Field(min_length=1, max_length=255)
-    parent_folder_id: FileId = Field(min_length=1, max_length=255)
-    web_url: str | None = Field(default=None, max_length=2_048)
-    media_type: str = Field(min_length=1, max_length=255)
+    web_url: str = Field(max_length=2_048)
 
 
 class QaCanaryResultResponse(QaCanaryTaskResponse):
@@ -162,9 +165,9 @@ class QaCanaryResultResponse(QaCanaryTaskResponse):
     output_strategy: Literal["copy"] = "copy"
     changed: bool
     needs_review: bool
-    applied_patch_count: int = Field(ge=0, le=100)
-    deterministic_patch_count: int = Field(ge=0, le=100)
-    model_patch_count: int = Field(ge=0, le=100)
+    applied_patch_count: int = Field(ge=0)
+    deterministic_patch_count: int = Field(ge=0)
+    model_patch_count: int = Field(ge=0)
     promoted_heading_count: int = Field(ge=0, le=20)
     short_link_alias: str | None = Field(default=None, max_length=63)
     short_link_status: Literal["ready", "unavailable"] | None
@@ -185,6 +188,8 @@ class QaCanaryEvidenceResponse(QaCanaryTaskResponse):
     output_revision_id: DocsRevisionId | None = Field(default=None, max_length=255)
     validation: ValidationSummary
     findings: list[QaCanaryFinding] = Field(max_length=100)
+    finding_total_count: int = Field(ge=0)
+    findings_truncated: bool
     artifact_kind: str = Field(min_length=1, max_length=32)
     access_scope: str = Field(min_length=1, max_length=32)
 
@@ -198,6 +203,7 @@ class _AuthorizedCanaryRequest[QaAuthorization: QaCapabilityAuthorization]:
 @dataclass(frozen=True, slots=True)
 class _ReadCanaryTask:
     authorized: _AuthorizedCanaryRequest[QaCanaryReadAuthorization]
+    submission: QaSubmittedCanary
     task: TaskRead
 
 
@@ -212,7 +218,10 @@ _NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 _MIN_CAPABILITY_TOKEN_LENGTH = 32
 _MAX_CAPABILITY_TOKEN_LENGTH = 256
 _UUID_VERSION_7 = 7
+_MAX_QA_TASK_RESPONSE_BYTES = 4 * 1024
+_MAX_QA_RESULT_RESPONSE_BYTES = 8 * 1024
 _MAX_QA_EVIDENCE_RESPONSE_BYTES = 64 * 1024
+_MAX_QA_EVIDENCE_FINDINGS = 100
 
 
 def qa_canary_broker_dep(
@@ -660,7 +669,18 @@ async def submit_document_transform_qa_canary(
             tasks=tasks,
             enqueuer=enqueuer,
         )
+        await bind_qa_canary_submission(
+            db,
+            authority=authorized.authority,
+            plan_id=authorized.body.plan_id,
+            task_id=submission.task.id,
+        )
+        await db.commit()
+        authorized = await _authorize_canary_request_as(
+            request, db, QaCanarySubmissionAuthorization
+        )
     except QaGrantError as exc:
+        await db.rollback()
         raise _no_store_http_error(
             status.HTTP_409_CONFLICT, "QA canary plan is no longer current"
         ) from exc
@@ -689,7 +709,7 @@ async def read_document_transform_qa_canary_task(
     """Read the task derived from the current authority and its server plan."""
     read = await _read_canary_task(request, db, broker, tasks)
     _prevent_token_caching(response)
-    return _task_response(read.authorized.authority, read.authorized.body.plan_id, read.task)
+    return _bounded_response(_task_response(read.task), _MAX_QA_TASK_RESPONSE_BYTES)
 
 
 @workload_router.post("/canary/result", response_model=QaCanaryResultResponse)
@@ -705,16 +725,20 @@ async def read_document_transform_qa_canary_result(
     result = _require_succeeded_transform(
         read.task,
         authority=read.authorized.authority,
-        plan_id=read.authorized.body.plan_id,
     )
+    verified_output = await _authorize_canary_output(request, db, broker, read, result)
     _prevent_token_caching(response)
     try:
-        return QaCanaryResultResponse(
-            **_task_response(
-                read.authorized.authority, read.authorized.body.plan_id, read.task
-            ).model_dump(),
+        result_response = QaCanaryResultResponse(
+            **_task_response(read.task).model_dump(),
             operation_id=result.operation_id,
-            output=QaCanaryResultOutput.model_validate(result.output, from_attributes=True),
+            output=QaCanaryResultOutput(
+                file_id=verified_output.id,
+                web_url=(
+                    "https://docs.google.com/document/d/"
+                    f"{quote(str(verified_output.id), safe='')}/edit"
+                ),
+            ),
             changed=result.changed,
             needs_review=result.needs_review,
             applied_patch_count=result.applied_patch_count,
@@ -726,6 +750,7 @@ async def read_document_transform_qa_canary_result(
         )
     except ValidationError as exc:
         raise _canary_state_unavailable() from exc
+    return _bounded_response(result_response, _MAX_QA_RESULT_RESPONSE_BYTES)
 
 
 @workload_router.post("/canary/evidence", response_model=QaCanaryEvidenceResponse)
@@ -741,36 +766,14 @@ async def read_document_transform_qa_canary_evidence(
     result = _require_succeeded_transform(
         read.task,
         authority=read.authorized.authority,
-        plan_id=read.authorized.body.plan_id,
     )
+    await _authorize_canary_output(request, db, broker, read, result)
     serialized = result.model_dump(mode="json")
     result_sha256 = hashlib.sha256(
         json.dumps(serialized, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
     ).hexdigest()
     _prevent_token_caching(response)
-    try:
-        evidence = QaCanaryEvidenceResponse(
-            **_task_response(
-                read.authorized.authority, read.authorized.body.plan_id, read.task
-            ).model_dump(),
-            operation_id=result.operation_id,
-            result_sha256=result_sha256,
-            source_sha256=result.source_sha256,
-            source_revision_id=result.source_revision_id,
-            output_revision_id=result.output_revision_id,
-            validation=result.validation,
-            findings=[
-                QaCanaryFinding.model_validate(item, from_attributes=True)
-                for item in result.findings
-            ],
-            artifact_kind=result.artifact_kind,
-            access_scope=result.access_scope,
-        )
-    except ValidationError as exc:
-        raise _canary_state_unavailable() from exc
-    if len(evidence.model_dump_json().encode()) > _MAX_QA_EVIDENCE_RESPONSE_BYTES:
-        raise _canary_state_unavailable()
-    return evidence
+    return _evidence_response(read.task, result, result_sha256=result_sha256)
 
 
 async def _read_canary_task(
@@ -781,25 +784,36 @@ async def _read_canary_task(
 ) -> _ReadCanaryTask:
     authorized = await _authorize_canary_request_as(request, db, QaCanaryReadAuthorization)
     try:
+        submission = await load_qa_canary_submission(db, authority=authorized.authority)
         task = await broker.read_task(
             authorized.authority,
-            plan_id=authorized.body.plan_id,
+            submission=submission,
             tasks=tasks,
         )
+        authorized = await _authorize_canary_request_as(request, db, QaCanaryReadAuthorization)
     except (QaGrantError, TaskError) as exc:
         raise _canary_state_unavailable() from exc
-    return _ReadCanaryTask(authorized=authorized, task=task)
+    return _ReadCanaryTask(authorized=authorized, submission=submission, task=task)
 
 
-def _task_response(
-    authority: QaAuthority,
-    plan_id: QaPlanId,
-    task: TaskRead,
-) -> QaCanaryTaskResponse:
+async def _authorize_canary_output(
+    request: Request,
+    db: AsyncSession,
+    broker: QaCanaryBroker,
+    read: _ReadCanaryTask,
+    result: DocumentTransformResult,
+) -> FileResponse:
+    try:
+        output = await broker.authorize_output(read.authorized.authority, output=result.output)
+        await _authorize_canary_request_as(request, db, QaCanaryReadAuthorization)
+    except (QaGrantError, TaskError) as exc:
+        raise _canary_state_unavailable() from exc
+    return output
+
+
+def _task_response(task: TaskRead) -> QaCanaryTaskResponse:
     try:
         return QaCanaryTaskResponse(
-            **_canary_session_response(authority).model_dump(),
-            plan_id=plan_id,
             task_id=task.id,
             task_status=task.status,
             attempt_count=task.attempt_count,
@@ -815,7 +829,6 @@ def _require_succeeded_transform(
     task: TaskRead,
     *,
     authority: QaAuthority,
-    plan_id: QaPlanId,
 ) -> DocumentTransformResult:
     if not isinstance(task, SucceededTaskRead) or not isinstance(
         task.result, DocumentTransformResult
@@ -823,13 +836,63 @@ def _require_succeeded_transform(
         raise _canary_state_unavailable()
     result = task.result
     if (
-        not hmac.compare_digest(result.operation_id.bytes, plan_id.bytes)
+        not hmac.compare_digest(result.operation_id.bytes, task.id.bytes)
         or result.mode is not authority.mode
         or result.output_strategy.value != "copy"
         or result.output.parent_folder_id != authority.destination_folder_id
     ):
         raise _canary_state_unavailable()
     return result
+
+
+def _evidence_response(
+    task: TaskRead,
+    result: DocumentTransformResult,
+    *,
+    result_sha256: str,
+) -> QaCanaryEvidenceResponse:
+    total_count = len(result.findings)
+    findings = [_finding_response(item) for item in result.findings[:_MAX_QA_EVIDENCE_FINDINGS]]
+    while True:
+        try:
+            evidence = QaCanaryEvidenceResponse(
+                **_task_response(task).model_dump(),
+                operation_id=result.operation_id,
+                result_sha256=result_sha256,
+                source_sha256=result.source_sha256,
+                source_revision_id=result.source_revision_id,
+                output_revision_id=result.output_revision_id,
+                validation=result.validation,
+                findings=findings,
+                finding_total_count=total_count,
+                findings_truncated=len(findings) < total_count,
+                artifact_kind=result.artifact_kind,
+                access_scope=result.access_scope,
+            )
+        except ValidationError as exc:
+            raise _canary_state_unavailable() from exc
+        if len(evidence.model_dump_json().encode()) <= _MAX_QA_EVIDENCE_RESPONSE_BYTES:
+            return evidence
+        if not findings:
+            raise _canary_state_unavailable()
+        findings.pop()
+
+
+def _finding_response(finding: TransformFinding) -> QaCanaryFinding:
+    return QaCanaryFinding(
+        code=finding.code[:128] or "unknown",
+        block_id=finding.block_id[:255] if finding.block_id is not None else None,
+        detail=finding.detail[:512],
+        severity=finding.severity,
+    )
+
+
+def _bounded_response[ResponseModel: BaseModel](
+    response: ResponseModel, maximum_bytes: int
+) -> ResponseModel:
+    if len(response.model_dump_json().encode()) > maximum_bytes:
+        raise _canary_state_unavailable()
+    return response
 
 
 async def _authorize_canary_request(request: Request, db: AsyncSession) -> QaAuthority:

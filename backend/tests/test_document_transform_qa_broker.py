@@ -7,12 +7,15 @@ from pydantic import BaseModel
 import pytest
 
 from app.document_transform.qa_broker import (
+    authorize_qa_canary_output,
+    authorize_qa_canary_scope,
     plan_qa_canary,
-    read_planned_qa_canary_task,
+    read_submitted_qa_canary_task,
     submit_planned_qa_canary,
 )
-from app.document_transform.qa_grants import QaAuthority, QaGrantError
+from app.document_transform.qa_grants import QaAuthority, QaGrantError, QaSubmittedCanary
 from app.document_transform.schemas import (
+    DocumentOutput,
     DocumentTransformRequest,
     DriveFileSource,
     OutputStrategy,
@@ -76,6 +79,16 @@ class _Files:
                 parent_folder_id=_SOURCE,
                 drive_id=_DRIVE,
                 modified_time="2026-09-07T12:00:00Z",
+            )
+        if file_id == FileId("output-1"):
+            return FileResponse(
+                id=file_id,
+                name="Polished",
+                mime_type=MIME_DOC,
+                parent_folder_id=_DESTINATION,
+                drive_id=_DRIVE,
+                modified_time="2026-09-07T12:05:00Z",
+                can_edit=True,
             )
         return FileResponse(
             id=file_id,
@@ -357,10 +370,9 @@ async def test_read_resolves_only_current_plan_and_owner_scoped_task() -> None:
     )
     tasks = _Tasks()
 
-    task = await read_planned_qa_canary_task(
+    task = await read_submitted_qa_canary_task(
         authority,
-        plan=plan,
-        plan_id=plan.plan_id,
+        submission=QaSubmittedCanary(plan_id=plan.plan_id, task_id=tasks.task_id),
         tasks=tasks,
     )
 
@@ -368,7 +380,7 @@ async def test_read_resolves_only_current_plan_and_owner_scoped_task() -> None:
     assert tasks.read_keys == [(authority.user_id, IdempotencyKey(plan.plan_id))]
 
 
-async def test_read_rejects_cross_run_plan_before_any_task_lookup() -> None:
+async def test_read_rejects_cross_run_task_binding_before_owner_read() -> None:
     authority = _authority()
     plan = await plan_qa_canary(
         authority,
@@ -378,11 +390,95 @@ async def test_read_rejects_cross_run_plan_before_any_task_lookup() -> None:
     tasks = _Tasks()
 
     with pytest.raises(QaGrantError):
-        await read_planned_qa_canary_task(
+        await read_submitted_qa_canary_task(
             authority,
-            plan=plan,
-            plan_id=QaPlanId(uuid.UUID("99999999-9999-4999-8999-999999999999")),
+            submission=QaSubmittedCanary(
+                plan_id=plan.plan_id,
+                task_id=TaskId(uuid.UUID("99999999-9999-4999-8999-999999999999")),
+            ),
             tasks=tasks,
         )
 
-    assert tasks.read_keys == []
+    assert tasks.read_keys == [(authority.user_id, IdempotencyKey(plan.plan_id))]
+
+
+@pytest.mark.parametrize(
+    "current_children",
+    [
+        [_node("doc-1", modified_time="2026-09-07T12:01:00Z")],
+        [_node("doc-1"), _node("doc-2")],
+        [],
+        [_node("loop", mime_type=MIME_FOLDER)],
+    ],
+    ids=("edited", "added", "removed", "topology-changed"),
+)
+async def test_submitted_read_survives_source_folder_churn(
+    current_children: list[DriveNode],
+) -> None:
+    authority = _authority()
+    original = await plan_qa_canary(
+        authority,
+        drive=_Drive({_SOURCE: [_node("doc-1")]}),
+        files=_Files(),
+    )
+    tasks = _Tasks()
+    await authorize_qa_canary_scope(authority, files=_Files())
+
+    task = await read_submitted_qa_canary_task(
+        authority,
+        submission=QaSubmittedCanary(plan_id=original.plan_id, task_id=tasks.task_id),
+        tasks=tasks,
+    )
+
+    assert task.id == tasks.task_id
+    try:
+        current = await plan_qa_canary(
+            authority,
+            drive=_Drive({_SOURCE: current_children}),
+            files=_Files(),
+        )
+    except QaGrantError:
+        return
+    assert current.plan_id != original.plan_id
+
+
+async def test_output_read_requires_current_exact_destination_parent() -> None:
+    output = DocumentOutput(
+        file_id=FileId("output-1"),
+        name="Ignored Stored Name",
+        parent_folder_id=_DESTINATION,
+    )
+
+    current = await authorize_qa_canary_output(_authority(), output=output, files=_Files())
+
+    assert current.id == output.file_id
+
+
+@pytest.mark.parametrize("failure", ["deleted", "moved", "revoked"])
+async def test_output_read_rejects_deleted_moved_or_revoked_output(failure: str) -> None:
+    class OutputFiles(_Files):
+        @override
+        async def get(self, file_id: FileId) -> FileResponse:
+            if file_id != FileId("output-1"):
+                return await super().get(file_id)
+            if failure in {"deleted", "revoked"}:
+                raise QaGrantError
+            return FileResponse(
+                id=file_id,
+                name="Polished",
+                mime_type=MIME_DOC,
+                parent_folder_id=FileId("other-folder"),
+                drive_id=_DRIVE,
+                modified_time="2026-09-07T12:05:00Z",
+            )
+
+    with pytest.raises(QaGrantError):
+        await authorize_qa_canary_output(
+            _authority(),
+            output=DocumentOutput(
+                file_id=FileId("output-1"),
+                name="Polished",
+                parent_folder_id=_DESTINATION,
+            ),
+            files=OutputFiles(),
+        )

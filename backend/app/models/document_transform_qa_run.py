@@ -1,12 +1,21 @@
 from datetime import datetime
 import uuid
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, LargeBinary, Text, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    LargeBinary,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
-from app.identifiers import AuthSessionId, FileId, QaRunId, UserId
+from app.identifiers import AuthSessionId, FileId, QaPlanId, QaRunId, TaskId, UserId
 from app.models.document_transform_qa_grant import DocumentTransformQaGrantId
 
 
@@ -85,6 +94,16 @@ class DocumentTransformQaRun(Base):
             "bootstrap_capability_digest IS NULL OR octet_length(bootstrap_capability_digest) = 32",
             name="ck_document_transform_qa_run_capability_digest_length",
         ),
+        CheckConstraint(
+            "(submitted_plan_id IS NULL AND submitted_task_id IS NULL AND submitted_at IS NULL) OR "
+            "(state = 'bootstrapped' AND submitted_plan_id IS NOT NULL "
+            "AND submitted_task_id IS NOT NULL AND submitted_at IS NOT NULL)",
+            name="ck_document_transform_qa_run_submission_atomic",
+        ),
+        UniqueConstraint(
+            "submitted_plan_id",
+            name="uq_document_transform_qa_runs_submitted_plan_id",
+        ),
         Index("ix_document_transform_qa_runs_created_at", "created_at"),
         Index(
             "uq_document_transform_qa_runs_launch_idempotency_key",
@@ -135,3 +154,8 @@ class DocumentTransformQaRun(Base):
     bootstrap_capability_digest: Mapped[bytes | None] = mapped_column(LargeBinary(32), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     bootstrapped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    submitted_plan_id: Mapped[QaPlanId | None] = mapped_column(UUID(as_uuid=True))
+    submitted_task_id: Mapped[TaskId | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="RESTRICT")
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -21,12 +21,14 @@ from app.document_transform.qa_grants import (
     authorize_qa_capability,
     bind_qa_bootstrap_execution,
     bootstrap_attested_qa_execution,
+    bind_qa_canary_submission,
     bootstrap_qa_run,
     consume_qa_grant,
     delete_expired_qa_grants,
     fail_qa_bootstrap_launch,
     issue_qa_grant,
     prepare_idempotent_qa_launch,
+    load_qa_canary_submission,
     prepare_qa_bootstrap_run,
     renew_qa_capability,
 )
@@ -36,14 +38,20 @@ from app.identifiers import (
     AuthSessionId,
     FileId,
     GoogleUserId,
+    IdempotencyKey,
+    QaPlanId,
     QaRunId,
+    TaskId,
     TokenId,
     UserId,
 )
 from app.models.auth_session import UserSession
 from app.models.document_transform_qa_grant import DocumentTransformQaGrant
 from app.models.document_transform_qa_run import DocumentTransformQaRun
+from app.models.task import Task
+from app.models.task_replay_key import TaskReplayKey
 from app.models.user import User
+from app.tasks.schemas import TaskKind, TaskStatus
 
 
 _SOURCE_FOLDER_ID = FileId("source-folder")
@@ -91,7 +99,14 @@ async def sessions() -> AsyncGenerator[async_sessionmaker[AsyncSession]]:
     try:
         async with engine.begin() as connection:
             await connection.execute(CreateSchema(schema))
-            for model in (User, UserSession, DocumentTransformQaGrant, DocumentTransformQaRun):
+            for model in (
+                User,
+                UserSession,
+                DocumentTransformQaGrant,
+                Task,
+                TaskReplayKey,
+                DocumentTransformQaRun,
+            ):
                 table = model.__table__
                 assert isinstance(table, Table)
                 await connection.run_sync(table.create)
@@ -402,6 +417,63 @@ async def test_real_postgres_secretless_bootstrap_persists_only_digests(
         assert capability.token.encode() not in bytes(expected)
         assert run.bootstrap_request_nonce == _CONSUME_NONCE
         assert run.state == "bootstrapped"
+
+
+async def test_real_postgres_submission_binding_is_atomic_immutable_and_replayable(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    plan_id = QaPlanId(uuid.uuid7())
+    task_id = TaskId(uuid.uuid7())
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        prepared = await _prepared_bound_run(db, identity.user, identity.session)
+        capability = await _bootstrap(db, prepared.run_id)
+        authority = await _authorize(db, capability.token)
+        now = datetime.now(UTC)
+        db.add(
+            Task(
+                id=task_id,
+                owner_user_id=identity.user.id,
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                status=TaskStatus.PENDING,
+                idempotency_key=IdempotencyKey(plan_id),
+                request_hash="d" * 64,
+                payload={},
+                attempt_count=0,
+                created_at=now,
+                expires_at=now + timedelta(hours=1),
+            )
+        )
+        await db.flush()
+        first = await bind_qa_canary_submission(
+            db,
+            authority=authority,
+            plan_id=plan_id,
+            task_id=task_id,
+        )
+        replay = await bind_qa_canary_submission(
+            db,
+            authority=authority,
+            plan_id=plan_id,
+            task_id=task_id,
+        )
+        assert replay == first
+    async with sessions.begin() as db:
+        authority = await _authorize(db, capability.token)
+        loaded = await load_qa_canary_submission(db, authority=authority)
+        run = await db.get(DocumentTransformQaRun, prepared.run_id)
+        assert loaded == first
+        assert run is not None
+        assert run.submitted_plan_id == plan_id
+        assert run.submitted_task_id == task_id
+        assert run.submitted_at is not None
+        with pytest.raises(QaGrantError):
+            await bind_qa_canary_submission(
+                db,
+                authority=authority,
+                plan_id=QaPlanId(uuid.uuid7()),
+                task_id=task_id,
+            )
 
 
 async def test_real_postgres_secretless_bootstrap_state_is_database_atomic(
