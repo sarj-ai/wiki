@@ -15,7 +15,6 @@ name: CI Quality
       - ".github/workflows/deploy-frontend.yml"
       - "scripts/github/release_gate.py"
       - "scripts/github/verify-release-gate.sh"
-      - "scripts/github/clear-legacy-drive-tree-cache.sh"
       - "scripts/github/deploy-backend-candidate.sh"
       - "scripts/github/report-blocked-backend-release.sh"
       - "scripts/github/run-backend-migrations.sh"

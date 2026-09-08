@@ -30,7 +30,6 @@ REQUIRED_STEPS = (
     "Deploy candidate without traffic",
     "Run database migrations once",
     "Switch production traffic",
-    "Clear legacy global drive-tree cache after traffic switch",
 )
 REQUIRED_VERIFICATION_JOBS = (
     "standards-receipt",
@@ -45,16 +44,27 @@ MAX_JOBS = 100
 FULL_TRAFFIC = 100
 
 
-def verify_source_run(fetch: Fetch, sha: str, run_id: int, run_attempt: int) -> None:
-    run = fetch(f"{API_PREFIX}/actions/runs/{run_id}")
+def source_attempt_endpoint(run_id: int, run_attempt: int) -> str:
+    return f"{API_PREFIX}/actions/runs/{run_id}/attempts/{run_attempt}"
+
+
+def source_jobs_endpoint(run_id: int, run_attempt: int) -> str:
+    return f"{source_attempt_endpoint(run_id, run_attempt)}/jobs?per_page=100&page=1"
+
+
+def verify_source_run(run: JsonObject, run_id: int, run_attempt: int) -> str:
+    source_sha = run.get("head_sha")
     require(
         run.get("id") == run_id
         and run.get("workflow_id") == WORKFLOW_ID
         and run.get("path") == WORKFLOW_PATH
-        and run.get("head_sha") == sha
+        and isinstance(source_sha, str)
+        and re.fullmatch(r"[0-9a-f]{40}", source_sha)
         and run.get("head_branch") == "main"
         and run.get("event") in {"push", "workflow_dispatch"}
-        and run.get("status") == "completed",
+        and run.get("status") == "completed"
+        and type(run.get("run_attempt")) is int
+        and run.get("run_attempt") == run_attempt,
         "Untrusted or unfinished source release",
     )
     validate_repository(run.get("repository"))
@@ -63,54 +73,54 @@ def verify_source_run(fetch: Fetch, sha: str, run_id: int, run_attempt: int) -> 
         run.get("conclusion") in {"success", "failure", "cancelled", "timed_out"},
         "Invalid source result",
     )
-    require(run.get("run_attempt") == run_attempt, "Source run attempt changed")
+    return str(source_sha)
 
 
-def verify_source(fetch: Fetch, sha: str, run_id: int, run_attempt: int) -> None:
-    run_id = positive_id(run_id)
-    run_attempt = positive_id(run_attempt)
-    verify_source_run(fetch, sha, run_id, run_attempt)
-    page = fetch(
-        f"{API_PREFIX}/actions/runs/{run_id}/attempts/{run_attempt}/jobs?per_page=100&page=1"
-    )
-    jobs = page.get("jobs")
-    require(isinstance(jobs, list), "Invalid source jobs")
-    if not isinstance(jobs, list):
+def verified_jobs(page: JsonObject) -> list[JsonObject]:
+    raw_jobs = page.get("jobs")
+    require(isinstance(raw_jobs, list), "Invalid source jobs")
+    if not isinstance(raw_jobs, list):
         msg = "Invalid source jobs"
         raise ReleaseBlockedError(msg)
+    jobs = [object_value(job) for job in raw_jobs]
     require(
         type(page.get("total_count")) is int
         and page.get("total_count") == len(jobs)
         and len(jobs) <= MAX_JOBS,
         "Truncated job receipt",
     )
+    return jobs
+
+
+def verify_prerequisite_jobs(
+    jobs: list[JsonObject], source_sha: str, run_id: int, run_attempt: int
+) -> None:
     for name in REQUIRED_VERIFICATION_JOBS:
-        matches = [
-            candidate_job
-            for job in jobs
-            if (candidate_job := object_value(job)).get("name") == name
-        ]
+        matches = [job for job in jobs if job.get("name") == name]
         require(len(matches) == 1, "Missing or ambiguous source verification receipt")
         verification_job = matches[0]
         require(
             verification_job.get("run_id") == run_id
+            and type(verification_job.get("run_attempt")) is int
             and verification_job.get("run_attempt") == run_attempt
-            and verification_job.get("head_sha") == sha
+            and verification_job.get("head_sha") == source_sha
             and verification_job.get("status") == "completed"
             and verification_job.get("conclusion") == "success",
             "Source verification did not complete successfully",
         )
-    deployments = [
-        candidate_job
-        for job in jobs
-        if (candidate_job := object_value(job)).get("name") == "deploy"
-    ]
+
+
+def verify_deploy_job(
+    jobs: list[JsonObject], source_sha: str, run_id: int, run_attempt: int
+) -> None:
+    deployments = [job for job in jobs if job.get("name") == "deploy"]
     require(len(deployments) == 1, "Missing or ambiguous source deploy job")
     job = deployments[0]
     require(
         job.get("run_id") == run_id
+        and type(job.get("run_attempt")) is int
         and job.get("run_attempt") == run_attempt
-        and job.get("head_sha") == sha
+        and job.get("head_sha") == source_sha
         and job.get("status") == "completed",
         "Source deploy job identity changed",
     )
@@ -136,8 +146,24 @@ def verify_source(fetch: Fetch, sha: str, run_id: int, run_attempt: int) -> None
             "Release mutation did not complete successfully in order",
         )
         previous_number = number
-    # Fence a rerun starting while the pinned attempt's job receipts were read.
-    verify_source_run(fetch, sha, run_id, run_attempt)
+
+
+def verify_source(fetch: Fetch, run_id: int, run_attempt: int) -> str:
+    run_id = positive_id(run_id)
+    run_attempt = positive_id(run_attempt)
+    attempt_endpoint = source_attempt_endpoint(run_id, run_attempt)
+    jobs_endpoint = source_jobs_endpoint(run_id, run_attempt)
+    run = fetch(attempt_endpoint)
+    source_sha = verify_source_run(run, run_id, run_attempt)
+    page = fetch(jobs_endpoint)
+    jobs = verified_jobs(page)
+    verify_prerequisite_jobs(jobs, source_sha, run_id, run_attempt)
+    verify_deploy_job(jobs, source_sha, run_id, run_attempt)
+    # Attempt-specific metadata and jobs are immutable after completion. Re-read
+    # both exact resources so a provider inconsistency cannot race authorization.
+    require(fetch(attempt_endpoint) == run, "Source attempt metadata changed")
+    require(fetch(jobs_endpoint) == page, "Source attempt jobs changed")
+    return source_sha
 
 
 def serving_revision(service: JsonObject) -> str:
@@ -178,7 +204,7 @@ def verify_serving(args: argparse.Namespace) -> None:
             "docker",
             "images",
             "describe",
-            f"{image}:{args.sha}",
+            f"{image}:{args.source_sha}",
             "--project",
             args.project,
             "--format=value(image_summary.digest)",
@@ -224,36 +250,43 @@ def verify_serving(args: argparse.Namespace) -> None:
     )
 
 
-def verify_current_release(args: argparse.Namespace) -> None:
-    require(re.fullmatch(r"[0-9a-f]{40}", args.sha), "Invalid release SHA")
-    require_current_main(fetch_github, args.sha)
+def verify_current_release(args: argparse.Namespace) -> str | None:
+    require(re.fullmatch(r"[0-9a-f]{40}", args.verifier_sha), "Invalid verifier SHA")
+    require_current_main(fetch_github, args.verifier_sha)
     if args.phase == "source":
-        verify_source(fetch_github, args.sha, args.run_id, args.run_attempt)
+        source_sha = verify_source(fetch_github, args.run_id, args.run_attempt)
     else:
         require(args.phase == "serving", "Invalid recovery phase")
+        require(re.fullmatch(r"[0-9a-f]{40}", args.source_sha), "Invalid source SHA")
         verify_serving(args)
-    require_current_main(fetch_github, args.sha)
+        source_sha = None
+    require_current_main(fetch_github, args.verifier_sha)
+    return source_sha
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--sha", required=True)
+    parser.add_argument("--verifier-sha", required=True)
     phases = parser.add_subparsers(dest="phase", required=True)
     source = phases.add_parser("source")
     source.add_argument("--run-id", type=int, required=True)
     source.add_argument("--run-attempt", type=int, required=True)
     serving = phases.add_parser("serving")
+    serving.add_argument("--source-sha", required=True)
     for name in ("project", "region", "repository", "service", "image"):
         serving.add_argument(f"--{name}", required=True)
     args = parser.parse_args()
     try:
-        verify_current_release(args)
+        source_sha = verify_current_release(args)
     except ReleaseBlockedError, OSError, ValueError, TypeError:
         sys.stderr.write(
             "Read-only recovery blocked: release identity or completed mutations are unverified.\n"
         )
         return 1
-    sys.stdout.write("Read-only recovery evidence verified.\n")
+    if source_sha is not None:
+        sys.stdout.write(f"{source_sha}\n")
+    else:
+        sys.stdout.write("Read-only recovery evidence verified.\n")
     return 0
 
 

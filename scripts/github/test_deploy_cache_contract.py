@@ -113,7 +113,6 @@ def test_deploys_trust_exact_sha_gates_without_repeating_generic_validation() ->
             "Verify revision and production health",
             "Resolve native MCP mode from exact revision",
             "Verify native MCP production contract",
-            "Clear legacy global drive-tree cache after traffic switch",
             "Verify correlated production logs",
             "Report blocked release without rollback",
         },

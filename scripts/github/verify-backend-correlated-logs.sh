@@ -51,9 +51,10 @@ if [[ "$error_count" -ne 0 ]]; then
 fi
 
 {
+  release_sha=${EXPECTED_RELEASE_SHA:-$GITHUB_SHA}
   echo '## Backend production gate'
   echo "- Revision: \`${VERIFIED_REVISION}\`"
-  echo "- Release: \`${GITHUB_SHA}\`"
+  echo "- Release: \`${release_sha}\`"
   echo "- Migration job: \`${MIGRATION_JOB}\`"
   echo "- Canary: \`${CANARY_ID}\`"
   echo "- Correlated completion logs: $completion_count"
