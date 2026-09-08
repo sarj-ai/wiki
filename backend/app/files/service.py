@@ -37,6 +37,7 @@ _FIELDS = (
     "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,"
     "capabilities(canEdit,canAddChildren),appProperties"
 )
+_QA_CORPUS_FIELDS = "id,name,mimeType,parents,driveId,modifiedTime,version,trashed"
 _SMART_TASK_PROPERTY = "sarjWikiTaskId"
 _MAX_HTML_BYTES = 5 * 1024 * 1024
 _FILE_GET_BATCH_SIZE = 100
@@ -101,6 +102,11 @@ class FilesService(ABC):
 
         loaded = await asyncio.gather(*(load(file_id) for file_id in dict.fromkeys(file_ids)))
         return {item.id: item.response for item in loaded if item is not None}
+
+    async def get_qa_corpus_metadata_many(
+        self, file_ids: list[FileId]
+    ) -> dict[FileId, FileResponse]:
+        return await self.get_accessible_many(file_ids)
 
     @abstractmethod
     async def can_edit(self, file_id: FileId) -> bool: ...
@@ -212,10 +218,28 @@ class GoogleFilesService(FilesService):
 
     @override
     async def get_accessible_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
+        return await self._get_accessible_many(file_ids, fields=_FIELDS)
+
+    @override
+    async def get_qa_corpus_metadata_many(
+        self, file_ids: list[FileId]
+    ) -> dict[FileId, FileResponse]:
+        return await self._get_accessible_many(file_ids, fields=_QA_CORPUS_FIELDS)
+
+    async def _get_accessible_many(
+        self,
+        file_ids: list[FileId],
+        *,
+        fields: str,
+    ) -> dict[FileId, FileResponse]:
         unique_ids = list(dict.fromkeys(file_ids))
         if not unique_ids:
             return {}
-        fetched = await asyncio.to_thread(self._get_accessible_many_sync, unique_ids)
+        fetched = await asyncio.to_thread(
+            self._get_accessible_many_sync,
+            unique_ids,
+            fields=fields,
+        )
         member_drives = await self._drive.resolve_member_drives(
             {file.id: file.drive_id for file in fetched.values()},
             parent_ids={file.id: file.parent_folder_id for file in fetched.values()},
@@ -343,7 +367,12 @@ class GoogleFilesService(FilesService):
             )
         return _to_accessible_response(raw)
 
-    def _get_accessible_many_sync(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
+    def _get_accessible_many_sync(
+        self,
+        file_ids: list[FileId],
+        *,
+        fields: str = _FIELDS,
+    ) -> dict[FileId, FileResponse]:
         client = self._client()
         responses: dict[FileId, FileResponse] = {}
         failures: list[BaseException] = []
@@ -366,7 +395,7 @@ class GoogleFilesService(FilesService):
                     batch.add(
                         client.files().get(
                             fileId=file_id,
-                            fields=_FIELDS,
+                            fields=fields,
                             supportsAllDrives=True,
                         ),
                         request_id=file_id,
@@ -551,6 +580,7 @@ def _file_response(file: GoogleFile) -> FileResponse:
         parent_folder_id=file.parents[0] if file.parents else None,
         drive_id=file.drive_id,
         modified_time=file.modified_time,
+        version=file.version,
         can_edit=file.capabilities.can_edit,
         can_add_children=file.capabilities.can_add_children,
         description=file.description,

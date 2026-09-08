@@ -26,6 +26,7 @@ class GoogleFile(_GoogleModel):
     drive_id: DriveId | None = Field(default=None, alias="driveId")
     parents: list[FileId] = Field(default_factory=list)
     modified_time: str | None = Field(default=None, alias="modifiedTime")
+    version: str | None = None
     description: str | None = None
     trashed: bool = False
     shortcut_details: GoogleShortcutDetails | None = Field(default=None, alias="shortcutDetails")

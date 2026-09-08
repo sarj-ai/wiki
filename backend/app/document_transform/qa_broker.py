@@ -24,6 +24,11 @@ from app.document_transform.qa_contract import (
     QA_MAX_STORED_TOOL_VERSIONS,
     QA_MAX_TRAVERSED_FOLDERS,
 )
+from app.document_transform.qa_corpus import (
+    QaCorpusPlan,
+    QaCorpusPlanError,
+    plan_authorized_qa_corpus,
+)
 from app.document_transform.qa_grants import QaAuthority, QaGrantError, QaSubmittedCanary
 from app.document_transform.schemas import (
     DocumentOutput,
@@ -96,6 +101,23 @@ class QaCanaryBroker:
         ) as exc:
             raise QaGrantError from exc
         return plan
+
+    async def plan_corpus(self, authority: QaAuthority) -> QaCorpusPlan:
+        services = await self._services(authority)
+        try:
+            return await plan_authorized_qa_corpus(
+                authority,
+                drive=services.drive,
+                files=services.files,
+            )
+        except (
+            DriveTraversalIncompleteError,
+            FilesError,
+            NotImplementedError,
+            QaCorpusPlanError,
+            ValueError,
+        ) as exc:
+            raise QaGrantError from exc
 
     async def submit(
         self,

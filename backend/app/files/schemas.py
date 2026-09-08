@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.identifiers import DriveId, FileId
 
@@ -35,6 +35,7 @@ class FileResponse(BaseModel):
     parent_folder_id: FileId | None
     drive_id: DriveId | None
     modified_time: str | None
+    version: str | None = Field(default=None, exclude=True)
     can_edit: bool = False
     can_add_children: bool = False
     description: str | None = None

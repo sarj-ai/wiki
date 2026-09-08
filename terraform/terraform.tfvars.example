@@ -32,3 +32,4 @@ enable_document_transform_qa_job = false
 # document_transform_qa_image = "me-central2-docker.pkg.dev/sarj-docs/sarj-docs-dammam/document-transform-qa@sha256:<64-hex-digest>"
 # document_transform_qa_release_sha = "<40-character-source-sha>"
 # document_transform_qa_operator_emails = ["security-qa@sarj.ai"]
+# document_transform_qa_corpus_source_folder_id = "<exact-Security-folder-id>"

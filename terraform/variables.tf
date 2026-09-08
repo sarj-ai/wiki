@@ -223,5 +223,16 @@ variable "document_transform_qa_operator_emails" {
   }
 }
 
+variable "document_transform_qa_corpus_source_folder_id" {
+  description = "Exact server-controlled Security folder ID eligible for read-only QA corpus planning; null keeps corpus planning disabled"
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.document_transform_qa_corpus_source_folder_id == null || trimspace(var.document_transform_qa_corpus_source_folder_id) != ""
+    error_message = "document_transform_qa_corpus_source_folder_id must be null or non-empty."
+  }
+}
+
 # Cloudflare WAF rules and DNS are managed manually in the Cloudflare
 # dashboard — no Terraform resources or API token required.

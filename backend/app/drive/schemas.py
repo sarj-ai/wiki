@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.identifiers import DriveId, FileId
 
@@ -80,6 +80,8 @@ class DriveNode(BaseModel):
     mime_type: str
     parent_id: FileId | None
     modified_time: str | None
+    version: str | None = Field(default=None, exclude=True)
+    drive_id: DriveId | None = Field(default=None, exclude=True)
     description: str | None = None
     shortcut_target_id: FileId | None = None
     shortcut_target_mime_type: str | None = None
@@ -93,6 +95,12 @@ class DriveTree(BaseModel):
     folders: list[DriveNode]
     files: list[DriveNode]
     files_complete: bool
+
+
+class BoundedFolderMembers(BaseModel):
+    members: list[DriveNode]
+    page_count: int = Field(ge=1)
+    metadata_bytes: int = Field(default=0, ge=0)
 
 
 class SearchResult(BaseModel):

@@ -102,6 +102,7 @@ class Settings(DatabaseSettings):
         None
     )
     DOCUMENT_TRANSFORM_QA_BACKEND_SERVICE_ACCOUNT: NonEmptyStr | None = None
+    DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID: NonEmptyStr | None = None
     DOCUMENT_TRANSFORM_QA_OPERATOR_EMAILS: tuple[str, ...] = ()
 
     @property
