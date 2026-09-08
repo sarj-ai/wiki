@@ -53,6 +53,21 @@ def test_component_ci_runs_once_on_main_through_its_deploy_workflow() -> None:
         assert f"ci-{component}" in deploy_workflow["jobs"]["deploy"]["needs"]
 
 
+def test_standalone_quality_skips_only_exact_domain_deploy_paths_on_main() -> None:
+    quality = _workflow("ci-quality.yml")
+    ignored = set(quality["on"]["push"]["paths-ignore"])
+    deploy_paths = {
+        path
+        for workflow_name in ("deploy-backend.yml", "deploy-frontend.yml")
+        for path in _workflow(workflow_name)["on"]["push"]["paths"]
+    }
+
+    assert ignored == deploy_paths
+    assert quality["on"]["push"]["branches"] == ["main"]
+    assert quality["on"]["pull_request"] is None
+    assert quality["on"]["workflow_call"] is None
+
+
 def test_deploys_restore_the_prerequisite_pre_commit_cache() -> None:
     quality_steps = _workflow("ci-quality.yml")["jobs"]["pre-commit"]["steps"]
     producer = _named_step(quality_steps, "Cache pre-commit environments")

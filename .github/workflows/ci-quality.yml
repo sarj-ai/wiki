@@ -4,6 +4,29 @@ name: CI Quality
   workflow_call:
   push:
     branches: [main]
+    # Domain deploys call this workflow as an exact-SHA prerequisite. Avoid a
+    # second standalone copy when every changed path is already routed there.
+    paths-ignore:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/ci-backend.yml"
+      - ".github/workflows/ci-frontend.yml"
+      - ".github/workflows/deploy-backend.yml"
+      - ".github/workflows/deploy-frontend.yml"
+      - "scripts/github/release_gate.py"
+      - "scripts/github/verify-release-gate.sh"
+      - "scripts/github/clear-legacy-drive-tree-cache.sh"
+      - "scripts/github/deploy-backend-candidate.sh"
+      - "scripts/github/report-blocked-backend-release.sh"
+      - "scripts/github/run-backend-migrations.sh"
+      - "scripts/github/switch-backend-production-traffic.sh"
+      - "scripts/github/verify-backend-production-health.sh"
+      - "scripts/github/verify-backend-correlated-logs.sh"
+      - "scripts/github/verify-mcp-release.sh"
+      - "scripts/github/resolve-mcp-release-mode.sh"
+      - "scripts/github/verify-smart-create-queue.sh"
+      - "scripts/backend_release/**"
+      - "scripts/frontend_release/**"
   pull_request:
 
 permissions:
