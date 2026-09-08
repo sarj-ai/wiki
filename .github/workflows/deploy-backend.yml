@@ -9,7 +9,6 @@ name: Deploy Backend
       - ".github/workflows/deploy-backend.yml"
       - "scripts/github/release_gate.py"
       - "scripts/github/verify-release-gate.sh"
-      - "scripts/github/clear-legacy-drive-tree-cache.sh"
       - "scripts/github/deploy-backend-candidate.sh"
       - "scripts/github/report-blocked-backend-release.sh"
       - "scripts/github/run-backend-migrations.sh"
@@ -23,7 +22,7 @@ name: Deploy Backend
   workflow_dispatch:
     inputs:
       verification_run_id:
-        description: "Verification only: completed run ID with successful migration, traffic switch, and cleanup (pair with its run attempt; leave both empty to deploy)"
+        description: "Verification only: completed run ID with successful migration and traffic switch (pair with its run attempt; leave both empty to deploy)"
         type: string
         required: false
         default: ""
@@ -198,11 +197,6 @@ jobs:
           MCP_LOG_WINDOW_START: ${{ steps.deploy.outputs.started_at }}
         run: scripts/github/verify-mcp-release.sh
 
-      - name: Clear legacy global drive-tree cache after traffic switch
-        env:
-          RELEASE_IMAGE: ${{ steps.deploy.outputs.release_image }}
-        run: scripts/github/clear-legacy-drive-tree-cache.sh
-
       - name: Verify correlated production logs
         env:
           CANARY_ID: ${{ steps.verify.outputs.canary_id }}
@@ -238,14 +232,17 @@ jobs:
           version-file: backend/uv.toml
           enable-cache: false
       - name: Verify completed source mutation receipts
+        id: source
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN_ATTEMPT: ${{ inputs.verification_run_attempt }}
           SOURCE_RUN_ID: ${{ inputs.verification_run_id }}
         run: |
-          uv run --no-project --python 3.14 python -m scripts.backend_release.recovery \
-            --sha "$GITHUB_SHA" source --run-id "$SOURCE_RUN_ID" \
-            --run-attempt "$SOURCE_RUN_ATTEMPT"
+          source_sha="$(uv run --no-project --python 3.14 \
+            python -m scripts.backend_release.recovery \
+            --verifier-sha "$GITHUB_SHA" source --run-id "$SOURCE_RUN_ID" \
+            --run-attempt "$SOURCE_RUN_ATTEMPT")"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
@@ -254,6 +251,7 @@ jobs:
       - name: Verify exact serving image before canary
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_RELEASE_SHA: ${{ steps.source.outputs.source_sha }}
         run: bash scripts/backend_release/verify-serving.sh
       - name: Verify task queues are running
         run: scripts/github/verify-smart-create-queue.sh
@@ -262,6 +260,8 @@ jobs:
         run: echo "started_at=$(date -u +'%Y-%m-%dT%H:%M:%S.%NZ')" >> "$GITHUB_OUTPUT"
       - name: Verify revision and production health
         id: verify
+        env:
+          EXPECTED_RELEASE_SHA: ${{ steps.source.outputs.source_sha }}
         run: scripts/github/verify-backend-production-health.sh
       - name: Resolve native MCP mode from exact revision
         id: mcp-mode
@@ -279,12 +279,14 @@ jobs:
         env:
           CANARY_ID: ${{ steps.verify.outputs.canary_id }}
           DEPLOY_STARTED_AT: ${{ steps.window.outputs.started_at }}
+          EXPECTED_RELEASE_SHA: ${{ steps.source.outputs.source_sha }}
           VERIFIED_REVISION: ${{ steps.verify.outputs.new_revision }}
           VERIFY_FINISHED_AT: ${{ steps.verify.outputs.finished_at }}
         run: scripts/github/verify-backend-correlated-logs.sh
       - name: Recheck exact serving image after verification
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_RELEASE_SHA: ${{ steps.source.outputs.source_sha }}
         run: bash scripts/backend_release/verify-serving.sh
 
   reject-partial-verification-inputs:

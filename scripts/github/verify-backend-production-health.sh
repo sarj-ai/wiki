@@ -43,7 +43,7 @@ for _attempt in {1..6}; do
   echoed_id=$(awk 'tolower($1) == "x-request-id:" { sub(/\r$/, "", $2); print $2 }' \
     "$health_headers" | tail -n 1)
   if [[ "$status" == 200 && "$echoed_id" == "$canary_id" ]] \
-    && jq -e --arg revision "$GITHUB_SHA" \
+    && jq -e --arg revision "${EXPECTED_RELEASE_SHA:-$GITHUB_SHA}" \
       '.status == "ok" and .database == "ok" and .revision == $revision' \
       "$health_body" >/dev/null; then
     healthy=true
