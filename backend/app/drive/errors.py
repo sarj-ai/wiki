@@ -25,3 +25,7 @@ class DrivePermissionsNotFoundError(DrivePermissionsError):
 class DrivePermissionsUpstreamError(DrivePermissionsError):
     def __init__(self) -> None:
         super().__init__("Google Drive could not return drive access")
+
+
+class DriveTraversalIncompleteError(Exception):
+    """A bounded Drive listing could not prove that its result was complete."""

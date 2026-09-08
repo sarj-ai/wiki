@@ -28,6 +28,7 @@ from app.drive.errors import (
     DrivePermissionsForbiddenError,
     DrivePermissionsNotFoundError,
     DrivePermissionsUpstreamError,
+    DriveTraversalIncompleteError,
 )
 from app.drive.google_schemas import (
     GoogleDrive,
@@ -149,6 +150,15 @@ class DriveService(ABC):
 
     @abstractmethod
     async def list_folder_children(self, folder_id: FileId) -> list[DriveNode]: ...
+
+    async def list_folder_children_bounded(
+        self,
+        folder_id: FileId,
+        *,
+        max_pages: int,
+        max_children: int,
+    ) -> list[DriveNode]:
+        raise NotImplementedError
 
     @abstractmethod
     async def search_drive(
@@ -329,6 +339,25 @@ class GoogleDriveService(DriveService):
     @override
     async def list_folder_children(self, folder_id: FileId) -> list[DriveNode]:
         nodes = await asyncio.to_thread(self._list_children_sync, folder_id)
+        return await self._resolve_shortcut_nodes(nodes)
+
+    @override
+    async def list_folder_children_bounded(
+        self,
+        folder_id: FileId,
+        *,
+        max_pages: int,
+        max_children: int,
+    ) -> list[DriveNode]:
+        if max_pages < 1 or max_children < 1:
+            raise ValueError
+        nodes = await asyncio.to_thread(
+            self._list_children_sync,
+            folder_id,
+            max_pages=max_pages,
+            max_children=max_children,
+            fail_closed=True,
+        )
         return await self._resolve_shortcut_nodes(nodes)
 
     @override
@@ -774,12 +803,24 @@ class GoogleDriveService(DriveService):
             if not page_token:
                 return out
 
-    def _list_children_sync(self, folder_id: FileId) -> list[DriveNode]:
+    def _list_children_sync(
+        self,
+        folder_id: FileId,
+        *,
+        max_pages: int | None = None,
+        max_children: int | None = None,
+        fail_closed: bool = False,
+    ) -> list[DriveNode]:
         client = self._client()
         out: list[DriveNode] = []
+        raw_children = 0
         page_token: str | None = None
+        pages = 0
         query = f"'{folder_id}' in parents and trashed=false and {_build_mime_clause()}"
         while True:
+            if max_pages is not None and pages >= max_pages:
+                raise DriveTraversalIncompleteError
+            pages += 1
             params: dict[str, Any] = {
                 "q": query,
                 "corpora": "allDrives",
@@ -797,8 +838,14 @@ class GoogleDriveService(DriveService):
                 resp = execute_with_retry(client.files().list(**params))
             except HttpError as exc:
                 _log_provider_failure("list_folder_children", exc)
+                if fail_closed:
+                    raise DriveTraversalIncompleteError from exc
                 return out
-            for raw in resp.get("files", []):
+            raw_files = resp.get("files", [])
+            raw_children += len(raw_files)
+            if max_children is not None and raw_children > max_children:
+                raise DriveTraversalIncompleteError
+            for raw in raw_files:
                 file = GoogleFile.model_validate(raw)
                 details = file.shortcut_details
                 target_mime = details.target_mime_type if details else None
