@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 import uuid
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, Response, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
@@ -12,8 +12,10 @@ from app.auth.jwt import decode_token
 from app.config import settings
 from app.database import get_db
 from app.document_transform.qa_grants import (
+    QaAuthority,
     QaCapability,
     QaGrantError,
+    authorize_qa_capability,
     consume_qa_grant,
     issue_qa_grant,
     renew_qa_capability,
@@ -56,12 +58,27 @@ class QaCapabilityResponse(_StrictModel):
     user_email: str
 
 
+class QaCapabilityAuthorization(QaGrantBinding):
+    execution_name: str = Field(min_length=1, max_length=255)
+
+
+class QaCanarySessionResponse(QaGrantBinding):
+    authorized: Literal[True] = True
+    capability_expires_at: datetime
+    job_expires_at: datetime
+    user_email: str
+
+
 issuer_router = APIRouter(prefix="/document-transforms/qa", tags=["document-transform-qa"])
 workload_router = APIRouter(
     prefix="/internal/document-transform-qa",
     tags=["internal-document-transform-qa"],
     include_in_schema=False,
 )
+
+_NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
+_MIN_CAPABILITY_TOKEN_LENGTH = 32
+_MAX_CAPABILITY_TOKEN_LENGTH = 256
 
 
 def _configured_binding(body: QaGrantBinding) -> None:
@@ -193,6 +210,58 @@ async def exchange_document_transform_qa_grant(
     return _capability_response(capability)
 
 
+@workload_router.post(
+    "/canary/session",
+    response_model=QaCanarySessionResponse,
+)
+async def authorize_document_transform_qa_canary_session(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    response: Response,
+) -> QaCanarySessionResponse:
+    """Prove the immutable scope for future canary-only broker operations.
+
+    This endpoint intentionally performs no Drive read and no mutation. The Cloud
+    Run entrypoint remains fail-closed until the separately reviewed brokered
+    Drive and transform operations are implemented.
+    """
+    try:
+        await _require_qa_workload(request.headers.get("Authorization"))
+    except HTTPException as exc:
+        raise _no_store_http_error(exc.status_code, str(exc.detail)) from exc
+    capability_token = request.headers.get("X-Wiki-QA-Capability")
+    if capability_token is None or not (
+        _MIN_CAPABILITY_TOKEN_LENGTH <= len(capability_token) <= _MAX_CAPABILITY_TOKEN_LENGTH
+    ):
+        raise _invalid_qa_credential()
+    try:
+        body = QaCapabilityAuthorization.model_validate(await request.json())
+    except (ValueError, ValidationError) as exc:
+        raise _no_store_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "QA request is invalid"
+        ) from exc
+    try:
+        _configured_binding(body)
+    except HTTPException as exc:
+        raise _no_store_http_error(exc.status_code, str(exc.detail)) from exc
+    try:
+        authority = await authorize_qa_capability(
+            db,
+            capability_token=capability_token,
+            execution_name=body.execution_name,
+            release_sha=body.release_sha,
+            image_digest=body.image_digest,
+            source_folder_id=body.source_folder_id,
+            destination_folder_id=body.destination_folder_id,
+            mode=body.mode,
+        )
+    except QaGrantError as exc:
+        await db.rollback()
+        raise _invalid_qa_credential() from exc
+    _prevent_token_caching(response)
+    return _canary_session_response(authority)
+
+
 def _capability_response(capability: QaCapability) -> QaCapabilityResponse:
     return QaCapabilityResponse(
         capability_token=capability.token,
@@ -202,6 +271,26 @@ def _capability_response(capability: QaCapability) -> QaCapabilityResponse:
     )
 
 
+def _canary_session_response(authority: QaAuthority) -> QaCanarySessionResponse:
+    return QaCanarySessionResponse(
+        release_sha=authority.release_sha,
+        image_digest=authority.image_digest,
+        source_folder_id=authority.source_folder_id,
+        destination_folder_id=authority.destination_folder_id,
+        mode=authority.mode,
+        capability_expires_at=authority.expires_at,
+        job_expires_at=authority.job_expires_at,
+        user_email=authority.user_email,
+    )
+
+
 def _prevent_token_caching(response: Response) -> None:
-    response.headers["Cache-Control"] = "no-store"
-    response.headers["Pragma"] = "no-cache"
+    response.headers.update(_NO_STORE_HEADERS)
+
+
+def _invalid_qa_credential() -> HTTPException:
+    return _no_store_http_error(status.HTTP_403_FORBIDDEN, "QA credential is invalid")
+
+
+def _no_store_http_error(status_code: int, detail: str) -> HTTPException:
+    return HTTPException(status_code=status_code, detail=detail, headers=_NO_STORE_HEADERS)

@@ -12,8 +12,14 @@ from app.config import settings
 from app.csrf import CookieOriginMiddleware
 from app.database import get_db
 from app.document_transform import qa_router
-from app.document_transform.qa_grants import IssuedQaGrant, QaCapability
-from app.identifiers import AuthSessionId, GoogleUserId, UserId
+from app.document_transform.qa_grants import (
+    IssuedQaGrant,
+    QaAuthority,
+    QaCapability,
+    QaGrantError,
+)
+from app.document_transform.schemas import TransformMode
+from app.identifiers import AuthSessionId, FileId, GoogleUserId, UserId
 from app.models.document_transform_qa_grant import DocumentTransformQaGrantId
 from app.models.user import User
 from app.tasks.internal_auth import GoogleOidcTaskRequestAuthenticator
@@ -319,3 +325,268 @@ async def test_exchange_success_is_no_store_and_passes_nonce(
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["pragma"] == "no-cache"
     assert db.commits == 1
+
+
+async def test_canary_session_requires_capability_without_database_authorization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    calls = 0
+
+    async def authorize(*_args: object, **_kwargs: object) -> QaAuthority:
+        nonlocal calls
+        calls += 1
+        raise AssertionError
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    db = _Db()
+    application = _application(db, _user())
+    body = _issuer_body() | {"execution_name": "job/executions/one"}
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/canary/session",
+            json=body,
+            headers={"Authorization": "Bearer oidc"},
+        )
+    assert response.status_code == 403
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert calls == db.commits == db.rollbacks == 0
+
+
+async def test_canary_session_returns_only_bound_scope_and_is_no_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    captured: dict[str, object] = {}
+    now = datetime.now(UTC)
+
+    async def authorize(_db: object, **kwargs: object) -> QaAuthority:
+        captured.update(kwargs)
+        return QaAuthority(
+            grant_id=DocumentTransformQaGrantId(uuid.UUID("44444444-4444-4444-8444-444444444444")),
+            user_id=_user().id,
+            user_email="qa@example.test",
+            execution_name="job/executions/one",
+            release_sha=_RELEASE,
+            image_digest=_DIGEST,
+            source_folder_id=FileId("source"),
+            destination_folder_id=FileId("destination"),
+            mode=TransformMode.BOTH,
+            expires_at=now + timedelta(minutes=5),
+            job_expires_at=now + timedelta(hours=2),
+        )
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    db = _Db()
+    application = _application(db, _user())
+    body = _issuer_body() | {"execution_name": "job/executions/one"}
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/canary/session",
+            json=body,
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+    assert response.status_code == 200
+    assert captured["capability_token"] == "z" * 43
+    assert captured["execution_name"] == "job/executions/one"
+    assert response.json()["authorized"] is True
+    assert "capability_token" not in response.text
+    assert "grant_id" not in response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert db.commits == db.rollbacks == 0
+
+
+async def test_canary_session_rejects_invalid_capability_without_echoing_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+
+    async def authorize(*_args: object, **_kwargs: object) -> QaAuthority:
+        raise QaGrantError
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    db = _Db()
+    application = _application(db, _user())
+    credential = "z" * 43
+    body = _issuer_body() | {"execution_name": "job/executions/one"}
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/canary/session",
+            json=body,
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": credential,
+            },
+        )
+    assert response.status_code == 403
+    assert credential not in response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert db.commits == 0
+    assert db.rollbacks == 1
+
+
+@pytest.mark.parametrize("credential", ["short-secret", "z" * 257], ids=("short", "oversize"))
+async def test_canary_session_rejects_malformed_secret_without_echo_and_with_no_store(
+    monkeypatch: pytest.MonkeyPatch, credential: str
+) -> None:
+    _configure(monkeypatch)
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    db = _Db()
+    application = _application(db, _user())
+    body = _issuer_body() | {"execution_name": "job/executions/one"}
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/canary/session",
+            json=body,
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": credential,
+            },
+        )
+    assert response.status_code == 403
+    assert credential not in response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert db.commits == db.rollbacks == 0
+
+
+async def test_canary_session_authenticates_before_parsing_malformed_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    db = _Db()
+    application = _application(db, _user())
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/canary/session",
+            content=b"{not-json",
+            headers={
+                "Content-Type": "application/json",
+                "X-Wiki-QA-Capability": "secret-that-must-not-be-reflected",
+            },
+        )
+    assert response.status_code == 401
+    assert "secret-that-must-not-be-reflected" not in response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert db.commits == db.rollbacks == 0
+
+
+async def test_canary_session_authenticated_malformed_json_is_no_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    db = _Db()
+    application = _application(db, _user())
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/canary/session",
+            content=b"{not-json",
+            headers={
+                "Authorization": "Bearer oidc",
+                "Content-Type": "application/json",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+    assert response.status_code == 422
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert db.commits == db.rollbacks == 0
+
+
+async def test_canary_session_binding_mismatch_is_no_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    db = _Db()
+    application = _application(db, _user())
+    body = _issuer_body() | {
+        "execution_name": "job/executions/one",
+        "release_sha": "d" * 40,
+    }
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/canary/session",
+            json=body,
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+    assert response.status_code == 409
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert db.commits == db.rollbacks == 0
