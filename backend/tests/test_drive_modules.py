@@ -14,6 +14,7 @@ import pytest
 
 from app.auth.encryption import encrypt_text
 from app.cache.service import CacheNamespace, CacheService
+from app.drive.errors import DriveTraversalIncompleteError
 from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT, DriveSummary, SearchResult, ShortcutProbe
 from app.drive.service import GoogleDriveService
 from app.drive.snippets import extract_snippet
@@ -636,6 +637,30 @@ async def test_list_folder_children_queries_by_parent(patch_drive_client: Any) -
     call = client.files_captured[0]
     assert "'folder-x' in parents" in call["q"]
     assert call["corpora"] == "allDrives"
+
+
+async def test_bounded_folder_children_rejects_partial_pagination(
+    patch_drive_client: Any,
+) -> None:
+    client = _FakeClient(
+        children_pages=[
+            {
+                "files": [
+                    {
+                        "id": "doc1",
+                        "name": "Doc",
+                        "mimeType": "application/vnd.google-apps.document",
+                        "parents": ["folder-x"],
+                    }
+                ],
+                "nextPageToken": "MORE",
+            }
+        ]
+    )
+    patch_drive_client(client)
+
+    with pytest.raises(DriveTraversalIncompleteError):
+        await _svc().list_folder_children_bounded(FileId("folder-x"), max_pages=1, max_children=10)
 
 
 def _stub_probes(

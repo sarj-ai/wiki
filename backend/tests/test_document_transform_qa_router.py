@@ -12,14 +12,15 @@ from app.config import settings
 from app.csrf import CookieOriginMiddleware
 from app.database import get_db
 from app.document_transform import qa_router
+from app.document_transform.qa_broker import QaCanaryPlan
 from app.document_transform.qa_grants import (
     IssuedQaGrant,
     QaAuthority,
     QaCapability,
     QaGrantError,
 )
-from app.document_transform.schemas import TransformMode
-from app.identifiers import AuthSessionId, FileId, GoogleUserId, UserId
+from app.document_transform.schemas import OutputStrategy, TransformMode
+from app.identifiers import AuthSessionId, FileId, GoogleUserId, IdempotencyKey, QaPlanId, UserId
 from app.models.document_transform_qa_grant import DocumentTransformQaGrantId
 from app.models.user import User
 from app.tasks.internal_auth import GoogleOidcTaskRequestAuthenticator
@@ -587,6 +588,131 @@ async def test_canary_session_binding_mismatch_is_no_store(
             },
         )
     assert response.status_code == 409
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert db.commits == db.rollbacks == 0
+
+
+async def test_canary_plan_reauthorizes_and_returns_server_selected_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    now = datetime.now(UTC)
+    authorization_calls = 0
+    plan_calls = 0
+
+    async def authorize(_db: object, **_kwargs: object) -> QaAuthority:
+        nonlocal authorization_calls
+        authorization_calls += 1
+        return QaAuthority(
+            grant_id=DocumentTransformQaGrantId(uuid.UUID("44444444-4444-4444-8444-444444444444")),
+            user_id=_user().id,
+            user_email="qa@example.test",
+            execution_name="job/executions/one",
+            release_sha=_RELEASE,
+            image_digest=_DIGEST,
+            source_folder_id=FileId("source"),
+            destination_folder_id=FileId("destination"),
+            mode=TransformMode.BOTH,
+            expires_at=now + timedelta(minutes=5),
+            job_expires_at=now + timedelta(hours=2),
+        )
+
+    class Broker:
+        async def plan(self, authority: QaAuthority) -> QaCanaryPlan:
+            nonlocal plan_calls
+            plan_calls += 1
+            assert authority.source_folder_id == "source"
+            operation = uuid.UUID("55555555-5555-4555-8555-555555555555")
+            return QaCanaryPlan(
+                plan_id=QaPlanId(operation),
+                idempotency_key=IdempotencyKey(operation),
+                source_file_id=FileId("server-selected-doc"),
+                source_name="Security Review",
+                source_modified_time="2026-09-07T12:00:00Z",
+                output_strategy=OutputStrategy.COPY,
+            )
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    db = _Db()
+    application = _application(db, _user())
+    application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
+    body = _issuer_body() | {"execution_name": "job/executions/one"}
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/canary/plan",
+            json=body,
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+
+    assert response.status_code == 200
+    assert authorization_calls == plan_calls == 1
+    assert response.json()["source_file_id"] == "server-selected-doc"
+    assert response.json()["output_strategy"] == "copy"
+    assert response.json()["plan_id"] == response.json()["idempotency_key"]
+    assert "z" * 43 not in response.text
+    assert "grant_id" not in response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+
+
+async def test_canary_plan_rejects_caller_selected_file_before_authorization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+
+    async def authorize(*_args: object, **_kwargs: object) -> QaAuthority:
+        pytest.fail("caller-selected source reached capability authorization")
+
+    class Broker:
+        async def plan(self, _authority: QaAuthority) -> QaCanaryPlan:
+            pytest.fail("caller-selected source reached Drive planning")
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    db = _Db()
+    application = _application(db, _user())
+    application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
+    body = _issuer_body() | {
+        "execution_name": "job/executions/one",
+        "source_file_id": "attacker-selected-doc",
+    }
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/canary/plan",
+            json=body,
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+
+    assert response.status_code == 422
+    assert "attacker-selected-doc" not in response.text
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["pragma"] == "no-cache"
     assert db.commits == db.rollbacks == 0

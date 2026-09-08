@@ -4,13 +4,17 @@ from typing import Annotated, Literal
 import uuid
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, Response, status
+import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, http_client_dep
 from app.auth.jwt import decode_token
+from app.cache.dependencies import cache_service_dep
+from app.cache.service import CacheService
 from app.config import settings
 from app.database import get_db
+from app.document_transform.qa_broker import QaCanaryBroker
 from app.document_transform.qa_grants import (
     QaAuthority,
     QaCapability,
@@ -21,7 +25,7 @@ from app.document_transform.qa_grants import (
     renew_qa_capability,
 )
 from app.document_transform.schemas import TransformMode
-from app.identifiers import FileId
+from app.identifiers import FileId, QaPlanId
 from app.models.user import User
 from app.tasks.internal_auth import GoogleOidcTaskRequestAuthenticator
 
@@ -69,6 +73,15 @@ class QaCanarySessionResponse(QaGrantBinding):
     user_email: str
 
 
+class QaCanaryPlanResponse(QaCanarySessionResponse):
+    plan_id: QaPlanId
+    idempotency_key: uuid.UUID
+    source_file_id: FileId
+    source_name: str
+    source_modified_time: str
+    output_strategy: Literal["copy"] = "copy"
+
+
 issuer_router = APIRouter(prefix="/document-transforms/qa", tags=["document-transform-qa"])
 workload_router = APIRouter(
     prefix="/internal/document-transform-qa",
@@ -79,6 +92,14 @@ workload_router = APIRouter(
 _NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 _MIN_CAPABILITY_TOKEN_LENGTH = 32
 _MAX_CAPABILITY_TOKEN_LENGTH = 256
+
+
+def qa_canary_broker_dep(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    http: Annotated[httpx.AsyncClient, Depends(http_client_dep)],
+    cache: Annotated[CacheService, Depends(cache_service_dep)],
+) -> QaCanaryBroker:
+    return QaCanaryBroker(db=db, http=http, cache=cache)
 
 
 def _configured_binding(body: QaGrantBinding) -> None:
@@ -225,6 +246,38 @@ async def authorize_document_transform_qa_canary_session(
     Run entrypoint remains fail-closed until the separately reviewed brokered
     Drive and transform operations are implemented.
     """
+    authority = await _authorize_canary_request(request, db)
+    _prevent_token_caching(response)
+    return _canary_session_response(authority)
+
+
+@workload_router.post("/canary/plan", response_model=QaCanaryPlanResponse)
+async def plan_document_transform_qa_canary(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    broker: Annotated[QaCanaryBroker, Depends(qa_canary_broker_dep)],
+    response: Response,
+) -> QaCanaryPlanResponse:
+    """Select the only canary source without accepting a caller-chosen file ID."""
+    authority = await _authorize_canary_request(request, db)
+    try:
+        plan = await broker.plan(authority)
+    except QaGrantError as exc:
+        raise _no_store_http_error(
+            status.HTTP_409_CONFLICT, "QA canary could not be planned"
+        ) from exc
+    _prevent_token_caching(response)
+    return QaCanaryPlanResponse(
+        **_canary_session_response(authority).model_dump(),
+        plan_id=plan.plan_id,
+        idempotency_key=plan.idempotency_key,
+        source_file_id=plan.source_file_id,
+        source_name=plan.source_name,
+        source_modified_time=plan.source_modified_time,
+    )
+
+
+async def _authorize_canary_request(request: Request, db: AsyncSession) -> QaAuthority:
     try:
         await _require_qa_workload(request.headers.get("Authorization"))
     except HTTPException as exc:
@@ -242,10 +295,7 @@ async def authorize_document_transform_qa_canary_session(
         ) from exc
     try:
         _configured_binding(body)
-    except HTTPException as exc:
-        raise _no_store_http_error(exc.status_code, str(exc.detail)) from exc
-    try:
-        authority = await authorize_qa_capability(
+        return await authorize_qa_capability(
             db,
             capability_token=capability_token,
             execution_name=body.execution_name,
@@ -255,11 +305,11 @@ async def authorize_document_transform_qa_canary_session(
             destination_folder_id=body.destination_folder_id,
             mode=body.mode,
         )
+    except HTTPException as exc:
+        raise _no_store_http_error(exc.status_code, str(exc.detail)) from exc
     except QaGrantError as exc:
         await db.rollback()
         raise _invalid_qa_credential() from exc
-    _prevent_token_caching(response)
-    return _canary_session_response(authority)
 
 
 def _capability_response(capability: QaCapability) -> QaCapabilityResponse:
