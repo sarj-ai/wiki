@@ -1676,6 +1676,39 @@ describe("DocumentPolishDialog", () => {
       expect(findButtonNow("Import Google Doc")).toBeEnabled();
     });
   });
+
+  it("reports unsupported tab naming as a preserved optional enhancement", async () => {
+    const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
+    vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
+    vi.spyOn(documentTransformApi, "waitForCompletion").mockResolvedValue({
+      ...transformResult(),
+      findings: [
+        {
+          blockId: null,
+          code: "tab_naming_preserved",
+          detail:
+            "Tab names and icons were preserved because this document's tab metadata could not be safely renamed.",
+          severity: "informational",
+        },
+      ],
+    });
+
+    renderDialog(root, {
+      allowInPlace: false,
+      expectedModifiedTime: "2026-09-03T12:00:00Z",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Architecture review",
+    });
+    await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+    clickButton(findButtonNow("Create polished copy"));
+
+    await vi.waitFor(() => expect(document.body).toHaveTextContent("Polish complete"));
+    expect(document.body).toHaveTextContent("Tab names and icons were preserved");
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(document.body).not.toHaveTextContent("This document needs review");
+  });
 });
 
 type DialogTestSource =

@@ -4,7 +4,7 @@ import hashlib
 import json
 from typing import Any
 
-from app.document_transform.errors import InPlaceNeedsReviewError
+from app.document_transform.errors import UnsupportedTabMetadataError
 from app.document_transform.naming import supported_tab_icon
 from app.document_transform.tab_names import NativeTabProperties
 from app.identifiers import DocsTabId
@@ -18,10 +18,10 @@ def native_tab_properties(document: dict[str, Any]) -> tuple[NativeTabProperties
 
     def visit(tabs: object, parent: DocsTabId | None, depth: int = 0) -> None:
         if not isinstance(tabs, list) or depth > _MAX_TAB_DEPTH:
-            raise InPlaceNeedsReviewError
+            raise UnsupportedTabMetadataError
         for index, tab in enumerate(tabs):
             if not isinstance(tab, dict):
-                raise InPlaceNeedsReviewError
+                raise UnsupportedTabMetadataError
             raw_properties: Any = tab.get("tabProperties", {})
             if not isinstance(raw_properties, dict) or set(raw_properties) - {
                 "tabId",
@@ -31,26 +31,26 @@ def native_tab_properties(document: dict[str, Any]) -> tuple[NativeTabProperties
                 "nestingLevel",
                 "iconEmoji",
             }:
-                raise InPlaceNeedsReviewError
+                raise UnsupportedTabMetadataError
             properties: dict[str, Any] = dict(raw_properties)
             if "iconEmoji" in properties and not supported_tab_icon(properties["iconEmoji"]):
-                raise InPlaceNeedsReviewError
+                raise UnsupportedTabMetadataError
             tab_id = properties.get("tabId")
             if not isinstance(tab_id, str) or not tab_id:
-                raise InPlaceNeedsReviewError
+                raise UnsupportedTabMetadataError
             if not isinstance(properties.get("title", ""), str):
-                raise InPlaceNeedsReviewError
+                raise UnsupportedTabMetadataError
             for field, default in (("index", index), ("nestingLevel", depth)):
                 value = properties.get(field, default)
                 if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-                    raise InPlaceNeedsReviewError
+                    raise UnsupportedTabMetadataError
             if properties.get("nestingLevel", depth) != depth:
-                raise InPlaceNeedsReviewError
+                raise UnsupportedTabMetadataError
             explicit_parent = properties.get("parentTabId", parent)
             if explicit_parent != parent and not (
                 parent is None and isinstance(explicit_parent, str) and not explicit_parent
             ):
-                raise InPlaceNeedsReviewError
+                raise UnsupportedTabMetadataError
             result.append(
                 NativeTabProperties(
                     tab_id=DocsTabId(tab_id),

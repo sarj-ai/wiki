@@ -41,6 +41,7 @@ from app.identifiers import BrandProfileId, DocsRevisionId, FileId, ModelId
 SourceKind = Literal["drive_file", "markdown"]
 ArtifactKind = Literal["document", "presentation"]
 AccessScope = Literal["inherited", "owner_only"]
+TabNamingDeclinedReason = Literal["unsupported_metadata"]
 _MAX_IN_PLACE_FILE_ID_LENGTH = 128
 
 
@@ -298,6 +299,14 @@ class InPlaceCheckpoint(StrictTransformModel):
     preserved_headers: dict[str, str] = Field(default_factory=dict)
     changed: bool
     tab_naming: TabNamingCheckpoint | None = None
+    tab_naming_declined_reason: TabNamingDeclinedReason | None = None
+
+    @model_validator(mode="after")
+    def validate_tab_naming_state(self) -> Self:
+        if self.tab_naming is not None and self.tab_naming_declined_reason is not None:
+            msg = "tab naming cannot be both planned and declined"
+            raise ValueError(msg)
+        return self
 
 
 class CopyCheckpointStage(StrEnum):
@@ -351,12 +360,16 @@ class CopyCheckpoint(StrictTransformModel):
     output_revision_id: DocsRevisionId | None = None
     result: DocumentTransformResult | None = None
     tab_naming: TabNamingCheckpoint | None = None
+    tab_naming_declined_reason: TabNamingDeclinedReason | None = None
     native_footer: NativeFooterCheckpoint | None = None
     native_dates: NativeDateCheckpoint | None = None
     tab_structure: StructureCheckpoint | None = None
 
     @model_validator(mode="after")
     def validate_stage(self) -> Self:
+        if self.tab_naming is not None and self.tab_naming_declined_reason is not None:
+            msg = "tab naming cannot be both planned and declined"
+            raise ValueError(msg)
         has_output = self.output is not None and self.output_revision_id is not None
         if self.stage in {CopyCheckpointStage.CREATED, CopyCheckpointStage.VERIFIED}:
             if not has_output:
