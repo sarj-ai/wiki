@@ -71,6 +71,7 @@ def test_qa_grant_concurrency_suite_is_in_required_postgres_ci() -> None:
     assert "tests/test_document_transform_qa_grants.py" in postgres_job
     assert "tests/test_document_transform_qa_submit_postgres.py" in postgres_job
     assert "tests/test_document_transform_qa_corpus_postgres.py" in postgres_job
+    assert "tests/test_document_transform_qa_campaigns_postgres.py" in postgres_job
     required = workflow[workflow.index("  required:") :]
     assert "needs: [lint-and-typecheck, test, postgres-concurrency, image]" in required
     assert 'test "$POSTGRES_RESULT" = success' in required
