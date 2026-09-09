@@ -19,6 +19,10 @@ from app.document_transform.gateway import (
 )
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_google_document
+from app.document_transform.native_visual_authority import (
+    apply_visual_authority,
+    visual_authority_block_ids,
+)
 from app.document_transform.schemas import (
     DocumentTransformRequest,
     DriveFileSource,
@@ -140,6 +144,49 @@ async def test_custom_furniture_is_preserved_not_owned_or_full_brand(
     assert not verification.brand_applied
     assert verification.supported_brand_applied
     assert document == before
+
+
+async def test_custom_furniture_accepts_preserved_visual_authority() -> None:
+    document = _custom_document()
+    body_paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
+    body_paragraph["paragraphStyle"]["alignment"] = "CENTER"
+    body_paragraph["elements"][0]["textRun"]["textStyle"]["fontSize"] = {
+        "magnitude": 18,
+        "unit": "PT",
+    }
+    gateway = _native_gateway()
+    inspection = gateway._inspect_in_place_sync(_inspection_snapshot(document), "Decision")
+    parsed = parse_google_document(document, title="Decision")
+    preserved_ids = visual_authority_block_ids(document, parsed)
+    assert preserved_ids == ("b0",)
+    expected = apply_visual_authority(parsed, preserved_ids)
+
+    verification = await gateway.verify_in_place(
+        document=document,
+        title="Decision",
+        expected=expected,
+        structural_sha256=inspection.structural_sha256,
+        protected_structure_sha256=inspection.protected_structure_sha256,
+        verify_brand=True,
+        custom_furniture=inspection.custom_furniture,
+    )
+
+    assert verification.content_preserved
+    assert verification.structure_preserved
+    assert not verification.brand_applied
+    assert verification.supported_brand_applied
+
+
+async def test_custom_furniture_does_not_exempt_unpreserved_authored_body_style() -> None:
+    document = _custom_document()
+    body_paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
+    body_paragraph["paragraphStyle"]["alignment"] = "CENTER"
+    gateway = _native_gateway()
+    inspection = gateway._inspect_in_place_sync(_inspection_snapshot(document), "Decision")
+
+    verification = await _verify_preserved(document, inspection, document)
+
+    assert not verification.supported_brand_applied
 
 
 @pytest.mark.parametrize(

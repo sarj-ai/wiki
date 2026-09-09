@@ -789,6 +789,7 @@ class GoogleDocumentGateway(DocumentGateway):
                         binding.tab_id for binding in custom_furniture if binding.header_ids
                     ),
                     preserved_native_list_text_style_ids=preserved_native_list_text_style_ids,
+                    allow_preserved_visual_authority=True,
                 )
             )
         )
@@ -3187,6 +3188,7 @@ def verify_brand_application(
     preserved_furniture_tabs: frozenset[DocsTabId] = frozenset(),
     preserved_header_tabs: frozenset[DocsTabId] = frozenset(),
     preserved_native_list_text_style_ids: frozenset[str] = frozenset(),
+    allow_preserved_visual_authority: bool = False,
 ) -> bool:
     tabs = tuple(_document_tabs(document))
     applied = (
@@ -3238,6 +3240,7 @@ def verify_brand_application(
                     paragraph,
                     block,
                     preserve_text_style=block.id in preserved_native_list_text_style_ids,
+                    allow_preserved_visual_authority=allow_preserved_visual_authority,
                 )
                 if block.editable
                 else _font_only_has_brand(paragraph, block)
@@ -3251,6 +3254,7 @@ def verify_brand_application(
             expected_header_title=expected_header_title,
             header_separator=header_separator,
             preserved_native_list_text_style_ids=preserved_native_list_text_style_ids,
+            allow_preserved_visual_authority=allow_preserved_visual_authority,
         )
         logger.warning("document brand verification failed checks={checks}", checks=checks)
     return applied
@@ -3263,6 +3267,7 @@ def _brand_application_diagnostics(
     expected_header_title: str | None = None,
     header_separator: str = HEADER_TITLE_SEPARATOR,
     preserved_native_list_text_style_ids: frozenset[str] = frozenset(),
+    allow_preserved_visual_authority: bool = False,
 ) -> dict[str, bool | int]:
     tabs = tuple(_document_tabs(document))
     tab_checks: list[dict[str, bool]] = []
@@ -3306,6 +3311,7 @@ def _brand_application_diagnostics(
                 paragraph,
                 block,
                 preserve_text_style=block.id in preserved_native_list_text_style_ids,
+                allow_preserved_visual_authority=allow_preserved_visual_authority,
             )
             if paragraph is not None
             else {"named_style": False, "layout": False, "text_style": False}
@@ -3441,6 +3447,7 @@ def _paragraph_brand_diagnostics(
     block: TextBlock,
     *,
     preserve_text_style: bool = False,
+    allow_preserved_visual_authority: bool = False,
 ) -> dict[str, bool]:
     elements = paragraph.get("elements")
     paragraph_style = paragraph.get("paragraphStyle")
@@ -3458,10 +3465,11 @@ def _paragraph_brand_diagnostics(
     ]
     expected_color = paragraph_color(block, SarjBrandProfile())
     return {
-        "named_style": block.preserved_visual_authority
+        "named_style": (allow_preserved_visual_authority and block.preserved_visual_authority)
         or _preserved_layout_matches(paragraph, block)
         or paragraph_style.get("namedStyleType") == expected_named_style,
-        "layout": _preserved_layout_matches(paragraph, block) or block.preserved_visual_authority
+        "layout": _preserved_layout_matches(paragraph, block)
+        or (allow_preserved_visual_authority and block.preserved_visual_authority)
         if block.preserved_paragraph_style_sha256 is not None or block.preserved_visual_authority
         else bool(
             paragraph_style.get("alignment") == "START"
@@ -3482,7 +3490,7 @@ def _paragraph_brand_diagnostics(
             )
         ),
         "text_style": preserve_text_style
-        or block.preserved_visual_authority
+        or (allow_preserved_visual_authority and block.preserved_visual_authority)
         or (
             bool(text_runs)
             and all(
@@ -3844,12 +3852,18 @@ def _preserved_layout_matches(paragraph: dict[str, Any], block: TextBlock) -> bo
 
 
 def _paragraph_has_brand(
-    paragraph: dict[str, Any], block: TextBlock, *, preserve_text_style: bool = False
+    paragraph: dict[str, Any],
+    block: TextBlock,
+    *,
+    preserve_text_style: bool = False,
+    allow_preserved_visual_authority: bool = False,
 ) -> bool:
     elements = paragraph.get("elements", [])
     paragraph_style = paragraph.get("paragraphStyle", {})
     if not isinstance(elements, list) or not isinstance(paragraph_style, dict):
         return False
+    if allow_preserved_visual_authority and block.preserved_visual_authority:
+        return True
     expected_named_style = paragraph_named_style(block)
     spacing = paragraph_spacing(block, SarjBrandProfile())
     style_checks = (
