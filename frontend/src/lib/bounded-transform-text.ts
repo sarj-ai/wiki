@@ -4,21 +4,26 @@ export async function boundedTransformText(
   body: null | ReadableStream<Uint8Array>,
 ): Promise<string> {
   if (!body) return "";
-  const reader = body.getReader();
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let size = 0;
-  let text = "";
+  const fragments: string[] = [];
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) return text + decoder.decode();
-      size += value.byteLength;
-      if (size > MAX_TRANSFORM_BODY_BYTES)
-        throw new RangeError("Transform body exceeds the safe limit");
-      text += decoder.decode(value, { stream: true });
-    }
+    await body.pipeTo(
+      new WritableStream<Uint8Array>({
+        write(value) {
+          size += value.byteLength;
+          if (size > MAX_TRANSFORM_BODY_BYTES)
+            throw new RangeError("Transform body exceeds the safe limit");
+          const text = decoder.decode(value, { stream: true });
+          if (text) fragments.push(text);
+        },
+      }),
+      { preventCancel: true },
+    );
+    fragments.push(decoder.decode());
+    return fragments.join("");
   } finally {
-    await reader.cancel().catch(() => null);
-    reader.releaseLock();
+    // Keep cleanup failures from replacing the original decoding or size error.
+    await body.cancel().catch(() => null);
   }
 }

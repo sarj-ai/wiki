@@ -982,12 +982,12 @@ export function DocumentPolishDialog({
                   const Icon = option.icon;
                   const selected = displayedMode === option.value;
                   return (
-                    <button
+                    <Button
                       aria-pressed={selected}
                       className={cn(
-                        "focus-visible:ring-ring/50 relative rounded-lg border p-3 text-left transition-[border-color,background-color,box-shadow] outline-none focus-visible:ring-[3px] disabled:opacity-50",
+                        "focus-visible:ring-ring/50 relative block h-auto rounded-lg border p-3 text-left font-normal whitespace-normal transition-[border-color,background-color,box-shadow] outline-none focus-visible:ring-[3px] disabled:opacity-50",
                         selected
-                          ? "border-primary bg-primary/5 shadow-sm"
+                          ? "border-primary bg-primary/5 hover:bg-primary/5 dark:hover:bg-primary/5 shadow-sm"
                           : "border-border hover:bg-muted/50",
                       )}
                       disabled={optionsLocked}
@@ -997,6 +997,7 @@ export function DocumentPolishDialog({
                         resetRequest();
                       }}
                       type="button"
+                      variant="ghost"
                     >
                       <span className="flex items-center gap-2">
                         <Icon className={cn("size-4", selected && "text-primary")} />
@@ -1012,7 +1013,7 @@ export function DocumentPolishDialog({
                           Recommended
                         </span>
                       ) : null}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -1025,14 +1026,14 @@ export function DocumentPolishDialog({
               <fieldset className="space-y-2">
                 <legend className="mb-2 text-sm font-medium">Save result</legend>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <button
+                  <Button
                     aria-describedby={`${saveDescriptionId}-copy`}
                     aria-label="Create review copy"
                     aria-pressed={outputStrategy === "copy"}
                     className={cn(
-                      "focus-visible:ring-ring/50 rounded-lg border p-3 text-left outline-none focus-visible:ring-[3px] disabled:opacity-50",
+                      "focus-visible:ring-ring/50 block h-auto rounded-lg border p-3 text-left font-normal whitespace-normal outline-none focus-visible:ring-[3px] disabled:opacity-50",
                       outputStrategy === "copy"
-                        ? "border-primary bg-primary/5 shadow-sm"
+                        ? "border-primary bg-primary/5 hover:bg-primary/5 dark:hover:bg-primary/5 shadow-sm"
                         : "border-border hover:bg-muted/50",
                     )}
                     disabled={optionsLocked}
@@ -1041,6 +1042,7 @@ export function DocumentPolishDialog({
                       resetRequest();
                     }}
                     type="button"
+                    variant="ghost"
                   >
                     <span className="flex items-center gap-2 text-sm font-semibold">
                       <Copy aria-hidden="true" className="size-4" />
@@ -1055,15 +1057,15 @@ export function DocumentPolishDialog({
                     <span className="text-primary mt-2 block text-[10px] font-semibold tracking-wide uppercase">
                       Recommended
                     </span>
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     aria-describedby={`${saveDescriptionId}-original`}
                     aria-label="Edit original"
                     aria-pressed={outputStrategy === "in_place"}
                     className={cn(
-                      "focus-visible:ring-ring/50 rounded-lg border p-3 text-left outline-none focus-visible:ring-[3px] disabled:opacity-50",
+                      "focus-visible:ring-ring/50 block h-auto rounded-lg border p-3 text-left font-normal whitespace-normal outline-none focus-visible:ring-[3px] disabled:opacity-50",
                       outputStrategy === "in_place"
-                        ? "border-primary bg-primary/5 shadow-sm"
+                        ? "border-primary bg-primary/5 hover:bg-primary/5 dark:hover:bg-primary/5 shadow-sm"
                         : "border-border hover:bg-muted/50",
                     )}
                     disabled={optionsLocked}
@@ -1072,6 +1074,7 @@ export function DocumentPolishDialog({
                       resetRequest();
                     }}
                     type="button"
+                    variant="ghost"
                   >
                     <span className="flex items-center gap-2 text-sm font-semibold">
                       <FilePenLine aria-hidden="true" className="size-4" />
@@ -1083,7 +1086,7 @@ export function DocumentPolishDialog({
                     >
                       Amend this Google Doc; Drive version history remains available.
                     </span>
-                  </button>
+                  </Button>
                 </div>
               </fieldset>
             ) : null}

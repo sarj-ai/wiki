@@ -127,9 +127,9 @@ export function DriveSection({
               isDropTarget && "ring-primary/60 bg-primary/10 ring-1",
             )}
           >
-            <button
+            <Button
               aria-expanded={expanded}
-              className="flex w-full items-center gap-1 pr-14"
+              className="flex h-8 w-full items-center justify-start gap-1 px-2 py-0 pr-14 text-xs"
               onBlur={predictiveLoading.onBlur}
               onClick={() => {
                 setExpanded(!expanded);
@@ -140,6 +140,7 @@ export function DriveSection({
               onPointerEnter={predictiveLoading.onPointerEnter}
               onPointerLeave={predictiveLoading.onPointerLeave}
               type="button"
+              variant="ghost"
             >
               <ChevronRight
                 className={cn("size-3 transition-transform", expanded && "rotate-90")}
@@ -150,7 +151,7 @@ export function DriveSection({
                 <HardDrive className="size-3.5" />
               )}
               <span className="truncate">{drive.name}</span>
-            </button>
+            </Button>
           </SidebarGroupLabel>
           <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover/driveheader:opacity-100 focus-within:opacity-100">
             <DriveAccessSheet drive={drive} />
