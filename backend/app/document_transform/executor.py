@@ -2029,7 +2029,9 @@ class DocumentTransformExecutor:
         requests = defend_native_font_requests(
             requests, document=snapshot.google_document, original=original
         )
-        requests = preserve_in_place_native_list_text_styles(requests, original=original)
+        requests = preserve_in_place_native_list_text_styles(
+            requests, original=original, transformed=transformed
+        )
         return [
             item
             for item in requests
@@ -2930,7 +2932,9 @@ def _preflight_native_mutation_budget(
         requests = defend_native_font_requests(
             requests, document=snapshot.google_document, original=original
         )
-        requests = preserve_in_place_native_list_text_styles(requests, original=original)
+        requests = preserve_in_place_native_list_text_styles(
+            requests, original=original, transformed=transformed
+        )
     mutation_sha256(requests + list(extra_requests))
 
 

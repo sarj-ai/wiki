@@ -200,17 +200,23 @@ def test_in_place_preserves_provider_shaped_native_list_typography_and_replays()
         document, document, profile=SarjBrandProfile(), headers=(), logo_uri=""
     )
 
-    in_place_requests = preserve_in_place_native_list_text_styles(copy_requests, original=document)
+    in_place_requests = preserve_in_place_native_list_text_styles(
+        copy_requests, original=document, transformed=document
+    )
 
     assert any("updateTextStyle" in request for request in copy_requests)
     assert not any("updateTextStyle" in request for request in in_place_requests)
     assert any("updateParagraphStyle" in request for request in in_place_requests)
     assert (
-        preserve_in_place_native_list_text_styles(in_place_requests, original=document)
+        preserve_in_place_native_list_text_styles(
+            in_place_requests, original=document, transformed=document
+        )
         == in_place_requests
     )
     assert mutation_sha256(
-        preserve_in_place_native_list_text_styles(copy_requests, original=document)
+        preserve_in_place_native_list_text_styles(
+            copy_requests, original=document, transformed=document
+        )
     ) == mutation_sha256(in_place_requests)
 
 
@@ -301,6 +307,35 @@ def test_in_place_filter_preserves_header_and_non_list_text_styles() -> None:
         },
     ]
 
-    filtered = preserve_in_place_native_list_text_styles(requests, original=original)
+    filtered = preserve_in_place_native_list_text_styles(
+        requests, original=original, transformed=original
+    )
 
     assert filtered == requests[1:]
+
+
+def test_in_place_filter_uses_shifted_native_list_ranges_after_preceding_edit() -> None:
+    preceding = TextBlock(
+        "before", BlockKind.PARAGRAPH, "a", source_range=SourceRange(1, 2, DocsTabId("tab"))
+    )
+    native_list = _block("xy")
+    original = DocumentIR("Review", (preceding, native_list), "google_doc")
+    transformed = replace(original, blocks=(replace(preceding, text="abcdefghij"), native_list))
+    requests = build_copy_mutations(
+        original, transformed, profile=SarjBrandProfile(), headers=(), logo_uri=""
+    )
+
+    filtered = preserve_in_place_native_list_text_styles(
+        requests, original=original, transformed=transformed
+    )
+
+    assert [
+        request["updateTextStyle"]["range"] for request in requests if "updateTextStyle" in request
+    ][-2:] == [
+        {"startIndex": 20, "endIndex": 21, "tabId": "tab"},
+        {"startIndex": 21, "endIndex": 22, "tabId": "tab"},
+    ]
+    assert not any(
+        request.get("updateTextStyle", {}).get("range", {}).get("startIndex") in {20, 21}
+        for request in filtered
+    )

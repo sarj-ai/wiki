@@ -151,7 +151,16 @@ async def test_failed_copy_review_descriptor_checks_owner_and_live_access(scenar
 
 @pytest.mark.parametrize(
     "scenario",
-    ["visible", "redacted", "revoked", "wrong_owner", "wrong_resource", "wrong_error"],
+    [
+        "visible",
+        "redacted",
+        "revoked",
+        "wrong_owner",
+        "wrong_resource",
+        "wrong_error",
+        "wrong_id",
+        "wrong_payload_source",
+    ],
 )
 async def test_post_mutation_failure_exposes_only_owner_verified_original(
     scenario: str,
@@ -167,7 +176,7 @@ async def test_post_mutation_failure_exposes_only_owner_verified_original(
     payload = DocumentTransformRequest(
         source=DriveFileSource(
             kind="drive_file",
-            file_id=source_id,
+            file_id=FileId("other-source") if scenario == "wrong_payload_source" else source_id,
             expected_modified_time="2026-09-04T00:00:00Z",
         ),
         mode=TransformMode.FORMAT,
@@ -182,7 +191,7 @@ async def test_post_mutation_failure_exposes_only_owner_verified_original(
     service = TaskReaderStub(record, False)
     files = OutputReaderStub(
         FileResponse(
-            id=source_id,
+            id=FileId("unexpected") if scenario == "wrong_id" else source_id,
             name="Original document",
             mime_type="application/vnd.google-apps.document",
             parent_folder_id=FileId("parent"),
@@ -196,4 +205,6 @@ async def test_post_mutation_failure_exposes_only_owner_verified_original(
 
     assert isinstance(result, FailedTaskRead)
     assert (result.unverified_output is not None) is (scenario in {"visible", "redacted"})
-    assert files.requests == ([source_id] if scenario in {"visible", "redacted", "revoked"} else [])
+    assert files.requests == (
+        [source_id] if scenario in {"visible", "redacted", "revoked", "wrong_id"} else []
+    )

@@ -239,11 +239,12 @@ def mutation_sha256(requests: list[DocsRequest]) -> str:
 
 
 def preserve_in_place_native_list_text_styles(
-    requests: list[DocsRequest], *, original: DocumentIR
+    requests: list[DocsRequest], *, original: DocumentIR, transformed: DocumentIR
 ) -> list[DocsRequest]:
+    located = _post_edit_locations(original, transformed)
     native_list_ranges = tuple(
         block.source_range
-        for block in original.blocks
+        for block in located.blocks
         if block.native_bullet_json is not None and block.source_range is not None
     )
     if not native_list_ranges:

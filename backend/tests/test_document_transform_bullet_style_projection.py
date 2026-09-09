@@ -243,7 +243,7 @@ def _apply_provider_styles(document: dict[str, Any]) -> dict[str, Any]:
         "numbering",
     ],
 )
-async def test_in_place_accepts_only_exact_planned_bullet_style_side_effects(mutation: str) -> None:
+async def test_in_place_rejects_all_native_bullet_style_side_effects(mutation: str) -> None:
     original = _document()
     expected = parse_google_document(original, title="Review")
     actual = _apply_provider_styles(original)
@@ -306,22 +306,7 @@ async def test_in_place_accepts_only_exact_planned_bullet_style_side_effects(mut
         protected_structure_sha256=inspection.protected_structure_sha256,
         verify_brand=True,
     )
-    assert verification.structure_preserved is (mutation in {"planned", "provider_defaults"})
-    if mutation in {"planned", "provider_defaults"}:
-        assert verification.content_preserved
-        unchanged = deepcopy(actual)
-        projected = project_branded_bullet_styles(actual, expected)
-        assert actual == unchanged
-        assert project_branded_bullet_styles(projected, expected) == projected
-        strict = await gateway.verify_in_place(
-            document=actual,
-            title="Review",
-            expected=expected,
-            structural_sha256=inspection.structural_sha256,
-            protected_structure_sha256=inspection.protected_structure_sha256,
-            verify_brand=False,
-        )
-        assert not strict.structure_preserved
+    assert not verification.structure_preserved
 
 
 @pytest.mark.parametrize("rename", [False, True])
