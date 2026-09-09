@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Iterator
 from copy import deepcopy
 from dataclasses import dataclass, replace
+from dataclasses import field as dataclass_field
 from functools import cache
 import hashlib
 from http import HTTPStatus
@@ -48,6 +49,7 @@ from app.document_transform.copy_visual_authority import verify_copy_visual_auth
 from app.document_transform.custom_furniture import (
     MAX_FURNITURE_BYTES,
     CustomFurnitureBinding,
+    CustomHeaderTitleTarget,
     furniture_bindings_known,
     furniture_context_values,
 )
@@ -179,6 +181,59 @@ class ParagraphRangeKey:
 class _CopyBrandVerification:
     brand_applied: bool
     supported_brand_applied: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _InPlaceHeaderState:
+    headers: tuple[TabHeader, ...]
+    preserved_headers: tuple[TabHeader, ...]
+    custom_furniture: tuple[CustomFurnitureBinding, ...]
+    custom_header_title_targets: tuple[CustomHeaderTitleTarget, ...]
+    custom_header_titles_present: tuple[CustomHeaderTitleTarget, ...]
+    missing: tuple[DocsTabId, ...]
+    unknown: tuple[DocsTabId, ...]
+
+
+@dataclass(slots=True)
+class _InPlaceHeaderStateBuilder:
+    headers: list[TabHeader] = dataclass_field(default_factory=list)
+    preserved_headers: list[TabHeader] = dataclass_field(default_factory=list)
+    custom_furniture: list[CustomFurnitureBinding] = dataclass_field(default_factory=list)
+    custom_header_title_targets: list[CustomHeaderTitleTarget] = dataclass_field(
+        default_factory=list
+    )
+    custom_header_titles_present: list[CustomHeaderTitleTarget] = dataclass_field(
+        default_factory=list
+    )
+    missing: list[DocsTabId] = dataclass_field(default_factory=list)
+    unknown: list[DocsTabId] = dataclass_field(default_factory=list)
+
+    def record_custom(
+        self,
+        binding: CustomFurnitureBinding,
+        tab: dict[str, Any],
+        present_title_targets: frozenset[tuple[DocsTabId, DocsSegmentId]],
+    ) -> None:
+        self.custom_furniture.append(binding)
+        for identifier in binding.header_ids:
+            target = CustomHeaderTitleTarget(tab_id=binding.tab_id, header_id=identifier)
+            if (target.tab_id, target.header_id) in present_title_targets:
+                self.custom_header_titles_present.append(target)
+            elif _header_can_accept_custom_title(tab, str(identifier)):
+                self.custom_header_title_targets.append(target)
+            elif binding.tab_id not in self.unknown:
+                self.unknown.append(binding.tab_id)
+
+    def freeze(self) -> _InPlaceHeaderState:
+        return _InPlaceHeaderState(
+            headers=tuple(self.headers),
+            preserved_headers=tuple(self.preserved_headers),
+            custom_furniture=tuple(self.custom_furniture),
+            custom_header_title_targets=tuple(self.custom_header_title_targets),
+            custom_header_titles_present=tuple(self.custom_header_titles_present),
+            missing=tuple(self.missing),
+            unknown=tuple(self.unknown),
+        )
 
 
 if TYPE_CHECKING:
@@ -720,6 +775,7 @@ class GoogleDocumentGateway(DocumentGateway):
         protected_structure_sha256: str,
         verify_brand: bool,
         custom_furniture: tuple[CustomFurnitureBinding, ...] = (),
+        custom_header_titles: tuple[CustomHeaderTitleTarget, ...] = (),
         table_font_plan: TableFontPlan | None = None,
     ) -> OutputVerification:
         parsed = parse_google_document(document, title=title)
@@ -747,7 +803,12 @@ class GoogleDocumentGateway(DocumentGateway):
                 )
             )
             == protected_structure_sha256
-            and _custom_furniture_matches(document, custom_furniture)
+            and _custom_furniture_matches(
+                document,
+                custom_furniture,
+                title=title,
+                custom_header_titles=custom_header_titles,
+            )
         )
         preserved_layout = any(
             block.preserved_paragraph_style_sha256
@@ -771,6 +832,7 @@ class GoogleDocumentGateway(DocumentGateway):
         supported_brand_applied = (
             (bool(custom_furniture) or preserved_layout)
             and structure_preserved
+            and _custom_header_titles_match(document, title, custom_header_titles, custom_furniture)
             and (
                 not verify_brand
                 or verify_brand_application(
@@ -1066,83 +1128,11 @@ class GoogleDocumentGateway(DocumentGateway):
             _trusted_header_identity_title(document, getattr(self, "_header_identity", None))
             or title
         )
-        headers: list[TabHeader] = []
-        preserved_headers: list[TabHeader] = []
-        custom_furniture: list[CustomFurnitureBinding] = []
-        missing: list[DocsTabId] = []
-        unknown: list[DocsTabId] = []
-        for raw_tab_id, document_tab in _document_tabs(document):
-            tab_id = DocsTabId(raw_tab_id)
-            style = document_tab.get("documentStyle", {})
-            header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
-            segments = document_tab.get("headers", {})
-            if (
-                not _furniture_references_resolve(document_tab)
-                or not isinstance(segments, dict)
-                or any(not isinstance(key, str) or not key for key in segments)
-            ):
-                unknown.append(tab_id)
-                continue
-            if isinstance(header_id, str) and header_id not in segments:
-                unknown.append(tab_id)
-                continue
-            if not isinstance(header_id, str):
-                if segments:
-                    binding = _custom_furniture_binding(
-                        document, tab_id, document_tab, tuple(sorted(segments))
-                    )
-                    if binding is None:
-                        unknown.append(tab_id)
-                    else:
-                        custom_furniture.append(binding)
-                else:
-                    missing.append(tab_id)
-                continue
-            if any(segment_id != header_id for segment_id in segments):
-                binding = _custom_furniture_binding(
-                    document, tab_id, document_tab, tuple(sorted(segments))
-                )
-                if binding is None:
-                    unknown.append(tab_id)
-                else:
-                    custom_furniture.append(binding)
-                continue
-            if _segment_has_content(segments, header_id):
-                if _tab_header_is_branded(
-                    document,
-                    document_tab,
-                    expected_title=header_title,
-                    allow_legacy_inline_objects=len(tuple(_document_tabs(document))) == 1,
-                    header_separator=_owned_header_separator(
-                        getattr(self, "_header_identity", None)
-                    ),
-                ):
-                    preserved_headers.append(
-                        TabHeader(tab_id=tab_id, header_id=DocsSegmentId(header_id))
-                    )
-                else:
-                    binding = _custom_furniture_binding(
-                        document, tab_id, document_tab, (header_id,)
-                    )
-                    if binding is None:
-                        unknown.append(tab_id)
-                    else:
-                        custom_furniture.append(binding)
-                continue
-            headers.append(TabHeader(tab_id=tab_id, header_id=DocsSegmentId(header_id)))
-        for raw_tab_id, document_tab in _document_tabs(document):
-            if (
-                raw_tab_id not in {binding.tab_id for binding in custom_furniture}
-                and raw_tab_id not in unknown
-                and document_tab.get("footers")
-            ):
-                binding = _custom_furniture_binding(
-                    document, DocsTabId(raw_tab_id), document_tab, ()
-                )
-                if binding is None:
-                    unknown.append(DocsTabId(raw_tab_id))
-                else:
-                    custom_furniture.append(binding)
+        header_state = _classify_in_place_headers(
+            document,
+            header_title,
+            getattr(self, "_header_identity", None),
+        )
         parsed = parse_google_document(document, title=title)
         existing_layout = apply_native_pagination(
             parsed, existing_native_pagination(document, parsed)
@@ -1164,16 +1154,18 @@ class GoogleDocumentGateway(DocumentGateway):
             "document in-place preflight checks={checks}",
             checks={
                 "tab_count": len(tuple(_document_tabs(document))),
-                "unknown_header_count": len(unknown),
-                "missing_header_count": len(missing),
+                "unknown_header_count": len(header_state.unknown),
+                "missing_header_count": len(header_state.missing),
                 "in_place_logo_available": bool(self._logo_uri),
                 "in_place_marker_available": _terminal_body_marker_range(document) is not None,
             },
         )
         return InPlaceInspection(
-            custom_furniture=tuple(custom_furniture),
+            custom_furniture=header_state.custom_furniture,
+            custom_header_title_targets=header_state.custom_header_title_targets,
+            custom_header_titles_present=header_state.custom_header_titles_present,
             supported_brand_applied=bool(
-                custom_furniture
+                header_state.custom_furniture
                 or any(
                     block.preserved_paragraph_style_sha256
                     or block.preserved_font_family
@@ -1182,15 +1174,20 @@ class GoogleDocumentGateway(DocumentGateway):
                     for block in existing_layout.blocks
                 )
             )
-            and not (missing or unknown or headers)
+            and not (header_state.missing or header_state.unknown or header_state.headers)
+            and not header_state.custom_header_title_targets
             and verify_brand_application(
                 document,
                 existing_layout,
                 expected_header_title=header_title,
                 header_separator=_owned_header_separator(getattr(self, "_header_identity", None)),
-                preserved_furniture_tabs=frozenset(binding.tab_id for binding in custom_furniture),
+                preserved_furniture_tabs=frozenset(
+                    binding.tab_id for binding in header_state.custom_furniture
+                ),
                 preserved_header_tabs=frozenset(
-                    binding.tab_id for binding in custom_furniture if binding.header_ids
+                    binding.tab_id
+                    for binding in header_state.custom_furniture
+                    if binding.header_ids
                 ),
                 preserved_native_list_text_style_ids=_native_list_block_ids(existing_layout),
             ),
@@ -1200,8 +1197,8 @@ class GoogleDocumentGateway(DocumentGateway):
                 parent_folder_id=snapshot.parent_folder_id,
                 web_url=snapshot.web_url,
             ),
-            headers=tuple(headers),
-            preserved_headers=tuple(preserved_headers),
+            headers=header_state.headers,
+            preserved_headers=header_state.preserved_headers,
             header_identity=getattr(self, "_header_identity", None),
             fully_branded=not any(
                 block.preserved_paragraph_style_sha256
@@ -1210,15 +1207,15 @@ class GoogleDocumentGateway(DocumentGateway):
                 or block.native_bullet_json is not None
                 for block in existing_layout.blocks
             )
-            and not (missing or unknown or headers)
+            and not (header_state.missing or header_state.unknown or header_state.headers)
             and verify_brand_application(
                 document,
                 existing_layout,
                 expected_header_title=header_title,
                 header_separator=_owned_header_separator(getattr(self, "_header_identity", None)),
             ),
-            missing_header_tab_ids=tuple(missing),
-            unknown_header_tab_ids=tuple(unknown),
+            missing_header_tab_ids=header_state.missing,
+            unknown_header_tab_ids=header_state.unknown,
             marker_range=_terminal_body_marker_range(document),
             logo_uri=self._logo_uri,
             structural_sha256=_inventory_sha256(_structural_inventory(document)),
@@ -2125,6 +2122,273 @@ def _inventory_sha256(value: object) -> str:
     ).hexdigest()
 
 
+def _header_can_accept_custom_title(tab: dict[str, Any], header_id: str) -> bool:
+    headers = tab.get("headers")
+    header = headers.get(header_id) if isinstance(headers, dict) else None
+    content = header.get("content") if isinstance(header, dict) else None
+    if not isinstance(content, list) or not content or not isinstance(content[0], dict):
+        return False
+    paragraph = content[0].get("paragraph")
+    return isinstance(paragraph, dict) and isinstance(paragraph.get("elements"), list)
+
+
+def _classify_in_place_headers(
+    document: dict[str, Any],
+    header_title: str,
+    header_identity: HeaderIdentityEvidence | None,
+) -> _InPlaceHeaderState:
+    state = _InPlaceHeaderStateBuilder()
+    document_tabs = tuple(_document_tabs(document))
+    present_title_targets = tuple(
+        CustomHeaderTitleTarget(tab_id=DocsTabId(raw_tab_id), header_id=DocsSegmentId(header_id))
+        for raw_tab_id, document_tab in document_tabs
+        for header_id in (
+            tuple(document_tab.get("headers", {}))
+            if isinstance(document_tab.get("headers"), dict)
+            else ()
+        )
+        if _header_has_custom_title_prefix(document_tab, header_id, header_title)
+    )
+    present_title_pairs = frozenset(
+        (target.tab_id, target.header_id) for target in present_title_targets
+    )
+    projected_document = _project_custom_header_titles(
+        document, header_title, present_title_targets
+    )
+    projected_tabs = dict(_document_tabs(projected_document))
+    for raw_tab_id, document_tab in document_tabs:
+        _classify_in_place_tab(
+            state,
+            document=document,
+            document_tabs=document_tabs,
+            projected_document=projected_document,
+            projected_tabs=projected_tabs,
+            present_title_pairs=present_title_pairs,
+            raw_tab_id=raw_tab_id,
+            document_tab=document_tab,
+            header_title=header_title,
+            header_identity=header_identity,
+        )
+    for raw_tab_id, document_tab in document_tabs:
+        _classify_in_place_footer(
+            state,
+            projected_document=projected_document,
+            projected_tabs=projected_tabs,
+            present_title_pairs=present_title_pairs,
+            raw_tab_id=raw_tab_id,
+            document_tab=document_tab,
+        )
+    return state.freeze()
+
+
+def _classify_in_place_tab(
+    state: _InPlaceHeaderStateBuilder,
+    *,
+    document: dict[str, Any],
+    document_tabs: tuple[tuple[str, dict[str, Any]], ...],
+    projected_document: dict[str, Any],
+    projected_tabs: dict[str, dict[str, Any]],
+    present_title_pairs: frozenset[tuple[DocsTabId, DocsSegmentId]],
+    raw_tab_id: str,
+    document_tab: dict[str, Any],
+    header_title: str,
+    header_identity: HeaderIdentityEvidence | None,
+) -> None:
+    tab_id = DocsTabId(raw_tab_id)
+    style = document_tab.get("documentStyle", {})
+    header_id = style.get("defaultHeaderId") if isinstance(style, dict) else None
+    segments = document_tab.get("headers", {})
+    if (
+        not _furniture_references_resolve(document_tab)
+        or not isinstance(segments, dict)
+        or any(not isinstance(key, str) or not key for key in segments)
+    ):
+        state.unknown.append(tab_id)
+        return
+    if isinstance(header_id, str) and header_id not in segments:
+        state.unknown.append(tab_id)
+        return
+    if not isinstance(header_id, str):
+        if not segments:
+            state.missing.append(tab_id)
+            return
+        _record_projected_custom_furniture(
+            state,
+            projected_document=projected_document,
+            projected_tabs=projected_tabs,
+            present_title_pairs=present_title_pairs,
+            raw_tab_id=raw_tab_id,
+            document_tab=document_tab,
+            header_ids=tuple(sorted(segments)),
+        )
+        return
+    if any(segment_id != header_id for segment_id in segments):
+        _record_projected_custom_furniture(
+            state,
+            projected_document=projected_document,
+            projected_tabs=projected_tabs,
+            present_title_pairs=present_title_pairs,
+            raw_tab_id=raw_tab_id,
+            document_tab=document_tab,
+            header_ids=tuple(sorted(segments)),
+        )
+        return
+    if not _segment_has_content(segments, header_id):
+        state.headers.append(TabHeader(tab_id=tab_id, header_id=DocsSegmentId(header_id)))
+        return
+    if _tab_header_is_branded(
+        document,
+        document_tab,
+        expected_title=header_title,
+        allow_legacy_inline_objects=len(document_tabs) == 1,
+        header_separator=_owned_header_separator(header_identity),
+    ):
+        state.preserved_headers.append(TabHeader(tab_id=tab_id, header_id=DocsSegmentId(header_id)))
+        return
+    _record_projected_custom_furniture(
+        state,
+        projected_document=projected_document,
+        projected_tabs=projected_tabs,
+        present_title_pairs=present_title_pairs,
+        raw_tab_id=raw_tab_id,
+        document_tab=document_tab,
+        header_ids=(header_id,),
+    )
+
+
+def _record_projected_custom_furniture(
+    state: _InPlaceHeaderStateBuilder,
+    *,
+    projected_document: dict[str, Any],
+    projected_tabs: dict[str, dict[str, Any]],
+    present_title_pairs: frozenset[tuple[DocsTabId, DocsSegmentId]],
+    raw_tab_id: str,
+    document_tab: dict[str, Any],
+    header_ids: tuple[str, ...],
+) -> None:
+    tab_id = DocsTabId(raw_tab_id)
+    binding = _custom_furniture_binding(
+        projected_document,
+        tab_id,
+        projected_tabs.get(raw_tab_id, {}),
+        header_ids,
+    )
+    if binding is None:
+        state.unknown.append(tab_id)
+        return
+    state.record_custom(binding, document_tab, present_title_pairs)
+
+
+def _classify_in_place_footer(
+    state: _InPlaceHeaderStateBuilder,
+    *,
+    projected_document: dict[str, Any],
+    projected_tabs: dict[str, dict[str, Any]],
+    present_title_pairs: frozenset[tuple[DocsTabId, DocsSegmentId]],
+    raw_tab_id: str,
+    document_tab: dict[str, Any],
+) -> None:
+    tab_id = DocsTabId(raw_tab_id)
+    if (
+        tab_id in {binding.tab_id for binding in state.custom_furniture}
+        or tab_id in state.unknown
+        or not document_tab.get("footers")
+    ):
+        return
+    _record_projected_custom_furniture(
+        state,
+        projected_document=projected_document,
+        projected_tabs=projected_tabs,
+        present_title_pairs=present_title_pairs,
+        raw_tab_id=raw_tab_id,
+        document_tab=document_tab,
+        header_ids=(),
+    )
+
+
+def _header_has_custom_title_prefix(tab: dict[str, Any], header_id: str, title: str) -> bool:
+    projected = _strip_custom_header_title(tab, header_id, title)
+    return projected is not None
+
+
+def _strip_custom_header_title(
+    tab: dict[str, Any], header_id: str, title: str
+) -> dict[str, Any] | None:
+    if not _header_can_accept_custom_title(tab, header_id):
+        return None
+    projected = deepcopy(tab)
+    headers = projected["headers"]
+    elements = headers[header_id]["content"][0]["paragraph"]["elements"]
+    header_tokens = CURRENT_BRAND_MANIFEST.document.header
+    if header_tokens is None:  # pragma: no cover - pinned manifest invariant
+        return None
+    prefix = normalize_header_title(title, max_chars=header_tokens.max_title_chars) + (
+        HEADER_TITLE_SEPARATOR
+    )
+    remaining = prefix
+    stripped: list[Any] = []
+    for element in elements:
+        if not remaining:
+            stripped.append(element)
+            continue
+        if not isinstance(element, dict) or not isinstance(element.get("textRun"), dict):
+            return None
+        run = element["textRun"]
+        content = run.get("content")
+        if not isinstance(content, str) or not remaining.startswith(content[: len(remaining)]):
+            return None
+        consumed = content[: len(remaining)]
+        if not remaining.startswith(consumed) or not _header_text_run_has_brand(run):
+            return None
+        remaining = remaining[len(consumed) :]
+        leftover = content[len(consumed) :]
+        if leftover:
+            stripped.append({**element, "textRun": {**run, "content": leftover}})
+    if remaining:
+        return None
+    headers[header_id]["content"][0]["paragraph"]["elements"] = stripped
+    return projected
+
+
+def _project_custom_header_titles(
+    document: dict[str, Any],
+    title: str,
+    targets: tuple[CustomHeaderTitleTarget, ...],
+) -> dict[str, Any]:
+    projected = deepcopy(document)
+    tabs = dict(_document_tabs(projected))
+    for target in targets:
+        tab = tabs.get(str(target.tab_id))
+        if not isinstance(tab, dict):
+            return document
+        stripped = _strip_custom_header_title(tab, str(target.header_id), title)
+        if stripped is None:
+            return document
+        tab.clear()
+        tab.update(stripped)
+    return projected
+
+
+def _custom_header_titles_match(
+    document: dict[str, Any],
+    title: str,
+    targets: tuple[CustomHeaderTitleTarget, ...],
+    bindings: tuple[CustomFurnitureBinding, ...],
+) -> bool:
+    expected = {
+        (binding.tab_id, header_id) for binding in bindings for header_id in binding.header_ids
+    }
+    observed = {(target.tab_id, target.header_id) for target in targets}
+    if observed != expected or len(observed) != len(targets):
+        return False
+    tabs = dict(_document_tabs(document))
+    return all(
+        isinstance((tab := tabs.get(str(target.tab_id))), dict)
+        and _header_has_custom_title_prefix(tab, str(target.header_id), title)
+        for target in targets
+    )
+
+
 def _custom_furniture_binding(
     document: dict[str, Any], tab_id: DocsTabId, tab: dict[str, Any], header_ids: tuple[str, ...]
 ) -> CustomFurnitureBinding | None:
@@ -2223,13 +2487,22 @@ def _furniture_references_resolve(tab: dict[str, Any]) -> bool:
 
 
 def _custom_furniture_matches(
-    document: dict[str, Any], bindings: tuple[CustomFurnitureBinding, ...]
+    document: dict[str, Any],
+    bindings: tuple[CustomFurnitureBinding, ...],
+    *,
+    title: str | None = None,
+    custom_header_titles: tuple[CustomHeaderTitleTarget, ...] = (),
 ) -> bool:
-    tabs = dict(_document_tabs(document))
+    projected = (
+        _project_custom_header_titles(document, title, custom_header_titles)
+        if title is not None and custom_header_titles
+        else document
+    )
+    tabs = dict(_document_tabs(projected))
     return len({binding.tab_id for binding in bindings}) == len(bindings) and all(
         binding.tab_id in tabs
         and _custom_furniture_binding(
-            document, binding.tab_id, tabs[binding.tab_id], binding.header_ids
+            projected, binding.tab_id, tabs[binding.tab_id], binding.header_ids
         )
         == binding
         for binding in bindings

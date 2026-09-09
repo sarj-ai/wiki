@@ -21,7 +21,7 @@ from app.document_transform.brand_manifest import (
     CURRENT_BRAND_MANIFEST,
     CURRENT_BRAND_PROFILE_ID,
 )
-from app.document_transform.custom_furniture import CustomFurnitureBinding
+from app.document_transform.custom_furniture import CustomFurnitureBinding, CustomHeaderTitleTarget
 from app.document_transform.header_provenance import (
     HeaderIdentityEvidence,
     HeaderIdentityFinalization,
@@ -324,6 +324,13 @@ class InPlaceCheckpoint(StrictTransformModel):
     custom_furniture: tuple[CustomFurnitureBinding, ...] = Field(
         default=(), max_length=MAX_DOC_TABS
     )
+    custom_header_titles: tuple[CustomHeaderTitleTarget, ...] = Field(
+        default=(), max_length=MAX_DOC_TABS * 3
+    )
+    custom_header_title_targets: tuple[CustomHeaderTitleTarget, ...] = Field(
+        default=(), max_length=MAX_DOC_TABS * 3
+    )
+    custom_header_titles_required: bool = False
     pagination: tuple[NativePaginationRule, ...] = Field(
         default=(), max_length=MAX_PAGINATION_RULES
     )
@@ -369,6 +376,27 @@ class InPlaceCheckpoint(StrictTransformModel):
     def validate_tab_naming_state(self) -> Self:
         if self.tab_naming is not None and self.tab_naming_declined_reason is not None:
             msg = "tab naming cannot be both planned and declined"
+            raise ValueError(msg)
+        titles = {(item.tab_id, item.header_id) for item in self.custom_header_titles}
+        targets = {(item.tab_id, item.header_id) for item in self.custom_header_title_targets}
+        furniture_headers = {
+            (binding.tab_id, header_id)
+            for binding in self.custom_furniture
+            for header_id in binding.header_ids
+        }
+        if len(titles) != len(self.custom_header_titles) or len(targets) != len(
+            self.custom_header_title_targets
+        ):
+            msg = "custom header title bindings must be unique"
+            raise ValueError(msg)
+        if not targets <= titles:
+            msg = "custom header title targets must belong to the verified title set"
+            raise ValueError(msg)
+        if self.custom_header_titles_required and titles != furniture_headers:
+            msg = "every preserved custom header must have a verified native title"
+            raise ValueError(msg)
+        if not self.custom_header_titles_required and (titles or targets):
+            msg = "unbranded transforms cannot manage custom header titles"
             raise ValueError(msg)
         return self
 

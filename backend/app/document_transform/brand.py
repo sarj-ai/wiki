@@ -238,6 +238,51 @@ def mutation_sha256(requests: list[DocsRequest]) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+def build_custom_header_title_requests(
+    title: str,
+    *,
+    profile: SarjBrandProfile,
+    headers: tuple[TabHeader, ...],
+) -> list[DocsRequest]:
+    header_text = (
+        normalize_header_title(title, max_chars=profile.header_max_title_chars)
+        + HEADER_TITLE_SEPARATOR
+    )
+    end_index = utf16_length(header_text)
+    requests: list[DocsRequest] = []
+    for header in headers:
+        location = {
+            "index": 0,
+            "segmentId": header.header_id,
+            "tabId": header.tab_id,
+        }
+        requests.extend(
+            [
+                {"insertText": {"location": location, "text": header_text}},
+                {
+                    "updateTextStyle": {
+                        "range": {
+                            "startIndex": 0,
+                            "endIndex": end_index,
+                            "segmentId": header.header_id,
+                            "tabId": header.tab_id,
+                        },
+                        "textStyle": {
+                            "weightedFontFamily": {"fontFamily": profile.header_font_family},
+                            "fontSize": {"magnitude": profile.header_size_pt, "unit": "PT"},
+                            "foregroundColor": {
+                                "color": {"rgbColor": _rgb_color(profile.header_color)}
+                            },
+                            "bold": profile.header_bold,
+                        },
+                        "fields": "weightedFontFamily,fontSize,foregroundColor,bold",
+                    }
+                },
+            ]
+        )
+    return requests
+
+
 def preserve_in_place_native_list_text_styles(
     requests: list[DocsRequest], *, original: DocumentIR, transformed: DocumentIR
 ) -> list[DocsRequest]:

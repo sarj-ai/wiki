@@ -3786,9 +3786,10 @@ class _InPlaceGateway(_Gateway):
         protected_structure_sha256: str,
         verify_brand: bool,
         custom_furniture: tuple[CustomFurnitureBinding, ...] = (),
+        custom_header_titles: tuple[Any, ...] = (),
         table_font_plan: TableFontPlan | None = None,
     ) -> OutputVerification:
-        del custom_furniture, table_font_plan
+        del custom_furniture, custom_header_titles, table_font_plan
         del document, title, expected, structural_sha256, protected_structure_sha256, verify_brand
         return OutputVerification(
             content_preserved=True, structure_preserved=True, brand_applied=True
