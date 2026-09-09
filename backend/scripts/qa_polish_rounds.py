@@ -14,6 +14,7 @@ import uuid
 from pydantic import BaseModel, ConfigDict, Field
 import typer
 
+from app.identifiers import FileId
 from scripts.qa_document_transform_corpus import (
     EvidenceManifest,
     QaError,
@@ -200,6 +201,7 @@ def _require_round(
         _require_result_binding(
             source,
             result,
+            destination_folder_id=FileId(ledger.private_folder_id),
             expected_release_sha=manifest.expected_release_sha,
             artifacts_dir=artifact_directory,
             renderer_version=None,
