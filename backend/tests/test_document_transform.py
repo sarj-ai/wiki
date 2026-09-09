@@ -14,6 +14,7 @@ import uuid
 from docx import Document as WordDocument
 from docx.opc.constants import RELATIONSHIP_TYPE
 from googleapiclient.errors import HttpError
+from loguru import logger
 from pydantic import ValidationError
 import pytest
 
@@ -50,6 +51,7 @@ from app.document_transform.gateway import (
     TabHeader,
 )
 from app.document_transform.google_gateway import GoogleDocumentGateway, verify_brand_application
+from app.document_transform.header_provenance import HeaderIdentityEvidence
 from app.document_transform.ir import (
     BlockKind,
     DocumentIR,
@@ -95,6 +97,7 @@ from app.document_transform.unslop import (
     deterministic_unslop_replacement,
     scan_unslop_candidates,
 )
+from app.drive.schemas import MIME_DOC
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId, TaskId
@@ -1752,6 +1755,108 @@ def test_brand_verification_diagnostics_are_bounded_and_granular() -> None:
 
     assert changed_checks["paragraph_text_styles"] is False
     assert set(changed_checks) == set(checks)
+
+
+def test_in_place_brand_verification_reports_native_list_typography_as_preserved() -> None:
+    document = _branded_google_document()
+    paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
+    paragraph["bullet"] = {"listId": "list", "nestingLevel": 0}
+    document["tabs"][0]["documentTab"]["lists"] = {
+        "list": {"listProperties": {"nestingLevels": [{}]}}
+    }
+    paragraph["elements"][0]["textRun"]["textStyle"]["weightedFontFamily"] = {"fontFamily": "Arial"}
+    paragraph["paragraphStyle"]["spaceAbove"] = {"magnitude": 0, "unit": "PT"}
+    paragraph["paragraphStyle"]["spaceBelow"] = {"magnitude": 2, "unit": "PT"}
+    parsed = parse_google_document(document, title="Decision")
+
+    assert not verify_brand_application(document, parsed)
+    assert verify_brand_application(
+        document,
+        parsed,
+        preserved_native_list_text_style_ids=frozenset({"b0"}),
+    )
+    checks = google_gateway_module._brand_application_diagnostics(
+        document,
+        parsed,
+        preserved_native_list_text_style_ids=frozenset({"b0"}),
+    )
+    assert checks["paragraph_layout"] is True
+    assert checks["paragraph_text_styles"] is True
+
+
+async def test_in_place_native_list_preservation_keeps_protected_hash_strict() -> None:
+    document = _branded_google_document()
+    document["documentId"] = "document"
+    paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
+    paragraph["bullet"] = {"listId": "list", "nestingLevel": 0}
+    document["tabs"][0]["documentTab"]["lists"] = {
+        "list": {"listProperties": {"nestingLevels": [{}]}}
+    }
+    paragraph["elements"][0]["textRun"]["textStyle"]["weightedFontFamily"] = {"fontFamily": "Arial"}
+    paragraph["paragraphStyle"]["spaceAbove"] = {"magnitude": 0, "unit": "PT"}
+    paragraph["paragraphStyle"]["spaceBelow"] = {"magnitude": 2, "unit": "PT"}
+    gateway = object.__new__(GoogleDocumentGateway)
+    gateway._logo_uri = "https://assets.example.test/sarj-logo.png"
+    snapshot = SourceSnapshot(
+        title="Decision",
+        parent_folder_id=FileId("folder"),
+        modified_time="now",
+        revision_id=DocsRevisionId("revision-2"),
+        media_type=MIME_DOC,
+        google_document=document,
+        owned_by_me=True,
+        can_edit=True,
+        is_personal_drive=True,
+    )
+    inspection = await gateway.inspect_in_place(snapshot=snapshot, title="Decision")
+    assert inspection.supported_brand_applied
+    assert not inspection.fully_branded
+    expected = parse_google_document(document, title="Decision")
+
+    messages: list[str] = []
+    sink = logger.add(messages.append, format="{message}", level="WARNING")
+    try:
+        result = await gateway.verify_in_place(
+            document=document,
+            title="Decision",
+            expected=expected,
+            structural_sha256=inspection.structural_sha256,
+            protected_structure_sha256=inspection.protected_structure_sha256,
+            verify_brand=True,
+        )
+    finally:
+        logger.remove(sink)
+
+    assert result.content_preserved
+    assert result.structure_preserved
+    assert result.supported_brand_applied
+    assert not any("in-place verification failed" in message for message in messages)
+    typography_tampered = deepcopy(document)
+    typography_tampered["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["elements"][0][
+        "textRun"
+    ]["textStyle"]["weightedFontFamily"] = {"fontFamily": "Comic Sans MS"}
+    typography_rejected = await gateway.verify_in_place(
+        document=typography_tampered,
+        title="Decision",
+        expected=expected,
+        structural_sha256=inspection.structural_sha256,
+        protected_structure_sha256=inspection.protected_structure_sha256,
+        verify_brand=True,
+    )
+    assert not typography_rejected.structure_preserved
+    tampered = deepcopy(document)
+    tampered["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["bullet"]["listId"] = (
+        "other"
+    )
+    rejected = await gateway.verify_in_place(
+        document=tampered,
+        title="Decision",
+        expected=expected,
+        structural_sha256=inspection.structural_sha256,
+        protected_structure_sha256=inspection.protected_structure_sha256,
+        verify_brand=True,
+    )
+    assert not rejected.structure_preserved
 
 
 async def test_in_place_non_brand_verification_preserves_brand_short_circuit(
@@ -4247,6 +4352,131 @@ async def test_in_place_verification_failure_after_mutation_is_truthful(
     assert caught.value.code == "in_place_verification_failed"
     assert "may have changed" in caught.value.public_detail
     assert gateway.events.count("apply") == (1 if failure_stage == "headers" else 2)
+
+
+@pytest.mark.parametrize("tamper_list_identity", [False, True])
+async def test_in_place_provider_split_native_list_reaches_verified_post_write_state(
+    tamper_list_identity: bool,
+) -> None:
+    document = _branded_google_document()
+    document["documentId"] = "source"
+    paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
+    visible_style = deepcopy(paragraph["elements"][0]["textRun"]["textStyle"])
+    visible_style["weightedFontFamily"] = {"fontFamily": "Arial"}
+    paragraph["elements"] = [
+        {
+            "startIndex": 1,
+            "endIndex": 5,
+            "textRun": {"content": "Appr", "textStyle": deepcopy(visible_style)},
+        },
+        {
+            "startIndex": 5,
+            "endIndex": 10,
+            "textRun": {"content": "oved.", "textStyle": deepcopy(visible_style)},
+        },
+        {
+            "startIndex": 10,
+            "endIndex": 11,
+            "textRun": {"content": "\n", "textStyle": {"bold": False}},
+        },
+    ]
+    paragraph["bullet"] = {"listId": "list", "nestingLevel": 0}
+    paragraph["paragraphStyle"].pop("spaceAbove")
+    paragraph["paragraphStyle"].pop("spaceBelow")
+    document["tabs"][0]["documentTab"]["lists"] = {
+        "list": {"listProperties": {"nestingLevels": [{}]}}
+    }
+
+    class ProviderSplitGateway(GoogleDocumentGateway):
+        def __init__(self) -> None:
+            self._logo_uri = "https://wiki.sarj.ai/brand/sarj-logo-light.png"
+            self._header_identity: HeaderIdentityEvidence | None = None
+            self.document = deepcopy(document)
+            self.calls: list[list[dict[str, Any]]] = []
+
+        @override
+        async def load_drive_source(self, source: DriveFileSource) -> SourceSnapshot:
+            assert source.file_id == "source"
+            return SourceSnapshot(
+                title="Decision",
+                parent_folder_id=FileId("folder"),
+                modified_time="2026-09-03T00:00:00Z",
+                revision_id=DocsRevisionId(self.document["revisionId"]),
+                media_type=MIME_DOC,
+                google_document=deepcopy(self.document),
+                owned_by_me=True,
+                can_edit=True,
+                is_personal_drive=True,
+            )
+
+        @override
+        async def apply_in_place_stage(self, **kwargs: Any) -> InPlaceStageResult:
+            assert kwargs["required_revision_id"] == self.document["revisionId"]
+            requests = deepcopy(kwargs["requests"])
+            self.calls.append(requests)
+            applied_paragraph = self.document["tabs"][0]["documentTab"]["body"]["content"][0][
+                "paragraph"
+            ]
+            for request in requests:
+                text_update = request.get("updateTextStyle")
+                if isinstance(text_update, dict):
+                    target = text_update.get("range", {})
+                    assert not (
+                        target.get("tabId") == "tab-a"
+                        and target.get("segmentId") is None
+                        and target.get("startIndex", 0) < 11
+                        and target.get("endIndex", 0) > 1
+                    )
+                paragraph_update = request.get("updateParagraphStyle")
+                if isinstance(paragraph_update, dict):
+                    target = paragraph_update.get("range", {})
+                    if target.get("tabId") == "tab-a" and target.get("segmentId") is None:
+                        applied_paragraph["paragraphStyle"].update(
+                            deepcopy(paragraph_update["paragraphStyle"])
+                        )
+            if tamper_list_identity:
+                applied_paragraph["bullet"]["listId"] = "other"
+            self.document["revisionId"] = "revision-3"
+            return InPlaceStageResult(DocsRevisionId("revision-3"), deepcopy(self.document))
+
+        @override
+        async def plan_tab_naming(self, **_kwargs: Any) -> None:
+            return None
+
+    gateway = ProviderSplitGateway()
+    store = _CheckpointStore([])
+    task_id = TaskId(uuid.uuid7())
+    request = _in_place_request(TransformMode.FORMAT)
+    executor = DocumentTransformExecutor(
+        gateway=gateway,
+        generator=_Generator(),
+        checkpoint_store=store,
+        task_id=task_id,
+        lease_token=uuid.uuid7(),
+    )
+
+    if tamper_list_identity:
+        with pytest.raises(InPlacePostMutationVerificationError):
+            await executor.execute(operation_id=task_id, request=request)
+        assert store.checkpoints[-1].stage is InPlaceCheckpointStage.CONTENT
+    else:
+        result = await executor.execute(operation_id=task_id, request=request)
+        assert result.output_revision_id == "revision-3"
+        completed = store.checkpoints[-1]
+        replay_generator = _Generator({TransformPhase.FORMAT: "must not run"})
+        replay = await DocumentTransformExecutor(
+            gateway=gateway,
+            generator=replay_generator,
+            checkpoint_store=store,
+            task_id=task_id,
+            lease_token=uuid.uuid7(),
+            checkpoint=completed,
+            checkpoint_generation=store.generation,
+        ).execute(operation_id=task_id, request=request)
+        assert replay.output_revision_id == "revision-3"
+        assert replay_generator.calls == []
+    assert len(gateway.calls) == 1
+    assert any("updateParagraphStyle" in request for request in gateway.calls[0])
 
 
 @pytest.mark.parametrize("crash_stage", ["headers", "content"])

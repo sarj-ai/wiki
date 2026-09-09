@@ -20,6 +20,7 @@ from app.document_transform.brand import (
     build_copy_mutations,
     build_copy_text_mutations,
     mutation_sha256,
+    preserve_in_place_native_list_text_styles,
 )
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
 from app.document_transform.copy_font_defense import (
@@ -2028,6 +2029,9 @@ class DocumentTransformExecutor:
         requests = defend_native_font_requests(
             requests, document=snapshot.google_document, original=original
         )
+        requests = preserve_in_place_native_list_text_styles(
+            requests, original=original, transformed=transformed
+        )
         return [
             item
             for item in requests
@@ -2927,6 +2931,9 @@ def _preflight_native_mutation_budget(
     ):
         requests = defend_native_font_requests(
             requests, document=snapshot.google_document, original=original
+        )
+        requests = preserve_in_place_native_list_text_styles(
+            requests, original=original, transformed=transformed
         )
     mutation_sha256(requests + list(extra_requests))
 
