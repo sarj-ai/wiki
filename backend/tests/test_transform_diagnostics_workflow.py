@@ -507,6 +507,27 @@ def test_unsafe_metadata_is_rejected(field: str, value: str) -> None:
         MODULE["sanitize"]([record], TASK)
 
 
+@pytest.mark.parametrize(
+    "error_code",
+    [
+        "destination_access_changed",
+        "in_place_verification_failed",
+        "brand_asset_unavailable",
+        "document_transform_internal_error",
+    ],
+)
+def test_emitted_transform_failure_codes_are_diagnostic_sources(error_code: str) -> None:
+    record = _record()
+    record["jsonPayload"]["record"]["message"] = (
+        f"document transform interrupted task_id={TASK} attempt=1"
+    )
+    record["jsonPayload"]["record"]["extra"]["error_code"] = error_code
+
+    row = MODULE["sanitize"]([record], TASK)[0]
+
+    assert row["error_code"] == error_code
+
+
 def test_unrecognized_messages_are_not_diagnostic_sources() -> None:
     record = deepcopy(_record())
     record["jsonPayload"]["record"]["message"] = "user submitted diagnostic payload"
