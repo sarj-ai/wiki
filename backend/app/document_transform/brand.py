@@ -11,6 +11,7 @@ from app.document_transform.brand_manifest import (
     DocumentHeaderBrandTokens,
     normalize_header_title,
 )
+from app.document_transform.custom_furniture import CustomHeaderTitleTarget
 from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
 from app.document_transform.gateway import TabHeader
 from app.document_transform.ir import BlockKind, DocumentIR, SourceRange, TextBlock, utf16_length
@@ -242,7 +243,7 @@ def build_custom_header_title_requests(
     title: str,
     *,
     profile: SarjBrandProfile,
-    headers: tuple[TabHeader, ...],
+    headers: tuple[CustomHeaderTitleTarget, ...],
 ) -> list[DocsRequest]:
     header_text = (
         normalize_header_title(title, max_chars=profile.header_max_title_chars)
@@ -280,6 +281,25 @@ def build_custom_header_title_requests(
                 },
             ]
         )
+        if (
+            header.terminal_newline_index is not None
+            and header.terminal_newline_text_style_json is not None
+        ):
+            newline_index = end_index + header.terminal_newline_index
+            requests.append(
+                {
+                    "updateTextStyle": {
+                        "range": {
+                            "startIndex": newline_index,
+                            "endIndex": newline_index + 1,
+                            "segmentId": header.header_id,
+                            "tabId": header.tab_id,
+                        },
+                        "textStyle": json.loads(header.terminal_newline_text_style_json),
+                        "fields": "*",
+                    }
+                }
+            )
     return requests
 
 

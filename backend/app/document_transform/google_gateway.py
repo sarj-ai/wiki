@@ -86,6 +86,7 @@ from app.document_transform.ir import (
     parse_google_document,
     parse_markdown,
     rewrite_markdown,
+    utf16_length,
 )
 from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.document_transform.markdown_import import (
@@ -216,7 +217,11 @@ class _InPlaceHeaderStateBuilder:
     ) -> None:
         self.custom_furniture.append(binding)
         for identifier in binding.header_ids:
-            target = CustomHeaderTitleTarget(tab_id=binding.tab_id, header_id=identifier)
+            target = _custom_header_title_target(tab, binding.tab_id, identifier)
+            if target is None:
+                if binding.tab_id not in self.unknown:
+                    self.unknown.append(binding.tab_id)
+                continue
             if (target.tab_id, target.header_id) in present_title_targets:
                 self.custom_header_titles_present.append(target)
             elif _header_can_accept_custom_title(tab, str(identifier)):
@@ -2233,7 +2238,6 @@ def _classify_in_place_tab(
             projected_tabs=projected_tabs,
             present_title_pairs=present_title_pairs,
             raw_tab_id=raw_tab_id,
-            document_tab=document_tab,
             header_ids=tuple(sorted(segments)),
         )
         return
@@ -2244,7 +2248,6 @@ def _classify_in_place_tab(
             projected_tabs=projected_tabs,
             present_title_pairs=present_title_pairs,
             raw_tab_id=raw_tab_id,
-            document_tab=document_tab,
             header_ids=tuple(sorted(segments)),
         )
         return
@@ -2266,7 +2269,6 @@ def _classify_in_place_tab(
         projected_tabs=projected_tabs,
         present_title_pairs=present_title_pairs,
         raw_tab_id=raw_tab_id,
-        document_tab=document_tab,
         header_ids=(header_id,),
     )
 
@@ -2278,7 +2280,6 @@ def _record_projected_custom_furniture(
     projected_tabs: dict[str, dict[str, Any]],
     present_title_pairs: frozenset[tuple[DocsTabId, DocsSegmentId]],
     raw_tab_id: str,
-    document_tab: dict[str, Any],
     header_ids: tuple[str, ...],
 ) -> None:
     tab_id = DocsTabId(raw_tab_id)
@@ -2291,7 +2292,11 @@ def _record_projected_custom_furniture(
     if binding is None:
         state.unknown.append(tab_id)
         return
-    state.record_custom(binding, document_tab, present_title_pairs)
+    projected_tab = projected_tabs.get(raw_tab_id)
+    if not isinstance(projected_tab, dict):
+        state.unknown.append(tab_id)
+        return
+    state.record_custom(binding, projected_tab, present_title_pairs)
 
 
 def _classify_in_place_footer(
@@ -2316,7 +2321,6 @@ def _classify_in_place_footer(
         projected_tabs=projected_tabs,
         present_title_pairs=present_title_pairs,
         raw_tab_id=raw_tab_id,
-        document_tab=document_tab,
         header_ids=(),
     )
 
@@ -2324,6 +2328,61 @@ def _classify_in_place_footer(
 def _header_has_custom_title_prefix(tab: dict[str, Any], header_id: str, title: str) -> bool:
     projected = _strip_custom_header_title(tab, header_id, title)
     return projected is not None
+
+
+def _custom_header_title_target(
+    tab: dict[str, Any], tab_id: DocsTabId, header_id: DocsSegmentId
+) -> CustomHeaderTitleTarget | None:
+    headers = tab.get("headers")
+    header = headers.get(str(header_id)) if isinstance(headers, dict) else None
+    content = header.get("content") if isinstance(header, dict) else None
+    if not isinstance(content, list) or not content or not isinstance(content[0], dict):
+        return None
+    paragraph = content[0].get("paragraph")
+    elements = paragraph.get("elements") if isinstance(paragraph, dict) else None
+    if not isinstance(elements, list) or not elements:
+        return None
+    offset = 0
+    for element in elements:
+        if not isinstance(element, dict):
+            return None
+        text_run = element.get("textRun")
+        if isinstance(text_run, dict):
+            content_text = text_run.get("content")
+            if not isinstance(content_text, str):
+                return None
+            end_index = offset + utf16_length(content_text)
+            if content_text.endswith("\n"):
+                text_style = text_run.get("textStyle", {})
+                if not isinstance(text_style, dict):
+                    return None
+                return CustomHeaderTitleTarget(
+                    tab_id=tab_id,
+                    header_id=header_id,
+                    terminal_newline_index=end_index - 1,
+                    terminal_newline_text_style_json=json.dumps(
+                        text_style,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                )
+        else:
+            start_index = element.get("startIndex")
+            raw_end_index = element.get("endIndex")
+            if (
+                not isinstance(start_index, int) or not isinstance(raw_end_index, int)
+            ) and "inlineObjectElement" in element:
+                return CustomHeaderTitleTarget(tab_id=tab_id, header_id=header_id)
+            if (
+                not isinstance(start_index, int)
+                or not isinstance(raw_end_index, int)
+                or raw_end_index <= start_index
+            ):
+                return None
+            end_index = offset + raw_end_index - start_index
+        offset = end_index
+    return CustomHeaderTitleTarget(tab_id=tab_id, header_id=header_id)
 
 
 def _strip_custom_header_title(
