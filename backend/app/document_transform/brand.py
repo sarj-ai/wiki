@@ -695,13 +695,24 @@ def _post_edit_locations(original: DocumentIR, transformed: DocumentIR) -> Docum
         delta = deltas.get(source_range.tab_id, 0)
         start = source_range.start_index + delta
         old_length = source_range.end_index - source_range.start_index
-        new_length = utf16_length(target.text)
-        if block.native_content:
-            if target.native_content != block.native_content or target.text != block.text:
-                raise UnsupportedSourceError
-            # A native chip occupies provider indexes independently of the
-            # length of its displayed name/date/resource title.
+        if block.native_content and (
+            target.native_content != block.native_content or target.text != block.text
+        ):
+            raise UnsupportedSourceError
+        semantic_length = utf16_length(block.text)
+        if target.text == block.text and not block.editable and old_length != semantic_length:
+            # Unchanged blocks are never deleted/reinserted, so their provider
+            # width remains authoritative. A protected paragraph can mix text
+            # with an inline object that is intentionally absent from semantic
+            # text; recomputing that width from ``target.text`` would shift all
+            # later style requests into the preceding character.
             new_length = old_length
+        elif not block.editable:
+            if target.text != block.text:
+                raise UnsupportedSourceError
+            new_length = semantic_length
+        else:
+            new_length = utf16_length(target.text)
         located.append(
             TextBlock(
                 id=target.id,
