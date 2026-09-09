@@ -11,7 +11,7 @@ from http import HTTPStatus
 from io import BytesIO
 import json
 import threading
-from typing import TYPE_CHECKING, Any, Protocol, override, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, TypeIs, override, runtime_checkable
 import uuid
 
 from googleapiclient import discovery
@@ -2499,13 +2499,18 @@ def _custom_furniture_binding(
     )
     if footer_refs != set(footers):
         return None
-    segments = {"headers": {key: headers.get(key) for key in header_ids}, "footers": footers}
+    selected_headers = {key: headers.get(key) for key in header_ids}
+    segments = {"headers": selected_headers, "footers": footers}
     if any(
         not isinstance(segment, dict) or not isinstance(segment.get("content"), list)
         for group in segments.values()
         for segment in group.values()
     ):
         return None
+    canonical_headers = _canonical_custom_header_suffixes(document, tab, selected_headers)
+    if canonical_headers is None:
+        return None
+    segments = {"headers": canonical_headers, "footers": footers}
     payload = {
         **segments,
         "documentStyle": {
@@ -2540,6 +2545,129 @@ def _custom_furniture_binding(
         footer_ids=tuple(DocsSegmentId(identifier) for identifier in sorted(footers)),
         sha256=_inventory_sha256(normalized),
     )
+
+
+def _canonical_custom_header_suffixes(
+    document: dict[str, Any],
+    tab: dict[str, Any],
+    headers: dict[str, Any],
+) -> dict[str, Any] | None:
+    canonical = _strip_location_fields(headers)
+    if not _is_string_dict(canonical):
+        return None
+    named_styles = tab.get("namedStyles", document.get("namedStyles"))
+    style_context = {**tab, "namedStyles": named_styles}
+    normalized_headers: dict[str, Any] = {}
+    for header_id, header in canonical.items():
+        normalized = _canonicalize_custom_header(header, style_context)
+        if normalized is None:
+            return None
+        normalized_headers[header_id] = normalized
+    return normalized_headers
+
+
+def _canonicalize_custom_header(
+    header: object, style_context: dict[str, Any]
+) -> dict[str, Any] | None:
+    if not _is_string_dict(header):
+        return None
+    content = header.get("content")
+    if not isinstance(content, list) or not content or not _is_string_dict(content[0]):
+        return None
+    paragraph = content[0].get("paragraph")
+    if not _is_string_dict(paragraph):
+        return None
+    elements = paragraph.get("elements")
+    effective_elements = _effective_paragraph(paragraph, style_context).get("elements")
+    if (
+        not isinstance(elements, list)
+        or not isinstance(effective_elements, list)
+        or len(elements) != len(effective_elements)
+        or not elements
+    ):
+        return None
+    normalized: list[Any] = []
+    effective_styles: list[dict[str, Any] | None] = []
+    for index, (element, effective_element) in enumerate(
+        zip(elements, effective_elements, strict=True)
+    ):
+        result = _canonical_header_run(element, effective_element, index, len(elements))
+        if result is None:
+            return None
+        merged = (
+            _merged_custom_header_text_run(normalized[-1], result.element)
+            if normalized and effective_styles[-1] == result.effective_style
+            else None
+        )
+        if merged is not None:
+            normalized[-1] = merged
+            continue
+        normalized.append(result.element)
+        effective_styles.append(result.effective_style)
+    normalized_content = list(content)
+    normalized_content[0] = {
+        **content[0],
+        "paragraph": {**paragraph, "elements": normalized},
+    }
+    return {**header, "content": normalized_content}
+
+
+@dataclass(frozen=True)
+class _CanonicalHeaderRun:
+    effective_style: dict[str, Any] | None
+    element: Any
+
+
+def _canonical_header_run(
+    element: object, effective_element: object, index: int, count: int
+) -> _CanonicalHeaderRun | None:
+    if not _is_string_dict(element) or not _is_string_dict(effective_element):
+        return _CanonicalHeaderRun(effective_style=None, element=element)
+    run = element.get("textRun")
+    effective_run = effective_element.get("textRun")
+    if not _is_string_dict(run) or not _is_string_dict(effective_run):
+        return _CanonicalHeaderRun(effective_style=None, element=element)
+    content = run.get("content")
+    effective_style = effective_run.get("textStyle")
+    if not isinstance(content, str) or not _is_string_dict(effective_style):
+        return None
+    canonical_element = element
+    if index == count - 1 and content == "\n":
+        canonical_element = {**element, "textRun": {**run, "textStyle": dict(effective_style)}}
+    return _CanonicalHeaderRun(
+        effective_style=dict(effective_style),
+        element=canonical_element,
+    )
+
+
+def _merged_custom_header_text_run(previous: object, current: object) -> dict[str, Any] | None:
+    if not _is_string_dict(previous) or not _is_string_dict(current):
+        return None
+    if set(previous) != {"textRun"} or set(current) != {"textRun"}:
+        return None
+    previous_run = previous["textRun"]
+    current_run = current["textRun"]
+    if (
+        not _is_string_dict(previous_run)
+        or not _is_string_dict(current_run)
+        or set(previous_run) - {"content", "textStyle"}
+        or set(current_run) - {"content", "textStyle"}
+    ):
+        return None
+    previous_content = previous_run.get("content")
+    current_content = current_run.get("content")
+    if not isinstance(previous_content, str) or not isinstance(current_content, str):
+        return None
+    return {
+        "textRun": {
+            **previous_run,
+            "content": previous_content + current_content,
+        }
+    }
+
+
+def _is_string_dict(value: object) -> TypeIs[dict[str, Any]]:
+    return isinstance(value, dict) and all(isinstance(key, str) for key in value)
 
 
 def _furniture_references_resolve(tab: dict[str, Any]) -> bool:

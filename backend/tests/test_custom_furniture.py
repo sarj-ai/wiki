@@ -24,7 +24,7 @@ from app.document_transform.gateway import (
     SourceSnapshot,
 )
 from app.document_transform.google_gateway import GoogleDocumentGateway
-from app.document_transform.ir import DocumentIR, parse_google_document
+from app.document_transform.ir import DocumentIR, parse_google_document, utf16_length
 from app.document_transform.native_visual_authority import (
     apply_visual_authority,
     visual_authority_block_ids,
@@ -51,6 +51,13 @@ from tests.test_native_preservation_findings import _native
 class _CustomHeaderPlan:
     inspection: InPlaceInspection
     requests: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _ProviderNormalizedHeaders:
+    before: dict[str, Any]
+    document: dict[str, Any]
+    inspection: InPlaceInspection
 
 
 def _terminal_newline_run(elements: list[dict[str, Any]]) -> dict[str, Any]:
@@ -149,6 +156,79 @@ def _custom_header_plan(
             )
         ),
     )
+
+
+def _provider_normalized_custom_headers() -> _ProviderNormalizedHeaders:
+    document = _custom_document(first_even=True, footer=True)
+    tab = document["tabs"][0]["documentTab"]
+    normal_style = {
+        "weightedFontFamily": {"fontFamily": "Helvetica"},
+        "fontSize": {"magnitude": 12, "unit": "PT"},
+        "bold": False,
+        "italic": False,
+        "underline": False,
+    }
+    tab["namedStyles"]["styles"][0]["textStyle"] = deepcopy(normal_style)
+    header_styles = {
+        "header-a": normal_style,
+        "header-first": {
+            "weightedFontFamily": {"fontFamily": "DIN Next LT Arabic"},
+            "fontSize": {"magnitude": 10.5, "unit": "PT"},
+        },
+        "header-even": normal_style,
+    }
+    for header_id, style in header_styles.items():
+        header = tab["headers"][header_id]
+        header["content"][0]["startIndex"] = 0
+        header["content"][0]["endIndex"] = 3
+        header["content"][0]["paragraph"]["elements"] = [
+            {
+                "startIndex": 1,
+                "endIndex": 3,
+                "textRun": {"content": "\ue000\n", "textStyle": deepcopy(style)},
+            }
+        ]
+    footer = tab["footers"]["footer-custom"]
+    footer["content"][0]["startIndex"] = 0
+    footer["content"][0]["endIndex"] = 17
+    footer["content"][0]["paragraph"]["elements"][0].update({"startIndex": 1, "endIndex": 17})
+    before = deepcopy(document)
+    gateway = _native_gateway()
+    inspection = gateway._inspect_in_place_sync(_inspection_snapshot(document), "Decision")
+    requests = tuple(
+        build_custom_header_title_requests(
+            "Decision",
+            profile=SarjBrandProfile(),
+            headers=inspection.custom_header_title_targets,
+        )
+    )
+    _apply_header_title_requests(document, requests)
+    title_length = utf16_length(
+        next(request["insertText"]["text"] for request in requests if "insertText" in request)
+    )
+    for header_id, original_style in header_styles.items():
+        header = tab["headers"][header_id]
+        header["content"][0]["endIndex"] += title_length
+        elements = header["content"][0]["paragraph"]["elements"]
+        elements[0].update({"startIndex": 0, "endIndex": title_length})
+        newline_style = (
+            deepcopy(original_style)
+            if header_id == "header-first"
+            else {"weightedFontFamily": {"fontFamily": "Helvetica"}}
+        )
+        elements[1:] = [
+            {
+                "startIndex": title_length + 1,
+                "endIndex": title_length + 2,
+                "textRun": {"content": "\ue000", "textStyle": deepcopy(original_style)},
+            },
+            {
+                "startIndex": title_length + 2,
+                "endIndex": title_length + 3,
+                "textRun": {"content": "\n", "textStyle": newline_style},
+            },
+        ]
+    return _ProviderNormalizedHeaders(before, document, inspection)
 
 
 def _native_gateway() -> GoogleDocumentGateway:
@@ -357,6 +437,62 @@ async def test_custom_header_title_restores_empty_header_terminal_newline_style(
     )
     assert verification.structure_preserved
     assert verification.supported_brand_applied
+
+
+@pytest.mark.asyncio
+async def test_custom_header_projection_accepts_only_effective_provider_normalization() -> None:
+    case = _provider_normalized_custom_headers()
+    before, document, inspection = case.before, case.document, case.inspection
+    after = _native_gateway()._inspect_in_place_sync(_inspection_snapshot(document), "Decision")
+
+    assert {(target.tab_id, target.header_id) for target in after.custom_header_titles_present} == {
+        (target.tab_id, target.header_id) for target in inspection.custom_header_title_targets
+    }
+    assert after.custom_furniture == inspection.custom_furniture
+    verification = await _verify_custom_brand(
+        document,
+        inspection,
+        parse_google_document(before, title="Decision"),
+        custom_header_titles=inspection.custom_header_title_targets,
+    )
+    assert verification.structure_preserved
+    assert verification.supported_brand_applied
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tamper",
+    ["terminal_style", "suffix_text", "nonterminal_style", "paragraph", "footer"],
+)
+async def test_custom_header_projection_rejects_authored_furniture_changes(tamper: str) -> None:
+    case = _provider_normalized_custom_headers()
+    before, document, inspection = case.before, case.document, case.inspection
+    tab = document["tabs"][0]["documentTab"]
+    header = tab["headers"]["header-even"]
+    paragraph = header["content"][0]["paragraph"]
+    suffix, newline = paragraph["elements"][-2:]
+    if tamper == "terminal_style":
+        newline["textRun"]["textStyle"]["fontSize"] = {"magnitude": 9, "unit": "PT"}
+    elif tamper == "suffix_text":
+        suffix["textRun"]["content"] = "X"
+    elif tamper == "nonterminal_style":
+        suffix["textRun"]["textStyle"]["bold"] = True
+    elif tamper == "paragraph":
+        paragraph["paragraphStyle"]["alignment"] = "START"
+    else:
+        tab["footers"]["footer-custom"]["content"][0]["paragraph"]["elements"][0]["textRun"][
+            "content"
+        ] = "Changed footer\n"
+
+    verification = await _verify_custom_brand(
+        document,
+        inspection,
+        parse_google_document(before, title="Decision"),
+        custom_header_titles=inspection.custom_header_title_targets,
+    )
+
+    assert not verification.structure_preserved
+    assert not verification.supported_brand_applied
 
 
 @pytest.mark.asyncio
