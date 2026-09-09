@@ -4,8 +4,15 @@ name: Deploy Backend
   push:
     branches: [main]
     paths:
-      - "backend/**"
-      - ".github/workflows/ci-backend.yml"
+      # Match the production Docker build context, not tests and developer-only tooling.
+      - "backend/.dockerignore"
+      - "backend/Dockerfile"
+      - "backend/alembic.ini"
+      - "backend/alembic/**"
+      - "backend/app/**"
+      - "backend/pyproject.toml"
+      - "backend/uv.lock"
+      - "backend/uv.toml"
       - ".github/workflows/deploy-backend.yml"
       - "scripts/github/release_gate.py"
       - "scripts/github/verify-release-gate.sh"
