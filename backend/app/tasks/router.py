@@ -9,6 +9,7 @@ from app.auth.dependencies import get_current_user
 from app.document_transform.schemas import (
     CopyCheckpoint,
     DriveFileSource,
+    InPlaceCheckpoint,
     OutputStrategy,
     WordCopyCheckpoint,
 )
@@ -80,20 +81,33 @@ async def _with_unverified_output(
     record = await service.load_document_transform(task.id)
     checkpoint = record.checkpoint
     payload = record.payload
-    if (
-        record.owner_user_id != user.id
-        or (payload is not None and payload.output_strategy is not OutputStrategy.COPY)
-        or not isinstance(checkpoint, CopyCheckpoint | WordCopyCheckpoint)
-        or checkpoint.output is None
-    ):
+    if record.owner_user_id != user.id:
         return task
-    output_id = checkpoint.output.file_id
-    if (
-        payload is not None
-        and isinstance(payload.source, DriveFileSource)
-        and output_id == payload.source.file_id
-    ):
-        return task
+    if task.error_code == "in_place_verification_failed":
+        if not isinstance(checkpoint, InPlaceCheckpoint):
+            return task
+        payload_matches_original = payload is None or (
+            payload.output_strategy is OutputStrategy.IN_PLACE
+            and isinstance(payload.source, DriveFileSource)
+            and payload.source.file_id == checkpoint.document_id
+        )
+        if task.resource_id != checkpoint.document_id or not payload_matches_original:
+            return task
+        output_id = checkpoint.document_id
+    else:
+        if (
+            (payload is not None and payload.output_strategy is not OutputStrategy.COPY)
+            or not isinstance(checkpoint, CopyCheckpoint | WordCopyCheckpoint)
+            or checkpoint.output is None
+        ):
+            return task
+        output_id = checkpoint.output.file_id
+        if (
+            payload is not None
+            and isinstance(payload.source, DriveFileSource)
+            and output_id == payload.source.file_id
+        ):
+            return task
     try:
         accessible = await files.get(output_id)
     except FilesError:

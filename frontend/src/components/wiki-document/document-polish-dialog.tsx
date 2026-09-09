@@ -151,6 +151,7 @@ export function DocumentPolishDialog({
   const [terminalTaskId, setTerminalTaskId] = useState<null | string>(null);
   const [retryMessage, setRetryMessage] = useState<null | string>(null);
   const [unverifiedOutputId, setUnverifiedOutputId] = useState<null | string>(null);
+  const [unverifiedOutputIsOriginal, setUnverifiedOutputIsOriginal] = useState(false);
   const [reviewMessage, setReviewMessage] = useState<null | string>(null);
   const [reviewResult, setReviewResult] = useState<DocumentTransformResult | null>(null);
   const isPresentation =
@@ -286,6 +287,7 @@ export function DocumentPolishDialog({
     setTerminalMessage(null);
     setTerminalTaskId(null);
     setUnverifiedOutputId(null);
+    setUnverifiedOutputIsOriginal(false);
   };
 
   const close = () => {
@@ -318,6 +320,7 @@ export function DocumentPolishDialog({
     setTerminalMessage(null);
     setTerminalTaskId(null);
     setUnverifiedOutputId(null);
+    setUnverifiedOutputIsOriginal(false);
     onOpenChange(false);
   };
 
@@ -567,6 +570,7 @@ export function DocumentPolishDialog({
           setTerminalMessage(error.message);
           setTerminalTaskId(knownTaskId);
           setUnverifiedOutputId(error.unverifiedOutputId ?? null);
+          setUnverifiedOutputIsOriginal(error.code === "in_place_verification_failed");
         } else {
           setRetryMessage(errorMessage(error, `Couldn’t polish ${artifactNoun}`));
         }
@@ -638,15 +642,18 @@ export function DocumentPolishDialog({
                 ) : null}
                 {unverifiedOutputId ? (
                   <p className="mt-2 text-xs">
-                    This copy is incomplete and has not passed safety verification. Review it before
-                    using its content.{" "}
+                    {unverifiedOutputIsOriginal
+                      ? "The original document may have changed and has not passed safety verification. Inspect it and its Drive version history before trying again. "
+                      : "This copy is incomplete and has not passed safety verification. Review it before using its content. "}
                     <a
                       className="underline"
                       href={`/d/${encodeURIComponent(unverifiedOutputId)}`}
                       rel="noopener noreferrer"
                       target="_blank"
                     >
-                      Open incomplete copy for review
+                      {unverifiedOutputIsOriginal
+                        ? "Open original document for review"
+                        : "Open incomplete copy for review"}
                     </a>
                   </p>
                 ) : null}

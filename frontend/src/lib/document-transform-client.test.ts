@@ -346,6 +346,23 @@ describe("documentTransformApi", () => {
     });
   });
 
+  it("truthfully identifies an original that may have changed after verification", async () => {
+    await expect(
+      documentTransformApi.waitForCompletion({
+        errorCode: "in_place_verification_failed",
+        errorDetail: "Task could not be completed",
+        id: taskId,
+        status: "failed",
+        unverifiedOutputId: "original-document",
+      }),
+    ).rejects.toMatchObject({
+      code: "in_place_verification_failed",
+      message: expect.stringContaining("original document may have changed"),
+      name: "DocumentTransformTerminalError",
+      unverifiedOutputId: "original-document",
+    });
+  });
+
   it("stops polling instead of waiting forever", async () => {
     actionMocks.getTask.mockResolvedValue({
       data: JSON.stringify(task("pending")),

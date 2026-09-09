@@ -36,6 +36,7 @@ from app.document_transform.errors import (
     DocumentGatewayError,
     InPlaceNeedsReviewError,
     InPlaceNotAllowedError,
+    InPlacePostMutationVerificationError,
     OutputConflictError,
     OutputVerificationError,
     SourceChangedError,
@@ -1378,34 +1379,40 @@ class DocumentTransformExecutor:
                 shared_drive_id=snapshot.shared_drive_id,
                 web_url=snapshot.web_url,
             )
-            inspection = await self._gateway.inspect_in_place(
-                snapshot=stage_snapshot,
-                title=snapshot.title,
-                **(
-                    {"table_font_plan": checkpoint.table_font_plan}
-                    if checkpoint.table_font_plan is not None
-                    else {}
-                ),
-            )
+            try:
+                inspection = await self._gateway.inspect_in_place(
+                    snapshot=stage_snapshot,
+                    title=snapshot.title,
+                    **(
+                        {"table_font_plan": checkpoint.table_font_plan}
+                        if checkpoint.table_font_plan is not None
+                        else {}
+                    ),
+                )
+            except InPlaceNeedsReviewError as exc:
+                raise InPlacePostMutationVerificationError from exc
             header_expected = _to_ir(stage_snapshot).replace_blocks({})
-            header_verification = await self._gateway.verify_in_place(
-                document=stage_result.document,
-                title=snapshot.title,
-                expected=header_expected,
-                structural_sha256=checkpoint.structural_sha256,
-                protected_structure_sha256=checkpoint.protected_structure_sha256,
-                verify_brand=False,
-                custom_furniture=checkpoint.custom_furniture,
-                **(
-                    {"table_font_plan": checkpoint.table_font_plan}
-                    if checkpoint.table_font_plan is not None
-                    else {}
-                ),
-            )
+            try:
+                header_verification = await self._gateway.verify_in_place(
+                    document=stage_result.document,
+                    title=snapshot.title,
+                    expected=header_expected,
+                    structural_sha256=checkpoint.structural_sha256,
+                    protected_structure_sha256=checkpoint.protected_structure_sha256,
+                    verify_brand=False,
+                    custom_furniture=checkpoint.custom_furniture,
+                    **(
+                        {"table_font_plan": checkpoint.table_font_plan}
+                        if checkpoint.table_font_plan is not None
+                        else {}
+                    ),
+                )
+            except InPlaceNeedsReviewError as exc:
+                raise InPlacePostMutationVerificationError from exc
             if not (
                 header_verification.content_preserved and header_verification.structure_preserved
             ):
-                raise InPlaceNeedsReviewError
+                raise InPlacePostMutationVerificationError
             if checkpoint.native_font_proof is not None and not verify_native_font_proof(
                 stage_result.document,
                 checkpoint.native_font_proof,
@@ -1415,21 +1422,21 @@ class DocumentTransformExecutor:
                     preserved_family_block_ids=checkpoint.preserved_font_block_ids,
                 ),
             ):
-                raise InPlaceNeedsReviewError
+                raise InPlacePostMutationVerificationError
             if not verify_paragraph_layout(
                 stage_result.document, checkpoint.paragraph_layout, applied=False
             ):
-                raise InPlaceNeedsReviewError
+                raise InPlacePostMutationVerificationError
             if (
                 header_expected.semantic_sha256 != checkpoint.original_semantic_sha256
                 or inspection.body_sha256 != checkpoint.body_sha256
                 or inspection.header_safe_sha256 != checkpoint.header_safe_sha256
             ):
-                raise InPlaceNeedsReviewError
+                raise InPlacePostMutationVerificationError
             if inspection.missing_header_tab_ids or inspection.unknown_header_tab_ids:
-                raise InPlaceNeedsReviewError
+                raise InPlacePostMutationVerificationError
             if inspection.custom_furniture != checkpoint.custom_furniture:
-                raise InPlaceNeedsReviewError
+                raise InPlacePostMutationVerificationError
             snapshot = stage_snapshot
             original = apply_paragraph_layout(
                 apply_native_pagination(_to_ir(stage_snapshot), checkpoint.pagination),
@@ -1497,34 +1504,37 @@ class DocumentTransformExecutor:
             stage_result = InPlaceStageResult(snapshot.revision_id, snapshot.google_document)
         else:
             stage_result = await self._apply_checkpoint_stage(checkpoint)
-        verification = await self._gateway.verify_in_place(
-            document=stage_result.document,
-            title=snapshot.title,
-            expected=expected_content,
-            structural_sha256=checkpoint.structural_sha256,
-            protected_structure_sha256=checkpoint.protected_structure_sha256,
-            verify_brand=request.mode is not TransformMode.UNSLOP,
-            custom_furniture=checkpoint.custom_furniture,
-            **(
-                {"table_font_plan": checkpoint.table_font_plan}
-                if checkpoint.table_font_plan is not None
-                else {}
-            ),
-        )
+        try:
+            verification = await self._gateway.verify_in_place(
+                document=stage_result.document,
+                title=snapshot.title,
+                expected=expected_content,
+                structural_sha256=checkpoint.structural_sha256,
+                protected_structure_sha256=checkpoint.protected_structure_sha256,
+                verify_brand=request.mode is not TransformMode.UNSLOP,
+                custom_furniture=checkpoint.custom_furniture,
+                **(
+                    {"table_font_plan": checkpoint.table_font_plan}
+                    if checkpoint.table_font_plan is not None
+                    else {}
+                ),
+            )
+        except InPlaceNeedsReviewError as exc:
+            raise InPlacePostMutationVerificationError from exc
         if checkpoint.table_font_plan is not None and not table_font_proof_matches(
             stage_result.document, checkpoint.table_font_plan, applied=True
         ):
-            raise InPlaceNeedsReviewError
+            raise InPlacePostMutationVerificationError
         if not (
             verification.content_preserved
             and verification.structure_preserved
             and (verification.brand_applied or verification.supported_brand_applied)
         ):
-            raise InPlaceNeedsReviewError
+            raise InPlacePostMutationVerificationError
         if not verify_paragraph_layout(
             stage_result.document, checkpoint.paragraph_layout, applied=True
         ):
-            raise InPlaceNeedsReviewError
+            raise InPlacePostMutationVerificationError
         if checkpoint.native_font_proof is not None and not verify_native_font_proof(
             stage_result.document,
             checkpoint.native_font_proof,
@@ -1535,7 +1545,7 @@ class DocumentTransformExecutor:
                 preserved_family_block_ids=checkpoint.preserved_font_block_ids,
             ),
         ):
-            raise InPlaceNeedsReviewError
+            raise InPlacePostMutationVerificationError
         checkpoint = checkpoint.model_copy(update={"current_revision_id": stage_result.revision_id})
         checkpoint = await self._name_in_place_tabs(
             operation_id=operation_id,
