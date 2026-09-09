@@ -134,14 +134,15 @@ it("rescues an older tab using exact original values and the existing reservatio
   vi.spyOn(DOCUMENT_TRANSFORM_API, "admission").mockResolvedValue(null);
   const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
   renderPanel(null);
-  const fields = [...host.querySelectorAll("input, textarea")];
-  for (const [index, value] of [
-    [1, Source.name],
-    [2, Source.destinationFolderId],
-    [3, Source.content],
+  for (const [label, value] of [
+    ["Original source name", Source.name],
+    ["Original destination folder ID", Source.destinationFolderId],
+    ["Exact original Markdown", Source.content],
   ] as const) {
-    const field = fields[index];
-    if (!field) throw new Error("Missing original-value control");
+    const field = [...host.querySelectorAll("label")].find(
+      (candidate) => candidate.textContent.trim() === label,
+    )?.control;
+    if (!field) throw new Error("Missing labeled original-value control");
     // eslint-disable-next-line @typescript-eslint/unbound-method -- The native setter is immediately rebound to this exact test control.
     const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value")?.set;
     if (!setter) throw new Error("Missing native setter");

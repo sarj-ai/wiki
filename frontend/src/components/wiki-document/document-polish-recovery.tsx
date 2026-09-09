@@ -3,6 +3,8 @@
 import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-api";
 import type { TransformRecovery } from "@/lib/document-transform-recovery";
@@ -156,7 +158,7 @@ export function DocumentPolishRecovery({ owner, operation, source, onRestore }: 
           Restore saved recovery draft
         </Button>
       </div>
-      <label className="block space-y-1" htmlFor="polish-recovery-bundle">
+      <Label className="block space-y-1" htmlFor="polish-recovery-bundle">
         <span>Exact recovery bundle (private; never share publicly)</span>
         <Textarea
           disabled={busy}
@@ -164,7 +166,7 @@ export function DocumentPolishRecovery({ owner, operation, source, onRestore }: 
           onChange={(event) => setTransfer(event.target.value)}
           value={transfer}
         />
-      </label>
+      </Label>
       <Button
         disabled={busy || !transfer.trim()}
         onClick={() => {
@@ -186,25 +188,27 @@ export function DocumentPolishRecovery({ owner, operation, source, onRestore }: 
           Use only the exact values from this reserved submission. Changed values may conflict with
           the original request. This never changes the recovery reference or submits automatically.
         </p>
-        <label className="block">
+        <Label className="block" htmlFor="polish-recovery-original-name">
           Original source name
-          <input
+          <Input
             className="block w-full border"
             disabled={busy}
+            id="polish-recovery-original-name"
             onChange={(event) => setLegacyName(event.target.value)}
             value={legacyName}
           />
-        </label>
-        <label className="block">
+        </Label>
+        <Label className="block" htmlFor="polish-recovery-original-destination">
           Original destination folder ID
-          <input
+          <Input
             className="block w-full border"
             disabled={busy}
+            id="polish-recovery-original-destination"
             onChange={(event) => setLegacyDestination(event.target.value)}
             value={legacyDestination}
           />
-        </label>
-        <label className="block" htmlFor="polish-recovery-original-markdown">
+        </Label>
+        <Label className="block" htmlFor="polish-recovery-original-markdown">
           Exact original Markdown
           <Textarea
             disabled={busy}
@@ -212,7 +216,7 @@ export function DocumentPolishRecovery({ owner, operation, source, onRestore }: 
             onChange={(event) => setLegacyContent(event.target.value)}
             value={legacyContent}
           />
-        </label>
+        </Label>
         <Button
           disabled={busy || !legacyContent || !legacyName || !legacyDestination}
           onClick={() => {
