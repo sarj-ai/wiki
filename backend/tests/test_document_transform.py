@@ -1795,6 +1795,27 @@ async def test_in_place_native_list_preservation_keeps_protected_hash_strict() -
     paragraph["elements"][0]["textRun"]["textStyle"]["weightedFontFamily"] = {"fontFamily": "Arial"}
     paragraph["paragraphStyle"]["spaceAbove"] = {"magnitude": 0, "unit": "PT"}
     paragraph["paragraphStyle"]["spaceBelow"] = {"magnitude": 2, "unit": "PT"}
+    paragraph["elements"] = [
+        {
+            "startIndex": 1,
+            "endIndex": 10,
+            "textRun": {
+                "content": "Approved.",
+                "textStyle": deepcopy(paragraph["elements"][0]["textRun"]["textStyle"]),
+            },
+        },
+        {
+            "startIndex": 10,
+            "endIndex": 11,
+            "textRun": {
+                "content": "\n",
+                "textStyle": {
+                    "bold": True,
+                    "weightedFontFamily": {"fontFamily": "Arial", "weight": 400},
+                },
+            },
+        },
+    ]
     gateway = object.__new__(GoogleDocumentGateway)
     gateway._logo_uri = "https://assets.example.test/sarj-logo.png"
     snapshot = SourceSnapshot(
@@ -1831,6 +1852,34 @@ async def test_in_place_native_list_preservation_keeps_protected_hash_strict() -
     assert result.structure_preserved
     assert result.supported_brand_applied
     assert not any("in-place verification failed" in message for message in messages)
+    terminal_normalized = deepcopy(document)
+    terminal_normalized["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["elements"][
+        -1
+    ]["textRun"]["textStyle"] = {"weightedFontFamily": {"fontFamily": "Nunito", "weight": 400}}
+    assert (
+        await gateway.verify_in_place(
+            document=terminal_normalized,
+            title="Decision",
+            expected=expected,
+            structural_sha256=inspection.structural_sha256,
+            protected_structure_sha256=inspection.protected_structure_sha256,
+            verify_brand=True,
+        )
+    ).supported_brand_applied
+    terminal_linked = deepcopy(terminal_normalized)
+    terminal_linked["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["elements"][-1][
+        "textRun"
+    ]["textStyle"]["link"] = {"url": "https://example.test/changed"}
+    assert not (
+        await gateway.verify_in_place(
+            document=terminal_linked,
+            title="Decision",
+            expected=expected,
+            structural_sha256=inspection.structural_sha256,
+            protected_structure_sha256=inspection.protected_structure_sha256,
+            verify_brand=True,
+        )
+    ).structure_preserved
     typography_tampered = deepcopy(document)
     typography_tampered["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["elements"][0][
         "textRun"

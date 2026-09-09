@@ -164,6 +164,7 @@ from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId
 from app.models.user import User
 
 
+_PAGE_BREAK_PARAGRAPH_PART_COUNT = 2
 _RGB_TOLERANCE = 1e-6
 
 
@@ -2619,7 +2620,7 @@ def _protected_structure_inventory(
         if not isinstance(content, list):
             raise DocumentGatewayError
         protected = [
-            _strip_location_fields(element)
+            _protected_element_payload(element)
             for element in content
             if isinstance(element, dict) and not _is_plain_text_paragraph(element)
         ]
@@ -2872,7 +2873,7 @@ def _native_list_text_style_inventory(value: object) -> list[object]:
         if not isinstance(elements, list):
             return [{"malformed": True}]
         visible: list[dict[str, Any]] = []
-        terminal: list[dict[str, Any]] = []
+        terminal_count = 0
         for element in elements:
             run = element.get("textRun") if isinstance(element, dict) else None
             if not isinstance(run, dict):
@@ -2894,7 +2895,7 @@ def _native_list_text_style_inventory(value: object) -> list[object]:
                 else:
                     visible.append({"style": style, "text": visible_text})
             if content.endswith("\n"):
-                terminal.append(style)
+                terminal_count += 1
         styles = [item["style"] for item in visible]
         inventory.append(
             {
@@ -2909,13 +2910,52 @@ def _native_list_text_style_inventory(value: object) -> list[object]:
                         for item in visible
                     ]
                 ),
-                "terminal": terminal,
+                # Docs may canonicalize this invisible provider-owned newline
+                # when the following paragraph is styled. Preserve its exact
+                # topology, while keeping every visible list style strict.
+                "terminalCount": terminal_count,
             }
         )
         return inventory
     for child in mapping.values():
         inventory.extend(_native_list_text_style_inventory(child))
     return inventory
+
+
+def _protected_element_payload(element: dict[str, Any]) -> object:
+    payload = _strip_location_fields(element)
+    if not isinstance(payload, dict):  # pragma: no cover - recursive shape invariant
+        return payload
+    paragraph = payload.get("paragraph")
+    source_paragraph = element.get("paragraph")
+    if not isinstance(paragraph, dict) or not isinstance(source_paragraph, dict):
+        return payload
+    parts = paragraph.get("elements")
+    source_parts = source_paragraph.get("elements")
+    if (
+        not isinstance(parts, list)
+        or len(parts) != _PAGE_BREAK_PARAGRAPH_PART_COUNT
+        or not isinstance(source_parts, list)
+        or len(source_parts) != _PAGE_BREAK_PARAGRAPH_PART_COUNT
+    ):
+        return payload
+    page_break, source_terminal = source_parts
+    if (
+        not isinstance(page_break, dict)
+        or set(page_break) - {"startIndex", "endIndex", "pageBreak"}
+        or not isinstance(page_break.get("pageBreak"), dict)
+        or not isinstance(source_terminal, dict)
+        or set(source_terminal) - {"startIndex", "endIndex", "textRun"}
+    ):
+        return payload
+    terminal = parts[-1]
+    run = terminal.get("textRun") if isinstance(terminal, dict) else None
+    if isinstance(run, dict) and run.get("content") == "\n":
+        # Style values on a page-break paragraph's terminal newline are not
+        # visible and cannot be restored exactly: Docs drops explicit default
+        # fields. The newline and native page-break payload remain fully hashed.
+        run.pop("textStyle", None)
+    return payload
 
 
 def _paragraph_link_inventory(value: object) -> list[object]:

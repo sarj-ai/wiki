@@ -101,6 +101,68 @@ async def test_bullet_list_identity_and_definition_are_protected() -> None:
     assert await _protected_digest(document) != await _protected_digest(changed)
 
 
+async def test_native_page_break_terminal_style_normalization_is_not_protected() -> None:
+    document = _document()
+    paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
+    paragraph["elements"] = [
+        {
+            "startIndex": 1,
+            "endIndex": 2,
+            "pageBreak": {"textStyle": {"weightedFontFamily": {"fontFamily": "Arial"}}},
+        },
+        {
+            "startIndex": 2,
+            "endIndex": 3,
+            "textRun": {
+                "content": "\n",
+                "textStyle": {
+                    "bold": False,
+                    "weightedFontFamily": {"fontFamily": "DIN NEXT ARABIC"},
+                },
+            },
+        },
+    ]
+    changed = deepcopy(document)
+    changed_parts = changed["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["elements"]
+    changed_parts[-1]["textRun"]["textStyle"] = {"weightedFontFamily": {"fontFamily": "Nunito"}}
+
+    assert await _protected_digest(document) == await _protected_digest(changed)
+
+    changed_parts[0]["pageBreak"]["textStyle"]["weightedFontFamily"]["fontFamily"] = "Comic Sans"
+    assert await _protected_digest(document) != await _protected_digest(changed)
+
+
+async def test_inline_object_terminal_style_remains_protected() -> None:
+    document = _document()
+    paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
+    paragraph["elements"] = [
+        {"inlineObjectElement": {"inlineObjectId": "image-a"}},
+        {"textRun": {"content": "\n", "textStyle": {"bold": False}}},
+    ]
+    changed = deepcopy(document)
+    changed["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["elements"][-1]["textRun"][
+        "textStyle"
+    ] = {"bold": True}
+
+    assert await _protected_digest(document) != await _protected_digest(changed)
+
+
+async def test_mixed_page_break_terminal_style_remains_protected() -> None:
+    document = _document()
+    paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
+    paragraph["elements"] = [
+        {"pageBreak": {}},
+        {"inlineObjectElement": {"inlineObjectId": "image-a"}},
+        {"textRun": {"content": "\n", "textStyle": {"bold": False}}},
+    ]
+    changed = deepcopy(document)
+    changed["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["elements"][-1]["textRun"][
+        "textStyle"
+    ] = {"bold": True}
+
+    assert await _protected_digest(document) != await _protected_digest(changed)
+
+
 @pytest.mark.parametrize("segment", ["footnotes", "footers"], ids=["footnotes", "footers"])
 async def test_protected_segment_content_cannot_change(segment: str) -> None:
     document = _document()
