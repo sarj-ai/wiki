@@ -8,17 +8,30 @@ _GITLEAKS_SHA256 = "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f24
 
 def test_pre_commit_runtime_and_cache_are_version_bound() -> None:
     workflow = _QUALITY_WORKFLOW.read_text()
-    pre_commit_job = workflow[workflow.index("  pre-commit:") : workflow.index("  api-contract:")]
+    repository_job = workflow[
+        workflow.index("  repository-quality:") : workflow.index("  python-baseline:")
+    ]
 
-    assert pre_commit_job.count("uvx --python 3.14.7 'pre-commit==4.6.2'") == 2
-    assert "enable-cache: true" in pre_commit_job
-    assert "cache-dependency-glob: backend/uv.lock" in pre_commit_job
-    assert "pre-commit-v4.6.2-" in pre_commit_job
-    assert "${{ runner.arch }}" in pre_commit_job
-    assert "backend/.python-version" in pre_commit_job
-    assert "backend/uv.toml" in pre_commit_job
-    assert "backend/uv.lock" in pre_commit_job
-    assert ".pre-commit-config.yaml" in pre_commit_job
+    assert repository_job.count("uvx --python 3.14.7 'pre-commit==4.6.2'") == 2
+    assert "enable-cache: true" in repository_job
+    assert "cache-dependency-glob: backend/uv.lock" in repository_job
+    assert "pre-commit-v4.6.2-" in repository_job
+    assert "${{ runner.arch }}" in repository_job
+    assert "backend/.python-version" in repository_job
+    assert "backend/uv.toml" in repository_job
+    assert "backend/uv.lock" in repository_job
+    assert ".pre-commit-config.yaml" in repository_job
+
+
+def test_protected_pre_commit_check_requires_both_parallel_quality_jobs() -> None:
+    workflow = _QUALITY_WORKFLOW.read_text()
+    protected_job = workflow[workflow.index("  pre-commit:") : workflow.index("  api-contract:")]
+
+    assert "name: pre-commit (actionlint, hygiene, sarj rules)" in protected_job
+    assert "if: ${{ always() }}" in protected_job
+    assert "needs: [python-baseline, repository-quality]" in protected_job
+    assert 'test "$PYTHON_BASELINE_RESULT" = success' in protected_job
+    assert 'test "$REPOSITORY_QUALITY_RESULT" = success' in protected_job
 
 
 def test_gitleaks_archive_is_verified_before_extraction_and_execution() -> None:
