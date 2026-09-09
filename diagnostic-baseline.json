@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "7.9.12",
-    "consumerBaseSha": "c97f9b23418ed08a2b6e129c36cfa2c8bea40576",
-    "catalogDigest": "af306046e47643062dc541a8cd8e4e3bd7940a84756855065b7e2a621f1ca31d"
+    "bundleVersion": "7.14.24",
+    "consumerBaseSha": "2ffc14a8b6361de3ba2de9dc676fcf810f9b96ef",
+    "catalogDigest": "75deefbce069940de51ee60b33dde463ca5502a5e0864e6b0653f236fe3ff9b3"
   },
   "diagnostics": [
     {
@@ -397,48 +397,6 @@
       "ruleId": "prefer-nominal-id-types",
       "path": "backend/app/tasks/service.py",
       "count": 6
-    },
-    {
-      "fingerprint": "21ba482dc4af1719a0f4bb6233e21995369d9a974e12c8816ac56608a92d4211",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-timedelta-for-durations",
-      "path": "backend/app/auth/jwt.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "45c221b1e1ba3d60479e6f7eef4e6934d21c963bb9116532ab073676c5abd586",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-timedelta-for-durations",
-      "path": "backend/app/auth/jwt.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "bacff7d5a5b5c3c0b86f2f4a74d068c33c777da2a557869dab107e0027748e6f",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-timedelta-for-durations",
-      "path": "backend/app/drive/retry.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "ec4abe193f55a8550a9c6b3fb94f71edf8c3ba611c63589c350a22697a6c6b11",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-timedelta-for-durations",
-      "path": "backend/app/drive/service.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "b3c6acc507cd3c07fc369645aa9aacc3115076ff547753857a2737dd8ea46177",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-timedelta-for-durations",
-      "path": "backend/app/smart_create/service.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "e4764861656b2d2bb9006948adf6b3cb3b6fc85072d73103e67d4092ce4e601a",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-timedelta-for-durations",
-      "path": "backend/app/smart_create/service.py",
-      "count": 1
     }
   ]
 }

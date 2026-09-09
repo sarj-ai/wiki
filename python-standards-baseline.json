@@ -1,24 +1,14 @@
 {
-  "backend/app/auth/jwt.py": {
-    "SARJ014": 2
-  },
   "backend/app/cache/__init__.py": {
     "SARJ420": 1
   },
-  "backend/app/drive/retry.py": {
-    "SARJ014": 1
+  "backend/app/document_transform/__init__.py": {
+    "SARJ438": 1
   },
-  "backend/app/models/task.py": {
-    "SARJ093": 1
+  "backend/app/document_transform/safety.py": {
+    "SARJ076": 1
   },
-  "backend/app/models/wiki.py": {
-    "SARJ093": 3
-  },
-  "backend/app/smart_create/service.py": {
-    "SARJ014": 2,
-    "SARJ096": 1
-  },
-  "backend/tests/test_sidebar_cache.py": {
-    "SARJ428": 2
+  "backend/app/logging_config.py": {
+    "SARJ438": 1
   }
 }

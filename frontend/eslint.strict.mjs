@@ -13,7 +13,12 @@ import perfectionist from "eslint-plugin-perfectionist";
 import promise from "eslint-plugin-promise";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
+import jest from "eslint-plugin-jest";
+import nodeTest from "eslint-node-test";
+import playwright from "eslint-plugin-playwright";
 import sarj from "@sarj/eslint-plugin";
+import testingLibrary from "eslint-plugin-testing-library";
+import vitest from "@vitest/eslint-plugin";
 import zod from "eslint-plugin-zod";
 
 const CONFIG_DIRECTORY = dirname(fileURLToPath(import.meta.url));
@@ -81,6 +86,73 @@ const DEFAULT_SYNTAX_ONLY_CONFIG_FILES = [
   "**/.dependency-cruiser.{js,cjs,mjs,ts,cts,mts}",
   "**/eslint.config*.{js,cjs,mjs,ts,cts,mts}",
 ];
+const SYNTAX_ONLY_NAMING_CONVENTION = [
+  "error",
+  {
+    selector: "variable",
+    modifiers: ["const", "global"],
+    filter: {
+      regex:
+        "^(Route|action|clientAction|clientLoader|config|csr|dynamic|dynamicParams|entries|fetchCache|handle|headers|instant|links|loader|maxDuration|meta|metadata|partial|prefetch|preferredRegion|prerender|revalidate|runtime|shouldRevalidate|ssr|trailingSlash|viewport)$",
+      match: true,
+    },
+    format: null,
+  },
+  {
+    // Type-free analysis cannot distinguish function-valued constants.
+    selector: "variable",
+    modifiers: ["const", "global"],
+    format: ["camelCase", "PascalCase", "UPPER_CASE"],
+    leadingUnderscore: "allow",
+  },
+  {
+    selector: [
+      "classProperty",
+      "objectLiteralProperty",
+      "typeProperty",
+      "classMethod",
+      "objectLiteralMethod",
+      "typeMethod",
+      "classicAccessor",
+      "autoAccessor",
+      "enumMember",
+    ],
+    modifiers: ["requiresQuotes"],
+    format: null,
+  },
+  {
+    selector: "default",
+    format: ["camelCase"],
+    leadingUnderscore: "allow",
+    trailingUnderscore: "allow",
+    filter: { regex: "^(UNSAFE_|__)", match: false },
+  },
+  {
+    selector: "variable",
+    format: ["camelCase", "UPPER_CASE", "PascalCase"],
+    leadingUnderscore: "allow",
+  },
+  { selector: "typeLike", format: ["PascalCase"] },
+  { selector: "import", format: ["camelCase", "PascalCase", "UPPER_CASE"] },
+  { selector: "objectLiteralProperty", format: null },
+  { selector: "typeProperty", format: null },
+  { selector: "parameter", format: ["camelCase"], leadingUnderscore: "allow" },
+];
+const TEST_FILES = [
+  "**/*.{test,spec,e2e}.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+  "**/test/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+  "**/tests/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+  "**/__tests__/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+];
+const DEFAULT_PLAYWRIGHT_TEST_FILES = [
+  "**/*.{playwright,pw}.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+  "**/playwright/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+];
+const DEFAULT_BUN_TEST_FILES = [
+  "**/*.bun.{test,spec}.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+  "**/bun/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+];
+const SUPPORTED_TEST_FRAMEWORKS = new Set(["vitest", "bun", "node", "testing-library", "playwright"]);
 
 // Unicorn ships a broad rule set. The enabled subset below was selected by
 // evaluating each non-deprecated rule for correctness, runtime compatibility,
@@ -395,16 +467,11 @@ const compatibleReact = fixupPluginRules(react);
 // (`SKIP_DIR_NAMES` in `sarj_python_lint/__main__.py`), so the two halves of the
 // same standard disagreed; this closes that gap rather than inventing a policy.
 //
-// `lib/` is included deliberately and is the only entry that can shadow authored
-// code. It is the conventional Babel/tsc output directory for a published
-// package, which is where the 21,284 came from. A repo that keeps SOURCE in
-// `lib/` re-enables it in its own `eslint.config.mjs` override block, which is
-// what that block is for:
-//     { ignores: ["!lib/**"] }
+// `lib/` commonly contains authored code. Packages emitting into it must
+// explicitly ignore their output directory in the repository configuration.
 const BUILD_OUTPUT_IGNORES = [
   "**/dist/**",
   "**/build/**",
-  "**/lib/**",
   "**/out/**",
   "**/esm/**",
   "**/cjs/**",
@@ -436,7 +503,7 @@ const BUILD_OUTPUT_IGNORES = [
  * Build the config at call time, so an import cached from another working
  * directory cannot freeze type-aware linting off for the real project.
  *
- * @param {{ tsconfigRootDir?: string | URL, projectService?: boolean | object, syntaxOnlyConfigFiles?: string[] }} [options]
+ * @param {{ tsconfigRootDir?: string | URL, projectService?: boolean | object, syntaxOnlyConfigFiles?: string[], testFrameworks?: string[], playwrightTestFiles?: string[], bunTestFiles?: string[] }} [options]
  * @returns {import("eslint").Linter.Config[]}
  */
 export function createConfig(options = {}) {
@@ -451,6 +518,21 @@ export function createConfig(options = {}) {
   const PROJECT_SERVICE = options.projectService ?? detectedRoot !== undefined;
   const HAS_TYPE_PROJECT = PROJECT_SERVICE !== false;
   const SYNTAX_ONLY_CONFIG_FILES = options.syntaxOnlyConfigFiles ?? DEFAULT_SYNTAX_ONLY_CONFIG_FILES;
+  // Vitest is the default Sarj test runner. Other runners are explicit because
+  // global `expect` syntax cannot identify its owning framework in mixed repos.
+  const TEST_FRAMEWORKS = new Set(options.testFrameworks ?? ["vitest", "node"]);
+  for (const framework of TEST_FRAMEWORKS) {
+    if (!SUPPORTED_TEST_FRAMEWORKS.has(framework)) {
+      throw new Error(`Unsupported test framework ${JSON.stringify(framework)}`);
+    }
+  }
+  const HAS_VITEST = TEST_FRAMEWORKS.has("vitest");
+  const HAS_BUN = TEST_FRAMEWORKS.has("bun");
+  const HAS_NODE = TEST_FRAMEWORKS.has("node");
+  const HAS_TESTING_LIBRARY = TEST_FRAMEWORKS.has("testing-library");
+  const HAS_PLAYWRIGHT = TEST_FRAMEWORKS.has("playwright");
+  const PLAYWRIGHT_TEST_FILES = options.playwrightTestFiles ?? DEFAULT_PLAYWRIGHT_TEST_FILES;
+  const BUN_TEST_FILES = options.bunTestFiles ?? DEFAULT_BUN_TEST_FILES;
 
   return [
   // A config entry carrying ONLY `ignores` is a global ignore — it must stay
@@ -478,6 +560,11 @@ export function createConfig(options = {}) {
       promise,
       "simple-import-sort": simpleImportSort,
       "@sarj": sarj,
+      vitest,
+      "node-test": nodeTest,
+      jest,
+      "testing-library": testingLibrary,
+      playwright,
       zod,
     },
     languageOptions: {
@@ -578,6 +665,21 @@ export function createConfig(options = {}) {
           leadingUnderscore: "allow",
         },
         {
+          selector: [
+            "classProperty",
+            "objectLiteralProperty",
+            "typeProperty",
+            "classMethod",
+            "objectLiteralMethod",
+            "typeMethod",
+            "classicAccessor",
+            "autoAccessor",
+            "enumMember",
+          ],
+          modifiers: ["requiresQuotes"],
+          format: null,
+        },
+        {
           selector: "default",
           format: ["camelCase"],
           leadingUnderscore: "allow",
@@ -601,7 +703,7 @@ export function createConfig(options = {}) {
         { selector: "typeProperty", format: null },
         {
           selector: "parameter",
-          format: ["camelCase", "snake_case"],
+          format: ["camelCase"],
           leadingUnderscore: "allow",
         },
       ],
@@ -821,7 +923,7 @@ export function createConfig(options = {}) {
       // Range and whole-file disables turn every line between two comments
       // into an unaudited suppression scope. Keep suppression ownership at the
       // exact statement: non-suppression directives remain valid, but only
-      // eslint-disable-line and eslint-disable-next-line may disable rules.
+      // Only the two line-local disable forms may disable rules.
       "@eslint-community/eslint-comments/no-use": [
         "error",
         {
@@ -876,6 +978,42 @@ export function createConfig(options = {}) {
         "error",
         {
           paths: [
+            // BEGIN GENERATED LIBRARY POLICY
+            {"message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky.", "name": "request"},
+            {"message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky.", "name": "node-fetch"},
+            {"message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky.", "name": "cross-fetch"},
+            {"message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky.", "name": "isomorphic-fetch"},
+            {"message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky.", "name": "axios"},
+            {"message": "LIB102: Standards standardizes date utilities on date-fns; migration is not API-compatible. Replace with date-fns.", "name": "moment"},
+            {"message": "LIB102: Standards standardizes date utilities on date-fns; migration is not API-compatible. Replace with date-fns.", "name": "dayjs"},
+            {"message": "LIB103: Standards standardizes collection utilities on Remeda and native APIs. Replace with remeda.", "name": "lodash"},
+            {"message": "LIB103: Standards standardizes collection utilities on Remeda and native APIs. Replace with remeda.", "name": "lodash-es"},
+            {"message": "LIB103: Standards standardizes collection utilities on Remeda and native APIs. Replace with remeda.", "name": "underscore"},
+            {"message": "LIB104: Use clsx for conditional class-name composition. Replace with clsx.", "name": "classnames"},
+            {"message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod.", "name": "joi"},
+            {"message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod.", "name": "yup"},
+            {"message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod.", "name": "superstruct"},
+            {"message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod.", "name": "io-ts"},
+            {"message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod.", "name": "runtypes"},
+            {"message": "LIB106: Use jose; review key formats and async signing and verification APIs. Replace with jose.", "name": "jsonwebtoken"},
+            {"message": "LIB107: Standards standardizes servers on Hono; Node deployments also need @hono/node-server. Replace with hono.", "name": "express"},
+            {"message": "LIB107: Standards standardizes servers on Hono; Node deployments also need @hono/node-server. Replace with hono.", "name": "koa"},
+            {"message": "LIB108: Standards standardizes tests on Vitest; review globals, timers, mocks, and environment setup. Replace with vitest.", "name": "jest"},
+            {"message": "LIB108: Standards standardizes tests on Vitest; review globals, timers, mocks, and environment setup. Replace with vitest.", "name": "mocha"},
+            {"message": "LIB109: Use Vitest spies, mocks, and fake timers instead of Sinon. Replace with Vitest mocks.", "name": "sinon"},
+            {"message": "LIB110: Standards standardizes command-line interfaces on citty. Replace with citty.", "name": "commander"},
+            {"message": "LIB110: Standards standardizes command-line interfaces on citty. Replace with citty.", "name": "yargs"},
+            {"message": "LIB111: Use native Promise, adding p-limit or p-map only for the extensions actually needed. Replace with native Promise.", "name": "bluebird"},
+            {"message": "LIB112: Prefer node:fs/promises; verify recursive removal, copy, path, and error semantics. Replace with node:fs/promises.", "name": "rimraf"},
+            {"message": "LIB112: Prefer node:fs/promises; verify recursive removal, copy, path, and error semantics. Replace with node:fs/promises.", "name": "fs-extra"},
+            {"message": "LIB113: Node 22 provides global AbortController. Replace with AbortController.", "name": "abort-controller"},
+            {"message": "LIB114: Use URLSearchParams and explicitly review repeated keys, escaping, arrays, and object coercion. Replace with URLSearchParams.", "name": "querystring"},
+            {"message": "LIB115: Standards standardizes environment loading on @dotenvx/dotenvx. Replace with @dotenvx/dotenvx.", "name": "dotenv"},
+            {"message": "LIB116: Use picocolors for terminal colors. Replace with picocolors.", "name": "chalk"},
+            {"message": "LIB117: The original faker package is abandoned; use @faker-js/faker. Replace with @faker-js/faker.", "name": "faker"},
+            {"message": "LIB118: node-sass is end-of-life; use Dart Sass. Replace with sass.", "name": "node-sass"},
+            {"message": "LIB119: TSLint is deprecated; use ESLint with typescript-eslint. Replace with eslint.", "name": "tslint"},
+            // END GENERATED LIBRARY POLICY
             {
               name: "@clerk/nextjs",
               importNames: ["auth", "currentUser"],
@@ -886,7 +1024,44 @@ export function createConfig(options = {}) {
               message: "Prefer an internal user-service wrapper.",
             },
           ],
-          patterns: ["*/index", "*/index.ts"],
+          patterns: [{"group": ["*/index", "*/index.ts"]},
+            // BEGIN GENERATED LIBRARY POLICY
+            {"group": ["request/*"], "message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky."},
+            {"group": ["node-fetch/*"], "message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky."},
+            {"group": ["cross-fetch/*"], "message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky."},
+            {"group": ["isomorphic-fetch/*"], "message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky."},
+            {"group": ["axios/*"], "message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky."},
+            {"group": ["moment/*"], "message": "LIB102: Standards standardizes date utilities on date-fns; migration is not API-compatible. Replace with date-fns."},
+            {"group": ["dayjs/*"], "message": "LIB102: Standards standardizes date utilities on date-fns; migration is not API-compatible. Replace with date-fns."},
+            {"group": ["lodash/*"], "message": "LIB103: Standards standardizes collection utilities on Remeda and native APIs. Replace with remeda."},
+            {"group": ["lodash-es/*"], "message": "LIB103: Standards standardizes collection utilities on Remeda and native APIs. Replace with remeda."},
+            {"group": ["underscore/*"], "message": "LIB103: Standards standardizes collection utilities on Remeda and native APIs. Replace with remeda."},
+            {"group": ["classnames/*"], "message": "LIB104: Use clsx for conditional class-name composition. Replace with clsx."},
+            {"group": ["joi/*"], "message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod."},
+            {"group": ["yup/*"], "message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod."},
+            {"group": ["superstruct/*"], "message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod."},
+            {"group": ["io-ts/*"], "message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod."},
+            {"group": ["runtypes/*"], "message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod."},
+            {"group": ["jsonwebtoken/*"], "message": "LIB106: Use jose; review key formats and async signing and verification APIs. Replace with jose."},
+            {"group": ["express/*"], "message": "LIB107: Standards standardizes servers on Hono; Node deployments also need @hono/node-server. Replace with hono."},
+            {"group": ["koa/*"], "message": "LIB107: Standards standardizes servers on Hono; Node deployments also need @hono/node-server. Replace with hono."},
+            {"group": ["jest/*"], "message": "LIB108: Standards standardizes tests on Vitest; review globals, timers, mocks, and environment setup. Replace with vitest."},
+            {"group": ["mocha/*"], "message": "LIB108: Standards standardizes tests on Vitest; review globals, timers, mocks, and environment setup. Replace with vitest."},
+            {"group": ["sinon/*"], "message": "LIB109: Use Vitest spies, mocks, and fake timers instead of Sinon. Replace with Vitest mocks."},
+            {"group": ["commander/*"], "message": "LIB110: Standards standardizes command-line interfaces on citty. Replace with citty."},
+            {"group": ["yargs/*"], "message": "LIB110: Standards standardizes command-line interfaces on citty. Replace with citty."},
+            {"group": ["bluebird/*"], "message": "LIB111: Use native Promise, adding p-limit or p-map only for the extensions actually needed. Replace with native Promise."},
+            {"group": ["rimraf/*"], "message": "LIB112: Prefer node:fs/promises; verify recursive removal, copy, path, and error semantics. Replace with node:fs/promises."},
+            {"group": ["fs-extra/*"], "message": "LIB112: Prefer node:fs/promises; verify recursive removal, copy, path, and error semantics. Replace with node:fs/promises."},
+            {"group": ["abort-controller/*"], "message": "LIB113: Node 22 provides global AbortController. Replace with AbortController."},
+            {"group": ["querystring/*"], "message": "LIB114: Use URLSearchParams and explicitly review repeated keys, escaping, arrays, and object coercion. Replace with URLSearchParams."},
+            {"group": ["dotenv/*"], "message": "LIB115: Standards standardizes environment loading on @dotenvx/dotenvx. Replace with @dotenvx/dotenvx."},
+            {"group": ["chalk/*"], "message": "LIB116: Use picocolors for terminal colors. Replace with picocolors."},
+            {"group": ["faker/*"], "message": "LIB117: The original faker package is abandoned; use @faker-js/faker. Replace with @faker-js/faker."},
+            {"group": ["node-sass/*"], "message": "LIB118: node-sass is end-of-life; use Dart Sass. Replace with sass."},
+            {"group": ["tslint/*"], "message": "LIB119: TSLint is deprecated; use ESLint with typescript-eslint. Replace with eslint."},
+            // END GENERATED LIBRARY POLICY
+          ],
         },
       ],
 
@@ -988,8 +1163,8 @@ export function createConfig(options = {}) {
       "@sarj/require-use-server-in-actions-file": "error",
       "@sarj/source-coupled-test": "error",
       "@sarj/no-positional-tuple-return": "error",
-      "@sarj/no-restated-comment": "error",
-      "@sarj/no-restated-jsdoc": "error",
+      "@sarj/no-restated-comment": "warn",
+      "@sarj/no-restated-jsdoc": "warn",
       "@sarj/no-trailing-value-narration": "error",
       "@sarj/no-declaration-comment-wall": "error",
       "@sarj/no-union-in-comment": "error",
@@ -999,46 +1174,30 @@ export function createConfig(options = {}) {
       "@sarj/no-typed-doc-sections": "error",
       "@sarj/require-port-for-service": "error",
       "@sarj/no-unsafe-mock-casting": "error",
-      "@sarj/prefer-whole-object-assertion": "error",
+      "@sarj/prefer-whole-object-assertion": "warn",
       "@sarj/duplicate-test-body": "error",
       "@sarj/test-loops-over-literal-cases": "error",
       "@sarj/test-phase-label-comment": "error",
-      // Both architectural rules stay enabled in the shared baseline. The
-      // fetch rule ships conservative client/service defaults; consumers can
-      // replace its `allow` list. The storage rule is intentionally inert until
-      // a consumer declares its stateless module paths, but keeping it present
-      // guarantees that the canonical config never silently omits a shipped
-      // custom rule:
+      "@sarj/no-raw-fetch-outside-clients": "error",
+      // Storage policy requires explicit stateless-module boundaries.
       //   "@sarj/no-storage-in-stateless-modules": ["error", { modules: [...] }],
-      //   "@sarj/no-raw-fetch-outside-clients": ["error", { allow: [...] }],
       ...(HAS_TYPE_PROJECT ? {} : UNTYPED_RULE_OVERRIDES),
+      ...(HAS_TYPE_PROJECT
+        ? {}
+        : { "@typescript-eslint/naming-convention": SYNTAX_ONLY_NAMING_CONVENTION }),
     },
   },
 
-  ...(SYNTAX_ONLY_CONFIG_FILES.length === 0
-    ? []
-    : [{
-      // Project service rejects conventional tool configs outside a tsconfig.
-      // Pass [] when the project owns them; name other exceptions explicitly.
-      files: SYNTAX_ONLY_CONFIG_FILES,
-      languageOptions: {
-        parserOptions: {
-          program: null,
-          project: false,
-          projectService: false,
-        },
-      },
-      rules: UNTYPED_RULE_OVERRIDES,
-    }]),
-
   {
-    files: [
-      "**/*.test.ts",
-      "**/*.test.tsx",
-      "**/test/**/*",
-      "**/tests/**/*",
-      "**/__tests__/**/*",
-    ],
+    files: TEST_FILES,
+    settings: {
+      ...(HAS_BUN && !HAS_VITEST ? { jest: { globalPackage: "bun:test" } } : {}),
+      ...(HAS_TESTING_LIBRARY ? {
+        "testing-library/custom-queries": "off",
+        "testing-library/custom-renders": "off",
+        "testing-library/utils-module": "off",
+      } : {}),
+    },
     rules: {
       // Test doubles and partial external payload fixtures intentionally cross
       // type boundaries. Production keeps every rule below at error; tests use
@@ -1053,8 +1212,50 @@ export function createConfig(options = {}) {
       "@typescript-eslint/require-await": "off",
       "no-await-in-loop": "off",
       "unicorn/consistent-function-scoping": "off",
+
+      // Dense assertions preserve the tested invariant while deleting ceremony.
+      // Keep this curated: broad `all` presets also impose suite structure,
+      // assertion counts, snapshots, padding, and other non-semantic policy.
+      "vitest/prefer-called-once": HAS_VITEST ? "error" : "off",
+      "vitest/prefer-expect-resolves": HAS_VITEST ? "error" : "off",
+      "vitest/prefer-to-be": HAS_VITEST ? "error" : "off",
+
+      // eslint-plugin-jest can parse Bun's Jest-compatible `bun:test` API when
+      // globalPackage is set above. These rules intentionally mirror only the
+      // matcher/shorthand subset whose semantics Bun implements.
+      "jest/prefer-to-be": HAS_BUN && !HAS_VITEST ? "error" : "off",
+
+      "node-test/no-assert-throws-multiple-statements": HAS_NODE ? "error" : "off",
+      "node-test/no-unneeded-async-rejects-callback": HAS_NODE ? "error" : "off",
+      "node-test/no-useless-assertion": HAS_NODE ? "error" : "off",
+
+      "testing-library/no-unnecessary-act": HAS_TESTING_LIBRARY
+        ? ["error", { isStrict: false }]
+        : "off",
+      "testing-library/prefer-screen-queries": HAS_TESTING_LIBRARY ? "error" : "off",
+
     },
   },
+
+  ...(HAS_BUN ? [{
+    files: BUN_TEST_FILES,
+    settings: { jest: { globalPackage: "bun:test" } },
+    rules: {
+      ...Object.fromEntries(Object.keys(vitest.rules).map((name) => [`vitest/${name}`, "off"])),
+      "jest/prefer-to-be": "error",
+    },
+  }] : []),
+
+  ...(HAS_PLAYWRIGHT ? [{
+    // Playwright's rules intentionally recognize a global `expect`, so applying
+    // them to every test would emit duplicate or invalid advice in Vitest/Bun.
+    files: PLAYWRIGHT_TEST_FILES,
+    rules: {
+      ...Object.fromEntries(Object.keys(vitest.rules).map((name) => [`vitest/${name}`, "off"])),
+      ...Object.fromEntries(Object.keys(jest.rules).map((name) => [`jest/${name}`, "off"])),
+      "playwright/no-unnecessary-assertions": "error",
+    },
+  }] : []),
 
   {
     files: ["**/components/ui/**", "**/components/design-system/**"],
@@ -1065,11 +1266,8 @@ export function createConfig(options = {}) {
     },
   },
 
-  // better-tailwindcss: class-string hygiene for Tailwind repos. Include plain
-  // JS/TS because class helpers and variant definitions commonly live there.
-  // these three rules only inspect literal class strings, so non-Tailwind repos
-  // simply see zero findings. Kept in its own block so the plugin is only wired
-  // where it applies.
+  // Class-value policies delegate to the installed Tailwind engine.
+  // The new policy remains a warning while consumer feedback is collected.
   {
     files: ["**/*.{js,jsx,ts,tsx}"],
     plugins: {
@@ -1081,6 +1279,7 @@ export function createConfig(options = {}) {
       "better-tailwindcss/no-deprecated-classes": "error",
       "better-tailwindcss/no-unnecessary-whitespace": "error",
       "better-tailwindcss/enforce-shorthand-classes": "error",
+      "better-tailwindcss/enforce-consistent-variable-syntax": ["warn", { syntax: "shorthand" }],
     },
   },
   // React component IDENTIFIERS must be PascalCase for JSX to distinguish them
@@ -1104,18 +1303,33 @@ export function createConfig(options = {}) {
           },
           format: null,
         },
-        {
+        ...(HAS_TYPE_PROJECT ? [{
           selector: "variable",
           modifiers: ["const", "global"],
           types: ["function"],
           format: ["camelCase", "PascalCase", "UPPER_CASE"],
           leadingUnderscore: "allow",
-        },
+        }] : []),
         {
           selector: "variable",
           modifiers: ["const", "global"],
           format: ["UPPER_CASE", "PascalCase"],
           leadingUnderscore: "allow",
+        },
+        {
+          selector: [
+            "classProperty",
+            "objectLiteralProperty",
+            "typeProperty",
+            "classMethod",
+            "objectLiteralMethod",
+            "typeMethod",
+            "classicAccessor",
+            "autoAccessor",
+            "enumMember",
+          ],
+          modifiers: ["requiresQuotes"],
+          format: null,
         },
         {
           selector: "default",
@@ -1138,12 +1352,269 @@ export function createConfig(options = {}) {
         { selector: "typeProperty", format: null },
         {
           selector: "parameter",
-          format: ["camelCase", "snake_case"],
+          format: ["camelCase"],
           leadingUnderscore: "allow",
         },
       ],
     },
   },
+
+  ...(SYNTAX_ONLY_CONFIG_FILES.length === 0
+    ? []
+    : [{
+      // Keep this last so file-specific presets cannot restore typed rules.
+      // Pass [] when the project owns these configs; name exceptions explicitly.
+      files: SYNTAX_ONLY_CONFIG_FILES,
+      languageOptions: {
+        parserOptions: {
+          program: null,
+          project: false,
+          projectService: false,
+        },
+      },
+      rules: {
+        ...UNTYPED_RULE_OVERRIDES,
+        "@typescript-eslint/naming-convention": SYNTAX_ONLY_NAMING_CONVENTION,
+      },
+    }]),
+
+  // BEGIN GENERATED LIBRARY POLICY
+
+  {
+    files: ["**/*.{ts,tsx,js,jsx,mjs,cjs,mts,cts}"],
+    rules: {
+      "@sarj/no-restricted-library-load": [
+        "error",
+        { libraries: [
+            {
+              "id": "LIB101",
+              "module": "request",
+              "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
+              "replacement": "ky"
+            },
+            {
+              "id": "LIB101",
+              "module": "node-fetch",
+              "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
+              "replacement": "ky"
+            },
+            {
+              "id": "LIB101",
+              "module": "cross-fetch",
+              "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
+              "replacement": "ky"
+            },
+            {
+              "id": "LIB101",
+              "module": "isomorphic-fetch",
+              "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
+              "replacement": "ky"
+            },
+            {
+              "id": "LIB101",
+              "module": "axios",
+              "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
+              "replacement": "ky"
+            },
+            {
+              "id": "LIB102",
+              "module": "moment",
+              "note": "Standards standardizes date utilities on date-fns; migration is not API-compatible.",
+              "replacement": "date-fns"
+            },
+            {
+              "id": "LIB102",
+              "module": "dayjs",
+              "note": "Standards standardizes date utilities on date-fns; migration is not API-compatible.",
+              "replacement": "date-fns"
+            },
+            {
+              "id": "LIB103",
+              "module": "lodash",
+              "note": "Standards standardizes collection utilities on Remeda and native APIs.",
+              "replacement": "remeda"
+            },
+            {
+              "id": "LIB103",
+              "module": "lodash-es",
+              "note": "Standards standardizes collection utilities on Remeda and native APIs.",
+              "replacement": "remeda"
+            },
+            {
+              "id": "LIB103",
+              "module": "underscore",
+              "note": "Standards standardizes collection utilities on Remeda and native APIs.",
+              "replacement": "remeda"
+            },
+            {
+              "id": "LIB104",
+              "module": "classnames",
+              "note": "Use clsx for conditional class-name composition.",
+              "replacement": "clsx"
+            },
+            {
+              "id": "LIB105",
+              "module": "joi",
+              "note": "Standards standardizes runtime validation on Zod; schemas are not drop-in compatible.",
+              "replacement": "zod"
+            },
+            {
+              "id": "LIB105",
+              "module": "yup",
+              "note": "Standards standardizes runtime validation on Zod; schemas are not drop-in compatible.",
+              "replacement": "zod"
+            },
+            {
+              "id": "LIB105",
+              "module": "superstruct",
+              "note": "Standards standardizes runtime validation on Zod; schemas are not drop-in compatible.",
+              "replacement": "zod"
+            },
+            {
+              "id": "LIB105",
+              "module": "io-ts",
+              "note": "Standards standardizes runtime validation on Zod; schemas are not drop-in compatible.",
+              "replacement": "zod"
+            },
+            {
+              "id": "LIB105",
+              "module": "runtypes",
+              "note": "Standards standardizes runtime validation on Zod; schemas are not drop-in compatible.",
+              "replacement": "zod"
+            },
+            {
+              "id": "LIB106",
+              "module": "jsonwebtoken",
+              "note": "Use jose; review key formats and async signing and verification APIs.",
+              "replacement": "jose"
+            },
+            {
+              "id": "LIB107",
+              "module": "express",
+              "note": "Standards standardizes servers on Hono; Node deployments also need @hono/node-server.",
+              "replacement": "hono"
+            },
+            {
+              "id": "LIB107",
+              "module": "koa",
+              "note": "Standards standardizes servers on Hono; Node deployments also need @hono/node-server.",
+              "replacement": "hono"
+            },
+            {
+              "id": "LIB108",
+              "module": "jest",
+              "note": "Standards standardizes tests on Vitest; review globals, timers, mocks, and environment setup.",
+              "replacement": "vitest"
+            },
+            {
+              "id": "LIB108",
+              "module": "mocha",
+              "note": "Standards standardizes tests on Vitest; review globals, timers, mocks, and environment setup.",
+              "replacement": "vitest"
+            },
+            {
+              "id": "LIB109",
+              "module": "sinon",
+              "note": "Use Vitest spies, mocks, and fake timers instead of Sinon.",
+              "replacement": "Vitest mocks"
+            },
+            {
+              "id": "LIB110",
+              "module": "commander",
+              "note": "Standards standardizes command-line interfaces on citty.",
+              "replacement": "citty"
+            },
+            {
+              "id": "LIB110",
+              "module": "yargs",
+              "note": "Standards standardizes command-line interfaces on citty.",
+              "replacement": "citty"
+            },
+            {
+              "id": "LIB111",
+              "module": "bluebird",
+              "note": "Use native Promise, adding p-limit or p-map only for the extensions actually needed.",
+              "replacement": "native Promise"
+            },
+            {
+              "id": "LIB112",
+              "module": "rimraf",
+              "note": "Prefer node:fs/promises; verify recursive removal, copy, path, and error semantics.",
+              "replacement": "node:fs/promises"
+            },
+            {
+              "id": "LIB112",
+              "module": "fs-extra",
+              "note": "Prefer node:fs/promises; verify recursive removal, copy, path, and error semantics.",
+              "replacement": "node:fs/promises"
+            },
+            {
+              "id": "LIB113",
+              "module": "abort-controller",
+              "note": "Node 22 provides global AbortController.",
+              "replacement": "AbortController"
+            },
+            {
+              "id": "LIB114",
+              "module": "querystring",
+              "note": "Use URLSearchParams and explicitly review repeated keys, escaping, arrays, and object coercion.",
+              "replacement": "URLSearchParams"
+            },
+            {
+              "id": "LIB115",
+              "module": "dotenv",
+              "note": "Standards standardizes environment loading on @dotenvx/dotenvx.",
+              "replacement": "@dotenvx/dotenvx"
+            },
+            {
+              "id": "LIB116",
+              "module": "chalk",
+              "note": "Use picocolors for terminal colors.",
+              "replacement": "picocolors"
+            },
+            {
+              "id": "LIB117",
+              "module": "faker",
+              "note": "The original faker package is abandoned; use @faker-js/faker.",
+              "replacement": "@faker-js/faker"
+            },
+            {
+              "id": "LIB118",
+              "module": "node-sass",
+              "note": "node-sass is end-of-life; use Dart Sass.",
+              "replacement": "sass"
+            },
+            {
+              "id": "LIB119",
+              "module": "tslint",
+              "note": "TSLint is deprecated; use ESLint with typescript-eslint.",
+              "replacement": "eslint"
+            }
+          ] },
+      ],
+      "@sarj/prefer-native-random-uuid": "error",
+      "@sarj/prefer-shadcn-primitives": "error",
+    },
+  },
+
+  {
+    files: [
+      "**/*.{test,spec,e2e}.{js,jsx,ts,tsx}",
+      "**/test/**",
+      "**/tests/**",
+      "**/__tests__/**",
+      "**/fixtures/**",
+      "**/e2e/**",
+      "**/e2e-apps/**",
+      "**/perf-regression/**",
+      "**/components/ui/**",
+      "**/components/design-system/**",
+    ],
+    rules: {
+      "@sarj/prefer-shadcn-primitives": "off",
+    },
+  },
+  // END GENERATED LIBRARY POLICY
 
   ];
 }

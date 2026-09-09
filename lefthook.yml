@@ -64,10 +64,15 @@ pre-commit:
       fail_text: "AGENT: a pre-commit hook (hygiene, gitleaks, actionlint, or a sarj-* rule) rejected staged files. Fix: repair the reported finding (sarj rules accept a narrow '# sarj-noqa: SARJ0XX — reason' only with justification), stage, and retry. NEVER use --no-verify."
 
     code-standards:
-      run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.2 code-standards check --staged --trust-repository-code -- {staged_files}
+      run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --staged --trust-repository-code -- {staged_files}
 pre-push:
   parallel: true
   commands:
     check:
       run: make check
       fail_text: "AGENT: 'make check' (the exact CI mirror) failed. Fix: rerun 'make check', repair the first failing step ('make fix' applies the autofixable lint/format part), and push again. NEVER use --no-verify."
+
+commit-msg:
+  commands:
+    repo-standards-commit-message:
+      run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards commit-message "{1}"

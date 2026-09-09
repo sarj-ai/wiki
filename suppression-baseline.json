@@ -8,13 +8,14 @@
     "noqa:BLE001": 3,
     "noqa:F401": 1,
     "noqa:RUF029": 1,
-    "sarj-noqa:SARJ052": 1,
+    "noqa:S404": 1,
+    "noqa:S603": 3,
     "type-ignore:attr-defined": 1,
     "type-ignore:call-arg": 2,
     "type-ignore:no-untyped-call": 2
   },
   "packages": {
-    "backend": 11
+    "backend": 14
   },
   "excluded_subtrees": [],
   "files": {

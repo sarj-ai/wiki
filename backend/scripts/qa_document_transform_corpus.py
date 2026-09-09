@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 import re
 import shutil
-import subprocess
+import subprocess  # ruff: ignore[suspicious-subprocess-import] - validated local PDF tools only
 import sys
 import tempfile
 from typing import TYPE_CHECKING, Annotated, Any, Literal, NamedTuple, NoReturn, Protocol
@@ -2049,7 +2049,7 @@ def _render_pdf(pdf: Path, *, capture_dir: Path, stem: str) -> tuple[Path, ...]:
     with tempfile.TemporaryDirectory(dir=capture_dir) as temporary_name:
         prefix = Path(temporary_name) / stem
         try:
-            completed = subprocess.run(
+            completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - validated executable
                 [
                     executable,
                     "-png",
@@ -2088,7 +2088,7 @@ def _read_pdf_info(pdf: Path) -> PdfInfo:
     if executable is None:
         _fail("pdfinfo is required to bound screenshot rendering")
     try:
-        completed = subprocess.run(
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - validated executable
             [executable, "-box", str(pdf)],
             check=False,
             capture_output=True,
@@ -2216,7 +2216,7 @@ def _require_pdftoppm(expected_version: str) -> str:
         _fail("pdftoppm is required to render screenshot evidence")
     if shutil.which("pdfinfo") is None:
         _fail("pdfinfo is required to bound screenshot rendering")
-    completed = subprocess.run(
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - validated executable
         [executable, "-v"],
         check=False,
         capture_output=True,
