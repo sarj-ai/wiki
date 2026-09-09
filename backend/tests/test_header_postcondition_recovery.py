@@ -28,7 +28,11 @@ from app.document_transform.schemas import (
     TransformMode,
 )
 from app.identifiers import DocsRevisionId, FileId, TaskId
-from tests.test_custom_furniture import _custom_document, _native_gateway
+from tests.test_custom_furniture import (
+    _apply_header_title_requests,
+    _custom_document,
+    _native_gateway,
+)
 from tests.test_document_transform import (
     _branded_google_document,
     _CheckpointStore,
@@ -141,6 +145,17 @@ class _HeaderGateway(_Gateway):
             tab["documentTab"]["headers"][identifier] = deepcopy(
                 _branded_google_document()["tabs"][0]["documentTab"]["headers"]["header-a"]
             )
+        custom_requests = tuple(
+            request
+            for request in kwargs["requests"]
+            if (
+                request.get("insertText", {}).get("location", {}).get("segmentId") == "header-a"
+                or request.get("updateTextStyle", {}).get("range", {}).get("segmentId")
+                == "header-a"
+            )
+        )
+        if custom_requests:
+            _apply_header_title_requests(self.document, custom_requests)
         self.document["revisionId"] = "content-applied"
         return InPlaceStageResult(DocsRevisionId("content-applied"), deepcopy(self.document))
 

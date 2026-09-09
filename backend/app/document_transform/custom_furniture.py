@@ -66,8 +66,20 @@ class CustomFurnitureBinding(BaseModel):
         return self
 
 
+class CustomHeaderTitleTarget(BaseModel):
+    """One existing native header that Wiki may prefix without replacing."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    tab_id: DocsTabId
+    header_id: DocsSegmentId
+
+
 def custom_furniture_requests_safe(
-    requests: list[dict[str, Any]], bindings: tuple[CustomFurnitureBinding, ...]
+    requests: list[dict[str, Any]],
+    bindings: tuple[CustomFurnitureBinding, ...],
+    *,
+    allowed_header_requests: tuple[dict[str, Any], ...] = (),
 ) -> bool:
     if not bindings:
         return True
@@ -78,6 +90,7 @@ def custom_furniture_requests_safe(
         for binding in bindings
         for identifier in (*binding.header_ids, *binding.footer_ids)
     }
+    observed_header_requests: list[dict[str, Any]] = []
     for request in requests:
         if len(request) != 1 or not set(request) <= {
             "insertText",
@@ -105,17 +118,20 @@ def custom_furniture_requests_safe(
             if not isinstance(tab_id, str) or tab_id in header_tabs:
                 return False
         pending: list[object] = [request]
+        targets_furniture = False
         while pending:
             match pending.pop():
                 case dict() as value:
                     segment = value.get("segmentId")
-                    if "segmentId" in value and (
-                        not isinstance(segment, str) or segment in segments
-                    ):
-                        return False
+                    if "segmentId" in value:
+                        if not isinstance(segment, str):
+                            return False
+                        targets_furniture = targets_furniture or segment in segments
                     pending.extend(value.values())
                 case list() as value:
                     pending.extend(value)
                 case _:
                     pass
-    return True
+        if targets_furniture:
+            observed_header_requests.append(request)
+    return observed_header_requests == list(allowed_header_requests)

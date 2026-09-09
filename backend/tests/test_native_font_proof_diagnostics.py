@@ -111,7 +111,7 @@ def test_font_proof_reports_only_the_verified_prefix_count() -> None:
     assert records[0]["font_proof_reason"] == "paragraph_payload"
 
 
-async def test_in_place_diagnostics_distinguish_supported_brand_from_full_brand() -> None:
+async def test_in_place_diagnostics_reject_supported_brand_without_native_header_title() -> None:
     document = _custom_document(footer=True)
     inspection = _native_gateway()._inspect_in_place_sync(
         _inspection_snapshot(document), "Decision"
@@ -123,7 +123,7 @@ async def test_in_place_diagnostics_distinguish_supported_brand_from_full_brand(
     finally:
         logger.remove(sink)
     assert not result.brand_applied
-    assert result.supported_brand_applied
+    assert not result.supported_brand_applied
     assert any(
-        record.get("diagnostics", {}).get("supported_brand_applied") is True for record in records
+        record.get("diagnostics", {}).get("supported_brand_applied") is False for record in records
     )

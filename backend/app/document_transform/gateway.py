@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 import uuid
 
-from app.document_transform.custom_furniture import CustomFurnitureBinding
+from app.document_transform.custom_furniture import CustomFurnitureBinding, CustomHeaderTitleTarget
 from app.document_transform.header_provenance import HeaderIdentityEvidence
 from app.document_transform.ir import DocumentIR
 from app.document_transform.native_date_flow import NativeDateCheckpoint
@@ -89,6 +89,8 @@ class InPlaceInspection:
     fully_branded: bool = False
     header_identity: HeaderIdentityEvidence | None = None
     custom_furniture: tuple[CustomFurnitureBinding, ...] = ()
+    custom_header_title_targets: tuple[CustomHeaderTitleTarget, ...] = ()
+    custom_header_titles_present: tuple[CustomHeaderTitleTarget, ...] = ()
     supported_brand_applied: bool = False
 
 
@@ -200,6 +202,7 @@ class DocumentGateway(ABC):
         protected_structure_sha256: str,
         verify_brand: bool,
         custom_furniture: tuple[CustomFurnitureBinding, ...] = (),
+        custom_header_titles: tuple[CustomHeaderTitleTarget, ...] = (),
         table_font_plan: TableFontPlan | None = None,
     ) -> OutputVerification:
         raise NotImplementedError

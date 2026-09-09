@@ -7,7 +7,10 @@ import pytest
 
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
 from app.document_transform.errors import DocumentGatewayError
-from app.document_transform.executor import DocumentTransformExecutor
+from app.document_transform.executor import (
+    IN_PLACE_REQUEST_BUILDER_VERSION,
+    DocumentTransformExecutor,
+)
 from app.document_transform.gateway import InPlaceStageResult
 from app.document_transform.ir import parse_google_document
 from app.document_transform.native_font_noop import filter_redundant_native_fonts
@@ -332,7 +335,7 @@ async def test_new_content_plan_filters_but_persisted_replay_remains_exact(
     with pytest.raises(DocumentGatewayError):
         await executor().execute(operation_id=operation, request=request)
     checkpoint = store.checkpoints[-1]
-    assert checkpoint.request_builder_version == "google-docs-requests-v26"
+    assert checkpoint.request_builder_version == IN_PLACE_REQUEST_BUILDER_VERSION
     result = await executor(checkpoint).execute(operation_id=operation, request=request)
     assert attempts[0] == attempts[1]
     assert (

@@ -19,6 +19,7 @@ from app.document_transform.brand import (
     SarjBrandProfile,
     build_copy_mutations,
     build_copy_text_mutations,
+    build_custom_header_title_requests,
     mutation_sha256,
     preserve_in_place_native_list_text_styles,
 )
@@ -157,6 +158,7 @@ class _TableFontScope(NamedTuple):
 
 PIPELINE_VERSION = DOCUMENT_PIPELINE_VERSION
 REQUEST_BUILDER_VERSION = "google-docs-requests-v26"
+IN_PLACE_REQUEST_BUILDER_VERSION = f"{REQUEST_BUILDER_VERSION}-header-title-v1"
 _COPY_REQUEST_BUILDER_VERSION = f"{REQUEST_BUILDER_VERSION}-visual-v1"
 _MAX_OUTPUT_NAME_LENGTH = 255
 _MAX_GENERATED_NAME_SUFFIXES = 16
@@ -1201,7 +1203,7 @@ class DocumentTransformExecutor:
                 CURRENT_BRAND_MANIFEST.profile_id,
                 CURRENT_BRAND_MANIFEST.sha256,
                 PIPELINE_VERSION,
-                REQUEST_BUILDER_VERSION,
+                IN_PLACE_REQUEST_BUILDER_VERSION,
                 UNSLOP_CATALOG_SHA256,
             )
             if checkpoint_contract != current_contract:
@@ -1298,16 +1300,16 @@ class DocumentTransformExecutor:
                         checkpoint,
                     ):
                         raise InPlaceNeedsReviewError
-                elif (
-                    checkpoint.custom_furniture
-                    and (
-                        await self._gateway.inspect_in_place(
-                            snapshot=snapshot, title=snapshot.title
-                        )
-                    ).custom_furniture
-                    != checkpoint.custom_furniture
-                ):
-                    raise InPlaceNeedsReviewError
+                elif checkpoint.custom_furniture:
+                    inspection = await self._gateway.inspect_in_place(
+                        snapshot=snapshot, title=snapshot.title
+                    )
+                    if inspection.custom_furniture != checkpoint.custom_furniture or (
+                        checkpoint.custom_header_titles_required
+                        and inspection.custom_header_titles_present
+                        != checkpoint.custom_header_titles
+                    ):
+                        raise InPlaceNeedsReviewError
                 return self._in_place_result(
                     operation_id=operation_id,
                     request=request,
@@ -1402,11 +1404,8 @@ class DocumentTransformExecutor:
                     protected_structure_sha256=checkpoint.protected_structure_sha256,
                     verify_brand=False,
                     custom_furniture=checkpoint.custom_furniture,
-                    **(
-                        {"table_font_plan": checkpoint.table_font_plan}
-                        if checkpoint.table_font_plan is not None
-                        else {}
-                    ),
+                    custom_header_titles=checkpoint.custom_header_titles,
+                    table_font_plan=checkpoint.table_font_plan,
                 )
             except InPlaceNeedsReviewError as exc:
                 raise InPlacePostMutationVerificationError from exc
@@ -1514,11 +1513,8 @@ class DocumentTransformExecutor:
                 protected_structure_sha256=checkpoint.protected_structure_sha256,
                 verify_brand=request.mode is not TransformMode.UNSLOP,
                 custom_furniture=checkpoint.custom_furniture,
-                **(
-                    {"table_font_plan": checkpoint.table_font_plan}
-                    if checkpoint.table_font_plan is not None
-                    else {}
-                ),
+                custom_header_titles=checkpoint.custom_header_titles,
+                table_font_plan=checkpoint.table_font_plan,
             )
         except InPlaceNeedsReviewError as exc:
             raise InPlacePostMutationVerificationError from exc
@@ -1795,6 +1791,19 @@ class DocumentTransformExecutor:
             table_font_plan=table_scope.plan,
             native_font_proof=native_font_proof,
             custom_furniture=inspection.custom_furniture,
+            custom_header_titles=tuple(
+                dict.fromkeys(
+                    (
+                        *inspection.custom_header_titles_present,
+                        *inspection.custom_header_title_targets,
+                    )
+                )
+            )
+            if branded
+            else (),
+            custom_header_title_targets=inspection.custom_header_title_targets if branded else (),
+            custom_header_titles_required=branded
+            and bool(any(binding.header_ids for binding in inspection.custom_furniture)),
             pagination=pagination,
             header_identity=inspection.header_identity,
             document_id=source.file_id,
@@ -1804,7 +1813,7 @@ class DocumentTransformExecutor:
             brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
             brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
             pipeline_version=PIPELINE_VERSION,
-            request_builder_version=REQUEST_BUILDER_VERSION,
+            request_builder_version=IN_PLACE_REQUEST_BUILDER_VERSION,
             unslop_catalog_sha256=UNSLOP_CATALOG_SHA256,
             original_semantic_sha256=original.semantic_sha256,
             expected_semantic_sha256=outcome.document.semantic_sha256,
@@ -1914,6 +1923,10 @@ class DocumentTransformExecutor:
             paragraph_layout=paragraph_layout,
             native_font_proof=native_font_proof,
             custom_furniture=inspection.custom_furniture,
+            custom_header_titles=inspection.custom_header_titles_present if branded else (),
+            custom_header_title_targets=(),
+            custom_header_titles_required=branded
+            and bool(any(binding.header_ids for binding in inspection.custom_furniture)),
             pagination=pagination,
             header_identity=inspection.header_identity,
             document_id=source.file_id,
@@ -1923,7 +1936,7 @@ class DocumentTransformExecutor:
             brand_profile_id=CURRENT_BRAND_MANIFEST.profile_id,
             brand_profile_sha256=CURRENT_BRAND_MANIFEST.sha256,
             pipeline_version=PIPELINE_VERSION,
-            request_builder_version=REQUEST_BUILDER_VERSION,
+            request_builder_version=IN_PLACE_REQUEST_BUILDER_VERSION,
             unslop_catalog_sha256=UNSLOP_CATALOG_SHA256,
             original_semantic_sha256=original.semantic_sha256,
             expected_semantic_sha256=original.semantic_sha256,
@@ -2018,6 +2031,16 @@ class DocumentTransformExecutor:
             headers=inspection.headers,
             logo_uri=inspection.logo_uri,
         )
+        requests.extend(
+            build_custom_header_title_requests(
+                snapshot.title,
+                profile=self._brand,
+                headers=tuple(
+                    TabHeader(tab_id=item.tab_id, header_id=item.header_id)
+                    for item in inspection.custom_header_title_targets
+                ),
+            )
+        )
         preserved_tabs = {binding.tab_id for binding in inspection.custom_furniture}
         requests = filter_redundant_native_fonts(
             requests,
@@ -2041,7 +2064,25 @@ class DocumentTransformExecutor:
     async def _apply_checkpoint_stage(self, checkpoint: InPlaceCheckpoint) -> InPlaceStageResult:
         if not paragraph_layout_requests_safe(checkpoint.requests, checkpoint.paragraph_layout):
             raise OutputConflictError
-        if not custom_furniture_requests_safe(checkpoint.requests, checkpoint.custom_furniture):
+        allowed_header_requests = (
+            tuple(
+                build_custom_header_title_requests(
+                    checkpoint.source_title,
+                    profile=self._brand,
+                    headers=tuple(
+                        TabHeader(tab_id=item.tab_id, header_id=item.header_id)
+                        for item in checkpoint.custom_header_title_targets
+                    ),
+                )
+            )
+            if checkpoint.stage is InPlaceCheckpointStage.CONTENT
+            else ()
+        )
+        if not custom_furniture_requests_safe(
+            checkpoint.requests,
+            checkpoint.custom_furniture,
+            allowed_header_requests=allowed_header_requests,
+        ):
             raise OutputConflictError
         if checkpoint.marker_name is None or checkpoint.marker_range is None:
             raise DocumentGatewayError

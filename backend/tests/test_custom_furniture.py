@@ -1,12 +1,18 @@
 from copy import deepcopy
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any
 import uuid
 
 import pytest
 
+from app.document_transform.brand import (
+    SarjBrandProfile,
+    build_custom_header_title_requests,
+)
+from app.document_transform.brand_manifest import HEADER_TITLE_SEPARATOR
 from app.document_transform.custom_furniture import (
     CustomFurnitureBinding,
+    CustomHeaderTitleTarget,
     custom_furniture_requests_safe,
 )
 from app.document_transform.errors import DocumentGatewayError, InPlaceNeedsReviewError
@@ -16,9 +22,10 @@ from app.document_transform.gateway import (
     InPlaceStageResult,
     OutputVerification,
     SourceSnapshot,
+    TabHeader,
 )
 from app.document_transform.google_gateway import GoogleDocumentGateway
-from app.document_transform.ir import parse_google_document
+from app.document_transform.ir import DocumentIR, parse_google_document
 from app.document_transform.native_visual_authority import (
     apply_visual_authority,
     visual_authority_block_ids,
@@ -29,7 +36,7 @@ from app.document_transform.schemas import (
     OutputStrategy,
     TransformMode,
 )
-from app.identifiers import DocsRevisionId, FileId, TaskId
+from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId, TaskId
 from tests.test_document_transform import (
     _branded_google_document,
     _CheckpointStore,
@@ -39,6 +46,12 @@ from tests.test_document_transform import (
 from tests.test_document_transform_repeat import _inspection_snapshot
 from tests.test_native_font_proof import _formatted
 from tests.test_native_preservation_findings import _native
+
+
+@dataclass(frozen=True, slots=True)
+class _CustomHeaderPlan:
+    inspection: InPlaceInspection
+    requests: tuple[dict[str, Any], ...]
 
 
 def _custom_document(*, first_even: bool = False, footer: bool = False) -> dict[str, Any]:
@@ -69,6 +82,54 @@ def _custom_document(*, first_even: bool = False, footer: bool = False) -> dict[
     return document
 
 
+def _apply_header_title_requests(
+    document: dict[str, Any], requests: tuple[dict[str, Any], ...]
+) -> None:
+    tabs = {tab["tabProperties"]["tabId"]: tab["documentTab"] for tab in document["tabs"]}
+    styles = {
+        (
+            request["updateTextStyle"]["range"]["tabId"],
+            request["updateTextStyle"]["range"]["segmentId"],
+        ): request["updateTextStyle"]["textStyle"]
+        for request in requests
+        if "updateTextStyle" in request
+    }
+    for request in requests:
+        if "insertText" not in request:
+            continue
+        location = request["insertText"]["location"]
+        tab = tabs[location["tabId"]]
+        elements = tab["headers"][location["segmentId"]]["content"][0]["paragraph"]["elements"]
+        elements.insert(
+            0,
+            {
+                "textRun": {
+                    "content": request["insertText"]["text"],
+                    "textStyle": deepcopy(styles[location["tabId"], location["segmentId"]]),
+                }
+            },
+        )
+
+
+def _custom_header_plan(
+    native: GoogleDocumentGateway, document: dict[str, Any]
+) -> _CustomHeaderPlan:
+    inspection = native._inspect_in_place_sync(_inspection_snapshot(document), "Decision")
+    return _CustomHeaderPlan(
+        inspection=inspection,
+        requests=tuple(
+            build_custom_header_title_requests(
+                "Decision",
+                profile=SarjBrandProfile(),
+                headers=tuple(
+                    TabHeader(tab_id=item.tab_id, header_id=item.header_id)
+                    for item in inspection.custom_header_title_targets
+                ),
+            )
+        ),
+    )
+
+
 def _native_gateway() -> GoogleDocumentGateway:
     gateway = object.__new__(GoogleDocumentGateway)
     gateway._logo_uri = "https://wiki.sarj.ai/brand/sarj-logo-light.png"
@@ -78,14 +139,29 @@ def _native_gateway() -> GoogleDocumentGateway:
 async def _verify_preserved(
     document: dict[str, Any], inspection: InPlaceInspection, expected_document: dict[str, Any]
 ) -> OutputVerification:
+    return await _verify_custom_brand(
+        document,
+        inspection,
+        parse_google_document(expected_document, title="Decision"),
+    )
+
+
+async def _verify_custom_brand(
+    document: dict[str, Any],
+    inspection: InPlaceInspection,
+    expected: DocumentIR,
+    *,
+    custom_header_titles: tuple[CustomHeaderTitleTarget, ...] = (),
+) -> OutputVerification:
     return await _native_gateway().verify_in_place(
         document=document,
         title="Decision",
-        expected=parse_google_document(expected_document, title="Decision"),
+        expected=expected,
         structural_sha256=inspection.structural_sha256,
         protected_structure_sha256=inspection.protected_structure_sha256,
         verify_brand=True,
         custom_furniture=inspection.custom_furniture,
+        custom_header_titles=custom_header_titles,
     )
 
 
@@ -136,14 +212,121 @@ async def test_custom_furniture_is_preserved_not_owned_or_full_brand(
     assert not inspection.preserved_headers
     assert not inspection.unknown_header_tab_ids
     assert not inspection.fully_branded
-    assert inspection.supported_brand_applied
+    assert not inspection.supported_brand_applied
+    assert len(inspection.custom_header_title_targets) == (3 if first_even else 1)
     assert len(inspection.custom_furniture) == 1
     verification = await _verify_preserved(document, inspection, before)
     assert verification.content_preserved
     assert verification.structure_preserved
     assert not verification.brand_applied
-    assert verification.supported_brand_applied
+    assert not verification.supported_brand_applied
     assert document == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first_even", [False, True])
+async def test_custom_header_title_prefix_is_native_idempotent_and_preserves_suffix(
+    first_even: bool,
+) -> None:
+    document = _custom_document(first_even=first_even, footer=True)
+    for header in document["tabs"][0]["documentTab"]["headers"].values():
+        header["content"][0]["paragraph"]["elements"][0]["textRun"]["content"] = "\ue000\n"
+    before = deepcopy(document)
+    gateway = _native_gateway()
+    inspection = gateway._inspect_in_place_sync(_inspection_snapshot(document), "Decision")
+    requests = tuple(
+        build_custom_header_title_requests(
+            "Decision",
+            profile=SarjBrandProfile(),
+            headers=tuple(
+                TabHeader(tab_id=item.tab_id, header_id=item.header_id)
+                for item in inspection.custom_header_title_targets
+            ),
+        )
+    )
+
+    assert custom_furniture_requests_safe(
+        list(requests),
+        inspection.custom_furniture,
+        allowed_header_requests=requests,
+    )
+    _apply_header_title_requests(document, requests)
+    after = gateway._inspect_in_place_sync(_inspection_snapshot(document), "Decision")
+
+    assert not after.custom_header_title_targets
+    assert after.custom_header_titles_present == inspection.custom_header_title_targets
+    assert after.custom_furniture == inspection.custom_furniture
+    assert after.supported_brand_applied
+    verification = await _verify_custom_brand(
+        document,
+        inspection,
+        parse_google_document(before, title="Decision"),
+        custom_header_titles=inspection.custom_header_title_targets,
+    )
+    assert verification.structure_preserved
+    assert verification.supported_brand_applied
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tamper", ["title", "style", "suffix"])
+async def test_custom_header_title_proof_rejects_tampering(tamper: str) -> None:
+    document = _custom_document()
+    before = deepcopy(document)
+    gateway = _native_gateway()
+    inspection = gateway._inspect_in_place_sync(_inspection_snapshot(document), "Decision")
+    requests = tuple(
+        build_custom_header_title_requests(
+            "Decision",
+            profile=SarjBrandProfile(),
+            headers=(TabHeader(tab_id=DocsTabId("tab-a"), header_id=DocsSegmentId("header-a")),),
+        )
+    )
+    _apply_header_title_requests(document, requests)
+    runs = document["tabs"][0]["documentTab"]["headers"]["header-a"]["content"][0]["paragraph"][
+        "elements"
+    ]
+    if tamper == "title":
+        runs[0]["textRun"]["content"] = "Different" + HEADER_TITLE_SEPARATOR
+    elif tamper == "style":
+        runs[0]["textRun"]["textStyle"]["weightedFontFamily"]["fontFamily"] = "Arial"
+    else:
+        runs[1]["textRun"]["content"] = "Changed suffix\n"
+
+    verification = await _verify_custom_brand(
+        document,
+        inspection,
+        parse_google_document(before, title="Decision"),
+        custom_header_titles=inspection.custom_header_title_targets,
+    )
+    assert not verification.supported_brand_applied
+
+
+@pytest.mark.parametrize("tamper", ["text", "index", "style"])
+def test_custom_header_title_request_guard_requires_the_exact_plan(tamper: str) -> None:
+    document = _custom_document()
+    inspection = _native_gateway()._inspect_in_place_sync(
+        _inspection_snapshot(document), "Decision"
+    )
+    expected = tuple(
+        build_custom_header_title_requests(
+            "Decision",
+            profile=SarjBrandProfile(),
+            headers=(TabHeader(tab_id=DocsTabId("tab-a"), header_id=DocsSegmentId("header-a")),),
+        )
+    )
+    requests = deepcopy(list(expected))
+    if tamper == "text":
+        requests[0]["insertText"]["text"] = "Different"
+    elif tamper == "index":
+        requests[0]["insertText"]["location"]["index"] = 1
+    else:
+        requests[1]["updateTextStyle"]["textStyle"]["bold"] = False
+
+    assert not custom_furniture_requests_safe(
+        requests,
+        inspection.custom_furniture,
+        allowed_header_requests=expected,
+    )
 
 
 async def test_custom_furniture_accepts_preserved_visual_authority() -> None:
@@ -161,20 +344,12 @@ async def test_custom_furniture_accepts_preserved_visual_authority() -> None:
     assert preserved_ids == ("b0",)
     expected = apply_visual_authority(parsed, preserved_ids)
 
-    verification = await gateway.verify_in_place(
-        document=document,
-        title="Decision",
-        expected=expected,
-        structural_sha256=inspection.structural_sha256,
-        protected_structure_sha256=inspection.protected_structure_sha256,
-        verify_brand=True,
-        custom_furniture=inspection.custom_furniture,
-    )
+    verification = await _verify_custom_brand(document, inspection, expected)
 
     assert verification.content_preserved
     assert verification.structure_preserved
     assert not verification.brand_applied
-    assert verification.supported_brand_applied
+    assert not verification.supported_brand_applied
 
 
 async def test_custom_furniture_does_not_exempt_unpreserved_authored_body_style() -> None:
@@ -285,10 +460,7 @@ async def test_custom_body_format_then_repeat_is_noop_with_truthful_receipt(
     events: list[str] = []
     store = _CheckpointStore(events)
     task_id = TaskId(uuid.uuid7())
-    operation = uuid.uuid7()
-    before = native._inspect_in_place_sync(
-        _inspection_snapshot(document), "Decision"
-    ).custom_furniture
+    header_plan = _custom_header_plan(native, document)
 
     async def load(_source: DriveFileSource) -> SourceSnapshot:
         return replace(
@@ -298,8 +470,13 @@ async def test_custom_body_format_then_repeat_is_noop_with_truthful_receipt(
     async def apply(**kwargs: Any) -> InPlaceStageResult:
         if events.count("body") == 0:
             assert kwargs["required_revision_id"] == document["revisionId"]
-            assert custom_furniture_requests_safe(kwargs["requests"], before)
+            assert custom_furniture_requests_safe(
+                kwargs["requests"],
+                header_plan.inspection.custom_furniture,
+                allowed_header_requests=header_plan.requests,
+            )
             assert not any("updateDocumentStyle" in item for item in kwargs["requests"])
+            _apply_header_title_requests(document, header_plan.requests)
             document["tabs"][0]["documentTab"]["body"] = deepcopy(branded_body)
             document["revisionId"] = "formatted"
             events.append("body")
@@ -332,15 +509,15 @@ async def test_custom_body_format_then_repeat_is_noop_with_truthful_receipt(
 
     if outage:
         with pytest.raises(DocumentGatewayError):
-            await executor().execute(operation_id=operation, request=request)
+            await executor().execute(operation_id=task_id, request=request)
     if tamper:
         document["tabs"][0]["documentTab"]["headers"]["header-a"]["content"] = []
         with pytest.raises(InPlaceNeedsReviewError):
-            await executor(store.checkpoints[-1]).execute(operation_id=operation, request=request)
+            await executor(store.checkpoints[-1]).execute(operation_id=task_id, request=request)
         assert events.count("body") == 1
         return
     result = await executor(store.checkpoints[-1] if outage else None).execute(
-        operation_id=operation, request=request
+        operation_id=task_id, request=request
     )
     assert result.changed
     assert not result.needs_review
@@ -351,16 +528,34 @@ async def test_custom_body_format_then_repeat_is_noop_with_truthful_receipt(
     )
     assert all(finding.severity.value == "informational" for finding in result.findings)
     assert events.count("body") == 1
+    assert not native._inspect_in_place_sync(
+        _inspection_snapshot(document), "Decision"
+    ).custom_header_title_targets
+    assert native._inspect_in_place_sync(
+        _inspection_snapshot(document), "Decision"
+    ).custom_header_titles_present == (header_plan.inspection.custom_header_title_targets)
+    for header in document["tabs"][0]["documentTab"]["headers"].values():
+        text = "".join(
+            item.get("textRun", {}).get("content", "")
+            for item in header["content"][0]["paragraph"]["elements"]
+        )
+        assert text.count("Decision") == 1
     assert (
         native._inspect_in_place_sync(_inspection_snapshot(document), "Decision").custom_furniture
-        == before
+        == header_plan.inspection.custom_furniture
     )
-    replay = await executor(store.checkpoints[-1]).execute(operation_id=operation, request=request)
+    replay = await executor(store.checkpoints[-1]).execute(operation_id=task_id, request=request)
     assert replay == result
+    completed = store.checkpoints[-1]
     again = await executor().execute(operation_id=uuid.uuid7(), request=request)
     assert not again.changed
     assert not again.needs_review
     assert events.count("body") == 1
+    document["tabs"][0]["documentTab"]["headers"]["header-a"]["content"][0]["paragraph"][
+        "elements"
+    ][0]["textRun"]["content"] = "Tampered" + HEADER_TITLE_SEPARATOR
+    with pytest.raises(InPlaceNeedsReviewError):
+        await executor(completed).execute(operation_id=task_id, request=request)
 
 
 @pytest.mark.parametrize("value", [None, False, [], ""], ids=["null", "bool", "list", "empty"])
