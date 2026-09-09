@@ -36,8 +36,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  pre-commit:
-    name: pre-commit (actionlint, hygiene, sarj rules)
+  repository-quality:
+    name: Repository hygiene and changed-file hooks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -75,12 +75,6 @@ jobs:
       - name: Verify executable repository documentation
         run: make check-repository
 
-      - name: Verify canonical Standards configs
-        run: make standards-check
-
-      - name: Verify exact Python Standards baseline
-        run: uv run --project backend --locked python scripts/check_standards.py --verify-python-baseline .
-
       - name: Suppression ratchet
         run: uv run --project backend --locked sarj-ratchet .
 
@@ -102,6 +96,42 @@ jobs:
             BASE_SHA=$(git rev-list --max-parents=0 HEAD)
           fi
           uvx --python 3.14.7 'pre-commit==4.6.2' run --from-ref "$BASE_SHA" --to-ref "$HEAD_SHA" --show-diff-on-failure
+
+  python-baseline:
+    name: Exact Python Standards baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version-file: backend/uv.toml
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install analysis dependencies
+        run: uv sync --locked --project backend
+
+      - name: Verify exact Python Standards baseline
+        run: uv run --project backend --locked python scripts/check_standards.py --verify-python-baseline .
+
+  pre-commit:
+    name: pre-commit (actionlint, hygiene, sarj rules)
+    if: ${{ always() }}
+    needs: [python-baseline, repository-quality]
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Require every repository-quality gate
+        env:
+          PYTHON_BASELINE_RESULT: ${{ needs.python-baseline.result }}
+          REPOSITORY_QUALITY_RESULT: ${{ needs.repository-quality.result }}
+        run: |
+          test "$PYTHON_BASELINE_RESULT" = success
+          test "$REPOSITORY_QUALITY_RESULT" = success
 
   api-contract:
     name: OpenAPI spec in sync
