@@ -117,6 +117,9 @@ def semantic_font_digest(
         )
         == evidence.target_font_family
         for part in paragraph["elements"]
+        # Docs may canonicalize the family of its invisible, provider-owned
+        # paragraph terminator independently of every visible text run.
+        if part["textRun"].get("content") != "\n"
     )
     if not target and (
         require_target_family or _family_digest(element) != evidence.source_family_sha256

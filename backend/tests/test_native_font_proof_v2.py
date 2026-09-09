@@ -73,6 +73,39 @@ def test_v2_explicit_terminal_family_and_materialized_weight_preserve_emphasis()
     )
 
 
+@pytest.mark.parametrize("terminal_family", ["Arial", None], ids=["source-family", "inherited"])
+def test_v2_accepts_provider_canonicalized_terminal_only_family(
+    terminal_family: str | None,
+):
+    source = _source()
+    actual = _target(source)
+    parts = _parts(actual)
+    visible = parts[-1]
+    terminal = deepcopy(visible)
+    visible["endIndex"] -= 1
+    visible["textRun"]["content"] = "Beta"
+    terminal["startIndex"] = terminal["endIndex"] - 1
+    terminal["textRun"]["content"] = "\n"
+    family = terminal["textRun"]["textStyle"]["weightedFontFamily"]
+    if terminal_family is None:
+        family.pop("fontFamily")
+    else:
+        family["fontFamily"] = terminal_family
+    parts.append(terminal)
+
+    assert verify_native_font_proof(
+        actual,
+        _proofs(source),
+        font_policy=NativeFontVerificationPolicy(require_target_family=True),
+    )
+    terminal["textRun"]["textStyle"]["bold"] = True
+    assert not verify_native_font_proof(
+        actual,
+        _proofs(source),
+        font_policy=NativeFontVerificationPolicy(require_target_family=True),
+    )
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
