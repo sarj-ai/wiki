@@ -29,6 +29,8 @@ from app.document_transform.qa_contract import (
     QA_MAX_TRAVERSED_FOLDERS,
 )
 from app.document_transform.qa_corpus import (
+    QaCorpusDriveReader,
+    QaCorpusFileReader,
     QaCorpusPlan,
     QaCorpusPlanError,
     plan_authorized_qa_corpus,
@@ -59,6 +61,7 @@ from app.tasks.service import TaskService
 _MAX_CANARY_PLAN_CHILDREN = 1_000
 _MAX_CANARY_DESTINATION_PERMISSIONS = 1_000
 _MAX_DRIVE_VERSION_LENGTH = 64
+_QA_CORPUS_DOCUMENT_COUNT = 20
 _OPERATION_PROPERTY = "sarjTransformOperation"
 _SOURCE_HASH_PROPERTY = "sarjTransformSourceHash"
 
@@ -76,20 +79,21 @@ class QaCanaryPlan:
 
 
 @dataclass(frozen=True, slots=True)
+class QaCorpusCampaignCandidate:
+    plan: QaCorpusPlan
+    destination: QaDestinationPermissionProof
+    corpus_plan_sha256: str
+    source_root_sha256: str
+    destination_identity_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
 class _QaBrokerServices:
     drive: GoogleDriveService
     files: GoogleFilesService
 
 
-class QaDriveReader(Protocol):
-    async def list_folder_children_bounded(
-        self,
-        folder_id: FileId,
-        *,
-        max_pages: int,
-        max_children: int,
-    ) -> list[DriveNode]: ...
-
+class QaPermissionReader(Protocol):
     async def read_file_permissions_bounded(
         self,
         file_id: FileId,
@@ -99,8 +103,26 @@ class QaDriveReader(Protocol):
     ) -> FilePermissionSnapshot: ...
 
 
+class QaDriveReader(QaPermissionReader, Protocol):
+    async def list_folder_children_bounded(
+        self,
+        folder_id: FileId,
+        *,
+        max_pages: int,
+        max_children: int,
+    ) -> list[DriveNode]: ...
+
+
 class QaFileReader(Protocol):
     async def get(self, file_id: FileId) -> FileResponse: ...
+
+
+class QaCorpusCampaignDriveReader(QaCorpusDriveReader, QaPermissionReader, Protocol):
+    pass
+
+
+class QaCorpusCampaignFileReader(QaCorpusFileReader, Protocol):
+    pass
 
 
 class QaCanaryBroker:
@@ -132,6 +154,24 @@ class QaCanaryBroker:
                 files=services.files,
             )
         except (
+            DriveTraversalIncompleteError,
+            FilesError,
+            NotImplementedError,
+            QaCorpusPlanError,
+            ValueError,
+        ) as exc:
+            raise QaGrantError from exc
+
+    async def plan_corpus_campaign(self, authority: QaAuthority) -> QaCorpusCampaignCandidate:
+        services = await self._services(authority)
+        try:
+            return await plan_qa_corpus_campaign(
+                authority,
+                drive=services.drive,
+                files=services.files,
+            )
+        except (
+            DrivePermissionsError,
             DriveTraversalIncompleteError,
             FilesError,
             NotImplementedError,
@@ -433,6 +473,67 @@ async def plan_qa_canary(
     )
 
 
+async def plan_qa_corpus_campaign(
+    authority: QaAuthority,
+    *,
+    drive: QaCorpusCampaignDriveReader,
+    files: QaCorpusCampaignFileReader,
+) -> QaCorpusCampaignCandidate:
+    plan = await plan_authorized_qa_corpus(authority, drive=drive, files=files)
+    plan_is_eligible = all(
+        (
+            plan.source_folder_id == authority.source_folder_id,
+            plan.source_folder_id != authority.destination_folder_id,
+            all(
+                member.file_id != authority.destination_folder_id for member in plan.member_versions
+            ),
+            len(plan.documents) == _QA_CORPUS_DOCUMENT_COUNT,
+            not plan.unsupported_files,
+            all(authority.mode.value in document.supported_modes for document in plan.documents),
+        )
+    )
+    if not plan_is_eligible:
+        raise QaGrantError
+    destination = await files.get(authority.destination_folder_id)
+    if (
+        destination.id != authority.destination_folder_id
+        or destination.mime_type != MIME_FOLDER
+        or destination.drive_id is not None
+    ):
+        raise QaGrantError
+    if not destination.can_add_children or not destination.version:
+        raise QaGrantError
+    destination_proof = await read_owner_only_file_permission_proof(
+        file_id=authority.destination_folder_id,
+        expectation=QaPermissionProofExpectation(
+            user_email=authority.user_email,
+            mime_type=MIME_FOLDER,
+        ),
+        drive=drive,
+    )
+    if (
+        destination_proof.file_id != destination.id
+        or destination_proof.mime_type != destination.mime_type
+        or destination_proof.parent_folder_id != destination.parent_folder_id
+        or destination_proof.version != destination.version
+    ):
+        raise QaGrantError
+    return QaCorpusCampaignCandidate(
+        plan=plan,
+        destination=destination_proof,
+        corpus_plan_sha256=_canonical_sha256(plan.model_dump(mode="json")),
+        source_root_sha256=_canonical_sha256(plan.source_folder.model_dump(mode="json")),
+        destination_identity_sha256=_canonical_sha256(
+            {
+                "file_id": destination.id,
+                "mime_type": destination.mime_type,
+                "parent_folder_id": destination.parent_folder_id,
+                "drive_id": destination.drive_id,
+            }
+        ),
+    )
+
+
 async def _bounded_native_docs(
     drive: QaDriveReader,
     *,
@@ -494,7 +595,7 @@ async def read_owner_only_file_permission_proof(
     *,
     file_id: FileId,
     expectation: QaPermissionProofExpectation,
-    drive: QaDriveReader,
+    drive: QaPermissionReader,
 ) -> QaDestinationPermissionProof:
     snapshot = await drive.read_file_permissions_bounded(
         file_id,
@@ -578,3 +679,13 @@ def _operation_id(
     digest[6] = (digest[6] & 0x0F) | 0x50
     digest[8] = (digest[8] & 0x3F) | 0x80
     return uuid.UUID(bytes=bytes(digest))
+
+
+def _canonical_sha256(value: object) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(payload).hexdigest()

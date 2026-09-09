@@ -160,6 +160,7 @@ jobs:
           tests/test_document_transform_qa_grants.py
           tests/test_document_transform_qa_submit_postgres.py
           tests/test_document_transform_qa_corpus_postgres.py -q -rA
+          tests/test_document_transform_qa_campaigns_postgres.py -q -rA
 
       - name: Exercise MCP storage and client grants across database sessions
         run: >-
