@@ -12,8 +12,7 @@ import uuid
 from cryptography.fernet import InvalidToken
 from pydantic import BaseModel, JsonValue, TypeAdapter
 from sqlalchemy import Text, and_, case, cast, delete, func, literal, or_, select, update
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.encryption import decrypt_cache, encrypt_cache

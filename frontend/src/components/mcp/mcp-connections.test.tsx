@@ -146,7 +146,7 @@ describe("McpConnections", () => {
     actions[1]?.click();
     button("Refresh status").click();
     expect(disconnect).toHaveBeenCalledExactlyOnceWith(READ_ID, INITIAL.csrf);
-    expect(read).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledOnce();
     await vi.waitFor(() => expect(button("Refresh status")).toBeDisabled());
     pending.resolve(undefined);
     await vi.waitFor(() => expect(buttons("Disconnect")).toHaveLength(0));
@@ -187,7 +187,7 @@ describe("McpConnections", () => {
     read.mockResolvedValueOnce({ csrf: INITIAL.csrf, connections: [] });
     button("Refresh status").click();
     await vi.waitFor(() => expect(container).toHaveTextContent("No active app connections."));
-    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(disconnect).toHaveBeenCalledOnce();
   });
 
   it("does not let a stale initial read undo a later uncertain disconnect", async () => {
@@ -197,7 +197,7 @@ describe("McpConnections", () => {
     render();
     expect(button("Refresh status")).toBeDisabled();
     button("Refresh status").click();
-    expect(read).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledOnce();
     initial.resolve(INITIAL);
     await loaded();
     button("Disconnect").click();

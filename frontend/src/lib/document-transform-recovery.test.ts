@@ -38,9 +38,9 @@ describe("document transform recovery", () => {
     window.sessionStorage.clear();
     expect(readTransformRecovery("owner", "drive:doc")).toEqual(first);
     expect(readTransformRecovery("other", "drive:doc")).toBeNull();
-    expect(
-      await claimTransformRecovery("owner", "drive:doc", candidate(secondKey, Date.now())),
-    ).toEqual(first);
+    await expect(
+      claimTransformRecovery("owner", "drive:doc", candidate(secondKey, Date.now())),
+    ).resolves.toEqual(first);
   });
 
   it("releases only the exact terminal operation, permitting a deliberate later run", async () => {
@@ -80,9 +80,9 @@ describe("document transform recovery", () => {
   it("fails closed without atomic coordination but permits recovery", async () => {
     const existing = await claimTransformRecovery("owner", "drive:existing", candidate(firstKey));
     Object.defineProperty(navigator, "locks", { configurable: true, value: undefined });
-    expect(await claimTransformRecovery("owner", "drive:existing", candidate(secondKey))).toEqual(
-      existing,
-    );
+    await expect(
+      claimTransformRecovery("owner", "drive:existing", candidate(secondKey)),
+    ).resolves.toEqual(existing);
     await expect(claimTransformRecovery("owner", "drive:doc", candidate(firstKey))).rejects.toThrow(
       "Web Locks",
     );

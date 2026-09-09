@@ -12,15 +12,15 @@ export interface MarkdownFileContents {
   name: string;
 }
 
-const encoder = new TextEncoder();
+const ENCODER = new TextEncoder();
 
 export function markdownByteLength(value: string): number {
-  return encoder.encode(value).byteLength;
+  return ENCODER.encode(value).byteLength;
 }
 
 export function markdownTextError(value: string): null | string {
   if (
-    new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(encoder.encode(value)) !==
+    new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(ENCODER.encode(value)) !==
     value
   ) {
     return "Markdown must contain valid UTF-8 text.";

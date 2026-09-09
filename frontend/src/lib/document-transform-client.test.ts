@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-const actionMocks = vi.hoisted(() => ({
+const ACTION_MOCKS = vi.hoisted(() => ({
   capabilities: vi.fn(),
   create: vi.fn(),
   current: vi.fn(),
@@ -9,22 +9,22 @@ const actionMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/document-transform-http", () => ({
   transformHttp: (path: string, body?: string, key?: string) => {
-    if (path === "/capabilities") return actionMocks.capabilities();
-    if (path.startsWith("/current?")) return actionMocks.current(path);
-    if (path.startsWith("/tasks/")) return actionMocks.getTask(path.slice("/tasks/".length));
-    return actionMocks.create(body, key);
+    if (path === "/capabilities") return ACTION_MOCKS.capabilities();
+    if (path.startsWith("/current?")) return ACTION_MOCKS.current(path);
+    if (path.startsWith("/tasks/")) return ACTION_MOCKS.getTask(path.slice("/tasks/".length));
+    return ACTION_MOCKS.create(body, key);
   },
 }));
 
-import { documentTransformApi } from "@/lib/document-transform-client";
+import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-client";
 import { DocumentTransformNeedsReviewError } from "@/lib/document-transform-types";
-const taskId = "55555555-5555-4555-8555-555555555555";
+const TASK_ID = "55555555-5555-4555-8555-555555555555";
 
 describe("documentTransformApi", () => {
   it("keeps an incomplete-copy link on a terminal failure without promoting a result", async () => {
-    actionMocks.getTask.mockResolvedValue({
+    ACTION_MOCKS.getTask.mockResolvedValue({
       data: JSON.stringify({
-        id: taskId,
+        id: TASK_ID,
         status: "failed",
         error_code: "output_verification_failed",
         error_detail: "Task could not be completed",
@@ -33,7 +33,7 @@ describe("documentTransformApi", () => {
       ok: true,
     });
     await expect(
-      documentTransformApi.waitForCompletion({ id: taskId, status: "running" }, undefined, 0),
+      DOCUMENT_TRANSFORM_API.waitForCompletion({ id: TASK_ID, status: "running" }, undefined, 0),
     ).rejects.toMatchObject({
       name: "DocumentTransformTerminalError",
       unverifiedOutputId: "known-copy",
@@ -45,12 +45,12 @@ describe("documentTransformApi", () => {
   });
 
   it("parses the server-gated in-place capability", async () => {
-    actionMocks.capabilities.mockResolvedValue({
+    ACTION_MOCKS.capabilities.mockResolvedValue({
       data: JSON.stringify({ copy: true, in_place: true }),
       ok: true,
     });
 
-    await expect(documentTransformApi.capabilities()).resolves.toEqual({
+    await expect(DOCUMENT_TRANSFORM_API.capabilities()).resolves.toEqual({
       copy: true,
       inPlace: true,
       presentationCopy: true,
@@ -59,34 +59,34 @@ describe("documentTransformApi", () => {
   });
 
   it("returns the exact current-revision polish receipt", async () => {
-    actionMocks.current.mockResolvedValue({
+    ACTION_MOCKS.current.mockResolvedValue({
       data: JSON.stringify({ result: currentResult() }),
       ok: true,
     });
 
-    await expect(documentTransformApi.current("document 1", "format")).resolves.toMatchObject({
+    await expect(DOCUMENT_TRANSFORM_API.current("document 1", "format")).resolves.toMatchObject({
       mode: "format",
-      operationId: taskId,
+      operationId: TASK_ID,
       outputRevisionId: "revision-current",
       outputStrategy: "in_place",
     });
-    expect(actionMocks.current).toHaveBeenCalledWith("/current?file_id=document%201&mode=format");
+    expect(ACTION_MOCKS.current).toHaveBeenCalledWith("/current?file_id=document%201&mode=format");
   });
 
   it("returns null when the current revision has not been polished", async () => {
-    actionMocks.current.mockResolvedValue({ data: JSON.stringify({ result: null }), ok: true });
+    ACTION_MOCKS.current.mockResolvedValue({ data: JSON.stringify({ result: null }), ok: true });
 
-    await expect(documentTransformApi.current("document-1", "both")).resolves.toBeNull();
+    await expect(DOCUMENT_TRANSFORM_API.current("document-1", "both")).resolves.toBeNull();
   });
 
   it("serializes a revision-locked Drive source and creates no in-place output", async () => {
-    actionMocks.create.mockResolvedValue({
+    ACTION_MOCKS.create.mockResolvedValue({
       data: JSON.stringify(task("pending")),
       ok: true,
     });
 
     await expect(
-      documentTransformApi.create(
+      DOCUMENT_TRANSFORM_API.create(
         {
           expectedModifiedTime: "2026-09-03T12:00:00Z",
           fileId: "doc-1",
@@ -96,9 +96,9 @@ describe("documentTransformApi", () => {
         "both",
         "66666666-6666-4666-8666-666666666666",
       ),
-    ).resolves.toEqual({ id: taskId, status: "pending" });
+    ).resolves.toEqual({ id: TASK_ID, status: "pending" });
 
-    expect(actionMocks.create).toHaveBeenCalledWith(
+    expect(ACTION_MOCKS.create).toHaveBeenCalledWith(
       JSON.stringify({
         mode: "both",
         output_name: null,
@@ -114,14 +114,14 @@ describe("documentTransformApi", () => {
   });
 
   it("marks a retained task returned by a replayed submission", async () => {
-    actionMocks.create.mockResolvedValue({
+    ACTION_MOCKS.create.mockResolvedValue({
       data: JSON.stringify(task("pending")),
       ok: true,
       replayed: true,
     });
 
     await expect(
-      documentTransformApi.create(
+      DOCUMENT_TRANSFORM_API.create(
         {
           expectedModifiedTime: "2026-09-03T12:00:00Z",
           fileId: "doc-1",
@@ -131,12 +131,12 @@ describe("documentTransformApi", () => {
         "both",
         "66666666-6666-4666-8666-666666666666",
       ),
-    ).resolves.toEqual({ id: taskId, replayed: true, status: "pending" });
+    ).resolves.toEqual({ id: TASK_ID, replayed: true, status: "pending" });
   });
 
   it("sends the explicit copy name without changing the source", async () => {
-    actionMocks.create.mockResolvedValue({ data: JSON.stringify(task("pending")), ok: true });
-    await documentTransformApi.create(
+    ACTION_MOCKS.create.mockResolvedValue({ data: JSON.stringify(task("pending")), ok: true });
+    await DOCUMENT_TRANSFORM_API.create(
       {
         kind: "drive_file",
         fileId: "doc-1",
@@ -144,11 +144,11 @@ describe("documentTransformApi", () => {
         expectedModifiedTime: "2026-09-03T12:00:00Z",
       },
       "format",
-      taskId,
+      TASK_ID,
       "copy",
       "Architecture decisions",
     );
-    expect(JSON.parse(actionMocks.create.mock.calls[0]?.[0] as string)).toMatchObject({
+    expect(JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] as string)).toMatchObject({
       output_name: "Architecture decisions",
       output_strategy: "copy",
       source: { file_id: "doc-1" },
@@ -156,12 +156,12 @@ describe("documentTransformApi", () => {
   });
 
   it("serializes pasted Markdown with its explicit destination", async () => {
-    actionMocks.create.mockResolvedValue({
+    ACTION_MOCKS.create.mockResolvedValue({
       data: JSON.stringify(task("pending")),
       ok: true,
     });
 
-    await documentTransformApi.create(
+    await DOCUMENT_TRANSFORM_API.create(
       {
         content: "# Launch",
         destinationFolderId: "folder-1",
@@ -172,7 +172,7 @@ describe("documentTransformApi", () => {
       "77777777-7777-4777-8777-777777777777",
     );
 
-    expect(JSON.parse(actionMocks.create.mock.calls[0]?.[0] as string)).toMatchObject({
+    expect(JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] as string)).toMatchObject({
       mode: "format",
       output_name: null,
       output_strategy: "copy",
@@ -186,12 +186,12 @@ describe("documentTransformApi", () => {
   });
 
   it("sends in-place as an explicit request strategy", async () => {
-    actionMocks.create.mockResolvedValue({
+    ACTION_MOCKS.create.mockResolvedValue({
       data: JSON.stringify(task("pending")),
       ok: true,
     });
 
-    await documentTransformApi.create(
+    await DOCUMENT_TRANSFORM_API.create(
       {
         expectedModifiedTime: "2026-09-03T12:00:00Z",
         fileId: "doc-1",
@@ -203,14 +203,14 @@ describe("documentTransformApi", () => {
       "in_place",
     );
 
-    expect(JSON.parse(actionMocks.create.mock.calls[0]?.[0] as string)).toMatchObject({
+    expect(JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] as string)).toMatchObject({
       output_name: null,
       output_strategy: "in_place",
     });
   });
 
   it.each([undefined, 0, 1, 20])("parses heading count %s while polling", async (count) => {
-    actionMocks.getTask.mockResolvedValue({
+    ACTION_MOCKS.getTask.mockResolvedValue({
       data: JSON.stringify({
         ...task("succeeded"),
         result: {
@@ -229,7 +229,7 @@ describe("documentTransformApi", () => {
           mode: "unslop",
           model_ids: ["gemini-flash"],
           needs_review: false,
-          operation_id: taskId,
+          operation_id: TASK_ID,
           output: {
             file_id: "output-1",
             media_type: "application/vnd.google-apps.presentation",
@@ -252,7 +252,7 @@ describe("documentTransformApi", () => {
     });
 
     await expect(
-      documentTransformApi.waitForCompletion({ id: taskId, status: "running" }, undefined, 0),
+      DOCUMENT_TRANSFORM_API.waitForCompletion({ id: TASK_ID, status: "running" }, undefined, 0),
     ).resolves.toMatchObject({
       mode: "unslop",
       promotedHeadingCount: count ?? 0,
@@ -274,11 +274,11 @@ describe("documentTransformApi", () => {
       sourceSha256: "a".repeat(64),
       validation: { sourceUnchanged: true },
     });
-    expect(actionMocks.getTask).toHaveBeenCalledWith(taskId);
+    expect(ACTION_MOCKS.getTask).toHaveBeenCalledWith(TASK_ID);
   });
 
   it("fails closed when a legacy review finding contradicts needs_review", async () => {
-    actionMocks.getTask.mockResolvedValue({
+    ACTION_MOCKS.getTask.mockResolvedValue({
       data: JSON.stringify({
         ...task("succeeded"),
         result: {
@@ -294,7 +294,7 @@ describe("documentTransformApi", () => {
           mode: "format",
           model_ids: [],
           needs_review: false,
-          operation_id: taskId,
+          operation_id: TASK_ID,
           output: {
             file_id: "output-1",
             name: "Review",
@@ -316,7 +316,7 @@ describe("documentTransformApi", () => {
     });
 
     await expect(
-      documentTransformApi.waitForCompletion({ id: taskId, status: "running" }, undefined, 0),
+      DOCUMENT_TRANSFORM_API.waitForCompletion({ id: TASK_ID, status: "running" }, undefined, 0),
     ).rejects.toMatchObject({
       name: "DocumentTransformNeedsReviewError",
       result: {
@@ -328,10 +328,10 @@ describe("documentTransformApi", () => {
 
   it("surfaces the review gate as a distinct outcome", async () => {
     await expect(
-      documentTransformApi.waitForCompletion({
+      DOCUMENT_TRANSFORM_API.waitForCompletion({
         errorCode: "needs_review",
         errorDetail: "A table could not be preserved safely.",
-        id: taskId,
+        id: TASK_ID,
         status: "failed",
       }),
     ).rejects.toEqual(
@@ -341,10 +341,10 @@ describe("documentTransformApi", () => {
 
   it("replaces a redacted review detail with safe, actionable guidance", async () => {
     await expect(
-      documentTransformApi.waitForCompletion({
+      DOCUMENT_TRANSFORM_API.waitForCompletion({
         errorCode: "needs_review",
         errorDetail: "Task could not be completed",
-        id: taskId,
+        id: TASK_ID,
         status: "failed",
       }),
     ).rejects.toEqual(
@@ -356,9 +356,9 @@ describe("documentTransformApi", () => {
 
   it("uses code-specific guidance when a terminal task has no detail", async () => {
     await expect(
-      documentTransformApi.waitForCompletion({
+      DOCUMENT_TRANSFORM_API.waitForCompletion({
         errorCode: "source_changed",
-        id: taskId,
+        id: TASK_ID,
         status: "failed",
       }),
     ).rejects.toMatchObject({
@@ -371,10 +371,10 @@ describe("documentTransformApi", () => {
 
   it("truthfully identifies an original that may have changed after verification", async () => {
     await expect(
-      documentTransformApi.waitForCompletion({
+      DOCUMENT_TRANSFORM_API.waitForCompletion({
         errorCode: "in_place_verification_failed",
         errorDetail: "Task could not be completed",
-        id: taskId,
+        id: TASK_ID,
         status: "failed",
         unverifiedOutputId: "original-document",
       }),
@@ -387,19 +387,19 @@ describe("documentTransformApi", () => {
   });
 
   it("stops polling instead of waiting forever", async () => {
-    actionMocks.getTask.mockResolvedValue({
+    ACTION_MOCKS.getTask.mockResolvedValue({
       data: JSON.stringify(task("pending")),
       ok: true,
     });
 
     await expect(
-      documentTransformApi.waitForCompletion({ id: taskId, status: "running" }, undefined, 0, 1),
+      DOCUMENT_TRANSFORM_API.waitForCompletion({ id: TASK_ID, status: "running" }, undefined, 0, 1),
     ).rejects.toThrow("Document polish timed out; check its task status before retrying");
-    expect(actionMocks.getTask).toHaveBeenCalledTimes(1);
+    expect(ACTION_MOCKS.getTask).toHaveBeenCalledOnce();
   });
 
   it("retries transient task reads without starting a second transform", async () => {
-    actionMocks.getTask
+    ACTION_MOCKS.getTask
       .mockResolvedValueOnce({ error: "temporarily unavailable", ok: false, status: 503 })
       .mockResolvedValueOnce({
         data: JSON.stringify({
@@ -418,7 +418,7 @@ describe("documentTransformApi", () => {
             model_ids: [],
             model_patch_count: 0,
             needs_review: false,
-            operation_id: taskId,
+            operation_id: TASK_ID,
             output: {
               file_id: "doc-1",
               media_type: "application/vnd.google-apps.document",
@@ -446,14 +446,14 @@ describe("documentTransformApi", () => {
       });
 
     await expect(
-      documentTransformApi.waitForCompletion({ id: taskId, status: "running" }, undefined, 0, 3),
+      DOCUMENT_TRANSFORM_API.waitForCompletion({ id: TASK_ID, status: "running" }, undefined, 0, 3),
     ).resolves.toMatchObject({
       outputStrategy: "in_place",
       outputFile: { id: "doc-1" },
       shortLinkAlias: "architecture-decisions",
       shortLinkStatus: "ready",
     });
-    expect(actionMocks.getTask).toHaveBeenCalledTimes(2);
+    expect(ACTION_MOCKS.getTask).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -464,7 +464,7 @@ function task(status: "pending" | "succeeded") {
     error_code: null,
     error_detail: null,
     finished_at: status === "pending" ? null : "2026-09-03T12:01:00Z",
-    id: taskId,
+    id: TASK_ID,
     kind: "file.document_transform",
     resource_id: null,
     result: null,
@@ -488,7 +488,7 @@ function currentResult() {
     model_ids: [],
     model_patch_count: 0,
     needs_review: false,
-    operation_id: taskId,
+    operation_id: TASK_ID,
     output: {
       file_id: "document-1",
       media_type: "application/vnd.google-apps.document",

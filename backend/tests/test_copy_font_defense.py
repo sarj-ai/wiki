@@ -40,10 +40,12 @@ from app.document_transform.tab_structure_execution import (
     prepare_tab_creation,
 )
 from app.identifiers import DocsRevisionId, DocsTabId, TaskId
-from tests import test_copy_font_preservation as legacy
-from tests import test_document_transform as transform
-from tests import test_document_transform_header_provenance as provenance
-from tests import test_document_transform_tab_structure as structure
+from tests import (
+    test_copy_font_preservation as legacy,
+    test_document_transform as transform,
+    test_document_transform_header_provenance as provenance,
+    test_document_transform_tab_structure as structure,
+)
 
 
 def document(*, known: bool = True, formatted: bool = False) -> dict[str, Any]:

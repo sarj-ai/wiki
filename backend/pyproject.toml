@@ -131,6 +131,7 @@ target-version = "py314"
 ]
 
 [tool.ruff.lint.isort]
+combine-as-imports = true
 force-sort-within-sections = true
 known-first-party = ["app"]
 lines-after-imports = 2

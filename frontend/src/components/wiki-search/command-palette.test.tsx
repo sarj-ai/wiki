@@ -81,7 +81,7 @@ describe("CommandPalette rate-limit errors", () => {
     expect(document.body).not.toHaveTextContent("No results");
 
     clickButton("Retry search");
-    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(refetch).toHaveBeenCalledOnce();
   });
 
   it("disables search retry while the refetch is active", async () => {
@@ -111,7 +111,7 @@ describe("CommandPalette rate-limit errors", () => {
     expect(document.body).not.toHaveTextContent("couldn't pinpoint the exact phrase");
 
     clickButton("Retry preview");
-    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(refetch).toHaveBeenCalledOnce();
   });
 
   it("prepares only the stable selected document after the intent delay", async () => {

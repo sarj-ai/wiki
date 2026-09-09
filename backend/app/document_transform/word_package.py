@@ -16,8 +16,7 @@ from defusedxml.minidom import parse
 
 
 if TYPE_CHECKING:
-    from xml.dom.minidom import Document, Element, Text
-    from xml.dom.minidom import Node as DOMNode
+    from xml.dom.minidom import Document, Element, Node as DOMNode, Text
 
 WORD_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 WORD_2010_NAMESPACE = "http://schemas.microsoft.com/office/word/2010/wordml"

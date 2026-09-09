@@ -329,7 +329,7 @@ async def _refresh_all_members(
         (member.id for member in members), _FILE_METADATA_BATCH_SIZE, strict=False
     ):
         loaded = await files.get_qa_corpus_metadata_many(list(chunk))
-        if set(loaded).intersection(refreshed):
+        if not set(loaded).isdisjoint(refreshed):
             raise QaCorpusPlanError
         for file_id, member in loaded.items():
             metadata_bytes += len(_canonical_json(_file_fingerprint(member)))

@@ -1,7 +1,7 @@
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
-import { documentTransformApi } from "@/lib/document-transform-client";
+import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-client";
 import type { TransformRecovery } from "@/lib/document-transform-recovery";
 import {
   makeMarkdownRecovery,
@@ -62,7 +62,7 @@ function click(label: string) {
 
 it("saves exact private payload before an explicit reload without submitting", async () => {
   const reload = vi.spyOn(window.location, "reload").mockImplementation(vi.fn<() => void>());
-  const create = vi.spyOn(documentTransformApi, "create");
+  const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
   renderPanel();
   expect(window.sessionStorage.getItem(markdownRecoveryStorageKey("owner"))).toBeNull();
   click("Save recovery draft and reload");
@@ -87,9 +87,9 @@ it("does not reload when storage cannot preserve the draft", async () => {
 it.each([false, true])("restores same-key recovery after reload, admitted=%s", async (admitted) => {
   const taskId = "66666666-6666-4666-8666-666666666666";
   const lookup = vi
-    .spyOn(documentTransformApi, "admission")
+    .spyOn(DOCUMENT_TRANSFORM_API, "admission")
     .mockResolvedValue(admitted ? { task_id: taskId, status: "pending" } : null);
-  const create = vi.spyOn(documentTransformApi, "create");
+  const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
   saveMarkdownRecovery(makeMarkdownRecovery("owner", Operation, Source));
   renderPanel(null);
   click("Restore saved recovery draft");
@@ -104,7 +104,7 @@ it.each([false, true])("restores same-key recovery after reload, admitted=%s", a
 });
 
 it("keeps the lock when lookup fails instead of replaying", async () => {
-  vi.spyOn(documentTransformApi, "admission").mockRejectedValue(new Error("offline"));
+  vi.spyOn(DOCUMENT_TRANSFORM_API, "admission").mockRejectedValue(new Error("offline"));
   renderPanel();
   click("Check original admission");
   await vi.waitFor(() => expect(host).toHaveTextContent("Recovery could not complete"));
@@ -113,8 +113,8 @@ it("keeps the lock when lookup fails instead of replaying", async () => {
 
 it("locks recovery synchronously across duplicate clicks", async () => {
   const pending =
-    Promise.withResolvers<Awaited<ReturnType<typeof documentTransformApi.admission>>>();
-  const lookup = vi.spyOn(documentTransformApi, "admission").mockReturnValue(pending.promise);
+    Promise.withResolvers<Awaited<ReturnType<typeof DOCUMENT_TRANSFORM_API.admission>>>();
+  const lookup = vi.spyOn(DOCUMENT_TRANSFORM_API, "admission").mockReturnValue(pending.promise);
   renderPanel();
   const button = [...host.querySelectorAll("button")].find(
     (item) => item.textContent === "Check original admission",
@@ -131,8 +131,8 @@ it("locks recovery synchronously across duplicate clicks", async () => {
 });
 
 it("rescues an older tab using exact original values and the existing reservation", async () => {
-  vi.spyOn(documentTransformApi, "admission").mockResolvedValue(null);
-  const create = vi.spyOn(documentTransformApi, "create");
+  vi.spyOn(DOCUMENT_TRANSFORM_API, "admission").mockResolvedValue(null);
+  const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
   renderPanel(null);
   const fields = [...host.querySelectorAll("input, textarea")];
   for (const [index, value] of [

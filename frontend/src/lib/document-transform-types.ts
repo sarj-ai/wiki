@@ -5,15 +5,15 @@ export type DocumentTransformOutputStrategy = "copy" | "in_place";
 
 export type DocumentTransformSource =
   | {
-      expectedModifiedTime: string;
-      fileId: string;
-      kind: "drive_file";
-      name: string;
-    }
-  | {
       content: string;
       destinationFolderId: string;
       kind: "markdown";
+      name: string;
+    }
+  | {
+      expectedModifiedTime: string;
+      fileId: string;
+      kind: "drive_file";
       name: string;
     };
 
@@ -23,25 +23,25 @@ export interface DocumentTransformResult {
   artifactKind: "document" | "presentation";
   brandProfileId: string;
   brandProfileSha256: string;
+  changed: boolean;
   deterministicPatchCount: number;
   findings: DocumentTransformFinding[];
-  mode: DocumentTransformMode;
   llmInvoked: boolean;
-  modelPatchCount: number;
-  promotedHeadingCount: number;
+  mode: DocumentTransformMode;
   modelIds: string[];
+  modelPatchCount: number;
   needsReview: boolean;
   operationId: string;
-  outputStrategy: DocumentTransformOutputStrategy;
   outputFile: FileResponse;
+  outputRevisionId: null | string;
+  outputStrategy: DocumentTransformOutputStrategy;
   outputWebUrl: null | string;
   pipelineVersion: string;
-  changed: boolean;
-  outputRevisionId: null | string;
-  sourceRevisionId: null | string;
-  sourceSha256: string;
+  promotedHeadingCount: number;
   shortLinkAlias?: null | string;
   shortLinkStatus?: "ready" | "unavailable" | null;
+  sourceRevisionId: null | string;
+  sourceSha256: string;
   toolVersions: Record<string, string>;
   validation: DocumentTransformValidation;
 }

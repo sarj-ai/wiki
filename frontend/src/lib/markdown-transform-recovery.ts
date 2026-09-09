@@ -1,10 +1,10 @@
 import * as z from "zod";
 
-import { MARKDOWN_LIMIT_BYTES, markdownByteLength } from "@/lib/markdown-import";
 import type { TransformRecovery } from "@/lib/document-transform-recovery";
+import { MARKDOWN_LIMIT_BYTES, markdownByteLength } from "@/lib/markdown-import";
 
 export const REPLAY_MAX_AGE_MS = 6 * 24 * 60 * 60 * 1000;
-const MarkdownSource = z.strictObject({
+const MarkdownSourceSchema = z.strictObject({
   kind: z.literal("markdown"),
   content: z
     .string()
@@ -14,16 +14,16 @@ const MarkdownSource = z.strictObject({
   name: z.string().min(1).max(255),
   destinationFolderId: z.string().min(1).max(255),
 });
-const Bundle = z.strictObject({
+const BundleSchema = z.strictObject({
   version: z.literal(1),
   owner: z.string().min(1),
   key: z.uuid(),
   createdAt: z.number().nonnegative(),
   mode: z.enum(["format", "unslop", "both"]),
   outputName: z.string().nullable(),
-  source: MarkdownSource,
+  source: MarkdownSourceSchema,
 });
-export type MarkdownRecoveryBundle = z.infer<typeof Bundle>;
+export type MarkdownRecoveryBundle = z.infer<typeof BundleSchema>;
 
 export function markdownRecoveryStorageKey(owner: string): string {
   return `sarj-wiki:transform-draft:${encodeURIComponent(owner)}`;
@@ -35,7 +35,7 @@ export function validateMarkdownRecovery(
   operation: TransformRecovery,
 ): MarkdownRecoveryBundle {
   if (raw.length > 4 * 1024 * 1024) throw new Error("Recovery draft exceeds the safe limit");
-  const parsed = Bundle.safeParse(JSON.parse(raw));
+  const parsed = BundleSchema.safeParse(JSON.parse(raw));
   if (!parsed.success) throw new Error("Recovery draft is invalid");
   const bundle = parsed.data;
   if (

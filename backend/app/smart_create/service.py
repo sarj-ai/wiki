@@ -8,8 +8,7 @@ import re
 from typing import Annotated, override
 
 from google import genai
-from google.genai import errors as genai_errors
-from google.genai import types as genai_types
+from google.genai import errors as genai_errors, types as genai_types
 from loguru import logger
 from pydantic import BaseModel, StringConstraints, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession

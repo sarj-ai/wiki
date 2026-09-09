@@ -8,8 +8,7 @@ import json
 from typing import Literal, override
 
 from google import genai
-from google.genai import errors as genai_errors
-from google.genai import types as genai_types
+from google.genai import errors as genai_errors, types as genai_types
 
 from app.document_transform.errors import ModelUnavailableError
 from app.document_transform.ir import DocumentIR

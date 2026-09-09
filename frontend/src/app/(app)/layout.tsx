@@ -16,8 +16,8 @@ import { loadSessionBootstrap } from "@/lib/load-session-bootstrap";
 import { serverWikiApi } from "@/lib/server-api";
 import {
   SIDEBAR_WIDTH_COOKIE,
-  ZSIDEBAR_STATE_COOKIE,
-  ZSIDEBAR_WIDTH_CSS,
+  SidebarStateCookieSchema,
+  SidebarWidthCssSchema,
 } from "@/lib/storage-schemas";
 import { authKeys, wikiKeys } from "@/lib/wiki-keys";
 
@@ -27,8 +27,8 @@ interface SidebarStyle extends CSSProperties {
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
-  const defaultOpen = ZSIDEBAR_STATE_COOKIE.parse(cookieStore.get("sidebar_state")?.value);
-  const savedWidth = ZSIDEBAR_WIDTH_CSS.parse(cookieStore.get(SIDEBAR_WIDTH_COOKIE)?.value);
+  const defaultOpen = SidebarStateCookieSchema.parse(cookieStore.get("sidebar_state")?.value);
+  const savedWidth = SidebarWidthCssSchema.parse(cookieStore.get(SIDEBAR_WIDTH_COOKIE)?.value);
   const sidebarWidth = savedWidth
     ? `${Math.min(576, Math.max(224, Number.parseInt(savedWidth, 10)))}px`
     : undefined;

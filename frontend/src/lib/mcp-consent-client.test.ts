@@ -35,7 +35,7 @@ describe("MCP consent transport", () => {
     await expect(
       disconnectMcpConnection("00000000-0000-4000-8000-000000000001", "a".repeat(64)),
     ).rejects.toThrow(McpConsentRequestError);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("uses browser credentials, no cache, no referrer, and no redirected reads", async () => {
@@ -77,7 +77,7 @@ describe("MCP consent transport", () => {
     await expect(
       decideMcpConsent(INTENT, CSRF, { approve: true, transformApproved: false }),
     ).rejects.toThrow(McpConsentRequestError);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("does not replay a decision after transport failure", async () => {
@@ -86,7 +86,7 @@ describe("MCP consent transport", () => {
     await expect(
       decideMcpConsent(INTENT, CSRF, { approve: true, transformApproved: false }),
     ).rejects.toThrow();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("sends the explicit decision and accepts the server-validated loopback callback", async () => {

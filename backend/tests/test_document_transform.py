@@ -18,8 +18,10 @@ from loguru import logger
 from pydantic import ValidationError
 import pytest
 
-from app.document_transform import executor as executor_module
-from app.document_transform import google_gateway as google_gateway_module
+from app.document_transform import (
+    executor as executor_module,
+    google_gateway as google_gateway_module,
+)
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
 from app.document_transform.custom_furniture import CustomFurnitureBinding
 from app.document_transform.docx_renderer import markdown_import_manifest, render_markdown_docx

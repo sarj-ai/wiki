@@ -14,8 +14,10 @@ from app.tasks.internal_auth import (
     GoogleOidcTaskRequestAuthenticator,
     document_transform_task_request_authenticator_dep,
 )
-from app.tasks.internal_router import reconcile_document_transform_dispatches
-from app.tasks.internal_router import router as internal_task_router
+from app.tasks.internal_router import (
+    reconcile_document_transform_dispatches,
+    router as internal_task_router,
+)
 from app.tasks.service import PostgresTaskService
 
 
