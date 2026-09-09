@@ -66,6 +66,15 @@ def test_matching_native_list_style_preserves_emphasis_without_reserialization(
     assert expected.blocks[0].source_style_text_sha256 == original.blocks[0].sha256
 
 
+def test_unchanged_editable_bullet_is_not_reported_as_projected() -> None:
+    document = _document()
+    expected = parse_google_document(document, title="Review")
+
+    counts = bullet_style_diagnostics(expected, expected)
+
+    assert counts["bullet_projection_accepted"] == 0
+
+
 def test_matching_style_does_not_normalize_missing_bullet_false() -> None:
     document = _document()
     paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]

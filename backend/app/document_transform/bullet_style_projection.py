@@ -135,7 +135,9 @@ def bullet_style_diagnostics(actual: DocumentIR, expected: DocumentIR) -> dict[s
         )
         counts["bullet_not_editable"] += int(not planned.editable)
         counts["bullet_projection_accepted"] += int(
-            planned.editable and _only_planned_style_changes(before, after, permitted)
+            planned.editable
+            and before != after
+            and _only_planned_style_changes(before, after, permitted)
         )
         before_style = before.get("textStyle", {})
         after_style = after.get("textStyle", {})
