@@ -3,9 +3,21 @@ from typing import Any
 
 import pytest
 
-from app.document_transform.brand import SarjBrandProfile, build_copy_mutations, mutation_sha256
+from app.document_transform.brand import (
+    SarjBrandProfile,
+    build_copy_mutations,
+    mutation_sha256,
+    preserve_in_place_native_list_text_styles,
+)
 from app.document_transform.errors import SourceTooLargeError
-from app.document_transform.ir import BlockKind, DocumentIR, SourceRange, TextBlock, utf16_length
+from app.document_transform.ir import (
+    BlockKind,
+    DocumentIR,
+    SourceRange,
+    TextBlock,
+    parse_google_document,
+    utf16_length,
+)
 from app.identifiers import DocsTabId
 
 
@@ -130,3 +142,165 @@ def test_extra_style_request_counts_toward_mutation_budget(monkeypatch: pytest.M
     )
     with pytest.raises(SourceTooLargeError):
         mutation_sha256(requests)
+
+
+def test_in_place_preserves_provider_shaped_native_list_typography_and_replays() -> None:
+    raw = {
+        "revisionId": "revision",
+        "tabs": [
+            {
+                "tabProperties": {"tabId": "tab"},
+                "documentTab": {
+                    "body": {
+                        "content": [
+                            {
+                                "startIndex": 1,
+                                "endIndex": 17,
+                                "paragraph": {
+                                    "bullet": {"listId": "list", "nestingLevel": 0},
+                                    "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                                    "elements": [
+                                        {
+                                            "startIndex": 1,
+                                            "endIndex": 8,
+                                            "textRun": {
+                                                "content": "Review ",
+                                                "textStyle": {"bold": True},
+                                            },
+                                        },
+                                        {
+                                            "startIndex": 8,
+                                            "endIndex": 16,
+                                            "textRun": {
+                                                "content": "evidence",
+                                                "textStyle": {"bold": True},
+                                            },
+                                        },
+                                        {
+                                            "startIndex": 16,
+                                            "endIndex": 17,
+                                            "textRun": {
+                                                "content": "\n",
+                                                "textStyle": {"bold": False},
+                                            },
+                                        },
+                                    ],
+                                },
+                            }
+                        ]
+                    },
+                    "lists": {"list": {"listProperties": {"nestingLevels": [{}]}}},
+                },
+            }
+        ],
+    }
+    document = parse_google_document(raw, title="Review")
+    assert document.blocks[0].editable
+    copy_requests = build_copy_mutations(
+        document, document, profile=SarjBrandProfile(), headers=(), logo_uri=""
+    )
+
+    in_place_requests = preserve_in_place_native_list_text_styles(copy_requests, original=document)
+
+    assert any("updateTextStyle" in request for request in copy_requests)
+    assert not any("updateTextStyle" in request for request in in_place_requests)
+    assert any("updateParagraphStyle" in request for request in in_place_requests)
+    assert (
+        preserve_in_place_native_list_text_styles(in_place_requests, original=document)
+        == in_place_requests
+    )
+    assert mutation_sha256(
+        preserve_in_place_native_list_text_styles(copy_requests, original=document)
+    ) == mutation_sha256(in_place_requests)
+
+
+def test_distinct_visible_run_styles_remain_protected_rich_text() -> None:
+    raw = {
+        "revisionId": "revision",
+        "tabs": [
+            {
+                "tabProperties": {"tabId": "tab"},
+                "documentTab": {
+                    "body": {
+                        "content": [
+                            {
+                                "startIndex": 1,
+                                "endIndex": 4,
+                                "paragraph": {
+                                    "bullet": {"listId": "list"},
+                                    "elements": [
+                                        {
+                                            "startIndex": 1,
+                                            "endIndex": 2,
+                                            "textRun": {
+                                                "content": "A",
+                                                "textStyle": {"bold": True},
+                                            },
+                                        },
+                                        {
+                                            "startIndex": 2,
+                                            "endIndex": 3,
+                                            "textRun": {
+                                                "content": "B",
+                                                "textStyle": {"bold": False},
+                                            },
+                                        },
+                                        {
+                                            "startIndex": 3,
+                                            "endIndex": 4,
+                                            "textRun": {"content": "\n"},
+                                        },
+                                    ],
+                                },
+                            }
+                        ]
+                    }
+                },
+            }
+        ],
+    }
+
+    assert not parse_google_document(raw, title="Review").blocks[0].editable
+
+
+def test_in_place_filter_preserves_header_and_non_list_text_styles() -> None:
+    list_block = _block("Review")
+    paragraph = TextBlock(
+        id="body",
+        kind=BlockKind.PARAGRAPH,
+        text="Body",
+        source_range=SourceRange(30, 34, DocsTabId("tab")),
+    )
+    original = DocumentIR("Review", (list_block, paragraph), "google_doc")
+    requests = [
+        {
+            "updateTextStyle": {
+                "range": {"startIndex": 11, "endIndex": 17, "tabId": "tab"},
+                "textStyle": {"bold": True},
+                "fields": "bold",
+            }
+        },
+        {
+            "updateTextStyle": {
+                "range": {"startIndex": 30, "endIndex": 34, "tabId": "tab"},
+                "textStyle": {"bold": True},
+                "fields": "bold",
+            }
+        },
+        {
+            "updateTextStyle": {
+                "range": {
+                    "startIndex": 0,
+                    "endIndex": 6,
+                    "tabId": "tab",
+                    "segmentId": "header",
+                },
+                "textStyle": {"bold": True},
+                "fields": "bold",
+            }
+        },
+    ]
+
+    filtered = preserve_in_place_native_list_text_styles(requests, original=original)
+
+    assert filtered == requests[1:]

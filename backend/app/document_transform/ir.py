@@ -20,7 +20,7 @@ MAX_DOC_TABS = 50
 MAX_DOCUMENT_BLOCKS = 750
 _MIN_TABLE_COLUMNS = 2
 _MAX_AUTHORED_LEAD_IN_LENGTH = 160
-_TERMINAL_TEXT_RUN_COUNT = 2
+_MIN_TERMINAL_TEXT_RUN_COUNT = 2
 
 
 class BlockKind(StrEnum):
@@ -748,18 +748,31 @@ def _terminal_text_run_shape(
     runs: list[tuple[str, bool]], paragraph: dict[str, Any], *, start: int, end: int
 ) -> bool:
     # A separately styled paragraph terminator is not a second editable text
-    # span. Never coalesce runs or include the terminator in replacement ranges.
+    # span. Docs may also split the visible text into adjacent, identically
+    # styled runs after a formatting request. Accept only that representation;
+    # distinct visible styles remain protected rich text.
     if (
-        len(runs) != _TERMINAL_TEXT_RUN_COUNT
-        or not runs[0][0]
-        or any(character in runs[0][0] for character in "\n\r\v\f\u2028\u2029")
-        or runs[1][0] != "\n"
+        len(runs) < _MIN_TERMINAL_TEXT_RUN_COUNT
+        or any(
+            not text or any(character in text for character in "\n\r\v\f\u2028\u2029")
+            for text, _locked in runs[:-1]
+        )
+        or runs[-1][0] != "\n"
     ):
         return False
     if isinstance(start, bool) or isinstance(end, bool) or start < 0:
         return False
     elements = paragraph.get("elements")
-    if not isinstance(elements, list) or len(elements) != _TERMINAL_TEXT_RUN_COUNT:
+    if not isinstance(elements, list) or len(elements) != len(runs):
+        return False
+    visible_styles = [
+        element.get("textRun", {}).get("textStyle", {})
+        for element in elements[:-1]
+        if isinstance(element, dict)
+    ]
+    if len(visible_styles) != len(elements) - 1 or any(
+        style != visible_styles[0] for style in visible_styles[1:]
+    ):
         return False
     cursor = start
     for element, (text, _) in zip(elements, runs, strict=True):

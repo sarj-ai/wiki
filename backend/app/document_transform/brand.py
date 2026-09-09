@@ -238,6 +238,42 @@ def mutation_sha256(requests: list[DocsRequest]) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+def preserve_in_place_native_list_text_styles(
+    requests: list[DocsRequest], *, original: DocumentIR
+) -> list[DocsRequest]:
+    native_list_ranges = tuple(
+        block.source_range
+        for block in original.blocks
+        if block.native_bullet_json is not None and block.source_range is not None
+    )
+    if not native_list_ranges:
+        return requests
+
+    def intersects_native_list(request: DocsRequest) -> bool:
+        update = request.get("updateTextStyle")
+        if not isinstance(update, dict):
+            return False
+        target = update.get("range")
+        if not isinstance(target, dict) or target.get("segmentId") is not None:
+            return False
+        start, end, tab_id = (
+            target.get("startIndex"),
+            target.get("endIndex"),
+            target.get("tabId"),
+        )
+        if not isinstance(start, int) or not isinstance(end, int) or not isinstance(tab_id, str):
+            return False
+        return any(
+            source.segment_id is None
+            and source.tab_id == tab_id
+            and start < source.end_index + 1
+            and end > source.start_index
+            for source in native_list_ranges
+        )
+
+    return [request for request in requests if not intersects_native_list(request)]
+
+
 def _materialize_markdown(
     document: DocumentIR,
     *,

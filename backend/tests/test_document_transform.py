@@ -95,6 +95,7 @@ from app.document_transform.unslop import (
     deterministic_unslop_replacement,
     scan_unslop_candidates,
 )
+from app.drive.schemas import MIME_DOC
 from app.files.errors import FileNotInScopeError
 from app.files.schemas import FileResponse
 from app.identifiers import DocsRevisionId, DocsSegmentId, DocsTabId, FileId, TaskId
@@ -1752,6 +1753,87 @@ def test_brand_verification_diagnostics_are_bounded_and_granular() -> None:
 
     assert changed_checks["paragraph_text_styles"] is False
     assert set(changed_checks) == set(checks)
+
+
+def test_in_place_brand_verification_reports_native_list_typography_as_preserved() -> None:
+    document = _branded_google_document()
+    paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
+    paragraph["bullet"] = {"listId": "list", "nestingLevel": 0}
+    document["tabs"][0]["documentTab"]["lists"] = {
+        "list": {"listProperties": {"nestingLevels": [{}]}}
+    }
+    paragraph["elements"][0]["textRun"]["textStyle"]["weightedFontFamily"] = {"fontFamily": "Arial"}
+    paragraph["paragraphStyle"]["spaceAbove"] = {"magnitude": 0, "unit": "PT"}
+    paragraph["paragraphStyle"]["spaceBelow"] = {"magnitude": 2, "unit": "PT"}
+    parsed = parse_google_document(document, title="Decision")
+
+    assert not verify_brand_application(document, parsed)
+    assert verify_brand_application(
+        document,
+        parsed,
+        preserved_native_list_text_style_ids=frozenset({"b0"}),
+    )
+    checks = google_gateway_module._brand_application_diagnostics(
+        document,
+        parsed,
+        preserved_native_list_text_style_ids=frozenset({"b0"}),
+    )
+    assert checks["paragraph_layout"] is True
+    assert checks["paragraph_text_styles"] is True
+
+
+async def test_in_place_native_list_preservation_keeps_protected_hash_strict() -> None:
+    document = _branded_google_document()
+    document["documentId"] = "document"
+    paragraph = document["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]
+    paragraph["bullet"] = {"listId": "list", "nestingLevel": 0}
+    document["tabs"][0]["documentTab"]["lists"] = {
+        "list": {"listProperties": {"nestingLevels": [{}]}}
+    }
+    paragraph["elements"][0]["textRun"]["textStyle"]["weightedFontFamily"] = {"fontFamily": "Arial"}
+    paragraph["paragraphStyle"]["spaceAbove"] = {"magnitude": 0, "unit": "PT"}
+    paragraph["paragraphStyle"]["spaceBelow"] = {"magnitude": 2, "unit": "PT"}
+    gateway = object.__new__(GoogleDocumentGateway)
+    gateway._logo_uri = "https://assets.example.test/sarj-logo.png"
+    snapshot = SourceSnapshot(
+        title="Decision",
+        parent_folder_id=FileId("folder"),
+        modified_time="now",
+        revision_id=DocsRevisionId("revision-2"),
+        media_type=MIME_DOC,
+        google_document=document,
+        owned_by_me=True,
+        can_edit=True,
+        is_personal_drive=True,
+    )
+    inspection = await gateway.inspect_in_place(snapshot=snapshot, title="Decision")
+    expected = parse_google_document(document, title="Decision")
+
+    result = await gateway.verify_in_place(
+        document=document,
+        title="Decision",
+        expected=expected,
+        structural_sha256=inspection.structural_sha256,
+        protected_structure_sha256=inspection.protected_structure_sha256,
+        verify_brand=True,
+    )
+
+    assert result.content_preserved
+    assert result.structure_preserved
+    assert result.supported_brand_applied
+    tampered = deepcopy(document)
+    tampered["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["bullet"]["listId"] = (
+        "other"
+    )
+    rejected = await gateway.verify_in_place(
+        document=tampered,
+        title="Decision",
+        expected=expected,
+        structural_sha256=inspection.structural_sha256,
+        protected_structure_sha256=inspection.protected_structure_sha256,
+        verify_brand=True,
+    )
+    assert not rejected.structure_preserved
 
 
 async def test_in_place_non_brand_verification_preserves_brand_short_circuit(
