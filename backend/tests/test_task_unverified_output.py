@@ -9,6 +9,7 @@ from app.document_transform.schemas import (
     DocumentOutput,
     DocumentTransformRequest,
     DriveFileSource,
+    InPlaceCheckpoint,
     OutputStrategy,
     TransformMode,
 )
@@ -53,6 +54,27 @@ class OutputReaderStub:
         return self.output
 
 
+def _failed_task(
+    *,
+    resource_id: FileId | None = None,
+    error_code: str = "output_verification_failed",
+) -> FailedTaskRead:
+    now = datetime.now(UTC)
+    return FailedTaskRead(
+        id=TaskId(uuid.uuid7()),
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        status=TaskStatus.FAILED,
+        result=None,
+        resource_id=resource_id,
+        error_code=error_code,
+        error_detail="Task could not be completed",
+        attempt_count=1,
+        created_at=now,
+        started_at=now,
+        finished_at=now,
+    )
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "scenario",
@@ -71,20 +93,7 @@ class OutputReaderStub:
 async def test_failed_copy_review_descriptor_checks_owner_and_live_access(scenario: str) -> None:
     owner = uuid.uuid7()
     user = User(id=owner, email="qa@example.com")
-    now = datetime.now(UTC)
-    task = FailedTaskRead(
-        id=TaskId(uuid.uuid7()),
-        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
-        status=TaskStatus.FAILED,
-        result=None,
-        resource_id=None,
-        error_code="output_verification_failed",
-        error_detail="Task could not be completed",
-        attempt_count=1,
-        created_at=now,
-        started_at=now,
-        finished_at=now,
-    )
+    task = _failed_task()
     output_id = FileId("source" if scenario == "source" else "known-copy")
     output = DocumentOutput(
         file_id=output_id, name="Private title", parent_folder_id=FileId("parent")
@@ -138,3 +147,53 @@ async def test_failed_copy_review_descriptor_checks_owner_and_live_access(scenar
         assert result.unverified_output is None
     if scenario in {"wrong_owner", "source", "missing", "in_place"}:
         assert files.requests == []
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    ["visible", "redacted", "revoked", "wrong_owner", "wrong_resource", "wrong_error"],
+)
+async def test_post_mutation_failure_exposes_only_owner_verified_original(
+    scenario: str,
+) -> None:
+    owner = uuid.uuid7()
+    user = User(id=owner, email="qa@example.com")
+    source_id = FileId("original-document")
+    task = _failed_task(
+        resource_id=FileId("different-resource") if scenario == "wrong_resource" else source_id,
+        error_code="needs_review" if scenario == "wrong_error" else "in_place_verification_failed",
+    )
+    checkpoint = InPlaceCheckpoint.model_construct(document_id=source_id)
+    payload = DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=source_id,
+            expected_modified_time="2026-09-04T00:00:00Z",
+        ),
+        mode=TransformMode.FORMAT,
+        output_strategy=OutputStrategy.IN_PLACE,
+    )
+    record = DocumentTransformTaskRecord.model_construct(
+        owner_user_id=uuid.uuid7() if scenario == "wrong_owner" else owner,
+        task=task,
+        payload=None if scenario == "redacted" else payload,
+        checkpoint=checkpoint,
+    )
+    service = TaskReaderStub(record, False)
+    files = OutputReaderStub(
+        FileResponse(
+            id=source_id,
+            name="Original document",
+            mime_type="application/vnd.google-apps.document",
+            parent_folder_id=FileId("parent"),
+            drive_id=None,
+            modified_time=None,
+        ),
+        scenario == "revoked",
+    )
+
+    result = await get_task(task.id, service, user, Response(), files)
+
+    assert isinstance(result, FailedTaskRead)
+    assert (result.unverified_output is not None) is (scenario in {"visible", "redacted"})
+    assert files.requests == ([source_id] if scenario in {"visible", "redacted", "revoked"} else [])

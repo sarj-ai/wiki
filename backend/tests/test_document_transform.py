@@ -31,6 +31,7 @@ from app.document_transform.errors import (
     DocumentGatewayError,
     IncompatiblePendingOutputError,
     InPlaceNeedsReviewError,
+    InPlacePostMutationVerificationError,
     OutputConflictError,
     OutputVerificationError,
     SourceChangedError,
@@ -4216,6 +4217,36 @@ async def test_in_place_format_checkpoints_header_then_content() -> None:
     ]
     assert result.changed is True
     assert result.output_revision_id == "revision-3"
+
+
+@pytest.mark.parametrize("failure_stage", ["headers", "content"])
+async def test_in_place_verification_failure_after_mutation_is_truthful(
+    failure_stage: str,
+) -> None:
+    class VerificationFailureGateway(_InPlaceGateway):
+        @override
+        async def verify_in_place(self, **kwargs: Any) -> OutputVerification:
+            verified = await super().verify_in_place(**kwargs)
+            is_header = kwargs["verify_brand"] is False
+            if (failure_stage == "headers") == is_header:
+                return replace(verified, content_preserved=False)
+            return verified
+
+    gateway = VerificationFailureGateway("Quarterly review", missing_header=True)
+    store = _CheckpointStore(gateway.events)
+
+    with pytest.raises(InPlacePostMutationVerificationError) as caught:
+        await DocumentTransformExecutor(
+            gateway=gateway,
+            generator=_Generator(),
+            checkpoint_store=store,
+            task_id=TaskId(uuid.uuid7()),
+            lease_token=uuid.uuid7(),
+        ).execute(operation_id=uuid.uuid7(), request=_in_place_request(TransformMode.FORMAT))
+
+    assert caught.value.code == "in_place_verification_failed"
+    assert "may have changed" in caught.value.public_detail
+    assert gateway.events.count("apply") == (1 if failure_stage == "headers" else 2)
 
 
 @pytest.mark.parametrize("crash_stage", ["headers", "content"])

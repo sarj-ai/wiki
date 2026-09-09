@@ -96,6 +96,8 @@ const TASK_FAILURE_FALLBACKS: Readonly<Record<string, string>> = {
     "An incomplete result from an earlier polish needs review before you try again.",
   in_place_not_allowed:
     "This document is no longer eligible for safe in-place polishing. Reload it or create a review copy.",
+  in_place_verification_failed:
+    "Google Docs accepted changes, but safety verification failed. The original document may have changed; inspect it and its Drive version history before trying again.",
   needs_review:
     "Sarj stopped at a safety check. Review the document and its Drive version history before trying again.",
   output_verification_failed:

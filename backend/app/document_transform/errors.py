@@ -73,6 +73,15 @@ class InPlaceNeedsReviewError(DocumentTransformError):
     public_detail = "The source needs review before it can be changed in place"
 
 
+class InPlacePostMutationVerificationError(InPlaceNeedsReviewError):
+    code = "in_place_verification_failed"
+    public_detail = (
+        "Google Docs accepted changes, but the updated document did not pass safety "
+        "verification. The original document may have changed; inspect it and its Drive "
+        "version history before trying again"
+    )
+
+
 class UnsupportedTabMetadataError(InPlaceNeedsReviewError):
     public_detail = "This document's tab metadata cannot be safely renamed"
 
