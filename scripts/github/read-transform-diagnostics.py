@@ -410,6 +410,7 @@ ERROR_CODES = frozenset(
     [
         "document_transform_failed",
         "source_changed",
+        "destination_access_changed",
         "source_too_large",
         "unsupported_source",
         "output_conflict",
@@ -420,7 +421,10 @@ ERROR_CODES = frozenset(
         "header_conflict",
         "in_place_not_allowed",
         "needs_review",
+        "in_place_verification_failed",
+        "brand_asset_unavailable",
         "checkpoint_too_large",
+        "document_transform_internal_error",
     ]
 )
 MESSAGE_PREFIXES = (
