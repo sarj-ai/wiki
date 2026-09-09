@@ -3,12 +3,14 @@
 const actionMocks = vi.hoisted(() => ({
   capabilities: vi.fn(),
   create: vi.fn(),
+  current: vi.fn(),
   getTask: vi.fn(),
 }));
 
 vi.mock("@/lib/document-transform-http", () => ({
   transformHttp: (path: string, body?: string, key?: string) => {
     if (path === "/capabilities") return actionMocks.capabilities();
+    if (path.startsWith("/current?")) return actionMocks.current(path);
     if (path.startsWith("/tasks/")) return actionMocks.getTask(path.slice("/tasks/".length));
     return actionMocks.create(body, key);
   },
@@ -54,6 +56,27 @@ describe("documentTransformApi", () => {
       presentationCopy: true,
       presentationInPlace: false,
     });
+  });
+
+  it("returns the exact current-revision polish receipt", async () => {
+    actionMocks.current.mockResolvedValue({
+      data: JSON.stringify({ result: currentResult() }),
+      ok: true,
+    });
+
+    await expect(documentTransformApi.current("document 1", "format")).resolves.toMatchObject({
+      mode: "format",
+      operationId: taskId,
+      outputRevisionId: "revision-current",
+      outputStrategy: "in_place",
+    });
+    expect(actionMocks.current).toHaveBeenCalledWith("/current?file_id=document%201&mode=format");
+  });
+
+  it("returns null when the current revision has not been polished", async () => {
+    actionMocks.current.mockResolvedValue({ data: JSON.stringify({ result: null }), ok: true });
+
+    await expect(documentTransformApi.current("document-1", "both")).resolves.toBeNull();
   });
 
   it("serializes a revision-locked Drive source and creates no in-place output", async () => {
@@ -447,5 +470,43 @@ function task(status: "pending" | "succeeded") {
     result: null,
     started_at: status === "pending" ? null : "2026-09-03T12:00:01Z",
     status,
+  };
+}
+
+function currentResult() {
+  return {
+    access_scope: "inherited",
+    applied_patch_count: 1,
+    artifact_kind: "document",
+    brand_profile_id: "sarj-2026-v4",
+    brand_profile_sha256: "b".repeat(64),
+    changed: true,
+    deterministic_patch_count: 1,
+    findings: [],
+    llm_invoked: false,
+    mode: "format",
+    model_ids: [],
+    model_patch_count: 0,
+    needs_review: false,
+    operation_id: taskId,
+    output: {
+      file_id: "document-1",
+      media_type: "application/vnd.google-apps.document",
+      name: "Decision",
+      parent_folder_id: "folder-1",
+      web_url: "https://docs.google.com/document/d/document-1/edit",
+    },
+    output_revision_id: "revision-current",
+    output_strategy: "in_place",
+    pipeline_version: "document-transform-v3",
+    source_revision_id: "revision-source",
+    source_sha256: "a".repeat(64),
+    tool_versions: { format: "v1" },
+    validation: {
+      protected_content_preserved: true,
+      source_unchanged: false,
+      structure_preserved: true,
+      unsafe_patch_count: 0,
+    },
   };
 }

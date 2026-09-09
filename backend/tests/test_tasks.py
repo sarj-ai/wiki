@@ -590,6 +590,82 @@ async def test_retained_verified_terminal_transform_replays_after_fresh_admissio
     assert not any("INSERT INTO tasks " in str(statement) for statement in session.statements)
 
 
+async def test_current_in_place_result_is_exact_revision_mode_pipeline_and_brand_match() -> None:
+    row = _task(request_hash="0" * 64, status=TaskStatus.SUCCEEDED)
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    row.in_place_target = FileId("document-1")
+    row.started_at = row.created_at
+    row.finished_at = row.created_at
+    row.attempt_count = 1
+    result = _transform_success_result(row.id, TransformMode.FORMAT).model_copy(
+        update={
+            "output": DocumentOutput(
+                file_id=FileId("document-1"),
+                name="Decision",
+                parent_folder_id=FileId("folder"),
+            ),
+            "output_strategy": OutputStrategy.IN_PLACE,
+            "output_revision_id": DocsRevisionId("revision-current"),
+        }
+    )
+    row.result = result.model_dump(mode="json")
+    session = _Session(row)
+
+    current = await _service(session).get_current_in_place_result(
+        UserId(row.owner_user_id),
+        FileId("document-1"),
+        TransformMode.FORMAT,
+        DocsRevisionId("revision-current"),
+    )
+
+    assert current == result
+    statement = session.statements[0]
+    assert isinstance(statement, ClauseElement)
+    sql = str(statement)
+    assert "tasks.in_place_target" in sql
+    params = list((statement.compile().params or {}).values())
+    assert "pipeline_version" in params
+    assert "brand_profile_sha256" in params
+    assert "document-1" in params
+    assert "format" in params
+    assert DOCUMENT_PIPELINE_VERSION in params
+    assert "revision-current" not in params
+
+
+async def test_current_in_place_result_returns_none_without_exact_match() -> None:
+    row = _task(request_hash="0" * 64, status=TaskStatus.SUCCEEDED)
+    row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+    row.in_place_target = FileId("document-1")
+    row.started_at = row.created_at
+    row.finished_at = row.created_at
+    row.attempt_count = 1
+    row.result = (
+        _transform_success_result(row.id, TransformMode.BOTH)
+        .model_copy(
+            update={
+                "output": DocumentOutput(
+                    file_id=FileId("document-1"),
+                    name="Decision",
+                    parent_folder_id=FileId("folder"),
+                ),
+                "output_strategy": OutputStrategy.IN_PLACE,
+                "output_revision_id": DocsRevisionId("revision-before-user-edit"),
+            }
+        )
+        .model_dump(mode="json")
+    )
+
+    assert (
+        await _service(_Session(row)).get_current_in_place_result(
+            UserId(row.owner_user_id),
+            FileId("document-1"),
+            TransformMode.BOTH,
+            DocsRevisionId("user-edited-revision"),
+        )
+        is None
+    )
+
+
 @pytest.mark.parametrize("changed_field", ["expires_at", "status"])
 async def test_terminal_changed_during_output_admission_creates_replacement(
     changed_field: str,
@@ -1078,7 +1154,9 @@ async def test_pending_task_can_be_discarded_before_execution() -> None:
     row = _task(request_hash="0" * 64)
     session = _Session(row)
 
-    deleted = await _service(session).discard_pending(row.id, owner_user_id=row.owner_user_id)
+    deleted = await _service(session).discard_pending(
+        row.id, owner_user_id=UserId(row.owner_user_id)
+    )
 
     assert deleted is True
     assert session.commits == 1

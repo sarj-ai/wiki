@@ -32,10 +32,11 @@ from app.document_transform.schemas import (
     QaCopyPermissionEvidence,
     QaDocumentTransformRequest,
     QaDocumentTransformResult,
+    TransformMode,
     WordCopyCheckpoint,
 )
-from app.document_transform.versions import CURRENT_PIPELINE_VERSIONS
-from app.identifiers import FileId, IdempotencyKey, TaskId, UserId
+from app.document_transform.versions import CURRENT_PIPELINE_VERSIONS, DOCUMENT_PIPELINE_VERSION
+from app.identifiers import DocsRevisionId, FileId, IdempotencyKey, TaskId, UserId
 from app.models.task import Task
 from app.models.task_replay_key import TaskReplayKey
 from app.models.wiki import DocumentHeaderProvenance
@@ -52,6 +53,7 @@ from app.tasks.schemas import (
     DocumentTransformTaskRecord,
     RunningTaskRead,
     SmartCreateTaskRecord,
+    SucceededTaskRead,
     TaskClaim,
     TaskKind,
     TaskRead,
@@ -82,6 +84,15 @@ _MAX_DISPATCH_RECONCILIATION_BATCH = 100
 
 
 class TaskService(ABC):
+    async def get_current_in_place_result(
+        self,
+        owner_user_id: UserId,
+        file_id: FileId,
+        mode: TransformMode,
+        revision_id: DocsRevisionId,
+    ) -> DocumentTransformResult | None:
+        raise NotImplementedError
+
     async def get_document_transform_admission(
         self, owner_user_id: uuid.UUID, idempotency_key: IdempotencyKey
     ) -> DocumentTransformAdmission:
@@ -138,10 +149,10 @@ class TaskService(ABC):
     ) -> TaskRead: ...
 
     @abstractmethod
-    async def discard_pending(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> bool: ...
+    async def discard_pending(self, task_id: TaskId, *, owner_user_id: UserId) -> bool: ...
 
     @abstractmethod
-    async def cancel(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> TaskRead: ...
+    async def cancel(self, task_id: TaskId, *, owner_user_id: UserId) -> TaskRead: ...
 
     @abstractmethod
     async def get_for_owner(self, task_id: TaskId, owner_user_id: UserId) -> TaskRead: ...
@@ -190,6 +201,43 @@ class TaskService(ABC):
 class PostgresTaskService(TaskService):
     def __init__(self, *, db: AsyncSession) -> None:
         self._db = db
+
+    @override
+    async def get_current_in_place_result(
+        self,
+        owner_user_id: UserId,
+        file_id: FileId,
+        mode: TransformMode,
+        revision_id: DocsRevisionId,
+    ) -> DocumentTransformResult | None:
+        row = (
+            await self._db.execute(
+                select(Task)
+                .where(
+                    Task.owner_user_id == owner_user_id,
+                    Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+                    Task.status == TaskStatus.SUCCEEDED,
+                    Task.in_place_target == file_id,
+                    Task.finished_at.is_not(None),
+                    Task.expires_at > func.now(),
+                    Task.result["output_strategy"].astext == OutputStrategy.IN_PLACE.value,
+                    Task.result["mode"].astext == mode.value,
+                    Task.result["output"]["file_id"].astext == file_id,
+                    Task.result["pipeline_version"].astext == DOCUMENT_PIPELINE_VERSION,
+                    Task.result["brand_profile_sha256"].astext == CURRENT_BRAND_MANIFEST.sha256,
+                )
+                .order_by(Task.finished_at.desc(), Task.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        task = _to_read(row)
+        if not isinstance(task, SucceededTaskRead) or not isinstance(
+            task.result, DocumentTransformResult
+        ):
+            return None
+        return task.result if task.result.output_revision_id == revision_id else None
 
     @override
     async def pending_document_transform_dispatches(self, *, limit: int = 50) -> list[TaskId]:
@@ -546,7 +594,7 @@ class PostgresTaskService(TaskService):
         )
 
     @override
-    async def discard_pending(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> bool:
+    async def discard_pending(self, task_id: TaskId, *, owner_user_id: UserId) -> bool:
         statement = (
             delete(Task)
             .where(
@@ -562,7 +610,7 @@ class PostgresTaskService(TaskService):
         return deleted is not None
 
     @override
-    async def cancel(self, task_id: TaskId, *, owner_user_id: uuid.UUID) -> TaskRead:
+    async def cancel(self, task_id: TaskId, *, owner_user_id: UserId) -> TaskRead:
         now = datetime.now(UTC)
         statement = (
             update(Task)

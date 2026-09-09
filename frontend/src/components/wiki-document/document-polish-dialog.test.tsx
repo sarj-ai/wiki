@@ -56,6 +56,7 @@ describe("DocumentPolishDialog", () => {
       presentationCopy: true,
       presentationInPlace: false,
     });
+    vi.spyOn(documentTransformApi, "current").mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -830,6 +831,146 @@ describe("DocumentPolishDialog", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("blocks in-place submission while the current revision check is pending", async () => {
+    vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
+      copy: true,
+      inPlace: true,
+      presentationCopy: true,
+      presentationInPlace: false,
+    });
+    const current = deferred<DocumentTransformResult | null>();
+    vi.mocked(documentTransformApi.current).mockReturnValue(current.promise);
+    const create = vi.spyOn(documentTransformApi, "create");
+    renderDialog(root, {
+      allowInPlace: true,
+      expectedModifiedTime: "revision",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Notes",
+    });
+
+    await vi.waitFor(() => expect(findButtonNow("Edit original")).toBeEnabled());
+    clickButton(findButtonNow("Edit original"));
+
+    await vi.waitFor(() => expect(findButtonNow("Checking polish status…")).toBeDisabled());
+    clickButton(findButtonNow("Checking polish status…"));
+    expect(create).not.toHaveBeenCalled();
+    current.resolve(null);
+  });
+
+  it("shows the retained receipt instead of re-polishing an unchanged revision", async () => {
+    vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
+      copy: true,
+      inPlace: true,
+      presentationCopy: true,
+      presentationInPlace: false,
+    });
+    const result = transformResult({
+      outputFileId: "source-1",
+      outputRevisionId: "revision-current",
+      outputStrategy: "in_place",
+    });
+    vi.mocked(documentTransformApi.current).mockResolvedValue(result);
+    const create = vi.spyOn(documentTransformApi, "create");
+    renderDialog(root, {
+      allowInPlace: true,
+      expectedModifiedTime: "revision",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Notes",
+    });
+
+    clickButton(findButtonNow("Unslop"));
+    await vi.waitFor(() => expect(findButtonNow("Edit original")).toBeEnabled());
+    clickButton(findButtonNow("Edit original"));
+
+    await vi.waitFor(() => expect(document.body).toHaveTextContent("Already polished"));
+    expect(document.body).toHaveTextContent(result.operationId);
+    expect(findButtonNow("Already polished")).toBeDisabled();
+    clickButton(findButtonNow("Already polished"));
+    expect(create).not.toHaveBeenCalled();
+
+    clickButton(findButtonNow("Create review copy"));
+    await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
+    expect(document.body).not.toHaveTextContent("This exact document revision already completed");
+  });
+
+  it("re-enables in-place polish when the selected mode has no exact receipt", async () => {
+    vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
+      copy: true,
+      inPlace: true,
+      presentationCopy: true,
+      presentationInPlace: false,
+    });
+    const prior = transformResult({
+      outputFileId: "source-1",
+      outputRevisionId: "revision-current",
+      outputStrategy: "in_place",
+    });
+    vi.mocked(documentTransformApi.current).mockImplementation(async (_fileId, mode) => {
+      await new Promise<void>((resolve) => {
+        queueMicrotask(resolve);
+      });
+      return mode === "unslop" ? prior : null;
+    });
+    renderDialog(root, {
+      allowInPlace: true,
+      expectedModifiedTime: "revision",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Notes",
+    });
+
+    clickButton(findButtonNow("Unslop"));
+    await vi.waitFor(() => expect(findButtonNow("Edit original")).toBeEnabled());
+    clickButton(findButtonNow("Edit original"));
+    await vi.waitFor(() => expect(findButtonNow("Already polished")).toBeDisabled());
+
+    clickButton(findButtonNow("Formatting"));
+
+    await vi.waitFor(() => expect(findButtonNow("Polish original")).toBeEnabled());
+    expect(document.body).not.toHaveTextContent("This exact document revision already completed");
+  });
+
+  it("rechecks after returning from Docs and re-enables after a user edit", async () => {
+    vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
+      copy: true,
+      inPlace: true,
+      presentationCopy: true,
+      presentationInPlace: false,
+    });
+    vi.mocked(documentTransformApi.current)
+      .mockResolvedValueOnce(
+        transformResult({
+          outputFileId: "source-1",
+          outputRevisionId: "revision-current",
+          outputStrategy: "in_place",
+        }),
+      )
+      .mockResolvedValue(null);
+    renderDialog(root, {
+      allowInPlace: true,
+      expectedModifiedTime: "revision",
+      fileId: "source-1",
+      kind: "drive_file",
+      mimeType: MIME_DOC,
+      name: "Notes",
+    });
+
+    clickButton(findButtonNow("Unslop"));
+    await vi.waitFor(() => expect(findButtonNow("Edit original")).toBeEnabled());
+    clickButton(findButtonNow("Edit original"));
+    await vi.waitFor(() => expect(findButtonNow("Already polished")).toBeDisabled());
+
+    window.dispatchEvent(new Event("focus"));
+
+    await vi.waitFor(() => expect(findButtonNow("Polish original")).toBeEnabled());
+    expect(documentTransformApi.current).toHaveBeenCalledTimes(2);
+  });
+
   it.each([true, false])("reports in-place changed=%s accurately", async (changed) => {
     vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
       copy: true,
@@ -867,6 +1008,7 @@ describe("DocumentPolishDialog", () => {
     expect(document.body).toHaveTextContent(
       "will be amended only after revision and safety checks",
     );
+    await vi.waitFor(() => expect(findButtonNow("Polish original")).toBeEnabled());
     clickButton(findButtonNow("Polish original"));
 
     await vi.waitFor(() => {
@@ -1111,6 +1253,7 @@ describe("DocumentPolishDialog", () => {
 
     await vi.waitFor(() => expect(findButtonNow("Edit original")).toBeEnabled());
     clickButton(findButtonNow("Edit original"));
+    await vi.waitFor(() => expect(findButtonNow("Polish original")).toBeEnabled());
     clickButton(findButtonNow("Polish original"));
 
     await vi.waitFor(() => {

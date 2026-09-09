@@ -227,6 +227,31 @@ export function DocumentPolishDialog({
     staleTime: Infinity,
   });
   const unresolved = recovery.data ?? null;
+  const currentPolish = useQuery({
+    enabled:
+      open &&
+      owner !== null &&
+      source.kind === "drive_file" &&
+      effectiveOutputStrategy === "in_place" &&
+      recovery.isSuccess &&
+      unresolved === null &&
+      completedResult === null,
+    queryFn: async () =>
+      source.kind === "drive_file"
+        ? await documentTransformApi.current(source.fileId, requestedMode)
+        : null,
+    queryKey: [
+      "document-transform-current",
+      owner,
+      source.kind === "drive_file" ? source.fileId : "markdown",
+      requestedMode,
+    ],
+    retry: false,
+    staleTime: 0,
+  });
+  const currentResult = currentPolish.data ?? null;
+  const currentCheckRequired = effectiveOutputStrategy === "in_place";
+  const currentCheckPending = currentCheckRequired && currentPolish.isFetching;
   const sessionIdentityUnavailable = !owner;
   const optionsLocked = submitting || unresolved !== null || completedResult !== null;
   const saveRecovery = (operation: null | TransformRecovery) => {
@@ -255,6 +280,11 @@ export function DocumentPolishDialog({
       void queryClient.invalidateQueries({
         queryKey: ["document-transform-recovery", owner, sourceIdentity],
       });
+      if (source.kind === "drive_file") {
+        void queryClient.invalidateQueries({
+          queryKey: ["document-transform-current", owner, source.fileId],
+        });
+      }
     };
     window.addEventListener("storage", refresh);
     window.addEventListener("focus", refresh);
@@ -262,7 +292,7 @@ export function DocumentPolishDialog({
       window.removeEventListener("storage", refresh);
       window.removeEventListener("focus", refresh);
     };
-  }, [owner, sourceIdentity, queryClient]);
+  }, [owner, source, sourceIdentity, queryClient]);
 
   useEffect(
     () => () => {
@@ -376,6 +406,11 @@ export function DocumentPolishDialog({
   };
 
   const create = async () => {
+    if (
+      currentCheckRequired &&
+      (currentCheckPending || currentPolish.isError || currentResult !== null)
+    )
+      return;
     if (sessionIdentityUnavailable && !unresolved) return;
     const startedAt = Date.now();
     let transformSource = unresolved?.source ?? inputSource();
@@ -752,6 +787,22 @@ export function DocumentPolishDialog({
                 />
               </div>
             ) : null}
+            {!completedResult && !unresolved && currentCheckRequired && currentResult ? (
+              <div className="space-y-3" role="status">
+                <h3 className="text-lg font-semibold">Already polished</h3>
+                <p className="font-medium break-words">{currentResult.outputFile.name}</p>
+                <p className="text-muted-foreground text-sm">
+                  This exact document revision already completed {currentResult.mode} polish with
+                  the current pipeline. Edit the document or choose another method to start new
+                  work.
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  Task reference:{" "}
+                  <code className="break-all select-all">{currentResult.operationId}</code>
+                </p>
+                <DocumentPolishReceipt result={currentResult} />
+              </div>
+            ) : null}
             {sessionIdentityUnavailable ? (
               <div className="border-border rounded-lg border px-3 py-2.5 text-sm" role="alert">
                 <p className="font-medium">Secure session identity unavailable</p>
@@ -1083,6 +1134,29 @@ export function DocumentPolishDialog({
                 </p>
               </div>
             ) : null}
+            {currentCheckPending ? (
+              <div aria-live="polite" className="text-muted-foreground text-xs">
+                Checking whether this exact revision is already polished…
+              </div>
+            ) : null}
+            {currentCheckRequired && !unresolved && currentPolish.isError ? (
+              <div className="space-y-2 text-xs" role="alert">
+                <p className="text-muted-foreground">
+                  The latest polish state could not be verified. Retry before editing the original,
+                  or create a review copy.
+                </p>
+                <Button
+                  onClick={() => {
+                    void currentPolish.refetch();
+                  }}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Retry polish check
+                </Button>
+              </div>
+            ) : null}
 
             <div className="bg-muted/45 flex items-center gap-3 rounded-lg border p-3">
               <span aria-hidden className="flex shrink-0 items-center gap-1.5">
@@ -1168,6 +1242,9 @@ export function DocumentPolishDialog({
                     recovery.isError ||
                     (!unresolved && sessionIdentityUnavailable) ||
                     (!unresolved && (capabilityPending || capabilityFailed)) ||
+                    (!unresolved &&
+                      currentCheckRequired &&
+                      (currentCheckPending || currentPolish.isError || currentResult !== null)) ||
                     reviewMessage !== null ||
                     terminalMessage !== null ||
                     (!valid && !unresolved?.taskId)))
@@ -1198,11 +1275,15 @@ export function DocumentPolishDialog({
                     ? "Resume checking"
                     : capabilityPending
                       ? "Checking edit options…"
-                      : effectiveOutputStrategy === "in_place"
-                        ? "Polish original"
-                        : source.kind === "markdown"
-                          ? "Import Google Doc"
-                          : "Create polished copy"}
+                      : currentCheckPending
+                        ? "Checking polish status…"
+                        : currentCheckRequired && currentResult
+                          ? "Already polished"
+                          : effectiveOutputStrategy === "in_place"
+                            ? "Polish original"
+                            : source.kind === "markdown"
+                              ? "Import Google Doc"
+                              : "Create polished copy"}
             </Button>
           </DialogFooter>
         </DialogContent>
