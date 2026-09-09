@@ -7,14 +7,16 @@ that the source Drive revision is unchanged before reporting success.
 
 from __future__ import annotations
 
-import argparse
 import asyncio
+from dataclasses import dataclass
 import json
 from pathlib import Path
+from typing import Annotated
 import uuid
 
 import httpx
 from sqlalchemy import select
+import typer
 
 from app.auth.google_tokens import GoogleTokenManager
 from app.cache.dependencies import cache_service_dep
@@ -36,23 +38,42 @@ from app.models.user import User
 
 
 _CONFIRMATION = "CREATE_LABELED_SIBLING"
+CLI = typer.Typer(
+    add_completion=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    pretty_exceptions_enable=False,
+    help=__doc__,
+)
 
 
-def main() -> None:
-    print(json.dumps(asyncio.run(_run(_arguments())), indent=2, sort_keys=True))
+@dataclass(frozen=True, kw_only=True)
+class _Arguments:
+    source_id: str
+    mode: TransformMode
+    output_name: str
+    user_email: str
+    confirm_live_copy: str
 
 
-def _arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source-id", required=True)
-    parser.add_argument("--mode", choices=[item.value for item in TransformMode], required=True)
-    parser.add_argument("--output-name", required=True)
-    parser.add_argument("--user-email", default="nasr@sarj.ai")
-    parser.add_argument("--confirm-live-copy", required=True)
-    return parser.parse_args()
+@CLI.command()
+def main(
+    source_id: Annotated[str, typer.Option("--source-id")],
+    mode: Annotated[TransformMode, typer.Option("--mode")],
+    output_name: Annotated[str, typer.Option("--output-name")],
+    confirm_live_copy: Annotated[str, typer.Option("--confirm-live-copy")],
+    user_email: Annotated[str, typer.Option("--user-email")] = "nasr@sarj.ai",
+) -> None:
+    arguments = _Arguments(
+        source_id=source_id,
+        mode=mode,
+        output_name=output_name,
+        user_email=user_email,
+        confirm_live_copy=confirm_live_copy,
+    )
+    print(json.dumps(asyncio.run(_run(arguments)), indent=2, sort_keys=True))
 
 
-async def _run(arguments: argparse.Namespace) -> dict[str, object]:
+async def _run(arguments: _Arguments) -> dict[str, object]:
     if arguments.confirm_live_copy != _CONFIRMATION:
         msg = f"--confirm-live-copy must equal {_CONFIRMATION}"
         raise ValueError(msg)
@@ -109,7 +130,7 @@ async def _run(arguments: argparse.Namespace) -> dict[str, object]:
                     file_id=source_id,
                     expected_modified_time=before_modified_time,
                 ),
-                mode=TransformMode(arguments.mode),
+                mode=arguments.mode,
                 output_name=arguments.output_name,
             ),
         )
@@ -143,4 +164,4 @@ async def _verified_logo_uri(
 
 
 if __name__ == "__main__":
-    main()
+    CLI()
