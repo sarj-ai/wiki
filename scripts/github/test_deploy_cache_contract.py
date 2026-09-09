@@ -31,10 +31,7 @@ def _step_index(steps: list[dict[str, Any]], name: str) -> int:
 
 
 def test_component_ci_runs_once_on_main_through_its_deploy_workflow() -> None:
-    components = {
-        "backend": "backend/**",
-        "frontend": "frontend/**",
-    }
+    components = {"frontend": "frontend/**"}
 
     for component, source_path in components.items():
         ci_name = f"ci-{component}.yml"
@@ -53,6 +50,39 @@ def test_component_ci_runs_once_on_main_through_its_deploy_workflow() -> None:
         assert f".github/workflows/{ci_name}" in deploy_push["paths"]
         assert callable_job["uses"] == f"./.github/workflows/{ci_name}"
         assert f"ci-{component}" in deploy_workflow["jobs"]["deploy"]["needs"]
+
+
+def test_backend_deploy_runs_only_for_production_inputs() -> None:
+    ci_workflow = _workflow("ci-backend.yml")
+    deploy_workflow = _workflow("deploy-backend.yml")
+    deploy_paths = set(deploy_workflow["on"]["push"]["paths"])
+    production_inputs = {
+        "backend/.dockerignore",
+        "backend/Dockerfile",
+        "backend/alembic.ini",
+        "backend/alembic/**",
+        "backend/app/**",
+        "backend/pyproject.toml",
+        "backend/uv.lock",
+        "backend/uv.toml",
+    }
+
+    assert ci_workflow["on"]["pull_request"] is None
+    assert deploy_workflow["on"]["push"]["branches"] == ["main"]
+    assert production_inputs <= deploy_paths
+    assert "backend/**" not in deploy_paths
+    assert ".github/workflows/ci-backend.yml" not in deploy_paths
+    assert deploy_paths.isdisjoint(
+        {
+            "backend/tests/**",
+            "backend/scripts/**",
+            "backend/Dockerfile.qa",
+        }
+    )
+    assert deploy_workflow["jobs"]["ci-backend"]["uses"] == (
+        "./.github/workflows/ci-backend.yml"
+    )
+    assert "ci-backend" in deploy_workflow["jobs"]["deploy"]["needs"]
 
 
 def test_standalone_quality_skips_only_exact_domain_deploy_paths_on_main() -> None:
@@ -197,7 +227,9 @@ def test_deploy_ready_fences_remain_before_credentials_and_mutation() -> None:
                 for index, step in enumerate(steps)
                 if step.get("uses", "").startswith("google-github-actions/auth@")
             )
-            assert ready[0] < auth < _step_index(steps, "Deploy candidate without traffic")
+            assert (
+                ready[0] < auth < _step_index(steps, "Deploy candidate without traffic")
+            )
         else:
             build = _step_index(steps, "Build for Cloudflare Workers")
             capture = _step_index(steps, "Capture current production version")
