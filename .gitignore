@@ -9,3 +9,4 @@
 .playwright-mcp/
 .stamps/
 backend/.drive-organizer/
+__pycache__/
