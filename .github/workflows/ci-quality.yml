@@ -7,9 +7,15 @@ name: CI Quality
     # Domain deploys call this workflow as an exact-SHA prerequisite. Avoid a
     # second standalone copy when every changed path is already routed there.
     paths-ignore:
-      - "backend/**"
+      - "backend/.dockerignore"
+      - "backend/Dockerfile"
+      - "backend/alembic.ini"
+      - "backend/alembic/**"
+      - "backend/app/**"
+      - "backend/pyproject.toml"
+      - "backend/uv.lock"
+      - "backend/uv.toml"
       - "frontend/**"
-      - ".github/workflows/ci-backend.yml"
       - ".github/workflows/ci-frontend.yml"
       - ".github/workflows/deploy-backend.yml"
       - ".github/workflows/deploy-frontend.yml"
