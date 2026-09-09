@@ -236,8 +236,10 @@ async function waitForTask(
         if (poll >= maxPolls) {
           throw new Error("Document polish timed out; check its task status before retrying");
         }
+        // eslint-disable-next-line no-await-in-loop -- Polling must wait before issuing the next status request.
         await abortableDelay(pollIntervalMs, signal);
         try {
+          // eslint-disable-next-line no-await-in-loop -- Each poll depends on the preceding task status.
           current = await DOCUMENT_TRANSFORM_API.getTask(current.id, signal);
           transientFailures = 0;
         } catch (error: unknown) {
@@ -245,6 +247,7 @@ async function waitForTask(
             throw error;
           }
           transientFailures += 1;
+          // eslint-disable-next-line no-await-in-loop -- Backoff must finish before the next attempt.
           await abortableDelay(pollIntervalMs * 2 ** transientFailures, signal);
         }
     }
