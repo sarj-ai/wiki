@@ -8,7 +8,6 @@ HTTP endpoint. The script never changes permissions or edits source documents.
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 from collections import Counter
 from dataclasses import dataclass
@@ -31,6 +30,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr, TypeAdapter
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import select
+import typer
 
 from app.auth.google_tokens import GoogleTokenManager
 from app.cache.dependencies import cache_service_dep
@@ -387,9 +387,84 @@ def _fail(message: str) -> NoReturn:
     raise QaError(message)
 
 
-def main() -> None:
+CLI = typer.Typer(
+    add_completion=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    pretty_exceptions_enable=False,
+    help=__doc__,
+)
+
+
+@dataclass(frozen=True, kw_only=True)
+class _Arguments:
+    seed: str
+    expected_release_sha: str
+    manifest: Path
+    ledger: Path
+    source_folder_id: str
+    destination_folder_id: str
+    user_email: str = "nasr@sarj.ai"
+    count: int = _DEFAULT_COUNT
+    mode: TransformMode = TransformMode.BOTH
+    execute: bool = False
+    canary: bool = False
+    canary_manifest: Path | None = None
+    canary_ledger: Path | None = None
+    canary_artifacts_dir: Path | None = None
+    artifacts_dir: Path | None = None
+    pdftoppm_version: str | None = None
+    judge_model: str | None = None
+    confirm_live_copy: str | None = None
+
+
+@CLI.command()
+def main(
+    *,
+    seed: Annotated[str, typer.Option("--seed")],
+    expected_release_sha: Annotated[str, typer.Option("--expected-release-sha")],
+    manifest: Annotated[Path, typer.Option("--manifest")],
+    ledger: Annotated[Path, typer.Option("--ledger")],
+    source_folder_id: Annotated[str, typer.Option("--source-folder-id")],
+    destination_folder_id: Annotated[str, typer.Option("--destination-folder-id")],
+    user_email: Annotated[str, typer.Option("--user-email")] = "nasr@sarj.ai",
+    count: Annotated[int, typer.Option("--count", hidden=True)] = _DEFAULT_COUNT,
+    mode: Annotated[TransformMode, typer.Option("--mode")] = TransformMode.BOTH,
+    execute: Annotated[bool, typer.Option("--execute")] = False,
+    canary: Annotated[bool, typer.Option("--canary")] = False,
+    canary_manifest: Annotated[Path | None, typer.Option("--canary-manifest")] = None,
+    canary_ledger: Annotated[Path | None, typer.Option("--canary-ledger")] = None,
+    canary_artifacts_dir: Annotated[Path | None, typer.Option("--canary-artifacts-dir")] = None,
+    artifacts_dir: Annotated[Path | None, typer.Option("--artifacts-dir")] = None,
+    pdftoppm_version: Annotated[str | None, typer.Option("--pdftoppm-version")] = None,
+    judge_model: Annotated[str | None, typer.Option("--judge-model")] = None,
+    confirm_live_copy: Annotated[str | None, typer.Option("--confirm-live-copy")] = None,
+) -> None:
+    arguments = _Arguments(
+        seed=seed,
+        expected_release_sha=expected_release_sha,
+        manifest=manifest,
+        ledger=ledger,
+        source_folder_id=source_folder_id,
+        destination_folder_id=destination_folder_id,
+        user_email=user_email,
+        count=count,
+        mode=mode,
+        execute=execute,
+        canary=canary,
+        canary_manifest=canary_manifest,
+        canary_ledger=canary_ledger,
+        canary_artifacts_dir=canary_artifacts_dir,
+        artifacts_dir=artifacts_dir,
+        pdftoppm_version=pdftoppm_version,
+        judge_model=judge_model,
+        confirm_live_copy=confirm_live_copy,
+    )
+    _report(arguments)
+
+
+def _report(arguments: _Arguments) -> None:
     try:
-        manifest = asyncio.run(_run(_arguments()))
+        manifest = asyncio.run(_run(arguments))
     except QaError as exc:
         print(json.dumps({"error": _safe_rejection(exc), "status": "failed"}), file=sys.stderr)
         raise SystemExit(1) from None
@@ -410,33 +485,10 @@ def main() -> None:
     )
 
 
-def _arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--seed", required=True)
-    parser.add_argument("--expected-release-sha", required=True)
-    parser.add_argument("--manifest", required=True, type=Path)
-    parser.add_argument("--ledger", required=True, type=Path)
-    parser.add_argument("--user-email", default="nasr@sarj.ai")
-    parser.add_argument("--count", type=int, default=_DEFAULT_COUNT, help=argparse.SUPPRESS)
-    parser.add_argument("--source-folder-id", required=True)
-    parser.add_argument("--destination-folder-id", required=True)
-    parser.add_argument("--mode", choices=[item.value for item in TransformMode], default="both")
-    parser.add_argument("--execute", action="store_true")
-    parser.add_argument("--canary", action="store_true")
-    parser.add_argument("--canary-manifest", type=Path)
-    parser.add_argument("--canary-ledger", type=Path)
-    parser.add_argument("--canary-artifacts-dir", type=Path)
-    parser.add_argument("--artifacts-dir", type=Path)
-    parser.add_argument("--pdftoppm-version")
-    parser.add_argument("--judge-model")
-    parser.add_argument("--confirm-live-copy")
-    return parser.parse_args()
-
-
-async def _run(arguments: argparse.Namespace) -> EvidenceManifest:
+async def _run(arguments: _Arguments) -> EvidenceManifest:
     _validate_arguments(arguments)
     paths = _resolve_run_paths(arguments)
-    mode = TransformMode(arguments.mode)
+    mode = arguments.mode
     cohort: QaCohort = "canary" if arguments.canary else "corpus"
     async with async_session() as db, httpx.AsyncClient(timeout=30) as http:
         environment = QaSecrets()
@@ -523,7 +575,7 @@ def _qa_access_token(environment: QaSecrets) -> str:
     )
 
 
-def _resolve_run_paths(arguments: argparse.Namespace) -> RunPaths:
+def _resolve_run_paths(arguments: _Arguments) -> RunPaths:
     paths = RunPaths(
         manifest=arguments.manifest.resolve(),
         ledger=arguments.ledger.resolve(),
@@ -543,7 +595,7 @@ def _resolve_run_paths(arguments: argparse.Namespace) -> RunPaths:
 
 async def _execute_planned_manifest(
     *,
-    arguments: argparse.Namespace,
+    arguments: _Arguments,
     paths: RunPaths,
     manifest: EvidenceManifest,
     ledger: tuple[LedgerRecord, ...],
@@ -589,16 +641,16 @@ async def _execute_planned_manifest(
     return completed
 
 
-def _validate_arguments(arguments: argparse.Namespace) -> None:
-    canary_manifest = getattr(arguments, "canary_manifest", None)
-    canary_ledger = getattr(arguments, "canary_ledger", None)
-    canary_artifacts_dir = getattr(arguments, "canary_artifacts_dir", None)
-    artifacts_dir = getattr(arguments, "artifacts_dir", None)
-    pdftoppm_version = getattr(arguments, "pdftoppm_version", None)
-    judge_model = getattr(arguments, "judge_model", None)
-    if not getattr(arguments, "source_folder_id", None):
+def _validate_arguments(arguments: _Arguments) -> None:
+    canary_manifest = arguments.canary_manifest
+    canary_ledger = arguments.canary_ledger
+    canary_artifacts_dir = arguments.canary_artifacts_dir
+    artifacts_dir = arguments.artifacts_dir
+    pdftoppm_version = arguments.pdftoppm_version
+    judge_model = arguments.judge_model
+    if not arguments.source_folder_id:
         _fail("--source-folder-id is required")
-    if not getattr(arguments, "destination_folder_id", None):
+    if not arguments.destination_folder_id:
         _fail("--destination-folder-id is required")
     cohort: QaCohort = "canary" if arguments.canary else "corpus"
     required_count = required_document_count(cohort)
@@ -608,7 +660,7 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
         required_confirmation = _CANARY_CONFIRMATION if arguments.canary else _CONFIRMATION
         if arguments.confirm_live_copy != required_confirmation:
             _fail(f"--confirm-live-copy must equal {required_confirmation}")
-        if arguments.mode != TransformMode.BOTH.value:
+        if arguments.mode != TransformMode.BOTH:
             _fail("--execute requires --mode both")
         if artifacts_dir is None:
             _fail("--execute requires --artifacts-dir")
@@ -2390,4 +2442,4 @@ def _sha256_bytes(value: bytes) -> str:
 
 
 if __name__ == "__main__":
-    main()
+    CLI()

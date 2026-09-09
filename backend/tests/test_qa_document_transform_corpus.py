@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import argparse
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, datetime
 import hashlib
 import json
@@ -48,6 +48,7 @@ from scripts.qa_document_transform_corpus import (
     VisualEvidence,
     VisualJudgeEvidence,
     _append_ledger,
+    _Arguments,
     _assert_private_destination,
     _capture_visual_evidence,
     _ensure_manifest_ledger,
@@ -589,74 +590,49 @@ def test_shared_drive_source_must_remain_copyable_and_in_the_bound_drive() -> No
 
 
 def test_live_execution_is_hard_gated_to_all_folder_copies() -> None:
-    common = {
-        "canary": False,
-        "confirm_live_copy": "CREATE_ALL_OWNER_ONLY_DESTINATION_COPIES",
-        "count": 20,
-        "source_folder_id": "security-folder",
-        "destination_folder_id": "qa-output-folder",
-        "execute": True,
-        "expected_release_sha": "a" * 40,
-        "mode": "both",
-        "artifacts_dir": Path("artifacts"),
-        "pdftoppm_version": "25.06.0",
-        "canary_manifest": Path("canary.json"),
-        "canary_ledger": Path("canary.jsonl"),
-        "canary_artifacts_dir": Path("canary-artifacts"),
-        "judge_model": "gemini-3.8-flash",
-    }
-    _validate_arguments(argparse.Namespace(**common))
+    common = replace(
+        _canary_arguments(),
+        canary=False,
+        confirm_live_copy="CREATE_ALL_OWNER_ONLY_DESTINATION_COPIES",
+        count=20,
+        source_folder_id="security-folder",
+        canary_manifest=Path("canary.json"),
+        canary_ledger=Path("canary.jsonl"),
+        canary_artifacts_dir=Path("canary-artifacts"),
+    )
+    _validate_arguments(common)
 
     with pytest.raises(QaError, match="must equal 20 for corpus"):
-        _validate_arguments(argparse.Namespace(**{**common, "count": 19}))
+        _validate_arguments(replace(common, count=19))
     with pytest.raises(QaError, match="source-folder-id"):
-        _validate_arguments(argparse.Namespace(**{**common, "source_folder_id": ""}))
+        _validate_arguments(replace(common, source_folder_id=""))
     with pytest.raises(QaError, match="requires --mode both"):
-        _validate_arguments(argparse.Namespace(**{**common, "mode": "format"}))
+        _validate_arguments(replace(common, mode=TransformMode.FORMAT))
     with pytest.raises(QaError, match="exact pinned model"):
-        _validate_arguments(argparse.Namespace(**{**common, "judge_model": "gemini-2.5-flash"}))
+        _validate_arguments(replace(common, judge_model="gemini-2.5-flash"))
     with pytest.raises(QaError, match="canary-artifacts-dir"):
-        _validate_arguments(argparse.Namespace(**{**common, "canary_artifacts_dir": None}))
+        _validate_arguments(replace(common, canary_artifacts_dir=None))
 
 
 def test_canary_execution_has_distinct_one_document_gate() -> None:
-    common = {
-        "canary": True,
-        "confirm_live_copy": "CREATE_1_PRIVATE_CANARY",
-        "count": 1,
-        "source_folder_id": "canary-folder",
-        "destination_folder_id": "qa-output-folder",
-        "execute": True,
-        "expected_release_sha": "a" * 40,
-        "mode": "both",
-        "artifacts_dir": Path("artifacts"),
-        "pdftoppm_version": "25.06.0",
-        "judge_model": "gemini-3.8-flash",
-    }
-    _validate_arguments(argparse.Namespace(**common))
+    common = _canary_arguments()
+    _validate_arguments(common)
 
     with pytest.raises(QaError, match="CREATE_1_PRIVATE_CANARY"):
         _validate_arguments(
-            argparse.Namespace(
-                **{
-                    **common,
-                    "confirm_live_copy": "CREATE_ALL_OWNER_ONLY_DESTINATION_COPIES",
-                }
-            )
+            replace(common, confirm_live_copy="CREATE_ALL_OWNER_ONLY_DESTINATION_COPIES")
         )
     with pytest.raises(QaError, match="must equal 1 for canary"):
-        _validate_arguments(argparse.Namespace(**{**common, "count": 20}))
+        _validate_arguments(replace(common, count=20))
     _validate_arguments(
-        argparse.Namespace(
-            **{
-                **common,
-                "artifacts_dir": None,
-                "confirm_live_copy": None,
-                "count": 1,
-                "execute": False,
-                "pdftoppm_version": None,
-                "judge_model": None,
-            }
+        replace(
+            common,
+            artifacts_dir=None,
+            confirm_live_copy=None,
+            count=1,
+            execute=False,
+            pdftoppm_version=None,
+            judge_model=None,
         )
     )
 
@@ -1310,6 +1286,25 @@ async def test_submission_uses_live_endpoint_and_uuid5_idempotency_header() -> N
 
     assert task.id == task_id
     assert replayed is False
+
+
+def _canary_arguments() -> _Arguments:
+    return _Arguments(
+        seed="qa",
+        manifest=Path("manifest.json"),
+        ledger=Path("ledger.jsonl"),
+        canary=True,
+        confirm_live_copy="CREATE_1_PRIVATE_CANARY",
+        count=1,
+        source_folder_id="canary-folder",
+        destination_folder_id="qa-output-folder",
+        execute=True,
+        expected_release_sha="a" * 40,
+        mode=TransformMode.BOTH,
+        artifacts_dir=Path("artifacts"),
+        pdftoppm_version="25.06.0",
+        judge_model="gemini-3.8-flash",
+    )
 
 
 def _evidence_manifest(
