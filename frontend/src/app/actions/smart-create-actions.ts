@@ -38,6 +38,15 @@ export async function getDocumentTransformCapabilitiesAction(): Promise<ActionRe
   return runSmartRead("/document-transforms/capabilities");
 }
 
+export async function getCurrentDocumentPolishAction(
+  fileId: string,
+  mode: "both" | "format" | "unslop",
+): Promise<ActionResult<string>> {
+  return runSmartRead(
+    `/document-transforms/current?file_id=${encodeURIComponent(fileId)}&mode=${encodeURIComponent(mode)}`,
+  );
+}
+
 export async function proposeSmartFileAction(body: string): Promise<ActionResult<string>> {
   return runSmartOperation("proposal", body);
 }

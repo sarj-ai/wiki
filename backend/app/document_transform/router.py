@@ -4,17 +4,24 @@ from time import monotonic
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Body, Depends, Header, Path, Response, status
+from fastapi import APIRouter, Body, Depends, Header, Path, Query, Response, status
 
 from app.auth.dependencies import get_current_user
 from app.config import settings
-from app.document_transform.application import DestinationFileReader, submit_document_transform
+from app.document_transform.application import (
+    DestinationFileReader,
+    get_current_document_polish,
+    submit_document_transform,
+)
+from app.document_transform.dependencies import CurrentPolishContext, current_polish_context_dep
 from app.document_transform.schemas import (
+    CurrentDocumentPolish,
     DocumentTransformCapabilities,
     DocumentTransformRequest,
+    TransformMode,
 )
 from app.files.dependencies import files_service_dep
-from app.identifiers import IdempotencyKey
+from app.identifiers import FileId, IdempotencyKey
 from app.models.user import User
 from app.openapi import authentication_responses
 from app.tasks.dependencies import task_enqueuer_dep, task_service_dep
@@ -58,6 +65,36 @@ async def get_document_transform_capabilities(
     _user: Annotated[User, Depends(get_current_user)],
 ) -> DocumentTransformCapabilities:
     return DocumentTransformCapabilities(in_place=settings.DOCUMENT_TRANSFORM_IN_PLACE_ENABLED)
+
+
+@router.get(
+    "/current",
+    operation_id="get_current_document_polish",
+    responses={
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": "The source is not a native Google Doc",
+        },
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "description": "The latest Google Docs revision could not be verified",
+        },
+    },
+    status_code=status.HTTP_200_OK,
+)
+async def get_current_polish(
+    file_id: Annotated[FileId, Query(min_length=1, max_length=128)],
+    mode: Annotated[TransformMode, Query()],
+    response: Response,
+    context: Annotated[CurrentPolishContext, Depends(current_polish_context_dep)],
+) -> CurrentDocumentPolish:
+    response.headers["Cache-Control"] = "no-store"
+    return await get_current_document_polish(
+        file_id=file_id,
+        mode=mode,
+        owner_user_id=context.owner_user_id,
+        tasks=context.tasks,
+        files=context.files,
+        revisions=context.revisions,
+    )
 
 
 @router.post(

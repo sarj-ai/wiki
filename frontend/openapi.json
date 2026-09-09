@@ -222,6 +222,26 @@
         "title": "CancelledTaskRead",
         "type": "object"
       },
+      "CurrentDocumentPolish": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentTransformResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "title": "CurrentDocumentPolish",
+        "type": "object"
+      },
       "DocIconRead": {
         "properties": {
           "cover_url": {
@@ -3520,6 +3540,72 @@
           }
         ],
         "summary": "Get Document Transform Capabilities",
+        "tags": [
+          "document-transforms"
+        ]
+      }
+    },
+    "/document-transforms/current": {
+      "get": {
+        "operationId": "get_current_document_polish",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/TransformMode"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentDocumentPolish"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "description": "The source is not a native Google Doc"
+          },
+          "503": {
+            "description": "The latest Google Docs revision could not be verified"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Current Polish",
         "tags": [
           "document-transforms"
         ]

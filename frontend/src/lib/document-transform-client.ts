@@ -84,6 +84,7 @@ const ZTask = z.discriminatedUnion("status", [
   }),
   z.object({ id: z.uuid(), result: ZResult, status: z.literal("succeeded") }),
 ]);
+const ZCurrentPolish = z.object({ result: ZResult.nullable() });
 
 const DEFAULT_TASK_POLL_MS = 1_000;
 const DEFAULT_MAX_TASK_POLLS = 900;
@@ -133,6 +134,17 @@ export const documentTransformApi = {
       presentationCopy: capabilities.presentation_copy,
       presentationInPlace: capabilities.presentation_in_place,
     } as const;
+  },
+
+  current: async (fileId: string, mode: "both" | "format" | "unslop") => {
+    const responseBody = await runAction(
+      async () =>
+        await transformHttp(
+          `/current?file_id=${encodeURIComponent(fileId)}&mode=${encodeURIComponent(mode)}`,
+        ),
+    );
+    const current = ZCurrentPolish.parse(JSON.parse(responseBody));
+    return current.result === null ? null : parseResult(current.result);
   },
 
   create: async (

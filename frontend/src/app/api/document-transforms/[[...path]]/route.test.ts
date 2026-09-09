@@ -5,11 +5,13 @@ const Mocks = vi.hoisted(() => ({
   create: vi.fn(),
   read: vi.fn(),
   capabilities: vi.fn(),
+  current: vi.fn(),
   task: vi.fn(),
   cookies: vi.fn(),
 }));
 vi.mock("@/app/actions/smart-create-actions", () => ({
   createDocumentTransformAction: Mocks.create,
+  getCurrentDocumentPolishAction: Mocks.current,
   getDocumentTransformCapabilitiesAction: Mocks.capabilities,
   getSmartCreateTaskAction: Mocks.task,
 }));
@@ -27,6 +29,7 @@ const headers = {
 beforeEach(() => {
   vi.clearAllMocks();
   Mocks.create.mockResolvedValue({ ok: true, data: '{"id":"task"}' });
+  Mocks.current.mockResolvedValue({ ok: true, data: '{"result":null}' });
   Mocks.cookies.mockResolvedValue({ get: () => ({ value: "private-token" }) });
 });
 
@@ -139,6 +142,28 @@ it("looks up only a validated KEY with server-side authentication", async () => 
     "private-token",
   );
 });
+
+it("forwards only a bounded file and supported mode to the current-polish action", async () => {
+  const response = await GET(new Request(`${URL}/current?file_id=doc-1&mode=both`, { headers }), {
+    params: Promise.resolve({ path: ["current"] }),
+  });
+
+  expect(response.status).toBe(200);
+  expect(Mocks.current).toHaveBeenCalledExactlyOnceWith("doc-1", "both");
+  expect(await response.json()).toEqual({ result: null });
+});
+
+it.each([`${URL}/current?file_id=&mode=both`, `${URL}/current?file_id=doc-1&mode=unknown`])(
+  "rejects an invalid current-polish query before the action: %s",
+  async (url) => {
+    const response = await GET(new Request(url, { headers }), {
+      params: Promise.resolve({ path: ["current"] }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(Mocks.current).not.toHaveBeenCalled();
+  },
+);
 
 it("redacts upstream exception details", async () => {
   Mocks.create.mockRejectedValue(new Error("private draft or token"));

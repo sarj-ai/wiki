@@ -282,6 +282,10 @@ class DocumentTransformResult(StrictTransformModel):
         return self.output
 
 
+class CurrentDocumentPolish(StrictTransformModel):
+    result: DocumentTransformResult | None
+
+
 class QaDocumentTransformResult(DocumentTransformResult):
     qa_permission_evidence: QaCopyPermissionEvidence
 
