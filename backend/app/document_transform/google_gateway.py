@@ -815,6 +815,15 @@ class GoogleDocumentGateway(DocumentGateway):
                     **bullet_style_diagnostics(parsed, expected),
                 },
             )
+        elif supported_brand_applied and not brand_applied:
+            logger.info(
+                "in-place verification accepted supported brand",
+                diagnostics={
+                    "supported_brand_applied": True,
+                    "structural_inventory_preserved": True,
+                    "protected_inventory_preserved": True,
+                },
+            )
         return OutputVerification(
             supported_brand_applied=supported_brand_applied,
             content_preserved=content_preserved,
