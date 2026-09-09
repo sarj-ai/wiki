@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import argparse
 import json
 import os
 from pathlib import Path
 import sys
 import tempfile
+from typing import Annotated
+
+import typer
 
 
 _SCHEMA_ENV = {
@@ -15,36 +17,32 @@ _SCHEMA_ENV = {
     "GOOGLE_CLIENT_SECRET": "openapi-export",
     "SECRET_KEY": "openapi-export-secret-key-value-0000",
 }
+_DEFAULT_OUTPUT = Path("../frontend/openapi.json")
+CLI = typer.Typer(
+    add_completion=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    pretty_exceptions_enable=False,
+    help="Export the API's deterministic OpenAPI schema.",
+)
 
 
-def main() -> int:
-    args = _parse_args()
+@CLI.command()
+def main(
+    output: Annotated[Path, typer.Argument(help="output path")] = _DEFAULT_OUTPUT,
+    *,
+    check: Annotated[
+        bool,
+        typer.Option("--check", help="fail if the output is missing or differs without writing it"),
+    ] = False,
+) -> None:
     expected = _render_spec()
-    if args.check:
-        if args.output.is_file() and args.output.read_bytes() == expected:
-            return 0
-        print(f"OpenAPI schema is out of date: {args.output}", file=sys.stderr)
-        return 1
+    if check:
+        if output.is_file() and output.read_bytes() == expected:
+            return
+        print(f"OpenAPI schema is out of date: {output}", file=sys.stderr)
+        raise typer.Exit(1)
 
-    _write_atomic(args.output, expected)
-    return 0
-
-
-def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Export the API's deterministic OpenAPI schema.")
-    parser.add_argument(
-        "output",
-        nargs="?",
-        type=Path,
-        default=Path("../frontend/openapi.json"),
-        help="output path (default: ../frontend/openapi.json)",
-    )
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="fail if the output is missing or differs without writing it",
-    )
-    return parser.parse_args()
+    _write_atomic(output, expected)
 
 
 def _render_spec() -> bytes:
@@ -86,4 +84,4 @@ def _write_atomic(path: Path, content: bytes) -> None:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    CLI()
