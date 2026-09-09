@@ -14,7 +14,17 @@ from app.csrf import CookieOriginMiddleware
 from app.database import get_db
 from app.document_transform import qa_router
 from app.document_transform.application import TransformSubmission
-from app.document_transform.qa_broker import QaCanaryPlan
+from app.document_transform.qa_broker import (
+    QaCanaryPlan,
+    QaCorpusCampaignCandidate,
+    QaDestinationPermissionProof,
+)
+from app.document_transform.qa_campaigns import (
+    CreatedQaCorpusCampaign,
+    QaCorpusCampaignError,
+    QaCorpusCampaignMemberRead,
+    QaCorpusCampaignRead,
+)
 from app.document_transform.qa_corpus import QaCorpusPlan, QaCorpusSourceFolder
 from app.document_transform.qa_grants import (
     IssuedQaGrant,
@@ -49,6 +59,10 @@ from app.identifiers import (
     QaRunId,
     TaskId,
     UserId,
+)
+from app.models.document_transform_qa_corpus import (
+    DocumentTransformQaCorpusCampaignId,
+    DocumentTransformQaCorpusMemberId,
 )
 from app.models.document_transform_qa_grant import DocumentTransformQaGrantId
 from app.models.user import User
@@ -112,6 +126,58 @@ def _issuer_body() -> dict[str, str]:
 
 def _bootstrap_body() -> dict[str, str]:
     return {"execution_name": "job/executions/one", "request_nonce": _NONCE}
+
+
+def _corpus_plan() -> QaCorpusPlan:
+    return QaCorpusPlan(
+        plan_id=QaPlanId(uuid.UUID("55555555-5555-4555-8555-555555555555")),
+        source_folder_id=FileId("source"),
+        source_drive_id=DriveId("drive"),
+        source_folder=QaCorpusSourceFolder(
+            file_id=FileId("source"),
+            name="Security",
+            mime_type="application/vnd.google-apps.folder",
+            parent_folder_id=None,
+            drive_id=DriveId("drive"),
+            modified_time=None,
+            version="1",
+        ),
+        documents=(),
+        unsupported_files=(),
+        member_versions=(),
+        observed_item_count=0,
+        traversed_folder_count=1,
+    )
+
+
+def _corpus_campaign_read() -> QaCorpusCampaignRead:
+    campaign_id = DocumentTransformQaCorpusCampaignId(
+        uuid.UUID("77777777-7777-4777-8777-777777777777")
+    )
+    members = tuple(
+        QaCorpusCampaignMemberRead(
+            id=DocumentTransformQaCorpusMemberId(uuid.uuid5(uuid.NAMESPACE_URL, str(ordinal))),
+            ordinal=ordinal,
+            source_file_id=FileId(f"document-{ordinal}"),
+            source_name=f"Security Document {ordinal}",
+            mime_type="application/vnd.google-apps.document",
+            source_parent_folder_id=FileId("source"),
+            source_version=str(ordinal + 1),
+            source_modified_time=f"2026-09-08T12:{ordinal:02}:00Z",
+            task_plan_id=QaPlanId(uuid.uuid5(uuid.NAMESPACE_OID, str(ordinal))),
+        )
+        for ordinal in range(20)
+    )
+    return QaCorpusCampaignRead(
+        id=campaign_id,
+        corpus_plan_id=QaPlanId(uuid.UUID("55555555-5555-4555-8555-555555555555")),
+        state="canary_reserved",
+        source_folder_id=FileId("source"),
+        destination_folder_id=FileId("destination"),
+        mode="both",
+        created_at=datetime(2026, 9, 8, 12, tzinfo=UTC),
+        members=members,
+    )
 
 
 class _AttestedLauncher:
@@ -1480,6 +1546,318 @@ async def test_corpus_plan_returns_generic_bounded_conflict_for_provider_failure
     assert "private provider" not in response.text
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["pragma"] == "no-cache"
+
+
+async def test_corpus_campaign_create_reauthorizes_after_drive_reads_and_commits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID", "source")
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    authority = _result_authority(datetime.now(UTC))
+    campaign = _corpus_campaign_read()
+    events: list[str] = []
+
+    async def authorize(_db: object, **_kwargs: object) -> QaAuthority:
+        events.append("authorize")
+        return authority
+
+    destination = QaDestinationPermissionProof(
+        file_id=FileId("destination"),
+        mime_type="application/vnd.google-apps.folder",
+        parent_folder_id=FileId("root"),
+        version="17",
+        sha256="c" * 64,
+        observed_at=datetime.now(UTC),
+    )
+
+    class Broker:
+        async def plan_corpus_campaign(self, received: QaAuthority) -> QaCorpusCampaignCandidate:
+            assert received is authority
+            events.append("drive")
+            return QaCorpusCampaignCandidate(
+                plan=_corpus_plan(),
+                destination=destination,
+                corpus_plan_sha256="d" * 64,
+                source_root_sha256="e" * 64,
+                destination_identity_sha256="f" * 64,
+            )
+
+    async def create(_db: object, **kwargs: object) -> CreatedQaCorpusCampaign:
+        events.append("create")
+        assert kwargs == {
+            "authority": authority,
+            "plan": _corpus_plan(),
+            "destination": destination,
+        }
+        return CreatedQaCorpusCampaign(campaign=campaign, replayed=False)
+
+    async def load(_db: object, **kwargs: object) -> None:
+        events.append("lookup")
+        assert kwargs == {"authority": authority}
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    monkeypatch.setattr(qa_router, "load_qa_corpus_campaign_for_authority", load)
+    monkeypatch.setattr(qa_router, "create_or_load_qa_corpus_campaign", create)
+    db = _Db()
+    application = _application(db, _user())
+    application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/corpus/campaign",
+            json=_issuer_body() | {"execution_name": "job/executions/one"},
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+
+    assert response.status_code == 200
+    assert events == ["authorize", "lookup", "drive", "authorize", "create"]
+    assert db.commits == 1
+    assert db.rollbacks == 0
+    assert response.json()["campaign_id"] == str(campaign.id)
+    assert response.json()["replayed"] is False
+    assert len(response.json()["members"]) == 20
+    assert "z" * 43 not in response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+
+
+async def test_corpus_campaign_create_replays_from_database_without_drive_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID", "source")
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    authority = _result_authority(datetime.now(UTC))
+    campaign = _corpus_campaign_read()
+    authorization_calls = 0
+
+    async def authorize(_db: object, **_kwargs: object) -> QaAuthority:
+        nonlocal authorization_calls
+        authorization_calls += 1
+        return authority
+
+    async def load(_db: object, **kwargs: object) -> QaCorpusCampaignRead:
+        assert kwargs == {"authority": authority}
+        return campaign
+
+    class Broker:
+        async def plan_corpus_campaign(self, _authority: QaAuthority) -> object:
+            pytest.fail("Drive was read during an exact database replay")
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    monkeypatch.setattr(qa_router, "load_qa_corpus_campaign_for_authority", load)
+    db = _Db()
+    application = _application(db, _user())
+    application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/corpus/campaign",
+            json=_issuer_body() | {"execution_name": "job/executions/one"},
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["replayed"] is True
+    assert authorization_calls == 1
+    assert db.commits == 1
+    assert db.rollbacks == 0
+
+
+async def test_corpus_campaign_create_stops_when_post_drive_reauthorization_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID", "source")
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    authority = _result_authority(datetime.now(UTC))
+    authorization_calls = 0
+
+    async def authorize(_db: object, **_kwargs: object) -> QaAuthority:
+        nonlocal authorization_calls
+        authorization_calls += 1
+        if authorization_calls == 2:
+            raise QaGrantError
+        return authority
+
+    class Broker:
+        async def plan_corpus_campaign(self, _authority: QaAuthority) -> object:
+            return SimpleNamespace(plan=_corpus_plan(), destination=object())
+
+    async def create(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("campaign creation reached after capability expiry")
+
+    async def load(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    monkeypatch.setattr(qa_router, "load_qa_corpus_campaign_for_authority", load)
+    monkeypatch.setattr(qa_router, "create_or_load_qa_corpus_campaign", create)
+    db = _Db()
+    application = _application(db, _user())
+    application.dependency_overrides[qa_router.qa_canary_broker_dep] = Broker
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/corpus/campaign",
+            json=_issuer_body() | {"execution_name": "job/executions/one"},
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+
+    assert response.status_code == 403
+    assert authorization_calls == 2
+    assert db.commits == 0
+    assert db.rollbacks == 1
+    assert response.json() == {"detail": "QA credential is invalid"}
+    assert response.headers["cache-control"] == "no-store"
+
+
+async def test_corpus_campaign_create_returns_generic_no_store_service_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID", "source")
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+
+    async def authorize(_db: object, **_kwargs: object) -> QaAuthority:
+        return _result_authority(datetime.now(UTC))
+
+    async def fail(**_kwargs: object) -> CreatedQaCorpusCampaign:
+        raise QaCorpusCampaignError from RuntimeError("private provider and file detail")
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    monkeypatch.setattr(qa_router, "_create_or_replay_corpus_campaign", fail)
+    db = _Db()
+    application = _application(db, _user())
+    application.dependency_overrides[qa_router.qa_canary_broker_dep] = object
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/corpus/campaign",
+            json=_issuer_body() | {"execution_name": "job/executions/one"},
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "QA corpus campaign could not be created"}
+    assert "private provider" not in response.text
+    assert db.commits == 0
+    assert db.rollbacks == 1
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+
+
+async def test_corpus_campaign_read_is_owner_and_capability_scope_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "DOCUMENT_TRANSFORM_QA_CORPUS_SOURCE_FOLDER_ID", "source")
+    _oidc(
+        monkeypatch,
+        {
+            "iss": "https://accounts.google.com",
+            "aud": _AUDIENCE,
+            "email": _SERVICE_ACCOUNT,
+            "email_verified": True,
+        },
+    )
+    authority = _result_authority(datetime.now(UTC))
+    campaign = _corpus_campaign_read()
+
+    async def authorize(_db: object, **_kwargs: object) -> QaAuthority:
+        return authority
+
+    async def read(_db: object, **kwargs: object) -> QaCorpusCampaignRead:
+        assert kwargs == {"authority": authority}
+        return campaign
+
+    monkeypatch.setattr(qa_router, "authorize_qa_capability", authorize)
+    monkeypatch.setattr(qa_router, "load_qa_corpus_campaign_for_authority", read)
+    db = _Db()
+    application = _application(db, _user())
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://api.test"
+    ) as http:
+        response = await http.post(
+            "/internal/document-transform-qa/corpus/campaign/read",
+            json=_issuer_body() | {"execution_name": "job/executions/one"},
+            headers={
+                "Authorization": "Bearer oidc",
+                "X-Wiki-QA-Capability": "z" * 43,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["campaign_id"] == str(campaign.id)
+    assert response.json()["source_folder_id"] == "source"
+    assert response.json()["destination_folder_id"] == "destination"
+    assert "user_email" not in response.text
+    assert db.commits == db.rollbacks == 0
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_corpus_campaign_response_is_bounded_to_sixty_four_kibibytes() -> None:
+    response = qa_router._campaign_response(_corpus_campaign_read())
+    oversized = response.model_copy(
+        update={
+            "members": tuple(
+                member.model_copy(update={"source_name": "\U0001f512" * 1024})
+                for member in response.members
+            )
+        }
+    )
+
+    with pytest.raises(QaCorpusCampaignError):
+        qa_router._bounded_campaign_response(oversized)
 
 
 async def test_canary_plan_rejects_caller_selected_file_before_authorization(

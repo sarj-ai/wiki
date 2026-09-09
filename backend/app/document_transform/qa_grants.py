@@ -73,6 +73,23 @@ class QaAuthority:
 
 
 @dataclass(frozen=True, slots=True)
+class QaCampaignAuthoritySnapshot:
+    run_id: QaRunId
+    grant_id: DocumentTransformQaGrantId
+    user_id: UserId
+    user_email: str
+    execution_name: str
+    execution_uid: uuid.UUID
+    execution_job_name: str
+    bootstrap_capability_digest: bytes
+    release_sha: str
+    image_digest: str
+    source_folder_id: FileId
+    destination_folder_id: FileId
+    mode: TransformMode
+
+
+@dataclass(frozen=True, slots=True)
 class PreparedQaRun:
     run_id: QaRunId
 
@@ -639,6 +656,50 @@ async def load_qa_canary_submission(
     if submitted is None:
         raise QaGrantError
     return submitted
+
+
+async def load_qa_campaign_authority_snapshot(
+    db: AsyncSession,
+    *,
+    authority: QaAuthority,
+    for_update: bool = False,
+) -> QaCampaignAuthoritySnapshot:
+    row = (
+        await _locked_run_by_grant(db, authority.grant_id)
+        if for_update
+        else await _run_by_grant(db, authority.grant_id, lock=False)
+    )
+    if row is None or not _authority_matches_run(row, authority):
+        raise QaGrantError
+    run = row.run
+    execution_name = run.execution_name
+    execution_uid = run.execution_uid
+    execution_job_name = run.execution_job_name
+    bootstrap_capability_digest = run.bootstrap_capability_digest
+    if (
+        execution_name is None
+        or execution_uid is None
+        or execution_job_name is None
+        or bootstrap_capability_digest is None
+    ):
+        raise QaGrantError
+    if not execution_job_name or len(bootstrap_capability_digest) != hashlib.sha256().digest_size:
+        raise QaGrantError
+    return QaCampaignAuthoritySnapshot(
+        run_id=run.id,
+        grant_id=row.grant.id,
+        user_id=row.user.id,
+        user_email=row.user.email,
+        execution_name=execution_name,
+        execution_uid=execution_uid,
+        execution_job_name=execution_job_name,
+        bootstrap_capability_digest=bytes(bootstrap_capability_digest),
+        release_sha=run.release_sha,
+        image_digest=run.image_digest,
+        source_folder_id=run.source_folder_id,
+        destination_folder_id=run.destination_folder_id,
+        mode=TransformMode(run.mode),
+    )
 
 
 def _derive_bootstrap_capability(

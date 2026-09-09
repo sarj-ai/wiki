@@ -27,6 +27,7 @@ from app.document_transform.qa_grants import (
     delete_expired_qa_grants,
     fail_qa_bootstrap_launch,
     issue_qa_grant,
+    load_qa_campaign_authority_snapshot,
     load_qa_canary_submission,
     prepare_idempotent_qa_launch,
     prepare_qa_bootstrap_run,
@@ -440,6 +441,37 @@ async def test_real_postgres_secretless_bootstrap_persists_only_digests(
         assert capability.token.encode() not in bytes(expected)
         assert run.bootstrap_request_nonce == _CONSUME_NONCE
         assert run.state == "bootstrapped"
+
+
+async def test_real_postgres_campaign_snapshot_is_grant_bound_and_survives_renewal(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as db:
+        identity = await _identity(db)
+        prepared = await _prepared_bound_run(db, identity.user, identity.session)
+        capability = await _bootstrap(db, prepared.run_id)
+        authority = await _authorize(db, capability.token)
+        first = await load_qa_campaign_authority_snapshot(
+            db,
+            authority=authority,
+            for_update=True,
+        )
+    assert first.run_id == prepared.run_id
+    assert first.grant_id == prepared.issued.grant_id
+    assert first.user_id == identity.user.id
+    assert first.execution_name == "execution-a"
+    assert first.execution_uid == _EXECUTION_UID
+    assert first.execution_job_name == _EXECUTION_JOB
+    assert first.bootstrap_capability_digest == hashlib.sha256(capability.token.encode()).digest()
+
+    async with sessions.begin() as db:
+        renewed = await _renew(db, capability.token)
+        renewed_authority = await _authorize(db, renewed.token)
+        replay = await load_qa_campaign_authority_snapshot(
+            db,
+            authority=renewed_authority,
+        )
+    assert replay == first
 
 
 async def test_real_postgres_submission_binding_is_atomic_immutable_and_replayable(
