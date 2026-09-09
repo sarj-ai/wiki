@@ -6,13 +6,13 @@
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 from pathlib import Path
 from typing import Annotated, Literal
 import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
+import typer
 
 from scripts.qa_document_transform_corpus import (
     EvidenceManifest,
@@ -234,18 +234,26 @@ def _require_round(
             raise QaError(msg)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("ledger", type=Path)
-    parser.add_argument("--artifacts-root", type=Path, required=True)
-    args = parser.parse_args()
-    ledger = ImprovementLedger.model_validate_json(args.ledger.read_text())
-    completed = verify_ledger(ledger, args.artifacts_root)
+CLI = typer.Typer(
+    add_completion=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    pretty_exceptions_enable=False,
+)
+
+
+@CLI.command()
+def main(
+    ledger: Annotated[Path, typer.Argument()],
+    artifacts_root: Annotated[Path, typer.Option("--artifacts-root")],
+) -> None:
+    evidence = ImprovementLedger.model_validate_json(Path.read_text(ledger, encoding="utf-8"))
+    completed = verify_ledger(evidence, artifacts_root)
     if completed != _ROUND_COUNT:
         msg = f"INCOMPLETE: {completed}/5 evidenced improvement rounds"
-        raise SystemExit(msg)
+        typer.echo(msg, err=True)
+        raise typer.Exit(1)
     print("PASS: 5/5 evidenced improvement rounds")
 
 
 if __name__ == "__main__":
-    main()
+    CLI()
