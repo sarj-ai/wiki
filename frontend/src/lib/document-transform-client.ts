@@ -2,7 +2,7 @@ import * as z from "zod";
 
 import { runAction, runActionResult } from "@/lib/action-client";
 import { ApiError } from "@/lib/api-error";
-import { transformHttp } from "@/lib/document-transform-http";
+import { transformHttp } from "@/lib/clients/transform-http";
 import { preservedInPlaceOutcome } from "@/lib/document-transform-outcome";
 import {
   DocumentTransformNeedsReviewError,
@@ -15,6 +15,13 @@ import {
 
 const ModeSchema = z.enum(["format", "unslop", "both"]);
 const OutputStrategySchema = z.enum(["copy", "in_place"]);
+const FindingSeveritySchema = z.enum(["informational", "review"]);
+const AccessScopeSchema = z.enum(["inherited", "owner_only"]);
+const ArtifactKindSchema = z.enum(["document", "presentation"]);
+const ShortLinkStatusSchema = z.enum(["ready", "unavailable"]);
+const TaskStatusSchema = z.enum(["pending", "running", "succeeded", "failed", "cancelled"]);
+const UuidSchema = z.uuid();
+const AdmissionSchema = z.strictObject({ task_id: UuidSchema, status: TaskStatusSchema });
 const CapabilitiesSchema = z.object({
   copy: z.literal(true),
   in_place: z.boolean(),
@@ -26,14 +33,14 @@ const MessageSchema = z
     block_id: z.string().nullable(),
     code: z.string(),
     detail: z.string(),
-    severity: z.enum(["informational", "review"]).default("review"),
+    severity: FindingSeveritySchema.default("review"),
   })
-  .passthrough();
+  .loose();
 const ResultSchema = z
   .object({
-    access_scope: z.enum(["inherited", "owner_only"]).default("inherited"),
+    access_scope: AccessScopeSchema.default("inherited"),
     applied_patch_count: z.int().nonnegative(),
-    artifact_kind: z.enum(["document", "presentation"]).default("document"),
+    artifact_kind: ArtifactKindSchema.default("document"),
     brand_profile_id: z.string().default("sarj-legacy-v1"),
     brand_profile_sha256: z.string().default("legacy-unrecorded"),
     deterministic_patch_count: z.int().nonnegative().default(0),
@@ -44,7 +51,7 @@ const ResultSchema = z
     promoted_heading_count: z.int().min(0).max(20).default(0),
     model_ids: z.array(z.string()),
     needs_review: z.boolean(),
-    operation_id: z.uuid(),
+    operation_id: UuidSchema,
     output_strategy: OutputStrategySchema.default("copy"),
     output: z.object({
       file_id: z.string(),
@@ -58,7 +65,7 @@ const ResultSchema = z
     output_revision_id: z.string().nullable().default(null),
     source_sha256: z.string(),
     short_link_alias: z.string().nullable().default(null),
-    short_link_status: z.enum(["ready", "unavailable"]).nullable().default(null),
+    short_link_status: ShortLinkStatusSchema.nullable().default(null),
     source_revision_id: z.string().nullable().default(null),
     tool_versions: z.record(z.string(), z.string()),
     validation: z.object({
@@ -74,15 +81,15 @@ const ResultSchema = z
       result.needs_review || result.findings.some((finding) => finding.severity === "review"),
   }));
 const TaskSchema = z.discriminatedUnion("status", [
-  z.object({ id: z.uuid(), status: z.enum(["pending", "running", "cancelled"]) }),
+  z.object({ id: UuidSchema, status: TaskStatusSchema.exclude(["failed", "succeeded"]) }),
   z.object({
     error_code: z.string(),
     error_detail: z.string().nullable(),
-    id: z.uuid(),
+    id: UuidSchema,
     status: z.literal("failed"),
     unverified_output: z.object({ file_id: z.string().min(1) }).nullish(),
   }),
-  z.object({ id: z.uuid(), result: ResultSchema, status: z.literal("succeeded") }),
+  z.object({ id: UuidSchema, result: ResultSchema, status: z.literal("succeeded") }),
 ]);
 const CurrentPolishSchema = z.object({ result: ResultSchema.nullable() });
 
@@ -109,17 +116,12 @@ const TASK_FAILURE_FALLBACKS: Readonly<Record<string, string>> = {
 
 export const DOCUMENT_TRANSFORM_API = {
   admission: async (key: string) => {
-    const id = z.uuid().parse(key);
+    const id = UuidSchema.parse(key);
     try {
       const raw = await runAction(
         async () => await transformHttp(`/admissions/${encodeURIComponent(id)}`),
       );
-      return z
-        .strictObject({
-          task_id: z.uuid(),
-          status: z.enum(["pending", "running", "succeeded", "failed", "cancelled"]),
-        })
-        .parse(JSON.parse(raw));
+      return AdmissionSchema.parse(JSON.parse(raw));
     } catch (error: unknown) {
       if (error instanceof ApiError && error.status === 404) return null;
       throw error;
@@ -185,7 +187,7 @@ export const DOCUMENT_TRANSFORM_API = {
     maxPolls = DEFAULT_MAX_TASK_POLLS,
   ): Promise<DocumentTransformResult> =>
     await waitForTask(initialTask, signal, pollIntervalMs, maxPolls),
-};
+} as const;
 
 async function waitForTask(
   task: DocumentTransformTask,

@@ -6,7 +6,8 @@ import { deduplicatedRefresh } from "@/lib/session-client";
 import { notifyTerminalUnauthorized } from "@/lib/session-events";
 
 export async function runAction<T>(action: () => Promise<ActionResult<T>>): Promise<T> {
-  return (await runActionResult(action)).data;
+  const result = await runActionResult(action);
+  return result.data;
 }
 
 export async function runActionResult<T>(

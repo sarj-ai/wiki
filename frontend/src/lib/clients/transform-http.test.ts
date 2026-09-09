@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { transformHttp } from "@/lib/document-transform-http";
+import { transformHttp } from "@/lib/clients/transform-http";
 
 describe("transformHttp", () => {
   afterEach(() => {
@@ -87,6 +87,48 @@ describe("transformHttp", () => {
       error: "Document transform request could not be completed",
       ok: false,
       status: 502,
+    });
+  });
+
+  it.each([
+    {
+      name: "null payload",
+      payload: null,
+      expected: { error: "Document transform request could not be completed" },
+    },
+    {
+      name: "array payload",
+      payload: [],
+      expected: { error: "Document transform request could not be completed" },
+    },
+    {
+      name: "invalid text with a valid code",
+      payload: { error: 42, code: "document_transform_source_changed" },
+      expected: {
+        code: "document_transform_source_changed",
+        error: "Document transform request could not be completed",
+      },
+    },
+    {
+      name: "empty text with an invalid code",
+      payload: { error: "", code: 42 },
+      expected: { error: "" },
+    },
+    {
+      name: "valid text with a null code",
+      payload: { error: "Safe guidance", code: null },
+      expected: { error: "Safe guidance" },
+    },
+  ])("validates independent error fields: $name", async ({ payload, expected }) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(Response.json(payload, { status: 409 })),
+    );
+
+    await expect(transformHttp("/tasks/id")).resolves.toEqual({
+      ...expected,
+      ok: false,
+      status: 409,
     });
   });
 });
