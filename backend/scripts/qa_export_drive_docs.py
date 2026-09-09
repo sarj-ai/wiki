@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 import json
 from pathlib import Path
 import re
+from typing import Annotated
 
 import httpx
 from sqlalchemy import select
+import typer
 
 from app.auth.google_tokens import GoogleTokenManager
 from app.database import async_session
@@ -18,23 +19,28 @@ from app.drive.service import GoogleDriveService
 from app.models.user import User
 
 
-def main() -> None:
-    print(json.dumps(asyncio.run(_run(_arguments())), indent=2, sort_keys=True))
+CLI = typer.Typer(
+    add_completion=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    pretty_exceptions_enable=False,
+    help=__doc__,
+)
 
 
-def _arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--file-id", action="append", required=True)
-    parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--user-email", default="nasr@sarj.ai")
-    return parser.parse_args()
+@CLI.command()
+def main(
+    file_id: Annotated[list[str], typer.Option("--file-id")],
+    output_dir: Annotated[Path, typer.Option("--output-dir")],
+    user_email: Annotated[str, typer.Option("--user-email")] = "nasr@sarj.ai",
+) -> None:
+    print(json.dumps(asyncio.run(_run(file_id, output_dir, user_email)), indent=2, sort_keys=True))
 
 
-async def _run(arguments: argparse.Namespace) -> list[dict[str, str]]:
-    output_dir = arguments.output_dir.resolve()
+async def _run(file_ids: list[str], output_dir: Path, user_email: str) -> list[dict[str, str]]:
+    output_dir = await asyncio.to_thread(Path.resolve, output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     async with async_session() as db, httpx.AsyncClient(timeout=30) as http:
-        user = await db.scalar(select(User).where(User.email == arguments.user_email))
+        user = await db.scalar(select(User).where(User.email == user_email))
         if user is None:
             msg = "QA user is not present in the local database"
             raise RuntimeError(msg)
@@ -44,7 +50,7 @@ async def _run(arguments: argparse.Namespace) -> list[dict[str, str]]:
             prepared.refresh_handler,
         )
         exported: list[dict[str, str]] = []
-        for file_id in arguments.file_id:
+        for file_id in file_ids:
             metadata = await asyncio.to_thread(
                 execute_with_retry,
                 client.files().get(fileId=file_id, fields="id,name,modifiedTime"),
@@ -78,4 +84,4 @@ def _safe_name(value: str) -> str:
 
 
 if __name__ == "__main__":
-    main()
+    CLI()

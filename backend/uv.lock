@@ -2451,6 +2451,7 @@ dependencies = [
     { name = "python-docx" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "tenacity" },
+    { name = "typer" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -2469,7 +2470,6 @@ dev = [
     { name = "sarj-python-lint" },
     { name = "sarj-sql-lint" },
     { name = "ty" },
-    { name = "typer" },
     { name = "types-defusedxml" },
     { name = "types-httplib2" },
     { name = "types-requests" },
@@ -2500,6 +2500,7 @@ requires-dist = [
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.51" },
     { name = "tenacity", specifier = ">=9.1.4" },
+    { name = "typer", specifier = ">=0.27.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.1" },
 ]
 
@@ -2518,7 +2519,6 @@ dev = [
     { name = "sarj-python-lint", specifier = "==0.80.5" },
     { name = "sarj-sql-lint", specifier = "==0.16.5" },
     { name = "ty", specifier = ">=0.0.65" },
-    { name = "typer", specifier = ">=0.27.2" },
     { name = "types-defusedxml", specifier = ">=0.7.0.20260504" },
     { name = "types-httplib2", specifier = ">=0.32.0.20260720" },
     { name = "types-requests", specifier = ">=2.33.0.20260712" },
