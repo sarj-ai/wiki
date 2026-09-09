@@ -2035,10 +2035,7 @@ class DocumentTransformExecutor:
             build_custom_header_title_requests(
                 snapshot.title,
                 profile=self._brand,
-                headers=tuple(
-                    TabHeader(tab_id=item.tab_id, header_id=item.header_id)
-                    for item in inspection.custom_header_title_targets
-                ),
+                headers=inspection.custom_header_title_targets,
             )
         )
         preserved_tabs = {binding.tab_id for binding in inspection.custom_furniture}
@@ -2069,10 +2066,7 @@ class DocumentTransformExecutor:
                 build_custom_header_title_requests(
                     checkpoint.source_title,
                     profile=self._brand,
-                    headers=tuple(
-                        TabHeader(tab_id=item.tab_id, header_id=item.header_id)
-                        for item in checkpoint.custom_header_title_targets
-                    ),
+                    headers=checkpoint.custom_header_title_targets,
                 )
             )
             if checkpoint.stage is InPlaceCheckpointStage.CONTENT

@@ -22,7 +22,6 @@ from app.document_transform.gateway import (
     InPlaceStageResult,
     OutputVerification,
     SourceSnapshot,
-    TabHeader,
 )
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import DocumentIR, parse_google_document
@@ -54,6 +53,14 @@ class _CustomHeaderPlan:
     requests: tuple[dict[str, Any], ...]
 
 
+def _terminal_newline_run(elements: list[dict[str, Any]]) -> dict[str, Any]:
+    return next(
+        element["textRun"]
+        for element in elements
+        if element.get("textRun", {}).get("content", "").endswith("\n")
+    )
+
+
 def _custom_document(*, first_even: bool = False, footer: bool = False) -> dict[str, Any]:
     document = _branded_google_document()
     document["documentId"] = "source"
@@ -83,7 +90,10 @@ def _custom_document(*, first_even: bool = False, footer: bool = False) -> dict[
 
 
 def _apply_header_title_requests(
-    document: dict[str, Any], requests: tuple[dict[str, Any], ...]
+    document: dict[str, Any],
+    requests: tuple[dict[str, Any], ...],
+    *,
+    simulate_terminal_newline_inheritance: bool = False,
 ) -> None:
     tabs = {tab["tabProperties"]["tabId"]: tab["documentTab"] for tab in document["tabs"]}
     styles = {
@@ -92,7 +102,7 @@ def _apply_header_title_requests(
             request["updateTextStyle"]["range"]["segmentId"],
         ): request["updateTextStyle"]["textStyle"]
         for request in requests
-        if "updateTextStyle" in request
+        if "updateTextStyle" in request and request["updateTextStyle"]["range"]["startIndex"] == 0
     }
     for request in requests:
         if "insertText" not in request:
@@ -100,6 +110,11 @@ def _apply_header_title_requests(
         location = request["insertText"]["location"]
         tab = tabs[location["tabId"]]
         elements = tab["headers"][location["segmentId"]]["content"][0]["paragraph"]["elements"]
+        if (
+            simulate_terminal_newline_inheritance
+            and (terminal_run := _terminal_newline_run(elements)).get("content") == "\n"
+        ):
+            terminal_run["textStyle"] = deepcopy(styles[location["tabId"], location["segmentId"]])
         elements.insert(
             0,
             {
@@ -109,6 +124,15 @@ def _apply_header_title_requests(
                 }
             },
         )
+    for request in requests:
+        update = request.get("updateTextStyle")
+        if not isinstance(update, dict) or update.get("fields") != "*":
+            continue
+        range_value = update["range"]
+        elements = tabs[range_value["tabId"]]["headers"][range_value["segmentId"]]["content"][0][
+            "paragraph"
+        ]["elements"]
+        _terminal_newline_run(elements)["textStyle"] = deepcopy(update["textStyle"])
 
 
 def _custom_header_plan(
@@ -121,10 +145,7 @@ def _custom_header_plan(
             build_custom_header_title_requests(
                 "Decision",
                 profile=SarjBrandProfile(),
-                headers=tuple(
-                    TabHeader(tab_id=item.tab_id, header_id=item.header_id)
-                    for item in inspection.custom_header_title_targets
-                ),
+                headers=inspection.custom_header_title_targets,
             )
         ),
     )
@@ -238,10 +259,7 @@ async def test_custom_header_title_prefix_is_native_idempotent_and_preserves_suf
         build_custom_header_title_requests(
             "Decision",
             profile=SarjBrandProfile(),
-            headers=tuple(
-                TabHeader(tab_id=item.tab_id, header_id=item.header_id)
-                for item in inspection.custom_header_title_targets
-            ),
+            headers=inspection.custom_header_title_targets,
         )
     )
 
@@ -268,6 +286,80 @@ async def test_custom_header_title_prefix_is_native_idempotent_and_preserves_suf
 
 
 @pytest.mark.asyncio
+async def test_custom_header_title_restores_empty_header_terminal_newline_style() -> None:
+    document = _custom_document(first_even=True, footer=True)
+    empty_header = document["tabs"][0]["documentTab"]["headers"]["header-first"]
+    newline_style = {
+        "weightedFontFamily": {"fontFamily": "Helvetica Neue", "weight": 400},
+        "fontSize": {"magnitude": 12, "unit": "PT"},
+    }
+    empty_run = empty_header["content"][0]["paragraph"]["elements"][0]["textRun"]
+    empty_run["content"] = "\n"
+    empty_run["textStyle"] = deepcopy(newline_style)
+    empty_element = empty_header["content"][0]["paragraph"]["elements"][0]
+    empty_element["startIndex"] = 0
+    empty_element["endIndex"] = 1
+    before = deepcopy(document)
+    gateway = _native_gateway()
+    inspection = gateway._inspect_in_place_sync(_inspection_snapshot(document), "Decision")
+    requests = tuple(
+        build_custom_header_title_requests(
+            "Decision",
+            profile=SarjBrandProfile(),
+            headers=inspection.custom_header_title_targets,
+        )
+    )
+
+    assert any(
+        request.get("updateTextStyle", {}).get("fields") == "*"
+        and request["updateTextStyle"]["range"]["segmentId"] == "header-first"
+        and request["updateTextStyle"]["textStyle"] == newline_style
+        for request in requests
+    )
+    assert custom_furniture_requests_safe(
+        list(requests),
+        inspection.custom_furniture,
+        allowed_header_requests=requests,
+    )
+    tampered_requests = deepcopy(list(requests))
+    restore_request = next(
+        request
+        for request in tampered_requests
+        if request.get("updateTextStyle", {}).get("fields") == "*"
+        and request["updateTextStyle"]["range"]["segmentId"] == "header-first"
+    )
+    restore_request["updateTextStyle"]["textStyle"]["fontSize"]["magnitude"] = 9
+    assert not custom_furniture_requests_safe(
+        tampered_requests,
+        inspection.custom_furniture,
+        allowed_header_requests=requests,
+    )
+    _apply_header_title_requests(
+        document,
+        requests,
+        simulate_terminal_newline_inheritance=True,
+    )
+
+    restored_run = _terminal_newline_run(
+        document["tabs"][0]["documentTab"]["headers"]["header-first"]["content"][0]["paragraph"][
+            "elements"
+        ]
+    )
+    assert restored_run["textStyle"] == newline_style
+    after = gateway._inspect_in_place_sync(_inspection_snapshot(document), "Decision")
+    assert after.custom_header_titles_present == inspection.custom_header_title_targets
+    assert after.custom_furniture == inspection.custom_furniture
+    verification = await _verify_custom_brand(
+        document,
+        inspection,
+        parse_google_document(before, title="Decision"),
+        custom_header_titles=inspection.custom_header_title_targets,
+    )
+    assert verification.structure_preserved
+    assert verification.supported_brand_applied
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("tamper", ["title", "style", "suffix"])
 async def test_custom_header_title_proof_rejects_tampering(tamper: str) -> None:
     document = _custom_document()
@@ -278,7 +370,11 @@ async def test_custom_header_title_proof_rejects_tampering(tamper: str) -> None:
         build_custom_header_title_requests(
             "Decision",
             profile=SarjBrandProfile(),
-            headers=(TabHeader(tab_id=DocsTabId("tab-a"), header_id=DocsSegmentId("header-a")),),
+            headers=(
+                CustomHeaderTitleTarget(
+                    tab_id=DocsTabId("tab-a"), header_id=DocsSegmentId("header-a")
+                ),
+            ),
         )
     )
     _apply_header_title_requests(document, requests)
@@ -311,7 +407,11 @@ def test_custom_header_title_request_guard_requires_the_exact_plan(tamper: str) 
         build_custom_header_title_requests(
             "Decision",
             profile=SarjBrandProfile(),
-            headers=(TabHeader(tab_id=DocsTabId("tab-a"), header_id=DocsSegmentId("header-a")),),
+            headers=(
+                CustomHeaderTitleTarget(
+                    tab_id=DocsTabId("tab-a"), header_id=DocsSegmentId("header-a")
+                ),
+            ),
         )
     )
     requests = deepcopy(list(expected))

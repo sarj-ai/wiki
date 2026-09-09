@@ -1,3 +1,4 @@
+import json
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -73,6 +74,28 @@ class CustomHeaderTitleTarget(BaseModel):
 
     tab_id: DocsTabId
     header_id: DocsSegmentId
+    terminal_newline_index: int | None = Field(default=None, ge=0)
+    terminal_newline_text_style_json: str | None = Field(default=None, max_length=16_384)
+
+    @model_validator(mode="after")
+    def validate_terminal_newline_style(self) -> Self:
+        if (self.terminal_newline_index is None) != (self.terminal_newline_text_style_json is None):
+            message = "Terminal newline index and style must be captured together"
+            raise ValueError(message)
+        if self.terminal_newline_text_style_json is not None:
+            try:
+                style = json.loads(self.terminal_newline_text_style_json)
+            except (json.JSONDecodeError, TypeError) as error:
+                message = "Terminal newline style must be canonical JSON"
+                raise ValueError(message) from error
+            if (
+                not isinstance(style, dict)
+                or json.dumps(style, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+                != self.terminal_newline_text_style_json
+            ):
+                message = "Terminal newline style must be a canonical JSON object"
+                raise ValueError(message)
+        return self
 
 
 def custom_furniture_requests_safe(
