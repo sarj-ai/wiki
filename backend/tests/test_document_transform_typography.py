@@ -8,7 +8,9 @@ import pytest
 
 from app.document_transform import google_gateway as gateway
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
+from app.document_transform.errors import UnsupportedSourceError
 from app.document_transform.ir import parse_google_document, utf16_length
+from app.document_transform.native_font_defense import defend_native_font_requests
 
 
 def _document(runs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -184,6 +186,112 @@ def test_font_ranges_rebase_after_earlier_text_edits_using_utf16_offsets() -> No
         if request.get("updateTextStyle", {}).get("fields") == "weightedFontFamily.fontFamily"
     ]
     assert font_only[0]["range"] == {"startIndex": 8, "endIndex": 12, "tabId": "tab"}
+
+
+def test_unchanged_mixed_native_paragraph_keeps_later_style_ranges_absolute() -> None:
+    raw = {
+        "revisionId": "revision",
+        "tabs": [
+            {
+                "tabProperties": {"tabId": "tab"},
+                "documentTab": {
+                    "body": {
+                        "content": [
+                            {
+                                "startIndex": 1,
+                                "endIndex": 4,
+                                "paragraph": {
+                                    "elements": [
+                                        {
+                                            "startIndex": 1,
+                                            "endIndex": 2,
+                                            "textRun": {"content": " "},
+                                        },
+                                        {
+                                            "startIndex": 2,
+                                            "endIndex": 3,
+                                            "inlineObjectElement": {"inlineObjectId": "logo"},
+                                        },
+                                        {
+                                            "startIndex": 3,
+                                            "endIndex": 4,
+                                            "textRun": {"content": "\n"},
+                                        },
+                                    ]
+                                },
+                            },
+                            {
+                                "startIndex": 4,
+                                "endIndex": 14,
+                                "paragraph": {
+                                    "elements": [
+                                        {
+                                            "startIndex": 4,
+                                            "endIndex": 13,
+                                            "textRun": {
+                                                "content": "Purpose😀",
+                                                "textStyle": {
+                                                    "bold": False,
+                                                    "link": {"url": "https://example.test/purpose"},
+                                                    "weightedFontFamily": {
+                                                        "fontFamily": "Arial",
+                                                        "weight": 400,
+                                                    },
+                                                },
+                                            },
+                                        },
+                                        {
+                                            "startIndex": 13,
+                                            "endIndex": 14,
+                                            "textRun": {
+                                                "content": "\n",
+                                                "textStyle": {
+                                                    "bold": False,
+                                                    "weightedFontFamily": {
+                                                        "fontFamily": "Arial",
+                                                        "weight": 400,
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    ],
+                                    "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                                },
+                            },
+                        ]
+                    }
+                },
+            }
+        ],
+    }
+    parsed = parse_google_document(raw, title="Report")
+
+    requests = build_copy_mutations(
+        parsed, parsed, profile=SarjBrandProfile(), headers=(), logo_uri=""
+    )
+    body_text_styles = [
+        request["updateTextStyle"]
+        for request in requests
+        if "updateTextStyle" in request and "segmentId" not in request["updateTextStyle"]["range"]
+    ]
+
+    assert [request["range"] for request in body_text_styles] == [
+        {"startIndex": 4, "endIndex": 13, "tabId": "tab"}
+    ]
+    defended = defend_native_font_requests(requests, document=raw, original=parsed)
+    assert [
+        request["updateTextStyle"]["range"] for request in defended if "updateTextStyle" in request
+    ] == [
+        {"startIndex": 4, "endIndex": 13, "tabId": "tab"},
+        {"startIndex": 13, "endIndex": 14, "tabId": "tab"},
+    ]
+
+    changed = replace(
+        parsed,
+        blocks=(replace(parsed.blocks[0], text="unsafe"), *parsed.blocks[1:]),
+    )
+    with pytest.raises(UnsupportedSourceError):
+        build_copy_mutations(parsed, changed, profile=SarjBrandProfile(), headers=(), logo_uri="")
 
 
 def test_font_verification_accepts_coalesced_runs_but_rejects_missing_font() -> None:
