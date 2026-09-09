@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { documentTransformApi } from "@/lib/document-transform-client";
+import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-client";
 import type { TransformRecovery } from "@/lib/document-transform-recovery";
 import type { DocumentTransformSource } from "@/lib/document-transform-types";
 import {
@@ -55,7 +55,7 @@ export function DocumentPolishRecovery({ owner, operation, source, onRestore }: 
     }
   };
   const resolve = async (bundle?: MarkdownRecoveryBundle) => {
-    const admission = await documentTransformApi.admission(operation.key);
+    const admission = await DOCUMENT_TRANSFORM_API.admission(operation.key);
     if (admission) {
       onRestore({ ...operation, taskId: admission.task_id }, null);
       setMessage("Original task found. Resume checking its status.");

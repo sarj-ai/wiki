@@ -1,7 +1,7 @@
 import {
   MARKDOWN_LIMIT_BYTES,
-  MarkdownImportFileError,
   markdownByteLength,
+  MarkdownImportFileError,
   markdownTextError,
   readMarkdownFile,
 } from "./markdown-import";

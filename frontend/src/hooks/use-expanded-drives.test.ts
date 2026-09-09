@@ -7,7 +7,7 @@ import {
   setDriveExpanded,
 } from "@/hooks/use-expanded-folders";
 import { expandedDrivesStorageKey } from "@/lib/browser-storage";
-import { ZPERSISTED_DRIVE_EXPANSION } from "@/lib/storage-schemas";
+import { PersistedDriveExpansionSchema } from "@/lib/storage-schemas";
 import { installLocalStorage } from "@/test-stubs/local-storage";
 
 const USER_ID = "drive-expansion-user";
@@ -44,5 +44,5 @@ describe("explicit Drive expansion", () => {
 
 function readPersistedState() {
   const raw = window.localStorage.getItem(expandedDrivesStorageKey(USER_ID));
-  return ZPERSISTED_DRIVE_EXPANSION.parse(JSON.parse(raw ?? "null"));
+  return PersistedDriveExpansionSchema.parse(JSON.parse(raw ?? "null"));
 }

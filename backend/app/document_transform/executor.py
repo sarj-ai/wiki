@@ -1271,7 +1271,9 @@ class DocumentTransformExecutor:
                     for proof in checkpoint.native_font_proof or ()
                     if proof.visual_authority
                 }
-                or set(checkpoint.visual_authority_block_ids) & checkpoint.replacements.keys()
+                or not set(checkpoint.visual_authority_block_ids).isdisjoint(
+                    checkpoint.replacements
+                )
             ):
                 raise InPlaceNeedsReviewError
             if checkpoint.native_font_proof is not None and not verify_native_font_proof(
@@ -2561,7 +2563,7 @@ def _validate_copy_checkpoint(
     )
     if checkpoint_contract != expected_contract:
         raise OutputConflictError
-    if set(_copy_visual_ids(original)) & checkpoint.replacements.keys() or tuple(
+    if not set(_copy_visual_ids(original)).isdisjoint(checkpoint.replacements) or tuple(
         finding.block_id
         for finding in checkpoint.findings
         if finding.code == "native_visual_authority_preserved"

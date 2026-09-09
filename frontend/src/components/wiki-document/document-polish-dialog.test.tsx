@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import * as wikiActions from "@/app/actions/wiki-actions";
 import { ApiError } from "@/lib/api-error";
 import { BrowserUserContext } from "@/lib/browser-user-context";
-import { documentTransformApi } from "@/lib/document-transform-client";
+import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-client";
 import { preservedInPlaceOutcome } from "@/lib/document-transform-outcome";
 import { writeTransformRecovery } from "@/lib/document-transform-recovery";
 import {
@@ -50,13 +50,13 @@ describe("DocumentPolishDialog", () => {
         },
       },
     });
-    vi.spyOn(documentTransformApi, "capabilities").mockResolvedValue({
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "capabilities").mockResolvedValue({
       copy: true,
       inPlace: false,
       presentationCopy: true,
       presentationInPlace: false,
     });
-    vi.spyOn(documentTransformApi, "current").mockResolvedValue(null);
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "current").mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -76,7 +76,9 @@ describe("DocumentPolishDialog", () => {
       mimeType: MIME_DOC,
       name: "Notes",
     } as const;
-    const create = vi.spyOn(documentTransformApi, "create").mockRejectedValue(new Error("offline"));
+    const create = vi
+      .spyOn(DOCUMENT_TRANSFORM_API, "create")
+      .mockRejectedValue(new Error("offline"));
     renderDialog(root, source, undefined, null);
     expect(document.querySelector('[role="alert"]')).toHaveTextContent(
       "Secure session identity unavailable",
@@ -116,10 +118,10 @@ describe("DocumentPolishDialog", () => {
 
   it("starts once, polls, and navigates to the verified output copy", async () => {
     const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
-    vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue(pending);
     const completion =
-      deferred<Awaited<ReturnType<typeof documentTransformApi.waitForCompletion>>>();
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(completion.promise);
+      deferred<Awaited<ReturnType<typeof DOCUMENT_TRANSFORM_API.waitForCompletion>>>();
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockReturnValue(completion.promise);
 
     renderDialog(root, {
       allowInPlace: true,
@@ -148,7 +150,7 @@ describe("DocumentPolishDialog", () => {
     expect(document.body).toHaveTextContent(`Task: ${pending.id}`);
     expect(document.body).not.toHaveTextContent("already reserved");
     expect(document.body).not.toHaveTextContent("Resume checking");
-    expect(documentTransformApi.create).toHaveBeenCalledWith(
+    expect(DOCUMENT_TRANSFORM_API.create).toHaveBeenCalledExactlyOnceWith(
       {
         expectedModifiedTime: "2026-09-03T12:00:00Z",
         fileId: "source-1",
@@ -159,8 +161,7 @@ describe("DocumentPolishDialog", () => {
       expect.any(String),
       "copy",
     );
-    expect(documentTransformApi.create).toHaveBeenCalledTimes(1);
-    expect(documentTransformApi.waitForCompletion).toHaveBeenCalledWith(
+    expect(DOCUMENT_TRANSFORM_API.waitForCompletion).toHaveBeenCalledWith(
       pending,
       expect.any(AbortSignal),
     );
@@ -178,8 +179,8 @@ describe("DocumentPolishDialog", () => {
 
   it("completes once and shows verified preservation details without a review alert", async () => {
     const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
-    const create = vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockResolvedValue({
+    const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue(pending);
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockResolvedValue({
       ...transformResult(),
       findings: [
         {
@@ -216,8 +217,8 @@ describe("DocumentPolishDialog", () => {
 
   it("reports a supported custom-header copy as partial branding without false review", async () => {
     const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
-    vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockResolvedValue({
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue(pending);
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockResolvedValue({
       ...transformResult(),
       mode: "format",
       appliedPatchCount: 0,
@@ -262,9 +263,9 @@ describe("DocumentPolishDialog", () => {
         kind: "markdown",
       } satisfies DocumentPolishSource;
       const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
-      const create = vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
+      const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue(pending);
       const completion = deferred<DocumentTransformResult>();
-      vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(completion.promise);
+      vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockReturnValue(completion.promise);
       renderDialog(root, source);
       const body = document.querySelector<HTMLElement>("[data-polish-scroll-body]");
       const textarea = document.querySelector("textarea");
@@ -281,7 +282,9 @@ describe("DocumentPolishDialog", () => {
       body.scrollTop = 900;
       await vi.waitFor(() => expect(findButtonNow("Import Google Doc")).toBeEnabled());
       clickButton(findButtonNow("Import Google Doc"));
-      await vi.waitFor(() => expect(documentTransformApi.waitForCompletion).toHaveBeenCalledOnce());
+      await vi.waitFor(() =>
+        expect(DOCUMENT_TRANSFORM_API.waitForCompletion).toHaveBeenCalledOnce(),
+      );
       expect(scroll).not.toHaveBeenCalled();
       if (outcome === "failure") {
         completion.reject(
@@ -318,9 +321,9 @@ describe("DocumentPolishDialog", () => {
     "shows the %s link outcome without repolishing",
     async (shortLinkStatus) => {
       const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
-      const create = vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
+      const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue(pending);
       const waitForCompletion = vi
-        .spyOn(documentTransformApi, "waitForCompletion")
+        .spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion")
         .mockResolvedValue({
           ...transformResult(),
           changed: false,
@@ -379,12 +382,12 @@ describe("DocumentPolishDialog", () => {
   );
 
   it("re-enables a failed alias-only retry without resubmitting polish", async () => {
-    const create = vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+    const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
       status: "pending",
     });
     const waitForCompletion = vi
-      .spyOn(documentTransformApi, "waitForCompletion")
+      .spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion")
       .mockResolvedValue({
         ...transformResult(),
         shortLinkAlias: null,
@@ -424,9 +427,9 @@ describe("DocumentPolishDialog", () => {
     const refreshExpectedModifiedTime = vi
       .fn<() => Promise<string>>()
       .mockResolvedValue("2026-09-04T13:45:00Z");
-    vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue(pending);
     const completion = deferred<DocumentTransformResult>();
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(completion.promise);
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockReturnValue(completion.promise);
 
     renderDialog(root, {
       allowInPlace: true,
@@ -443,21 +446,21 @@ describe("DocumentPolishDialog", () => {
     clickButton(findButtonNow("Create polished copy"));
 
     await vi.waitFor(() => {
-      expect(documentTransformApi.create).toHaveBeenCalledWith(
+      expect(DOCUMENT_TRANSFORM_API.create).toHaveBeenCalledWith(
         expect.objectContaining({ expectedModifiedTime: "2026-09-04T13:45:00Z" }),
         "both",
         expect.any(String),
         "copy",
       );
     });
-    expect(refreshExpectedModifiedTime).toHaveBeenCalledTimes(1);
+    expect(refreshExpectedModifiedTime).toHaveBeenCalledOnce();
   });
 
   it("fails closed when the latest Drive revision cannot be verified", async () => {
     const refreshExpectedModifiedTime = vi
       .fn<() => Promise<string>>()
       .mockRejectedValue(new Error("Couldn’t verify the latest revision"));
-    const create = vi.spyOn(documentTransformApi, "create");
+    const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
 
     renderDialog(root, {
       allowInPlace: true,
@@ -474,7 +477,7 @@ describe("DocumentPolishDialog", () => {
     clickButton(findButtonNow("Create polished copy"));
 
     await vi.waitFor(() => {
-      expect(refreshExpectedModifiedTime).toHaveBeenCalledTimes(1);
+      expect(refreshExpectedModifiedTime).toHaveBeenCalledOnce();
     });
     expect(create).not.toHaveBeenCalled();
     await vi.waitFor(() => {
@@ -502,11 +505,11 @@ describe("DocumentPolishDialog", () => {
       .mockResolvedValueOnce("2026-09-04T13:45:00Z")
       .mockResolvedValueOnce("2026-09-04T13:46:00Z");
     const create = vi
-      .spyOn(documentTransformApi, "create")
+      .spyOn(DOCUMENT_TRANSFORM_API, "create")
       .mockRejectedValueOnce(new Error("Response was lost"))
       .mockResolvedValueOnce(pending);
     const completion = deferred<DocumentTransformResult>();
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(completion.promise);
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockReturnValue(completion.promise);
 
     renderDialog(root, {
       allowInPlace: true,
@@ -522,7 +525,7 @@ describe("DocumentPolishDialog", () => {
     });
     clickButton(findButtonNow("Create polished copy"));
     await vi.waitFor(() => {
-      expect(create).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledOnce();
       expect(findButtonNow("Resume checking")).toBeEnabled();
       expect(findButtonNow("Formatting")).toBeDisabled();
       expect(document.querySelector('[role="alert"]')).toHaveTextContent("Response was lost");
@@ -536,7 +539,7 @@ describe("DocumentPolishDialog", () => {
     await vi.waitFor(() => {
       expect(create).toHaveBeenCalledTimes(2);
     });
-    expect(refreshExpectedModifiedTime).toHaveBeenCalledTimes(1);
+    expect(refreshExpectedModifiedTime).toHaveBeenCalledOnce();
     expect(create.mock.calls[1]?.[0]).toEqual(create.mock.calls[0]?.[0]);
     expect(create.mock.calls[1]?.[2]).toBe(create.mock.calls[0]?.[2]);
   });
@@ -564,9 +567,9 @@ describe("DocumentPolishDialog", () => {
       },
       taskId: pending.id,
     });
-    const create = vi.spyOn(documentTransformApi, "create");
-    vi.spyOn(documentTransformApi, "getTask").mockResolvedValue(pending);
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockRejectedValue(
+    const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "getTask").mockResolvedValue(pending);
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockRejectedValue(
       new Error("Network unavailable"),
     );
     renderDialog(root, source, undefined, "owner-1");
@@ -575,7 +578,7 @@ describe("DocumentPolishDialog", () => {
     expect(document.body).not.toHaveTextContent("Polishing this document");
     clickButton(findButtonNow("Resume checking"));
     await vi.waitFor(() =>
-      expect(documentTransformApi.getTask).toHaveBeenCalledWith(
+      expect(DOCUMENT_TRANSFORM_API.getTask).toHaveBeenCalledWith(
         pending.id,
         expect.any(AbortSignal),
       ),
@@ -622,9 +625,9 @@ describe("DocumentPolishDialog", () => {
       taskId: task.id,
     });
     const success = vi.spyOn(toast, "success");
-    const create = vi.spyOn(documentTransformApi, "create");
-    vi.spyOn(documentTransformApi, "getTask").mockResolvedValue(task);
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockResolvedValue(transformResult());
+    const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "getTask").mockResolvedValue(task);
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockResolvedValue(transformResult());
     renderDialog(root, source, undefined, "owner-1");
     await vi.waitFor(() => expect(findButtonNow("Resume checking")).toBeEnabled());
 
@@ -637,7 +640,7 @@ describe("DocumentPolishDialog", () => {
 
   it("does not create a task when unmounted during the metadata refresh", async () => {
     const refresh = deferred<string>();
-    const create = vi.spyOn(documentTransformApi, "create");
+    const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
 
     renderDialog(root, {
       allowInPlace: true,
@@ -665,8 +668,8 @@ describe("DocumentPolishDialog", () => {
   it("admits only once when the polish button is clicked rapidly", async () => {
     const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
     const completion = deferred<DocumentTransformResult>();
-    const create = vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(completion.promise);
+    const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue(pending);
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockReturnValue(completion.promise);
     renderDialog(root, {
       allowInPlace: false,
       expectedModifiedTime: "revision",
@@ -691,13 +694,13 @@ describe("DocumentPolishDialog", () => {
   it("describes a retained terminal replay without claiming it created another copy", async () => {
     const result = transformResult();
     const success = vi.spyOn(toast, "success");
-    vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue({
       id: result.operationId,
       replayed: true,
       result,
       status: "succeeded",
     });
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockResolvedValue(result);
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockResolvedValue(result);
     renderDialog(root, {
       allowInPlace: false,
       expectedModifiedTime: "revision",
@@ -720,12 +723,12 @@ describe("DocumentPolishDialog", () => {
   it("describes an active replay as a resumed polish", async () => {
     const result = transformResult();
     const success = vi.spyOn(toast, "success");
-    vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue({
       id: result.operationId,
       replayed: true,
       status: "running",
     });
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockResolvedValue(result);
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockResolvedValue(result);
     renderDialog(root, {
       allowInPlace: false,
       expectedModifiedTime: "revision",
@@ -746,7 +749,7 @@ describe("DocumentPolishDialog", () => {
     const message =
       "The document changed since polishing was requested. Reload it before trying again.";
     const create = vi
-      .spyOn(documentTransformApi, "create")
+      .spyOn(DOCUMENT_TRANSFORM_API, "create")
       .mockRejectedValue(new ApiError(409, message, "document_transform_source_changed"));
     const refreshExpectedModifiedTime = vi.fn().mockResolvedValue("latest-revision");
     renderDialog(root, {
@@ -771,7 +774,7 @@ describe("DocumentPolishDialog", () => {
 
   it("keeps a fresh recovery reserved for an unrelated conflict", async () => {
     const create = vi
-      .spyOn(documentTransformApi, "create")
+      .spyOn(DOCUMENT_TRANSFORM_API, "create")
       .mockRejectedValue(new ApiError(409, "Document transform request could not be completed"));
     renderDialog(root, {
       allowInPlace: false,
@@ -791,13 +794,13 @@ describe("DocumentPolishDialog", () => {
   });
 
   it("names save-result toggles independently of their icons and descriptions", async () => {
-    vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
+    vi.mocked(DOCUMENT_TRANSFORM_API.capabilities).mockResolvedValue({
       copy: true,
       inPlace: true,
       presentationCopy: true,
       presentationInPlace: false,
     });
-    const create = vi.spyOn(documentTransformApi, "create");
+    const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
     renderDialog(root, {
       allowInPlace: true,
       expectedModifiedTime: "revision",
@@ -832,15 +835,15 @@ describe("DocumentPolishDialog", () => {
   });
 
   it("blocks in-place submission while the current revision check is pending", async () => {
-    vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
+    vi.mocked(DOCUMENT_TRANSFORM_API.capabilities).mockResolvedValue({
       copy: true,
       inPlace: true,
       presentationCopy: true,
       presentationInPlace: false,
     });
     const current = deferred<DocumentTransformResult | null>();
-    vi.mocked(documentTransformApi.current).mockReturnValue(current.promise);
-    const create = vi.spyOn(documentTransformApi, "create");
+    vi.mocked(DOCUMENT_TRANSFORM_API.current).mockReturnValue(current.promise);
+    const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
     renderDialog(root, {
       allowInPlace: true,
       expectedModifiedTime: "revision",
@@ -860,7 +863,7 @@ describe("DocumentPolishDialog", () => {
   });
 
   it("shows the retained receipt instead of re-polishing an unchanged revision", async () => {
-    vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
+    vi.mocked(DOCUMENT_TRANSFORM_API.capabilities).mockResolvedValue({
       copy: true,
       inPlace: true,
       presentationCopy: true,
@@ -871,8 +874,8 @@ describe("DocumentPolishDialog", () => {
       outputRevisionId: "revision-current",
       outputStrategy: "in_place",
     });
-    vi.mocked(documentTransformApi.current).mockResolvedValue(result);
-    const create = vi.spyOn(documentTransformApi, "create");
+    vi.mocked(DOCUMENT_TRANSFORM_API.current).mockResolvedValue(result);
+    const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
     renderDialog(root, {
       allowInPlace: true,
       expectedModifiedTime: "revision",
@@ -898,7 +901,7 @@ describe("DocumentPolishDialog", () => {
   });
 
   it("re-enables in-place polish when the selected mode has no exact receipt", async () => {
-    vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
+    vi.mocked(DOCUMENT_TRANSFORM_API.capabilities).mockResolvedValue({
       copy: true,
       inPlace: true,
       presentationCopy: true,
@@ -909,7 +912,7 @@ describe("DocumentPolishDialog", () => {
       outputRevisionId: "revision-current",
       outputStrategy: "in_place",
     });
-    vi.mocked(documentTransformApi.current).mockImplementation(async (_fileId, mode) => {
+    vi.mocked(DOCUMENT_TRANSFORM_API.current).mockImplementation(async (_fileId, mode) => {
       await new Promise<void>((resolve) => {
         queueMicrotask(resolve);
       });
@@ -936,13 +939,13 @@ describe("DocumentPolishDialog", () => {
   });
 
   it("rechecks after returning from Docs and re-enables after a user edit", async () => {
-    vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
+    vi.mocked(DOCUMENT_TRANSFORM_API.capabilities).mockResolvedValue({
       copy: true,
       inPlace: true,
       presentationCopy: true,
       presentationInPlace: false,
     });
-    vi.mocked(documentTransformApi.current)
+    vi.mocked(DOCUMENT_TRANSFORM_API.current)
       .mockResolvedValueOnce(
         transformResult({
           outputFileId: "source-1",
@@ -968,23 +971,23 @@ describe("DocumentPolishDialog", () => {
     window.dispatchEvent(new Event("focus"));
 
     await vi.waitFor(() => expect(findButtonNow("Polish original")).toBeEnabled());
-    expect(documentTransformApi.current).toHaveBeenCalledTimes(2);
+    expect(DOCUMENT_TRANSFORM_API.current).toHaveBeenCalledTimes(2);
   });
 
   it.each([true, false])("reports in-place changed=%s accurately", async (changed) => {
-    vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
+    vi.mocked(DOCUMENT_TRANSFORM_API.capabilities).mockResolvedValue({
       copy: true,
       inPlace: true,
       presentationCopy: true,
       presentationInPlace: false,
     });
-    vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
       status: "pending",
     });
     const completion =
-      Promise.withResolvers<Awaited<ReturnType<typeof documentTransformApi.waitForCompletion>>>();
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(completion.promise);
+      Promise.withResolvers<Awaited<ReturnType<typeof DOCUMENT_TRANSFORM_API.waitForCompletion>>>();
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockReturnValue(completion.promise);
     const onInPlaceComplete = vi.fn();
 
     const { queryClient } = renderDialog(
@@ -1012,7 +1015,7 @@ describe("DocumentPolishDialog", () => {
     clickButton(findButtonNow("Polish original"));
 
     await vi.waitFor(() => {
-      expect(documentTransformApi.create).toHaveBeenCalledWith(
+      expect(DOCUMENT_TRANSFORM_API.create).toHaveBeenCalledWith(
         {
           expectedModifiedTime: "2026-09-03T12:00:00Z",
           fileId: "source-1",
@@ -1062,9 +1065,9 @@ describe("DocumentPolishDialog", () => {
 
   it("does not submit until in-place capabilities resolve", async () => {
     const capabilityResult =
-      Promise.withResolvers<Awaited<ReturnType<typeof documentTransformApi.capabilities>>>();
-    vi.mocked(documentTransformApi.capabilities).mockReturnValue(capabilityResult.promise);
-    const create = vi.spyOn(documentTransformApi, "create");
+      Promise.withResolvers<Awaited<ReturnType<typeof DOCUMENT_TRANSFORM_API.capabilities>>>();
+    vi.mocked(DOCUMENT_TRANSFORM_API.capabilities).mockReturnValue(capabilityResult.promise);
+    const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
 
     renderDialog(root, {
       allowInPlace: true,
@@ -1094,8 +1097,8 @@ describe("DocumentPolishDialog", () => {
   });
 
   it("fails closed and offers retry when edit capabilities cannot be checked", async () => {
-    vi.mocked(documentTransformApi.capabilities).mockRejectedValue(new Error("offline"));
-    const create = vi.spyOn(documentTransformApi, "create");
+    vi.mocked(DOCUMENT_TRANSFORM_API.capabilities).mockRejectedValue(new Error("offline"));
+    const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
     const reload = vi.spyOn(window.location, "reload").mockImplementation(vi.fn<() => void>());
 
     renderDialog(root, {
@@ -1120,7 +1123,7 @@ describe("DocumentPolishDialog", () => {
   });
 
   it("does not reload over an operation reserved by another tab", async () => {
-    vi.mocked(documentTransformApi.capabilities).mockRejectedValue(new Error("stale action"));
+    vi.mocked(DOCUMENT_TRANSFORM_API.capabilities).mockRejectedValue(new Error("stale action"));
     const reload = vi.spyOn(window.location, "reload").mockImplementation(vi.fn<() => void>());
     renderDialog(root, {
       allowInPlace: true,
@@ -1157,7 +1160,7 @@ describe("DocumentPolishDialog", () => {
   ])(
     "only releases a definitive fresh rejection: $released $error.message",
     async ({ error, released }) => {
-      const create = vi.spyOn(documentTransformApi, "create").mockRejectedValue(error);
+      const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockRejectedValue(error);
       renderDialog(root, {
         allowInPlace: false,
         expectedModifiedTime: "2026-09-03T12:00:00Z",
@@ -1169,7 +1172,7 @@ describe("DocumentPolishDialog", () => {
       await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
       clickButton(findButtonNow("Create polished copy"));
       await vi.waitFor(() => {
-        expect(create).toHaveBeenCalledTimes(1);
+        expect(create).toHaveBeenCalledOnce();
         expect(findButtonNow(released ? "Create polished copy" : "Resume checking")).toBeEnabled();
         expect(findButtonNow("Formatting").disabled).toBe(!released);
       });
@@ -1177,11 +1180,11 @@ describe("DocumentPolishDialog", () => {
   );
 
   it("blocks accidental resubmission after a terminal task failure", async () => {
-    vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
       status: "pending",
     });
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockRejectedValue(
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockRejectedValue(
       new DocumentTransformTerminalError(
         "transform_failed",
         "Safety verification failed",
@@ -1216,7 +1219,7 @@ describe("DocumentPolishDialog", () => {
       expect(findButtonNow("Create polished copy")).toBeDisabled();
     });
     clickButton(findButtonNow("Create polished copy"));
-    expect(documentTransformApi.create).toHaveBeenCalledTimes(1);
+    expect(DOCUMENT_TRANSFORM_API.create).toHaveBeenCalledOnce();
     clickButton(findButtonNow("Formatting"));
     await vi.waitFor(() => {
       expect(document.body).not.toHaveTextContent("Task reference:");
@@ -1225,17 +1228,17 @@ describe("DocumentPolishDialog", () => {
   });
 
   it("warns that the original may have changed after post-mutation verification fails", async () => {
-    vi.mocked(documentTransformApi.capabilities).mockResolvedValue({
+    vi.mocked(DOCUMENT_TRANSFORM_API.capabilities).mockResolvedValue({
       copy: true,
       inPlace: true,
       presentationCopy: true,
       presentationInPlace: false,
     });
-    vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
       status: "pending",
     });
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockRejectedValue(
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockRejectedValue(
       new DocumentTransformTerminalError(
         "in_place_verification_failed",
         "Google Docs accepted changes, but safety verification failed.",
@@ -1276,11 +1279,11 @@ describe("DocumentPolishDialog", () => {
         errorDetail: "Task could not be completed",
       } as const;
       const enriched = { ...failed, unverifiedOutputId: "recovered-incomplete-copy" };
-      const create = vi.spyOn(documentTransformApi, "create").mockResolvedValue(failed);
-      const getTask = vi.spyOn(documentTransformApi, "getTask").mockResolvedValue(enriched);
+      const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue(failed);
+      const getTask = vi.spyOn(DOCUMENT_TRANSFORM_API, "getTask").mockResolvedValue(enriched);
       if (readFails) getTask.mockRejectedValueOnce(new ApiError(422, "Task read rejected"));
       const wait = vi
-        .spyOn(documentTransformApi, "waitForCompletion")
+        .spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion")
         .mockRejectedValue(
           new DocumentTransformTerminalError(
             failed.errorCode,
@@ -1314,16 +1317,16 @@ describe("DocumentPolishDialog", () => {
       });
       expect(wait).toHaveBeenCalledWith(enriched, expect.any(AbortSignal));
       expect(getTask).toHaveBeenCalledWith(failed.id, expect.any(AbortSignal));
-      expect(create).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledOnce();
     },
   );
 
   it("blocks accidental resubmission after a needs-review outcome", async () => {
-    vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
       status: "pending",
     });
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockRejectedValue(
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockRejectedValue(
       new DocumentTransformNeedsReviewError(
         "Sarj stopped at a safety check. Review the document and its Drive version history before trying again.",
       ),
@@ -1351,7 +1354,7 @@ describe("DocumentPolishDialog", () => {
       expect(findButtonNow("Create polished copy")).toBeDisabled();
     });
     clickButton(findButtonNow("Create polished copy"));
-    expect(documentTransformApi.create).toHaveBeenCalledTimes(1);
+    expect(DOCUMENT_TRANSFORM_API.create).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -1363,7 +1366,7 @@ describe("DocumentPolishDialog", () => {
     "shows persisted review reasons and %s links for %s",
     async (linkStatus, strategy) => {
       const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
-      const create = vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
+      const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue(pending);
       const result: DocumentTransformResult = {
         ...transformResult({ outputStrategy: strategy }),
         needsReview: true,
@@ -1384,7 +1387,7 @@ describe("DocumentPolishDialog", () => {
           },
         ],
       };
-      vi.spyOn(documentTransformApi, "waitForCompletion").mockRejectedValue(
+      vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockRejectedValue(
         new DocumentTransformNeedsReviewError("Automated safety checks require review.", result),
       );
       const copy = vi.fn().mockResolvedValue(undefined);
@@ -1482,9 +1485,9 @@ describe("DocumentPolishDialog", () => {
           },
         ],
       };
-      vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
-      const waitForCompletion = documentTransformApi.waitForCompletion;
-      vi.spyOn(documentTransformApi, "waitForCompletion").mockImplementation(
+      vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue(pending);
+      const waitForCompletion = DOCUMENT_TRANSFORM_API.waitForCompletion;
+      vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockImplementation(
         async () => await waitForCompletion({ id: pending.id, status: "succeeded", result }),
       );
       renderDialog(root, {
@@ -1517,7 +1520,7 @@ describe("DocumentPolishDialog", () => {
       expect(document.body).not.toHaveTextContent("Open review copy");
       clickButton(findButtonNow(changed ? "Open updated document" : "Open original document"));
       expect(NavigationMock.push).toHaveBeenCalledWith("/d/output-1");
-      expect(documentTransformApi.create).toHaveBeenCalledOnce();
+      expect(DOCUMENT_TRANSFORM_API.create).toHaveBeenCalledOnce();
     },
   );
 
@@ -1630,11 +1633,11 @@ describe("DocumentPolishDialog", () => {
   );
 
   it("never offers in-place for a Drive-hosted Markdown file", async () => {
-    vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
       status: "pending",
     });
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockReturnValue(
       Promise.withResolvers<DocumentTransformResult>().promise,
     );
 
@@ -1648,12 +1651,12 @@ describe("DocumentPolishDialog", () => {
     });
 
     await Promise.resolve();
-    expect(documentTransformApi.capabilities).not.toHaveBeenCalled();
+    expect(DOCUMENT_TRANSFORM_API.capabilities).not.toHaveBeenCalled();
     expect(document.body).not.toHaveTextContent("Edit original");
     await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
     clickButton(findButtonNow("Create polished copy"));
     await vi.waitFor(() => {
-      expect(documentTransformApi.create).toHaveBeenCalledWith(
+      expect(DOCUMENT_TRANSFORM_API.create).toHaveBeenCalledWith(
         {
           expectedModifiedTime: "2026-09-03T12:00:00Z",
           fileId: "markdown-1",
@@ -1668,7 +1671,9 @@ describe("DocumentPolishDialog", () => {
   });
 
   it("offers Word formatting only and submits a type-preserving copy", async () => {
-    const create = vi.spyOn(documentTransformApi, "create").mockRejectedValue(new Error("offline"));
+    const create = vi
+      .spyOn(DOCUMENT_TRANSFORM_API, "create")
+      .mockRejectedValue(new Error("offline"));
     renderDialog(root, {
       allowInPlace: true,
       expectedModifiedTime: "revision",
@@ -1682,7 +1687,7 @@ describe("DocumentPolishDialog", () => {
     expect(document.body).not.toHaveTextContent("Edit original");
     expect(document.body).not.toHaveTextContent("Unslop");
     expect(document.body).not.toHaveTextContent("complete Sarj brand system");
-    expect(documentTransformApi.capabilities).not.toHaveBeenCalled();
+    expect(DOCUMENT_TRANSFORM_API.capabilities).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(findButtonNow("Create polished copy")).toBeEnabled());
     clickButton(findButtonNow("Create polished copy"));
     await vi.waitFor(() =>
@@ -1712,7 +1717,7 @@ describe("DocumentPolishDialog", () => {
       taskId: null,
     });
     const create = vi
-      .spyOn(documentTransformApi, "create")
+      .spyOn(DOCUMENT_TRANSFORM_API, "create")
       .mockRejectedValue(new ApiError(422, "Word supports formatting only"));
     renderDialog(root, {
       ...savedSource,
@@ -1742,7 +1747,7 @@ describe("DocumentPolishDialog", () => {
     expect(document.body).toHaveTextContent("Polish presentation");
     expect(document.body).toHaveTextContent("new Google Slides presentation");
     expect(document.body).not.toHaveTextContent("Edit original");
-    expect(documentTransformApi.capabilities).not.toHaveBeenCalled();
+    expect(DOCUMENT_TRANSFORM_API.capabilities).not.toHaveBeenCalled();
   });
 
   it.each([false, true])(
@@ -1764,12 +1769,12 @@ describe("DocumentPolishDialog", () => {
       } as const;
       writeTransformRecovery("owner-1", "markdown", operation);
       saveMarkdownRecovery(makeMarkdownRecovery("owner-1", operation, originalSource));
-      vi.spyOn(documentTransformApi, "admission").mockResolvedValue(null);
+      vi.spyOn(DOCUMENT_TRANSFORM_API, "admission").mockResolvedValue(null);
       const create = vi
-        .spyOn(documentTransformApi, "create")
+        .spyOn(DOCUMENT_TRANSFORM_API, "create")
         .mockResolvedValue({ id: "55555555-5555-4555-8555-555555555555", status: "pending" });
       const completion = deferred<DocumentTransformResult>();
-      vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(completion.promise);
+      vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockReturnValue(completion.promise);
       renderDialog(root, {
         kind: "markdown",
         initialDestination: {
@@ -1835,7 +1840,9 @@ describe("DocumentPolishDialog", () => {
         folderPath: [],
       },
     };
-    const create = vi.spyOn(documentTransformApi, "create").mockRejectedValue(new Error("offline"));
+    const create = vi
+      .spyOn(DOCUMENT_TRANSFORM_API, "create")
+      .mockRejectedValue(new Error("offline"));
     renderDialog(root, source, undefined, null);
     typeTextarea("# Private draft");
     expect(document.body).toHaveTextContent("Secure session identity unavailable");
@@ -1851,13 +1858,15 @@ describe("DocumentPolishDialog", () => {
   });
 
   it("requires pasted Markdown and sends the current folder destination", async () => {
-    vi.spyOn(documentTransformApi, "create").mockResolvedValue({
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
       status: "pending",
     });
     const pendingCompletion =
-      Promise.withResolvers<Awaited<ReturnType<typeof documentTransformApi.waitForCompletion>>>();
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockReturnValue(pendingCompletion.promise);
+      Promise.withResolvers<Awaited<ReturnType<typeof DOCUMENT_TRANSFORM_API.waitForCompletion>>>();
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockReturnValue(
+      pendingCompletion.promise,
+    );
     renderDialog(root, {
       initialDestination: {
         driveId: "drive-1",
@@ -1875,7 +1884,7 @@ describe("DocumentPolishDialog", () => {
     clickButton(findButtonNow("Import Google Doc"));
 
     await vi.waitFor(() => {
-      expect(documentTransformApi.create).toHaveBeenCalledWith(
+      expect(DOCUMENT_TRANSFORM_API.create).toHaveBeenCalledWith(
         {
           content: "# Launch\n\nA concise plan.",
           destinationFolderId: "folder-1",
@@ -1928,8 +1937,8 @@ describe("DocumentPolishDialog", () => {
 
   it("reports unsupported tab naming as a preserved optional enhancement", async () => {
     const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
-    vi.spyOn(documentTransformApi, "create").mockResolvedValue(pending);
-    vi.spyOn(documentTransformApi, "waitForCompletion").mockResolvedValue({
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue(pending);
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockResolvedValue({
       ...transformResult(),
       findings: [
         {

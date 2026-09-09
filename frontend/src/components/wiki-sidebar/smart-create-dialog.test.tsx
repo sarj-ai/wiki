@@ -71,7 +71,7 @@ describe("SmartCreateDialog", () => {
     renderDialog(root);
     clickButton(await findButton("Template"));
 
-    expect(await findButton("PRD Template")).toBeEnabled();
+    await expect(findButton("PRD Template")).resolves.toBeEnabled();
     expect(document.body).not.toHaveTextContent("Cross-drive template");
   });
 
@@ -83,11 +83,11 @@ describe("SmartCreateDialog", () => {
     renderDialog(root);
     clickButton(await findButton("Template"));
     clickButton(await findButton("PRD Template"));
-    expect(await findButton("Review")).toBeEnabled();
+    await expect(findButton("Review")).resolves.toBeEnabled();
 
     clickButton(await findButton("Describe"));
 
-    expect(await findButton("Suggest details")).toBeDisabled();
+    await expect(findButton("Suggest details")).resolves.toBeDisabled();
     expect(document.body).not.toHaveTextContent("Product requirements");
   });
 
@@ -99,7 +99,7 @@ describe("SmartCreateDialog", () => {
     clickButton(await findButton("Template"));
     catalog.resolve([template]);
 
-    expect(await findButton("PRD Template")).toBeEnabled();
+    await expect(findButton("PRD Template")).resolves.toBeEnabled();
     expect(document.body).not.toHaveTextContent("Looking in Templates…");
   });
 
@@ -155,7 +155,7 @@ describe("SmartCreateDialog", () => {
     renderDialog(root);
     clickButton(await findButton("Template"));
     clickButton(await findButton("PRD Template"));
-    expect(await findButton("Review")).toBeEnabled();
+    await expect(findButton("Review")).resolves.toBeEnabled();
     clickButton(await findButton("Refresh"));
 
     await vi.waitFor(() => {

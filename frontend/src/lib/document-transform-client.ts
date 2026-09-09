@@ -1,27 +1,27 @@
 import * as z from "zod";
 
-import { transformHttp } from "@/lib/document-transform-http";
-import { ApiError } from "@/lib/api-error";
-import { preservedInPlaceOutcome } from "@/lib/document-transform-outcome";
 import { runAction, runActionResult } from "@/lib/action-client";
+import { ApiError } from "@/lib/api-error";
+import { transformHttp } from "@/lib/document-transform-http";
+import { preservedInPlaceOutcome } from "@/lib/document-transform-outcome";
 import {
   DocumentTransformNeedsReviewError,
-  DocumentTransformTerminalError,
   type DocumentTransformOutputStrategy,
   type DocumentTransformResult,
   type DocumentTransformSource,
   type DocumentTransformTask,
+  DocumentTransformTerminalError,
 } from "@/lib/document-transform-types";
 
-const ZMode = z.enum(["format", "unslop", "both"]);
-const ZOutputStrategy = z.enum(["copy", "in_place"]);
-const ZCapabilities = z.object({
+const ModeSchema = z.enum(["format", "unslop", "both"]);
+const OutputStrategySchema = z.enum(["copy", "in_place"]);
+const CapabilitiesSchema = z.object({
   copy: z.literal(true),
   in_place: z.boolean(),
   presentation_copy: z.literal(true).default(true),
   presentation_in_place: z.literal(false).default(false),
 });
-const ZMessage = z
+const MessageSchema = z
   .object({
     block_id: z.string().nullable(),
     code: z.string(),
@@ -29,7 +29,7 @@ const ZMessage = z
     severity: z.enum(["informational", "review"]).default("review"),
   })
   .passthrough();
-const ZResult = z
+const ResultSchema = z
   .object({
     access_scope: z.enum(["inherited", "owner_only"]).default("inherited"),
     applied_patch_count: z.int().nonnegative(),
@@ -37,15 +37,15 @@ const ZResult = z
     brand_profile_id: z.string().default("sarj-legacy-v1"),
     brand_profile_sha256: z.string().default("legacy-unrecorded"),
     deterministic_patch_count: z.int().nonnegative().default(0),
-    findings: z.array(ZMessage),
-    mode: ZMode,
+    findings: z.array(MessageSchema),
+    mode: ModeSchema,
     llm_invoked: z.boolean().default(true),
     model_patch_count: z.int().nonnegative().default(0),
     promoted_heading_count: z.int().min(0).max(20).default(0),
     model_ids: z.array(z.string()),
     needs_review: z.boolean(),
     operation_id: z.uuid(),
-    output_strategy: ZOutputStrategy.default("copy"),
+    output_strategy: OutputStrategySchema.default("copy"),
     output: z.object({
       file_id: z.string(),
       name: z.string(),
@@ -73,7 +73,7 @@ const ZResult = z
     needs_review:
       result.needs_review || result.findings.some((finding) => finding.severity === "review"),
   }));
-const ZTask = z.discriminatedUnion("status", [
+const TaskSchema = z.discriminatedUnion("status", [
   z.object({ id: z.uuid(), status: z.enum(["pending", "running", "cancelled"]) }),
   z.object({
     error_code: z.string(),
@@ -82,9 +82,9 @@ const ZTask = z.discriminatedUnion("status", [
     status: z.literal("failed"),
     unverified_output: z.object({ file_id: z.string().min(1) }).nullish(),
   }),
-  z.object({ id: z.uuid(), result: ZResult, status: z.literal("succeeded") }),
+  z.object({ id: z.uuid(), result: ResultSchema, status: z.literal("succeeded") }),
 ]);
-const ZCurrentPolish = z.object({ result: ZResult.nullable() });
+const CurrentPolishSchema = z.object({ result: ResultSchema.nullable() });
 
 const DEFAULT_TASK_POLL_MS = 1_000;
 const DEFAULT_MAX_TASK_POLLS = 900;
@@ -107,7 +107,7 @@ const TASK_FAILURE_FALLBACKS: Readonly<Record<string, string>> = {
     "The document changed after polishing started. Reload and review the latest version before trying again.",
 };
 
-export const documentTransformApi = {
+export const DOCUMENT_TRANSFORM_API = {
   admission: async (key: string) => {
     const id = z.uuid().parse(key);
     try {
@@ -127,7 +127,7 @@ export const documentTransformApi = {
   },
   capabilities: async () => {
     const responseBody = await runAction(async () => await transformHttp("/capabilities"));
-    const capabilities = ZCapabilities.parse(JSON.parse(responseBody));
+    const capabilities = CapabilitiesSchema.parse(JSON.parse(responseBody));
     return {
       copy: capabilities.copy,
       inPlace: capabilities.in_place,
@@ -143,7 +143,7 @@ export const documentTransformApi = {
           `/current?file_id=${encodeURIComponent(fileId)}&mode=${encodeURIComponent(mode)}`,
         ),
     );
-    const current = ZCurrentPolish.parse(JSON.parse(responseBody));
+    const current = CurrentPolishSchema.parse(JSON.parse(responseBody));
     return current.result === null ? null : parseResult(current.result);
   },
 
@@ -164,7 +164,7 @@ export const documentTransformApi = {
       async () => await transformHttp("", body, idempotencyKey),
     );
     return {
-      ...parseTask(ZTask.parse(JSON.parse(response.data))),
+      ...parseTask(TaskSchema.parse(JSON.parse(response.data))),
       ...(response.replayed === undefined ? {} : { replayed: response.replayed }),
     };
   },
@@ -175,7 +175,7 @@ export const documentTransformApi = {
       async () => await transformHttp(`/tasks/${encodeURIComponent(taskId)}`),
     );
     signal?.throwIfAborted();
-    return parseTask(ZTask.parse(JSON.parse(responseBody)));
+    return parseTask(TaskSchema.parse(JSON.parse(responseBody)));
   },
 
   waitForCompletion: async (
@@ -236,7 +236,7 @@ async function waitForTask(
         }
         await abortableDelay(pollIntervalMs, signal);
         try {
-          current = await documentTransformApi.getTask(current.id, signal);
+          current = await DOCUMENT_TRANSFORM_API.getTask(current.id, signal);
           transientFailures = 0;
         } catch (error: unknown) {
           if (!isTransientPollError(error) || transientFailures >= MAX_TRANSIENT_POLL_FAILURES) {
@@ -258,7 +258,7 @@ function taskFailureDetail(
   return TASK_FAILURE_FALLBACKS[errorCode] ?? fallback;
 }
 
-function parseTask(task: z.infer<typeof ZTask>): DocumentTransformTask {
+function parseTask(task: z.infer<typeof TaskSchema>): DocumentTransformTask {
   switch (task.status) {
     case "cancelled":
     case "pending":
@@ -277,7 +277,7 @@ function parseTask(task: z.infer<typeof ZTask>): DocumentTransformTask {
   }
 }
 
-function parseResult(result: z.infer<typeof ZResult>): DocumentTransformResult {
+function parseResult(result: z.infer<typeof ResultSchema>): DocumentTransformResult {
   return {
     accessScope: result.access_scope,
     appliedPatchCount: result.applied_patch_count,

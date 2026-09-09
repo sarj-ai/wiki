@@ -2,11 +2,11 @@
 
 import { useEffect } from "react";
 import { create, type StateCreator } from "zustand";
-import { persist, type StorageValue } from "zustand/middleware";
+import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
 
 import { expandedDrivesStorageKey, expandedFoldersStorageKey } from "@/lib/browser-storage";
 import { useBrowserUserId } from "@/lib/browser-user-context";
-import { ZPERSISTED_DRIVE_EXPANSION, ZPERSISTED_EXPANSION } from "@/lib/storage-schemas";
+import { PersistedDriveExpansionSchema, PersistedExpansionSchema } from "@/lib/storage-schemas";
 
 interface FolderExpansionState {
   expanded: Record<string, true>;
@@ -174,17 +174,13 @@ export function resetExpansionState(userId: null | string): void {
   pendingReveal = null;
 }
 
-function driveExpansionStorage(): {
-  getItem: (name: string) => null | StorageValue<PersistedDriveExpansionState>;
-  setItem: (name: string, value: StorageValue<PersistedDriveExpansionState>) => void;
-  removeItem: (name: string) => void;
-} {
+function driveExpansionStorage(): PersistStorage<PersistedDriveExpansionState, void> {
   return {
     getItem: (name) => {
       if (typeof window === "undefined") return null;
       const raw = window.localStorage.getItem(name);
       if (!raw) return null;
-      const validated = ZPERSISTED_DRIVE_EXPANSION.safeParse(parseJsonOrNull(raw));
+      const validated = PersistedDriveExpansionSchema.safeParse(parseJsonOrNull(raw));
       if (!validated.success) return null;
       return {
         state: {
@@ -218,18 +214,14 @@ export function consumeRevealFor(fileId: string): boolean {
 function validatedStorage<S>(
   stateKey: "expanded",
   toValue: (map: Record<string, true>, version: number) => StorageValue<S>,
-): {
-  getItem: (name: string) => null | StorageValue<S>;
-  setItem: (name: string, value: StorageValue<S>) => void;
-  removeItem: (name: string) => void;
-} {
+): PersistStorage<S, void> {
   return {
     getItem: (name: string) => {
       if (typeof window === "undefined") return null;
       const raw = window.localStorage.getItem(name);
       if (!raw) return null;
       const parsed = parseJsonOrNull(raw);
-      const validated = ZPERSISTED_EXPANSION.safeParse(parsed);
+      const validated = PersistedExpansionSchema.safeParse(parsed);
       if (!validated.success) return null;
       return toValue(validated.data.state[stateKey] ?? {}, validated.data.version);
     },

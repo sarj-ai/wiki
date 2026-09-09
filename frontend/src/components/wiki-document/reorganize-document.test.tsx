@@ -43,14 +43,14 @@ describe("ReorganizeDocument", () => {
     const reorganize = findButton("Re-organize");
     click(reorganize);
     click(reorganize);
-    expect(proposeFileReorganization).toHaveBeenCalledTimes(1);
+    expect(proposeFileReorganization).toHaveBeenCalledOnce();
 
     proposal.resolve(proposalResult());
     await vi.waitFor(() => expect(findButton("Move document")).toBeEnabled());
     const move = findButton("Move document");
     click(move);
     click(move);
-    expect(MutationMock.mutateAsync).toHaveBeenCalledTimes(1);
+    expect(MutationMock.mutateAsync).toHaveBeenCalledOnce();
     moved.resolve(undefined);
   });
 

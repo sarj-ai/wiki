@@ -1,16 +1,16 @@
 import { clearUserBrowserStorage } from "@/lib/browser-storage";
-import { installLocalStorage } from "@/test-stubs/local-storage";
+import type { TransformRecovery } from "@/lib/document-transform-recovery";
 import {
   clearMarkdownRecovery,
   makeMarkdownRecovery,
-  saveMarkdownRecovery,
-  validateMarkdownRecovery,
   markdownRecoveryStorageKey,
   REPLAY_MAX_AGE_MS,
+  saveMarkdownRecovery,
+  validateMarkdownRecovery,
 } from "@/lib/markdown-transform-recovery";
-import type { TransformRecovery } from "@/lib/document-transform-recovery";
+import { installLocalStorage } from "@/test-stubs/local-storage";
 
-const operation: TransformRecovery = {
+const OPERATION: TransformRecovery = {
   createdAt: Date.now(),
   key: "55555555-5555-4555-8555-555555555555",
   mode: "unslop",
@@ -19,7 +19,7 @@ const operation: TransformRecovery = {
   source: null,
   taskId: null,
 };
-const source = {
+const SOURCE = {
   kind: "markdown",
   content: "# Private\n\n  Exact 😀 text\r\n",
   name: "Exact source",
@@ -37,12 +37,12 @@ afterEach(() => {
 
 it("persists exact payload only on explicit save and clears it on signout", () => {
   const localWrite = vi.spyOn(window.localStorage, "setItem");
-  const bundle = makeMarkdownRecovery("owner", operation, source);
+  const bundle = makeMarkdownRecovery("owner", OPERATION, SOURCE);
   expect(window.sessionStorage.getItem(markdownRecoveryStorageKey("owner"))).toBeNull();
   saveMarkdownRecovery(bundle);
   const raw = window.sessionStorage.getItem(markdownRecoveryStorageKey("owner"));
   expect(raw).not.toBeNull();
-  expect(validateMarkdownRecovery(raw!, "owner", operation).source).toEqual(source);
+  expect(validateMarkdownRecovery(raw!, "owner", OPERATION).source).toEqual(SOURCE);
   expect(localWrite).not.toHaveBeenCalled();
   clearUserBrowserStorage("owner");
   expect(window.sessionStorage.getItem(markdownRecoveryStorageKey("owner"))).toBeNull();
@@ -53,22 +53,22 @@ it.each([
   { key: "66666666-6666-4666-8666-666666666666" },
   { mode: "format" },
   { outputName: "Changed" },
-  { createdAt: operation.createdAt - REPLAY_MAX_AGE_MS },
+  { createdAt: OPERATION.createdAt - REPLAY_MAX_AGE_MS },
 ])("rejects mismatched recovery metadata %j", (change) => {
-  const raw = JSON.stringify({ ...makeMarkdownRecovery("owner", operation, source), ...change });
-  expect(() => validateMarkdownRecovery(raw, "owner", operation)).toThrow("does not match");
+  const raw = JSON.stringify({ ...makeMarkdownRecovery("owner", OPERATION, SOURCE), ...change });
+  expect(() => validateMarkdownRecovery(raw, "owner", OPERATION)).toThrow("does not match");
 });
 
 it("rejects expired recovery even with matching operation metadata", () => {
-  const expired = { ...operation, createdAt: Date.now() - REPLAY_MAX_AGE_MS };
-  expect(() => makeMarkdownRecovery("owner", expired, source)).toThrow("expired");
+  const expired = { ...OPERATION, createdAt: Date.now() - REPLAY_MAX_AGE_MS };
+  expect(() => makeMarkdownRecovery("owner", expired, SOURCE)).toThrow("expired");
 });
 
 it("fails closed on quota failure", () => {
   vi.spyOn(window, "sessionStorage", "get").mockImplementation(() => {
     throw new DOMException("quota", "QuotaExceededError");
   });
-  expect(() => saveMarkdownRecovery(makeMarkdownRecovery("owner", operation, source))).toThrow(
+  expect(() => saveMarkdownRecovery(makeMarkdownRecovery("owner", OPERATION, SOURCE))).toThrow(
     "quota",
   );
 });
@@ -76,7 +76,7 @@ it("fails closed on quota failure", () => {
 it.each(["bad json", "{}", '{"secret":"never echo"}'])(
   "rejects malformed bundles without echoing payload",
   (raw) => {
-    expect(() => validateMarkdownRecovery(raw, "owner", operation)).toThrow();
+    expect(() => validateMarkdownRecovery(raw, "owner", OPERATION)).toThrow();
   },
 );
 

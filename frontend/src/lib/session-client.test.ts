@@ -34,6 +34,6 @@ describe("session refresh classification", () => {
     response.resolve(new Response(null, { status: 200 }));
 
     await expect(Promise.all([first, second])).resolves.toEqual(["refreshed", "refreshed"]);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 });

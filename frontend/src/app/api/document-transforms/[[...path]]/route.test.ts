@@ -50,7 +50,7 @@ it("exposes only the typed replay bit on a successful submission", async () => {
   });
 
   expect(response.headers.get("idempotency-replayed")).toBe("true");
-  expect(await response.text()).toBe('{"id":"task"}');
+  await expect(response.text()).resolves.toBe('{"id":"task"}');
 });
 
 it("returns allowlisted reload guidance for a source revision conflict", async () => {
@@ -150,7 +150,7 @@ it("forwards only a bounded file and supported mode to the current-polish action
 
   expect(response.status).toBe(200);
   expect(Mocks.current).toHaveBeenCalledExactlyOnceWith("doc-1", "both");
-  expect(await response.json()).toEqual({ result: null });
+  await expect(response.json()).resolves.toEqual({ result: null });
 });
 
 it.each([`${URL}/current?file_id=&mode=both`, `${URL}/current?file_id=doc-1&mode=unknown`])(
@@ -171,7 +171,7 @@ it("redacts upstream exception details", async () => {
     params: Promise.resolve({}),
   });
   expect(response.status).toBe(502);
-  expect(await response.text()).not.toContain("private draft");
+  await expect(response.text()).resolves.not.toContain("private draft");
 });
 
 it("rejects missing Origin without trusting a forged content length", async () => {

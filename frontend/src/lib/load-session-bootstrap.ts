@@ -7,7 +7,7 @@ interface BootstrapApi {
 
 interface SessionBootstrap {
   bootstrap: Bootstrap | null;
-  me: UserProfile | null;
+  me: null | UserProfile;
 }
 
 export async function loadSessionBootstrap(api: BootstrapApi): Promise<SessionBootstrap> {

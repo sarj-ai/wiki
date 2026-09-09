@@ -50,9 +50,8 @@ describe("useDrivePredictiveLoading", () => {
     expect(API.getDriveFolders).not.toHaveBeenCalled();
     await advance(1);
 
-    expect(API.getDriveFolders).toHaveBeenCalledTimes(1);
-    expect(API.getFolderFiles).toHaveBeenCalledTimes(1);
-    expect(API.getFolderFiles).toHaveBeenCalledWith("drive-1");
+    expect(API.getDriveFolders).toHaveBeenCalledOnce();
+    expect(API.getFolderFiles).toHaveBeenCalledExactlyOnceWith("drive-1");
   });
 
   it("keeps the timer while either hover or focus still owns the intent", async () => {
@@ -63,7 +62,7 @@ describe("useDrivePredictiveLoading", () => {
     pointer("pointerout", "pen");
     await advance(50);
 
-    expect(API.getDriveFolders).toHaveBeenCalledTimes(1);
+    expect(API.getDriveFolders).toHaveBeenCalledOnce();
   });
 
   it("cancels speculative work after the last intent leaves", async () => {
@@ -86,7 +85,7 @@ describe("useDrivePredictiveLoading", () => {
     pointer("pointerdown", "touch");
     await settleQueries();
 
-    expect(API.getDriveFolders).toHaveBeenCalledTimes(1);
+    expect(API.getDriveFolders).toHaveBeenCalledOnce();
   });
 
   it("does not prepare expanded drives", async () => {

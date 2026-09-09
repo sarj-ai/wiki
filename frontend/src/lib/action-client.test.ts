@@ -12,7 +12,7 @@ describe("server action session expiry", () => {
 
     await expect(runAction(expired)).rejects.toMatchObject({ status: 401 });
 
-    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledOnce();
     window.removeEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
     vi.unstubAllGlobals();
   });
@@ -28,7 +28,7 @@ describe("server action session expiry", () => {
       status: 503,
     });
 
-    expect(expired).toHaveBeenCalledTimes(1);
+    expect(expired).toHaveBeenCalledOnce();
     expect(listener).not.toHaveBeenCalled();
     window.removeEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
     vi.unstubAllGlobals();

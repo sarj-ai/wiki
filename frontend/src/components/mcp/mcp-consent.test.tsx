@@ -105,7 +105,7 @@ describe("McpConsent", () => {
     click("Allow read access");
     click("Allow read access");
     click("Deny");
-    expect(onDecision).toHaveBeenCalledTimes(1);
+    expect(onDecision).toHaveBeenCalledOnce();
     await vi.waitFor(() => expect(findRole(container, "button", { name: "Deny" })).toBeDisabled());
   });
 
@@ -135,7 +135,7 @@ describe("McpConsent", () => {
     expect(findRole(container, "button", { name: "Allow read access" })).toBeDisabled();
     click("Check status");
     click("Check status");
-    expect(onRecover).toHaveBeenCalledTimes(1);
+    expect(onRecover).toHaveBeenCalledOnce();
     await vi.waitFor(() =>
       expect(findRole(container, "button", { name: "Allow read access" })).toBeEnabled(),
     );
@@ -156,7 +156,7 @@ describe("McpConsent", () => {
         expect(maybeRole(container, "button", { name: "Check status" })).toBeNull(),
       );
       expect(findRole(container, "button", { name: "Allow read access" })).toBeDisabled();
-      expect(onDecision).toHaveBeenCalledTimes(1);
+      expect(onDecision).toHaveBeenCalledOnce();
     },
   );
 });

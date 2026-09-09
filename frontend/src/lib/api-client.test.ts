@@ -99,7 +99,7 @@ describe("request bodies", () => {
       parentFolderId: "1kl4",
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledOnce();
     expect(out).toMatchObject({ parentFolderId: "1kl4", modifiedTime: undefined });
   });
 });
@@ -207,7 +207,7 @@ describe("401 refresh-and-replay", () => {
 
     await expect(wikiApi.getDrives()).rejects.toMatchObject({ status: 401 });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledOnce();
     window.removeEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);
   });
 

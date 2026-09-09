@@ -47,7 +47,7 @@ function toFileResponse(f: z.infer<typeof zFileResponse>) {
   };
 }
 
-export const drivePrincipalTypeSchema = z.enum(["anyone", "domain", "group", "user"]);
+export const DrivePrincipalTypeSchemaSchema = z.enum(["anyone", "domain", "group", "user"]);
 
 export const documentAlias = zDocumentAliasRead.transform((a) => ({
   alias: a.alias,
@@ -79,7 +79,7 @@ export const drivePermissionsPage = zDrivePermissionsPage.transform((page) => ({
     expirationTime: permission.expiration_time ?? undefined,
     id: permission.id,
     pendingOwner: permission.pending_owner,
-    principalType: drivePrincipalTypeSchema.parse(permission.principal_type),
+    principalType: DrivePrincipalTypeSchemaSchema.parse(permission.principal_type),
     role: permission.role,
   })),
 }));

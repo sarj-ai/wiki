@@ -1,7 +1,7 @@
 import { loadSessionBootstrap } from "@/lib/load-session-bootstrap";
 import type { Bootstrap, UserProfile } from "@/lib/wiki-api";
 
-const me: UserProfile = {
+const ME: UserProfile = {
   id: "authenticated-user",
   email: "qa@sarj.ai",
   displayName: "QA",
@@ -11,7 +11,7 @@ const me: UserProfile = {
 describe("server session bootstrap recovery", () => {
   it("keeps the verified bootstrap identity without another authentication request", async () => {
     const bootstrap: Bootstrap = {
-      me,
+      me: ME,
       docIcons: [],
       drives: [],
       firstDriveTree: undefined,
@@ -23,7 +23,7 @@ describe("server session bootstrap recovery", () => {
       getBootstrap: vi.fn().mockResolvedValue(bootstrap),
       getMe: vi.fn<() => Promise<UserProfile>>(),
     };
-    await expect(loadSessionBootstrap(api)).resolves.toEqual({ bootstrap, me });
+    await expect(loadSessionBootstrap(api)).resolves.toEqual({ bootstrap, me: ME });
     expect(api.getMe).not.toHaveBeenCalled();
   });
 
@@ -32,9 +32,9 @@ describe("server session bootstrap recovery", () => {
       getBootstrap: vi
         .fn<() => Promise<Bootstrap>>()
         .mockRejectedValue(new Error("Drive unavailable")),
-      getMe: vi.fn().mockResolvedValue(me),
+      getMe: vi.fn().mockResolvedValue(ME),
     };
-    await expect(loadSessionBootstrap(api)).resolves.toEqual({ bootstrap: null, me });
+    await expect(loadSessionBootstrap(api)).resolves.toEqual({ bootstrap: null, me: ME });
     expect(api.getMe).toHaveBeenCalledOnce();
   });
 

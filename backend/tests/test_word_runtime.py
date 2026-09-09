@@ -6,8 +6,7 @@ import uuid
 from fastapi import HTTPException
 import pytest
 
-from app.document_transform import application as transform_application
-from app.document_transform import word_executor, word_gateway
+from app.document_transform import application as transform_application, word_executor, word_gateway
 from app.document_transform.errors import (
     DocumentGatewayError,
     OutputConflictError,
@@ -31,8 +30,7 @@ from app.files.errors import DriveUpstreamError
 from app.files.schemas import FileResponse
 from app.identifiers import FileId, TaskId
 from app.tasks import service as task_service
-from tests.support import WordCreateDriveFake as CreateDrive
-from tests.support import WordDriveFake as FakeDrive
+from tests.support import WordCreateDriveFake as CreateDrive, WordDriveFake as FakeDrive
 from tests.test_word_package import RUN, package
 
 

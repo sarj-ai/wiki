@@ -34,7 +34,7 @@ import { FolderPickerDialog } from "@/components/wiki-sidebar/folder-picker-dial
 import { documentAliasKey } from "@/hooks/use-document-alias";
 import { ApiError } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
-import { documentTransformApi } from "@/lib/document-transform-client";
+import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-client";
 import { preservedInPlaceOutcome } from "@/lib/document-transform-outcome";
 import {
   claimTransformRecovery,
@@ -201,7 +201,7 @@ export function DocumentPolishDialog({
   }, [open, submitting, outcomeIdentity]);
   const capabilities = useQuery({
     enabled: open && source.kind === "drive_file" && source.allowInPlace && !isWord,
-    queryFn: documentTransformApi.capabilities,
+    queryFn: DOCUMENT_TRANSFORM_API.capabilities,
     queryKey: ["document-transform", "capabilities"],
     staleTime: 60_000,
   });
@@ -238,7 +238,7 @@ export function DocumentPolishDialog({
       completedResult === null,
     queryFn: async () =>
       source.kind === "drive_file"
-        ? await documentTransformApi.current(source.fileId, requestedMode)
+        ? await DOCUMENT_TRANSFORM_API.current(source.fileId, requestedMode)
         : null,
     queryKey: [
       "document-transform-current",
@@ -494,7 +494,7 @@ export function DocumentPolishDialog({
     };
     const submitTask = async () => {
       try {
-        return await documentTransformApi.create(
+        return await DOCUMENT_TRANSFORM_API.create(
           operation.source ?? transformSource,
           operation.mode,
           operation.key,
@@ -524,7 +524,7 @@ export function DocumentPolishDialog({
       knownTaskId = operation.taskId;
       const recoveredTask = operation.taskId !== null;
       const task = operation.taskId
-        ? await documentTransformApi.getTask(operation.taskId, controller.signal)
+        ? await DOCUMENT_TRANSFORM_API.getTask(operation.taskId, controller.signal)
         : await submitTask();
       if (recoveredTask || task.replayed === true) {
         replayedSubmission = task.status === "succeeded" ? "terminal" : "active";
@@ -540,9 +540,9 @@ export function DocumentPolishDialog({
       // so a failed read remains safely resumable without another submission.
       const currentTask =
         !operation.taskId && task.status === "failed"
-          ? await documentTransformApi.getTask(task.id, controller.signal)
+          ? await DOCUMENT_TRANSFORM_API.getTask(task.id, controller.signal)
           : task;
-      const result = await documentTransformApi.waitForCompletion(currentTask, controller.signal);
+      const result = await DOCUMENT_TRANSFORM_API.waitForCompletion(currentTask, controller.signal);
       if (!isCurrent()) return;
       await clearRecovery();
       if (result.shortLinkStatus === "ready" && result.shortLinkAlias) {

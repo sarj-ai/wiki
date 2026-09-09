@@ -18,8 +18,8 @@ from app.bootstrap.router import router as bootstrap_router
 from app.config import Settings, settings
 from app.csrf import CookieOriginMiddleware
 from app.database import async_session, close_connector
-from app.document_transform.qa_router import issuer_router as document_transform_qa_issuer_router
 from app.document_transform.qa_router import (
+    issuer_router as document_transform_qa_issuer_router,
     workload_router as document_transform_qa_workload_router,
 )
 from app.document_transform.router import router as document_transform_router

@@ -170,7 +170,7 @@ def _clean_response(
 def _clean_location(value: bytes, settings: NativeOAuthGuardSettings) -> bytes:
     location = urlsplit(value.decode("ascii"))
     params = dict(parse_qsl(location.query, keep_blank_values=True))
-    if not {"code", "error"}.intersection(params):
+    if {"code", "error"}.isdisjoint(params):
         return value
     settings.redirect_policy.validate_callback(urlunsplit(location._replace(query="")))
     # Validate the original fields before privacy cleanup; never overwrite a

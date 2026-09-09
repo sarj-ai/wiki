@@ -1,7 +1,7 @@
 const MAX_TRANSFORM_BODY_BYTES = 4 * 1024 * 1024;
 
 export async function boundedTransformText(
-  body: ReadableStream<Uint8Array> | null,
+  body: null | ReadableStream<Uint8Array>,
 ): Promise<string> {
   if (!body) return "";
   const reader = body.getReader();

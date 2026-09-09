@@ -50,7 +50,7 @@ describe("authenticated HTML content proxy", () => {
     const response = await GET(request, { params: Promise.resolve({ fileId: "1234567890" }) });
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain("<title>Chart</title>");
+    await expect(response.text()).resolves.toContain("<title>Chart</title>");
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(response.headers.get("content-security-policy")).toContain("sandbox allow-scripts");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
