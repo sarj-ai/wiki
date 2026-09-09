@@ -351,25 +351,28 @@ typed counts or booleans and validated references, never raw logs or document co
 
 ## Codex MCP integration
 
-**Disabled by default; production connection is not yet verified.** Native OAuth,
-consent, connection management and Streamable HTTP remain disabled in the current
-production release and in a default Terraform plan. Activation requires an explicit, reviewed
-`enable_mcp_native=true` apply with both independent MCP keys attached. The release
-pipeline resolves the flag and key references from the exact candidate revision; its verifier
-then requires discovery, OAuth challenge, hostile transport rejection, the
-exact serving revision and correlated secret-log hygiene to pass.
+**Enabled in production; each Codex client still needs its own OAuth login and consent.**
+Wiki serves Streamable HTTP at `https://api-wiki.sarj.ai/mcp` with native OAuth,
+client-specific consent, and connection management. The release pipeline resolves the
+feature flag and independent MCP key references from the exact candidate revision, then
+verifies discovery, the OAuth challenge, hostile transport rejection, the serving revision,
+and correlated secret-log hygiene. Those release checks prove the server is available; they
+do not prove a particular local Codex client has completed login.
 
-### Connect after release
+### Connect Codex
 
-Obtain the exact HTTPS endpoint from the released Wiki integration screen or verified
-release record. Replace the deliberately nonfunctional placeholder:
+The Wiki integration screen at `/mcp/connections` provides the same copyable command:
 
 ```sh
-codex mcp add sarj-wiki --url VERIFIED_WIKI_MCP_URL && codex mcp login sarj-wiki
+codex mcp add sarj-wiki --url https://api-wiki.sarj.ai/mcp
+codex mcp login sarj-wiki
+codex mcp get sarj-wiki --json
 ```
 
-Verify the Wiki-linked Google account and client in browser consent; start read-only. No local
-daemon, additional npm package, secret paste, or manual TOML rewrite should be needed.
+Verify the Wiki-linked Google account and named client in browser consent; start read-only.
+The final command confirms local configuration, not OAuth completion. In Codex, inspect
+`/mcp` and call `wiki_connection_status` for the server-side grant readback. No local daemon,
+additional npm package, secret paste, or manual TOML rewrite is needed.
 
 Before adding, check `codex mcp --help` and inspect only the chosen entry locally with
 `codex mcp get sarj-wiki --json`; do not publish its potentially sensitive headers.
@@ -384,7 +387,7 @@ boundary. See the [official Codex MCP documentation](https://learn.chatgpt.com/d
 
 ### Verify access and recover safely
 
-After release, inspect Codex's `/mcp` status and call `wiki_connection_status` to verify
+Inspect Codex's `/mcp` status and call `wiki_connection_status` to verify
 granted capabilities; verify the account during consent before requesting document data. A saved entry or browser
 redirect alone is not a working connection.
 
@@ -455,9 +458,10 @@ or environment settings: the infrastructure plan/apply and reference readback ar
 Pending registrations expire after 30 minutes. Only atomic, explicit approval promotes
 their lifetime. Public registration still requires independent global and per-IP admission
 controls before activation; row quotas alone are not abuse protection. Audit infrastructure
-request logging as well as application logs. Retain the disabled state until those controls,
-secret references, migration, browser cookies and real Codex acceptance are verified.
-Rollback by disabling MCP and verifying REST/health; preserve additive tables and secrets.
+request logging as well as application logs. For a new environment, retain the disabled state
+until those controls, secret references, migration, browser cookies and real Codex acceptance
+are verified. Roll back production by disabling MCP and verifying REST/health; preserve
+additive tables and secrets.
 Disabling does not revoke durable credentials, and it does not pause admitted document jobs.
 
 ## License and security
