@@ -9,23 +9,27 @@ from fastapi import HTTPException, status
 from app.config import settings
 from app.document_transform.docx_renderer import validate_markdown_import
 from app.document_transform.errors import (
+    DocumentGatewayError,
     SourceChangedError,
     SourceTooLargeError,
     UnsupportedSourceError,
 )
 from app.document_transform.ir import parse_markdown
 from app.document_transform.schemas import (
+    CurrentDocumentPolish,
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
     MarkdownSource,
     OutputStrategy,
+    TransformMode,
 )
 from app.document_transform.word_gateway import WORD_MIME
+from app.drive.retry import ProviderDeadlineError
 from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.files.errors import DriveUpstreamError, FileNotInScopeError
 from app.files.schemas import FileResponse
-from app.identifiers import FileId, IdempotencyKey
+from app.identifiers import DocsRevisionId, FileId, IdempotencyKey, UserId
 from app.tasks.queue import TaskEnqueuer
 from app.tasks.schemas import (
     PendingTaskRead,
@@ -41,6 +45,10 @@ class DestinationFileReader(Protocol):
     async def get(self, file_id: FileId) -> FileResponse: ...
 
 
+class CurrentDocumentRevisionReader(Protocol):
+    async def current_revision(self, file_id: FileId) -> DocsRevisionId: ...
+
+
 @dataclass(frozen=True)
 class TransformSubmission:
     task: TaskRead
@@ -49,6 +57,32 @@ class TransformSubmission:
 
 
 SOURCE_CHANGED_ERROR_CODE = "document_transform_source_changed"
+
+
+async def get_current_document_polish(
+    *,
+    file_id: FileId,
+    mode: TransformMode,
+    owner_user_id: UserId,
+    tasks: TaskService,
+    files: DestinationFileReader,
+    revisions: CurrentDocumentRevisionReader,
+) -> CurrentDocumentPolish:
+    source = await files.get(file_id)
+    if source.mime_type != MIME_DOC:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Current in-place polish is available only for native Google Docs",
+        )
+    try:
+        revision_id = await revisions.current_revision(file_id)
+    except (DocumentGatewayError, ProviderDeadlineError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The latest Google Docs revision could not be verified",
+        ) from exc
+    result = await tasks.get_current_in_place_result(owner_user_id, file_id, mode, revision_id)
+    return CurrentDocumentPolish(result=result)
 
 
 async def submit_document_transform(

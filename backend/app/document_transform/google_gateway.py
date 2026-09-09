@@ -2012,6 +2012,21 @@ class GoogleDocumentGateway(DocumentGateway):
         return destination.getvalue()
 
 
+class GoogleDocumentRevisionReader(GoogleDocumentGateway):
+    async def current_revision(self, file_id: FileId) -> DocsRevisionId:
+        document = await asyncio.to_thread(self._get_revision_sync, file_id)
+        return DocsRevisionId(_required_string(document, "revisionId"))
+
+    def _get_revision_sync(self, file_id: FileId) -> dict[str, Any]:
+        return self._execute_dict(
+            _google_http_request(
+                _member(self._docs().documents(), "get"),
+                documentId=file_id,
+                fields="revisionId",
+            )
+        )
+
+
 def _gateway_error(exc: HttpError) -> DocumentGatewayError:
     status = provider_http_status(exc)
     return DocumentGatewayError(

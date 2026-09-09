@@ -3,6 +3,7 @@ import * as z from "zod";
 
 import {
   createDocumentTransformAction,
+  getCurrentDocumentPolishAction,
   getDocumentTransformCapabilitiesAction,
   getSmartCreateTaskAction,
 } from "@/app/actions/smart-create-actions";
@@ -15,6 +16,7 @@ interface RouteContext {
 }
 
 const UuidSchema = z.uuid();
+const TransformModeSchema = z.enum(["both", "format", "unslop"]);
 const RESPONSE_HEADERS = {
   "cache-control": "private, no-store",
   "content-type": "application/json",
@@ -75,15 +77,22 @@ async function get(request: Request, context: RouteContext): Promise<Response> {
   if (!trustedRequest(request)) return failure(403);
   const { path = [] } = await context.params;
   try {
-    return await readPath(path);
+    return await readPath(path, request);
   } catch {
     return failure(502);
   }
 }
 
-async function readPath(path: string[]): Promise<Response> {
+async function readPath(path: string[], request: Request): Promise<Response> {
   if (path.length === 1 && path[0] === "capabilities") {
     return resultResponse(await getDocumentTransformCapabilitiesAction());
+  }
+  if (path.length === 1 && path[0] === "current") {
+    const url = new URL(request.url);
+    const fileId = url.searchParams.get("file_id");
+    const mode = TransformModeSchema.safeParse(url.searchParams.get("mode"));
+    if (!fileId || fileId.length > 128 || !mode.success) return failure(400);
+    return resultResponse(await getCurrentDocumentPolishAction(fileId, mode.data));
   }
   const id = UuidSchema.safeParse(path[1]);
   if (path.length !== 2 || !id.success) return failure(400);

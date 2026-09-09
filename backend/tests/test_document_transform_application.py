@@ -9,9 +9,11 @@ import pytest
 from app.config import settings
 from app.document_transform.application import (
     SOURCE_CHANGED_ERROR_CODE,
+    get_current_document_polish,
     retained_transform_output_available,
     submit_document_transform,
 )
+from app.document_transform.errors import DocumentGatewayError
 from app.document_transform.schemas import (
     DocumentOutput,
     DocumentTransformRequest,
@@ -25,7 +27,7 @@ from app.document_transform.versions import DOCUMENT_PIPELINE_VERSION
 from app.drive.schemas import MIME_DOC, MIME_FOLDER
 from app.files.errors import DriveUpstreamError, FileNotInScopeError
 from app.files.schemas import FileResponse
-from app.identifiers import FileId, IdempotencyKey, TaskId
+from app.identifiers import DocsRevisionId, FileId, IdempotencyKey, TaskId, UserId
 from app.tasks.errors import (
     TaskAdmissionLimitError,
     TaskEnqueueError,
@@ -101,7 +103,7 @@ class SubmissionHarness:
             }
         )
         self.request = payload(strategy)
-        self.owner = uuid.uuid7()
+        self.owner = UserId(uuid.uuid7())
         self.key = IdempotencyKey(uuid.uuid7())
         self.calls: list[str] = []
         self.error: Exception | None = None
@@ -112,6 +114,25 @@ class SubmissionHarness:
         self.source_modified_time = "unchanged-time"
         self.destination_can_add_children = True
         self.reauthorize_replay = reauthorize_replay
+        self.current_result: DocumentTransformResult | None = None
+        self.current_revision_id = "revision-current"
+        self.current_revision_error = False
+
+    async def get_current_in_place_result(
+        self,
+        owner_user_id: UserId,
+        file_id: FileId,
+        mode: TransformMode,
+        revision_id: DocsRevisionId,
+    ) -> DocumentTransformResult | None:
+        self.calls.append(f"current:{owner_user_id}:{file_id}:{mode}:{revision_id}")
+        return self.current_result
+
+    async def current_revision(self, file_id: FileId) -> DocsRevisionId:
+        if self.current_revision_error:
+            raise DocumentGatewayError
+        self.calls.append(f"revision:{file_id}")
+        return DocsRevisionId(self.current_revision_id)
 
     async def create_or_replay(
         self,
@@ -403,6 +424,71 @@ async def test_terminal_in_place_replay_relies_on_source_authorization() -> None
 
     assert await retained_transform_output_available(harness.reservation.task, harness)
     assert harness.calls == []
+
+
+async def test_current_polish_reauthorizes_then_matches_live_docs_revision() -> None:
+    harness = SubmissionHarness(created=False, status="succeeded", strategy=OutputStrategy.IN_PLACE)
+    task = harness.reservation.task
+    assert task.status == "succeeded"
+    assert isinstance(task.result, DocumentTransformResult)
+    harness.current_result = task.result.model_copy(
+        update={
+            "output": task.result.output.model_copy(update={"file_id": FileId("source")}),
+            "output_revision_id": "revision-current",
+        }
+    )
+
+    current = await get_current_document_polish(
+        file_id=FileId("source"),
+        mode=TransformMode.FORMAT,
+        owner_user_id=harness.owner,
+        tasks=dependency(harness),
+        files=harness,
+        revisions=harness,
+    )
+
+    assert current.result is harness.current_result
+    assert harness.calls == [
+        "file",
+        "revision:source",
+        f"current:{harness.owner}:source:format:revision-current",
+    ]
+
+
+async def test_current_polish_rejects_non_doc_before_revision_or_task_lookup() -> None:
+    harness = SubmissionHarness()
+    harness.source_mime_type = "application/pdf"
+
+    with pytest.raises(HTTPException, match="native Google Docs") as caught:
+        await get_current_document_polish(
+            file_id=FileId("source"),
+            mode=TransformMode.FORMAT,
+            owner_user_id=harness.owner,
+            tasks=dependency(harness),
+            files=harness,
+            revisions=harness,
+        )
+
+    assert caught.value.status_code == 422
+    assert harness.calls == ["file"]
+
+
+async def test_current_polish_fails_closed_when_live_revision_is_unavailable() -> None:
+    harness = SubmissionHarness()
+    harness.current_revision_error = True
+
+    with pytest.raises(HTTPException, match="could not be verified") as caught:
+        await get_current_document_polish(
+            file_id=FileId("source"),
+            mode=TransformMode.FORMAT,
+            owner_user_id=harness.owner,
+            tasks=dependency(harness),
+            files=harness,
+            revisions=harness,
+        )
+
+    assert caught.value.status_code == 503
+    assert harness.calls == ["file"]
 
 
 async def test_copy_destination_admits_native_doc_and_writable_folder() -> None:
