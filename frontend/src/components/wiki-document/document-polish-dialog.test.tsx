@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import * as wikiActions from "@/app/actions/wiki-actions";
 import { ApiError } from "@/lib/api-error";
 import { BrowserUserContext } from "@/lib/browser-user-context";
-import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-client";
+import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-api";
 import { preservedInPlaceOutcome } from "@/lib/document-transform-outcome";
 import { writeTransformRecovery } from "@/lib/document-transform-recovery";
 import {

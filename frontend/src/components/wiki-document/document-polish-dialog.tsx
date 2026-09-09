@@ -34,7 +34,7 @@ import { FolderPickerDialog } from "@/components/wiki-sidebar/folder-picker-dial
 import { documentAliasKey } from "@/hooks/use-document-alias";
 import { ApiError } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
-import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-client";
+import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-api";
 import { preservedInPlaceOutcome } from "@/lib/document-transform-outcome";
 import {
   claimTransformRecovery,

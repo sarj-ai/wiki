@@ -41,8 +41,7 @@ it("persists exact payload only on explicit save and clears it on signout", () =
   expect(window.sessionStorage.getItem(markdownRecoveryStorageKey("owner"))).toBeNull();
   saveMarkdownRecovery(bundle);
   const raw = window.sessionStorage.getItem(markdownRecoveryStorageKey("owner"));
-  expect(raw).not.toBeNull();
-  expect(validateMarkdownRecovery(raw!, "owner", OPERATION).source).toEqual(SOURCE);
+  expect(validateMarkdownRecovery(raw ?? "", "owner", OPERATION).source).toEqual(SOURCE);
   expect(localWrite).not.toHaveBeenCalled();
   clearUserBrowserStorage("owner");
   expect(window.sessionStorage.getItem(markdownRecoveryStorageKey("owner"))).toBeNull();

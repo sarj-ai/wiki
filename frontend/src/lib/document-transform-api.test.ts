@@ -1,14 +1,16 @@
 // @vitest-environment happy-dom
 
+import type { ActionResult } from "@/lib/action-result";
+
 const ACTION_MOCKS = vi.hoisted(() => ({
-  capabilities: vi.fn(),
-  create: vi.fn(),
-  current: vi.fn(),
-  getTask: vi.fn(),
+  capabilities: vi.fn<() => Promise<ActionResult<string>>>(),
+  create: vi.fn<(body?: string, key?: string) => Promise<ActionResult<string>>>(),
+  current: vi.fn<(path: string) => Promise<ActionResult<string>>>(),
+  getTask: vi.fn<(id: string) => Promise<ActionResult<string>>>(),
 }));
 
-vi.mock("@/lib/document-transform-http", () => ({
-  transformHttp: (path: string, body?: string, key?: string) => {
+vi.mock("@/lib/clients/transform-http", () => ({
+  transformHttp: async (path: string, body?: string, key?: string) => {
     if (path === "/capabilities") return ACTION_MOCKS.capabilities();
     if (path.startsWith("/current?")) return ACTION_MOCKS.current(path);
     if (path.startsWith("/tasks/")) return ACTION_MOCKS.getTask(path.slice("/tasks/".length));
@@ -16,7 +18,7 @@ vi.mock("@/lib/document-transform-http", () => ({
   },
 }));
 
-import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-client";
+import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-api";
 import { DocumentTransformNeedsReviewError } from "@/lib/document-transform-types";
 const TASK_ID = "55555555-5555-4555-8555-555555555555";
 
@@ -148,7 +150,7 @@ describe("documentTransformApi", () => {
       "copy",
       "Architecture decisions",
     );
-    expect(JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] as string)).toMatchObject({
+    expect(JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] ?? "")).toMatchObject({
       output_name: "Architecture decisions",
       output_strategy: "copy",
       source: { file_id: "doc-1" },
@@ -172,7 +174,7 @@ describe("documentTransformApi", () => {
       "77777777-7777-4777-8777-777777777777",
     );
 
-    expect(JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] as string)).toMatchObject({
+    expect(JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] ?? "")).toMatchObject({
       mode: "format",
       output_name: null,
       output_strategy: "copy",
@@ -203,7 +205,7 @@ describe("documentTransformApi", () => {
       "in_place",
     );
 
-    expect(JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] as string)).toMatchObject({
+    expect(JSON.parse(ACTION_MOCKS.create.mock.calls[0]?.[0] ?? "")).toMatchObject({
       output_name: null,
       output_strategy: "in_place",
     });
@@ -370,20 +372,19 @@ describe("documentTransformApi", () => {
   });
 
   it("truthfully identifies an original that may have changed after verification", async () => {
-    await expect(
-      DOCUMENT_TRANSFORM_API.waitForCompletion({
-        errorCode: "in_place_verification_failed",
-        errorDetail: "Task could not be completed",
-        id: TASK_ID,
-        status: "failed",
-        unverifiedOutputId: "original-document",
-      }),
-    ).rejects.toMatchObject({
+    const result = DOCUMENT_TRANSFORM_API.waitForCompletion({
+      errorCode: "in_place_verification_failed",
+      errorDetail: "Task could not be completed",
+      id: TASK_ID,
+      status: "failed",
+      unverifiedOutputId: "original-document",
+    });
+    await expect(result).rejects.toMatchObject({
       code: "in_place_verification_failed",
-      message: expect.stringContaining("original document may have changed"),
       name: "DocumentTransformTerminalError",
       unverifiedOutputId: "original-document",
     });
+    await expect(result).rejects.toThrow("original document may have changed");
   });
 
   it("stops polling instead of waiting forever", async () => {

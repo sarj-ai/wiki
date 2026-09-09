@@ -1,7 +1,13 @@
+import * as z from "zod";
+
 import type { ActionErrorCode, ActionResult } from "@/lib/action-result";
 import { boundedTransformText } from "@/lib/bounded-transform-text";
 
 const GENERIC_ERROR = "Document transform request could not be completed";
+const TransformErrorSchema = z.object({
+  code: z.literal("document_transform_source_changed").optional().catch(undefined),
+  error: z.string().optional().catch(undefined),
+});
 
 export async function transformHttp(
   path: string,
@@ -24,22 +30,12 @@ export async function transformHttp(
     let error = GENERIC_ERROR;
     let code: ActionErrorCode | undefined;
     try {
-      const parsed: unknown = JSON.parse(await boundedTransformText(response.body));
-      if (
-        typeof parsed === "object" &&
-        parsed !== null &&
-        "error" in parsed &&
-        typeof parsed.error === "string"
-      ) {
-        error = parsed.error;
-      }
-      if (
-        typeof parsed === "object" &&
-        parsed !== null &&
-        "code" in parsed &&
-        parsed.code === "document_transform_source_changed"
-      ) {
-        code = parsed.code;
+      const parsed = TransformErrorSchema.safeParse(
+        JSON.parse(await boundedTransformText(response.body)),
+      );
+      if (parsed.success) {
+        error = parsed.data.error ?? GENERIC_ERROR;
+        code = parsed.data.code;
       }
     } catch {
       // The same-origin route owns error text; malformed responses stay redacted.
