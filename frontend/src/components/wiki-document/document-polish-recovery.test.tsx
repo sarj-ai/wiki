@@ -1,7 +1,7 @@
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
-import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-client";
+import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-api";
 import type { TransformRecovery } from "@/lib/document-transform-recovery";
 import {
   makeMarkdownRecovery,

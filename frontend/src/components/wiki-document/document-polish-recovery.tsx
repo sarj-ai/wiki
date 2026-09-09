@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-client";
+import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-api";
 import type { TransformRecovery } from "@/lib/document-transform-recovery";
 import type { DocumentTransformSource } from "@/lib/document-transform-types";
 import {

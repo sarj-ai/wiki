@@ -18,7 +18,7 @@ vi.mock("@/lib/clients/transform-http", () => ({
   },
 }));
 
-import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-client";
+import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-api";
 import { DocumentTransformNeedsReviewError } from "@/lib/document-transform-types";
 const TASK_ID = "55555555-5555-4555-8555-555555555555";
 
