@@ -2866,12 +2866,18 @@ def _native_list_text_style_inventory(value: object) -> list[object]:
         terminal: list[dict[str, Any]] = []
         for element in elements:
             run = element.get("textRun") if isinstance(element, dict) else None
-            if not isinstance(run, dict) or not isinstance(run.get("content"), str):
+            if not isinstance(run, dict):
                 return [{"malformed": True}]
-            content = run["content"]
-            style = run.get("textStyle", {})
-            if not isinstance(style, dict):
+            content_value: object = run.get("content")
+            if not isinstance(content_value, str):
                 return [{"malformed": True}]
+            content = content_value
+            style_value: object = run.get("textStyle", {})
+            if not isinstance(style_value, dict) or any(
+                not isinstance(key, str) for key in style_value
+            ):
+                return [{"malformed": True}]
+            style: dict[str, Any] = {str(key): child for key, child in style_value.items()}
             visible_text = content.removesuffix("\n")
             if visible_text:
                 if visible and visible[-1]["style"] == style:
