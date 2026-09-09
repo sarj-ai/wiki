@@ -164,7 +164,7 @@
   },
   "src/lib/wiki-schemas.ts": {
     "@typescript-eslint/naming-convention": {
-      "count": 18
+      "count": 17
     }
   }
 }

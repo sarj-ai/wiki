@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass
 import hashlib
 import json
-import logging  # sarj-noqa: SARJ052 -- Intercept the exact SDK logger before sinks; never emit application logs here.
+import logging
 import re
 import secrets
 from typing import override
