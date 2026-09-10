@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -6,6 +7,124 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _migration_job(command: list[str], args: list[str], image: str) -> str:
+    return json.dumps(
+        {
+            "apiVersion": "run.googleapis.com/v1",
+            "kind": "Job",
+            "spec": {
+                "template": {
+                    "spec": {
+                        "template": {
+                            "spec": {
+                                "containers": [
+                                    {"command": command, "args": args, "image": image}
+                                ]
+                            }
+                        }
+                    }
+                }
+            },
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("fault", "expected_operations"),
+    [
+        ("none", ["describe", "update", "execute"]),
+        ("describe", ["describe"]),
+        ("describe-partial", ["describe"]),
+        ("command", ["describe"]),
+        ("args", ["describe"]),
+        ("malformed", ["describe"]),
+        ("empty", ["describe"]),
+        ("multiple", ["describe"]),
+        ("shape", ["describe"]),
+        ("update", ["describe", "update"]),
+        ("update-partial", ["describe", "update"]),
+        ("updated-command", ["describe", "update"]),
+        ("updated-args", ["describe", "update"]),
+        ("updated-malformed", ["describe", "update"]),
+        ("updated-image", ["describe", "update"]),
+        ("execute", ["describe", "update", "execute"]),
+        ("MIGRATION_JOB", []),
+        ("PROJECT_ID", []),
+        ("REGION", []),
+        ("RELEASE_IMAGE", []),
+    ],
+)
+def test_migrations_only_execute_verified_image_update(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fault: str,
+    expected_operations: list[str],
+) -> None:
+    initialization = tmp_path / "commands.sh"
+    initialization.write_text(
+        """gcloud() {
+  printf '%s\\n' "$*" >> "$MIGRATION_CALLS"
+  test "$3" != "$MIGRATION_FAULT" || return 1
+  case "$3" in
+    describe) printf '%s' "$DESCRIBED_JOB" ;;
+    update) printf '%s' "$UPDATED_JOB" ;;
+    execute) ;;
+    *) return 1 ;;
+  esac
+  test "$3-partial" != "$MIGRATION_FAULT"
+}
+"""
+    )
+    described = _migration_job(
+        ["wrong"] if fault == "command" else [".venv/bin/alembic"],
+        ["downgrade", "base"] if fault == "args" else ["upgrade", "head"],
+        "old-image",
+    )
+    match fault:
+        case "malformed":
+            described = "not-json"
+        case "empty":
+            described = ""
+        case "multiple":
+            described += described
+        case "shape":
+            described = "{}"
+    updated = _migration_job(
+        ["wrong"] if fault == "updated-command" else [".venv/bin/alembic"],
+        ["downgrade", "base"] if fault == "updated-args" else ["upgrade", "head"],
+        "old-image" if fault == "updated-image" else "release-image",
+    )
+    if fault == "updated-malformed":
+        updated = "not-json"
+    calls = tmp_path / "calls"
+    for name, value in {
+        "BASH_ENV": str(initialization),
+        "MIGRATION_CALLS": str(calls),
+        "MIGRATION_FAULT": fault,
+        "DESCRIBED_JOB": described,
+        "UPDATED_JOB": updated,
+        "MIGRATION_JOB": "migration-job",
+        "PROJECT_ID": "project",
+        "REGION": "region",
+        "RELEASE_IMAGE": "release-image",
+    }.items():
+        monkeypatch.setenv(name, "" if fault == name else value)
+    command = ["bash", str(ROOT / "scripts/github/run-backend-migrations.sh")]
+    if fault == "none":
+        assert not command_output(command)
+    else:
+        with pytest.raises(ReleaseBlockedError):
+            command_output(command)
+    expected_calls = {
+        "describe": "run jobs describe migration-job --project project --region region --format=json",
+        "update": "run jobs update migration-job --project project --region region --image release-image --format=json --quiet",
+        "execute": "run jobs execute migration-job --project project --region region --wait --quiet",
+    }
+    assert (calls.read_text().splitlines() if calls.exists() else []) == [
+        expected_calls[operation] for operation in expected_operations
+    ]
 
 
 @pytest.mark.parametrize(
