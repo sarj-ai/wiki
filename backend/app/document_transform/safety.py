@@ -170,9 +170,9 @@ def _unchanged_sentences_are_exact(
 ) -> bool:
     source_sentences = tuple(match for match in _SENTENCE.finditer(source) if match.group(0))
     replacement_sentences = tuple(
-        sentence_text.strip()
+        sentence_text
         for match in _SENTENCE.finditer(replacement)
-        if (sentence_text := match.group(0)) and sentence_text.strip()
+        if (sentence_text := match.group(0).strip())
     )
     unchanged = tuple(
         sentence_text

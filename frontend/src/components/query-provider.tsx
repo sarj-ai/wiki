@@ -5,13 +5,13 @@ import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "@/lib/api-error";
 import { purgeLegacyBrowserStorage, storeLoginRedirect } from "@/lib/browser-storage";
+import { sanitizeRedirectPath } from "@/lib/sanitize-redirect-path";
 import { notifyTerminalUnauthorized, TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
 import {
   broadcastSessionClear,
   clearAuthenticatedSession,
   subscribeToSessionClear,
 } from "@/lib/session-isolation";
-import { sanitizeRedirectPath } from "@/lib/url-utils";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 

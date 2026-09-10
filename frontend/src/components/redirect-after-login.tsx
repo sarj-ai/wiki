@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 import { takeLoginRedirect } from "@/lib/browser-storage";
-import { sanitizeRedirectPath } from "@/lib/url-utils";
+import { sanitizeRedirectPath } from "@/lib/sanitize-redirect-path";
 
 export function RedirectAfterLogin() {
   const router = useRouter();

@@ -94,14 +94,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          if [[ -z "$BASE_SHA" ]]; then
-            uvx --python 3.14.7 'pre-commit==4.6.2' run --all-files --show-diff-on-failure
-            exit 0
-          elif [[ "$BASE_SHA" =~ ^0+$ ]]; then
-            BASE_SHA=$(git rev-list --max-parents=0 HEAD)
-          fi
-          uvx --python 3.14.7 'pre-commit==4.6.2' run --from-ref "$BASE_SHA" --to-ref "$HEAD_SHA" --show-diff-on-failure
+        run: bash scripts/github/run-pre-commit.sh
 
   python-baseline:
     name: Exact Python Standards baseline

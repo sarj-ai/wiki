@@ -6,7 +6,7 @@ import {
   recordRecentAlias,
   writeRecentAliases,
 } from "@/lib/recent-aliases";
-import { installLocalStorage } from "@/test-stubs/local-storage";
+import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
 describe("recent aliases", () => {
   beforeEach(() => {

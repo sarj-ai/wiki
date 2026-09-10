@@ -32,7 +32,7 @@ def _derive(key: str, purpose: bytes) -> bytes:
     ).derive(urlsafe_b64decode(key.encode()))
 
 
-class OAuthStateProtector:
+class OAuthStateProtector:  # sarj-noqa: SARJ071 -- Consumers require this encryption implementation.
     def __init__(self, keys: tuple[str, ...], *, lock_key: str) -> None:
         if not keys or len(keys) > _MAX_KEYS or len(set(keys)) != len(keys):
             msg = "OAuth encryption requires one to three unique keys"

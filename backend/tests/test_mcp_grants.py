@@ -265,17 +265,18 @@ async def test_real_postgres_live_denials_do_not_autocreate_grants(
     async with sessions() as reader:
         await validate_live_grant(reader, binding)
         async with sessions.begin() as writer:
-            if failure == "expired":
-                await writer.execute(update(McpGrant).values(expires_at=grant.created_at))
-            elif failure == "credential_removed":
-                await writer.execute(update(User).values(encrypted_refresh_token=None))
-            else:
-                target = await writer.get(
-                    McpGrant if failure == "deleted_grant" else User,
-                    grant.id if failure == "deleted_grant" else user.id,
-                )
-                assert target is not None
-                await writer.delete(target)
+            match failure:
+                case "expired":
+                    await writer.execute(update(McpGrant).values(expires_at=grant.created_at))
+                case "credential_removed":
+                    await writer.execute(update(User).values(encrypted_refresh_token=None))
+                case _:
+                    target = await writer.get(
+                        McpGrant if failure == "deleted_grant" else User,
+                        grant.id if failure == "deleted_grant" else user.id,
+                    )
+                    assert target is not None
+                    await writer.delete(target)
         with pytest.raises(McpAuthorizationError):
             await validate_live_grant(reader, binding)
         rows = list(await reader.scalars(select(McpGrant)))

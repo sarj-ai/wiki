@@ -118,18 +118,19 @@ def test_copy_font_family_updates_explicitly_preserve_bold_weight_and_terminal()
 def test_copy_font_semantics_reject_any_non_authorized_change(change: str):
     source, actual = document(), document(formatted=True)
     first = parts(actual)[0]["textRun"]["textStyle"]
-    if change == "bold":
-        first["bold"] = False
-    elif change == "weight":
-        first["weightedFontFamily"]["weight"] = 400
-    elif change == "italic":
-        first["italic"] = True
-    elif change == "family":
-        first["weightedFontFamily"]["fontFamily"] = "Arial"
-    elif change == "terminal":
-        parts(actual)[-1]["textRun"]["textStyle"]["bold"] = True
-    else:
-        actual["tabs"][0]["documentTab"]["namedStyles"]["styles"][0]["textStyle"]["bold"] = True
+    match change:
+        case "bold":
+            first["bold"] = False
+        case "weight":
+            first["weightedFontFamily"]["weight"] = 400
+        case "italic":
+            first["italic"] = True
+        case "family":
+            first["weightedFontFamily"]["fontFamily"] = "Arial"
+        case "terminal":
+            parts(actual)[-1]["textRun"]["textStyle"]["bold"] = True
+        case _:
+            actual["tabs"][0]["documentTab"]["namedStyles"]["styles"][0]["textStyle"]["bold"] = True
     assert not verify_copy_fonts(source, actual, planned(source), list_identity_equivalent=False)
 
 

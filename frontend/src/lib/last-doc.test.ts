@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { readRecentDocs, saveLastDoc } from "@/lib/last-doc";
-import { installLocalStorage } from "@/test-stubs/local-storage";
+import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
 describe("recent document warmup metadata", () => {
   beforeEach(() => {

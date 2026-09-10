@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 
 import { QuickLinksLoader } from "@/components/quick-links/quick-links-loader";
 import { readRecentAliases, writeRecentAliases } from "@/lib/recent-aliases";
-import { installLocalStorage } from "@/test-stubs/local-storage";
+import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
 const getRecentDocumentAliasesAction = vi.hoisted(() => vi.fn());
 

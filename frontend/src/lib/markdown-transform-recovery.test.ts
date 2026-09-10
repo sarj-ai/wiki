@@ -8,7 +8,7 @@ import {
   saveMarkdownRecovery,
   validateMarkdownRecovery,
 } from "@/lib/markdown-transform-recovery";
-import { installLocalStorage } from "@/test-stubs/local-storage";
+import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
 const OPERATION: TransformRecovery = {
   createdAt: Date.now(),

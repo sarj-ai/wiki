@@ -86,16 +86,17 @@ def test_explicit_invalid_family_never_inherits(value: object) -> None:
 def test_parent_requires_unique_explicit_normal_text(change: str) -> None:
     tab = _tab()
     styles = tab["namedStyles"]["styles"]
-    if change == "missing":
-        styles.clear()
-    elif change == "duplicate":
-        styles.append(deepcopy(styles[0]))
-    elif change == "wrong":
-        styles[0]["namedStyleType"] = "TITLE"
-    elif change == "malformed":
-        styles.append(None)
-    else:
-        styles[0]["textStyle"].clear()
+    match change:
+        case "missing":
+            styles.clear()
+        case "duplicate":
+            styles.append(deepcopy(styles[0]))
+        case "wrong":
+            styles[0]["namedStyleType"] = "TITLE"
+        case "malformed":
+            styles.append(None)
+        case _:
+            styles[0]["textStyle"].clear()
     assert flow._normal_text_family(tab) is None
 
 

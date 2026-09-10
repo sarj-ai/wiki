@@ -12,7 +12,7 @@ def test_pre_commit_runtime_and_cache_are_version_bound() -> None:
         workflow.index("  repository-quality:") : workflow.index("  python-baseline:")
     ]
 
-    assert repository_job.count("uvx --python 3.14.7 'pre-commit==4.6.2'") == 2
+    assert "run: bash scripts/github/run-pre-commit.sh" in repository_job
     assert "enable-cache: true" in repository_job
     assert "cache-dependency-glob: backend/uv.lock" in repository_job
     assert "pre-commit-v4.6.2-" in repository_job

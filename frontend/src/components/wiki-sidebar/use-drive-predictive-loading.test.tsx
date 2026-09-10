@@ -11,8 +11,8 @@ const API = vi.hoisted(() => ({
   getFolderFiles: vi.fn(),
 }));
 
-vi.mock("@/lib/wiki-read-client", () => ({
-  wikiReadApi: API,
+vi.mock("@/lib/wiki-read-api", () => ({
+  WIKI_READ_API: API,
 }));
 
 describe("useDrivePredictiveLoading", () => {

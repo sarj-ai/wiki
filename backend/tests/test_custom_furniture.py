@@ -471,18 +471,19 @@ async def test_custom_header_projection_rejects_authored_furniture_changes(tampe
     header = tab["headers"]["header-even"]
     paragraph = header["content"][0]["paragraph"]
     suffix, newline = paragraph["elements"][-2:]
-    if tamper == "terminal_style":
-        newline["textRun"]["textStyle"]["fontSize"] = {"magnitude": 9, "unit": "PT"}
-    elif tamper == "suffix_text":
-        suffix["textRun"]["content"] = "X"
-    elif tamper == "nonterminal_style":
-        suffix["textRun"]["textStyle"]["bold"] = True
-    elif tamper == "paragraph":
-        paragraph["paragraphStyle"]["alignment"] = "START"
-    else:
-        tab["footers"]["footer-custom"]["content"][0]["paragraph"]["elements"][0]["textRun"][
-            "content"
-        ] = "Changed footer\n"
+    match tamper:
+        case "terminal_style":
+            newline["textRun"]["textStyle"]["fontSize"] = {"magnitude": 9, "unit": "PT"}
+        case "suffix_text":
+            suffix["textRun"]["content"] = "X"
+        case "nonterminal_style":
+            suffix["textRun"]["textStyle"]["bold"] = True
+        case "paragraph":
+            paragraph["paragraphStyle"]["alignment"] = "START"
+        case _:
+            tab["footers"]["footer-custom"]["content"][0]["paragraph"]["elements"][0]["textRun"][
+                "content"
+            ] = "Changed footer\n"
 
     verification = await _verify_custom_brand(
         document,
@@ -517,12 +518,13 @@ async def test_custom_header_title_proof_rejects_tampering(tamper: str) -> None:
     runs = document["tabs"][0]["documentTab"]["headers"]["header-a"]["content"][0]["paragraph"][
         "elements"
     ]
-    if tamper == "title":
-        runs[0]["textRun"]["content"] = "Different" + HEADER_TITLE_SEPARATOR
-    elif tamper == "style":
-        runs[0]["textRun"]["textStyle"]["weightedFontFamily"]["fontFamily"] = "Arial"
-    else:
-        runs[1]["textRun"]["content"] = "Changed suffix\n"
+    match tamper:
+        case "title":
+            runs[0]["textRun"]["content"] = "Different" + HEADER_TITLE_SEPARATOR
+        case "style":
+            runs[0]["textRun"]["textStyle"]["weightedFontFamily"]["fontFamily"] = "Arial"
+        case _:
+            runs[1]["textRun"]["content"] = "Changed suffix\n"
 
     verification = await _verify_custom_brand(
         document,
@@ -551,12 +553,13 @@ def test_custom_header_title_request_guard_requires_the_exact_plan(tamper: str) 
         )
     )
     requests = deepcopy(list(expected))
-    if tamper == "text":
-        requests[0]["insertText"]["text"] = "Different"
-    elif tamper == "index":
-        requests[0]["insertText"]["location"]["index"] = 1
-    else:
-        requests[1]["updateTextStyle"]["textStyle"]["bold"] = False
+    match tamper:
+        case "text":
+            requests[0]["insertText"]["text"] = "Different"
+        case "index":
+            requests[0]["insertText"]["location"]["index"] = 1
+        case _:
+            requests[1]["updateTextStyle"]["textStyle"]["bold"] = False
 
     assert not custom_furniture_requests_safe(
         requests,
@@ -611,24 +614,25 @@ async def test_custom_furniture_verification_rejects_payload_or_context_changes(
     inspection = gateway._inspect_in_place_sync(_inspection_snapshot(document), "Decision")
     expected_document = deepcopy(document)
     tab = document["tabs"][0]["documentTab"]
-    if change == "header":
-        tab["headers"]["header-even"]["content"] = []
-    elif change == "footer":
-        tab["footers"]["footer-custom"]["content"] = []
-    elif change == "image":
-        tab["inlineObjects"]["logo-1"]["inlineObjectProperties"]["embeddedObject"]["size"]["width"][
-            "magnitude"
-        ] = 1
-    elif change == "geometry":
-        tab["documentStyle"]["marginLeft"]["magnitude"] = 1
-    elif change == "named_style":
-        tab["namedStyles"] = {
-            "styles": [{"namedStyleType": "NORMAL_TEXT", "textStyle": {"italic": True}}]
-        }
-    elif change == "binding":
-        tab["documentStyle"]["evenPageHeaderId"] = "header-first"
-    else:
-        tab["headers"]["unknown"] = deepcopy(tab["headers"]["header-a"])
+    match change:
+        case "header":
+            tab["headers"]["header-even"]["content"] = []
+        case "footer":
+            tab["footers"]["footer-custom"]["content"] = []
+        case "image":
+            tab["inlineObjects"]["logo-1"]["inlineObjectProperties"]["embeddedObject"]["size"][
+                "width"
+            ]["magnitude"] = 1
+        case "geometry":
+            tab["documentStyle"]["marginLeft"]["magnitude"] = 1
+        case "named_style":
+            tab["namedStyles"] = {
+                "styles": [{"namedStyleType": "NORMAL_TEXT", "textStyle": {"italic": True}}]
+            }
+        case "binding":
+            tab["documentStyle"]["evenPageHeaderId"] = "header-first"
+        case _:
+            tab["headers"]["unknown"] = deepcopy(tab["headers"]["header-a"])
     verification = await _verify_preserved(document, inspection, expected_document)
     assert not verification.structure_preserved
     assert not verification.supported_brand_applied

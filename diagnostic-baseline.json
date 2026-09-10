@@ -112,13 +112,6 @@
       "count": 1
     },
     {
-      "fingerprint": "ad0efb1c5b88ad9a508b92988131333fd1b22295ce72350825939cab02ae5cd2",
-      "source": "eslint",
-      "ruleId": "@sarj/prefer-immutable-module-constant",
-      "path": "frontend/src/lib/wiki-read-client.ts",
-      "count": 1
-    },
-    {
       "fingerprint": "8b3208d835e5b2b14e5eb7f99772d2aff102258604073be33009d3409a05398b",
       "source": "eslint",
       "ruleId": "@sarj/prefer-immutable-module-constant",

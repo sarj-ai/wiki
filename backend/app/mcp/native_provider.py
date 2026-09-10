@@ -286,8 +286,7 @@ class NativeWikiOAuthProvider(OAuthProvider):
     ) -> OAuthToken:
         async with oauth_boundary("token"):
             self.request("token")
-            hint = await self.credential(NativePurpose.CODE, authorization_code.code)
-            if hint is None:
+            if (hint := await self.credential(NativePurpose.CODE, authorization_code.code)) is None:
                 raise NativeOAuthError
             async with self.core.operations.operation(f"native-grant:{hint.grant_id}") as db:
                 value = await self.core.state.get(
@@ -361,8 +360,7 @@ class NativeWikiOAuthProvider(OAuthProvider):
     ) -> OAuthToken:
         async with oauth_boundary("token"):
             self.request("token")
-            hint = await self.credential(NativePurpose.REFRESH, refresh_token.token)
-            if hint is None:
+            if (hint := await self.credential(NativePurpose.REFRESH, refresh_token.token)) is None:
                 raise NativeOAuthError
             async with self.core.operations.operation(f"native-grant:{hint.grant_id}") as db:
                 value = await self.core.state.get(

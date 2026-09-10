@@ -1,4 +1,4 @@
-import { documentAliasError } from "./document-alias-validation";
+import { documentAliasError } from "./document-alias-error";
 
 describe("documentAliasError", () => {
   it.each([

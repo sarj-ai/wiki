@@ -1,4 +1,3 @@
-import argparse
 from copy import deepcopy
 from dataclasses import dataclass
 import json
@@ -177,9 +176,8 @@ def test_current_main_is_rechecked_after_receipt_reads(
         return data[endpoint]
 
     monkeypatch.setattr(recovery, "fetch_github", fetch)
-    args = argparse.Namespace(
+    args = recovery.SourceArguments(
         verifier_sha=VERIFIER_SHA,
-        phase="source",
         run_id=RUN_ID,
         run_attempt=RUN_ATTEMPT,
     )
@@ -201,9 +199,8 @@ def test_current_verifier_must_match_main(monkeypatch: pytest.MonkeyPatch) -> No
         }
 
     monkeypatch.setattr(recovery, "fetch_github", fetch)
-    args = argparse.Namespace(
+    args = recovery.SourceArguments(
         verifier_sha=VERIFIER_SHA,
-        phase="source",
         run_id=RUN_ID,
         run_attempt=RUN_ATTEMPT,
     )
@@ -341,21 +338,22 @@ def test_ambiguous_or_mismatched_job_receipts_block(case: str) -> None:
     data = receipts()
     page = data[recovery.source_jobs_endpoint(RUN_ID, RUN_ATTEMPT)]
     job = page["jobs"][0]
-    if case == "missing-job":
-        job["name"] = "verify-existing"
-    elif case == "duplicate-job":
-        page["jobs"].append(deepcopy(job))
-        page["total_count"] = len(page["jobs"])
-    elif case == "truncated":
-        page["total_count"] += 1
-    elif case == "wrong-attempt":
-        job["run_attempt"] += 1
-    elif case == "wrong-sha":
-        job["head_sha"] = "b" * 40
-    elif case == "wrong-order":
-        job["steps"][len(recovery.REQUIRED_STEPS) - 1]["number"] = 1
-    else:
-        job["steps"].append(deepcopy(job["steps"][0]))
+    match case:
+        case "missing-job":
+            job["name"] = "verify-existing"
+        case "duplicate-job":
+            page["jobs"].append(deepcopy(job))
+            page["total_count"] = len(page["jobs"])
+        case "truncated":
+            page["total_count"] += 1
+        case "wrong-attempt":
+            job["run_attempt"] += 1
+        case "wrong-sha":
+            job["head_sha"] = "b" * 40
+        case "wrong-order":
+            job["steps"][len(recovery.REQUIRED_STEPS) - 1]["number"] = 1
+        case _:
+            job["steps"].append(deepcopy(job["steps"][0]))
     with pytest.raises(recovery.ReleaseBlockedError):
         recovery.verify_source(data.__getitem__, RUN_ID, RUN_ATTEMPT)
 
@@ -370,17 +368,18 @@ def test_single_latest_ready_revision_is_required() -> None:
 def test_unverified_serving_revision_is_rejected(case: str) -> None:
     data = service()
     status = data["status"]
-    if case == "split":
-        status["traffic"].append({"revisionName": "foreign", "percent": 0})
-    elif case == "not-full":
-        status["traffic"][0]["percent"] = 50
-    elif case == "not-latest":
-        status["latestReadyRevisionName"] = "foreign"
-    elif case == "invalid-name":
-        status["latestReadyRevisionName"] = "--help"
-        status["traffic"][0]["revisionName"] = "--help"
-    else:
-        status["traffic"] = []
+    match case:
+        case "split":
+            status["traffic"].append({"revisionName": "foreign", "percent": 0})
+        case "not-full":
+            status["traffic"][0]["percent"] = 50
+        case "not-latest":
+            status["latestReadyRevisionName"] = "foreign"
+        case "invalid-name":
+            status["latestReadyRevisionName"] = "--help"
+            status["traffic"][0]["revisionName"] = "--help"
+        case _:
+            status["traffic"] = []
     with pytest.raises(recovery.ReleaseBlockedError):
         recovery.serving_revision(data)
 
@@ -400,7 +399,7 @@ def test_serving_digest_is_checked_with_only_describe_commands(
         return next(responses)
 
     monkeypatch.setattr(recovery, "command_output", execute)
-    args = argparse.Namespace(
+    args = recovery.ServingArguments(
         verifier_sha=VERIFIER_SHA,
         source_sha=SOURCE_SHA,
         region="me-central2",
@@ -475,7 +474,7 @@ def test_recovery_job_is_exclusive_and_contains_no_deployment_mutations() -> Non
     ]
     script_calls = [step["run"] for step in steps if "run" in step]
     assert script_calls == [
-        'source_sha="$(uv run --no-project --python 3.14 \\\n  python -m scripts.backend_release.recovery \\\n  --verifier-sha "$GITHUB_SHA" source --run-id "$SOURCE_RUN_ID" \\\n  --run-attempt "$SOURCE_RUN_ATTEMPT")"\necho "source_sha=$source_sha" >> "$GITHUB_OUTPUT"\n',
+        'source_sha="$(uv run --no-project --with typer==0.27.2 --python 3.14 \\\n  python -m scripts.backend_release.recovery \\\n  --verifier-sha "$GITHUB_SHA" source --run-id "$SOURCE_RUN_ID" \\\n  --run-attempt "$SOURCE_RUN_ATTEMPT")"\necho "source_sha=$source_sha" >> "$GITHUB_OUTPUT"\n',
         "bash scripts/backend_release/verify-serving.sh",
         "scripts/github/verify-smart-create-queue.sh",
         'echo "started_at=$(date -u +\'%Y-%m-%dT%H:%M:%S.%NZ\')" >> "$GITHUB_OUTPUT"',
@@ -530,8 +529,7 @@ def test_recovery_workflow_binds_historical_source_sha_to_live_checks() -> None:
     ]
     assert len(serving_steps) == SERVING_CHECK_COUNT
     assert all(
-        step["env"]["SOURCE_RELEASE_SHA"] == source_output
-        for step in serving_steps
+        step["env"]["SOURCE_RELEASE_SHA"] == source_output for step in serving_steps
     )
     health_step = next(
         step
@@ -693,15 +691,11 @@ def _mcp_revision(*, enabled: bool) -> dict:
                 {"name": "MCP_NATIVE_HTTPS_CALLBACKS", "value": "[]"},
                 {
                     "name": "MCP_NATIVE_FERNET_KEYS",
-                    "valueFrom": {
-                        "secretKeyRef": {"name": "mcp-fernet", "key": "1"}
-                    },
+                    "valueFrom": {"secretKeyRef": {"name": "mcp-fernet", "key": "1"}},
                 },
                 {
                     "name": "MCP_NATIVE_LOCK_KEY",
-                    "valueFrom": {
-                        "secretKeyRef": {"name": "mcp-lock", "key": "2"}
-                    },
+                    "valueFrom": {"secretKeyRef": {"name": "mcp-lock", "key": "2"}},
                 },
             ]
         )

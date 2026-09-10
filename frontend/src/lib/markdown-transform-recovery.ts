@@ -2,6 +2,7 @@ import * as z from "zod";
 
 import type { TransformRecovery } from "@/lib/document-transform-recovery";
 import { MARKDOWN_LIMIT_BYTES, markdownByteLength } from "@/lib/markdown-import";
+import { TransformModeSchema } from "@/lib/transform-mode-schema";
 
 export const REPLAY_MAX_AGE_MS = 6 * 24 * 60 * 60 * 1000;
 const MarkdownSourceSchema = z.strictObject({
@@ -19,7 +20,7 @@ const BundleSchema = z.strictObject({
   owner: z.string().min(1),
   key: z.uuid(),
   createdAt: z.number().nonnegative(),
-  mode: z.enum(["format", "unslop", "both"]),
+  mode: TransformModeSchema,
   outputName: z.string().nullable(),
   source: MarkdownSourceSchema,
 });

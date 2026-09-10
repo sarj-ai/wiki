@@ -102,41 +102,43 @@ def _submission(status: str = "pending") -> dict[str, object]:
 
 
 def _task(status: str = "succeeded") -> dict[str, object]:
-    if status == "pending":
-        return {
-            "task_id": _TASK_ID,
-            "task_status": status,
-            "attempt_count": 0,
-            "created_at": _CREATED,
-            "started_at": None,
-            "finished_at": None,
-        }
-    if status == "running":
-        return {
-            "task_id": _TASK_ID,
-            "task_status": status,
-            "attempt_count": 1,
-            "created_at": _CREATED,
-            "started_at": _STARTED,
-            "finished_at": None,
-        }
-    if status == "cancelled":
-        return {
-            "task_id": _TASK_ID,
-            "task_status": status,
-            "attempt_count": 0,
-            "created_at": _CREATED,
-            "started_at": None,
-            "finished_at": _FINISHED,
-        }
-    return {
-        "task_id": _TASK_ID,
-        "task_status": status,
-        "attempt_count": 1,
-        "created_at": _CREATED,
-        "started_at": _STARTED,
-        "finished_at": _FINISHED,
-    }
+    match status:
+        case "pending":
+            return {
+                "task_id": _TASK_ID,
+                "task_status": status,
+                "attempt_count": 0,
+                "created_at": _CREATED,
+                "started_at": None,
+                "finished_at": None,
+            }
+        case "running":
+            return {
+                "task_id": _TASK_ID,
+                "task_status": status,
+                "attempt_count": 1,
+                "created_at": _CREATED,
+                "started_at": _STARTED,
+                "finished_at": None,
+            }
+        case "cancelled":
+            return {
+                "task_id": _TASK_ID,
+                "task_status": status,
+                "attempt_count": 0,
+                "created_at": _CREATED,
+                "started_at": None,
+                "finished_at": _FINISHED,
+            }
+        case _:
+            return {
+                "task_id": _TASK_ID,
+                "task_status": status,
+                "attempt_count": 1,
+                "created_at": _CREATED,
+                "started_at": _STARTED,
+                "finished_at": _FINISHED,
+            }
 
 
 def _result() -> dict[str, object]:

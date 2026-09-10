@@ -71,30 +71,31 @@ async def test_repeat_header_recognition_preserves_body_edits_but_requires_exact
     document, evidence = await _capture(monkeypatch)
     before = deepcopy(document)
     tab = document["tabs"][0]["documentTab"]
-    if changed == "body":
-        tab["body"]["content"][0]["paragraph"]["elements"][0]["textRun"]["content"] = (
-            "Later body edit.\n"
-        )
-    elif changed == "download_uri":
-        tab["inlineObjects"]["logo-1"]["inlineObjectProperties"]["embeddedObject"][
-            "imageProperties"
-        ]["contentUri"] = "https://temporary.example/new"
-    elif changed == "header":
-        tab["headers"]["header-a"]["content"][0]["paragraph"]["elements"][0]["textRun"][
-            "content"
-        ] = "Changed\t"
-    elif changed == "logo":
-        tab["inlineObjects"]["logo-1"]["inlineObjectProperties"]["embeddedObject"][
-            "imageProperties"
-        ]["sourceUri"] = "https://other.example/logo"
-    elif changed == "file":
-        document["documentId"] = "other-file"
-    elif changed == "tab":
-        document["tabs"][0]["tabProperties"]["tabId"] = "other-tab"
-    else:
-        tab["namedStyles"] = {
-            "styles": [{"namedStyleType": "NORMAL_TEXT", "textStyle": {"strikethrough": True}}]
-        }
+    match changed:
+        case "body":
+            tab["body"]["content"][0]["paragraph"]["elements"][0]["textRun"]["content"] = (
+                "Later body edit.\n"
+            )
+        case "download_uri":
+            tab["inlineObjects"]["logo-1"]["inlineObjectProperties"]["embeddedObject"][
+                "imageProperties"
+            ]["contentUri"] = "https://temporary.example/new"
+        case "header":
+            tab["headers"]["header-a"]["content"][0]["paragraph"]["elements"][0]["textRun"][
+                "content"
+            ] = "Changed\t"
+        case "logo":
+            tab["inlineObjects"]["logo-1"]["inlineObjectProperties"]["embeddedObject"][
+                "imageProperties"
+            ]["sourceUri"] = "https://other.example/logo"
+        case "file":
+            document["documentId"] = "other-file"
+        case "tab":
+            document["tabs"][0]["tabProperties"]["tabId"] = "other-tab"
+        case _:
+            tab["namedStyles"] = {
+                "styles": [{"namedStyleType": "NORMAL_TEXT", "textStyle": {"strikethrough": True}}]
+            }
     document["revisionId"] = "later-body-revision"
     proof = HeaderIdentityProof(
         evidence=evidence, result_sha256="a" * 64, verified_revision_sha256="b" * 64

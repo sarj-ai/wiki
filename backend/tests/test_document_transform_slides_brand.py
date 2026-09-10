@@ -341,14 +341,15 @@ def test_unknown_or_unsafe_geometry_blocks_logo_insertion(bad_geometry: str) -> 
     presentation = _presentation()
     parsed = parse_google_presentation(presentation, title="Review")
     target = presentation["slides"][0]["pageElements"][0]
-    if bad_geometry == "missing":
-        target.pop("transform")
-    elif bad_geometry == "zero":
-        target["size"]["width"]["magnitude"] = 0
-    elif bad_geometry == "nan":
-        target["transform"]["translateX"] = math.nan
-    else:
-        target["transform"]["translateX"] = 800
+    match bad_geometry:
+        case "missing":
+            target.pop("transform")
+        case "zero":
+            target["size"]["width"]["magnitude"] = 0
+        case "nan":
+            target["transform"]["translateX"] = math.nan
+        case _:
+            target["transform"]["translateX"] = 800
     plan = _format_plan(presentation, parsed=parsed)
 
     assert "slide_geometry_unsafe" in [finding.code for finding in plan.findings]
@@ -778,23 +779,26 @@ def test_small_narrative_requires_resolved_fit_inheritance_and_contrast(
     run_style = narrative["shape"]["text"]["textElements"][1]["textRun"]["style"]
     run_style["fontSize"]["magnitude"] = 11
     presentation["slides"][0]["pageElements"] = [narrative]
-    if unsafe_state == "autofit":
-        narrative["shape"]["shapeProperties"]["autofit"]["autofitType"] = "TEXT_AUTOFIT"
-    elif unsafe_state == "inheritance":
-        narrative["shape"]["placeholder"]["parentObjectId"] = "missing-parent"
-    elif unsafe_state == "style":
-        run_style.pop("weightedFontFamily")
-    elif unsafe_state == "contrast":
-        run_style["foregroundColor"] = {
-            "opaqueColor": {"rgbColor": {"red": 1, "green": 1, "blue": 1}}
-        }
-    else:
-        presentation["slides"][0]["pageProperties"] = {
-            "pageBackgroundFill": {
-                "propertyState": "RENDERED",
-                "stretchedPictureFill": {"contentUrl": "https://example.invalid/background.png"},
+    match unsafe_state:
+        case "autofit":
+            narrative["shape"]["shapeProperties"]["autofit"]["autofitType"] = "TEXT_AUTOFIT"
+        case "inheritance":
+            narrative["shape"]["placeholder"]["parentObjectId"] = "missing-parent"
+        case "style":
+            run_style.pop("weightedFontFamily")
+        case "contrast":
+            run_style["foregroundColor"] = {
+                "opaqueColor": {"rgbColor": {"red": 1, "green": 1, "blue": 1}}
             }
-        }
+        case _:
+            presentation["slides"][0]["pageProperties"] = {
+                "pageBackgroundFill": {
+                    "propertyState": "RENDERED",
+                    "stretchedPictureFill": {
+                        "contentUrl": "https://example.invalid/background.png"
+                    },
+                }
+            }
 
     plan = _format_plan(
         presentation,
@@ -1048,16 +1052,17 @@ def test_malformed_placeholder_style_table_fails_closed(malformation: str) -> No
         }
     )
     layout_elements = presentation["layouts"][0]["pageElements"][0]["shape"]["text"]["textElements"]
-    if malformation == "boolean_bound":
-        layout_elements[0]["startIndex"] = False
-    elif malformation == "boolean_nesting":
-        layout_elements[0]["paragraphMarker"]["bullet"]["nestingLevel"] = False
-    elif malformation == "paragraph_bounds":
-        layout_elements[0]["endIndex"] = 2
-    elif malformation == "paragraph_union":
-        layout_elements[0]["textRun"] = {"content": "\n", "style": {}}
-    else:
-        layout_elements[1]["paragraphMarker"] = {"style": {}}
+    match malformation:
+        case "boolean_bound":
+            layout_elements[0]["startIndex"] = False
+        case "boolean_nesting":
+            layout_elements[0]["paragraphMarker"]["bullet"]["nestingLevel"] = False
+        case "paragraph_bounds":
+            layout_elements[0]["endIndex"] = 2
+        case "paragraph_union":
+            layout_elements[0]["textRun"] = {"content": "\n", "style": {}}
+        case _:
+            layout_elements[1]["paragraphMarker"] = {"style": {}}
     parsed = parse_google_presentation(presentation, title="Review")
 
     plan = _format_plan(presentation, parsed=parsed)

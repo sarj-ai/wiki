@@ -19,7 +19,7 @@ import { useBulkSetSortOrders, useMoveFile } from "@/hooks/use-wiki-mutations";
 import { wikiKeys } from "@/hooks/use-wiki-tree";
 import { ApiError } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
-import { validateCrossDriveMove } from "@/lib/drive-move-validation";
+import { validateCrossDriveMove } from "@/lib/validate-cross-drive-move";
 import { optimisticMoveFile } from "@/lib/wiki-cache";
 import type { DriveNode, DriveTree, SortOrder } from "@/types/wiki";
 import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";

@@ -823,16 +823,17 @@ async def test_real_postgres_secretless_bootstrap_rechecks_current_identity_and_
         assert grant is not None
         assert session is not None
         assert user is not None
-        if inactive == "grant-expired":
-            now = datetime.now(UTC)
-            grant.created_at = now - timedelta(minutes=20)
-            grant.expires_at = now - timedelta(minutes=5)
-        elif inactive == "session-expired":
-            session.expires_at = datetime.now(UTC) - timedelta(seconds=1)
-        elif inactive == "revoked":
-            session.revoked_at = datetime.now(UTC)
-        else:
-            user.token_version += 1
+        match inactive:
+            case "grant-expired":
+                now = datetime.now(UTC)
+                grant.created_at = now - timedelta(minutes=20)
+                grant.expires_at = now - timedelta(minutes=5)
+            case "session-expired":
+                session.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+            case "revoked":
+                session.revoked_at = datetime.now(UTC)
+            case _:
+                user.token_version += 1
     async with sessions.begin() as db:
         with pytest.raises(QaGrantError):
             await _bootstrap(db, run_id)

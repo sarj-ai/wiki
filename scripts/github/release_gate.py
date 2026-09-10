@@ -1,15 +1,18 @@
 # ruff: file-ignore[implicit-namespace-package] -- standalone repository CLI
 from __future__ import annotations
 
-import argparse
 from collections.abc import Callable, Mapping
 from datetime import timedelta
+from enum import StrEnum
 import json
 from pathlib import Path
 import re
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-only git/gh commands
 import sys
 import time
+from typing import Annotated
+
+import typer
 
 
 type JsonValue = str | int | bool | list[JsonValue] | dict[str, JsonValue] | None
@@ -48,7 +51,9 @@ def object_value(value: JsonValue) -> JsonObject:
     return value
 
 
-def validate_context(environment: Mapping[str, str], component: str, checkout_sha: str) -> str:
+def validate_context(
+    environment: Mapping[str, str], component: str, checkout_sha: str
+) -> str:
     sha = environment.get("GITHUB_SHA", "")
     require(component in {"backend", "frontend"}, "Unknown release workflow")
     require(
@@ -70,7 +75,9 @@ def validate_context(environment: Mapping[str, str], component: str, checkout_sh
         environment.get("GITHUB_WORKFLOW_SHA") == sha,
         "Workflow does not match release SHA",
     )
-    expected_workflow = f"{REPOSITORY}/.github/workflows/deploy-{component}.yml@refs/heads/main"
+    expected_workflow = (
+        f"{REPOSITORY}/.github/workflows/deploy-{component}.yml@refs/heads/main"
+    )
     require(
         environment.get("GITHUB_WORKFLOW_REF") == expected_workflow,
         "Untrusted release workflow source",
@@ -91,7 +98,8 @@ def require_current_main(fetch: Fetch, sha: str) -> None:
 def validate_repository(value: JsonValue) -> None:
     repository = object_value(value)
     require(
-        repository.get("id") == REPOSITORY_ID and repository.get("full_name") == REPOSITORY,
+        repository.get("id") == REPOSITORY_ID
+        and repository.get("full_name") == REPOSITORY,
         "Untrusted receipt repository",
     )
 
@@ -130,7 +138,9 @@ def standards_receipt(fetch: Fetch, sha: str) -> bool:
         "Standards workflow identity changed",
     )
     # Exact server-side filters and total_count prevent pagination from hiding ambiguity.
-    page = fetch(f"{WORKFLOW}/runs?event=push&branch=main&head_sha={sha}&per_page=2&page=1")
+    page = fetch(
+        f"{WORKFLOW}/runs?event=push&branch=main&head_sha={sha}&per_page=2&page=1"
+    )
     runs = page.get("workflow_runs")
     require(isinstance(runs, list), "Invalid Standards run listing")
     if not isinstance(runs, list):
@@ -230,7 +240,10 @@ def command_output(command: list[str]) -> str:
         msg = "Release command timed out; completion is unconfirmed"
         raise ReleaseBlockedError(msg) from exc
     require(result.returncode == 0, "Release command failed")
-    require(len(result.stdout) <= MAX_RESPONSE_BYTES, "Oversized release verification response")
+    require(
+        len(result.stdout) <= MAX_RESPONSE_BYTES,
+        "Oversized release verification response",
+    )
     return result.stdout.strip()
 
 
@@ -255,9 +268,13 @@ def fetch_github(endpoint: str) -> JsonObject:
 
 def execute(phase: str, component: str) -> str:
     raw = read_json(sys.stdin.read())
-    require(all(isinstance(value, str) for value in raw.values()), "Invalid release input")
+    require(
+        all(isinstance(value, str) for value in raw.values()), "Invalid release input"
+    )
     environment = {key: str(value) for key, value in raw.items()}
-    sha = validate_context(environment, component, command_output(["git", "rev-parse", "HEAD"]))
+    sha = validate_context(
+        environment, component, command_output(["git", "rev-parse", "HEAD"])
+    )
     if phase == "standards":
         wait_for_standards(fetch_github, sha)
         with Path(environment["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
@@ -268,25 +285,40 @@ def execute(phase: str, component: str) -> str:
     return sha
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Fail closed before deploying an exact trusted main commit"
-    )
-    parser.add_argument("phase", choices=("standards", "ready"))
-    parser.add_argument("component", choices=("backend", "frontend"))
-    args = parser.parse_args()
+class _Phase(StrEnum):
+    STANDARDS = "standards"
+    READY = "ready"
+
+
+class _Component(StrEnum):
+    BACKEND = "backend"
+    FRONTEND = "frontend"
+
+
+CLI = typer.Typer(
+    add_completion=False,
+    pretty_exceptions_enable=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+
+
+@CLI.command()
+def main(
+    phase: Annotated[_Phase, typer.Argument()],
+    component: Annotated[_Component, typer.Argument()],
+) -> None:
+    """Fail closed before deploying an exact trusted main commit."""
     try:
-        sha = execute(args.phase, args.component)
+        sha = execute(phase, component)
     except ReleaseBlockedError as error:
         sys.stderr.write(f"Release blocked: {error}\n")
-        return 1
+        raise typer.Exit(1) from None
     except OSError, subprocess.TimeoutExpired, ValueError, KeyError:
         # Never emit GitHub payloads, subprocess stderr, or environment credentials.
         sys.stderr.write("Release blocked: verification unavailable\n")
-        return 1
+        raise typer.Exit(1) from None
     sys.stdout.write(f"Verified exact main release {sha}\n")
-    return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    CLI()

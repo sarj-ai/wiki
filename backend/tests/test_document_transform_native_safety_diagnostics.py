@@ -39,15 +39,16 @@ async def test_footer_projection_reports_exact_existing_failure_without_content(
             document_id=FileId("doc"), checkpoint=checkpoint
         )
     tab = document["tabs"][0]["documentTab"]
-    if reason == "segment":
-        tab["documentStyle"]["defaultFooterId"] = "SECRET"
-    elif reason == "shape":
-        tab["footers"]["f1"]["content"] = [{"SECRET": "private document text"}]
-    else:
-        # Diagnostics must NOT normalize a transient URI or weaken the invariant.
-        tab["inlineObjects"] = {
-            "SECRET": {"imageProperties": {"contentUri": "https://private.example/SECRET"}}
-        }
+    match reason:
+        case "segment":
+            tab["documentStyle"]["defaultFooterId"] = "SECRET"
+        case "shape":
+            tab["footers"]["f1"]["content"] = [{"SECRET": "private document text"}]
+        case _:
+            # Diagnostics must NOT normalize a transient URI or weaken the invariant.
+            tab["inlineObjects"] = {
+                "SECRET": {"imageProperties": {"contentUri": "https://private.example/SECRET"}}
+            }
     before = deepcopy(document)
     calls = len(provider.calls)
     with pytest.raises(InPlaceNeedsReviewError):
@@ -72,17 +73,18 @@ async def test_planning_revision_stop_is_identified_before_any_write(
 ) -> None:
     gateway, _, provider = await _plan(monkeypatch, _document())
     draft = replace(_draft(), revision_id=DocsRevisionId("SECRET"))
-    if stage == "footer_plan":
-        action = gateway.plan_copy_footer(draft=draft, operation_id=uuid.uuid7())
-    elif stage == "date_plan":
-        action = gateway.plan_copy_dates(draft=draft, operation_id=uuid.uuid7())
-    else:
-        action = gateway.plan_tab_naming(
-            document_id=draft.document_id,
-            title="SECRET",
-            operation_id=uuid.uuid7(),
-            required_revision_id=draft.revision_id,
-        )
+    match stage:
+        case "footer_plan":
+            action = gateway.plan_copy_footer(draft=draft, operation_id=uuid.uuid7())
+        case "date_plan":
+            action = gateway.plan_copy_dates(draft=draft, operation_id=uuid.uuid7())
+        case _:
+            action = gateway.plan_tab_naming(
+                document_id=draft.document_id,
+                title="SECRET",
+                operation_id=uuid.uuid7(),
+                required_revision_id=draft.revision_id,
+            )
     with pytest.raises(InPlaceNeedsReviewError):
         await action
     assert safety_logs[-1] == {"safety_stage": stage, "safety_reason": "revision"}
@@ -95,12 +97,13 @@ async def test_footer_dispatch_guard_logs_without_dispatch(
 ) -> None:
     document = _document()
     gateway, checkpoint, provider = await _plan(monkeypatch, document)
-    if change == "topology":
-        document["tabs"][0]["tabProperties"]["tabId"] = "SECRET"
-    elif change == "revision":
-        document["revisionId"] = "SECRET"
-    else:
-        document["PRIVATE"] = "SECRET"
+    match change:
+        case "topology":
+            document["tabs"][0]["tabProperties"]["tabId"] = "SECRET"
+        case "revision":
+            document["revisionId"] = "SECRET"
+        case _:
+            document["PRIVATE"] = "SECRET"
     with pytest.raises(InPlaceNeedsReviewError):
         await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=checkpoint)
     assert safety_logs[-1] == {

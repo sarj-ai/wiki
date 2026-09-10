@@ -3,18 +3,16 @@
 
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass
+from enum import StrEnum
 import hashlib
 import json
 from pathlib import Path
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed gh CLI, no shell
 import sys
-from typing import TYPE_CHECKING
+from typing import Annotated
 
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
+import typer
 
 
 DEFAULT_POLICY = Path(__file__).with_name("branch-protection.json")
@@ -30,7 +28,9 @@ BOOLEAN_SETTINGS = (
     "allow_fork_syncing",
 )
 
-type JsonValue = bool | int | float | str | list[JsonValue] | dict[str, JsonValue] | None
+type JsonValue = (
+    bool | int | float | str | list[JsonValue] | dict[str, JsonValue] | None
+)
 type JsonObject = dict[str, JsonValue]
 
 
@@ -59,7 +59,9 @@ def _api(
     )
     if result.returncode:
         missing_markers = ("Branch not protected",)
-        if result.returncode == 1 and any(marker in result.stderr for marker in missing_markers):
+        if result.returncode == 1 and any(
+            marker in result.stderr for marker in missing_markers
+        ):
             raise MissingProtectionError(endpoint)
         message = result.stderr.strip() or f"gh api exited {result.returncode}"
         raise RuntimeError(message)
@@ -99,7 +101,9 @@ def _normalize_policy(policy: JsonObject) -> JsonObject:
         if not isinstance(policy[name], bool):
             msg = "Protection flags must be explicit booleans"
             raise TypeError(msg)
-    normalized = {key: value for key, value in policy.items() if key != "required_signatures"}
+    normalized = {
+        key: value for key, value in policy.items() if key != "required_signatures"
+    }
     checks = normalized.get("required_status_checks")
     if not isinstance(checks, dict):
         msg = "Policy requires an explicit nonempty app-bound status-check object"
@@ -135,7 +139,9 @@ def _checks(value: JsonValue, *, require_app: bool = False) -> list[JsonValue]:
             or context in contexts
             or set(entry) != {"context", "app_id"}
         ):
-            msg = "Required check contexts must be unique, nonblank and have exact fields"
+            msg = (
+                "Required check contexts must be unique, nonblank and have exact fields"
+            )
             raise ValueError(msg)
         contexts.add(context)
         app_id = entry.get("app_id")
@@ -162,9 +168,11 @@ def check(policy: JsonObject, repository: str, branch: str) -> bool:
         return False
     if remote is None:
         return False
-    return _normalize_remote(remote) == _normalize_policy(policy) and _signatures_enabled(
-        endpoints.signatures
-    ) == bool(policy.get("required_signatures"))
+    return _normalize_remote(remote) == _normalize_policy(
+        policy
+    ) and _signatures_enabled(endpoints.signatures) == bool(
+        policy.get("required_signatures")
+    )
 
 
 def _normalize_remote(remote: JsonObject) -> JsonObject:
@@ -255,7 +263,9 @@ def apply(
         signature_method = "POST" if policy.get("required_signatures") else "DELETE"
         _api(endpoints.signatures, method=signature_method)
     if not check(policy, repository, branch):
-        msg = "Protection final readback differs; inspect partial changes before retrying"
+        msg = (
+            "Protection final readback differs; inspect partial changes before retrying"
+        )
         raise RuntimeError(msg)
     sys.stdout.write(f"applied branch protection to {repository}:{branch}\n")
 
@@ -273,7 +283,9 @@ def _confirmed_state(
     return state
 
 
-def _reject_weakening(state: JsonObject, desired: JsonObject, *, signatures: bool) -> None:
+def _reject_weakening(
+    state: JsonObject, desired: JsonObject, *, signatures: bool
+) -> None:
     current = state["protection"]
     if not isinstance(current, dict):
         msg = "Current protection must be explicit before applying a policy"
@@ -307,7 +319,9 @@ def _reject_weakening(state: JsonObject, desired: JsonObject, *, signatures: boo
             raise ValueError(msg)
         new_ids = _check_ids(new_checks.get("checks"))
         for context, app_id in _check_ids(old_checks.get("checks")).items():
-            if context not in new_ids or (app_id not in {None, -1} and new_ids[context] != app_id):
+            if context not in new_ids or (
+                app_id not in {None, -1} and new_ids[context] != app_id
+            ):
                 msg = "Removing checks or changing established app bindings is unavailable"
                 raise ValueError(msg)
 
@@ -325,22 +339,60 @@ def rollback(*_args: object, **_kwargs: object) -> None:
     raise ValueError(msg)
 
 
-def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("check", "snapshot", "apply", "rollback"))
-    parser.add_argument("--expected-live", help="SHA256 from a reviewed read-only snapshot")
-    parser.add_argument("--confirm-target", help="Explicit OWNER/REPO:BRANCH mutation target")
-    parser.add_argument("--confirm-delete", help="Dangerous DELETE ALL PROTECTION target phrase")
-    parser.add_argument("--repository", default=DEFAULT_REPOSITORY, metavar="OWNER/REPO")
-    parser.add_argument("--branch", default=DEFAULT_BRANCH)
-    parser.add_argument("--policy", type=Path, default=DEFAULT_POLICY)
-    return parser.parse_args(argv)
+class _Command(StrEnum):
+    CHECK = "check"
+    SNAPSHOT = "snapshot"
+    APPLY = "apply"
+    ROLLBACK = "rollback"
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    args = parse_args(argv)
+@dataclass(frozen=True, kw_only=True)
+class _Arguments:
+    command: _Command
+    expected_live: str | None
+    confirm_target: str | None
+    confirm_delete: str | None
+    repository: str
+    branch: str
+    policy: Path
+
+
+CLI = typer.Typer(
+    add_completion=False,
+    pretty_exceptions_enable=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__doc__,
+)
+
+
+@CLI.command()
+def main(
+    command: Annotated[_Command, typer.Argument()],
+    *,
+    expected_live: Annotated[
+        str | None, typer.Option(help="SHA256 from a reviewed read-only snapshot")
+    ] = None,
+    confirm_target: Annotated[
+        str | None, typer.Option(help="Explicit OWNER/REPO:BRANCH mutation target")
+    ] = None,
+    confirm_delete: Annotated[
+        str | None, typer.Option(help="Dangerous DELETE ALL PROTECTION target phrase")
+    ] = None,
+    repository: Annotated[str, typer.Option(metavar="OWNER/REPO")] = DEFAULT_REPOSITORY,
+    branch: Annotated[str, typer.Option()] = DEFAULT_BRANCH,
+    policy: Annotated[Path, typer.Option()] = DEFAULT_POLICY,
+) -> None:
+    args = _Arguments(
+        command=command,
+        expected_live=expected_live,
+        confirm_target=confirm_target,
+        confirm_delete=confirm_delete,
+        repository=repository,
+        branch=branch,
+        policy=policy,
+    )
     try:
-        return _run(args)
+        result = _run(args)
     except (
         OSError,
         RuntimeError,
@@ -349,43 +401,50 @@ def main(argv: Sequence[str] | None = None) -> int:
         ValueError,
     ) as error:
         sys.stderr.write(f"branch protection failed: {error}\n")
-        return 1
+        raise typer.Exit(1) from None
+    raise typer.Exit(result)
 
 
-def _run(args: argparse.Namespace) -> int:
+def _run(args: _Arguments) -> int:
     if args.command == "snapshot":
         state = snapshot(args.repository, args.branch)
         sys.stdout.write(
-            json.dumps({"fingerprint": fingerprint(state), "state": state}, indent=2) + "\n"
+            json.dumps({"fingerprint": fingerprint(state), "state": state}, indent=2)
+            + "\n"
         )
         return 0
     decoded: JsonValue = json.loads(args.policy.read_text(encoding="utf-8"))
     if not isinstance(decoded, dict):
         message = "branch protection policy must be a JSON object"
         raise TypeError(message)
-    if args.command == "check":
-        if not check(decoded, args.repository, args.branch):
-            sys.stderr.write(f"branch protection differs for {args.repository}:{args.branch}\n")
-            return 1
-        sys.stdout.write(f"branch protection matches {args.repository}:{args.branch}\n")
-    elif args.command == "apply":
-        apply(
-            decoded,
-            args.repository,
-            args.branch,
-            expected_live=args.expected_live,
-            confirm_target=args.confirm_target,
-        )
-    else:
-        rollback(
-            args.repository,
-            args.branch,
-            expected_live=args.expected_live,
-            confirm_target=args.confirm_target,
-            confirm_delete=args.confirm_delete,
-        )
+    match args.command:
+        case _Command.CHECK:
+            if not check(decoded, args.repository, args.branch):
+                sys.stderr.write(
+                    f"branch protection differs for {args.repository}:{args.branch}\n"
+                )
+                return 1
+            sys.stdout.write(
+                f"branch protection matches {args.repository}:{args.branch}\n"
+            )
+        case _Command.APPLY:
+            apply(
+                decoded,
+                args.repository,
+                args.branch,
+                expected_live=args.expected_live,
+                confirm_target=args.confirm_target,
+            )
+        case _:
+            rollback(
+                args.repository,
+                args.branch,
+                expected_live=args.expected_live,
+                confirm_target=args.confirm_target,
+                confirm_delete=args.confirm_delete,
+            )
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    CLI()

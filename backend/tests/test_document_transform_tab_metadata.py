@@ -121,14 +121,15 @@ async def test_tab_naming_rejects_concurrent_edits(monkeypatch: pytest.MonkeyPat
     document = _document()
     gateway, checkpoint = await _plan(monkeypatch, document)
     tab = document["tabs"][0]
-    if conflict == "revision":
-        document["revisionId"] = "changed"
-    elif conflict == "title":
-        tab["tabProperties"]["title"] = "User authored"
-    else:
-        tab["documentTab"][{"footer": "footers", "header": "headers", "body": "body"}[conflict]] = {
-            "changed": True
-        }
+    match conflict:
+        case "revision":
+            document["revisionId"] = "changed"
+        case "title":
+            tab["tabProperties"]["title"] = "User authored"
+        case _:
+            tab["documentTab"][
+                {"footer": "footers", "header": "headers", "body": "body"}[conflict]
+            ] = {"changed": True}
     stage = _Stage()
     monkeypatch.setattr(gateway, "apply_in_place_stage", stage.apply)
     with pytest.raises(InPlaceNeedsReviewError):

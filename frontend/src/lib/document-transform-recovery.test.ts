@@ -1,4 +1,4 @@
-import { installLocalStorage } from "@/test-stubs/local-storage";
+import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
 import {
   claimTransformRecovery,

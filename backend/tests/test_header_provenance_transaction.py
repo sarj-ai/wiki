@@ -358,22 +358,25 @@ async def test_qa_attested_provenance_rejects_other_submitted_terminal_payload_d
 ) -> None:
     task, result, row = await _prepared_qa_provenance("success")
     assert isinstance(result, QaDocumentTransformResult)
-    if mutation == "operation_id":
-        result = result.model_copy(update={"operation_id": uuid.uuid7()})
-    elif mutation == "source_sha256":
-        result = result.model_copy(update={"source_sha256": "0" * 64})
-    elif mutation == "output_revision_id":
-        result = result.model_copy(
-            update={"output_revision_id": DocsRevisionId("different-revision")}
-        )
-    elif mutation == "mode":
-        result = result.model_copy(update={"mode": TransformMode.UNSLOP})
-    else:
-        result = result.model_copy(
-            update={
-                "validation": result.validation.model_copy(update={"structure_preserved": False})
-            }
-        )
+    match mutation:
+        case "operation_id":
+            result = result.model_copy(update={"operation_id": uuid.uuid7()})
+        case "source_sha256":
+            result = result.model_copy(update={"source_sha256": "0" * 64})
+        case "output_revision_id":
+            result = result.model_copy(
+                update={"output_revision_id": DocsRevisionId("different-revision")}
+            )
+        case "mode":
+            result = result.model_copy(update={"mode": TransformMode.UNSLOP})
+        case _:
+            result = result.model_copy(
+                update={
+                    "validation": result.validation.model_copy(
+                        update={"structure_preserved": False}
+                    )
+                }
+            )
     transaction = _Transaction([task, None, row])
     session: Any = transaction
 

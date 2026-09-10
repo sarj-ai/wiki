@@ -128,16 +128,17 @@ def test_zero_border_width_does_not_imply_zero_padding(padding: int) -> None:
 @pytest.mark.parametrize("change", ["missing", "unknown", "malformed", "dash", "huge"])
 def test_border_requires_complete_known_schema(change: str) -> None:
     border = _border()
-    if change == "missing":
-        del border["padding"]
-    elif change == "unknown":
-        border["SECRET"] = "SECRET"
-    elif change == "malformed":
-        border["color"] = None
-    elif change == "dash":
-        border["dashStyle"] = {"SECRET": "SECRET"}
-    else:
-        border["width"]["magnitude"] = 10**400
+    match change:
+        case "missing":
+            del border["padding"]
+        case "unknown":
+            border["SECRET"] = "SECRET"
+        case "malformed":
+            border["color"] = None
+        case "dash":
+            border["dashStyle"] = {"SECRET": "SECRET"}
+        case _:
+            border["width"]["magnitude"] = 10**400
     checks = _named_style_value_diagnostics({"borderTop": border})
     assert checks["spacer_named_border_schema_known"] is False
     assert "spacer_named_border_all_width_zero" not in checks

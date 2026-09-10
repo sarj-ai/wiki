@@ -5,6 +5,7 @@ import asyncio
 from collections.abc import Iterable
 import json
 import re
+from types import MappingProxyType
 from typing import Annotated, override
 
 from google import genai
@@ -44,35 +45,39 @@ _MAX_ALIAS_WORD_COUNT = 3
 _MIN_REORGANIZATION_TERM_LENGTH = 4
 _MAX_GENERATED_REORGANIZATION_REASON_CHARS = 1_000
 _MAX_REORGANIZATION_REASON_CHARS = 200
-_SENSITIVE_DESTINATION_INTENT_TERMS = {
-    "banking": frozenset({"account", "bank", "banking", "deposit", "loan", "statement"}),
-    "finance": frozenset(
-        {"budget", "expense", "finance", "financial", "invoice", "investment", "payroll", "tax"}
-    ),
-    "health": frozenset(
-        {
-            "appointment",
-            "checkup",
-            "clinic",
-            "diagnosis",
-            "doctor",
-            "healthcare",
-            "hospital",
-            "medical",
-            "prescription",
-            "therapy",
-            "wellness",
-        }
-    ),
-    "identity": frozenset(
-        {"birth", "certificate", "identity", "license", "passport", "social", "ssn"}
-    ),
-    "immigration": frozenset({"citizenship", "immigration", "passport", "residency", "visa"}),
-    "legal": frozenset({"attorney", "compliance", "contract", "court", "law", "legal", "lawsuit"}),
-    "relationships": frozenset(
-        {"family", "marriage", "partner", "relationship", "spouse", "wedding"}
-    ),
-}
+_SENSITIVE_DESTINATION_INTENT_TERMS = MappingProxyType(
+    {
+        "banking": frozenset({"account", "bank", "banking", "deposit", "loan", "statement"}),
+        "finance": frozenset(
+            {"budget", "expense", "finance", "financial", "invoice", "investment", "payroll", "tax"}
+        ),
+        "health": frozenset(
+            {
+                "appointment",
+                "checkup",
+                "clinic",
+                "diagnosis",
+                "doctor",
+                "healthcare",
+                "hospital",
+                "medical",
+                "prescription",
+                "therapy",
+                "wellness",
+            }
+        ),
+        "identity": frozenset(
+            {"birth", "certificate", "identity", "license", "passport", "social", "ssn"}
+        ),
+        "immigration": frozenset({"citizenship", "immigration", "passport", "residency", "visa"}),
+        "legal": frozenset(
+            {"attorney", "compliance", "contract", "court", "law", "legal", "lawsuit"}
+        ),
+        "relationships": frozenset(
+            {"family", "marriage", "partner", "relationship", "spouse", "wedding"}
+        ),
+    }
+)
 _REORGANIZATION_STOP_WORDS = frozenset(
     {
         "about",

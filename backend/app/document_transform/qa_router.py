@@ -1281,8 +1281,9 @@ async def _create_or_replay_corpus_campaign(
     broker: QaCanaryBroker,
     initial_authority: QaAuthority,
 ) -> CreatedQaCorpusCampaign:
-    existing = await load_qa_corpus_campaign_for_authority(db, authority=initial_authority)
-    if existing is not None:
+    if (
+        existing := await load_qa_corpus_campaign_for_authority(db, authority=initial_authority)
+    ) is not None:
         return CreatedQaCorpusCampaign(campaign=existing, replayed=True)
     candidate = await broker.plan_corpus_campaign(initial_authority)
     refreshed = await _authorize_canary_request_as(request, db, QaCapabilityAuthorization)

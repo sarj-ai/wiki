@@ -75,35 +75,36 @@ async def test_real_postgres_header_provenance_atomicity_and_retention(scenario:
             stored = await session.get(
                 DocumentHeaderProvenance, (task.owner_user_id, result.output.file_id)
             )
-            if scenario == "lost_lease":
-                assert stored is None
-                assert stored_task.status == TaskStatus.RUNNING
-            elif scenario == "conflict":
-                assert stored is not None
-                assert stored.result_sha256 == "c" * 64
-                assert stored_task.status == TaskStatus.RUNNING
-                assert stored_task.result is None
-            else:
-                assert stored is not None
-                assert stored.result_sha256 == expected.result_sha256
-                assert stored_task.status == TaskStatus.SUCCEEDED
-                assert (
-                    await session.scalar(
-                        select(DocumentHeaderProvenance).where(
-                            DocumentHeaderProvenance.owner_user_id == uuid.uuid7(),
-                            DocumentHeaderProvenance.file_id == result.output.file_id,
+            match scenario:
+                case "lost_lease":
+                    assert stored is None
+                    assert stored_task.status == TaskStatus.RUNNING
+                case "conflict":
+                    assert stored is not None
+                    assert stored.result_sha256 == "c" * 64
+                    assert stored_task.status == TaskStatus.RUNNING
+                    assert stored_task.result is None
+                case _:
+                    assert stored is not None
+                    assert stored.result_sha256 == expected.result_sha256
+                    assert stored_task.status == TaskStatus.SUCCEEDED
+                    assert (
+                        await session.scalar(
+                            select(DocumentHeaderProvenance).where(
+                                DocumentHeaderProvenance.owner_user_id == uuid.uuid7(),
+                                DocumentHeaderProvenance.file_id == result.output.file_id,
+                            )
                         )
+                        is None
                     )
-                    is None
-                )
-                await session.execute(delete(Task).where(Task.id == task.id))
-                await session.commit()
-                session.expire_all()
-                assert (
-                    await session.get(
-                        DocumentHeaderProvenance, (task.owner_user_id, result.output.file_id)
+                    await session.execute(delete(Task).where(Task.id == task.id))
+                    await session.commit()
+                    session.expire_all()
+                    assert (
+                        await session.get(
+                            DocumentHeaderProvenance, (task.owner_user_id, result.output.file_id)
+                        )
+                        is not None
                     )
-                    is not None
-                )
     finally:
         await engine.dispose()

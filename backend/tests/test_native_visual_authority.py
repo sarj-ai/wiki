@@ -154,16 +154,17 @@ def test_visual_proof_rejects_nonfamily_and_context_drift(field: str):
     )
     changed = deepcopy(document)
     paragraph = _paragraph(changed)
-    if field == "alignment":
-        paragraph["paragraphStyle"]["alignment"] = "START"
-    elif field == "terminal":
-        paragraph["elements"][-1]["textRun"]["textStyle"]["fontSize"]["magnitude"] = 11
-    elif field == "parent":
-        changed["tabs"][0]["documentTab"]["namedStyles"]["styles"][0]["textStyle"]["fontSize"][
-            "magnitude"
-        ] = 11
-    else:
-        paragraph["elements"][0]["textRun"]["textStyle"].pop(field)
+    match field:
+        case "alignment":
+            paragraph["paragraphStyle"]["alignment"] = "START"
+        case "terminal":
+            paragraph["elements"][-1]["textRun"]["textStyle"]["fontSize"]["magnitude"] = 11
+        case "parent":
+            changed["tabs"][0]["documentTab"]["namedStyles"]["styles"][0]["textStyle"]["fontSize"][
+                "magnitude"
+            ] = 11
+        case _:
+            paragraph["elements"][0]["textRun"]["textStyle"].pop(field)
     assert not verify_native_font_proof(
         changed, proof, font_policy=NativeFontVerificationPolicy(preserved_family_block_ids=("b0",))
     )

@@ -87,8 +87,7 @@ class _Drive(DriveService):
 class _Cache(SidebarCacheService):
     @override
     async def get_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree:
-        cached = await self.peek_drive_tree(db, drive_id)
-        if cached is None:
+        if (cached := await self.peek_drive_tree(db, drive_id)) is None:
             raise NotImplementedError
         return cached
 

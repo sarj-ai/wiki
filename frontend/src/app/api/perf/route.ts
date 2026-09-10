@@ -3,12 +3,14 @@ import { z } from "zod";
 import { frontendReleaseSha } from "@/lib/env";
 
 const MAX_BODY_BYTES = 2048;
+const PhaseSchema = z.enum(["click", "commit", "toolbarPaint", "iframeMount", "iframeLoad"]);
+const VisibilitySchema = z.enum(["hidden", "visible"]);
 const ZPERF_EVENT = z.strictObject({
   durationMs: z.number().min(0).max(120_000),
   navigationId: z.uuid(),
-  phase: z.enum(["click", "commit", "toolbarPaint", "iframeMount", "iframeLoad"]),
+  phase: PhaseSchema,
   saveData: z.boolean().optional(),
-  visibility: z.enum(["hidden", "visible"]).optional(),
+  visibility: VisibilitySchema.optional(),
 });
 
 async function post(request: Request): Promise<Response> {

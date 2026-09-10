@@ -41,18 +41,19 @@ def test_components_isolate_mismatch_without_changing_acceptance(component: str)
         part["textRun"]["textStyle"]["weightedFontFamily"] = {"fontFamily": "Nunito"}
     proofs = capture_native_font_proof(source, parse_google_document(source, title="SECRET"))
     actual = _formatted(source)
-    if component == "font_proof_paragraph_metadata_equal":
-        actual["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"]["paragraphStyle"] = {
-            "alignment": "CENTER"
-        }
-    elif component == "font_proof_visible_residual_equal":
-        _parts(actual)[0]["textRun"]["textStyle"]["bold"] = False
-    elif component == "font_proof_terminal_residual_equal":
-        _parts(actual)[-1]["textRun"]["textStyle"]["underline"] = True
-    elif component == "font_proof_terminal_family_representation_equal":
-        _parts(actual)[-1]["textRun"]["textStyle"].pop("weightedFontFamily")
-    else:
-        actual["namedStyles"] = {"styles": []}
+    match component:
+        case "font_proof_paragraph_metadata_equal":
+            actual["tabs"][0]["documentTab"]["body"]["content"][0]["paragraph"][
+                "paragraphStyle"
+            ] = {"alignment": "CENTER"}
+        case "font_proof_visible_residual_equal":
+            _parts(actual)[0]["textRun"]["textStyle"]["bold"] = False
+        case "font_proof_terminal_residual_equal":
+            _parts(actual)[-1]["textRun"]["textStyle"]["underline"] = True
+        case "font_proof_terminal_family_representation_equal":
+            _parts(actual)[-1]["textRun"]["textStyle"].pop("weightedFontFamily")
+        case _:
+            actual["namedStyles"] = {"styles": []}
     legacy = tuple(
         NativeFontProof.model_validate(item.model_dump(exclude={"components"})) for item in proofs
     )

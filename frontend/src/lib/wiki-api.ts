@@ -87,6 +87,13 @@ export interface PreferencesInput {
 export type UserProfile = z.output<typeof userProfile>;
 export type Bootstrap = z.output<typeof bootstrapRead>;
 
+const SearchResultsSchema = z.array(searchResult);
+const DriveSummariesSchema = z.array(driveSummary);
+const DriveNodesSchema = z.array(driveNode);
+const DocIconsSchema = z.array(docIcon);
+const FolderIconsSchema = z.array(folderIcon);
+const SortOrdersSchema = z.array(sortOrder);
+
 export function makeWikiApi(client?: Client) {
   const call = makeCall(client);
   return {
@@ -129,7 +136,7 @@ export function makeWikiApi(client?: Client) {
             ...(limitPerDrive === undefined ? {} : { limit_per_drive: limitPerDrive }),
           },
         },
-        z.array(searchResult),
+        SearchResultsSchema,
       ),
 
     driveSearchSnippet: async (
@@ -174,7 +181,7 @@ export function makeWikiApi(client?: Client) {
         drivePermissionsPage,
       ),
 
-    getDrives: async (): Promise<DriveSummary[]> => call(listDrives, {}, z.array(driveSummary)),
+    getDrives: async (): Promise<DriveSummary[]> => call(listDrives, {}, DriveSummariesSchema),
 
     getFile: async (fileId: string, signal?: AbortSignal): Promise<FileDetail> =>
       call(
@@ -184,18 +191,18 @@ export function makeWikiApi(client?: Client) {
       ),
 
     getFolderFiles: async (folderId: string): Promise<DriveNode[]> =>
-      call(listFolderFiles, { path: { folder_id: folderId } }, z.array(driveNode)),
+      call(listFolderFiles, { path: { folder_id: folderId } }, DriveNodesSchema),
 
     getMe: async (): Promise<UserProfile> => call(getCurrentUser, {}, userProfile),
 
     getPreferences: async (): Promise<Preferences> => call(readPreferences, {}, preferences),
 
-    listDocIcons: async (): Promise<DocIcon[]> => call(listDocIcons, {}, z.array(docIcon)),
+    listDocIcons: async (): Promise<DocIcon[]> => call(listDocIcons, {}, DocIconsSchema),
 
     listFolderIcons: async (): Promise<FolderIcon[]> =>
-      call(listFolderIcons, {}, z.array(folderIcon)),
+      call(listFolderIcons, {}, FolderIconsSchema),
 
-    listSortOrders: async (): Promise<SortOrder[]> => call(listSortOrders, {}, z.array(sortOrder)),
+    listSortOrders: async (): Promise<SortOrder[]> => call(listSortOrders, {}, SortOrdersSchema),
 
     logout: async (): Promise<void> => call(logoutRequest, {}),
 

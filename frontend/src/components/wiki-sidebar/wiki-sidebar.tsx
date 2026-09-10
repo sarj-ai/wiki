@@ -27,7 +27,7 @@ import { renderNodeIcon } from "@/lib/file-icons";
 
 import { DriveSearchBox } from "./drive-search-box";
 import { DriveSection } from "./drive-section";
-import { SidebarResizeHandle } from "./resize-handle";
+import { SidebarResizeHandle } from "./sidebar-resize-handle";
 import { useWikiReorder } from "./use-wiki-reorder";
 import { WikiFooter } from "./wiki-footer";
 

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { retireDocumentAliasAction, saveDocumentAliasAction } from "@/app/actions/wiki-actions";
 import { runAction } from "@/lib/action-client";
-import { wikiReadApi } from "@/lib/wiki-read-client";
+import { WIKI_READ_API } from "@/lib/wiki-read-api";
 
 // eslint-disable-next-line @sarj/no-positional-tuple-return -- TanStack Query requires query keys to be readonly arrays.
 export const documentAliasKey = (fileId: string) => ["document-alias", fileId] as const;
@@ -12,7 +12,7 @@ export const documentAliasKey = (fileId: string) => ["document-alias", fileId] a
 export function useDocumentAlias(fileId: string, enabled: boolean) {
   return useQuery({
     enabled,
-    queryFn: async () => await wikiReadApi.getDocumentAlias(fileId),
+    queryFn: async () => await WIKI_READ_API.getDocumentAlias(fileId),
     queryKey: documentAliasKey(fileId),
   });
 }

@@ -141,44 +141,45 @@ def test_raw_boundaries_and_unsupported_groups_are_never_inferred_away(boundary:
     tab = native["tabs"][0]
     body = tab["documentTab"]
     content = body["body"]["content"]
-    if boundary in {"blank", "section", "table"}:
-        inserted = {
-            "blank": {"paragraph": {"elements": [{"textRun": {"content": "\n"}}]}},
-            "section": {"sectionBreak": {}},
-            "table": {"table": {"tableRows": []}},
-        }[boundary]
-        content.insert(1, inserted)
-    elif boundary == "hardbreak":
-        content[1]["paragraph"]["elements"].append({"pageBreak": {}})
-    elif boundary == "tab":
-        native["tabs"].append(deepcopy(tab))
-    elif boundary == "child":
-        tab["childTabs"] = [deepcopy(tab)]
-    elif boundary == "furniture":
-        body["headers"] = {"header": body.pop("body")}
-    elif boundary == "page_before":
-        content[2]["paragraph"]["paragraphStyle"]["pageBreakBefore"] = True
-    elif boundary == "inherited_page_before":
-        body["namedStyles"] = {"styles": [{"paragraphStyle": {"pageBreakBefore": True}}]}
-    elif boundary in {"pageless", "malformed_mode"}:
-        native["documentStyle"] = {
-            "documentFormat": {"documentMode": "PAGELESS" if boundary == "pageless" else {}}
-        }
-    elif boundary == "unknown_element":
-        content[1]["unknownBoundary"] = {}
-    elif boundary == "uneditable":
-        original = replace(
-            original,
-            blocks=(
-                original.blocks[0],
-                replace(original.blocks[1], editable=False),
-                original.blocks[2],
-            ),
-        )
-    elif boundary == "long_tagline":
-        original = original.replace_blocks({original.blocks[1].id: "x" * 121})
-    else:
-        content[1]["startIndex"] += 1
+    match boundary:
+        case "blank" | "section" | "table":
+            inserted = {
+                "blank": {"paragraph": {"elements": [{"textRun": {"content": "\n"}}]}},
+                "section": {"sectionBreak": {}},
+                "table": {"table": {"tableRows": []}},
+            }[boundary]
+            content.insert(1, inserted)
+        case "hardbreak":
+            content[1]["paragraph"]["elements"].append({"pageBreak": {}})
+        case "tab":
+            native["tabs"].append(deepcopy(tab))
+        case "child":
+            tab["childTabs"] = [deepcopy(tab)]
+        case "furniture":
+            body["headers"] = {"header": body.pop("body")}
+        case "page_before":
+            content[2]["paragraph"]["paragraphStyle"]["pageBreakBefore"] = True
+        case "inherited_page_before":
+            body["namedStyles"] = {"styles": [{"paragraphStyle": {"pageBreakBefore": True}}]}
+        case "pageless" | "malformed_mode":
+            native["documentStyle"] = {
+                "documentFormat": {"documentMode": "PAGELESS" if boundary == "pageless" else {}}
+            }
+        case "unknown_element":
+            content[1]["unknownBoundary"] = {}
+        case "uneditable":
+            original = replace(
+                original,
+                blocks=(
+                    original.blocks[0],
+                    replace(original.blocks[1], editable=False),
+                    original.blocks[2],
+                ),
+            )
+        case "long_tagline":
+            original = original.replace_blocks({original.blocks[1].id: "x" * 121})
+        case _:
+            content[1]["startIndex"] += 1
     assert plan_native_pagination(native, original) == ()
 
 

@@ -50,22 +50,23 @@ def test_dependency_ambiguity_never_broadens_spacer_eligibility(mutation: str) -
     native = _spaced_document()
     entry: dict[str, Any] = {"namedStyleType": "NORMAL_TEXT", "paragraphStyle": {}}
     entries = [entry]
-    if mutation == "missing":
-        del entry["namedStyleType"]
-    elif mutation == "unknown":
-        entry["namedStyleType"] = "PRIVATE"
-    elif mutation == "duplicate":
-        entry["namedStyleType"] = "HEADING_6"
-        entries.append(deepcopy(entry))
-    elif mutation == "malformed":
-        entry["namedStyleType"] = []
-    elif mutation == "break":
-        entry["namedStyleType"] = "HEADING_6"
-        entry["paragraphStyle"] = {"pageBreakBefore": True}
-    elif mutation == "link":
-        entry["textStyle"] = {"link": {"url": "https://example.com"}}
-    else:
-        entry["paragraphStyle"] = {"spaceAbove": {"magnitude": True, "unit": "PT"}}
+    match mutation:
+        case "missing":
+            del entry["namedStyleType"]
+        case "unknown":
+            entry["namedStyleType"] = "PRIVATE"
+        case "duplicate":
+            entry["namedStyleType"] = "HEADING_6"
+            entries.append(deepcopy(entry))
+        case "malformed":
+            entry["namedStyleType"] = []
+        case "break":
+            entry["namedStyleType"] = "HEADING_6"
+            entry["paragraphStyle"] = {"pageBreakBefore": True}
+        case "link":
+            entry["textStyle"] = {"link": {"url": "https://example.com"}}
+        case _:
+            entry["paragraphStyle"] = {"spaceAbove": {"magnitude": True, "unit": "PT"}}
     native["namedStyles"] = {"styles": entries}
     original = parse_google_document(native, title="Layout")
     rules = plan_native_pagination(native, original)

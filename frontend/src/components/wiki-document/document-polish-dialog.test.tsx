@@ -7,7 +7,6 @@ import * as wikiActions from "@/app/actions/wiki-actions";
 import { ApiError } from "@/lib/api-error";
 import { BrowserUserContext } from "@/lib/browser-user-context";
 import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-api";
-import { preservedInPlaceOutcome } from "@/lib/document-transform-outcome";
 import { writeTransformRecovery } from "@/lib/document-transform-recovery";
 import {
   DocumentTransformNeedsReviewError,
@@ -15,7 +14,8 @@ import {
   DocumentTransformTerminalError,
 } from "@/lib/document-transform-types";
 import { makeMarkdownRecovery, saveMarkdownRecovery } from "@/lib/markdown-transform-recovery";
-import { installLocalStorage } from "@/test-stubs/local-storage";
+import { preservedInPlaceOutcome } from "@/lib/preserved-in-place-outcome";
+import { installLocalStorage } from "@/test-stubs/install-local-storage";
 import { MIME_DOC, MIME_DOCX, MIME_SLIDE } from "@/types/wiki";
 
 import { DocumentPolishDialog, type DocumentPolishSource } from "./document-polish-dialog";

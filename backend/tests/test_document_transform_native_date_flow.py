@@ -113,22 +113,23 @@ def test_date_stage_rejects_unplanned_changes(mutation: str) -> None:
     actual = _converted()
     tab = actual["tabs"][0]
     body = tab["documentTab"]["body"]["content"]
-    if mutation == "identity":
-        body[1]["paragraph"]["elements"][0]["dateElement"]["dateElementProperties"]["timestamp"] = (
-            "2026-09-05T00:00:00Z"
-        )
-    elif mutation == "tail":
-        body[2]["paragraph"]["elements"][0]["textRun"]["content"] = "Evil\n"
-    elif mutation == "newline":
-        body[1]["paragraph"]["elements"][1]["textRun"]["textStyle"] = {"bold": True}
-    elif mutation == "paragraph":
-        body[1]["paragraph"]["paragraphStyle"] = {"alignment": "CENTER"}
-    elif mutation == "topology":
-        tab["tabProperties"]["title"] = "Changed"
-    elif mutation == "footer":
-        tab["documentTab"]["footers"] = {"alien": {}}
-    else:
-        body[1]["suggestedFuture"] = True
+    match mutation:
+        case "identity":
+            body[1]["paragraph"]["elements"][0]["dateElement"]["dateElementProperties"][
+                "timestamp"
+            ] = "2026-09-05T00:00:00Z"
+        case "tail":
+            body[2]["paragraph"]["elements"][0]["textRun"]["content"] = "Evil\n"
+        case "newline":
+            body[1]["paragraph"]["elements"][1]["textRun"]["textStyle"] = {"bold": True}
+        case "paragraph":
+            body[1]["paragraph"]["paragraphStyle"] = {"alignment": "CENTER"}
+        case "topology":
+            tab["tabProperties"]["title"] = "Changed"
+        case "footer":
+            tab["documentTab"]["footers"] = {"alien": {}}
+        case _:
+            body[1]["suggestedFuture"] = True
     with pytest.raises(InPlaceNeedsReviewError):
         verified_date_projection(actual, checkpoint)
 
@@ -283,12 +284,13 @@ async def test_date_rejection_requires_exact_unchanged_readback(
     monkeypatch.setattr(gateway, "_get_document_sync", lambda _file: deepcopy(document))
 
     async def reject(**_kwargs: Any) -> InPlaceStageResult:
-        if change == "revision":
-            document["revisionId"] = "r2"
-        elif change == "content":
-            document["tabs"][0]["documentTab"]["body"]["content"][2] = _paragraph(18, "Evil\n")
-        else:
-            document["namedRanges"] = {checkpoint.marker_name: {}}
+        match change:
+            case "revision":
+                document["revisionId"] = "r2"
+            case "content":
+                document["tabs"][0]["documentTab"]["body"]["content"][2] = _paragraph(18, "Evil\n")
+            case _:
+                document["namedRanges"] = {checkpoint.marker_name: {}}
         raise DocumentGatewayError(http_status=400)
 
     monkeypatch.setattr(gateway, "apply_in_place_stage", reject)

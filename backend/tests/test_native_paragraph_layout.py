@@ -123,16 +123,17 @@ def test_layout_proof_rejects_context_identity_and_text_tampering(change: str) -
     document = _document()
     parsed = parse_google_document(document, title="Decision")
     proof = capture_paragraph_layout(document, parsed, parsed)
-    if change == "parent":
-        document["namedStyles"] = {"styles": []}
-    elif change == "text":
-        _paragraph(document)["elements"][0]["textRun"]["content"] = "Modified.\n"
-    elif change == "bounds":
-        document["tabs"][0]["documentTab"]["body"]["content"][0]["startIndex"] = True
-    elif change == "duplicate":
-        proof += proof
-    else:
-        document["tabs"][0]["documentTab"]["body"]["content"] = []
+    match change:
+        case "parent":
+            document["namedStyles"] = {"styles": []}
+        case "text":
+            _paragraph(document)["elements"][0]["textRun"]["content"] = "Modified.\n"
+        case "bounds":
+            document["tabs"][0]["documentTab"]["body"]["content"][0]["startIndex"] = True
+        case "duplicate":
+            proof += proof
+        case _:
+            document["tabs"][0]["documentTab"]["body"]["content"] = []
     assert not verify_paragraph_layout(document, proof)
 
 

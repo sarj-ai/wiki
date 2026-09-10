@@ -27,11 +27,7 @@ export function useCommandPaletteMounted(): boolean {
   return useCommandPaletteStore((s) => s.mounted);
 }
 
-export function useCommandPaletteState(): {
-  open: boolean;
-  setOpen: (next: boolean) => void;
-  toggle: () => void;
-} {
+export function useCommandPaletteState(): Omit<CommandPaletteState, "mounted"> {
   const open = useCommandPaletteStore((s) => s.open);
   const setOpen = useCommandPaletteStore((s) => s.setOpen);
   const toggle = useCommandPaletteStore((s) => s.toggle);
