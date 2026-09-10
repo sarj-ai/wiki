@@ -50,7 +50,7 @@ def _tree() -> DriveTree:
     )
 
 
-class FakeDrive(DriveService):
+class FakeDrive(DriveService):  # sarj-noqa: SARJ428 -- Used only by this module's cache tests.
     def __init__(self, tree: DriveTree) -> None:
         self.tree = tree
         self.walks = 0
@@ -100,7 +100,7 @@ class _ScalarResult:
         return self.value
 
 
-class FakeSession:
+class FakeSession:  # sarj-noqa: SARJ428 -- Cache transaction recorder used only in this module.
     def __init__(self, row: DriveTreeCache | None = None) -> None:
         self.row = row
         self.deleted_rows: list[object] = []
