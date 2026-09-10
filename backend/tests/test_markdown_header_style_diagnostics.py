@@ -32,41 +32,42 @@ def test_header_component_checks_preserve_review_without_private_payload(change:
     paragraph = tab["headers"]["header-1"]["content"][0]["paragraph"]
     style = paragraph["paragraphStyle"]
     run = paragraph["elements"][0]["textRun"]["textStyle"]
-    if change == "above_unit_only":
-        style["spaceAbove"] = {"unit": "PT"}
-        # Zero is valid; an independent font failure keeps component diagnostics evaluated.
-        run["weightedFontFamily"]["fontFamily"] = "SECRET"
-        field = "import_header_space_above_unit_only"
-    elif change == "below_unit_only":
-        style["spaceBelow"] = {"unit": "PT"}
-        run["weightedFontFamily"]["fontFamily"] = "SECRET"
-        field = "import_header_space_below_unit_only"
-    elif change == "keep_absent":
-        style.pop("keepWithNext")
-        field = "import_header_keep_next_absent"
-    elif change == "parent_duplicate":
-        tab["namedStyles"] = {"styles": [{"namedStyleType": "NORMAL_TEXT"}] * 2}
-        field = "import_header_named_identity_known"
-    elif change == "unknown_field":
-        tab["namedStyles"] = {
-            "styles": [{"namedStyleType": "NORMAL_TEXT", "textStyle": {"PRIVATE": "SECRET"}}]
-        }
-        field = "import_header_run_fields_known"
-    elif change == "color_huge":
-        run["foregroundColor"] = {"color": {"rgbColor": {"red": 10**400}}}
-        field = "import_header_run_color_exact"
-    elif change == "weight_wrong":
-        run["weightedFontFamily"]["weight"] = 900
-        field = "import_header_run_family_weight_exact"
-    elif change == "font_wrong":
-        run["weightedFontFamily"]["fontFamily"] = "SECRET"
-        field = "import_header_run_font_exact"
-    elif change == "size_wrong":
-        run["fontSize"]["magnitude"] = 10**400
-        field = "import_header_run_size_exact"
-    else:
-        run["italic"] = "SECRET"
-        field = "import_header_run_effects_exact"
+    match change:
+        case "above_unit_only":
+            style["spaceAbove"] = {"unit": "PT"}
+            # Zero is valid; an independent font failure keeps component diagnostics evaluated.
+            run["weightedFontFamily"]["fontFamily"] = "SECRET"
+            field = "import_header_space_above_unit_only"
+        case "below_unit_only":
+            style["spaceBelow"] = {"unit": "PT"}
+            run["weightedFontFamily"]["fontFamily"] = "SECRET"
+            field = "import_header_space_below_unit_only"
+        case "keep_absent":
+            style.pop("keepWithNext")
+            field = "import_header_keep_next_absent"
+        case "parent_duplicate":
+            tab["namedStyles"] = {"styles": [{"namedStyleType": "NORMAL_TEXT"}] * 2}
+            field = "import_header_named_identity_known"
+        case "unknown_field":
+            tab["namedStyles"] = {
+                "styles": [{"namedStyleType": "NORMAL_TEXT", "textStyle": {"PRIVATE": "SECRET"}}]
+            }
+            field = "import_header_run_fields_known"
+        case "color_huge":
+            run["foregroundColor"] = {"color": {"rgbColor": {"red": 10**400}}}
+            field = "import_header_run_color_exact"
+        case "weight_wrong":
+            run["weightedFontFamily"]["weight"] = 900
+            field = "import_header_run_family_weight_exact"
+        case "font_wrong":
+            run["weightedFontFamily"]["fontFamily"] = "SECRET"
+            field = "import_header_run_font_exact"
+        case "size_wrong":
+            run["fontSize"]["magnitude"] = 10**400
+            field = "import_header_run_size_exact"
+        case _:
+            run["italic"] = "SECRET"
+            field = "import_header_run_effects_exact"
     manifest = markdown_import_manifest(
         "Body", title="Import", branded=True, header_title="Chosen Title"
     )

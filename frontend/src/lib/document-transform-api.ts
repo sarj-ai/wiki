@@ -3,7 +3,6 @@ import * as z from "zod";
 import { runAction, runActionResult } from "@/lib/action-client";
 import { ApiError } from "@/lib/api-error";
 import { transformHttp } from "@/lib/clients/transform-http";
-import { preservedInPlaceOutcome } from "@/lib/document-transform-outcome";
 import {
   DocumentTransformNeedsReviewError,
   type DocumentTransformOutputStrategy,
@@ -12,8 +11,9 @@ import {
   type DocumentTransformTask,
   DocumentTransformTerminalError,
 } from "@/lib/document-transform-types";
+import { preservedInPlaceOutcome } from "@/lib/preserved-in-place-outcome";
+import { TransformModeSchema } from "@/lib/transform-mode-schema";
 
-const ModeSchema = z.enum(["format", "unslop", "both"]);
 const OutputStrategySchema = z.enum(["copy", "in_place"]);
 const FindingSeveritySchema = z.enum(["informational", "review"]);
 const AccessScopeSchema = z.enum(["inherited", "owner_only"]);
@@ -45,7 +45,7 @@ const ResultSchema = z
     brand_profile_sha256: z.string().default("legacy-unrecorded"),
     deterministic_patch_count: z.int().nonnegative().default(0),
     findings: z.array(MessageSchema),
-    mode: ModeSchema,
+    mode: TransformModeSchema,
     llm_invoked: z.boolean().default(true),
     model_patch_count: z.int().nonnegative().default(0),
     promoted_heading_count: z.int().min(0).max(20).default(0),

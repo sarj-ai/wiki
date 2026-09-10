@@ -4,6 +4,7 @@ import React from "react";
 
 import { Button } from "@/components/ui/button";
 
+// eslint-disable-next-line @sarj/require-interface-for-exported-class -- React.Component already supplies the lifecycle contract; this boundary adds no consumer API.
 export class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);

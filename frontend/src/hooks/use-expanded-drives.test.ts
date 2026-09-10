@@ -8,7 +8,7 @@ import {
 } from "@/hooks/use-expanded-folders";
 import { expandedDrivesStorageKey } from "@/lib/browser-storage";
 import { PersistedDriveExpansionSchema } from "@/lib/storage-schemas";
-import { installLocalStorage } from "@/test-stubs/local-storage";
+import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
 const USER_ID = "drive-expansion-user";
 

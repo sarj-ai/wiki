@@ -135,16 +135,17 @@ def test_owned_header_recovery_rejects_changed_binding(
 ) -> None:
     document = _native(mixed=True)
     tab = document["tabs"][1]["documentTab"]
-    if change == "missing_tab":
-        document["tabs"].pop()
-    elif change == "wrong_id":
-        tab["documentStyle"]["defaultHeaderId"] = "custom-header"
-    elif change == "missing_segment":
-        tab["headers"] = {}
-    elif change == "missing_reference":
-        tab["documentStyle"] = {}
-    else:
-        document["tabs"].append(deepcopy(document["tabs"][1]))
+    match change:
+        case "missing_tab":
+            document["tabs"].pop()
+        case "wrong_id":
+            tab["documentStyle"]["defaultHeaderId"] = "custom-header"
+        case "missing_segment":
+            tab["headers"] = {}
+        case "missing_reference":
+            tab["documentStyle"] = {}
+        case _:
+            document["tabs"].append(deepcopy(document["tabs"][1]))
     gateway = _gateway(monkeypatch, document)
     with pytest.raises(SourceChangedError):
         gateway._prepare_brand_shell_sync(uuid.uuid7(), _draft(), {"tab-b": "owned-header"})

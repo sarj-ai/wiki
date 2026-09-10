@@ -27,7 +27,7 @@ vi.mock("@/hooks/use-drive-search", () => ({
   useDriveSearchSnippet: () => mocks.snippetQuery,
 }));
 vi.mock("@/lib/browser-user-context", () => ({ useBrowserUserId: () => "user-1" }));
-vi.mock("@/lib/wiki-read-client", () => ({ wikiReadApi: { getFile: mocks.getFile } }));
+vi.mock("@/lib/wiki-read-api", () => ({ WIKI_READ_API: { getFile: mocks.getFile } }));
 
 import { CommandPalette } from "./command-palette";
 

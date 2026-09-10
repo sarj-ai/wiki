@@ -76,16 +76,17 @@ def test_existing_header_conflicts_stay_blocked(conflict: str) -> None:
     document = _branded_google_document()
     document["documentId"] = "source"
     tab = document["tabs"][0]["documentTab"]
-    if conflict == "title":
-        tab["headers"]["header-a"]["content"][0]["paragraph"]["elements"][0]["textRun"][
-            "content"
-        ] = "Foreign\t"
-    elif conflict == "asset":
-        tab["inlineObjects"]["logo-1"]["inlineObjectProperties"]["embeddedObject"][
-            "imageProperties"
-        ]["sourceUri"] = "https://example.com/foreign.png"
-    else:
-        tab["headers"]["other"] = deepcopy(tab["headers"]["header-a"])
+    match conflict:
+        case "title":
+            tab["headers"]["header-a"]["content"][0]["paragraph"]["elements"][0]["textRun"][
+                "content"
+            ] = "Foreign\t"
+        case "asset":
+            tab["inlineObjects"]["logo-1"]["inlineObjectProperties"]["embeddedObject"][
+                "imageProperties"
+            ]["sourceUri"] = "https://example.com/foreign.png"
+        case _:
+            tab["headers"]["other"] = deepcopy(tab["headers"]["header-a"])
     gateway = object.__new__(GoogleDocumentGateway)
     gateway._logo_uri = "https://wiki.sarj.ai/brand/sarj-logo-light.png"
     snapshot = _inspection_snapshot(document)

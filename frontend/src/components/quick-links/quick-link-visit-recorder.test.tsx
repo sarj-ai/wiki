@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 
 import { QuickLinkVisitRecorder } from "@/components/quick-links/quick-link-visit-recorder";
 import { readRecentAliases } from "@/lib/recent-aliases";
-import { installLocalStorage } from "@/test-stubs/local-storage";
+import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
 vi.mock("@/hooks/use-current-user", () => ({
   useCurrentUser: () => ({ data: { id: "user-1" } }),

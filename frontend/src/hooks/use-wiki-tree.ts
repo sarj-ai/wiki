@@ -3,7 +3,7 @@
 import { type InfiniteData, queryOptions, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import { wikiKeys } from "@/lib/wiki-keys";
-import { wikiReadApi } from "@/lib/wiki-read-client";
+import { WIKI_READ_API } from "@/lib/wiki-read-api";
 import type {
   DocIcon,
   DriveNode,
@@ -20,7 +20,7 @@ const TREE_STALE_MS = 5 * 60 * 1000;
 
 export function useDrives() {
   return useQuery<DriveSummary[]>({
-    queryFn: wikiReadApi.getDrives,
+    queryFn: WIKI_READ_API.getDrives,
     queryKey: wikiKeys.drives,
     staleTime: TREE_STALE_MS,
   });
@@ -33,7 +33,7 @@ export function useDriveTree(driveId: null | string, enabled = true) {
 export function driveTreeQueryOptions(driveId: null | string, enabled: boolean) {
   return queryOptions<DriveTree>({
     enabled: enabled && !!driveId,
-    queryFn: async () => await wikiReadApi.getDriveFolders(driveId ?? ""),
+    queryFn: async () => await WIKI_READ_API.getDriveFolders(driveId ?? ""),
     queryKey: wikiKeys.driveTree(driveId ?? "disabled"),
     staleTime: TREE_STALE_MS,
   });
@@ -51,7 +51,7 @@ export function useDrivePermissions(driveId: null | string, enabled: boolean) {
     getNextPageParam: (lastPage) => lastPage.nextPageToken,
     initialPageParam: undefined,
     queryFn: async ({ pageParam }) =>
-      await wikiReadApi.getDrivePermissions(driveId ?? "", pageParam),
+      await WIKI_READ_API.getDrivePermissions(driveId ?? "", pageParam),
     queryKey: ["drive-permissions", driveId ?? "disabled"] as const,
     staleTime: 0,
   });
@@ -66,7 +66,7 @@ export function useFile(fileId: null | string) {
 
 export function fileQueryOptions(fileId: string) {
   return queryOptions<FileDetail>({
-    queryFn: async () => await wikiReadApi.getFile(fileId),
+    queryFn: async () => await WIKI_READ_API.getFile(fileId),
     queryKey: wikiKeys.file(fileId),
   });
 }
@@ -80,7 +80,7 @@ export function useFolderFiles(folderId: null | string, enabled: boolean) {
 
 export function folderFilesQueryOptions(folderId: string) {
   return queryOptions<DriveNode[]>({
-    queryFn: async () => await wikiReadApi.getFolderFiles(folderId),
+    queryFn: async () => await WIKI_READ_API.getFolderFiles(folderId),
     queryKey: wikiKeys.folderFiles(folderId),
     staleTime: TREE_STALE_MS,
   });
@@ -88,7 +88,7 @@ export function folderFilesQueryOptions(folderId: string) {
 
 export function usePreferences() {
   return useQuery<Preferences>({
-    queryFn: wikiReadApi.getPreferences,
+    queryFn: WIKI_READ_API.getPreferences,
     queryKey: wikiKeys.preferences,
     staleTime: TREE_STALE_MS,
   });
@@ -96,7 +96,7 @@ export function usePreferences() {
 
 export function useFolderIcons() {
   return useQuery<FolderIcon[]>({
-    queryFn: wikiReadApi.listFolderIcons,
+    queryFn: WIKI_READ_API.listFolderIcons,
     queryKey: wikiKeys.folderIcons,
     staleTime: TREE_STALE_MS,
   });
@@ -104,7 +104,7 @@ export function useFolderIcons() {
 
 export function useDocIcons() {
   return useQuery<DocIcon[]>({
-    queryFn: wikiReadApi.listDocIcons,
+    queryFn: WIKI_READ_API.listDocIcons,
     queryKey: wikiKeys.docIcons,
     staleTime: TREE_STALE_MS,
   });
@@ -112,7 +112,7 @@ export function useDocIcons() {
 
 export function useSortOrders() {
   return useQuery<SortOrder[]>({
-    queryFn: wikiReadApi.listSortOrders,
+    queryFn: WIKI_READ_API.listSortOrders,
     queryKey: wikiKeys.sortOrders,
     staleTime: TREE_STALE_MS,
   });

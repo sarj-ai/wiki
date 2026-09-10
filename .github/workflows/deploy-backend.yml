@@ -245,7 +245,7 @@ jobs:
           SOURCE_RUN_ATTEMPT: ${{ inputs.verification_run_attempt }}
           SOURCE_RUN_ID: ${{ inputs.verification_run_id }}
         run: |
-          source_sha="$(uv run --no-project --python 3.14 \
+          source_sha="$(uv run --no-project --with typer==0.27.2 --python 3.14 \
             python -m scripts.backend_release.recovery \
             --verifier-sha "$GITHUB_SHA" source --run-id "$SOURCE_RUN_ID" \
             --run-attempt "$SOURCE_RUN_ATTEMPT")"

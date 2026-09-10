@@ -25,7 +25,7 @@ import { MIME_DOC, MIME_FOLDER, MIME_HTML } from "@/types/wiki";
 
 import { CreateFileMenu } from "./create-file-menu";
 import { useDriveSectionContext } from "./drive-context";
-import { EmptyDropZone } from "./empty-droppable";
+import { EmptyDropZone } from "./empty-drop-zone";
 import { FileRow } from "./file-row";
 import { ItemMenu } from "./item-menu";
 import { CHEVRON_OFFSET, ICON_COLUMN_WIDTH, rowIndent } from "./layout-constants";

@@ -13,7 +13,7 @@ import {
   takeLoginRedirect,
   writeActiveBrowserUser,
 } from "@/lib/browser-storage";
-import { installLocalStorage } from "@/test-stubs/local-storage";
+import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
 describe("browser metadata storage", () => {
   beforeEach(() => {

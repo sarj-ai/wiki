@@ -18,7 +18,7 @@ import {
 import { runAction } from "@/lib/action-client";
 
 /** Browser-safe reads through authenticated Server Actions. */
-export const wikiReadApi = {
+export const WIKI_READ_API = Object.freeze({
   driveSearch: async (query: string, limitPerDrive?: number) =>
     await runAction(async () => await searchDriveAction(query, limitPerDrive)),
   driveSearchSnippet: async (fileId: string, query: string, mimeType?: string) =>
@@ -38,4 +38,4 @@ export const wikiReadApi = {
   listDocIcons: async () => await runAction(listDocIconsAction),
   listFolderIcons: async () => await runAction(listFolderIconsAction),
   listSortOrders: async () => await runAction(listSortOrdersAction),
-};
+});

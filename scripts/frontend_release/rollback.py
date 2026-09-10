@@ -6,13 +6,12 @@ must still be serialized operationally; a changed or ambiguous receipt blocks.
 
 from __future__ import annotations
 
-import argparse
 from datetime import datetime
 import json
 from pathlib import Path
 import sys
 import time
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Annotated, NamedTuple
 from uuid import UUID
 
 from scripts.github.release_gate import (
@@ -23,6 +22,7 @@ from scripts.github.release_gate import (
     object_value,
     require,
 )
+import typer
 
 
 WORKER = "sarj-wiki"
@@ -62,20 +62,29 @@ def active_deployment(raw: str) -> Deployment:
     require(len(latest) == 1, "Ambiguous latest deployment")
     deployment = latest[0]
     versions = deployment.get("versions")
-    require(isinstance(versions, list) and len(versions) == 1, "Split or missing traffic")
+    require(
+        isinstance(versions, list) and len(versions) == 1, "Split or missing traffic"
+    )
     if not isinstance(versions, list):
         msg = "Invalid traffic receipt"
         raise ReleaseBlockedError(msg)
     version = object_value(versions[0])
-    require(version.get("percentage") == FULL_TRAFFIC, "Expected exactly 100 percent traffic")
-    return Deployment(version_id(deployment.get("id")), version_id(version.get("version_id")))
+    require(
+        version.get("percentage") == FULL_TRAFFIC,
+        "Expected exactly 100 percent traffic",
+    )
+    return Deployment(
+        version_id(deployment.get("id")), version_id(version.get("version_id"))
+    )
 
 
 def candidate_version(receipt: Path) -> str:
     with receipt.open(encoding="utf-8") as source:
         raw = source.read(MAX_RESPONSE_BYTES + 1)
     require(len(raw) <= MAX_RESPONSE_BYTES, "Oversized deployment receipt")
-    entries = [object_value(json.loads(line)) for line in raw.splitlines() if line.strip()]
+    entries = [
+        object_value(json.loads(line)) for line in raw.splitlines() if line.strip()
+    ]
     deploys = [entry for entry in entries if entry.get("type") == "deploy"]
     require(len(deploys) == 1, "Missing or ambiguous candidate receipt")
     deploy = deploys[0]
@@ -96,7 +105,9 @@ def current_deployment() -> Deployment:
     )
 
 
-def reconcile(previous: str, receipt: Path, *, pause: Callable[[float], None] = time.sleep) -> None:
+def reconcile(
+    previous: str, receipt: Path, *, pause: Callable[[float], None] = time.sleep
+) -> None:
     previous = version_id(previous)
     current = current_deployment()
     if current.version == previous:
@@ -131,27 +142,36 @@ def reconcile(previous: str, receipt: Path, *, pause: Callable[[float], None] = 
     raise ReleaseBlockedError(msg)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    subparsers = parser.add_subparsers(dest="mode", required=True)
-    subparsers.add_parser("active")
-    rollback = subparsers.add_parser("rollback")
-    rollback.add_argument("--previous", required=True)
-    rollback.add_argument("--receipt", type=Path, required=True)
-    args = parser.parse_args()
+CLI = typer.Typer(
+    add_completion=False,
+    pretty_exceptions_enable=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__doc__,
+)
+
+
+def _report(action: Callable[[], object]) -> None:
     try:
-        if args.mode == "active":
-            sys.stdout.write(f"{current_deployment().version}\n")
-        else:
-            reconcile(args.previous, args.receipt)
-            sys.stdout.write("Previous frontend version is verified.\n")
+        action()
     except ReleaseBlockedError, OSError, ValueError, TypeError:
         sys.stderr.write(
             "Frontend rollback blocked: ownership or restoration could not be verified.\n"
         )
-        return 1
-    return 0
+        raise typer.Exit(1) from None
+
+
+@CLI.command("active")
+def active_command() -> None:
+    _report(lambda: sys.stdout.write(f"{current_deployment().version}\n"))
+
+
+@CLI.command("rollback")
+def rollback_command(
+    previous: Annotated[str, typer.Option()], receipt: Annotated[Path, typer.Option()]
+) -> None:
+    _report(lambda: reconcile(previous, receipt))
+    sys.stdout.write("Previous frontend version is verified.\n")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    CLI()

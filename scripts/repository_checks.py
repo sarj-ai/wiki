@@ -3,18 +3,19 @@
 
 from __future__ import annotations
 
-import argparse
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed git CLI, no shell
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
+
+import typer
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,47 +80,47 @@ def check_all() -> None:
     check_env_example()
 
 
-def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("all", help="run every repository consistency check")
-    subparsers.add_parser(
-        "markdown", help="enforce README.md as the only tracked Markdown"
-    )
-    subparsers.add_parser("readme", help="verify Make targets referenced by README.md")
-    subparsers.add_parser(
-        "env", help="compare .env.example keys with Pydantic Settings"
-    )
-    help_parser = subparsers.add_parser(
-        "make-help", help="print annotated Make targets"
-    )
-    help_parser.add_argument(
-        "makefile", nargs="?", type=Path, default=ROOT / "Makefile"
-    )
-    return parser.parse_args(argv)
+CLI = typer.Typer(
+    add_completion=False,
+    pretty_exceptions_enable=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__doc__,
+)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    args = parse_args(argv)
+def _run(check: Callable[[], None]) -> None:
     try:
-        _dispatch(args)
+        check()
     except (OSError, RuntimeError, subprocess.CalledProcessError, ValueError) as error:
         sys.stderr.write(f"repository check failed: {error}\n")
-        return 1
-    return 0
+        raise typer.Exit(1) from None
 
 
-def _dispatch(args: argparse.Namespace) -> None:
-    if args.command == "all":
-        check_all()
-    elif args.command == "markdown":
-        check_markdown()
-    elif args.command == "readme":
-        check_readme()
-    elif args.command == "env":
-        check_env_example()
-    else:
-        make_help(args.makefile)
+@CLI.command("all", help="Run every repository consistency check")
+def all_command() -> None:
+    _run(check_all)
+
+
+@CLI.command("markdown", help="Enforce README.md as the only tracked Markdown")
+def markdown_command() -> None:
+    _run(check_markdown)
+
+
+@CLI.command("readme", help="Verify Make targets referenced by README.md")
+def readme_command() -> None:
+    _run(check_readme)
+
+
+@CLI.command("env", help="Compare .env.example keys with Pydantic Settings")
+def env_command() -> None:
+    _run(check_env_example)
+
+
+@CLI.command("make-help", help="Print annotated Make targets")
+def help_command(
+    makefile: Annotated[Path, typer.Argument()] = ROOT / "Makefile",
+) -> None:
+    _run(lambda: make_help(makefile))
 
 
 def _tracked_markdown() -> list[str]:
@@ -183,4 +184,4 @@ def _settings_fields() -> set[str]:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    CLI()

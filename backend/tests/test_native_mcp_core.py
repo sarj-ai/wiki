@@ -505,12 +505,13 @@ async def test_historical_grants_do_not_exhaust_active_quota(
 ) -> None:
     await lab.tokens()
     async with lab.sessions.begin() as db:
-        if history == "revoked":
-            await db.execute(update(McpGrant).values(revoked_at=func.clock_timestamp()))
-        elif history == "expired":
-            await db.execute(update(McpGrant).values(expires_at=func.clock_timestamp()))
-        else:
-            await db.execute(update(McpGrant).values(user_session_revision=1))
+        match history:
+            case "revoked":
+                await db.execute(update(McpGrant).values(revoked_at=func.clock_timestamp()))
+            case "expired":
+                await db.execute(update(McpGrant).values(expires_at=func.clock_timestamp()))
+            case _:
+                await db.execute(update(McpGrant).values(user_session_revision=1))
     lab.client = lab.client.model_copy(update={"client_id": "replacement-client"})
     request("register")
     await lab.providers[0].register_client(lab.client)

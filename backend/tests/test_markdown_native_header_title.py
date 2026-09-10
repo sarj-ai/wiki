@@ -95,33 +95,34 @@ def test_native_header_rejects_changed_or_unproven_title(change: str) -> None:
     document = _titled_document(title, newline=True)
     outer = document["tabs"][0]["documentTab"]["headers"]["header-1"]["content"][0]
     runs = outer["paragraph"]["elements"]
-    if change == "missing_title":
-        runs.pop(0)
-    elif change == "wrong_title":
-        runs[0]["textRun"]["content"] = "Other\t"
-    elif change == "wrong_order":
-        runs.reverse()
-    elif change == "extra_text":
-        runs[-1]["textRun"]["content"] = "EXTRA\n"
-    elif change == "link":
-        runs[0]["textRun"]["textStyle"] = {"link": {"url": "https://example.com/private"}}
-    elif change == "suggestion":
-        runs[0]["suggestedInsertionIds"] = ["private"]
-    elif change == "gap":
-        for run in runs[1:]:
-            run["startIndex"] += 1
-            run["endIndex"] += 1
-        outer["endIndex"] += 1
-    elif change == "wrong_width":
-        runs[0]["endIndex"] -= 1
-    elif change == "outer_end":
-        outer["endIndex"] += 1
-    elif change == "negative":
-        runs[0]["startIndex"] = -1
-    elif change == "boolean":
-        runs[0]["startIndex"] = False
-    else:
-        runs.insert(1, deepcopy(runs[1]))
+    match change:
+        case "missing_title":
+            runs.pop(0)
+        case "wrong_title":
+            runs[0]["textRun"]["content"] = "Other\t"
+        case "wrong_order":
+            runs.reverse()
+        case "extra_text":
+            runs[-1]["textRun"]["content"] = "EXTRA\n"
+        case "link":
+            runs[0]["textRun"]["textStyle"] = {"link": {"url": "https://example.com/private"}}
+        case "suggestion":
+            runs[0]["suggestedInsertionIds"] = ["private"]
+        case "gap":
+            for run in runs[1:]:
+                run["startIndex"] += 1
+                run["endIndex"] += 1
+            outer["endIndex"] += 1
+        case "wrong_width":
+            runs[0]["endIndex"] -= 1
+        case "outer_end":
+            outer["endIndex"] += 1
+        case "negative":
+            runs[0]["startIndex"] = -1
+        case "boolean":
+            runs[0]["startIndex"] = False
+        case _:
+            runs.insert(1, deepcopy(runs[1]))
     manifest = markdown_import_manifest("Body", title="Import", branded=True, header_title=title)
     result = verify_markdown_import(document, manifest)
     assert not result.brand_applied
@@ -368,14 +369,15 @@ def test_ambiguous_parent_never_erases_inherited_effects(provided: str) -> None:
     document = _titled_document("Chosen Title", newline=True)
     tab = document["tabs"][0]["documentTab"]
     parent = {"namedStyleType": "NORMAL_TEXT", "textStyle": {"italic": True}}
-    if provided == "duplicate":
-        tab["namedStyles"] = {"styles": [parent, deepcopy(parent)]}
-    elif provided == "null":
-        tab["namedStyles"] = None
-    elif provided == "malformed":
-        tab["namedStyles"] = {"styles": "SECRET"}
-    else:
-        tab["namedStyles"] = {"styles": [{"namedStyleType": "HEADING_1"}]}
+    match provided:
+        case "duplicate":
+            tab["namedStyles"] = {"styles": [parent, deepcopy(parent)]}
+        case "null":
+            tab["namedStyles"] = None
+        case "malformed":
+            tab["namedStyles"] = {"styles": "SECRET"}
+        case _:
+            tab["namedStyles"] = {"styles": [{"namedStyleType": "HEADING_1"}]}
     manifest = markdown_import_manifest(
         "Body", title="Import", branded=True, header_title="Chosen Title"
     )

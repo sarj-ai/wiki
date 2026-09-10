@@ -286,8 +286,7 @@ class NativeOAuthCore:
         self, db: AsyncSession, credential: NativeCredential, scopes: list[McpCapability]
     ) -> OAuthToken:
         await self.live(db, credential)
-        grant = await db.get(McpGrant, credential.grant_id)
-        if grant is None:
+        if (grant := await db.get(McpGrant, credential.grant_id)) is None:
             raise NativeOAuthError
         now = await native_database_time(db)
         access_expiry = min(now + timedelta(minutes=10), grant.expires_at)

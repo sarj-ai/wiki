@@ -248,21 +248,22 @@ def _validate_render_complexity(
     if title.strip():
         count_inlines(_plain_inlines(title.strip()))
     for block in blocks:
-        if block.kind == "table":
-            rows = len(block.rows)
-            columns = max((len(row) for row in block.rows), default=0)
-            cells = rows * columns
-            if rows > MAX_DOCX_TABLE_ROWS or columns > MAX_DOCX_TABLE_COLUMNS:
-                raise SourceTooLargeError
-            table_cells += cells
-            for row in block.cell_inlines:
-                for cell in row:
-                    count_inlines(cell)
-        elif block.kind == "code":
-            # Each hard line break is materialized as its own run.
-            inline_runs += max(1, 2 * len(block.text.split("\n")) - 1)
-        else:
-            count_inlines(block.inlines)
+        match block.kind:
+            case "table":
+                rows = len(block.rows)
+                columns = max((len(row) for row in block.rows), default=0)
+                cells = rows * columns
+                if rows > MAX_DOCX_TABLE_ROWS or columns > MAX_DOCX_TABLE_COLUMNS:
+                    raise SourceTooLargeError
+                table_cells += cells
+                for row in block.cell_inlines:
+                    for cell in row:
+                        count_inlines(cell)
+            case "code":
+                # Each hard line break is materialized as its own run.
+                inline_runs += max(1, 2 * len(block.text.split("\n")) - 1)
+            case _:
+                count_inlines(block.inlines)
     if (
         table_cells > MAX_DOCX_TABLE_CELLS
         or inline_runs > MAX_DOCX_INLINE_RUNS
@@ -1556,39 +1557,42 @@ def _parse_inline_tokens(tokens: list[Token] | None) -> tuple[_Inline, ...]:
     link_url: str | None = None
     for token in tokens:
         kind = token.type
-        if kind == "strong_open":
-            bold_depth += 1
-        elif kind == "strong_close":
-            bold_depth -= 1
-        elif kind == "em_open":
-            italic_depth += 1
-        elif kind == "em_close":
-            italic_depth -= 1
-        elif kind == "link_open":
-            if link_url is not None:
+        match kind:
+            case "strong_open":
+                bold_depth += 1
+            case "strong_close":
+                bold_depth -= 1
+            case "em_open":
+                italic_depth += 1
+            case "em_close":
+                italic_depth -= 1
+            case "link_open":
+                if link_url is not None:
+                    raise UnsupportedSourceError
+                destination = token.attrGet("href")
+                if not isinstance(destination, str) or not _is_safe_link(destination):
+                    raise UnsupportedSourceError
+                link_url = destination
+            case "link_close":
+                if link_url is None:
+                    raise UnsupportedSourceError
+                link_url = None
+            case "text" | "code_inline" | "softbreak" | "hardbreak":
+                content = (
+                    " " if kind == "softbreak" else "\n" if kind == "hardbreak" else token.content
+                )
+                _append_inline(
+                    result,
+                    content,
+                    bold=bold_depth > 0,
+                    italic=italic_depth > 0,
+                    code=kind == "code_inline",
+                    url=link_url,
+                )
+            case "image" | "html_inline" | "s_open" | "s_close":
                 raise UnsupportedSourceError
-            destination = token.attrGet("href")
-            if not isinstance(destination, str) or not _is_safe_link(destination):
+            case _:
                 raise UnsupportedSourceError
-            link_url = destination
-        elif kind == "link_close":
-            if link_url is None:
-                raise UnsupportedSourceError
-            link_url = None
-        elif kind in {"text", "code_inline", "softbreak", "hardbreak"}:
-            content = " " if kind == "softbreak" else "\n" if kind == "hardbreak" else token.content
-            _append_inline(
-                result,
-                content,
-                bold=bold_depth > 0,
-                italic=italic_depth > 0,
-                code=kind == "code_inline",
-                url=link_url,
-            )
-        elif kind in {"image", "html_inline", "s_open", "s_close"}:
-            raise UnsupportedSourceError
-        else:
-            raise UnsupportedSourceError
         if bold_depth < 0 or italic_depth < 0:
             raise UnsupportedSourceError
     if bold_depth or italic_depth or link_url is not None:

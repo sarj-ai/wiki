@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { sanitizeRedirectPath } from "./url-utils";
+import { sanitizeRedirectPath } from "./sanitize-redirect-path";
 
 describe("sanitizeRedirectPath", () => {
   it("passes a normal absolute path through unchanged", () => {

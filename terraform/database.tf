@@ -2,6 +2,10 @@
 resource "google_sql_database" "sarj_wiki" {
   name     = "sarj_wiki"
   instance = google_sql_database_instance.dammam[0].name
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "random_password" "wiki_db" {

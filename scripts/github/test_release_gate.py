@@ -130,6 +130,8 @@ def test_gate_bootstraps_python_before_every_invocation(
         "uv",
         "run",
         "--no-project",
+        "--with",
+        "typer==0.27.2",
         "--python",
         "3.14",
         "python",

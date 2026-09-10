@@ -22,7 +22,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api-error";
-import { documentAliasError } from "@/lib/document-alias-validation";
+import { documentAliasError } from "@/lib/document-alias-error";
 import { smartCreateApi } from "@/lib/smart-create-client";
 import {
   defaultAlias,

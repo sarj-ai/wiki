@@ -109,34 +109,35 @@ def test_container_and_caption_failures_are_classified_without_provider_data(
     footer = _footer()
     paragraph = footer["content"][0]["paragraph"]
     run = paragraph["elements"][0]
-    if change == "footer_fields":
-        footer["SECRET"] = "SECRET"
-    elif change == "content_missing":
-        footer.pop("content")
-    elif change == "content_type":
-        footer["content"] = "SECRET"
-    elif change == "paragraph_count":
-        footer["content"].append(deepcopy(footer["content"][0]))
-    elif change == "paragraph_fields":
-        paragraph["SECRET"] = "SECRET"
-    elif change == "paragraph_missing":
-        footer["content"][0].pop("paragraph")
-    elif change == "runs_missing":
-        paragraph.pop("elements")
-    elif change == "runs_empty":
-        paragraph["elements"] = []
-    elif change == "run_type":
-        paragraph["elements"] = ["SECRET"]
-    elif change == "run_fields":
-        run["SECRET"] = "SECRET"
-    elif change == "text_run_missing":
-        run.pop("textRun")
-    elif change == "text_run_fields":
-        run["textRun"]["SECRET"] = "SECRET"
-    elif change == "text_content_missing":
-        run["textRun"].pop("content")
-    else:
-        run["textRun"]["content"] = "SECRET\n"
+    match change:
+        case "footer_fields":
+            footer["SECRET"] = "SECRET"
+        case "content_missing":
+            footer.pop("content")
+        case "content_type":
+            footer["content"] = "SECRET"
+        case "paragraph_count":
+            footer["content"].append(deepcopy(footer["content"][0]))
+        case "paragraph_fields":
+            paragraph["SECRET"] = "SECRET"
+        case "paragraph_missing":
+            footer["content"][0].pop("paragraph")
+        case "runs_missing":
+            paragraph.pop("elements")
+        case "runs_empty":
+            paragraph["elements"] = []
+        case "run_type":
+            paragraph["elements"] = ["SECRET"]
+        case "run_fields":
+            run["SECRET"] = "SECRET"
+        case "text_run_missing":
+            run.pop("textRun")
+        case "text_run_fields":
+            run["textRun"]["SECRET"] = "SECRET"
+        case "text_content_missing":
+            run["textRun"].pop("content")
+        case _:
+            run["textRun"]["content"] = "SECRET\n"
     failure = footer_flow._footer_shape_failure(
         footer, "https://private.example/SECRET", populated=True, display_text="Open in Wiki"
     )

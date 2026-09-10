@@ -137,8 +137,7 @@ class PostgresAliasService(AliasService):
         if not file.can_edit:
             raise AliasEditForbiddenError
         for alias in candidates:
-            existing = await self._active_for_file(file.id)
-            if existing is not None:
+            if (existing := await self._active_for_file(file.id)) is not None:
                 return _to_read(existing)
             statement = (
                 pg_insert(DocumentAlias)
@@ -152,8 +151,7 @@ class PostgresAliasService(AliasService):
                 return _to_read(row)
             # Under READ COMMITTED this new query observes a concurrent winner
             # after ON CONFLICT has waited for that transaction to finish.
-            existing = await self._active_for_file(file.id)
-            if existing is not None:
+            if (existing := await self._active_for_file(file.id)) is not None:
                 return _to_read(existing)
         raise AliasConflictError
 
@@ -172,8 +170,7 @@ class PostgresAliasService(AliasService):
         file = await self._files.get(file_id)
         if not file.can_edit:
             raise AliasEditForbiddenError
-        row = await self._active_for_file(file_id)
-        if row is None:
+        if (row := await self._active_for_file(file_id)) is None:
             return
         row.retired_at = datetime.now(UTC)
         row.retired_by = self._user.id

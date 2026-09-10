@@ -87,13 +87,11 @@ async def create_or_load_qa_corpus_campaign(
     _validate_destination(authority, destination)
     await db.execute(select(func.pg_advisory_xact_lock(_advisory_key(authority))))
     snapshot = await load_qa_campaign_authority_snapshot(db, authority=authority, for_update=True)
-    now = await db.scalar(select(func.clock_timestamp()))
-    if now is None:
+    if (now := await db.scalar(select(func.clock_timestamp()))) is None:
         raise QaCorpusCampaignError
     prepared = _prepare_campaign(authority, snapshot, plan, destination, now)
 
-    existing = await _campaign_for_run(db, snapshot.run_id)
-    if existing is not None:
+    if (existing := await _campaign_for_run(db, snapshot.run_id)) is not None:
         return CreatedQaCorpusCampaign(
             campaign=await _require_identical_campaign(db, existing, prepared),
             replayed=True,

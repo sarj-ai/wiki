@@ -12,4 +12,4 @@ jq -n '{
   GITHUB_WORKFLOW_REF: env.GITHUB_WORKFLOW_REF,
   GITHUB_OUTPUT: env.GITHUB_OUTPUT,
   RELEASE_NEEDS: (env.RELEASE_NEEDS // "{}")
-}' | uv run --no-project --python 3.14 python scripts/github/release_gate.py "$@"
+}' | uv run --no-project --with typer==0.27.2 --python 3.14 python scripts/github/release_gate.py "$@"

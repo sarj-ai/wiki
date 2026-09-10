@@ -485,19 +485,20 @@ def test_direct_id_recovery_rejects_changed_identity(monkeypatch: pytest.MonkeyP
     gateway = object.__new__(GoogleWordGateway)
     properties = word_gateway._properties(h.operation, h.source.content, "hash")
     response = metadata(h.source.content, id="output", appProperties=properties)
-    if change in {"operation", "source", "output"}:
-        key = {
-            "operation": "sarjWordTransformOperation",
-            "source": "sarjWordSourceSha256",
-            "output": "sarjWordOutputSha256",
-        }[change]
-        properties[key] = "wrong"
-    elif change == "file-id":
-        response["id"] = "wrong"
-    elif change == "parent":
-        response["parents"] = ["elsewhere"]
-    else:
-        response["mimeType"] = "application/vnd.google-apps.document"
+    match change:
+        case "operation" | "source" | "output":
+            key = {
+                "operation": "sarjWordTransformOperation",
+                "source": "sarjWordSourceSha256",
+                "output": "sarjWordOutputSha256",
+            }[change]
+            properties[key] = "wrong"
+        case "file-id":
+            response["id"] = "wrong"
+        case "parent":
+            response["parents"] = ["elsewhere"]
+        case _:
+            response["mimeType"] = "application/vnd.google-apps.document"
     monkeypatch.setattr(gateway, "_word_metadata_sync", lambda _: response)
     with pytest.raises((OutputConflictError, UnsupportedSourceError)):
         gateway._recover_word_sync(h.operation, h.source, "hash", FileId("output"))

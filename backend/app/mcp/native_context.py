@@ -37,8 +37,7 @@ def native_context_factory(
             raise McpAuthorizationError
         # Revalidate opaque credentials and the live grant for every tool call.
         # A Streamable HTTP session must not retain a principal after disconnect.
-        verified = await provider.load_access_token(incoming.token)
-        if verified is None:
+        if (verified := await provider.load_access_token(incoming.token)) is None:
             raise McpAuthorizationError
         claims = _VerifiedClaims.model_validate(verified.claims)
         if verified.subject != str(claims.user_id):

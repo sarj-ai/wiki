@@ -154,14 +154,6 @@
       "count": 1
     }
   },
-  "src/lib/wiki-read-client.ts": {
-    "@sarj/prefer-immutable-module-constant": {
-      "count": 1
-    },
-    "@typescript-eslint/naming-convention": {
-      "count": 1
-    }
-  },
   "src/lib/wiki-schemas.ts": {
     "@typescript-eslint/naming-convention": {
       "count": 17

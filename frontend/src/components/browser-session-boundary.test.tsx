@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { BrowserSessionBoundary } from "@/components/browser-session-boundary";
 import { recentDocsStorageKey, writeActiveBrowserUser } from "@/lib/browser-storage";
 import { useBrowserUserId } from "@/lib/browser-user-context";
-import { installLocalStorage } from "@/test-stubs/local-storage";
+import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
 describe("browser session identity boundary", () => {
   let container: HTMLDivElement;

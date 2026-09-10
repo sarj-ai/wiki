@@ -108,8 +108,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
 
     @override
     async def get_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree:
-        cached = await self.peek_drive_tree(db, drive_id)
-        if cached is not None:
+        if (cached := await self.peek_drive_tree(db, drive_id)) is not None:
             return cached
         tree = await self._sf.do(
             self._singleflight_key("drive", drive_id),
@@ -122,11 +121,9 @@ class PostgresSidebarCacheService(SidebarCacheService):
 
     @override
     async def peek_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree | None:
-        row = await self._load_row(db, drive_id)
-        if row is None:
+        if (row := await self._load_row(db, drive_id)) is None:
             return None
-        tree = await self._decode_row(db, row)
-        if tree is None:
+        if (tree := await self._decode_row(db, row)) is None:
             return None
         if datetime.now(UTC) - row.refreshed_at > settings.SIDEBAR_CACHE_TTL:
             self._schedule_refresh(drive_id)

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import argparse
+from dataclasses import dataclass
 import re
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 from scripts.github.release_gate import (
     API_PREFIX,
@@ -19,6 +19,7 @@ from scripts.github.release_gate import (
     require_current_main,
     validate_repository,
 )
+import typer
 
 
 if TYPE_CHECKING:
@@ -189,7 +190,25 @@ def serving_revision(service: JsonObject) -> str:
     return str(revision)
 
 
-def verify_serving(args: argparse.Namespace) -> None:
+@dataclass(frozen=True, kw_only=True)
+class ServingArguments:
+    verifier_sha: str
+    source_sha: str
+    project: str
+    region: str
+    repository: str
+    service: str
+    image: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class SourceArguments:
+    verifier_sha: str
+    run_id: int
+    run_attempt: int
+
+
+def verify_serving(args: ServingArguments) -> None:
     for value in (args.project, args.region, args.repository, args.service, args.image):
         require(
             re.fullmatch(r"[a-z][a-z0-9-]{0,62}", value), "Invalid cloud resource name"
@@ -250,13 +269,12 @@ def verify_serving(args: argparse.Namespace) -> None:
     )
 
 
-def verify_current_release(args: argparse.Namespace) -> str | None:
+def verify_current_release(args: SourceArguments | ServingArguments) -> str | None:
     require(re.fullmatch(r"[0-9a-f]{40}", args.verifier_sha), "Invalid verifier SHA")
     require_current_main(fetch_github, args.verifier_sha)
-    if args.phase == "source":
+    if isinstance(args, SourceArguments):
         source_sha = verify_source(fetch_github, args.run_id, args.run_attempt)
     else:
-        require(args.phase == "serving", "Invalid recovery phase")
         require(re.fullmatch(r"[0-9a-f]{40}", args.source_sha), "Invalid source SHA")
         verify_serving(args)
         source_sha = None
@@ -264,31 +282,78 @@ def verify_current_release(args: argparse.Namespace) -> str | None:
     return source_sha
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verifier-sha", required=True)
-    phases = parser.add_subparsers(dest="phase", required=True)
-    source = phases.add_parser("source")
-    source.add_argument("--run-id", type=int, required=True)
-    source.add_argument("--run-attempt", type=int, required=True)
-    serving = phases.add_parser("serving")
-    serving.add_argument("--source-sha", required=True)
-    for name in ("project", "region", "repository", "service", "image"):
-        serving.add_argument(f"--{name}", required=True)
-    args = parser.parse_args()
+def _report(args: SourceArguments | ServingArguments) -> None:
     try:
         source_sha = verify_current_release(args)
     except ReleaseBlockedError, OSError, ValueError, TypeError:
         sys.stderr.write(
             "Read-only recovery blocked: release identity or completed mutations are unverified.\n"
         )
-        return 1
+        raise typer.Exit(1) from None
     if source_sha is not None:
         sys.stdout.write(f"{source_sha}\n")
     else:
         sys.stdout.write("Read-only recovery evidence verified.\n")
-    return 0
+
+
+CLI = typer.Typer(
+    add_completion=False,
+    pretty_exceptions_enable=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__doc__,
+)
+
+
+@CLI.callback()
+def configure(
+    context: typer.Context, verifier_sha: Annotated[str, typer.Option()]
+) -> None:
+    context.obj = verifier_sha
+
+
+def _verifier_sha(context: typer.Context) -> str:
+    if not isinstance(context.obj, str):
+        message = "--verifier-sha is required"
+        raise typer.BadParameter(message)
+    return context.obj
+
+
+@CLI.command("source")
+def source_command(
+    context: typer.Context,
+    run_id: Annotated[int, typer.Option()],
+    run_attempt: Annotated[int, typer.Option()],
+) -> None:
+    _report(
+        SourceArguments(
+            verifier_sha=_verifier_sha(context), run_id=run_id, run_attempt=run_attempt
+        )
+    )
+
+
+@CLI.command("serving")
+def serving_command(
+    context: typer.Context,
+    *,
+    source_sha: Annotated[str, typer.Option()],
+    project: Annotated[str, typer.Option()],
+    region: Annotated[str, typer.Option()],
+    repository: Annotated[str, typer.Option()],
+    service: Annotated[str, typer.Option()],
+    image: Annotated[str, typer.Option()],
+) -> None:
+    _report(
+        ServingArguments(
+            verifier_sha=_verifier_sha(context),
+            source_sha=source_sha,
+            project=project,
+            region=region,
+            repository=repository,
+            service=service,
+            image=image,
+        )
+    )
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    CLI()

@@ -31,7 +31,7 @@ import {
   useSaveDocumentAlias,
 } from "@/hooks/use-document-alias";
 import { ApiError } from "@/lib/api-error";
-import { documentAliasError } from "@/lib/document-alias-validation";
+import { documentAliasError } from "@/lib/document-alias-error";
 import {
   documentShortLink,
   SHORT_LINK_COPY_FEEDBACK_MS,

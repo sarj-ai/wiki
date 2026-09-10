@@ -35,7 +35,6 @@ import { documentAliasKey } from "@/hooks/use-document-alias";
 import { ApiError } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
 import { DOCUMENT_TRANSFORM_API } from "@/lib/document-transform-api";
-import { preservedInPlaceOutcome } from "@/lib/document-transform-outcome";
 import {
   claimTransformRecovery,
   completeTransformRecovery,
@@ -62,6 +61,7 @@ import {
   clearMarkdownRecovery,
   type MarkdownRecoveryBundle,
 } from "@/lib/markdown-transform-recovery";
+import { preservedInPlaceOutcome } from "@/lib/preserved-in-place-outcome";
 import type { SmartDestination } from "@/lib/smart-create-types";
 import { cn } from "@/lib/utils";
 import { injectNewFileIntoCaches } from "@/lib/wiki-cache";

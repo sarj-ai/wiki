@@ -1,4 +1,4 @@
-import { sendPerformanceEvent } from "@/lib/perf-client";
+import { sendPerformanceEvent } from "@/lib/clients/send-performance-event";
 
 type PerfExtra = Record<string, boolean | number | string>;
 

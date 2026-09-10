@@ -138,22 +138,29 @@ class _Task(_StrictModel):
 
     @model_validator(mode="after")
     def validate_lifecycle(self) -> Self:
-        if self.task_status == "pending":
-            valid = self.attempt_count == 0 and self.started_at is None and self.finished_at is None
-        elif self.task_status == "running":
-            valid = (
-                self.attempt_count > 0 and self.started_at is not None and self.finished_at is None
-            )
-        elif self.task_status == "cancelled":
-            valid = (
-                self.attempt_count == 0 and self.started_at is None and self.finished_at is not None
-            )
-        else:
-            valid = (
-                self.attempt_count > 0
-                and self.started_at is not None
-                and self.finished_at is not None
-            )
+        match self.task_status:
+            case "pending":
+                valid = (
+                    self.attempt_count == 0 and self.started_at is None and self.finished_at is None
+                )
+            case "running":
+                valid = (
+                    self.attempt_count > 0
+                    and self.started_at is not None
+                    and self.finished_at is None
+                )
+            case "cancelled":
+                valid = (
+                    self.attempt_count == 0
+                    and self.started_at is None
+                    and self.finished_at is not None
+                )
+            case _:
+                valid = (
+                    self.attempt_count > 0
+                    and self.started_at is not None
+                    and self.finished_at is not None
+                )
         chronology_valid = (
             (self.started_at is None or self.created_at <= self.started_at)
             and (self.finished_at is None or self.created_at <= self.finished_at)

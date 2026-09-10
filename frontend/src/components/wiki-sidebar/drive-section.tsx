@@ -45,7 +45,7 @@ import { MIME_DOC, MIME_HTML } from "@/types/wiki";
 import { CreateFileMenu } from "./create-file-menu";
 import { DriveAccessSheet } from "./drive-access-sheet";
 import { DriveSectionProvider, type DriveSectionValue } from "./drive-context";
-import { EmptyDropZone } from "./empty-droppable";
+import { EmptyDropZone } from "./empty-drop-zone";
 import { FileRow } from "./file-row";
 import { SortableItem } from "./sortable-item";
 import { TreeNode } from "./tree-node";

@@ -158,30 +158,31 @@ def test_allowance_never_covers_unproven_or_modified_blocks(change: str):
     transformed = original
     findings = (_finding(),)
     mode = TransformMode.FORMAT
-    if change == "text":
-        transformed = replace(original, blocks=(replace(original.blocks[0], text="Changed"),))
-    elif change in {"partial_ranges", "missing_range"}:
-        block = original.blocks[0]
-        original = replace(
-            original,
-            blocks=(
-                replace(
-                    block,
-                    font_style_ranges=block.font_style_ranges[:1]
-                    if change == "partial_ranges"
-                    else (),
+    match change:
+        case "text":
+            transformed = replace(original, blocks=(replace(original.blocks[0], text="Changed"),))
+        case "partial_ranges" | "missing_range":
+            block = original.blocks[0]
+            original = replace(
+                original,
+                blocks=(
+                    replace(
+                        block,
+                        font_style_ranges=block.font_style_ranges[:1]
+                        if change == "partial_ranges"
+                        else (),
+                    ),
                 ),
-            ),
-        )
-        transformed = original
-    elif change == "wrong_tab":
-        native["tabs"][0]["tabProperties"]["tabId"] = "other"
-    elif change == "unknown_finding":
-        findings = (TransformFinding(code="other_warning", block_id="b0", detail="Unrelated"),)
-    elif change == "unknown_block":
-        findings = (_finding().model_copy(update={"block_id": "other"}),)
-    else:
-        mode = TransformMode.UNSLOP
+            )
+            transformed = original
+        case "wrong_tab":
+            native["tabs"][0]["tabProperties"]["tabId"] = "other"
+        case "unknown_finding":
+            findings = (TransformFinding(code="other_warning", block_id="b0", detail="Unrelated"),)
+        case "unknown_block":
+            findings = (_finding().model_copy(update={"block_id": "other"}),)
+        case _:
+            mode = TransformMode.UNSLOP
     assert (
         preserved_native_findings(
             original=original,

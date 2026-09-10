@@ -239,19 +239,20 @@ async def test_recovery_rejects_unplanned_or_unproven_changes(
     created = await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=initial)
     await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=created)
     tab = document["tabs"][0]["documentTab"]
-    if change == "body":
-        tab["body"] = {"content": []}
-    elif change == "header":
-        tab["headers"] = {}
-    elif change == "custom_footer":
-        tab["footers"]["other"] = {"content": []}
-    elif change == "marker":
-        tab["namedRanges"].pop(created.populate_marker)
-    else:
-        style = tab["footers"]["f1"]["content"][0]["paragraph"]["elements"][0]["textRun"][
-            "textStyle"
-        ]
-        style["link" if change == "link" else "weightedFontFamily"] = {"tampered": True}
+    match change:
+        case "body":
+            tab["body"] = {"content": []}
+        case "header":
+            tab["headers"] = {}
+        case "custom_footer":
+            tab["footers"]["other"] = {"content": []}
+        case "marker":
+            tab["namedRanges"].pop(created.populate_marker)
+        case _:
+            style = tab["footers"]["f1"]["content"][0]["paragraph"]["elements"][0]["textRun"][
+                "textStyle"
+            ]
+            style["link" if change == "link" else "weightedFontFamily"] = {"tampered": True}
     with pytest.raises(InPlaceNeedsReviewError):
         await gateway.apply_copy_footer_stage(document_id=FileId("doc"), checkpoint=created)
     assert len(provider.calls) == 2
@@ -328,16 +329,17 @@ async def test_footer_coverage_rejects_invalid_durable_topology(
     _, checkpoint, _ = await _plan(monkeypatch, _document())
     payload = checkpoint.model_dump(mode="json")
     coverage = payload["coverage"]
-    if change == "duplicate":
-        coverage["topology"] = ["t1", "t1"]
-    elif change == "overlap":
-        coverage["pending"] = ["t1"]
-    elif change == "wrong_tab":
-        payload["tab_id"] = "unplanned"
-    elif change == "nested":
-        coverage["completed"] = [checkpoint.model_dump(mode="json")]
-    else:
-        coverage["topology"] = [f"t{index}" for index in range(51)]
+    match change:
+        case "duplicate":
+            coverage["topology"] = ["t1", "t1"]
+        case "overlap":
+            coverage["pending"] = ["t1"]
+        case "wrong_tab":
+            payload["tab_id"] = "unplanned"
+        case "nested":
+            coverage["completed"] = [checkpoint.model_dump(mode="json")]
+        case _:
+            coverage["topology"] = [f"t{index}" for index in range(51)]
     with pytest.raises(ValidationError):
         NativeFooterCheckpoint.model_validate(payload)
 

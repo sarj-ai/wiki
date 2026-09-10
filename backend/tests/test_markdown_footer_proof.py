@@ -96,61 +96,62 @@ def test_footer_partial_indices_preserve_proven_adjacency(omitted: str) -> None:
 def test_footer_proof_rejects_extra_protected_or_malformed_content(change: str) -> None:
     document = _indexed_footer(newline=True)
     runs = _footer_runs(document)
-    if change == "foreign_text":
-        runs[0]["textRun"]["content"] = "Foreign"
-    elif change == "reversed":
-        runs.reverse()
-    elif change == "duplicate_page":
-        runs.insert(2, deepcopy(runs[1]))
-    elif change == "wrong_page":
-        runs[1]["autoText"]["type"] = "PAGE_COUNT"
-    elif change == "extra_newline":
-        runs.append(deepcopy(runs[-1]))
-    elif change == "early_newline":
-        runs.insert(0, runs.pop())
-    elif change in {"space", "crlf"}:
-        runs[-1]["textRun"]["content"] = " " if change == "space" else "\r\n"
-    elif change == "unknown_wrapper":
-        runs[0]["unknown"] = {}
-    elif change == "both_variants":
-        runs[0]["autoText"] = {"type": "PAGE_NUMBER"}
-    elif change in {"boolean_index", "negative_index", "string_index", "reversed_index"}:
-        runs[0]["startIndex"] = {
-            "boolean_index": True,
-            "negative_index": -1,
-            "string_index": "0",
-            "reversed_index": 8,
-        }[change]
-    elif change == "gap":
-        runs[1]["startIndex"] = 8
-    elif change == "wrong_width":
-        runs[0]["endIndex"] = 6
-    elif change == "unknown_payload":
-        runs[0]["textRun"]["unknown"] = {}
-    elif change in {"suggestion", "newline_suggestion"}:
-        runs[-1 if change == "newline_suggestion" else 0]["textRun"]["suggestedInsertionIds"] = [
-            "synthetic"
-        ]
-    elif change == "newline_link":
-        runs[-1]["textRun"]["textStyle"]["link"] = {"url": "https://example.com"}
-    elif change == "malformed_style":
-        runs[-1]["textRun"]["textStyle"] = []
-    elif change == "unknown_style":
-        runs[-1]["textRun"]["textStyle"]["unknown"] = True
-    elif change == "outer_end":
-        _paragraph_wrapper(document).update(startIndex=0, endIndex=10)
-    elif change == "paragraph_suggestion":
-        _paragraph_wrapper(document)["paragraph"]["suggestedParagraphStyleChanges"] = {
-            "synthetic": {}
-        }
-    elif change == "shifted_contiguous_tail":
-        for run in runs[1:]:
-            run["startIndex"] += 1
-            run["endIndex"] += 1
-    else:
-        document["tabs"][0]["documentTab"]["footers"]["footer-1"]["content"].append(
-            {"paragraph": {"elements": []}}
-        )
+    match change:
+        case "foreign_text":
+            runs[0]["textRun"]["content"] = "Foreign"
+        case "reversed":
+            runs.reverse()
+        case "duplicate_page":
+            runs.insert(2, deepcopy(runs[1]))
+        case "wrong_page":
+            runs[1]["autoText"]["type"] = "PAGE_COUNT"
+        case "extra_newline":
+            runs.append(deepcopy(runs[-1]))
+        case "early_newline":
+            runs.insert(0, runs.pop())
+        case "space" | "crlf":
+            runs[-1]["textRun"]["content"] = " " if change == "space" else "\r\n"
+        case "unknown_wrapper":
+            runs[0]["unknown"] = {}
+        case "both_variants":
+            runs[0]["autoText"] = {"type": "PAGE_NUMBER"}
+        case "boolean_index" | "negative_index" | "string_index" | "reversed_index":
+            runs[0]["startIndex"] = {
+                "boolean_index": True,
+                "negative_index": -1,
+                "string_index": "0",
+                "reversed_index": 8,
+            }[change]
+        case "gap":
+            runs[1]["startIndex"] = 8
+        case "wrong_width":
+            runs[0]["endIndex"] = 6
+        case "unknown_payload":
+            runs[0]["textRun"]["unknown"] = {}
+        case "suggestion" | "newline_suggestion":
+            runs[-1 if change == "newline_suggestion" else 0]["textRun"][
+                "suggestedInsertionIds"
+            ] = ["synthetic"]
+        case "newline_link":
+            runs[-1]["textRun"]["textStyle"]["link"] = {"url": "https://example.com"}
+        case "malformed_style":
+            runs[-1]["textRun"]["textStyle"] = []
+        case "unknown_style":
+            runs[-1]["textRun"]["textStyle"]["unknown"] = True
+        case "outer_end":
+            _paragraph_wrapper(document).update(startIndex=0, endIndex=10)
+        case "paragraph_suggestion":
+            _paragraph_wrapper(document)["paragraph"]["suggestedParagraphStyleChanges"] = {
+                "synthetic": {}
+            }
+        case "shifted_contiguous_tail":
+            for run in runs[1:]:
+                run["startIndex"] += 1
+                run["endIndex"] += 1
+        case _:
+            document["tabs"][0]["documentTab"]["footers"]["footer-1"]["content"].append(
+                {"paragraph": {"elements": []}}
+            )
     result = verify_markdown_import(
         document, markdown_import_manifest("Body", title="Import", branded=True)
     )

@@ -194,29 +194,30 @@ def test_ambiguous_or_protected_documents_are_not_promoted(change: str) -> None:
     document = _document()
     content = document["tabs"][0]["documentTab"]["body"]["content"]
     paragraph = content[0]["paragraph"]
-    if change == "one":
-        del content[2:]
-    elif change == "heading":
-        paragraph["paragraphStyle"]["namedStyleType"] = "HEADING_1"
-    elif change == "list":
-        paragraph["bullet"] = {"listId": "authored-list"}
-    elif change == "link":
-        paragraph["elements"][0]["textRun"]["textStyle"]["link"] = {"url": "https://sarj.ai"}
-    elif change == "chip":
-        paragraph["elements"].append({"inlineObjectElement": {"inlineObjectId": "authored"}})
-    elif change == "suggestion":
-        paragraph["elements"][0]["suggestedInsertionIds"] = ["authored"]
-    elif change == "prose":
-        paragraph["elements"][0]["textRun"]["content"] = "We decided:\n"
-    elif change == "duplicate":
-        content[2]["paragraph"]["elements"] = deepcopy(paragraph["elements"])
-    elif change == "empty_section":
-        del content[1]
-    elif change == "not_bold":
-        paragraph["elements"][0]["textRun"]["textStyle"]["bold"] = False
-    else:
-        document["tabs"].append(deepcopy(document["tabs"][0]))
-        document["tabs"][1]["tabProperties"]["tabId"] = "second"
+    match change:
+        case "one":
+            del content[2:]
+        case "heading":
+            paragraph["paragraphStyle"]["namedStyleType"] = "HEADING_1"
+        case "list":
+            paragraph["bullet"] = {"listId": "authored-list"}
+        case "link":
+            paragraph["elements"][0]["textRun"]["textStyle"]["link"] = {"url": "https://sarj.ai"}
+        case "chip":
+            paragraph["elements"].append({"inlineObjectElement": {"inlineObjectId": "authored"}})
+        case "suggestion":
+            paragraph["elements"][0]["suggestedInsertionIds"] = ["authored"]
+        case "prose":
+            paragraph["elements"][0]["textRun"]["content"] = "We decided:\n"
+        case "duplicate":
+            content[2]["paragraph"]["elements"] = deepcopy(paragraph["elements"])
+        case "empty_section":
+            del content[1]
+        case "not_bold":
+            paragraph["elements"][0]["textRun"]["textStyle"]["bold"] = False
+        case _:
+            document["tabs"].append(deepcopy(document["tabs"][0]))
+            document["tabs"][1]["tabProperties"]["tabId"] = "second"
     assert plan_authored_labels(parse_google_document(document, title="Review")) == ()
 
 

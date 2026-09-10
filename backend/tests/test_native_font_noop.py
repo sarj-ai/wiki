@@ -142,12 +142,13 @@ def test_ambiguous_or_changed_payload_keeps_all_requests(change: str) -> None:
         case "segment" | "wrong_mask" | "request_boolean":
             for item in requests:
                 if item.get("updateTextStyle", {}).get("fields") == "weightedFontFamily.fontFamily":
-                    if change == "segment":
-                        item["updateTextStyle"]["range"]["segmentId"] = "header"
-                    elif change == "wrong_mask":
-                        item["updateTextStyle"]["fields"] = "weightedFontFamily"
-                    else:
-                        item["updateTextStyle"]["range"]["startIndex"] = True
+                    match change:
+                        case "segment":
+                            item["updateTextStyle"]["range"]["segmentId"] = "header"
+                        case "wrong_mask":
+                            item["updateTextStyle"]["fields"] = "weightedFontFamily"
+                        case _:
+                            item["updateTextStyle"]["range"]["startIndex"] = True
         case _:
             raise AssertionError
     assert (

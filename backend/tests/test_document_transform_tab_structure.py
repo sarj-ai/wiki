@@ -120,12 +120,13 @@ def test_comments_unknown_existing_tabs_and_short_documents_decline():
 def test_links_suggestions_and_nontext_decline(feature: str):
     document = _document()
     run = document["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]["elements"][0]
-    if feature == "link":
-        run["textRun"]["textStyle"]["link"] = {"url": "https://example.test"}
-    elif feature == "suggestion":
-        run["suggestedInsertionIds"] = ["suggestion"]
-    else:
-        run["inlineObjectElement"] = {"inlineObjectId": "image"}
+    match feature:
+        case "link":
+            run["textRun"]["textStyle"]["link"] = {"url": "https://example.test"}
+        case "suggestion":
+            run["suggestedInsertionIds"] = ["suggestion"]
+        case _:
+            run["inlineObjectElement"] = {"inlineObjectId": "image"}
     assert plan_tab_structure(document, comments_verified_absent=True) is None
 
 

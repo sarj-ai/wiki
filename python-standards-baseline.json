@@ -1,14 +1,5 @@
 {
   "backend/app/cache/__init__.py": {
     "SARJ420": 1
-  },
-  "backend/app/document_transform/__init__.py": {
-    "SARJ438": 1
-  },
-  "backend/app/document_transform/safety.py": {
-    "SARJ076": 1
-  },
-  "backend/app/logging_config.py": {
-    "SARJ438": 1
   }
 }

@@ -81,40 +81,41 @@ def test_header_proof_never_accepts_extra_or_changed_logo_content(change: str) -
     tab = document["tabs"][0]["documentTab"]
     outer = tab["headers"]["header-1"]["content"][0]
     runs = outer["paragraph"]["elements"]
-    if change == "unknown_wrapper":
-        runs[0]["unknown"] = {}
-    elif change == "suggestion":
-        runs[0]["suggestedInsertionIds"] = ["SECRET"]
-    elif change == "foreign_text":
-        runs[1]["textRun"]["content"] = "SECRET"
-    elif change in {"extra_logo", "extra_lf"}:
-        runs.append(deepcopy(runs[0 if change == "extra_logo" else 1]))
-    elif change == "link":
-        runs[1]["textRun"]["textStyle"]["link"] = {"url": "https://example.com/SECRET"}
-    elif change == "wrong_id":
-        runs[0]["inlineObjectElement"]["inlineObjectId"] = "SECRET"
-    elif change == "wrong_metadata":
-        tab["inlineObjects"]["logo-1"]["inlineObjectProperties"]["embeddedObject"][
-            "description"
-        ] = "SECRET"
-    elif change == "wrong_dimensions":
-        tab["inlineObjects"]["logo-1"]["inlineObjectProperties"]["embeddedObject"]["size"]["width"][
-            "magnitude"
-        ] = 100
-    elif change == "outer_end":
-        outer["endIndex"] = 3
-    elif change == "gap":
-        runs[1].update(startIndex=2, endIndex=3)
-    elif change == "boolean":
-        runs[0]["startIndex"] = False
-    elif change == "negative":
-        runs[0]["startIndex"] = -1
-    elif change == "wrong_width":
-        runs[0]["endIndex"] = 2
-    elif change == "reversed":
-        runs.reverse()
-    else:
-        runs[0]["inlineObjectElement"]["unknown"] = {}
+    match change:
+        case "unknown_wrapper":
+            runs[0]["unknown"] = {}
+        case "suggestion":
+            runs[0]["suggestedInsertionIds"] = ["SECRET"]
+        case "foreign_text":
+            runs[1]["textRun"]["content"] = "SECRET"
+        case "extra_logo" | "extra_lf":
+            runs.append(deepcopy(runs[0 if change == "extra_logo" else 1]))
+        case "link":
+            runs[1]["textRun"]["textStyle"]["link"] = {"url": "https://example.com/SECRET"}
+        case "wrong_id":
+            runs[0]["inlineObjectElement"]["inlineObjectId"] = "SECRET"
+        case "wrong_metadata":
+            tab["inlineObjects"]["logo-1"]["inlineObjectProperties"]["embeddedObject"][
+                "description"
+            ] = "SECRET"
+        case "wrong_dimensions":
+            tab["inlineObjects"]["logo-1"]["inlineObjectProperties"]["embeddedObject"]["size"][
+                "width"
+            ]["magnitude"] = 100
+        case "outer_end":
+            outer["endIndex"] = 3
+        case "gap":
+            runs[1].update(startIndex=2, endIndex=3)
+        case "boolean":
+            runs[0]["startIndex"] = False
+        case "negative":
+            runs[0]["startIndex"] = -1
+        case "wrong_width":
+            runs[0]["endIndex"] = 2
+        case "reversed":
+            runs.reverse()
+        case _:
+            runs[0]["inlineObjectElement"]["unknown"] = {}
     manifest = replace(
         markdown_import_manifest("Body", title="Import", branded=True), header_title=None
     )

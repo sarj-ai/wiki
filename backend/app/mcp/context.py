@@ -51,8 +51,7 @@ async def open_mcp_context(
 ) -> AsyncGenerator[McpApplicationContext]:
     principal.require(McpCapability.READ)
     async with sessionmaker() as db:
-        user = await db.get(User, principal.user_id)
-        if user is None:
+        if (user := await db.get(User, principal.user_id)) is None:
             raise McpAuthorizationError
         current_revision = user.token_version
         if current_revision != principal.user_session_revision:

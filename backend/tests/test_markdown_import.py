@@ -413,20 +413,21 @@ def test_unexpected_google_doc_topology_fails_closed(extra_kind: str) -> None:
             }
         ]
     }
-    if extra_kind == "tab":
-        document["tabs"].append(
-            {
-                "tabProperties": {"tabId": "extra"},
-                "childTabs": [],
-                "documentTab": {"body": {"content": []}},
-            }
-        )
-    elif extra_kind == "inline":
-        document["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"]["elements"].append(
-            {"inlineObjectElement": {"inlineObjectId": "foreign"}}
-        )
-    else:
-        document["tabs"][0]["documentTab"]["positionedObjects"] = {"foreign": {}}
+    match extra_kind:
+        case "tab":
+            document["tabs"].append(
+                {
+                    "tabProperties": {"tabId": "extra"},
+                    "childTabs": [],
+                    "documentTab": {"body": {"content": []}},
+                }
+            )
+        case "inline":
+            document["tabs"][0]["documentTab"]["body"]["content"][1]["paragraph"][
+                "elements"
+            ].append({"inlineObjectElement": {"inlineObjectId": "foreign"}})
+        case _:
+            document["tabs"][0]["documentTab"]["positionedObjects"] = {"foreign": {}}
     assert verify_markdown_import(document, manifest).structure_preserved is False
 
 

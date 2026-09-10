@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
 
-import { validateCrossDriveMove } from "./drive-move-validation";
+import { validateCrossDriveMove } from "./validate-cross-drive-move";
 
 describe("validateCrossDriveMove", () => {
   it("allows files to move between drives", () => {

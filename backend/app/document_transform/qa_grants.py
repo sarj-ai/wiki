@@ -199,8 +199,7 @@ async def prepare_idempotent_qa_launch(
         destination_folder_id=destination_folder_id,
         mode=mode,
     )
-    row = await _locked_run(db, prepared.run_id)
-    if row is None:
+    if (row := await _locked_run(db, prepared.run_id)) is None:
         raise QaGrantError
     row.run.launch_idempotency_key = idempotency_key
     row.run.launch_claimed_at = row.now
@@ -321,8 +320,7 @@ async def prepare_qa_bootstrap_run(
     mode: TransformMode,
 ) -> PreparedQaRun:
     _validate_binding(release_sha, image_digest, source_folder_id, destination_folder_id)
-    row = await _locked_grant_by_id(db, grant_id)
-    if row is None:
+    if (row := await _locked_grant_by_id(db, grant_id)) is None:
         raise QaGrantError
     grant, user, session, now = row.grant, row.user, row.session, row.now
     if not _matches(
@@ -396,8 +394,7 @@ async def bind_qa_bootstrap_execution(
 ) -> None:
     _validate_runtime(execution_name, execution_job_name)
     _validate_binding(release_sha, image_digest, source_folder_id, destination_folder_id)
-    row = await _locked_run(db, run_id)
-    if row is None:
+    if (row := await _locked_run(db, run_id)) is None:
         raise QaGrantError
     run, grant, user, session, now = row.run, row.grant, row.user, row.session, row.now
     if not _run_matches(
@@ -464,8 +461,7 @@ async def bootstrap_attested_qa_execution(
     image_digest: str,
 ) -> QaBootstrapResult:
     _validate_runtime(execution_name, execution_job_name)
-    row = await _locked_active_launch_run(db)
-    if row is None:
+    if (row := await _locked_active_launch_run(db)) is None:
         raise QaGrantError
     run = row.run
     attestation_matches = all(
@@ -505,8 +501,7 @@ async def bootstrap_attested_qa_execution(
 
 
 async def read_active_qa_execution(db: AsyncSession) -> QaExecutionIdentity:
-    row = await _locked_active_launch_run(db)
-    if row is None:
+    if (row := await _locked_active_launch_run(db)) is None:
         raise QaGrantError
     run = row.run
     execution_name = run.execution_name
@@ -538,8 +533,7 @@ async def bootstrap_qa_run(
 ) -> QaCapability:
     _validate_runtime(execution_name)
     _validate_binding(release_sha, image_digest, source_folder_id, destination_folder_id)
-    row = await _locked_run(db, run_id)
-    if row is None:
+    if (row := await _locked_run(db, run_id)) is None:
         raise QaGrantError
     run, grant, user, session, now = row.run, row.grant, row.user, row.session, row.now
     if (
@@ -733,8 +727,7 @@ async def consume_qa_grant(
 ) -> QaCapability:
     _validate_runtime(execution_name)
     _validate_binding(release_sha, image_digest, source_folder_id, destination_folder_id)
-    row = await _locked_grant(db, token_digest=_digest(token))
-    if row is None:
+    if (row := await _locked_grant(db, token_digest=_digest(token))) is None:
         raise QaGrantError
     grant, user, session, now = row.grant, row.user, row.session, row.now
     capability = _derive_capability(derivation_key, grant.id, "consume", token, request_nonce)
@@ -796,8 +789,7 @@ async def renew_qa_capability(
     _validate_runtime(execution_name)
     _validate_binding(release_sha, image_digest, source_folder_id, destination_folder_id)
     supplied_digest = _digest(capability_token)
-    row = await _locked_grant(db, capability_digest=supplied_digest)
-    if row is None:
+    if (row := await _locked_grant(db, capability_digest=supplied_digest)) is None:
         raise QaGrantError
     grant, user, session, now = row.grant, row.user, row.session, row.now
     if require_submitted_task:
@@ -902,8 +894,9 @@ async def authorize_qa_capability(
 ) -> QaAuthority:
     _validate_runtime(execution_name)
     _validate_binding(release_sha, image_digest, source_folder_id, destination_folder_id)
-    row = await _current_capability_grant(db, capability_digest=_digest(capability_token))
-    if row is None:
+    if (
+        row := await _current_capability_grant(db, capability_digest=_digest(capability_token))
+    ) is None:
         raise QaGrantError
     grant, user, session, now = row.grant, row.user, row.session, row.now
     if (

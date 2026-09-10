@@ -176,8 +176,7 @@ class PostgresExtrasService(ExtrasService):
 
     @override
     async def get_preferences(self) -> PreferencesRead:
-        row = await self._db.get(UserPreferences, self._user.id)
-        if row is None:
+        if (row := await self._db.get(UserPreferences, self._user.id)) is None:
             return _DEFAULT_PREFS
         return PreferencesRead(
             show_non_doc_files=row.show_non_doc_files,

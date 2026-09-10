@@ -105,52 +105,53 @@ def test_non_equivalent_or_protected_terminal_runs_stay_locked(change: str) -> N
     element = document["tabs"][0]["documentTab"]["body"]["content"][0]
     paragraph = element["paragraph"]
     runs = paragraph["elements"]
-    if change == "gap":
-        runs[1]["startIndex"] += 1
-    elif change == "overlap":
-        runs[1]["startIndex"] -= 1
-    elif change == "wrong_end":
-        runs[1]["endIndex"] += 1
-    elif change == "missing_index":
-        runs[0].pop("startIndex")
-    elif change == "boolean_index":
-        runs[0]["startIndex"] = True
-    elif change == "string_index":
-        runs[0]["startIndex"] = "1"
-    elif change == "negative_index":
-        runs[0]["startIndex"] = -1
-    elif change == "boolean_paragraph":
-        element["startIndex"] = True
-    elif change == "negative_paragraph":
-        element["startIndex"] = -1
-    elif change == "paragraph_end":
-        element["endIndex"] += 1
-    elif change == "utf16_mismatch":
-        runs[0]["endIndex"] -= 1
-    elif change == "extra_run":
-        runs.append(deepcopy(runs[1]))
-    elif change == "content_run":
-        runs[1]["textRun"]["content"] = "More\n"
-    elif change in {"link", "newline_link"}:
-        runs[int(change == "newline_link")]["textRun"]["textStyle"]["link"] = {
-            "url": "https://example.com"
-        }
-    elif change in {"suggestion", "newline_suggestion"}:
-        runs[int(change == "newline_suggestion")]["suggestedInsertionIds"] = ["s1"]
-    elif change == "paragraph_suggestion":
-        paragraph["suggestedParagraphStyleChanges"] = {"s1": {}}
-    elif change == "chip":
-        runs.append({"inlineObjectElement": {"inlineObjectId": "object"}})
-    elif change in {"code", "newline_code"}:
-        runs[int(change == "newline_code")]["textRun"]["textStyle"]["weightedFontFamily"] = {
-            "fontFamily": "Courier New"
-        }
-    elif change == "unknown_run_field":
-        runs[0]["unknownContent"] = {}
-    elif change == "unknown_text_field":
-        runs[0]["textRun"]["unknownContent"] = {}
-    else:
-        runs[0]["textRun"]["content"] = "سياق:"
+    match change:
+        case "gap":
+            runs[1]["startIndex"] += 1
+        case "overlap":
+            runs[1]["startIndex"] -= 1
+        case "wrong_end":
+            runs[1]["endIndex"] += 1
+        case "missing_index":
+            runs[0].pop("startIndex")
+        case "boolean_index":
+            runs[0]["startIndex"] = True
+        case "string_index":
+            runs[0]["startIndex"] = "1"
+        case "negative_index":
+            runs[0]["startIndex"] = -1
+        case "boolean_paragraph":
+            element["startIndex"] = True
+        case "negative_paragraph":
+            element["startIndex"] = -1
+        case "paragraph_end":
+            element["endIndex"] += 1
+        case "utf16_mismatch":
+            runs[0]["endIndex"] -= 1
+        case "extra_run":
+            runs.append(deepcopy(runs[1]))
+        case "content_run":
+            runs[1]["textRun"]["content"] = "More\n"
+        case "link" | "newline_link":
+            runs[int(change == "newline_link")]["textRun"]["textStyle"]["link"] = {
+                "url": "https://example.com"
+            }
+        case "suggestion" | "newline_suggestion":
+            runs[int(change == "newline_suggestion")]["suggestedInsertionIds"] = ["s1"]
+        case "paragraph_suggestion":
+            paragraph["suggestedParagraphStyleChanges"] = {"s1": {}}
+        case "chip":
+            runs.append({"inlineObjectElement": {"inlineObjectId": "object"}})
+        case "code" | "newline_code":
+            runs[int(change == "newline_code")]["textRun"]["textStyle"]["weightedFontFamily"] = {
+                "fontFamily": "Courier New"
+            }
+        case "unknown_run_field":
+            runs[0]["unknownContent"] = {}
+        case "unknown_text_field":
+            runs[0]["textRun"]["unknownContent"] = {}
+        case _:
+            runs[0]["textRun"]["content"] = "سياق:"
     assert not parse_google_document(document, title="Review").blocks[0].editable
 
 

@@ -52,12 +52,17 @@ def receipt(tmp_path: Path) -> Path:
     ids=["already-restored", "owned-candidate", "eventual-restoration"],
 )
 def test_reconciles_only_owned_candidate(
-    monkeypatch: pytest.MonkeyPatch, receipt: Path, versions: list[str], expected_writes: list[str]
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: Path,
+    versions: list[str],
+    expected_writes: list[str],
 ) -> None:
     reads = iter(versions)
     writes = []
     monkeypatch.setattr(
-        rollback, "current_deployment", lambda: rollback.Deployment(DEPLOYMENT, next(reads))
+        rollback,
+        "current_deployment",
+        lambda: rollback.Deployment(DEPLOYMENT, next(reads)),
     )
     monkeypatch.setattr(rollback, "command_output", writes.append)
     rollback.reconcile(PREVIOUS, receipt, pause=lambda _seconds: None)
@@ -69,7 +74,10 @@ def test_foreign_or_changed_deployment_never_mutates(
     monkeypatch: pytest.MonkeyPatch, receipt: Path, current: str
 ) -> None:
     reads = iter(
-        [rollback.Deployment(DEPLOYMENT, current), rollback.Deployment(FOREIGN, CANDIDATE)]
+        [
+            rollback.Deployment(DEPLOYMENT, current),
+            rollback.Deployment(FOREIGN, CANDIDATE),
+        ]
     )
     writes = []
     monkeypatch.setattr(rollback, "current_deployment", lambda: next(reads))
@@ -83,7 +91,9 @@ def test_already_restored_does_not_require_candidate_receipt(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(
-        rollback, "current_deployment", lambda: rollback.Deployment(DEPLOYMENT, PREVIOUS)
+        rollback,
+        "current_deployment",
+        lambda: rollback.Deployment(DEPLOYMENT, PREVIOUS),
     )
     rollback.reconcile(PREVIOUS, tmp_path / "missing")
 
@@ -93,7 +103,9 @@ def test_missing_candidate_receipt_never_mutates(
 ) -> None:
     writes = []
     monkeypatch.setattr(
-        rollback, "current_deployment", lambda: rollback.Deployment(DEPLOYMENT, CANDIDATE)
+        rollback,
+        "current_deployment",
+        lambda: rollback.Deployment(DEPLOYMENT, CANDIDATE),
     )
     monkeypatch.setattr(rollback, "command_output", writes.append)
     with pytest.raises(FileNotFoundError):
@@ -115,10 +127,19 @@ def test_read_failure_never_attempts_rollback(
     with pytest.raises(rollback.ReleaseBlockedError):
         rollback.reconcile(PREVIOUS, receipt)
     (command,) = commands
-    assert command == [*rollback.WRANGLER, "deployments", "list", "--name", "sarj-wiki", "--json"]
+    assert command == [
+        *rollback.WRANGLER,
+        "deployments",
+        "list",
+        "--name",
+        "sarj-wiki",
+        "--json",
+    ]
 
 
-def test_oversized_receipt_is_rejected(receipt: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_oversized_receipt_is_rejected(
+    receipt: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(rollback, "MAX_RESPONSE_BYTES", 1)
     with pytest.raises(rollback.ReleaseBlockedError):
         rollback.candidate_version(receipt)
@@ -129,10 +150,14 @@ def test_command_timeout_is_normalized_without_leaking_output(
 ) -> None:
     def timeout(*_args: object, **_kwargs: object) -> None:
         command = "wrangler"
-        raise release_gate.subprocess.TimeoutExpired(command, 30, output="private-output")
+        raise release_gate.subprocess.TimeoutExpired(
+            command, 30, output="private-output"
+        )
 
     monkeypatch.setattr(release_gate.subprocess, "run", timeout)
-    with pytest.raises(rollback.ReleaseBlockedError, match="completion is unconfirmed") as error:
+    with pytest.raises(
+        rollback.ReleaseBlockedError, match="completion is unconfirmed"
+    ) as error:
         release_gate.command_output(["unused"])
     assert "private-output" not in str(error.value)
 
@@ -144,7 +169,9 @@ def test_timeout_reconciles_without_repeating_write(
     reads = iter([CANDIDATE, CANDIDATE] + [after] * rollback.READBACK_ATTEMPTS)
     writes = []
     monkeypatch.setattr(
-        rollback, "current_deployment", lambda: rollback.Deployment(DEPLOYMENT, next(reads))
+        rollback,
+        "current_deployment",
+        lambda: rollback.Deployment(DEPLOYMENT, next(reads)),
     )
 
     def ambiguous_write(args: list[str]) -> str:
@@ -205,7 +232,9 @@ def test_duplicate_candidate_receipts_rejected(receipt: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "bad", [[], {}, [None], deployment() * 2], ids=["empty", "object", "null", "ambiguous"]
+    "bad",
+    [[], {}, [None], deployment() * 2],
+    ids=["empty", "object", "null", "ambiguous"],
 )
 def test_invalid_deployment_listing_rejected(bad: object) -> None:
     with pytest.raises(rollback.ReleaseBlockedError):
@@ -230,7 +259,10 @@ def test_split_traffic_rejected_even_with_one_full_version() -> None:
 def test_latest_deployment_selected_by_timestamp() -> None:
     older = deployment(PREVIOUS)
     older[0]["created_on"] = "2026-09-05T12:00:00Z"
-    assert rollback.active_deployment(json.dumps(deployment() + older)) == (DEPLOYMENT, CANDIDATE)
+    assert rollback.active_deployment(json.dumps(deployment() + older)) == (
+        DEPLOYMENT,
+        CANDIDATE,
+    )
 
 
 def test_receipt_validates_deploy_among_other_wrangler_output(receipt: Path) -> None:
@@ -243,11 +275,15 @@ def test_receipt_validates_deploy_among_other_wrangler_output(receipt: Path) -> 
 
 def test_workflow_uses_same_fresh_receipt_for_deploy_and_recovery() -> None:
     root = Path(__file__).resolve().parents[2]
-    workflow = yaml.safe_load((root / ".github/workflows/deploy-frontend.yml").read_text())
+    workflow = yaml.safe_load(
+        (root / ".github/workflows/deploy-frontend.yml").read_text()
+    )
     steps = workflow["jobs"]["deploy"]["steps"]
     (deploy,) = [step for step in steps if step.get("id") == "deploy"]
     (recover,) = [
-        step for step in steps if step.get("name") == "Roll back an unverified frontend release"
+        step
+        for step in steps
+        if step.get("name") == "Roll back an unverified frontend release"
     ]
     receipt_path = deploy["env"]["WRANGLER_OUTPUT_FILE_PATH"]
     assert (
@@ -269,6 +305,8 @@ def test_workflow_uses_same_fresh_receipt_for_deploy_and_recovery() -> None:
         "uv",
         "run",
         "--no-project",
+        "--with",
+        "typer==0.27.2",
         "--python",
         "3.14",
         "python",

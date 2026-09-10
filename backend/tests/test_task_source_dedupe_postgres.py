@@ -472,40 +472,41 @@ async def test_real_postgres_unverified_terminal_never_semantically_replays(
                 idempotency_key=IdempotencyKey(uuid.uuid7()),
                 payload=payload,
             )
-            if terminal_case == "cancelled":
-                await service.cancel(canonical.task.id, owner_user_id=owner)
-            elif terminal_case == "failed":
-                await session.execute(
-                    update(Task)
-                    .where(Task.id == canonical.task.id)
-                    .values(
-                        status=TaskStatus.FAILED,
-                        started_at=func.now(),
-                        finished_at=func.now(),
-                        attempt_count=1,
-                        error_code="qa_failure",
+            match terminal_case:
+                case "cancelled":
+                    await service.cancel(canonical.task.id, owner_user_id=owner)
+                case "failed":
+                    await session.execute(
+                        update(Task)
+                        .where(Task.id == canonical.task.id)
+                        .values(
+                            status=TaskStatus.FAILED,
+                            started_at=func.now(),
+                            finished_at=func.now(),
+                            attempt_count=1,
+                            error_code="qa_failure",
+                        )
                     )
-                )
-                await session.commit()
-            else:
-                result = _completed_result(canonical.task.id, payload.mode)
-                finished_at = datetime.now(UTC)
-                if terminal_case == "stale_pipeline":
-                    result = result.model_copy(update={"pipeline_version": "legacy"})
-                else:
-                    result = result.model_copy(update={"brand_profile_sha256": "0" * 64})
-                await session.execute(
-                    update(Task)
-                    .where(Task.id == canonical.task.id)
-                    .values(
-                        status=TaskStatus.SUCCEEDED,
-                        started_at=finished_at,
-                        finished_at=finished_at,
-                        attempt_count=1,
-                        result=result.model_dump(mode="json"),
+                    await session.commit()
+                case _:
+                    result = _completed_result(canonical.task.id, payload.mode)
+                    finished_at = datetime.now(UTC)
+                    if terminal_case == "stale_pipeline":
+                        result = result.model_copy(update={"pipeline_version": "legacy"})
+                    else:
+                        result = result.model_copy(update={"brand_profile_sha256": "0" * 64})
+                    await session.execute(
+                        update(Task)
+                        .where(Task.id == canonical.task.id)
+                        .values(
+                            status=TaskStatus.SUCCEEDED,
+                            started_at=finished_at,
+                            finished_at=finished_at,
+                            attempt_count=1,
+                            result=result.model_dump(mode="json"),
+                        )
                     )
-                )
-                await session.commit()
+                    await session.commit()
 
         async with sessions() as session:
             replacement = await PostgresTaskService(db=session).create_or_replay(

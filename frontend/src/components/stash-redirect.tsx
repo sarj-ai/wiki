@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 
 import { storeLoginRedirect } from "@/lib/browser-storage";
-import { sanitizeRedirectPath } from "@/lib/url-utils";
+import { sanitizeRedirectPath } from "@/lib/sanitize-redirect-path";
 
 export function StashRedirect({ redirect }: { redirect: string | undefined }) {
   useEffect(() => {

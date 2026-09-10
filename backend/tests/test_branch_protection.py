@@ -13,12 +13,13 @@ TARGET = "sarj-ai/wiki:main"
 
 @pytest.mark.parametrize("fault", ["unknown", "missing", "malformed"])
 def test_unrecognized_remote_security_state_fails_closed(lab: Lab, fault: str) -> None:
-    if fault == "unknown":
-        lab.github.remote["future_security_setting"] = True
-    elif fault == "missing":
-        del lab.github.remote["enforce_admins"]
-    else:
-        lab.github.remote["enforce_admins"] = {"enabled": "false"}
+    match fault:
+        case "unknown":
+            lab.github.remote["future_security_setting"] = True
+        case "missing":
+            del lab.github.remote["enforce_admins"]
+        case _:
+            lab.github.remote["enforce_admins"] = {"enabled": "false"}
     with pytest.raises(ValueError, match="remote"):
         state_fingerprint()
     assert lab.github.writes == []
@@ -218,12 +219,13 @@ def test_malformed_or_empty_check_policy_never_writes(lab: Lab, checks: Any) -> 
 @pytest.mark.parametrize("fault", ["blank", "duplicate", "unknown-field"])
 def test_ambiguous_check_entries_never_write(lab: Lab, fault: str) -> None:
     checks = lab.policy["required_status_checks"]["checks"]
-    if fault == "blank":
-        checks[0]["context"] = " "
-    elif fault == "duplicate":
-        checks.append(checks[0].copy())
-    else:
-        checks[0]["unknown"] = True
+    match fault:
+        case "blank":
+            checks[0]["context"] = " "
+        case "duplicate":
+            checks.append(checks[0].copy())
+        case _:
+            checks[0]["unknown"] = True
     expected = state_fingerprint()
     with pytest.raises(ValueError, match="exact fields"):
         apply(lab.policy, expected)
@@ -244,12 +246,13 @@ def test_fresh_fingerprint_does_not_authorize_weakening(lab: Lab, setting: str) 
 @pytest.mark.parametrize("fault", ["remove", "app", "strict"])
 def test_fresh_fingerprint_does_not_authorize_weaker_checks(lab: Lab, fault: str) -> None:
     checks = lab.policy["required_status_checks"]
-    if fault == "remove":
-        checks["checks"].pop()
-    elif fault == "app":
-        checks["checks"][0]["app_id"] = 42
-    else:
-        checks["strict"] = False
+    match fault:
+        case "remove":
+            checks["checks"].pop()
+        case "app":
+            checks["checks"][0]["app_id"] = 42
+        case _:
+            checks["strict"] = False
     expected = state_fingerprint()
     with pytest.raises(ValueError, match="unavailable"):
         apply(lab.policy, expected)
