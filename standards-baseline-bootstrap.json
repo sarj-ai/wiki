@@ -1,40 +1,38 @@
 {
   "schema_version": 1,
-  "merge_base": "c97f9b23418ed08a2b6e129c36cfa2c8bea40576",
-  "from_bundle": "7.1.16",
-  "to_bundle": "7.5.4",
-  "reason": "Standards 7.5.4 introduces the dedicated Zod schema naming rule; record only pre-existing findings transferred from the generic naming-convention suppression.",
+  "merge_base": "65d0c276b1ea2163f5f7eea22bdb326113dbaac4",
+  "from_bundle": "7.14.26",
+  "to_bundle": "7.15.10",
+  "reason": "Standards 7.15.10 begins linting the previously excluded UI primitives; record only unchanged-source findings for rules already present elsewhere in the baseline.",
   "allowances": {
     "frontend/eslint-suppressions.json": {
-      "src/app/api/perf/route.ts": {
-        "@sarj/require-pascal-case-zod-schema-name": { "before": 0, "after": 1 }
-      },
-      "src/components/wiki-sidebar/use-wiki-reorder.ts": {
-        "@sarj/require-pascal-case-zod-schema-name": { "before": 0, "after": 2 }
-      },
-      "src/lib/api-client.ts": {
-        "@sarj/require-pascal-case-zod-schema-name": { "before": 0, "after": 2 }
-      },
-      "src/lib/env.ts": {
-        "@sarj/require-pascal-case-zod-schema-name": { "before": 0, "after": 2 }
-      },
-      "src/lib/reorganize-client.ts": {
-        "@sarj/require-pascal-case-zod-schema-name": { "before": 0, "after": 2 }
-      },
-      "src/lib/smart-create-client.ts": {
-        "@sarj/require-pascal-case-zod-schema-name": { "before": 0, "after": 2 }
-      },
-      "src/lib/smart-create-server-client.ts": {
-        "@sarj/require-pascal-case-zod-schema-name": { "before": 0, "after": 1 }
-      },
-      "src/lib/storage-schemas.ts": {
-        "@sarj/require-pascal-case-zod-schema-name": {
+      "src/components/ui/alert-dialog.tsx": {
+        "better-tailwindcss/enforce-shorthand-classes": {
           "before": 0,
-          "after": 11
+          "after": 2
         }
       },
-      "src/lib/wiki-schemas.ts": {
-        "@sarj/require-pascal-case-zod-schema-name": { "before": 0, "after": 1 }
+      "src/components/ui/command.tsx": {
+        "better-tailwindcss/enforce-shorthand-classes": {
+          "before": 0,
+          "after": 6
+        }
+      },
+      "src/components/ui/dialog.tsx": {
+        "better-tailwindcss/enforce-shorthand-classes": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/components/ui/sonner.tsx": {
+        "@typescript-eslint/consistent-type-assertions": {
+          "before": 0,
+          "after": 2
+        },
+        "@typescript-eslint/no-unsafe-type-assertion": {
+          "before": 0,
+          "after": 2
+        }
       }
     }
   }
