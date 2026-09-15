@@ -58,7 +58,7 @@
     "@eslint/compat": "2.1.0",
     "@hey-api/openapi-ts": "^0.99.0",
     "@opennextjs/cloudflare": "^1.20.2",
-    "@sarj/eslint-plugin": "15.17.12",
+    "@sarj/eslint-plugin": "15.17.18",
     "@sarj/tsconfig": "0.2.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@taplo/cli": "^0.7.0",
@@ -71,7 +71,7 @@
     "@vitest/eslint-plugin": "1.6.27",
     "@vitest/ui": "^4.1.10",
     "babel-plugin-react-compiler": "^1.0.0",
-    "eslint": "10.8.1",
+    "eslint": "10.10.0",
     "eslint-config-next": "^16.3.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.5",
@@ -84,7 +84,7 @@
     "eslint-plugin-simple-import-sort": "14.0.0",
     "eslint-plugin-sonarjs": "^4.2.0",
     "eslint-plugin-testing-library": "7.16.2",
-    "eslint-plugin-unicorn": "73.0.0",
+    "eslint-plugin-unicorn": "74.0.0",
     "eslint-plugin-zod": "4.9.1",
     "happy-dom": "^20.11.2",
     "knip": "^6.32.2",
@@ -105,7 +105,8 @@
     "eslint-plugin-n": "18.3.0",
     "eslint-node-test": "0.4.0",
     "eslint-plugin-jest": "29.16.6",
-    "eslint-plugin-playwright": "2.11.0"
+    "eslint-plugin-playwright": "2.11.0",
+    "@eslint/js": "10.0.1"
   },
   "overrides": {
     "eslint-plugin-jest": "29.16.6",
@@ -122,7 +123,7 @@
       "eslint": "$eslint"
     },
     "eslint-plugin-react": {
-      "eslint": "10.8.1"
+      "eslint": "10.10.0"
     },
     "js-yaml": "^5.2.2",
     "markdownlint-cli2": {

@@ -232,7 +232,5 @@ export default defineConfig([
     "eslint.strict.mjs",
     // Codegen output (openapi-ts) — regenerated, never hand-edited.
     "src/lib/generated/**",
-    // Copied shadcn primitives track upstream and are formatted, not linted.
-    "src/components/ui/**",
   ]),
 ]);
