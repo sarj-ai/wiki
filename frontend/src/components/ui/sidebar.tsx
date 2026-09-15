@@ -115,20 +115,17 @@ function SidebarProvider({
 
   const state = open ? "expanded" : "collapsed";
 
-  const contextValue = React.useMemo<SidebarContextProps>(
-    () => {
-      return {
-        isMobile,
-        open,
-        openMobile,
-        setOpen,
-        setOpenMobile,
-        state,
-        toggleSidebar,
-      };
-    },
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
-  );
+  const contextValue = React.useMemo<SidebarContextProps>(() => {
+    return {
+      isMobile,
+      open,
+      openMobile,
+      setOpen,
+      setOpenMobile,
+      state,
+      toggleSidebar,
+    };
+  }, [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]);
   const sidebarStyle: SidebarStyle = {
     "--sidebar-width": SIDEBAR_WIDTH,
     "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
