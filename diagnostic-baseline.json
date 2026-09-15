@@ -1,254 +1,457 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "7.15.7",
-    "consumerBaseSha": "65d0c276b1ea2163f5f7eea22bdb326113dbaac4",
-    "catalogDigest": "a953e157a50ed9424b300297d21a6704fe074a58deaa577ff5e5c1183f65604c"
+    "bundleVersion": "7.15.10",
+    "consumerBaseSha": "9532923036a2757280aaeb3fb493236195bc9fdd",
+    "catalogDigest": "4c56405774acac97d74489931fa1ae9c488356127ec26b71c68db6772715c3b5"
   },
   "diagnostics": [
     {
-      "fingerprint": "6e9cbf33077c4344952150565f7982a048ffaa284fd19c165c38ef3ebba37ac8",
+      "fingerprint": "84fb9b90c03a986dc6a1bd94db5e7d3bd2a1c570527f402fff50011adfc3340a",
       "source": "eslint",
-      "ruleId": "@sarj/no-positional-tuple-return",
-      "path": "frontend/src/hooks/use-expanded-folders.ts",
+      "ruleId": "@sarj/sole-export-matches-filename",
+      "path": "frontend/src/components/ui/sonner.tsx",
       "count": 1
     },
     {
-      "fingerprint": "ee804b49777540094f6be49ee6c27f5d9af9d9a9ba278338a8e9db8927a96db8",
+      "fingerprint": "bbb945b21e15340801d05e63438546c6b9305cef425e7abd546681b1f5cae69c",
       "source": "eslint",
-      "ruleId": "@sarj/no-positional-tuple-return",
-      "path": "frontend/src/hooks/use-expanded-folders.ts",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/app/(app)/d/[driveId]/page.test.tsx",
       "count": 1
     },
     {
-      "fingerprint": "2f2852d47b0da391c637430fe7ab6a794cae91a49367576d1904c60da57c6365",
+      "fingerprint": "ab9a18f4417f62a5cd6a3b3293dfa6aefe17d54a5acf992565690756168b6c09",
       "source": "eslint",
-      "ruleId": "@sarj/no-sentinel-return-on-catch",
-      "path": "frontend/src/lib/recent-aliases.ts",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/app/(app)/go/page.test.tsx",
       "count": 1
     },
     {
-      "fingerprint": "ea06272991374845693d9dcb3f2b1a5a181ec395f219d6bba36800056137f94d",
+      "fingerprint": "d7e8798956a2761bc71ed551a78e8bb5e61abfebe518641f55465eddd1f98b9e",
       "source": "eslint",
-      "ruleId": "@sarj/prefer-await-in-async-return",
-      "path": "frontend/src/components/wiki-search/command-palette-mount.tsx",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/app/actions/smart-create-actions.test.ts",
+      "count": 5
+    },
+    {
+      "fingerprint": "3425ebed0a3d6e031f6a617b2e82b1c1e64e6abc47121a7415ede77a4d98388c",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/app/api/document-transforms/[[...path]]/route.test.ts",
+      "count": 2
+    },
+    {
+      "fingerprint": "2f98e782f210de26e8df960dd771d3e9a5571266162ce195efdfec667396efd2",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/app/api/files/[fileId]/content/route.test.ts",
+      "count": 3
+    },
+    {
+      "fingerprint": "26e85a8688e330fcc7416b87b48f2faf5b833a4375a82d05e5894ffb4ff9fab0",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/app/go/[alias]/route.test.ts",
+      "count": 3
+    },
+    {
+      "fingerprint": "857399c9b5bd7a11cef091822b7830cabd0dd9423eb6cb030583f407145ecdb3",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/app/health/route.test.ts",
       "count": 1
     },
     {
-      "fingerprint": "50c720d7ef1be5b341adca135270a88babfe3e5138949753f59e8a02db2adf7a",
+      "fingerprint": "57ffdaab7777448a379bdb3d269c3d123c4d90fb90269ca4d0b9f029bf2d3a46",
       "source": "eslint",
-      "ruleId": "@sarj/prefer-await-in-async-return",
-      "path": "frontend/src/components/wiki-sidebar/emoji-picker-popover.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "d874617a754f6b88b5a3a9083eb92f60abdcfaeead0699750a98507bc33da5a5",
-      "source": "eslint",
-      "ruleId": "@sarj/prefer-immutable-module-constant",
-      "path": "frontend/next.config.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "b5df0ff59f103304a68e182015a550bb83a9631743cb2b82e1076b1c27809448",
-      "source": "eslint",
-      "ruleId": "@sarj/prefer-immutable-module-constant",
-      "path": "frontend/src/app/go/[alias]/route.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "93cab49f9c9c49419c9bfa51716d947cd696c09aecf730a08d3b34301dbcd009",
-      "source": "eslint",
-      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "ruleId": "unicorn/consistent-arrow-return-style",
       "path": "frontend/src/app/layout.tsx",
       "count": 1
     },
     {
-      "fingerprint": "26a0818a3d364c6c677d2ad6c5c6a1c7e65e56cf271689579fa3ca5411722a3d",
+      "fingerprint": "a33c9e12a2b50379ca6569d915a835400002b2a4b37f51f081306906d2207407",
       "source": "eslint",
-      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/mcp/mcp-connections.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "b440d3d1e7aa0a2d71d9ef323c0fb5134ebbaf1b693fae1ecd6be00057865b75",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/mcp/mcp-connections.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "b4cc388657e811e59a58372535338330e4340a4b1364191907629dd5d69ec07d",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/mcp/mcp-consent.test.tsx",
+      "count": 4
+    },
+    {
+      "fingerprint": "88cb9d8ad2eb48bfdb48022ea5216499cba45d8776222660f9ce26f680f7e6d6",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/quick-links/quick-link-visit-recorder.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "c96da8ba4716a00f82725b87f057e02f1f61f60356ec2b59c1d956cd20cb41a7",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/quick-links/quick-links-loader.test.tsx",
+      "count": 2
+    },
+    {
+      "fingerprint": "8894623d8c41e55b7b083f5a9adffb829af61e6fdeff015b8aed2b2eba9f7276",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/quick-links/quick-links.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "2e520850638e2daba09d6bc78f3e949656650068163d87152d224088a46386e0",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/quick-links/quick-links.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "1d5c37b326fdc77d6a5b321710817c9a2a2b290b321c601e6764b09fa015ffc3",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/ui/popover.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "9e84a22de6dc85e151e0326107889e9256a9d575bf932c02cd18b0d29684ba9c",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/ui/sidebar.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "b439870b60d2ef50ea89303c4085bf540399c46a903e9ce330ccf3e10c110172",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/ui/sidebar.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "dfe36946ef26d53a0272c321eeaa03335150e256ad77287649a597832d4370de",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
       "path": "frontend/src/components/wiki-document/doc-skeleton.tsx",
       "count": 1
     },
     {
-      "fingerprint": "dbec4af700ea9cd4085efc14291f13635f27c6f95b6f98a26058f295b7dd6363",
+      "fingerprint": "105200547749692f234440b9031bfd26d242df5f2f18d27071fc872e526df0d7",
       "source": "eslint",
-      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-document/doc-viewer-host.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "667bf719dc90b6135eea6d1501b502ad5897a466d5323646eb0b875f943101c5",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-document/doc-viewer-host.tsx",
+      "count": 2
+    },
+    {
+      "fingerprint": "d17714f97c7953a445c69b2b0f812ce04c3e5dcf5a2336b9123e5150a94e97ff",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-document/doc-viewer-store.test.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "f6ac7979b7ec5b66a5887ec13ec7cb719a0ef9d92c1143261720bfa868e1e7ee",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-document/doc-viewer-store.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "0e963d4f2b89d9a89eb62e4242e82037e8e505158cf0afda3c908407c05a31bf",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-document/doc-warmup.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "d9a21b7dfff15715adf6e435d9f36541f8f1cc34916e5ede75515b9c9c84ae13",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-document/document-polish-dialog.test.tsx",
+      "count": 4
+    },
+    {
+      "fingerprint": "f35cce9ec5cfecef34f1846dfcfc9b60e4043b6bdd7a0ae289ee560547f72514",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-document/document-polish-dialog.tsx",
+      "count": 2
+    },
+    {
+      "fingerprint": "c991af8991807756c301b622e12702de21549fa8a8fc5d3abebd8d8f7aa56f62",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-document/document-polish-receipt.tsx",
+      "count": 2
+    },
+    {
+      "fingerprint": "a4c0b0f5078543d78d3323a432c8c9accd402c5e2bd1c26471dbab51a902a949",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-document/document-polish-recovery.test.tsx",
+      "count": 2
+    },
+    {
+      "fingerprint": "d8c2319618b96cb4191a7a42066d3df2094dc83fd9d2ce668f17dea6480949d5",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-document/file-page-client.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "892b412998255d322d12dc7358b14c8e135a3472fca6a4cc084495b34f2bc201",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-document/read-only-short-link.test.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "4110b6be24334d887e4c87ba0a36bff7c287937116a581430a327b4cf627cba5",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-document/reorganize-document.test.tsx",
+      "count": 2
+    },
+    {
+      "fingerprint": "40165b7e3e89db3436b035318d884bd419e43b6b0d261dc6a1c99011c73fccaa",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-document/wiki-toolbar.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "0c4fcae96324261f74c3cc4685beb6096e54e9d216b16761310226c15d60f568",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-search/command-palette.test.tsx",
+      "count": 4
+    },
+    {
+      "fingerprint": "f9fd07a6f2d241176459305317ae897446991370681bc4b3fac8a7577b941480",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
       "path": "frontend/src/components/wiki-search/command-palette.tsx",
       "count": 1
     },
     {
-      "fingerprint": "29f09eb88af2edc0d7ab0d2df151863b5d3952c7cdcb00f07340288da74fcb21",
+      "fingerprint": "05d921c3f8a97e2ce41039918188e0c6421bab6749f9ae3ecd0735a770b4c95f",
       "source": "eslint",
-      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "ruleId": "unicorn/consistent-arrow-return-style",
       "path": "frontend/src/components/wiki-sidebar/create-file-menu.tsx",
       "count": 1
     },
     {
-      "fingerprint": "6a2b1afa79b28da611ca81076ebe241c0b6cf0c5976912806d38f56a08ab7429",
+      "fingerprint": "38a920779d170e791e571e97349c143f1381c327b61073fd00b02674341c9278",
       "source": "eslint",
-      "ruleId": "@sarj/prefer-immutable-module-constant",
+      "ruleId": "unicorn/consistent-arrow-return-style",
       "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 1
+      "count": 3
     },
     {
-      "fingerprint": "9a3b061023a5fa77cfe2c5f87dde55694366c3f916bcf81db06567d0ab511866",
+      "fingerprint": "1abe8f0e3a7c61e13719462aeed34c2cf75b9571d14e9eef45340dad9ed1af0b",
       "source": "eslint",
-      "ruleId": "@sarj/prefer-immutable-module-constant",
-      "path": "frontend/src/lib/smart-create-client.ts",
-      "count": 1
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-sidebar/drive-section.tsx",
+      "count": 2
     },
     {
-      "fingerprint": "70888b3f4448ebe251aacd405c51ae6c281c8acaca2f5f7a1a8a3f8e1e7a5c1d",
+      "fingerprint": "f7d47577cf14228640b36c5acf4f0e546e1efd86489df52b32a55674a84c5745",
       "source": "eslint",
-      "ruleId": "@sarj/prefer-immutable-module-constant",
-      "path": "frontend/src/lib/wiki-keys.ts",
-      "count": 1
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-sidebar/emoji-picker-popover.tsx",
+      "count": 2
     },
     {
-      "fingerprint": "a2af056cae2481adfdcade14e29748155b4d8c28d8be182f2c5655257bd4a6e7",
+      "fingerprint": "580dc0a2799186a600e94afef3e79513bc743657ef8799477009eb5c31d56b54",
       "source": "eslint",
-      "ruleId": "@sarj/prefer-immutable-module-constant",
-      "path": "frontend/src/lib/wiki-keys.ts",
-      "count": 1
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-sidebar/folder-picker-dialog.tsx",
+      "count": 3
     },
     {
-      "fingerprint": "8b3208d835e5b2b14e5eb7f99772d2aff102258604073be33009d3409a05398b",
+      "fingerprint": "53546740ac7f61218614b84b3058eedf290b9ddc2df504a72c51c11d9ceed93f",
       "source": "eslint",
-      "ruleId": "@sarj/prefer-immutable-module-constant",
-      "path": "frontend/src/middleware.ts",
-      "count": 1
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+      "count": 4
     },
     {
-      "fingerprint": "54f45552f9e6ddfdce321718ef2c8afead63b22d647515a5e0a5cdfdd348e63f",
+      "fingerprint": "2a2b0cc58d36798cbf1231edfdcd59379b4000e1a73ccae78b5ecd47e428ee32",
       "source": "eslint",
-      "ruleId": "@sarj/prefer-whole-object-assertion",
-      "path": "frontend/src/lib/api-client.test.ts",
-      "count": 1
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
+      "count": 2
     },
     {
-      "fingerprint": "d6a1e805925c042a5a489ecc10ff311ed100943f100fd3b8849acd68698ef83c",
+      "fingerprint": "615a32da141c3d272a7fd0ae410be7476d2e19faaee36e3a54730f2d6bbd2a4f",
       "source": "eslint",
-      "ruleId": "@sarj/stepdown",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "39be4b10df57112efe1d8a95cd87ee1df71a1daf41cd16cc0309bad4b9ba7264",
-      "source": "eslint",
-      "ruleId": "@sarj/stepdown",
+      "ruleId": "unicorn/consistent-arrow-return-style",
       "path": "frontend/src/components/wiki-sidebar/tree-node.tsx",
       "count": 1
     },
     {
-      "fingerprint": "fc2d137e3c500969fea266c5d13f4ba3c42bd4466cab2f60f39c621f549f44b5",
+      "fingerprint": "006cfe4b820fd9fc200caba415906f1bebac44e83fcc419ef86dbd88373b6fab",
       "source": "eslint",
-      "ruleId": "@sarj/stepdown",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-sidebar/use-document-intent.test.tsx",
+      "count": 5
+    },
+    {
+      "fingerprint": "bb45c2fd979747cfc2dabd226573bb0daa788e974aa176491faf60a5059a3868",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-sidebar/use-drag-over-store.ts",
+      "count": 3
+    },
+    {
+      "fingerprint": "332b09de206ff0549d34d550c386560c1d5d5d9b3eafc9f6a70cab403f95741b",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-sidebar/use-drive-predictive-loading.test.tsx",
+      "count": 2
+    },
+    {
+      "fingerprint": "88f1b4c3c2e21abe959044aab9d9ea1c711d4bb2d7f4ba564b32ed9a97f541b4",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-sidebar/use-in-flight-moves.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "b544d6bc08a65a7ba8bc2241f1e99fd1b744b648c2722bd72d575bc76bbe98d1",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/components/wiki-sidebar/wiki-sidebar.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "9de9bca6f2e821a11c5c47a6a7f35cf95a8268c23d8ca79313b0f614b35bf0b6",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/hooks/use-command-palette.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "97ec2a9cd3d3a7ffdf56b6af3f5622937ae245ea2e150a850d94499bb073dab1",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/hooks/use-expanded-folders.ts",
+      "count": 5
+    },
+    {
+      "fingerprint": "67b1479a101ba7f65a5da0d8d4db0fc5ae6f77364c2d8bc21eaa42b92bb0a0f3",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/hooks/use-wiki-mutations.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "87edd9dd51dca5d89b696269bf7b33f4ebac98958a8855bf9eb1eb6b4d53399d",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/lib/alias-client.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "4aeeadfb1123f4b72af039d947e4c39106491065431a5a5c14f74e343fbadecb",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/lib/document-transform-api.test.ts",
+      "count": 2
+    },
+    {
+      "fingerprint": "4272220b2d252353a21c7f3597877f290d7070fd2e95144b8357581b0e8f42b7",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/lib/document-transform-api.ts",
+      "count": 3
+    },
+    {
+      "fingerprint": "86d8de7d5786b1af5add278913f65d2bcba4e38e42678eb15da4bd14827bf23b",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/lib/preserved-in-place-outcome.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "156943c160b1ecf3196c244587cd6d5d4fb9bbc77dec1261b2cdd459f2ec64c8",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/lib/recent-aliases.test.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "9c2773e2991a3fb6a8f440e1a35ff35ce1af7a47bc15a325102d9f99bef002ee",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/lib/reorganize-client.test.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "079a29a1906942eae13d86cd76ec2480d2c0612ff6e0407fac27ec956873db9d",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/lib/server-api.test.ts",
+      "count": 3
+    },
+    {
+      "fingerprint": "528c5e5c0f2e3b56e99fc523ddfd04e7ff17408566839de428be9d1e031071da",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/lib/smart-create-client.test.ts",
+      "count": 2
+    },
+    {
+      "fingerprint": "733f6ad885f50b758169171a998bda12cd91466f7781473cbf3eb1cf94564210",
+      "source": "eslint",
+      "ruleId": "unicorn/consistent-arrow-return-style",
       "path": "frontend/src/lib/smart-create-client.ts",
       "count": 1
     },
     {
-      "fingerprint": "6eab5cf975ee72441b67c84673f63eafc46f553c95c8222277195b7b09fc389d",
+      "fingerprint": "5db113d6be04df9e94b50a971f3263188a1dcce267393820d2e4713f38bb9448",
       "source": "eslint",
-      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
-      "path": "frontend/src/components/quick-links/quick-links.tsx",
-      "count": 1
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/lib/wiki-api.ts",
+      "count": 9
     },
     {
-      "fingerprint": "9c9732ef68701b0f527d6295be794e68117d9a1ab55afdb10cccd516d28a4d2f",
+      "fingerprint": "3cb233b982b60fd7d9ec9a13463cc13ea146afecdb2c4fd2bb57ea8807483646",
       "source": "eslint",
-      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
-      "path": "frontend/src/components/quick-links/quick-links.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "b33422f9052789179b25de69425218de702505d85fa4ce6b4e50895d09021a95",
-      "source": "eslint",
-      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
-      "path": "frontend/src/components/wiki-document/doc-skeleton.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "e9d4ba677f1f2e9e61c0d807ee9ceeda8cba65f116f7a3476d74b5165a235be3",
-      "source": "eslint",
-      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
-      "path": "frontend/src/components/wiki-document/doc-skeleton.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "905538b9ffb71f75d86f829ed9520401c0ab9b18331e65f6d5b9f1dbc94800d7",
-      "source": "eslint",
-      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
-      "path": "frontend/src/components/wiki-document/doc-viewer-host.tsx",
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/lib/wiki-read-client.test.ts",
       "count": 2
     },
     {
-      "fingerprint": "f0fac7e375927e5659bc3ed58a2107be8f9436546c857958df1edd6a970855c0",
+      "fingerprint": "a44b4e1633a9553d6f8321cf6657d6d370f3e83bb8a3e08fe17514c186de3d35",
       "source": "eslint",
-      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
-      "path": "frontend/src/components/wiki-document/doc-viewer-host.tsx",
-      "count": 2
+      "ruleId": "unicorn/consistent-arrow-return-style",
+      "path": "frontend/src/lib/wiki-schemas.ts",
+      "count": 16
     },
     {
-      "fingerprint": "9f77080002489cadb08451c7961aa346b30141252f81fb0dcbaada8522d7a810",
+      "fingerprint": "1e4c77a05ce7463e407ecfd2b9bd306fc359220e7bb59995b6a9ba97c1836fc1",
       "source": "eslint",
-      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "f0f73f9b2515722d3a767d8a1f927cafe43815e6895e9d5ace231c0689a19220",
-      "source": "eslint",
-      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
-      "path": "frontend/src/components/wiki-search/command-palette.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "a4321e7caf9d37e01f9bf06d1948d255eee4eb8e85cc27e705d31f4b5d8acdf6",
-      "source": "eslint",
-      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "f35bfe638b25827761dcb65f9eb6936414e7a0c8c4763e9eddcf11c8b31906b6",
-      "source": "eslint",
-      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
-      "path": "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "1523b67e20dbff649fdd064e9ca7eaa97cfe5b4c0c0feadb48ab27f6f964053d",
-      "source": "eslint",
-      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
-      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "cc62382c79b53ca7829f623a05729b56b5e1d0608c6ad0007d6f77fb63001def",
-      "source": "eslint",
-      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
-      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
-      "count": 2
-    },
-    {
-      "fingerprint": "c34d1e82995ab0f2f85f23fd153f78c1df0e60031dd5d1e79e4e4d2ba2153366",
-      "source": "eslint",
-      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "faa8f6b9bbed449f6d30667715eb7688e788860503c85bd1d611b8e148cc60c5",
-      "source": "eslint",
-      "ruleId": "better-tailwindcss/enforce-shorthand-classes",
-      "path": "frontend/src/components/wiki-sidebar/smart-create-dialog.tsx",
-      "count": 1
-    },
-    {
-      "fingerprint": "76c2ca1029f9fea22cf6b178c2344fe62fc1730cae5883ead82f98e67bd46eab",
-      "source": "react-doctor",
-      "ruleId": "react-hooks-js/purity",
-      "path": "frontend/src/components/ui/sidebar.tsx",
+      "ruleId": "unicorn/iteration-fallback-style",
+      "path": "frontend/src/components/wiki-document/doc-warmup.tsx",
       "count": 1
     },
     {
@@ -280,13 +483,6 @@
       "count": 1
     },
     {
-      "fingerprint": "7e589150640aa4ede15209474b459d90c114169c4a35b6aaa28bab9bd1624cb0",
-      "source": "ruff",
-      "ruleId": "Q003",
-      "path": "scripts/check_baseline_growth.py",
-      "count": 1
-    },
-    {
       "fingerprint": "aba64e62df3ef1f562cc1e50aa0e23641fef0785a6f7f8fcbdc2b8dcd97d8ede",
       "source": "ruff",
       "ruleId": "S608",
@@ -301,95 +497,382 @@
       "count": 1
     },
     {
-      "fingerprint": "41f6a78471be2ceb8152dbc6c8fb339d126060eee26ca6edf5510e23b06882ec",
-      "source": "sarj-iac-lint",
-      "ruleId": "require-deletion-protection",
-      "path": "terraform/database.tf",
+      "fingerprint": "151adedfc0fcf04dce528b3511ff2dc923f49bc4835e2bc013da6eec4bf87b90",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/app/document_transform/google_gateway.py",
       "count": 1
     },
     {
-      "fingerprint": "6eadb1a03708ce8e5ff01264f657991b783fbfd99e4e82dafdd882a0820bb5cc",
+      "fingerprint": "c452d2193f3973abb3fbcfaf061045b57bba1e5095449321f785eb9aae6f090e",
       "source": "sarj-python-lint",
-      "ruleId": "no-hidden-constructor-fallback",
-      "path": "backend/app/smart_create/service.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "db93a0cef2d62e0149878c1e45293c370f99315a2accae7116c8e48b46ccfbc3",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-immutable-module-constant",
-      "path": "backend/app/smart_create/service.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "f8366d028ff81b88a9bd23e04702ba68de692fc02fbfe2b9cb6d85550127e7f4",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-namedtuple-over-tuple-return",
-      "path": "backend/app/drive/snippets.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "3340ebcee87590cd5eace59ae087d60c84edb355483798dbbbcfa5419bcb8cce",
-      "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/app/files/service.py",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/app/document_transform/google_gateway.py",
       "count": 2
     },
     {
-      "fingerprint": "61030a8d108f058ab0cfa986671486999e414b918ca89c294990b10783a6759a",
+      "fingerprint": "ba196500dfb39f49b3fad98a6bc159b77b09d0dbae7ec7a6a283328510606f8c",
       "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/app/files/service.py",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_auth_tokens.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "12edef55e44c1ffe555e5a4cb711ffb4d31dd6b7e1b84a46a0ed1397a0deb4ec",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_copy_header_recovery.py",
       "count": 2
     },
     {
-      "fingerprint": "a53929100cb104957eadc90b3108059b99499a356d4946598f21074e753ee6de",
+      "fingerprint": "1a49c0065937a1f8d7a23e25dfbf92fa6e7e1fa88237909295c3cea9977e8c61",
       "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/app/files/service.py",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_copy_header_recovery.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "1ee194485f834f467d6bae772740abd0a401af0bc062c1f3a0c92ed5519ba037",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_copy_header_recovery.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6b60c5a2804bdce1daa0568f68b7e919727f0e706dd984266cbddd4350c1141c",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_copy_header_recovery.py",
       "count": 2
     },
     {
-      "fingerprint": "9244bf1687c65ff3b2815715c53689c8906e56904339f4fefa94469fde0a527b",
+      "fingerprint": "b00d94677938b4461746c93649a02069bd450f0e3b4f60ffe10b0581a74a1da4",
       "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/app/models/task.py",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_copy_header_recovery.py",
       "count": 1
     },
     {
-      "fingerprint": "1030c60f720b6e037e7de72b674c0ba102da4d2ede24c304ef1be092d5a876a0",
+      "fingerprint": "0a027526e724d66b81880a2df6ba789d2d2e731300c0b52a43eac9e9e811c54a",
       "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/app/models/user.py",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform.py",
       "count": 1
     },
     {
-      "fingerprint": "1d66abf3f76bf1001d053f54db51927852b7345bf5ff34d9b7309a0222be2021",
+      "fingerprint": "0dc09e5afdaa8cc2aae1c4c813b64e89d376a14379014e913632418d1169fb40",
       "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/app/models/wiki.py",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform.py",
       "count": 1
     },
     {
-      "fingerprint": "5db3b612629d45e08527d82b8ad7f9e9928394f3f422ff962546b2bbdf1bac4a",
+      "fingerprint": "18c7a023c36e1936397d98bfff75ff6176298e5484f8731af362c83723b07251",
       "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/app/models/wiki.py",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "1921f0ef6a2fb768f68f659faeda8774116a4780cda4f911329c413222386534",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform.py",
       "count": 1
     },
     {
-      "fingerprint": "6cc0e199612f7367ccfa55afe1892f2085ec6d9c51aa90030f9de139bf91f579",
+      "fingerprint": "3dc60533e7384c6cdb8e4ad03514afe85543e47023c4175a491e6e977d34c709",
       "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/app/models/wiki.py",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "570ea578420b48748dc436b5ad381a2ff515516b61cb8b1a439c850a847261e1",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform.py",
       "count": 1
     },
     {
-      "fingerprint": "3c48ed92a3ada53d336c86ec95332338d9d9a020a7cf3539e78948646f2faa61",
+      "fingerprint": "a1b15a480bca0dbb9a444bac49e75589ccef9271f640439f4d7f141f15601416",
       "source": "sarj-python-lint",
-      "ruleId": "prefer-nominal-id-types",
-      "path": "backend/app/tasks/service.py",
-      "count": 6
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "a5184565372ef1b20589cf6fef7fc67b25fb29bbeda9aa4932ee8efa4932e1fd",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "c6955905db4f5ccbf0090ff959c0f6560e00dfc1bb68a55dfaca35a923a09df4",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "ceda214e3a9504ea6f13cc6e3d3b5f15305263075bb8d50fb5b8c4475a89b1a7",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "d2acd08ad71c7868ec63e190a7d6e71a9e37c98f39edb07cd279d3607d533dff",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "d2dea5d02fd2f65fc0ec510857c5aa447090508e8cca85a020da1690e9ef77fe",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "e4fc2f2866e0937424d50cb9496c53d8c2b01752dcc66471f2915690ff96b73f",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "f87b240ba4d83f53c481869460f49fdc60e03e3f75bc318006336cdcfbf22130",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "fd13cf2b817d63a331c2327ed0480e68d5b3d6d2115f07231c4fd321dc10e74b",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "18e8a6d70e2da912e8d8107eb80e479a146f6be031d2a2fdac0ff4cf5817141d",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform_qa_broker.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "331f7decaf2c7c690bd202f6f13b5cc2033f26cafd44b2c45310e436d1fbe0d8",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform_qa_broker.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "494973948db2d5e77ddbc5bb874bb338de4a11fe446012289db18fd7586743e0",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform_qa_broker.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "f704574495d131aed76448abe6842db6047dbbcf33b493915a244f310b4f1302",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform_qa_broker.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "4c01e1adb9121204552da4ccf9ebbd78af542e4492f9834847b766283490a0e4",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform_qa_corpus.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "63960a4e734c2abb454f968e3c1c602b4eb8647f017ae10b324f37370456a691",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform_qa_corpus.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "91cf4ff6e4348b71e6165ee9ae50e977bc70be10eaa66c86b8a4ee542a915980",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform_qa_corpus.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "926b62f5aaa0b411ed3ac3f2617340a6b728f0d03d363d30d6b162e7c02f6ed0",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform_qa_corpus.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "96d8fed83d05427cfa0ed0290718230502405a5f569f5206aef0dd1ddedf2697",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform_qa_corpus.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "b8e37739d6a941eb27f1491f3a75c90f562f5d074bf9b4eabe790941a5273c67",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform_qa_corpus.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "3fd9dafc93b788aa2a8ef42918e76422c869f292fa7bd5dd6aa49ddd0ff0ac32",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform_task_executor.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "f5d1a04697ca81a0dcf235f61ff77d092a7fbac3a8cf90c4d43ffc2ddb6dc90a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_document_transform_task_executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "bc28ec0a48fbfe294d79e0fb42052ce007f1cdf62ba90ec5824bc02419cf1b7a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_drive_modules.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "266a92f021c43d9708b8919fff0cd63e1300f119367fa0cfcfc7815a490a660e",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_google_presentation_gateway.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "c1b48ce79336be90501c9cc2df81b70b8a4ba854f611ebc04d20aaaa5a09e74d",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_google_presentation_gateway.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "057d585959015a8ebc2ba6e0c28af37f2a88986b8d8aa3817915a95d7bef28b2",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_google_token_manager.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6c98a988fdbf557c63254f88e1362961cb048d0517bb4c7740607a80f4c9a5a1",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_google_token_manager.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "2677262d572ce96d8b94c2b0d645673a5c8e60d191c1f31a85e5cb6e65e4c91a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_header_postcondition_recovery.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "f44210b25135c2c59b70c60edf22045ef3c8aecbb5c6e9d669ab655601b1a833",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_presentation_transform.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "f6dbd0294f6d598be81c82b700a556a35a33744c263435904ae832aa4ab3c78a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_presentation_transform.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "7b24d6695503879297165e80875baeb7060a9ebeaceadee9a9689efdd64d5b41",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_smart_create.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "b657ac6ddcbc5509d8de63c8d67d334e7f25d85fa51021785c32c201f6a25d0b",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_smart_create.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "6e48d2ab8b1853977e55653ed3cbf0f480e375d20d637e972e26b76338f32041",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_smart_create_executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "21e12b92bd0184082557f4cd73d966de2128800cf56a4e06df8ca28b876a0f8f",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_smart_create_router_tasks.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "3d9ae0fb72facc60139ab0c137e4964d36e6d78e940c6aa38726de48cb0d4aaa",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_smart_create_router_tasks.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "7aed34bbf5df3a00d538cb13ed3495aa49792081592ec13c1a882ae759226b6a",
+      "source": "sarj-python-lint",
+      "ruleId": "no-deleted-only-override-parameter",
+      "path": "backend/tests/test_smart_creation.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "713ea6807e7a91a4029b880ac0ca196fe782b9e68ffd2b18bb9e057453ca103e",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-walrus-awaited-none-guard",
+      "path": "backend/app/auth/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "e93879a8088533e5bd56b45788921345100af65b674d0458e25002bb3f60932d",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-walrus-awaited-none-guard",
+      "path": "backend/app/auth/service.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "b92d0f9d18a7b64fc94e1bada26d20a9907ee3ea88608fdc64ee5c2c44bf05de",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-walrus-awaited-none-guard",
+      "path": "backend/scripts/qa_document_transform.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "41f38b55ca9b626f3d66a0b1c929bcd942931f3862a718fbbbb01b6eeff8f393",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-walrus-awaited-none-guard",
+      "path": "backend/scripts/qa_export_drive_docs.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "48c943b82f3a4a7a23bd0c0ead126201d01cc6a04de9e6d3d29d22d3f3dad6a7",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-walrus-awaited-none-guard",
+      "path": "backend/scripts/qa_markdown_transform.py",
+      "count": 1
     }
   ]
 }
