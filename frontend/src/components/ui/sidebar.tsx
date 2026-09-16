@@ -115,8 +115,8 @@ function SidebarProvider({
 
   const state = open ? "expanded" : "collapsed";
 
-  const contextValue = React.useMemo<SidebarContextProps>(() => {
-    return {
+  const contextValue = React.useMemo<SidebarContextProps>(
+    () => ({
       isMobile,
       open,
       openMobile,
@@ -124,8 +124,9 @@ function SidebarProvider({
       setOpenMobile,
       state,
       toggleSidebar,
-    };
-  }, [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]);
+    }),
+    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
+  );
   const sidebarStyle: SidebarStyle = {
     "--sidebar-width": SIDEBAR_WIDTH,
     "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,

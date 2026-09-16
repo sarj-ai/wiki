@@ -7,10 +7,9 @@ export const wikiKeys = {
   drives: ["wiki", "drives"] as const,
   // eslint-disable-next-line @sarj/no-positional-tuple-return -- TanStack Query requires query keys to be readonly arrays.
   driveSearch: (query: string) => [...DRIVE_SEARCH_PREFIX, query] as const,
-  driveSearchSnippet: (fileId: string, query: string) => {
+  driveSearchSnippet: (fileId: string, query: string) =>
     // eslint-disable-next-line @sarj/no-positional-tuple-return -- TanStack Query requires query keys to be readonly arrays.
-    return [...DRIVE_SEARCH_PREFIX, "snippet", fileId, query] as const;
-  },
+    [...DRIVE_SEARCH_PREFIX, "snippet", fileId, query] as const,
   // eslint-disable-next-line @sarj/no-positional-tuple-return -- TanStack Query requires query keys to be readonly arrays.
   driveTree: (driveId: string) => [...DRIVE_TREE_PREFIX, driveId] as const,
   driveTreePrefix: DRIVE_TREE_PREFIX,
