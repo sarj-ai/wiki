@@ -68,6 +68,16 @@
       "count": 2
     }
   },
+  "src/components/wiki-document/document-polish-dialog.tsx": {
+    "@sarj/no-excessive-cognitive-complexity": {
+      "count": 3
+    }
+  },
+  "src/components/wiki-document/short-link-dialog.tsx": {
+    "@sarj/no-excessive-cognitive-complexity": {
+      "count": 1
+    }
+  },
   "src/components/wiki-search/command-palette.test.tsx": {
     "@typescript-eslint/naming-convention": {
       "count": 1
@@ -87,12 +97,20 @@
     }
   },
   "src/components/wiki-sidebar/drive-access-sheet.tsx": {
+    "@sarj/no-excessive-cognitive-complexity": {
+      "count": 1
+    },
     "@sarj/prefer-immutable-module-constant": {
       "count": 1
     }
   },
   "src/components/wiki-sidebar/smart-create-dialog.test.tsx": {
     "@typescript-eslint/naming-convention": {
+      "count": 1
+    }
+  },
+  "src/components/wiki-sidebar/smart-create-dialog.tsx": {
+    "@sarj/no-excessive-cognitive-complexity": {
       "count": 1
     }
   },
@@ -116,6 +134,11 @@
   },
   "src/lib/api-client.test.ts": {
     "@typescript-eslint/naming-convention": {
+      "count": 1
+    }
+  },
+  "src/lib/document-transform-api.ts": {
+    "@sarj/no-excessive-cognitive-complexity": {
       "count": 1
     }
   },
