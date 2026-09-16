@@ -15,6 +15,6 @@ export async function logout(): Promise<void> {
   try {
     await runAction(logoutAction);
   } catch {
-    return;
+    // Logout is best-effort because the local session is already invalid.
   }
 }
