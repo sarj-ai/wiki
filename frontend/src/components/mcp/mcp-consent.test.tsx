@@ -52,7 +52,7 @@ describe("McpConsent", () => {
       root.render(
         <McpConsent
           accountEmail="person@example.com"
-          clientName={'<img src=x onerror="alert(1)">'}
+          clientName='<img src=x onerror="alert(1)">'
           onDecision={onDecision}
           onRecover={onRecover}
           requestsTransform={requestsTransform}
