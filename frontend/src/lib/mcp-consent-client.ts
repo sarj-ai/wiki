@@ -38,8 +38,8 @@ export type McpConnections = z.output<typeof ConnectionsSchema>;
 export class McpConsentRequestError extends Error {
   readonly status: number;
 
-  constructor(status: number) {
-    super("Wiki connection request unavailable");
+  constructor(status: number, options: ErrorOptions = {}) {
+    super("Wiki connection request unavailable", options);
     this.name = "McpConsentRequestError";
     this.status = status;
   }

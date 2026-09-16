@@ -171,6 +171,13 @@ const ESLINT_RECOMMENDED_WARNING_CONFIG = {
   ),
 };
 
+// Prefer expression bodies whenever an arrow contains only a return. Unlike
+// unicorn/consistent-arrow-return-style, this does not expand a multiline
+// expression or object literal into an explicit `return` block.
+const ESLINT_CONCISION_ADVISORY_RULES = {
+  "arrow-body-style": ["warn", "as-needed"],
+};
+
 // Unicorn ships a broad rule set. The enabled subset below was selected by
 // evaluating each non-deprecated rule for correctness, runtime compatibility,
 // overlap with existing authorities, and whether its fix preserves semantics.
@@ -257,6 +264,7 @@ const UNICORN_CORRECTNESS_RULES = {
   "unicorn/no-new-array": "error",
   "unicorn/no-new-buffer": "error",
   "unicorn/no-nonstandard-builtin-properties": "error",
+  "unicorn/no-object-as-default-parameter": "error",
   "unicorn/no-object-methods-with-collections": "error",
   "unicorn/no-optional-chaining-on-undeclared-variable": "error",
   "unicorn/no-redundant-comparison": "error",
@@ -289,9 +297,11 @@ const UNICORN_CORRECTNESS_RULES = {
   "unicorn/no-unsafe-dom-html": "error",
   "unicorn/no-unsafe-promise-all-settled-values": "error",
   "unicorn/no-unsafe-property-key": "error",
+  "unicorn/no-unsafe-sqlite-interpolation": "error",
   "unicorn/no-unsafe-string-replacement": "error",
   "unicorn/no-unused-array-method-return": "error",
   "unicorn/no-useless-boolean-cast": "error",
+  "unicorn/no-useless-coercion": "error",
   "unicorn/no-useless-collection-argument": "error",
   "unicorn/no-useless-compound-assignment": "error",
   "unicorn/no-useless-concat": "error",
@@ -424,7 +434,6 @@ const UNICORN_MODERNISATION_RULES = {
 // corpora. Logical assignment excludes judgment-heavy if-statement rewrites;
 // iteration uses guards so its fixer agrees with the type-aware nullish rule.
 const UNICORN_CONCISION_ADVISORY_RULES = {
-  "unicorn/consistent-arrow-return-style": "warn",
   "unicorn/single-line-block-comment-style": ["warn", "single-line"],
   "unicorn/logical-assignment-operators": [
     "warn",
@@ -435,6 +444,16 @@ const UNICORN_CONCISION_ADVISORY_RULES = {
   "unicorn/iteration-fallback-style": ["warn", "guard"],
 };
 
+// Semantic advisories require local intent to resolve. Dynamic property reads
+// can mean either value access or ownership, while custom Error hierarchies may
+// deliberately expose a non-native constructor contract. Keep both visible but
+// non-blocking until consumer fixes establish that the upstream guidance is
+// uniformly correct.
+const UNICORN_SEMANTIC_ADVISORY_RULES = {
+  "unicorn/custom-error-definition": "warn",
+  "unicorn/no-computed-property-existence-check": "warn",
+};
+
 // One actionable line instead of N x M "Definition for rule ... was not found".
 // Self-maintaining: it re-derives the required names from the objects above, so
 // adding a rule that a pinned consumer's plugin lacks fails loudly at config
@@ -443,6 +462,7 @@ const missingUnicornRules = [
   ...Object.keys(UNICORN_CORRECTNESS_RULES),
   ...Object.keys(UNICORN_MODERNISATION_RULES),
   ...Object.keys(UNICORN_CONCISION_ADVISORY_RULES),
+  ...Object.keys(UNICORN_SEMANTIC_ADVISORY_RULES),
 ]
   .map((key) => key.slice("unicorn/".length))
   .filter((name) => !(name in unicorn.rules));
@@ -667,6 +687,10 @@ export function createConfig(options = {}) {
           fixStyle: "inline-type-imports",
         },
       ],
+      "@typescript-eslint/consistent-type-exports": [
+        "error",
+        { fixMixedExportsWithInlineTypeSpecifier: true },
+      ],
       "@typescript-eslint/switch-exhaustiveness-check": "error",
       "@typescript-eslint/consistent-type-assertions": [
         "error",
@@ -803,7 +827,10 @@ export function createConfig(options = {}) {
       "@typescript-eslint/no-invalid-void-type": "error",
       "@typescript-eslint/no-unnecessary-template-expression": "error",
       "@typescript-eslint/no-import-type-side-effects": "error",
+      "@typescript-eslint/no-unnecessary-qualifier": "error",
+      "@typescript-eslint/no-useless-empty-export": "error",
       "@typescript-eslint/array-type": "error",
+      "@typescript-eslint/default-param-last": "error",
       "prefer-object-has-own": "error",
       // `no-else-return` used to sit here. It is gone because
       // `unicorn/no-useless-else` (enabled below) is a strict superset: it flags
@@ -860,6 +887,10 @@ export function createConfig(options = {}) {
       "react/style-prop-object": "error",
       "react/button-has-type": "error",
       "react/jsx-boolean-value": ["error", "never"],
+      "react/jsx-curly-brace-presence": [
+        "error",
+        { props: "never", children: "never", propElementValues: "always" },
+      ],
 
       "unicorn/consistent-function-scoping": "error",
       // Kebab-case filenames. unicorn handles most framework shapes for free:
@@ -915,7 +946,9 @@ export function createConfig(options = {}) {
       // The unicorn 72 expansion, declared and explained above the config.
       ...UNICORN_CORRECTNESS_RULES,
       ...UNICORN_MODERNISATION_RULES,
+      ...ESLINT_CONCISION_ADVISORY_RULES,
       ...UNICORN_CONCISION_ADVISORY_RULES,
+      ...UNICORN_SEMANTIC_ADVISORY_RULES,
 
       "zod/prefer-enum-over-literal-union": "error",
       // A type hand-written beside the Zod schema it restates drifts when the
@@ -1119,6 +1152,11 @@ export function createConfig(options = {}) {
       ],
 
       "object-shorthand": ["error", "always"],
+      "no-extra-bind": "error",
+      "no-undef-init": "error",
+      "no-useless-computed-key": "error",
+      "no-useless-rename": "error",
+      "no-useless-return": "error",
       "no-eval": ["error", { allowIndirect: false }],
       "no-prototype-builtins": "error",
       "no-return-await": "error",
@@ -1133,6 +1171,10 @@ export function createConfig(options = {}) {
       "no-fallthrough": "error",
       "no-console": ["error", { allow: ["warn", "error"] }],
       "prefer-const": "error",
+      "prefer-arrow-callback": [
+        "error",
+        { allowNamedFunctions: true, allowUnboundThis: true },
+      ],
       "prefer-template": "error",
       "no-var": "error",
       "no-shadow": "off",
@@ -1194,6 +1236,12 @@ export function createConfig(options = {}) {
       "@sarj/no-secret-in-log": "error",
       "@sarj/no-hand-rolled-sleep": "error",
       "@sarj/no-hand-rolled-spinner": "error",
+      "@sarj/require-button-accessible-name": "error",
+      "@sarj/require-svg-accessible-name": "error",
+      "@sarj/prefer-logical-tailwind-utilities": ["warn", { enabled: false }],
+      "@sarj/no-unlocalized-jsx-text": ["warn", { enabled: false }],
+      "@sarj/no-unlocalized-jsx-attributes": ["warn", { enabled: false }],
+      "@sarj/no-unlocalized-toast": ["warn", { enabled: false }],
       "@sarj/prefer-input-group-search": "error",
       "@sarj/prefer-millisecond-control-duration-schema": "warn",
       "@sarj/prefer-immutable-module-constant": "error",

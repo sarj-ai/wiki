@@ -29,8 +29,8 @@ serverClient.interceptors.response.use((response) => {
 export class ServerApiError extends Error {
   readonly status: number;
 
-  constructor(status: number) {
-    super(`Server API error: ${status}`);
+  constructor(status: number, options: ErrorOptions = {}) {
+    super(`Server API error: ${status}`, options);
     this.status = status;
     this.name = "ServerApiError";
   }
