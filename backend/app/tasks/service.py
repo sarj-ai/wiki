@@ -13,6 +13,7 @@ from cryptography.fernet import InvalidToken
 from pydantic import BaseModel, JsonValue, TypeAdapter
 from sqlalchemy import Text, and_, case, cast, delete, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
+from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.encryption import decrypt_cache, encrypt_cache
@@ -284,129 +285,17 @@ class PostgresTaskService(TaskService):
             else None
         )
         if document_transform_payload is not None:
-            await self._db.execute(
-                select(func.pg_advisory_xact_lock(func.hashtextextended(str(owner_user_id), 0)))
-            )
-            existing = await self._maybe_existing(owner_user_id, kind, idempotency_key)
-            if existing is not None:
-                if existing.request_hash != request_hash:
-                    await self._db.rollback()
-                    raise TaskIdempotencyConflictError
-                await self._db.commit()
-                return TaskReservation(task=_to_read(existing), created=False)
-            active_row = (
-                await self._db.execute(
-                    select(Task, (Task.expires_at <= func.now()).label("expired"))
-                    .where(
-                        Task.owner_user_id == owner_user_id,
-                        Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
-                        Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
-                        or_(
-                            Task.expires_at > func.now(),
-                            and_(
-                                Task.status == TaskStatus.RUNNING,
-                                Task.lease_expires_at > func.now() - _LEASE_RETENTION_GRACE,
-                            ),
-                        ),
-                        (
-                            and_(
-                                Task.payload["source"]["kind"].astext == "drive_file",
-                                Task.payload["source"]["file_id"].astext
-                                == document_transform_payload.source.file_id,
-                            )
-                            if isinstance(document_transform_payload.source, DriveFileSource)
-                            else and_(
-                                Task.payload["source"]["kind"].astext == "markdown",
-                                Task.request_hash == request_hash,
-                            )
-                        ),
-                    )
-                    .order_by(Task.created_at, Task.id)
-                    .limit(1)
-                )
-            ).one_or_none()
-            if active_row is not None:
-                active = active_row[0]
-                # A new key is a fresh access request, unlike an exact-key
-                # replay. Recheck scope before disclosing an active task.
-                try:
-                    if admit is not None:
-                        await admit()
-                except BaseException:
-                    await self._db.rollback()
-                    raise
-                if active_row[1] or active.request_hash != request_hash:
-                    await self._db.rollback()
-                    raise TaskTargetBusyError
-                await self._bind_replay_key(
-                    owner_user_id=owner_user_id,
-                    kind=kind,
-                    idempotency_key=idempotency_key,
-                    task_id=active.id,
-                )
-                await self._db.commit()
-                return TaskReservation(task=_to_read(active), created=False)
-            # A fresh key is a fresh access request. Reauthorize before looking
-            # up a completed task so prior output existence is never disclosed
-            # after source or destination access has been revoked.
-            try:
-                if admit is not None:
-                    await admit()
-            except BaseException:
-                await self._db.rollback()
-                raise
-            terminal_replay = await self._maybe_retained_terminal_replay(
+            replay = await self._admit_document_transform(
                 owner_user_id=owner_user_id,
-                kind=kind,
                 idempotency_key=idempotency_key,
+                payload=document_transform_payload,
                 request_hash=request_hash,
-                admit=admit_terminal_replay,
+                admit=admit,
+                admit_new=admit_new,
+                admit_terminal_replay=admit_terminal_replay,
             )
-            if terminal_replay is not None:
-                return terminal_replay
-            try:
-                if admit_new is not None:
-                    admit_new()
-            except BaseException:
-                await self._db.rollback()
-                raise
-            active_count = (
-                await self._db.execute(
-                    select(func.count())
-                    .select_from(Task)
-                    .where(
-                        Task.owner_user_id == owner_user_id,
-                        Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
-                        Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
-                        Task.expires_at > func.now(),
-                    )
-                )
-            ).scalar_one_or_none()
-            if not isinstance(active_count, int):
-                msg = "Active document-transform task count query returned an invalid value"
-                raise TypeError(msg)
-            if active_count >= _MAX_ACTIVE_DOCUMENT_TRANSFORMS_PER_OWNER:
-                await self._db.rollback()
-                raise TaskAdmissionLimitError
-            if in_place_source is not None:
-                active_in_place_count = (
-                    await self._db.execute(
-                        select(func.count())
-                        .select_from(Task)
-                        .where(
-                            Task.owner_user_id == owner_user_id,
-                            Task.in_place_target.is_not(None),
-                            Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
-                            Task.expires_at > func.now(),
-                        )
-                    )
-                ).scalar_one_or_none()
-                if not isinstance(active_in_place_count, int):
-                    msg = "Active in-place task count query returned an invalid value"
-                    raise TypeError(msg)
-                if active_in_place_count >= _MAX_ACTIVE_IN_PLACE_TASKS_PER_OWNER:
-                    await self._db.rollback()
-                    raise TaskAdmissionLimitError
+            if replay is not None:
+                return replay
         # Non-document tasks do not take the document owner lock or participate
         # in semantic replay, so their admission still runs here.
         if admit is not None and document_transform_payload is None:
@@ -468,6 +357,194 @@ class PostgresTaskService(TaskService):
         if existing.request_hash != request_hash:
             raise TaskIdempotencyConflictError
         return TaskReservation(task=_to_read(existing), created=False)
+
+    async def _admit_document_transform(
+        self,
+        *,
+        owner_user_id: uuid.UUID,
+        idempotency_key: IdempotencyKey,
+        payload: DocumentTransformRequest,
+        request_hash: str,
+        admit: Callable[[], Awaitable[None]] | None,
+        admit_new: Callable[[], None] | None,
+        admit_terminal_replay: Callable[[TaskRead], Awaitable[bool]] | None,
+    ) -> TaskReservation | None:
+        kind = TaskKind.FILE_DOCUMENT_TRANSFORM
+        await self._db.execute(
+            select(func.pg_advisory_xact_lock(func.hashtextextended(str(owner_user_id), 0)))
+        )
+        existing = await self._maybe_existing(owner_user_id, kind, idempotency_key)
+        if existing is not None:
+            if existing.request_hash != request_hash:
+                await self._db.rollback()
+                raise TaskIdempotencyConflictError
+            await self._db.commit()
+            return TaskReservation(task=_to_read(existing), created=False)
+        active_row = await self._find_active_transform(owner_user_id, payload, request_hash)
+        if active_row is not None:
+            replay = await self._reuse_active_transform(
+                active_row=active_row,
+                owner_user_id=owner_user_id,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+                admit=admit,
+            )
+            if replay is not None:
+                return replay
+        else:
+            # Every fresh key requires source and destination authorization.
+            try:
+                if admit is not None:
+                    await admit()
+            except BaseException:
+                await self._db.rollback()
+                raise
+        terminal_replay = await self._maybe_retained_terminal_replay(
+            owner_user_id=owner_user_id,
+            kind=kind,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            admit=admit_terminal_replay,
+        )
+        if terminal_replay is not None:
+            return terminal_replay
+        try:
+            if admit_new is not None:
+                admit_new()
+        except BaseException:
+            await self._db.rollback()
+            raise
+        await self._check_document_transform_limits(owner_user_id, payload)
+        return None
+
+    async def _find_active_transform(
+        self,
+        owner_user_id: uuid.UUID,
+        payload: DocumentTransformRequest,
+        request_hash: str,
+    ) -> Row[tuple[Task, bool]] | None:
+        source = payload.source
+        source_predicate = (
+            and_(
+                Task.payload["source"]["kind"].astext == "drive_file",
+                Task.payload["source"]["file_id"].astext == source.file_id,
+            )
+            if isinstance(source, DriveFileSource)
+            else and_(
+                Task.payload["source"]["kind"].astext == "markdown",
+                Task.request_hash == request_hash,
+            )
+        )
+        return (
+            await self._db.execute(
+                select(Task, (Task.expires_at <= func.now()).label("expired"))
+                .where(
+                    Task.owner_user_id == owner_user_id,
+                    Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+                    Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
+                    or_(
+                        Task.expires_at > func.now(),
+                        and_(
+                            Task.status == TaskStatus.RUNNING,
+                            Task.lease_expires_at > func.now() - _LEASE_RETENTION_GRACE,
+                        ),
+                    ),
+                    source_predicate,
+                )
+                .order_by(Task.created_at, Task.id)
+                .limit(1)
+            )
+        ).one_or_none()
+
+    async def _reuse_active_transform(
+        self,
+        *,
+        active_row: Row[tuple[Task, bool]],
+        owner_user_id: uuid.UUID,
+        idempotency_key: IdempotencyKey,
+        request_hash: str,
+        admit: Callable[[], Awaitable[None]] | None,
+    ) -> TaskReservation | None:
+        # The provider await can outlive the selected row. Recheck under a row
+        # lock before binding the new retry key.
+        try:
+            if admit is not None:
+                await admit()
+        except BaseException:
+            await self._db.rollback()
+            raise
+        refreshed = (
+            await self._db.execute(
+                select(Task, (Task.expires_at <= func.clock_timestamp()).label("expired"))
+                .where(
+                    Task.id == active_row[0].id,
+                    Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
+                    or_(
+                        Task.expires_at > func.clock_timestamp(),
+                        and_(
+                            Task.status == TaskStatus.RUNNING,
+                            Task.lease_expires_at > func.clock_timestamp() - _LEASE_RETENTION_GRACE,
+                        ),
+                    ),
+                )
+                .with_for_update()
+            )
+        ).one_or_none()
+        if refreshed is None:
+            return None
+        if refreshed[1] or refreshed[0].request_hash != request_hash:
+            await self._db.rollback()
+            raise TaskTargetBusyError
+        await self._bind_replay_key(
+            owner_user_id=owner_user_id,
+            kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+            idempotency_key=idempotency_key,
+            task_id=refreshed[0].id,
+        )
+        await self._db.commit()
+        return TaskReservation(task=_to_read(refreshed[0]), created=False)
+
+    async def _check_document_transform_limits(
+        self, owner_user_id: uuid.UUID, payload: DocumentTransformRequest
+    ) -> None:
+        active_count = (
+            await self._db.execute(
+                select(func.count())
+                .select_from(Task)
+                .where(
+                    Task.owner_user_id == owner_user_id,
+                    Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
+                    Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
+                    Task.expires_at > func.now(),
+                )
+            )
+        ).scalar_one_or_none()
+        if not isinstance(active_count, int):
+            msg = "Active document-transform task count query returned an invalid value"
+            raise TypeError(msg)
+        if active_count >= _MAX_ACTIVE_DOCUMENT_TRANSFORMS_PER_OWNER:
+            await self._db.rollback()
+            raise TaskAdmissionLimitError
+        if payload.output_strategy is not OutputStrategy.IN_PLACE:
+            return
+        active_in_place_count = (
+            await self._db.execute(
+                select(func.count())
+                .select_from(Task)
+                .where(
+                    Task.owner_user_id == owner_user_id,
+                    Task.in_place_target.is_not(None),
+                    Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
+                    Task.expires_at > func.now(),
+                )
+            )
+        ).scalar_one_or_none()
+        if not isinstance(active_in_place_count, int):
+            msg = "Active in-place task count query returned an invalid value"
+            raise TypeError(msg)
+        if active_in_place_count >= _MAX_ACTIVE_IN_PLACE_TASKS_PER_OWNER:
+            await self._db.rollback()
+            raise TaskAdmissionLimitError
 
     @override
     async def claim(self, task_id: TaskId, *, lease_duration: timedelta) -> TaskClaim:
@@ -1030,26 +1107,7 @@ class PostgresTaskService(TaskService):
         ):
             raise OutputConflictError
         finalized = checkpoint.result
-        if checkpoint.stage is CopyCheckpointStage.ATTESTED:
-            if (
-                checkpoint.qa_destination_permission is None
-                or checkpoint.qa_permission_evidence is None
-                or not isinstance(finalized, QaDocumentTransformResult)
-            ):
-                raise OutputConflictError
-            if (
-                finalized.qa_permission_evidence != checkpoint.qa_permission_evidence
-                or not isinstance(result, QaDocumentTransformResult)
-            ):
-                raise OutputConflictError
-            if result.qa_permission_evidence != checkpoint.qa_permission_evidence:
-                raise OutputConflictError
-        elif checkpoint.qa_permission_evidence is not None or isinstance(
-            finalized, QaDocumentTransformResult
-        ):
-            # A QA task cannot persist provenance from the provisional VERIFIED
-            # checkpoint that precedes its terminal owner-only attestation.
-            raise OutputConflictError
+        _validate_header_attestation(checkpoint, finalized, result)
         if (
             finalized.header_identity != evidence
             or evidence.operation_id != task.id
@@ -1108,6 +1166,32 @@ class PostgresTaskService(TaskService):
             or stored.verified_revision_sha256 != revision_digest
         ):
             raise OutputConflictError
+
+
+def _validate_header_attestation(
+    checkpoint: CopyCheckpoint,
+    finalized: DocumentTransformResult | QaDocumentTransformResult,
+    result: DocumentTransformResult,
+) -> None:
+    if checkpoint.stage is CopyCheckpointStage.ATTESTED:
+        if (
+            checkpoint.qa_destination_permission is None
+            or checkpoint.qa_permission_evidence is None
+            or not isinstance(finalized, QaDocumentTransformResult)
+        ):
+            raise OutputConflictError
+        if finalized.qa_permission_evidence != checkpoint.qa_permission_evidence or not isinstance(
+            result, QaDocumentTransformResult
+        ):
+            raise OutputConflictError
+        if result.qa_permission_evidence != checkpoint.qa_permission_evidence:
+            raise OutputConflictError
+    elif checkpoint.qa_permission_evidence is not None or isinstance(
+        finalized, QaDocumentTransformResult
+    ):
+        # A QA task cannot persist provenance from the provisional VERIFIED
+        # checkpoint that precedes its terminal owner-only attestation.
+        raise OutputConflictError
 
 
 def _serialize(model: BaseModel) -> dict[str, JsonValue]:

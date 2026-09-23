@@ -14,7 +14,6 @@ from fastmcp.server.auth import AuthProvider
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import ToolResult
 from mcp.types import CallToolRequestParams, ToolAnnotations
-from pydantic import ValidationError
 
 from app.mcp.context import McpApplicationContext, McpAuthorizationError
 from app.mcp.mutation import polish_document
@@ -25,6 +24,7 @@ from app.mcp.schemas import (
     ConnectionResponse,
     DocumentInput,
     DocumentResponse,
+    MarkdownImportInput,
     McpCapability,
     McpModel,
     PolishInput,
@@ -38,11 +38,13 @@ from app.mcp.schemas import (
 )
 from app.mcp.service import McpReadService
 from app.performance import provider_retry_budget
+from app.request_body import MAX_MCP_REQUEST_BODY_BYTES
 from app.tasks.queue import TaskEnqueuer
 
 
 ContextFactory = Callable[[], AbstractAsyncContextManager[McpApplicationContext]]
 _MAX_ARGUMENT_BYTES = 16_384
+_MAX_MARKDOWN_ARGUMENT_BYTES = MAX_MCP_REQUEST_BODY_BYTES
 _TOOL_TIMEOUT = timedelta(seconds=30)
 _PROVIDER_RETRY_BUDGET = timedelta(seconds=20)
 _INPUTS: MappingProxyType[str, type[McpModel]] = MappingProxyType(
@@ -51,6 +53,7 @@ _INPUTS: MappingProxyType[str, type[McpModel]] = MappingProxyType(
         "wiki_search": SearchInput,
         "wiki_get_document": DocumentInput,
         "wiki_polish_document": PolishInput,
+        "wiki_import_markdown": MarkdownImportInput,
         "wiki_get_polish_admission": AdmissionInput,
         "wiki_get_task": TaskInput,
         "wiki_get_short_link": ShortLinkInput,
@@ -74,11 +77,16 @@ class _ValidateArguments(Middleware):
         if model is None or set(arguments) != {"request"}:
             raise ToolError(invalid_message)
         try:
-            size = len(json.dumps(arguments).encode())
-            if size > _MAX_ARGUMENT_BYTES:
+            size = len(json.dumps(arguments, ensure_ascii=False).encode("utf-8"))
+            budget = (
+                _MAX_MARKDOWN_ARGUMENT_BYTES
+                if context.message.name == "wiki_import_markdown"
+                else _MAX_ARGUMENT_BYTES
+            )
+            if size > budget:
                 raise ToolError(invalid_message)
             model.model_validate(arguments["request"])
-        except ValueError, TypeError, ValidationError, RecursionError:
+        except ValueError, TypeError, UnicodeError, RecursionError:
             raise ToolError(invalid_message) from None
         return await call_next(context)
 
@@ -148,6 +156,17 @@ def create_mcp_server(
         description="Submit COPY or IN_PLACE polishing; reuse keys only for identical inputs.",
     )
     async def wiki_polish_document(request: PolishInput) -> PolishResponse:
+        async with open_context(McpCapability.TRANSFORM) as context:
+            return await polish_document(request, context=context, enqueuer=enqueuer)
+
+    @server.tool(
+        annotations=_WRITE,
+        description=(
+            "Import Markdown as a new Google Doc with FORMAT, UNSLOP, or BOTH; "
+            "reuse the idempotency key only with identical inputs."
+        ),
+    )
+    async def wiki_import_markdown(request: MarkdownImportInput) -> PolishResponse:
         async with open_context(McpCapability.TRANSFORM) as context:
             return await polish_document(request, context=context, enqueuer=enqueuer)
 

@@ -1,12 +1,18 @@
 from app.document_transform.application import submit_document_transform
 from app.mcp.context import McpApplicationContext
-from app.mcp.schemas import McpCapability, PolishInput, PolishResponse, TaskInput
+from app.mcp.schemas import (
+    MarkdownImportInput,
+    McpCapability,
+    PolishInput,
+    PolishResponse,
+    TaskInput,
+)
 from app.mcp.service import McpReadService
 from app.tasks.queue import TaskEnqueuer
 
 
 async def polish_document(
-    request: PolishInput,
+    request: PolishInput | MarkdownImportInput,
     *,
     context: McpApplicationContext,
     enqueuer: TaskEnqueuer,

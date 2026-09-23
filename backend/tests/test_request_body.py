@@ -10,7 +10,12 @@ from starlette.responses import Response, StreamingResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.config import settings
-from app.request_body import MAX_REQUEST_BODY_BYTES, RequestBodyLimitMiddleware
+from app.document_transform.limits import MAX_MARKDOWN_BYTES
+from app.request_body import (
+    MAX_MCP_REQUEST_BODY_BYTES,
+    MAX_REQUEST_BODY_BYTES,
+    RequestBodyLimitMiddleware,
+)
 
 
 @pytest.fixture
@@ -47,6 +52,41 @@ async def test_accepts_body_at_exact_limit(client: AsyncClient) -> None:
 
     assert response.status_code == 200
     assert response.content == b"12345678"
+
+
+async def test_mcp_path_limit_accepts_json_escape_expansion_and_rejects_larger_body() -> None:
+    app = FastAPI()
+    app.add_middleware(
+        RequestBodyLimitMiddleware,
+        max_bytes=8,
+        path_limits={"/mcp": 20},
+    )
+
+    @app.post("/mcp")
+    @app.post("/other")
+    async def echo(request: Request) -> Response:
+        return Response(await request.body())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        assert (await client.post("/mcp", content=b"x" * 20)).status_code == 200
+        assert (await client.post("/mcp", content=b"x" * 21)).status_code == 413
+        assert (await client.post("/other", content=b"x" * 9)).status_code == 413
+
+
+async def test_application_mcp_budget_covers_escaped_markdown() -> None:
+    from app.main import app
+
+    # The route may reject an unauthenticated caller, but the body limit must
+    # allow a valid Markdown value before authentication or tool dispatch.
+    body = (
+        b'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"wiki_import_markdown","arguments":{"request":{"content":"'
+        + (b"\\u0001" * MAX_MARKDOWN_BYTES)
+        + b'"}}}}'
+    )
+    assert MAX_REQUEST_BODY_BYTES < len(body) < MAX_MCP_REQUEST_BODY_BYTES
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/mcp", content=body)
+    assert response.status_code != 413
 
 
 async def test_does_not_interrupt_streaming_response(client: AsyncClient) -> None:

@@ -42,7 +42,7 @@ _CANDIDATE_PATTERNS = (
     (
         "canned_transition",
         re.compile(
-            r"^(?:moreover|furthermore|in conclusion),?",
+            r"^(?:moreover|furthermore|in conclusion)\b,?",
             re.IGNORECASE,
         ),
     ),
@@ -186,34 +186,56 @@ def scan_unslop_candidates(document: DocumentIR) -> tuple[UnslopCandidate, ...]:
 
 def deterministic_unslop_replacement(text: str, candidates: tuple[UnslopCandidate, ...]) -> str:
     eligible = tuple(candidate for candidate in candidates if candidate.has_fixed_deletion)
-    if not eligible:
+    if not eligible or not _candidate_offsets_match(text, eligible):
         return text
+    trimmed = _delete_candidates(text, eligible)
+    if not trimmed.strip():
+        return text
+    if min(candidate.start for candidate in eligible) == 0:
+        recapped = _recap_after_leading_deletion(trimmed)
+        if recapped is None:
+            return text
+        return recapped
+    return trimmed
+
+
+def _candidate_offsets_match(text: str, candidates: tuple[UnslopCandidate, ...]) -> bool:
+    # Offsets belong to the exact scanned text. A stale patch must not delete
+    # a coincidentally similar span from a newer revision.
+    return not any(
+        candidate.start < 0
+        or candidate.end > len(text)
+        or candidate.start >= candidate.end
+        or text[candidate.start : candidate.end] != candidate.matched_text
+        for candidate in candidates
+    )
+
+
+def _delete_candidates(text: str, eligible: tuple[UnslopCandidate, ...]) -> str:
     result = text
     for candidate in sorted(eligible, key=lambda item: (item.start, item.end), reverse=True):
         span = expanded_deletion_span(text, candidate.start, candidate.end)
         result = result[: span.start] + result[span.end :]
-    trimmed = result
-    if eligible and min(candidate.start for candidate in eligible) == 0:
-        trimmed = trimmed.lstrip()
-    if eligible and max(candidate.end for candidate in eligible) == len(text):
-        trimmed = trimmed.rstrip()
-    if not trimmed.strip():
-        return text
-    if eligible and min(candidate.start for candidate in eligible) == 0:
-        first_nonspace = next((char for char in trimmed if not char.isspace()), None)
-        if first_nonspace is not None and first_nonspace in _SENTENCE_PUNCTUATION:
-            return text
-        first_alpha = next((index for index, char in enumerate(trimmed) if char.isalpha()), None)
-        if first_alpha is not None and trimmed[first_alpha].islower():
-            word = re.match(r"[A-Za-z]+", trimmed[first_alpha:])
-            if word is None or word.group(0).casefold() not in _CAPITALIZABLE_START_WORDS:
-                return text
-            if _recapitalization_is_protected(trimmed, first_alpha):
-                return text
-            trimmed = (
-                trimmed[:first_alpha] + trimmed[first_alpha].upper() + trimmed[first_alpha + 1 :]
-            )
-    return trimmed
+    if min(candidate.start for candidate in eligible) == 0:
+        result = result.lstrip()
+    if max(candidate.end for candidate in eligible) == len(text):
+        result = result.rstrip()
+    return result
+
+
+def _recap_after_leading_deletion(value: str) -> str | None:
+    first_nonspace = next((char for char in value if not char.isspace()), None)
+    if first_nonspace is not None and first_nonspace in _SENTENCE_PUNCTUATION:
+        return None
+    first_alpha = next((index for index, char in enumerate(value) if char.isalpha()), None)
+    if first_alpha is None or not value[first_alpha].islower():
+        return value
+    word = re.match(r"[A-Za-z]+", value[first_alpha:])
+    if word is None or word.group(0).casefold() not in _CAPITALIZABLE_START_WORDS:
+        return None
+    if _recapitalization_is_protected(value, first_alpha):
+        return None
+    return value[:first_alpha] + value[first_alpha].upper() + value[first_alpha + 1 :]
 
 
 def _recapitalization_is_protected(value: str, first_alpha: int) -> bool:

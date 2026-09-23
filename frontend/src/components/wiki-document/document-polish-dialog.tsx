@@ -138,6 +138,7 @@ export function DocumentPolishDialog({
     source: MarkdownRecoveryBundle["source"];
   } | null>(null);
   const [markdownError, setMarkdownError] = useState<null | string>(null);
+  const [loadingMarkdownFile, setLoadingMarkdownFile] = useState(false);
   const [name, setName] = useState("Untitled document");
   const [copyName, setCopyName] = useState("");
   const [completedResult, setCompletedResult] = useState<DocumentTransformResult | null>(null);
@@ -168,6 +169,7 @@ export function DocumentPolishDialog({
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const fileLoadGeneration = useRef(0);
+  const fileLoadPending = useRef(false);
   const idempotencyKey = useRef<null | string>(null);
   const refreshedDriveSource = useRef<Extract<
     DocumentTransformSource,
@@ -297,6 +299,8 @@ export function DocumentPolishDialog({
   useEffect(
     () => () => {
       lifecycleGeneration.current += 1;
+      fileLoadGeneration.current += 1;
+      fileLoadPending.current = false;
       abortRef.current?.abort();
       abortRef.current = null;
       submitLatch.current = false;
@@ -312,6 +316,8 @@ export function DocumentPolishDialog({
     idempotencyKey.current = null;
     refreshedDriveSource.current = null;
     fileLoadGeneration.current += 1;
+    fileLoadPending.current = false;
+    setLoadingMarkdownFile(false);
     setReviewMessage(null);
     setReviewResult(null);
     setTerminalMessage(null);
@@ -334,6 +340,8 @@ export function DocumentPolishDialog({
     idempotencyKey.current = null;
     refreshedDriveSource.current = null;
     fileLoadGeneration.current += 1;
+    fileLoadPending.current = false;
+    setLoadingMarkdownFile(false);
     setMode("both");
     setOutputStrategy("copy");
     setMarkdown("");
@@ -382,6 +390,8 @@ export function DocumentPolishDialog({
   const loadMarkdownFile = async (file: File) => {
     const generation = fileLoadGeneration.current + 1;
     fileLoadGeneration.current = generation;
+    fileLoadPending.current = true;
+    setLoadingMarkdownFile(true);
     try {
       const imported = await readMarkdownFile(file);
       if (fileLoadGeneration.current !== generation) return;
@@ -399,13 +409,16 @@ export function DocumentPolishDialog({
         setMarkdownError(errorMessage(error, "Couldn’t read the Markdown file"));
       }
     } finally {
-      if (fileLoadGeneration.current === generation && fileInputRef.current) {
-        fileInputRef.current.value = "";
+      if (fileLoadGeneration.current === generation) {
+        fileLoadPending.current = false;
+        setLoadingMarkdownFile(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
       }
     }
   };
 
   const create = async () => {
+    if (fileLoadPending.current) return;
     if (
       currentCheckRequired &&
       (currentCheckPending || currentPolish.isError || currentResult !== null)
@@ -875,6 +888,7 @@ export function DocumentPolishDialog({
                     }}
                     onDrop={(event) => {
                       event.preventDefault();
+                      if (optionsLocked) return;
                       const file = event.dataTransfer.files.item(0);
                       if (file) void loadMarkdownFile(file);
                     }}
@@ -887,6 +901,11 @@ export function DocumentPolishDialog({
                       or drop one here · UTF-8 · 512 KiB max
                     </span>
                   </Button>
+                  {loadingMarkdownFile ? (
+                    <p aria-live="polite" className="text-muted-foreground text-xs" role="status">
+                      Reading Markdown file…
+                    </p>
+                  ) : null}
                 </div>
                 <div className="space-y-1.5">
                   <div className="flex items-baseline justify-between gap-3">
@@ -1240,6 +1259,7 @@ export function DocumentPolishDialog({
               className="w-full sm:w-auto"
               disabled={
                 submitting ||
+                loadingMarkdownFile ||
                 (!completedResult &&
                   (recovery.isPending ||
                     recovery.isError ||

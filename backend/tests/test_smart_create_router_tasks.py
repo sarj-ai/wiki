@@ -261,6 +261,34 @@ async def _create_transform(
     )
 
 
+@pytest.mark.parametrize("created", [True, False])
+async def test_markdown_transform_response_points_to_recoverable_task(created: bool) -> None:
+    tasks = _Tasks(created=created)
+    response = Response()
+    payload = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content="# Decision\n\nUse the existing workflow.",
+            name="Decision",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.BOTH,
+    )
+
+    task = await _create_transform(
+        payload,
+        tasks=tasks,
+        enqueuer=_Enqueuer(),
+        files=_destination_files(),
+        response=response,
+    )
+
+    assert response.headers["Location"] == f"/tasks/{task.id}"
+    assert response.headers["Idempotency-Replayed"] == str(not created).lower()
+    assert response.headers["Retry-After"] == "1"
+    assert response.headers["Cache-Control"] == "no-store"
+
+
 async def test_new_task_returns_pending_immediately_and_enqueues() -> None:
     tasks = _Tasks(created=True)
     enqueuer = _Enqueuer()

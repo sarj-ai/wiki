@@ -12,8 +12,16 @@ import pytest
 
 from app.document_transform import docx_renderer
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
-from app.document_transform.docx_renderer import markdown_import_manifest, render_markdown_docx
-from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
+from app.document_transform.docx_renderer import (
+    markdown_import_manifest,
+    render_markdown_docx,
+    validate_markdown_import,
+)
+from app.document_transform.errors import (
+    EmptyMarkdownBlockError,
+    SourceTooLargeError,
+    UnsupportedSourceError,
+)
 
 
 if TYPE_CHECKING:
@@ -71,6 +79,36 @@ def test_render_is_valid_loadable_and_byte_deterministic(rendered: bytes) -> Non
         assert archive.testzip() is None
         assert archive.namelist() == sorted(archive.namelist())
         assert all(item.date_time == (1980, 1, 1, 0, 0, 0) for item in archive.infolist())
+
+
+def test_fenced_code_preserves_blank_lines_without_inserting_spaces() -> None:
+    source = "```text\nfirst\n\nlast\n\n```"
+    rendered = render_markdown_docx(source, title="Code", branded=False)
+    document = WordDocument(BytesIO(rendered))
+    expected = markdown_import_manifest(source, title="Code", branded=False)
+
+    assert document.paragraphs[-1].text == "first\n\nlast\n"
+    assert expected.blocks[-1].text == document.paragraphs[-1].text
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "#",
+        "##\nBody",
+        "Title\n-----\n\n##   ",
+        "```\n```",
+        "~~~python\n~~~",
+        "```text\n\n```",
+    ],
+)
+def test_empty_heading_and_code_blocks_are_rejected_before_render(source: str) -> None:
+    with pytest.raises(EmptyMarkdownBlockError, match="add text or remove"):
+        validate_markdown_import(source, title="Import")
+    with pytest.raises(EmptyMarkdownBlockError):
+        markdown_import_manifest(source, title="Import", branded=False)
+    with pytest.raises(EmptyMarkdownBlockError):
+        render_markdown_docx(source, title="Import", branded=False)
 
 
 def test_render_preserves_native_structure_and_inline_formatting(rendered: bytes) -> None:

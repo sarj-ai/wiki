@@ -23,9 +23,6 @@
   "backend/app/document_transform/custom_furniture.py": {
     "SARJ444": 1
   },
-  "backend/app/document_transform/docx_renderer.py": {
-    "SARJ444": 6
-  },
   "backend/app/document_transform/executor.py": {
     "SARJ444": 4
   },
@@ -37,9 +34,6 @@
   },
   "backend/app/document_transform/ir.py": {
     "SARJ444": 5
-  },
-  "backend/app/document_transform/markdown_import.py": {
-    "SARJ444": 7
   },
   "backend/app/document_transform/native_date_flow.py": {
     "SARJ444": 3
@@ -92,9 +86,6 @@
   "backend/app/document_transform/safety.py": {
     "SARJ444": 1
   },
-  "backend/app/document_transform/schemas.py": {
-    "SARJ444": 1
-  },
   "backend/app/document_transform/slides_brand.py": {
     "SARJ444": 4
   },
@@ -113,12 +104,6 @@
   "backend/app/document_transform/tab_structure_execution.py": {
     "SARJ444": 3
   },
-  "backend/app/document_transform/task_executor.py": {
-    "SARJ444": 1
-  },
-  "backend/app/document_transform/unslop.py": {
-    "SARJ444": 1
-  },
   "backend/app/document_transform/word_executor.py": {
     "SARJ444": 1
   },
@@ -129,9 +114,6 @@
     "SARJ444": 9
   },
   "backend/app/mcp/native_http_guard.py": {
-    "SARJ444": 2
-  },
-  "backend/app/tasks/service.py": {
     "SARJ444": 2
   },
   "backend/scripts/qa_document_transform_cloud.py": {

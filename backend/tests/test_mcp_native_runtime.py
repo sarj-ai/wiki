@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.schema import CreateSchema, DropSchema
 
 from app.auth.service import AuthService, AuthSession
+from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.identifiers import GoogleUserId, TaskId, UserId
 from app.mcp.native_admission import PostgresRegistrationAdmission
 from app.mcp.native_consent_router import NativeConsentSettings, create_native_consent_router
@@ -332,6 +333,7 @@ async def test_real_http_pg_oauth_to_mcp_and_revocation(
         "wiki_search",
         "wiki_get_document",
         "wiki_polish_document",
+        "wiki_import_markdown",
         "wiki_get_polish_admission",
         "wiki_get_task",
         "wiki_get_short_link",
@@ -347,6 +349,7 @@ async def test_real_http_pg_oauth_to_mcp_and_revocation(
         )
         assert connected.json()["result"]["structuredContent"]["capabilities"] == ["wiki:read"]
     assert len(runtime.prepared) == 2
+
     malformed = await runtime.rpc(
         token,
         "tools/call",
@@ -366,6 +369,33 @@ async def test_real_http_pg_oauth_to_mcp_and_revocation(
     )
     assert denied.status_code == 401
     assert len(runtime.prepared) == 2
+
+
+async def test_import_maximum_escaped_markdown_reaches_tool_validation(runtime: RuntimeLab) -> None:
+    client_id = await runtime.register()
+    approved = await runtime.consent(await runtime.authorize(client_id), approve=True)
+    issued = await runtime.exchange(client_id, approved["code"][0])
+    assert issued.status_code == 200
+    token = str(issued.json()["access_token"])
+    result = await runtime.rpc(
+        token,
+        "tools/call",
+        {
+            "name": "wiki_import_markdown",
+            "arguments": {
+                "request": {
+                    "content": "\x01" * MAX_MARKDOWN_BYTES,
+                    "name": "Report",
+                    "destination_folder_id": "folder_123",
+                    "mode": "format",
+                    "idempotency_key": str(uuid.uuid7()),
+                }
+            },
+        },
+    )
+    assert result.status_code == 200, result.text[:1000]
+    assert result.json()["result"]["isError"] is True
+    assert "authorization required" in result.text
 
 
 async def test_registration_limit_preserves_refresh_read_and_revoke(runtime: RuntimeLab) -> None:
