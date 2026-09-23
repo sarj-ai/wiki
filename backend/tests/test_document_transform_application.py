@@ -1,5 +1,7 @@
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from threading import Event
 import uuid
 
 from fastapi import HTTPException
@@ -7,6 +9,7 @@ from pydantic import BaseModel
 import pytest
 
 from app.config import settings
+from app.document_transform import application
 from app.document_transform.application import (
     SOURCE_CHANGED_ERROR_CODE,
     get_current_document_polish,
@@ -19,6 +22,7 @@ from app.document_transform.schemas import (
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
+    MarkdownSource,
     OutputStrategy,
     TransformMode,
     ValidationSummary,
@@ -203,6 +207,47 @@ class SubmissionHarness:
             drive_id=None,
             modified_time=self.source_modified_time,
         )
+
+
+async def test_markdown_admission_keeps_event_loop_responsive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = SubmissionHarness()
+    harness.request = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content="# Report\n\nBody",
+            name="Report",
+            destination_folder_id=FileId("destination"),
+        ),
+        mode=TransformMode.BOTH,
+    )
+    started = Event()
+    release = Event()
+
+    def slow_validation(_content: str, *, title: str) -> None:
+        assert title == "Report"
+        started.set()
+        assert release.wait(2)
+
+    monkeypatch.setattr(application, "validate_markdown_import", slow_validation)
+    submission = asyncio.create_task(
+        submit_document_transform(
+            payload=harness.request,
+            owner_user_id=harness.owner,
+            idempotency_key=harness.key,
+            tasks=dependency(harness),
+            enqueuer=dependency(harness),
+            files=harness,
+        )
+    )
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        assert not submission.done()
+    finally:
+        release.set()
+    result = await submission
+    assert result.task is harness.reservation.task
 
 
 @pytest.mark.parametrize("created", [True, False])

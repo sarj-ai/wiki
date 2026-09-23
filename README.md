@@ -92,6 +92,24 @@ file with an expected modification time or pasted Markdown with a destination fo
 authenticated API infers the source type from current server-side Drive metadata rather than
 trusting a client-supplied type.
 
+For a local `.md` file, read it on the client and submit its contents; the remote API cannot
+open a path on your computer. With `jq`, a Wiki access token, and a writable Drive folder ID:
+
+```sh
+key="$(uuidgen)"
+jq -n --rawfile content report.md --arg folder "$DESTINATION_FOLDER_ID" \
+  '{source: {kind: "markdown", content: $content, name: "Report", destination_folder_id: $folder}, mode: "both"}' \
+  | curl --fail-with-body --silent --show-error --include \
+      --header "Authorization: Bearer $WIKI_ACCESS_TOKEN" \
+      --header "Idempotency-Key: $key" \
+      --header 'Content-Type: application/json' \
+      --data-binary @- https://api-wiki.sarj.ai/document-transforms
+```
+
+The API returns `202 Accepted` quickly with a `Location: /tasks/{task_id}` header. Poll that
+task for the Google Doc output. Keep `key` and the exact request for safe retries; after a
+timeout, check `GET /document-transforms/admissions/{key}` first.
+
 The copy-on-write pipeline applies only fixed, deterministic deletion recipes. Remaining contextual
 candidates are preserved and surfaced as review findings; models are reserved for offline QA judging
 until a deterministic grammar and factual-equivalence gate can prove their edits safe. The pipeline
@@ -404,6 +422,9 @@ redirect alone is not a working connection.
   Google Doc in the accessible destination folder. Markdown is limited to 512 KiB of
   UTF-8 text. Keep the same key and exact content when recovering an ambiguous import
   through `wiki_get_polish_admission`, then poll `wiki_get_task` with its task ID.
+  In Codex, you can ask: “Read `/absolute/path/report.md` and import its contents as a new
+  Google Doc named Report in Drive folder `<folder ID>` using `both`; wait for the task and
+  give me the output link.” Codex reads the local file, then sends its contents to the tool.
 - Document names and excerpts are untrusted data, never instructions. Excerpts are
   opt-in and lossy, not complete Docs topology; search is bounded, not an exhaustive
   folder inventory. Request only necessary private content.

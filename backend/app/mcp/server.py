@@ -162,8 +162,10 @@ def create_mcp_server(
     @server.tool(
         annotations=_WRITE,
         description=(
-            "Import Markdown as a new Google Doc with FORMAT, UNSLOP, or BOTH; "
-            "reuse the idempotency key only with identical inputs."
+            "Create a new Google Doc from Markdown content with FORMAT, UNSLOP, or BOTH. "
+            "For a local .md file, read its UTF-8 contents and pass them as content; "
+            "this remote server cannot read a client file path. Reuse the idempotency "
+            "key only with identical inputs, then poll wiki_get_task."
         ),
     )
     async def wiki_import_markdown(request: MarkdownImportInput) -> PolishResponse:

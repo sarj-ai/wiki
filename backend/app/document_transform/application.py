@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Protocol
 import uuid
@@ -104,8 +105,7 @@ async def submit_document_transform(
         )
     if isinstance(payload.source, MarkdownSource):
         try:
-            parse_markdown(payload.source.content, title=payload.source.name)
-            validate_markdown_import(payload.source.content, title=payload.source.name)
+            await asyncio.to_thread(_validate_markdown_source, payload.source)
         except SourceTooLargeError as exc:
             raise HTTPException(status_code=413, detail=exc.public_detail) from exc
         except UnsupportedSourceError as exc:
@@ -140,6 +140,11 @@ async def submit_document_transform(
     return TransformSubmission(task=reservation.task, replayed=not reservation.created)
 
 
+def _validate_markdown_source(source: MarkdownSource) -> None:
+    parse_markdown(source.content, title=source.name)
+    validate_markdown_import(source.content, title=source.name)
+
+
 async def retained_transform_output_available(task: TaskRead, files: DestinationFileReader) -> bool:
     if not isinstance(task, SucceededTaskRead) or not isinstance(
         task.result, DocumentTransformResult
@@ -169,10 +174,7 @@ async def validate_transform_authorization(
     payload: DocumentTransformRequest, files: DestinationFileReader
 ) -> FileResponse | None:
     if isinstance(payload.source, MarkdownSource):
-        destination = await files.get(payload.source.destination_folder_id)
-        if destination.mime_type != MIME_FOLDER or not destination.can_add_children:
-            message = "Destination does not accept new files"
-            raise FileNotInScopeError(message)
+        await _require_writable_destination(payload.source.destination_folder_id, files)
     if isinstance(payload.source, DriveFileSource):
         source = await files.get(payload.source.file_id)
         if payload.copy_destination_folder_id is not None:
@@ -181,10 +183,7 @@ async def validate_transform_authorization(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail="A copy destination is available only for native Google Docs",
                 )
-            destination = await files.get(payload.copy_destination_folder_id)
-            if destination.mime_type != MIME_FOLDER or not destination.can_add_children:
-                message = "Destination does not accept new files"
-                raise FileNotInScopeError(message)
+            await _require_writable_destination(payload.copy_destination_folder_id, files)
         if source.mime_type == WORD_MIME and (
             payload.mode.value != "format" or payload.output_strategy is not OutputStrategy.COPY
         ):
@@ -199,6 +198,13 @@ async def validate_transform_authorization(
             )
         return source
     return None
+
+
+async def _require_writable_destination(file_id: FileId, files: DestinationFileReader) -> None:
+    destination = await files.get(file_id)
+    if destination.mime_type != MIME_FOLDER or not destination.can_add_children:
+        message = "Destination does not accept new files"
+        raise FileNotInScopeError(message)
 
 
 def validate_transform_freshness(
