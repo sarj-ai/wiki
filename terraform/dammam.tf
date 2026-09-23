@@ -66,6 +66,44 @@ resource "google_storage_bucket_iam_member" "db_exports_dammam_sql" {
   member = "serviceAccount:${google_sql_database_instance.dammam[0].service_account_email_address}"
 }
 
+resource "google_storage_bucket" "markdown_uploads_dammam" {
+  count                       = var.enable_dammam_stack ? 1 : 0
+  name                        = "sarj-docs-markdown-uploads-dammam"
+  location                    = upper(var.dammam_region)
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+  force_destroy               = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
+
+  cors {
+    origin          = [var.frontend_url]
+    method          = ["PUT"]
+    response_header = ["Content-Type", "x-goog-content-length-range", "x-goog-if-generation-match"]
+    max_age_seconds = 3600
+  }
+
+  lifecycle_rule {
+    action { type = "Delete" }
+    condition { age = 8 }
+  }
+}
+
+resource "google_storage_bucket_iam_member" "markdown_uploads_backend" {
+  count  = var.enable_dammam_stack ? 1 : 0
+  bucket = google_storage_bucket.markdown_uploads_dammam[0].name
+  role   = "roles/storage.objectUser"
+  member = "serviceAccount:${google_service_account.backend.email}"
+}
+
+resource "google_service_account_iam_member" "backend_markdown_upload_signer" {
+  service_account_id = google_service_account.backend.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${google_service_account.backend.email}"
+}
+
 resource "google_compute_subnetwork" "dammam" {
   count         = var.enable_dammam_stack ? 1 : 0
   name          = "sarj-docs-subnet-dammam"
@@ -370,6 +408,8 @@ resource "google_cloud_run_v2_service" "backend_dammam" {
           CLOUD_TASKS_TARGET_URL              = "https://${var.backend_domain}/internal/tasks/smart-create"
           CLOUD_TASKS_INVOKER_SERVICE_ACCOUNT = google_service_account.cloud_tasks_invoker.email
           DOCUMENT_TRANSFORM_QUEUE            = google_cloud_tasks_queue.document_transform_dammam[0].name
+          DOCUMENT_TRANSFORM_UPLOAD_BUCKET    = google_storage_bucket.markdown_uploads_dammam[0].name
+          DOCUMENT_TRANSFORM_UPLOAD_SIGNER    = google_service_account.backend.email
           DOCUMENT_TRANSFORM_TARGET_URL       = "https://${var.backend_domain}/internal/tasks/document-transform"
           DOCUMENT_TRANSFORM_FALLBACK_MODEL   = "gemini-2.5-flash-lite"
           DOCUMENT_TRANSFORM_IN_PLACE_ENABLED = "true"

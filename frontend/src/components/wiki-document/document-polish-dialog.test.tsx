@@ -57,6 +57,9 @@ describe("DocumentPolishDialog", () => {
       presentationInPlace: false,
     });
     vi.spyOn(DOCUMENT_TRANSFORM_API, "current").mockResolvedValue(null);
+    vi.spyOn(DOCUMENT_TRANSFORM_API, "uploadMarkdown").mockResolvedValue(
+      "77777777-7777-4777-8777-777777777777",
+    );
   });
 
   afterEach(() => {
@@ -288,13 +291,12 @@ describe("DocumentPolishDialog", () => {
       expect(scroll).not.toHaveBeenCalled();
       if (outcome === "failure") {
         completion.reject(
-          new DocumentTransformTerminalError("transform_failed", "Safety check failed"),
+          new DocumentTransformTerminalError("Safety check failed", { code: "transform_failed" }),
         );
       } else if (outcome === "review") {
         completion.reject(
           new DocumentTransformNeedsReviewError("Review preserved dates", {
-            ...transformResult(),
-            needsReview: true,
+            result: { ...transformResult(), needsReview: true },
           }),
         );
       } else {
@@ -1185,11 +1187,10 @@ describe("DocumentPolishDialog", () => {
       status: "pending",
     });
     vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockRejectedValue(
-      new DocumentTransformTerminalError(
-        "transform_failed",
-        "Safety verification failed",
-        "incomplete-copy",
-      ),
+      new DocumentTransformTerminalError("Safety verification failed", {
+        code: "transform_failed",
+        unverifiedOutputId: "incomplete-copy",
+      }),
     );
     renderDialog(root, {
       allowInPlace: false,
@@ -1240,9 +1241,8 @@ describe("DocumentPolishDialog", () => {
     });
     vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockRejectedValue(
       new DocumentTransformTerminalError(
-        "in_place_verification_failed",
         "Google Docs accepted changes, but safety verification failed.",
-        "original-document",
+        { code: "in_place_verification_failed", unverifiedOutputId: "original-document" },
       ),
     );
     renderDialog(root, {
@@ -1282,15 +1282,12 @@ describe("DocumentPolishDialog", () => {
       const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue(failed);
       const getTask = vi.spyOn(DOCUMENT_TRANSFORM_API, "getTask").mockResolvedValue(enriched);
       if (readFails) getTask.mockRejectedValueOnce(new ApiError(422, "Task read rejected"));
-      const wait = vi
-        .spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion")
-        .mockRejectedValue(
-          new DocumentTransformTerminalError(
-            failed.errorCode,
-            "Safety verification failed",
-            enriched.unverifiedOutputId,
-          ),
-        );
+      const wait = vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockRejectedValue(
+        new DocumentTransformTerminalError("Safety verification failed", {
+          code: failed.errorCode,
+          unverifiedOutputId: enriched.unverifiedOutputId,
+        }),
+      );
       const resume = async () => {
         await vi.waitFor(() => expect(findButtonNow("Resume checking")).toBeEnabled());
         expect(wait).not.toHaveBeenCalled();
@@ -1388,7 +1385,9 @@ describe("DocumentPolishDialog", () => {
         ],
       };
       vi.spyOn(DOCUMENT_TRANSFORM_API, "waitForCompletion").mockRejectedValue(
-        new DocumentTransformNeedsReviewError("Automated safety checks require review.", result),
+        new DocumentTransformNeedsReviewError("Automated safety checks require review.", {
+          result,
+        }),
       );
       const copy = vi.fn().mockResolvedValue(undefined);
       vi.stubGlobal("navigator", { clipboard: { writeText: copy }, locks: navigator.locks });

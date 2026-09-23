@@ -11,6 +11,12 @@ export type DocumentTransformSource =
       name: string;
     }
   | {
+      destinationFolderId: string;
+      kind: "uploaded_markdown";
+      name: string;
+      uploadId: string;
+    }
+  | {
       expectedModifiedTime: string;
       fileId: string;
       kind: "drive_file";
@@ -82,10 +88,10 @@ export type DocumentTransformTask = (
 export class DocumentTransformNeedsReviewError extends Error {
   readonly result: DocumentTransformResult | undefined;
 
-  constructor(message: string, result?: DocumentTransformResult) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions & { result?: DocumentTransformResult }) {
+    super(message, options);
     this.name = "DocumentTransformNeedsReviewError";
-    this.result = result;
+    this.result = options?.result;
   }
 }
 
@@ -93,10 +99,13 @@ export class DocumentTransformTerminalError extends Error {
   readonly code: string;
   readonly unverifiedOutputId: string | undefined;
 
-  constructor(code: string, message: string, unverifiedOutputId?: string) {
-    super(message);
-    this.code = code;
-    this.unverifiedOutputId = unverifiedOutputId;
+  constructor(
+    message: string,
+    options: ErrorOptions & { code: string; unverifiedOutputId?: string | undefined },
+  ) {
+    super(message, options);
+    this.code = options.code;
+    this.unverifiedOutputId = options.unverifiedOutputId;
     this.name = "DocumentTransformTerminalError";
   }
 }

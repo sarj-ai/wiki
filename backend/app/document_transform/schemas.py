@@ -39,7 +39,7 @@ from app.document_transform.tab_structure_execution import StructureCheckpoint
 from app.identifiers import BrandProfileId, DocsRevisionId, FileId, ModelId
 
 
-SourceKind = Literal["drive_file", "markdown"]
+SourceKind = Literal["drive_file", "markdown", "uploaded_markdown"]
 ArtifactKind = Literal["document", "presentation"]
 AccessScope = Literal["inherited", "owner_only"]
 TabNamingDeclinedReason = Literal["unsupported_metadata"]
@@ -94,9 +94,17 @@ class DriveFileSource(StrictTransformModel):
 
 
 class MarkdownSource(StrictTransformModel):
-    kind: Literal["markdown"]
-    content: MarkdownContent = Field(
-        description="UTF-8 Markdown source, up to 512 KiB after UTF-8 encoding."
+    kind: Literal["markdown", "uploaded_markdown"]
+    content: str = Field(
+        default="",
+        exclude_if=lambda value: not value,
+        max_length=MAX_MARKDOWN_BYTES,
+        description="Inline UTF-8 Markdown, up to 512 KiB; omitted for uploads.",
+    )
+    upload_id: uuid.UUID | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="ID returned by POST /document-transforms/uploads.",
     )
     name: OutputName = Field(description="Title of the new Google Doc.")
     destination_folder_id: FileId = Field(
@@ -117,6 +125,24 @@ class MarkdownSource(StrictTransformModel):
             msg = "Markdown must not exceed {limit} UTF-8 bytes"
             raise PydanticCustomError(code, msg, {"limit": MAX_MARKDOWN_BYTES})
         return value
+
+    @model_validator(mode="after")
+    def validate_markdown_source(self) -> Self:
+        if self.kind == "markdown" and self.content and self.upload_id is None:
+            return self
+        if self.kind == "uploaded_markdown" and not self.content and self.upload_id is not None:
+            return self
+        code = "markdown_source"
+        msg = "Inline Markdown needs content; uploaded Markdown needs upload_id only"
+        raise PydanticCustomError(code, msg)
+
+
+class MarkdownUpload(StrictTransformModel):
+    upload_id: uuid.UUID
+    url: str
+    method: Literal["PUT"] = "PUT"
+    headers: dict[str, str]
+    expires_in_seconds: int
 
 
 TransformSource = Annotated[DriveFileSource | MarkdownSource, Field(discriminator="kind")]
@@ -159,7 +185,7 @@ class QaQuarantinedOutputEvidence(StrictTransformModel):
 
 class DocumentTransformRequest(StrictTransformModel):
     source: TransformSource = Field(
-        description="Markdown content to import or a Drive file with its observed modified time."
+        description="Inline Markdown, a signed GCS upload reference, or a Drive file."
     )
     mode: TransformMode = Field(
         description="format applies document styling; unslop conservatively edits prose; both runs both."

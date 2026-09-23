@@ -189,6 +189,14 @@ worker. Task results expose the pipeline version, actual model-use flag, determi
 counts, brand profile ID and digest, UNSLOP catalog digest/source version, validation summary,
 findings, and output metadata.
 
+For a local `.md` file, `POST /document-transforms/uploads` returns a ten-minute GCS signed PUT URL,
+an `upload_id`, and the exact headers to send. PUT the UTF-8 file bytes directly to that URL, then
+`POST /document-transforms` with `source: {"kind":"uploaded_markdown","upload_id":"…",
+"name":"…","destination_folder_id":"…"}` and an `Idempotency-Key` UUID. The browser import
+dialog performs these steps automatically. The API accepts the upload reference only from its owner,
+checks the 512 KiB limit and Markdown safety before admitting a task, and fetches that private object
+for conversion. Pasted Markdown remains available with `kind: "markdown"` and inline `content`.
+
 Release QA uses `backend/scripts/qa_document_transform_corpus.py`. Planning is read-only and writes
 a seeded manifest plus a resumable JSONL ledger. The source may be a Shared Drive tree, but every
 native Google Doc must remain readable and copyable in the same bound Drive. Outputs may be created

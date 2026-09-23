@@ -15,6 +15,12 @@ const MarkdownSourceSchema = z.strictObject({
   name: z.string().min(1).max(255),
   destinationFolderId: z.string().min(1).max(255),
 });
+const UploadedMarkdownSourceSchema = z.strictObject({
+  kind: z.literal("uploaded_markdown"),
+  uploadId: z.uuid(),
+  name: z.string().min(1).max(255),
+  destinationFolderId: z.string().min(1).max(255),
+});
 const BundleSchema = z.strictObject({
   version: z.literal(1),
   owner: z.string().min(1),
@@ -22,7 +28,7 @@ const BundleSchema = z.strictObject({
   createdAt: z.number().nonnegative(),
   mode: TransformModeSchema,
   outputName: z.string().nullable(),
-  source: MarkdownSourceSchema,
+  source: z.discriminatedUnion("kind", [MarkdownSourceSchema, UploadedMarkdownSourceSchema]),
 });
 export type MarkdownRecoveryBundle = z.infer<typeof BundleSchema>;
 

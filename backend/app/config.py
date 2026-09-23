@@ -76,6 +76,8 @@ class Settings(DatabaseSettings):
     DOCUMENT_TRANSFORM_IN_PLACE_ENABLED: bool = False
     DOCUMENT_TRANSFORM_QUEUE: NonEmptyStr | None = None
     DOCUMENT_TRANSFORM_TARGET_URL: NonEmptyStr | None = None
+    DOCUMENT_TRANSFORM_UPLOAD_BUCKET: NonEmptyStr | None = None
+    DOCUMENT_TRANSFORM_UPLOAD_SIGNER: NonEmptyStr | None = None
     CLOUD_TASKS_QUEUE: NonEmptyStr | None = None
     CLOUD_TASKS_LOCATION: NonEmptyStr | None = None
     CLOUD_TASKS_TARGET_URL: NonEmptyStr | None = None
@@ -136,6 +138,10 @@ class Settings(DatabaseSettings):
         ):
             msg = "Document Transform requires the shared Cloud Tasks settings"
             raise ValueError(msg)
+        self._validate_qa_config()
+        return self
+
+    def _validate_qa_config(self) -> None:
         qa_base_config = (
             self.DOCUMENT_TRANSFORM_QA_AUDIENCE,
             self.DOCUMENT_TRANSFORM_QA_SERVICE_ACCOUNT,
@@ -171,7 +177,6 @@ class Settings(DatabaseSettings):
         ):
             msg = "Document Transform QA image and digest must identify the same immutable image"
             raise ValueError(msg)
-        return self
 
     @field_validator(
         "DOCUMENT_TRANSFORM_UNSLOP_MODEL",

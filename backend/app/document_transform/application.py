@@ -15,6 +15,11 @@ from app.document_transform.errors import (
     SourceTooLargeError,
     UnsupportedSourceError,
 )
+from app.document_transform.gcs_uploads import (
+    UploadNotReadyError,
+    UploadUnavailableError,
+    load_markdown_upload,
+)
 from app.document_transform.ir import parse_markdown
 from app.document_transform.schemas import (
     CurrentDocumentPolish,
@@ -103,7 +108,7 @@ async def submit_document_transform(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="In-place document transformation is disabled",
         )
-    if isinstance(payload.source, MarkdownSource):
+    if isinstance(payload.source, MarkdownSource) and payload.source.kind == "markdown":
         try:
             await asyncio.to_thread(_validate_markdown_source, payload.source)
         except SourceTooLargeError as exc:
@@ -119,6 +124,21 @@ async def submit_document_transform(
     async def admit() -> None:
         nonlocal authorized_source
         authorized_source = await validate_transform_authorization(payload, files)
+        if (
+            isinstance(payload.source, MarkdownSource)
+            and payload.source.kind == "uploaded_markdown"
+        ):
+            try:
+                markdown = await load_markdown_upload(owner_user_id, payload.source)
+                await asyncio.to_thread(_validate_markdown_source, markdown)
+            except UploadNotReadyError as exc:
+                raise HTTPException(status_code=422, detail="Upload is not complete") from exc
+            except UploadUnavailableError as exc:
+                raise HTTPException(status_code=503, detail="Upload could not be verified") from exc
+            except SourceTooLargeError as exc:
+                raise HTTPException(status_code=413, detail=exc.public_detail) from exc
+            except UnsupportedSourceError as exc:
+                raise HTTPException(status_code=422, detail=exc.public_detail) from exc
 
     def admit_new() -> None:
         validate_transform_freshness(payload, authorized_source)

@@ -502,11 +502,12 @@
             "description": "copy creates a sibling; in_place is available only for eligible native Google Docs."
           },
           "source": {
-            "description": "Markdown content to import or a Drive file with its observed modified time.",
+            "description": "Inline Markdown, a signed GCS upload reference, or a Drive file.",
             "discriminator": {
               "mapping": {
                 "drive_file": "#/components/schemas/DriveFileSource",
-                "markdown": "#/components/schemas/MarkdownSource"
+                "markdown": "#/components/schemas/MarkdownSource",
+                "uploaded_markdown": "#/components/schemas/MarkdownSource"
               },
               "propertyName": "kind"
             },
@@ -1582,9 +1583,9 @@
         "additionalProperties": false,
         "properties": {
           "content": {
-            "description": "UTF-8 Markdown source, up to 512 KiB after UTF-8 encoding.",
+            "default": "",
+            "description": "Inline UTF-8 Markdown, up to 512 KiB; omitted for uploads.",
             "maxLength": 524288,
-            "minLength": 1,
             "title": "Content",
             "type": "string"
           },
@@ -1594,7 +1595,10 @@
             "type": "string"
           },
           "kind": {
-            "const": "markdown",
+            "enum": [
+              "markdown",
+              "uploaded_markdown"
+            ],
             "title": "Kind",
             "type": "string"
           },
@@ -1604,15 +1608,66 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "upload_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ID returned by POST /document-transforms/uploads.",
+            "title": "Upload Id"
           }
         },
         "required": [
           "kind",
-          "content",
           "name",
           "destination_folder_id"
         ],
         "title": "MarkdownSource",
+        "type": "object"
+      },
+      "MarkdownUpload": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_in_seconds": {
+            "title": "Expires In Seconds",
+            "type": "integer"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "object"
+          },
+          "method": {
+            "const": "PUT",
+            "default": "PUT",
+            "title": "Method",
+            "type": "string"
+          },
+          "upload_id": {
+            "format": "uuid",
+            "title": "Upload Id",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_id",
+          "url",
+          "headers",
+          "expires_in_seconds"
+        ],
+        "title": "MarkdownUpload",
         "type": "object"
       },
       "OutputStrategy": {
@@ -3344,7 +3399,7 @@
     },
     "/document-transforms": {
       "post": {
-        "description": "Submit a transform and poll the task in the Location header. Supply a new UUID in Idempotency-Key for each intended operation; reuse that UUID and the identical body for safe retries. After an ambiguous timeout, check GET /document-transforms/admissions/{idempotency_key} before resubmitting. For Markdown, use source.kind=markdown with UTF-8 content, name, and destination_folder_id. Set mode to format, unslop, or both. Copy is the default.",
+        "description": "Submit a transform and poll the task in the Location header. Supply a new UUID in Idempotency-Key for each intended operation; reuse that UUID and the identical body for safe retries. After an ambiguous timeout, check GET /document-transforms/admissions/{idempotency_key} before resubmitting. For pasted Markdown, use source.kind=markdown with UTF-8 content. For a file, POST /document-transforms/uploads, PUT the bytes to the returned GCS URL, and submit source.kind=uploaded_markdown with upload_id, name, and destination_folder_id. Set mode to format, unslop, or both. Copy is the default.",
         "operationId": "create_document_transform",
         "parameters": [
           {
@@ -3768,6 +3823,46 @@
         "summary": "Launch Document Transform Qa Run",
         "tags": [
           "document-transform-qa"
+        ]
+      }
+    },
+    "/document-transforms/uploads": {
+      "post": {
+        "description": "PUT UTF-8 Markdown bytes to url with exactly the returned headers, then submit source.kind=uploaded_markdown and upload_id to POST /document-transforms. The upload URL expires after ten minutes; uploads are private and limited to 512 KiB.",
+        "operationId": "create_markdown_upload",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkdownUpload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get a signed GCS URL for direct Markdown upload",
+        "tags": [
+          "document-transforms"
         ]
       }
     },

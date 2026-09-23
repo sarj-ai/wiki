@@ -35,7 +35,6 @@ from app.document_transform.errors import (
 )
 from app.document_transform.executor import (
     PIPELINE_VERSION,
-    DocumentTransformExecutor,
     QaCreatedCopyPermissionRequest,
 )
 from app.document_transform.google_gateway import GoogleDocumentGateway
@@ -67,6 +66,7 @@ from app.document_transform.schemas import (
     TransformMode,
 )
 from app.document_transform.slides_brand import presentation_fingerprint
+from app.document_transform.threaded_markdown_executor import ThreadedMarkdownExecutor
 from app.document_transform.word_executor import WordTransformExecutor
 from app.document_transform.word_gateway import WORD_MIME, GoogleWordGateway
 from app.drive.errors import DrivePermissionsError, DriveTraversalIncompleteError
@@ -471,21 +471,20 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 ),
             )
 
-        return DocumentTransformRuntime(
-            short_links=short_links,
-            transform=DocumentTransformExecutor(
-                gateway=document_gateway,
-                generator=self._generator,
-                logo_bytes=logo_bytes,
-                checkpoint_store=self._tasks,
-                task_id=task_id,
-                lease_token=lease_token,
-                checkpoint=checkpoint,
-                checkpoint_generation=checkpoint_generation,
-                qa_destination_permission_verifier=verify_qa_destination_permission,
-                qa_created_copy_verifier=verify_qa_created_copy,
-            ),
+        transform = ThreadedMarkdownExecutor(
+            gateway=document_gateway,
+            generator=self._generator,
+            logo_bytes=logo_bytes,
+            checkpoint_store=self._tasks,
+            task_id=task_id,
+            lease_token=lease_token,
+            checkpoint=checkpoint,
+            checkpoint_generation=checkpoint_generation,
+            qa_destination_permission_verifier=verify_qa_destination_permission,
+            qa_created_copy_verifier=verify_qa_created_copy,
         )
+        transform.upload_owner = owner_user_id
+        return DocumentTransformRuntime(short_links=short_links, transform=transform)
 
     async def _authorized_drive_source(
         self,

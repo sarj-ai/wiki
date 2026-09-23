@@ -4,7 +4,7 @@ from time import monotonic
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Body, Depends, Header, Path, Query, Response, status
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Path, Query, Response, status
 
 from app.auth.dependencies import get_current_user
 from app.config import settings
@@ -14,10 +14,12 @@ from app.document_transform.application import (
     submit_document_transform,
 )
 from app.document_transform.dependencies import CurrentPolishContext, current_polish_context_dep
+from app.document_transform.gcs_uploads import UploadUnavailableError, sign_markdown_upload
 from app.document_transform.schemas import (
     CurrentDocumentPolish,
     DocumentTransformCapabilities,
     DocumentTransformRequest,
+    MarkdownUpload,
     TransformMode,
 )
 from app.files.dependencies import files_service_dep
@@ -38,6 +40,30 @@ router = APIRouter(
     tags=["document-transforms"],
     responses=authentication_responses(),
 )
+
+
+@router.post(
+    "/uploads",
+    status_code=status.HTTP_201_CREATED,
+    operation_id="create_markdown_upload",
+    summary="Get a signed GCS URL for direct Markdown upload",
+    description=(
+        "PUT UTF-8 Markdown bytes to url with exactly the returned headers, then submit "
+        "source.kind=uploaded_markdown and upload_id to POST /document-transforms. "
+        "The upload URL expires after ten minutes; uploads are private and limited to 512 KiB."
+    ),
+)
+async def create_markdown_upload(
+    user: Annotated[User, Depends(get_current_user)], response: Response
+) -> MarkdownUpload:
+    try:
+        upload = await sign_markdown_upload(user.id)
+    except UploadUnavailableError as exc:
+        raise HTTPException(
+            status_code=503, detail="Direct Markdown upload is unavailable"
+        ) from exc
+    response.headers["Cache-Control"] = "no-store"
+    return upload
 
 
 @router.get(
@@ -112,8 +138,10 @@ async def get_current_polish(
         "in Idempotency-Key for each intended operation; reuse that UUID and the identical "
         "body for safe retries. After an ambiguous timeout, check "
         "GET /document-transforms/admissions/{idempotency_key} before resubmitting. "
-        "For Markdown, use source.kind=markdown with UTF-8 content, name, and "
-        "destination_folder_id. Set mode to format, unslop, or both. Copy is the default."
+        "For pasted Markdown, use source.kind=markdown with UTF-8 content. For a file, "
+        "POST /document-transforms/uploads, PUT the bytes to the returned GCS URL, and "
+        "submit source.kind=uploaded_markdown with upload_id, name, and destination_folder_id. "
+        "Set mode to format, unslop, or both. Copy is the default."
     ),
     responses={
         status.HTTP_202_ACCEPTED: {

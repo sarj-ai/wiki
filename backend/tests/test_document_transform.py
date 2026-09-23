@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections import UserDict
 from copy import deepcopy
 from dataclasses import replace
@@ -7,6 +8,7 @@ from datetime import UTC, datetime
 from io import BytesIO
 import json
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from typing import Any, NamedTuple, Never, override
 import uuid
@@ -21,6 +23,7 @@ import pytest
 from app.document_transform import (
     executor as executor_module,
     google_gateway as google_gateway_module,
+    threaded_markdown_executor as threaded_executor_module,
 )
 from app.document_transform.brand import SarjBrandProfile, build_copy_mutations
 from app.document_transform.custom_furniture import CustomFurnitureBinding
@@ -94,6 +97,7 @@ from app.document_transform.schemas import (
     TransformPhase,
 )
 from app.document_transform.tab_names import TabNamingPlan
+from app.document_transform.threaded_markdown_executor import ThreadedMarkdownExecutor
 from app.document_transform.unslop import (
     MAX_MODEL_EDITABLE_BLOCK_CHARS,
     deterministic_unslop_replacement,
@@ -990,7 +994,7 @@ class _Gateway(DocumentGateway):
         imported_docx: bytes | None = None,
     ) -> OutputDraft:
         self.imported_docx = imported_docx
-        return self._create(source_sha256, output_name)
+        return self._create(source_sha256, output_name, parent_folder_id=parent_folder_id)
 
     @override
     async def create_from_markdown(
@@ -1153,6 +1157,84 @@ async def test_markdown_both_runs_unslop_then_format_and_creates_sibling() -> No
     assert gateway.imported_docx is not None
     assert gateway.imported_docx.startswith(b"PK")
     assert gateway.requests == []
+
+
+async def test_markdown_render_keeps_worker_event_loop_responsive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = _Gateway()
+    request = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="markdown",
+            content="A short report.",
+            name="Report",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.FORMAT,
+    )
+    original_render = threaded_executor_module.render_markdown_docx
+    started = Event()
+    release = Event()
+
+    def delayed_render(
+        markdown: str,
+        *,
+        title: str,
+        logo_bytes: bytes | None = None,
+        branded: bool = True,
+        header_title: str | None = None,
+    ) -> bytes:
+        started.set()
+        assert release.wait(2)
+        return original_render(
+            markdown,
+            title=title,
+            logo_bytes=logo_bytes,
+            branded=branded,
+            header_title=header_title,
+        )
+
+    monkeypatch.setattr(threaded_executor_module, "render_markdown_docx", delayed_render)
+    transform = asyncio.create_task(
+        ThreadedMarkdownExecutor(gateway=gateway, generator=_Generator()).execute(
+            operation_id=uuid.uuid7(), request=request
+        )
+    )
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        assert not transform.done()
+    finally:
+        release.set()
+    assert (await transform).validation.structure_preserved is True
+
+
+async def test_drive_markdown_uses_threaded_renderer_and_keeps_source_parent() -> None:
+    gateway = _Gateway(
+        SourceSnapshot(
+            title="Drive report",
+            parent_folder_id=FileId("source-parent"),
+            modified_time="2026-09-23T00:00:00Z",
+            revision_id=None,
+            media_type="text/markdown",
+            markdown="# Report\n\nBody",
+        )
+    )
+    request = DocumentTransformRequest(
+        source=DriveFileSource(
+            kind="drive_file",
+            file_id=FileId("source"),
+            expected_modified_time="2026-09-23T00:00:00Z",
+        ),
+        mode=TransformMode.FORMAT,
+    )
+
+    result = await ThreadedMarkdownExecutor(gateway=gateway, generator=_Generator()).execute(
+        operation_id=uuid.uuid7(), request=request
+    )
+
+    assert gateway.imported_docx is not None
+    assert gateway.imported_docx.startswith(b"PK")
+    assert result.output.parent_folder_id == FileId("source-parent")
 
 
 async def test_markdown_docx_import_reports_unverified_brand_without_stale_fidelity_claims() -> (
