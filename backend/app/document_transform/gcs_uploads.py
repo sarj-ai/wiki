@@ -3,13 +3,16 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from datetime import timedelta
+from functools import cache
 from importlib import import_module
 import secrets
+from threading import Lock
 from typing import Protocol
 import uuid
 
 from google.api_core.exceptions import GoogleAPICallError, NotFound
 import google.auth
+from google.auth.credentials import TokenState
 from google.auth.exceptions import GoogleAuthError
 from google.auth.transport.requests import Request
 
@@ -21,6 +24,7 @@ from app.document_transform.schemas import MarkdownSource, MarkdownUpload
 
 _SIGNED_URL_LIFETIME = timedelta(minutes=10)
 _CONTENT_TYPE = "text/markdown"
+_SIGNING_CREDENTIALS_LOCK = Lock()
 
 
 class _StorageBlob(Protocol):
@@ -36,6 +40,9 @@ class _StorageBlob(Protocol):
 
 class _SigningCredentials(Protocol):
     token: str | None
+
+    @property
+    def token_state(self) -> TokenState: ...
 
     def refresh(self, request: Request) -> None: ...
 
@@ -65,6 +72,12 @@ def _client() -> _StorageClient:
     return factory()
 
 
+@cache
+def _signing_credentials() -> _SigningCredentials:
+    credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    return credentials
+
+
 async def sign_markdown_upload(owner: uuid.UUID) -> MarkdownUpload:
     bucket = settings.DOCUMENT_TRANSFORM_UPLOAD_BUCKET
     signer = settings.DOCUMENT_TRANSFORM_UPLOAD_SIGNER
@@ -76,16 +89,9 @@ async def sign_markdown_upload(owner: uuid.UUID) -> MarkdownUpload:
 
 def _sign(bucket: str, signer: str, owner: uuid.UUID, upload_id: uuid.UUID) -> MarkdownUpload:
     try:
-        credentials, _ = google.auth.default(
-            scopes=["https://www.googleapis.com/auth/cloud-platform"]
-        )
-        signer_credentials: _SigningCredentials = credentials
-        signer_credentials.refresh(Request())
+        token = _signing_token()
     except GoogleAuthError as exc:
         raise UploadUnavailableError from exc
-    token = credentials.token
-    if not token:
-        raise UploadUnavailableError
     headers = {
         "Content-Type": _CONTENT_TYPE,
         "x-goog-content-length-range": f"1,{MAX_MARKDOWN_BYTES}",
@@ -110,6 +116,18 @@ def _sign(bucket: str, signer: str, owner: uuid.UUID, upload_id: uuid.UUID) -> M
         headers=headers,
         expires_in_seconds=int(_SIGNED_URL_LIFETIME.total_seconds()),
     )
+
+
+def _signing_token() -> str:
+    # ADC discovery and metadata-server refresh are shared across uploads.
+    # Serialize refresh because google-auth mutates the credentials in place.
+    with _SIGNING_CREDENTIALS_LOCK:
+        credentials = _signing_credentials()
+        if credentials.token_state is not TokenState.FRESH:
+            credentials.refresh(Request())
+        if not credentials.token:
+            raise UploadUnavailableError
+        return credentials.token
 
 
 async def load_markdown_upload(owner: uuid.UUID, source: MarkdownSource) -> MarkdownSource:

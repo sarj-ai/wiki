@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Self
 import uuid
 
+from google.auth.credentials import TokenState
 import pytest
 
 from app.document_transform import gcs_uploads
@@ -50,9 +51,12 @@ class FakeClient:
 
 class FakeCredentials:
     token = "access-token"
+    token_state = TokenState.INVALID
+    refresh_count = 0
 
     def refresh(self, _request: object) -> None:
-        pass
+        self.refresh_count += 1
+        self.token_state = TokenState.FRESH
 
 
 def _source() -> MarkdownSource:
@@ -65,7 +69,9 @@ def _source() -> MarkdownSource:
 
 
 def test_signing_binds_upload_to_owner_and_limits_size(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(gcs_uploads.google.auth, "default", lambda **_: (FakeCredentials(), None))
+    credentials = FakeCredentials()
+    gcs_uploads._signing_credentials.cache_clear()
+    monkeypatch.setattr(gcs_uploads.google.auth, "default", lambda **_: (credentials, None))
     blob = FakeBlob()
     client = FakeClient(blob)
     monkeypatch.setattr(gcs_uploads, "_client", lambda: client)
@@ -84,6 +90,17 @@ def test_signing_binds_upload_to_owner_and_limits_size(monkeypatch: pytest.Monke
     }
     assert blob.sign_kwargs is not None
     assert blob.sign_kwargs["method"] == "PUT"
+    monkeypatch.setattr(
+        gcs_uploads.google.auth,
+        "default",
+        lambda **_: pytest.fail("ADC discovery must be cached across uploads"),
+    )
+    gcs_uploads._sign("bucket", "backend@example.com", owner, uuid.uuid7())
+    assert credentials.refresh_count == 1
+    credentials.token_state = TokenState.STALE
+    gcs_uploads._sign("bucket", "backend@example.com", owner, uuid.uuid7())
+    assert credentials.refresh_count == 2
+    gcs_uploads._signing_credentials.cache_clear()
 
 
 def test_download_is_generation_bound_and_utf8_checked(monkeypatch: pytest.MonkeyPatch) -> None:

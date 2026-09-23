@@ -52,7 +52,7 @@ def _qa_engine() -> AsyncEngine:
     return create_async_engine(dsn, pool_size=12, max_overflow=0)
 
 
-@pytest.mark.parametrize("source_kind", ["drive", "markdown"])
+@pytest.mark.parametrize("source_kind", ["drive", "markdown", "uploaded_markdown"])
 @pytest.mark.parametrize("terminal", [TaskStatus.CANCELLED, TaskStatus.SUCCEEDED])
 @pytest.mark.parametrize("expired_pending", [False, True])
 async def test_real_postgres_concurrent_source_dedupe(
@@ -70,6 +70,16 @@ async def test_real_postgres_concurrent_source_dedupe(
     )
     if source_kind == "markdown":
         payload = _markdown_payload()
+    elif source_kind == "uploaded_markdown":
+        payload = DocumentTransformRequest(
+            source=MarkdownSource(
+                kind="uploaded_markdown",
+                upload_id=uuid.uuid7(),
+                name="Review",
+                destination_folder_id=FileId("qa-folder"),
+            ),
+            mode=TransformMode.FORMAT,
+        )
     keys = [IdempotencyKey(uuid.uuid7()) for _ in range(8)]
     start = asyncio.Event()
     admission_calls = 0
