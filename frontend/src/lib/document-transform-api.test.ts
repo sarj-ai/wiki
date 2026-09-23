@@ -187,6 +187,46 @@ describe("documentTransformApi", () => {
     });
   });
 
+  it("uploads file bytes to GCS and submits only the upload reference", async () => {
+    const uploadId = "77777777-7777-4777-8777-777777777777";
+    ACTION_MOCKS.create.mockResolvedValueOnce({
+      data: JSON.stringify({
+        upload_id: uploadId,
+        url: "https://storage.googleapis.com/bucket/object?signature=secret",
+        method: "PUT",
+        headers: { "Content-Type": "text/markdown", "x-goog-if-generation-match": "0" },
+        expires_in_seconds: 600,
+      }),
+      ok: true,
+    });
+    ACTION_MOCKS.create.mockResolvedValueOnce({ data: JSON.stringify(task("pending")), ok: true });
+    const put = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    const file = new File(["# Launch"], "launch.md", { type: "text/markdown" });
+
+    await expect(DOCUMENT_TRANSFORM_API.uploadMarkdown(file)).resolves.toBe(uploadId);
+    await DOCUMENT_TRANSFORM_API.create(
+      { kind: "uploaded_markdown", uploadId, name: "Launch", destinationFolderId: "folder" },
+      "format",
+      TASK_ID,
+    );
+
+    expect(put).toHaveBeenCalledWith(
+      "https://storage.googleapis.com/bucket/object?signature=secret",
+      expect.objectContaining({ body: file, method: "PUT" }),
+    );
+    expect(JSON.parse(ACTION_MOCKS.create.mock.calls[1]?.[0] ?? "")).toMatchObject({
+      source: {
+        kind: "uploaded_markdown",
+        upload_id: uploadId,
+        name: "Launch",
+        destination_folder_id: "folder",
+      },
+    });
+    put.mockRestore();
+  });
+
   it("sends in-place as an explicit request strategy", async () => {
     ACTION_MOCKS.create.mockResolvedValue({
       data: JSON.stringify(task("pending")),

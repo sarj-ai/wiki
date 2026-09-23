@@ -92,6 +92,13 @@ const TaskSchema = z.discriminatedUnion("status", [
   z.object({ id: UuidSchema, result: ResultSchema, status: z.literal("succeeded") }),
 ]);
 const CurrentPolishSchema = z.object({ result: ResultSchema.nullable() });
+const UploadSchema = z.strictObject({
+  upload_id: UuidSchema,
+  url: z.url().startsWith("https://storage.googleapis.com/"),
+  method: z.literal("PUT"),
+  headers: z.record(z.string(), z.string()),
+  expires_in_seconds: z.int().positive(),
+});
 
 const DEFAULT_TASK_POLL_MS = 1_000;
 const DEFAULT_MAX_TASK_POLLS = 900;
@@ -115,6 +122,18 @@ const TASK_FAILURE_FALLBACKS: Readonly<Record<string, string>> = {
 };
 
 export const DOCUMENT_TRANSFORM_API = {
+  uploadMarkdown: async (file: File): Promise<string> => {
+    const body = await runAction(async () => await transformHttp("/uploads", "{}"));
+    const upload = UploadSchema.parse(JSON.parse(body));
+    const response = await fetch(upload.url, {
+      method: upload.method,
+      headers: upload.headers,
+      body: file,
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!response.ok) throw new Error("Markdown upload failed. Choose the file again to retry.");
+    return upload.upload_id;
+  },
   admission: async (key: string) => {
     const id = UuidSchema.parse(key);
     try {
@@ -200,7 +219,9 @@ async function waitForTask(
   for (let poll = 0; ; poll += 1) {
     switch (current.status) {
       case "cancelled":
-        throw new DocumentTransformTerminalError("cancelled", "Document polish was cancelled");
+        throw new DocumentTransformTerminalError("Document polish was cancelled", {
+          code: "cancelled",
+        });
       case "failed":
         if (current.errorCode === "needs_review" && !current.unverifiedOutputId) {
           throw new DocumentTransformNeedsReviewError(
@@ -212,13 +233,12 @@ async function waitForTask(
           );
         }
         throw new DocumentTransformTerminalError(
-          current.errorCode,
           taskFailureDetail(
             current.errorCode,
             current.errorDetail,
             `Document polish failed (${current.errorCode})`,
           ),
-          current.unverifiedOutputId,
+          { code: current.errorCode, unverifiedOutputId: current.unverifiedOutputId },
         );
       case "succeeded":
         if (current.result.needsReview) {
@@ -227,7 +247,7 @@ async function waitForTask(
               (current.result.outputStrategy === "in_place"
                 ? "Automated safety checks marked this document for review."
                 : "Automated safety checks marked this copy for review."),
-            current.result,
+            { result: current.result },
           );
         }
         return current.result;
@@ -332,18 +352,25 @@ function parseResult(result: z.infer<typeof ResultSchema>): DocumentTransformRes
 }
 
 function serializeSource(source: DocumentTransformSource): Record<string, string> {
-  return source.kind === "drive_file"
+  return source.kind === "uploaded_markdown"
     ? {
-        expected_modified_time: source.expectedModifiedTime,
-        file_id: source.fileId,
-        kind: source.kind,
-      }
-    : {
-        content: source.content,
         destination_folder_id: source.destinationFolderId,
         kind: source.kind,
         name: source.name,
-      };
+        upload_id: source.uploadId,
+      }
+    : source.kind === "drive_file"
+      ? {
+          expected_modified_time: source.expectedModifiedTime,
+          file_id: source.fileId,
+          kind: source.kind,
+        }
+      : {
+          content: source.content,
+          destination_folder_id: source.destinationFolderId,
+          kind: source.kind,
+          name: source.name,
+        };
 }
 
 async function abortableDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {

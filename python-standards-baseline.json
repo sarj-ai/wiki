@@ -2,9 +2,6 @@
   "backend/app/cache/__init__.py": {
     "SARJ420": 1
   },
-  "backend/app/config.py": {
-    "SARJ444": 1
-  },
   "backend/app/document_transform/authored_labels.py": {
     "SARJ444": 1
   },

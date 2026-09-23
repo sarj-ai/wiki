@@ -22,6 +22,8 @@ resource "google_project_service" "apis" {
     "cloudscheduler.googleapis.com",
     "docs.googleapis.com",
     "cloudasset.googleapis.com",
+    "storage.googleapis.com",
+    "iamcredentials.googleapis.com",
   ])
 
   service            = each.value

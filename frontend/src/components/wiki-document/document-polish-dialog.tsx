@@ -132,6 +132,7 @@ export function DocumentPolishDialog({
   const [mode, setMode] = useState<DocumentTransformMode>("both");
   const [outputStrategy, setOutputStrategy] = useState<DocumentTransformOutputStrategy>("copy");
   const [markdown, setMarkdown] = useState("");
+  const [uploadedMarkdownId, setUploadedMarkdownId] = useState<null | string>(null);
   const [restoredDraft, setRestoredDraft] = useState<{
     owner: string;
     key: string;
@@ -345,6 +346,7 @@ export function DocumentPolishDialog({
     setMode("both");
     setOutputStrategy("copy");
     setMarkdown("");
+    setUploadedMarkdownId(null);
     setMarkdownError(null);
     setName("Untitled document");
     setCopyName("");
@@ -379,6 +381,14 @@ export function DocumentPolishDialog({
       };
     }
     if (!destination || !name.trim() || !markdown.trim() || markdownError !== null) return null;
+    if (uploadedMarkdownId) {
+      return {
+        destinationFolderId: destination.folderId,
+        kind: "uploaded_markdown",
+        name: name.trim(),
+        uploadId: uploadedMarkdownId,
+      };
+    }
     return {
       content: markdown,
       destinationFolderId: destination.folderId,
@@ -395,6 +405,10 @@ export function DocumentPolishDialog({
     try {
       const imported = await readMarkdownFile(file);
       if (fileLoadGeneration.current !== generation) return;
+      setUploadedMarkdownId(null);
+      const uploadId = await DOCUMENT_TRANSFORM_API.uploadMarkdown(file);
+      if (fileLoadGeneration.current !== generation) return;
+      setUploadedMarkdownId(uploadId);
       setMarkdown(imported.content);
       setName(imported.name);
       setMarkdownError(markdownTextError(imported.content));
@@ -497,7 +511,11 @@ export function DocumentPolishDialog({
       assertRecoveryReplaySafe(
         reserved,
         unresolved !== null,
-        transformSource.kind === "markdown" ? transformSource.content : markdown,
+        transformSource.kind === "uploaded_markdown"
+          ? transformSource.uploadId
+          : transformSource.kind === "markdown"
+            ? transformSource.content
+            : markdown,
       );
       return reserved;
     };
@@ -630,7 +648,8 @@ export function DocumentPolishDialog({
   };
 
   const valid = inputSource() !== null;
-  const displayedMarkdown = recoveredMarkdownSource?.content ?? markdown;
+  const displayedMarkdown =
+    recoveredMarkdownSource?.kind === "markdown" ? recoveredMarkdownSource.content : markdown;
   const displayedMode = completedResult?.mode ?? unresolved?.mode ?? requestedMode;
   const destinationLabel = destination
     ? destination.folderPath.length > 0
@@ -922,6 +941,7 @@ export function DocumentPolishDialog({
                     onChange={(event) => {
                       fileLoadGeneration.current += 1;
                       const value = event.target.value;
+                      setUploadedMarkdownId(null);
                       setMarkdown(value);
                       setMarkdownError(markdownTextError(value));
                       resetRequest();

@@ -34,6 +34,10 @@ export async function createDocumentTransformAction(
   return runSmartOperation("create", body, idempotencyKey, "/document-transforms");
 }
 
+export async function createDocumentTransformUploadAction(): Promise<ActionResult<string>> {
+  return runSmartOperation("create", "{}", undefined, "/document-transforms/uploads");
+}
+
 export async function getDocumentTransformCapabilitiesAction(): Promise<ActionResult<string>> {
   return runSmartRead("/document-transforms/capabilities");
 }

@@ -3,6 +3,7 @@ import { GET, POST } from "./route";
 
 const Mocks = vi.hoisted(() => ({
   create: vi.fn(),
+  upload: vi.fn(),
   read: vi.fn(),
   capabilities: vi.fn(),
   current: vi.fn(),
@@ -11,6 +12,7 @@ const Mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/app/actions/smart-create-actions", () => ({
   createDocumentTransformAction: Mocks.create,
+  createDocumentTransformUploadAction: Mocks.upload,
   getCurrentDocumentPolishAction: Mocks.current,
   getDocumentTransformCapabilitiesAction: Mocks.capabilities,
   getSmartCreateTaskAction: Mocks.task,
@@ -29,8 +31,21 @@ const headers = {
 beforeEach(() => {
   vi.clearAllMocks();
   Mocks.create.mockResolvedValue({ ok: true, data: '{"id":"task"}' });
+  Mocks.upload.mockResolvedValue({ ok: true, data: '{"upload_id":"signed"}' });
   Mocks.current.mockResolvedValue({ ok: true, data: '{"result":null}' });
   Mocks.cookies.mockResolvedValue({ get: () => ({ value: "private-token" }) });
+});
+
+it("issues an upload through the authenticated limited action", async () => {
+  const response = await POST(
+    new Request(`${URL}/uploads`, { method: "POST", headers, body: "{}" }),
+    {
+      params: Promise.resolve({ path: ["uploads"] }),
+    },
+  );
+  expect(response.status).toBe(200);
+  expect(Mocks.upload).toHaveBeenCalledOnce();
+  expect(Mocks.create).not.toHaveBeenCalled();
 });
 
 it("forwards exact body/KEY through existing authenticated rate-limited operation", async () => {
