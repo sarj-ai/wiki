@@ -72,6 +72,9 @@ async def test_exact_curated_tools_and_annotations() -> None:
             writes = tool.name in {"wiki_polish_document", "wiki_import_markdown"}
             assert tool.annotations.readOnlyHint is not writes
             assert tool.annotations.destructiveHint is writes
+        import_tool = next(tool for tool in tools if tool.name == "wiki_import_markdown")
+        assert "read its UTF-8 contents" in (import_tool.description or "")
+        assert "poll wiki_get_task" in (import_tool.description or "")
 
 
 async def test_each_call_opens_fresh_context_and_rechecks_authorization() -> None:
