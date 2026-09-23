@@ -152,57 +152,92 @@ def _observed_blocks(
         lists = _list_definitions(document, document_tab)
         body = document_tab.get("body", {})
         content = body.get("content", []) if isinstance(body, dict) else []
-        if not isinstance(content, list):
+        if not isinstance(content, list) or not all(isinstance(item, dict) for item in content):
             return ()
         for element in content:
-            if not isinstance(element, dict):
-                return ()
-            if isinstance(element.get("table"), dict):
-                blocks.append(_table_block(element["table"]))
-                continue
-            paragraph = element.get("paragraph")
-            if not isinstance(paragraph, dict):
-                continue
-            text = _paragraph_text(paragraph)
-            if not text and not _is_rule(paragraph):
-                continue
-            structure = _paragraph_structure(
-                paragraph,
+            observed = _observed_body_element(
+                element,
                 lists=lists,
                 expected_title=expected_title,
                 is_first=not blocks,
                 list_groups=list_groups,
                 next_list_group=next_list_group,
             )
-            if structure.list_group == next_list_group:
+            if observed is None:
+                continue
+            if observed.list_group == next_list_group:
                 next_list_group += 1
-            runs = tuple(_text_runs(paragraph))
-            signature = _inline_signature(
-                runs,
-                ignore_bold=structure.kind in {"title", "heading"},
-                ignore_italic=structure.kind == "quote",
-            )
-            blocks.append(
-                MarkdownImportBlock(
-                    kind=structure.kind,
-                    text=text,
-                    level=structure.level,
-                    ordered=structure.ordered,
-                    start=structure.start,
-                    list_group=structure.list_group,
-                    links=_styled_spans(runs, "link"),
-                    bold=_boolean_spans(runs, "bold"),
-                    italic=_boolean_spans(runs, "italic"),
-                    inline_code=tuple(
-                        content
-                        for content, style in runs
-                        if _font_family(style).casefold() in _CODE_FONTS
-                    ),
-                    inline_signature=signature,
-                    checked=structure.checked,
-                )
-            )
+            blocks.append(observed)
     return tuple(blocks)
+
+
+def _observed_body_element(
+    element: dict[str, Any],
+    *,
+    lists: dict[str, Any],
+    expected_title: str | None,
+    is_first: bool,
+    list_groups: dict[tuple[str, int], int],
+    next_list_group: int,
+) -> MarkdownImportBlock | None:
+    table = element.get("table")
+    if isinstance(table, dict):
+        return _table_block(table)
+    paragraph = element.get("paragraph")
+    if not isinstance(paragraph, dict):
+        return None
+    return _observed_paragraph_block(
+        paragraph,
+        lists=lists,
+        expected_title=expected_title,
+        is_first=is_first,
+        list_groups=list_groups,
+        next_list_group=next_list_group,
+    )
+
+
+def _observed_paragraph_block(
+    paragraph: dict[str, Any],
+    *,
+    lists: dict[str, Any],
+    expected_title: str | None,
+    is_first: bool,
+    list_groups: dict[tuple[str, int], int],
+    next_list_group: int,
+) -> MarkdownImportBlock | None:
+    text = _paragraph_text(paragraph)
+    if not text and not _is_rule(paragraph):
+        return None
+    structure = _paragraph_structure(
+        paragraph,
+        lists=lists,
+        expected_title=expected_title,
+        is_first=is_first,
+        list_groups=list_groups,
+        next_list_group=next_list_group,
+    )
+    runs = tuple(_text_runs(paragraph))
+    signature = _inline_signature(
+        runs,
+        ignore_bold=structure.kind in {"title", "heading"},
+        ignore_italic=structure.kind == "quote",
+    )
+    return MarkdownImportBlock(
+        kind=structure.kind,
+        text=text,
+        level=structure.level,
+        ordered=structure.ordered,
+        start=structure.start,
+        list_group=structure.list_group,
+        links=_styled_spans(runs, "link"),
+        bold=_boolean_spans(runs, "bold"),
+        italic=_boolean_spans(runs, "italic"),
+        inline_code=tuple(
+            content for content, style in runs if _font_family(style).casefold() in _CODE_FONTS
+        ),
+        inline_signature=signature,
+        checked=structure.checked,
+    )
 
 
 def _paragraph_structure(
@@ -326,6 +361,12 @@ def _topology_matches(document: dict[str, Any], expected: MarkdownImportManifest
     tab = raw_tab.get("documentTab")
     if not isinstance(tab, dict) or tab.get("positionedObjects") not in (None, {}):
         return False
+    return _tab_topology_matches(document, tab, expected)
+
+
+def _tab_topology_matches(
+    document: dict[str, Any], tab: dict[str, Any], expected: MarkdownImportManifest
+) -> bool:
     headers = tab.get("headers")
     footers = tab.get("footers")
     if not expected.branded and (headers not in (None, {}) or footers not in (None, {})):
@@ -344,7 +385,10 @@ def _topology_matches(document: dict[str, Any], expected: MarkdownImportManifest
     elements = body.get("content", []) if isinstance(body, dict) else None
     if not isinstance(elements, list):
         return False
-    section_breaks = 0
+    return _body_topology_matches(elements)
+
+
+def _body_topology_matches(elements: list[Any]) -> bool:
     previous_was_table = False
     for index, element in enumerate(elements):
         if not isinstance(element, dict) or not _location_wrapper_matches(
@@ -352,36 +396,39 @@ def _topology_matches(document: dict[str, Any], expected: MarkdownImportManifest
         ):
             return False
         if "sectionBreak" in element:
-            section_breaks += 1
-            if index != 0 or section_breaks > 1:
+            if index != 0:
                 return False
             previous_was_table = False
             continue
-        raw_table = element.get("table")
-        if isinstance(raw_table, dict):
-            table = {str(key): value for key, value in raw_table.items()}
-            if not _table_topology_matches(table):
-                return False
-            previous_was_table = True
-            continue
-        raw_paragraph = element.get("paragraph")
-        if not isinstance(raw_paragraph, dict):
+        if not _body_content_element_matches(element, previous_was_table=previous_was_table):
             return False
-        paragraph = {str(key): value for key, value in raw_paragraph.items()}
-        if not _paragraph_topology_matches(paragraph):
-            return False
-        if not _paragraph_text(paragraph) and not _is_rule(paragraph) and not previous_was_table:
-            return False
-        previous_was_table = False
+        previous_was_table = isinstance(element.get("table"), dict)
     return True
 
 
-def _paragraph_topology_matches(paragraph: dict[str, Any]) -> bool:
+def _body_content_element_matches(element: dict[str, Any], *, previous_was_table: bool) -> bool:
+    raw_table = element.get("table")
+    if isinstance(raw_table, dict):
+        table = {str(key): value for key, value in raw_table.items()}
+        return _table_topology_matches(table)
+    raw_paragraph = element.get("paragraph")
+    if not isinstance(raw_paragraph, dict):
+        return False
+    paragraph = {str(key): value for key, value in raw_paragraph.items()}
+    return _paragraph_topology_matches(paragraph) and bool(
+        _paragraph_text(paragraph) or _is_rule(paragraph) or previous_was_table
+    )
+
+
+def _paragraph_topology_matches(paragraph: dict[Any, Any]) -> bool:
     elements = paragraph.get("elements", [])
     return isinstance(elements, list) and all(
         isinstance(element, dict)
         and _location_wrapper_matches(element, {"textRun"})
         and isinstance(element["textRun"], dict)
+        and isinstance(element["textRun"].get("content"), str)
+        and set(element["textRun"]) <= {"content", "textStyle"}
+        and isinstance(element["textRun"].get("textStyle", {}), dict)
         for element in elements
     )
 
@@ -404,7 +451,9 @@ def _location_wrapper_matches(element: object, variants: set[str]) -> bool:
     return not (isinstance(start, int) and isinstance(end, int) and end <= start)
 
 
-def _table_topology_matches(table: dict[str, Any]) -> bool:
+def _table_topology_matches(
+    table: dict[str, Any],
+) -> bool:
     rows = table.get("tableRows", [])
     if not isinstance(rows, list):
         return False
@@ -412,21 +461,31 @@ def _table_topology_matches(table: dict[str, Any]) -> bool:
         if not isinstance(row, dict):
             return False
         cells = row.get("tableCells", [])
-        if not isinstance(cells, list):
+        if not isinstance(cells, list) or not all(
+            _table_cell_topology_matches(cell) for cell in cells
+        ):
             return False
-        for cell in cells:
-            if not isinstance(cell, dict):
-                return False
-            content = cell.get("content", [])
-            if not isinstance(content, list) or not all(
-                isinstance(element, dict)
-                and _location_wrapper_matches(element, {"paragraph"})
-                and isinstance(element["paragraph"], dict)
-                and _paragraph_topology_matches(element["paragraph"])
-                for element in content
-            ):
-                return False
     return True
+
+
+def _table_cell_topology_matches(cell: object) -> bool:
+    if not isinstance(cell, dict):
+        return False
+    # A merged cell can retain the same visible text and row count while
+    # changing the table's meaning. Imported Markdown has no spans.
+    if cell.get("rowSpan", 1) != 1 or cell.get("columnSpan", 1) != 1:
+        return False
+    content = cell.get("content", [])
+    return isinstance(content, list) and all(
+        _table_cell_element_matches(element) for element in content
+    )
+
+
+def _table_cell_element_matches(element: object) -> bool:
+    if not isinstance(element, dict) or not _location_wrapper_matches(element, {"paragraph"}):
+        return False
+    paragraph = element.get("paragraph")
+    return isinstance(paragraph, dict) and _paragraph_topology_matches(paragraph)
 
 
 def _list_definitions(document: dict[str, Any], document_tab: dict[str, Any]) -> dict[str, Any]:
@@ -661,26 +720,34 @@ def _coalesce_signature(
     return tuple(result)
 
 
-def _table_paragraphs(table: dict[str, Any]) -> Iterable[dict[str, Any]]:
+def _table_paragraphs(
+    table: dict[str, Any],
+) -> Iterable[dict[Any, Any]]:
     rows = table.get("tableRows", [])
     if not isinstance(rows, list):
         return ()
-    paragraphs: list[dict[str, Any]] = []
+    paragraphs: list[dict[Any, Any]] = []
     for row in rows:
         cells = row.get("tableCells", []) if isinstance(row, dict) else []
         if not isinstance(cells, list):
             return ()
         for cell in cells:
-            content = cell.get("content", []) if isinstance(cell, dict) else []
-            if not isinstance(content, list):
+            cell_paragraphs = _table_cell_paragraphs(cell)
+            if cell_paragraphs is None:
                 return ()
-            paragraphs.extend(
-                paragraph
-                for element in content
-                if isinstance(element, dict)
-                and isinstance((paragraph := element.get("paragraph")), dict)
-            )
+            paragraphs.extend(cell_paragraphs)
     return tuple(paragraphs)
+
+
+def _table_cell_paragraphs(cell: object) -> tuple[dict[Any, Any], ...] | None:
+    content = cell.get("content", []) if isinstance(cell, dict) else []
+    if not isinstance(content, list):
+        return None
+    return tuple(
+        paragraph
+        for element in content
+        if isinstance(element, dict) and isinstance((paragraph := element.get("paragraph")), dict)
+    )
 
 
 def _cell_text(cell: object) -> str:
@@ -990,16 +1057,7 @@ def _header_run_style_matches(style: object, inherited: dict[str, Any]) -> bool:
     if tokens is None or not isinstance(style, dict):
         return False
     effective = inherited | style
-    if set(effective) - _HEADER_RUN_STYLE_FIELDS:
-        return False
-    if "backgroundColor" in effective and effective["backgroundColor"] != {}:
-        return False
-    if any(
-        key in effective and effective[key] is not False
-        for key in ("italic", "underline", "strikethrough", "smallCaps")
-    ):
-        return False
-    if "baselineOffset" in effective and effective["baselineOffset"] != "NONE":
+    if not _header_effective_style_fields_match(effective):
         return False
     family = effective.get("weightedFontFamily")
     if not isinstance(family, dict) or set(family) - {"fontFamily", "weight"}:
@@ -1012,17 +1070,7 @@ def _header_run_style_matches(style: object, inherited: dict[str, Any]) -> bool:
     ):
         return False
     color = effective.get("foregroundColor")
-    if not isinstance(color, dict) or set(color) != {"color"}:
-        return False
-    nested = color.get("color")
-    if not isinstance(nested, dict) or set(nested) != {"rgbColor"}:
-        return False
-    rgb = nested.get("rgbColor")
-    if (
-        not isinstance(rgb, dict)
-        or set(rgb) - {"red", "green", "blue"}
-        or any(type(value) not in {int, float} or not 0 <= value <= 1 for value in rgb.values())
-    ):
+    if not _header_color_shape_matches(color):
         return False
     return (
         _font_family(effective) == tokens.font_family
@@ -1030,6 +1078,39 @@ def _header_run_style_matches(style: object, inherited: dict[str, Any]) -> bool:
         and _color_matches(color, tokens.color)
         and effective.get("bold") is tokens.bold
     )
+
+
+def _header_effective_style_fields_match(effective: dict[str, Any]) -> bool:
+    if set(effective) - _HEADER_RUN_STYLE_FIELDS:
+        return False
+    if "backgroundColor" in effective and effective["backgroundColor"] != {}:
+        return False
+    if any(
+        key in effective and effective[key] is not False
+        for key in ("italic", "underline", "strikethrough", "smallCaps")
+    ):
+        return False
+    return "baselineOffset" not in effective or effective["baselineOffset"] == "NONE"
+
+
+def _header_color_shape_matches(color: object) -> bool:
+    if not isinstance(color, dict) or set(color) != {"color"}:
+        return False
+    nested = color.get("color")
+    if not isinstance(nested, dict) or set(nested) != {"rgbColor"}:
+        return False
+    rgb = nested.get("rgbColor")
+    return (
+        isinstance(rgb, dict)
+        and not set(rgb) - {"red", "green", "blue"}
+        and all(_header_color_channel_matches(value) for value in rgb.values())
+    )
+
+
+def _header_color_channel_matches(value: object) -> bool:
+    if not isinstance(value, int | float) or isinstance(value, bool):
+        return False
+    return 0 <= value <= 1
 
 
 def _tab_logo_object(
@@ -1117,128 +1198,169 @@ def _header_elements_are_exact(
     if not elements or len(elements) > _MAX_HEADER_ELEMENTS:
         return False
     cursor: int | None = outer.get("startIndex") if outer is not None else None
-    before_logo = ""
-    seen_logo = False
+    sequence = _HeaderSequence(before_logo="", seen_logo=False)
     for index, element in enumerate(elements):
-        variant = (
-            "inlineObjectElement"
-            if isinstance(element, dict) and "inlineObjectElement" in element
-            else "textRun"
+        parsed = _header_element_value(element)
+        if parsed is None:
+            return False
+        variant, value = parsed
+        advanced = _advance_header_sequence(
+            sequence,
+            variant=variant,
+            value=value,
+            is_last=index == len(elements) - 1,
+            header_title=header_title,
         )
-        if not isinstance(element, dict) or not _location_wrapper_matches(element, {variant}):
+        if advanced is None:
             return False
-        payload = element.get(variant)
-        field = "inlineObjectId" if variant == "inlineObjectElement" else "content"
-        if not isinstance(payload, dict) or not _plain_segment_payload_known(payload, field):
+        sequence = advanced
+        width = 1 if variant == "inlineObjectElement" else utf16_length(value)
+        position = _segment_next_cursor(element, cursor, width)
+        if position is None:
             return False
-        value = payload.get(field)
-        if not isinstance(value, str) or not value:
-            return False
-        if variant == "inlineObjectElement":
-            if seen_logo or before_logo != (
-                header_title + HEADER_TITLE_SEPARATOR if header_title is not None else ""
-            ):
-                return False
-            seen_logo = True
-            width = 1
-        else:
-            if seen_logo:
-                if value != "\n" or index != len(elements) - 1:
-                    return False
-            else:
-                before_logo += value
-            width = utf16_length(value)
-        start, end = element.get("startIndex"), element.get("endIndex")
-        if (start is not None and not isinstance(start, int)) or (
-            end is not None and not isinstance(end, int)
-        ):
-            return False
-        if start is not None and cursor is not None and start != cursor:
-            return False
-        effective_start = start if start is not None else cursor
-        if end is not None and effective_start is not None and end != effective_start + width:
-            return False
-        cursor = (
-            end
-            if end is not None
-            else effective_start + width
-            if effective_start is not None
-            else None
-        )
+        cursor = position.value
     paragraph_end = outer.get("endIndex") if outer is not None else None
-    return seen_logo and (paragraph_end is None or cursor is None or paragraph_end == cursor)
+    return sequence.seen_logo and (
+        paragraph_end is None or cursor is None or paragraph_end == cursor
+    )
 
 
-def _segment_has_exact_footer(segments: object) -> bool:
-    segment = _only_segment(segments)
-    if segment is None:
+@dataclass(frozen=True, slots=True)
+class _HeaderSequence:
+    before_logo: str
+    seen_logo: bool
+
+
+def _advance_header_sequence(
+    sequence: _HeaderSequence,
+    *,
+    variant: str,
+    value: str,
+    is_last: bool,
+    header_title: str | None,
+) -> _HeaderSequence | None:
+    if variant == "inlineObjectElement":
+        expected_prefix = header_title + HEADER_TITLE_SEPARATOR if header_title is not None else ""
+        if sequence.seen_logo or sequence.before_logo != expected_prefix:
+            return None
+        return _HeaderSequence(before_logo=sequence.before_logo, seen_logo=True)
+    if sequence.seen_logo:
+        return sequence if value == "\n" and is_last else None
+    return _HeaderSequence(before_logo=sequence.before_logo + value, seen_logo=False)
+
+
+class _SegmentCursor(NamedTuple):
+    value: int | None
+
+
+def _header_element_value(element: object) -> tuple[str, str] | None:
+    variant = (
+        "inlineObjectElement"
+        if isinstance(element, dict) and "inlineObjectElement" in element
+        else "textRun"
+    )
+    if not isinstance(element, dict) or not _location_wrapper_matches(element, {variant}):
+        return None
+    payload = element.get(variant)
+    field = "inlineObjectId" if variant == "inlineObjectElement" else "content"
+    if not isinstance(payload, dict) or not _plain_segment_payload_known(payload, field):
+        return None
+    value = payload.get(field)
+    return (variant, value) if isinstance(value, str) and value else None
+
+
+def _segment_next_cursor(
+    element: dict[str, Any], cursor: int | None, width: int
+) -> _SegmentCursor | None:
+    start, end = element.get("startIndex"), element.get("endIndex")
+    if (start is not None and not isinstance(start, int)) or (
+        end is not None and not isinstance(end, int)
+    ):
+        return None
+    if start is not None and cursor is not None and start != cursor:
+        return None
+    effective_start = start if start is not None else cursor
+    if end is not None and effective_start is not None and end != effective_start + width:
+        return None
+    next_cursor = (
+        end if end is not None else effective_start + width if effective_start is not None else None
+    )
+    return _SegmentCursor(next_cursor)
+
+
+def _segment_has_exact_footer(
+    segments: object,
+) -> bool:
+    paragraph_parts = _footer_paragraph_elements(segments)
+    if paragraph_parts is None:
         return False
-    content = segment.get("content")
-    if not isinstance(content, list) or len(content) != 1:
-        return False
-    if not _location_wrapper_matches(content[0], {"paragraph"}):
-        return False
-    paragraph = content[0].get("paragraph")
-    if not isinstance(paragraph, dict) or set(paragraph) - {"elements", "paragraphStyle"}:
-        return False
-    elements = paragraph.get("elements", [])
-    if not isinstance(elements, list):
-        return False
+    outer, elements = paragraph_parts
     tokens: list[tuple[str, str]] = []
-    cursor: int | None = content[0].get("startIndex")
+    cursor: int | None = outer.get("startIndex")
     for index, element in enumerate(elements):
-        if not isinstance(element, dict) or not _location_wrapper_matches(
-            element, {"textRun", "autoText"}
-        ):
+        token_parts = _footer_element_token(element)
+        if token_parts is None:
             return False
-        text_run = element.get("textRun")
-        auto_text = element.get("autoText")
-        if (
-            isinstance(text_run, dict)
-            and _plain_segment_payload_known(text_run, "content")
-            and isinstance(value := text_run.get("content"), str)
-        ):
-            width = utf16_length(value)
-            if value == "\n":
-                if index != len(elements) - 1 or tokens != [
-                    ("text", "Sarj ·"),
-                    ("auto", "PAGE_NUMBER"),
-                ]:
-                    return False
-            else:
-                if any(character in value for character in "\n\r\v\f\u2028\u2029"):
-                    return False
-                tokens.append(("text", " ".join(value.split())))
-        elif (
-            isinstance(auto_text, dict)
-            and _plain_segment_payload_known(auto_text, "type")
-            and auto_text.get("type") == "PAGE_NUMBER"
-        ):
-            width = 1
-            tokens.append(("auto", "PAGE_NUMBER"))
+        token, width = token_parts
+        if token == ("newline", ""):
+            if index != len(elements) - 1 or tokens != [
+                ("text", "Sarj ·"),
+                ("auto", "PAGE_NUMBER"),
+            ]:
+                return False
         else:
+            tokens.append(token)
+        position = _segment_next_cursor(element, cursor, width)
+        if position is None:
             return False
-        start, end = element.get("startIndex"), element.get("endIndex")
-        if (start is not None and not isinstance(start, int)) or (
-            end is not None and not isinstance(end, int)
-        ):
-            return False
-        if start is not None and cursor is not None and start != cursor:
-            return False
-        effective_start = start if start is not None else cursor
-        if end is not None and effective_start is not None and end != effective_start + width:
-            return False
-        cursor = (
-            end
-            if end is not None
-            else effective_start + width
-            if effective_start is not None
-            else None
-        )
-    paragraph_end = content[0].get("endIndex")
+        cursor = position.value
+    paragraph_end = outer.get("endIndex")
     if paragraph_end is not None and cursor is not None and paragraph_end != cursor:
         return False
     return tokens == [("text", "Sarj ·"), ("auto", "PAGE_NUMBER")]
+
+
+def _footer_paragraph_elements(segments: object) -> tuple[dict[str, Any], list[Any]] | None:
+    segment = _only_segment(segments)
+    if segment is None:
+        return None
+    content = segment.get("content")
+    if not isinstance(content, list) or len(content) != 1:
+        return None
+    outer = content[0]
+    if not _location_wrapper_matches(outer, {"paragraph"}):
+        return None
+    paragraph = outer.get("paragraph")
+    if not isinstance(paragraph, dict) or set(paragraph) - {"elements", "paragraphStyle"}:
+        return None
+    elements = paragraph.get("elements", [])
+    return (outer, elements) if isinstance(elements, list) else None
+
+
+def _footer_element_token(element: object) -> tuple[tuple[str, str], int] | None:
+    if not isinstance(element, dict) or not _location_wrapper_matches(
+        element, {"textRun", "autoText"}
+    ):
+        return None
+    text_run = element.get("textRun")
+    if (
+        isinstance(text_run, dict)
+        and _plain_segment_payload_known(text_run, "content")
+        and isinstance(value := text_run.get("content"), str)
+    ):
+        if value == "\n":
+            return (("newline", ""), utf16_length(value))
+        if any(character in value for character in "\n\r\v\f\u2028\u2029"):
+            return None
+        return (("text", " ".join(value.split())), utf16_length(value))
+    auto_text = element.get("autoText")
+    if (
+        isinstance(auto_text, dict)
+        and _plain_segment_payload_known(auto_text, "type")
+        and auto_text.get("type") == "PAGE_NUMBER"
+    ):
+        return (("auto", "PAGE_NUMBER"), 1)
+    return None
 
 
 def _plain_segment_payload_known(payload: object, field: str) -> bool:
@@ -1279,25 +1401,36 @@ def _body_brand_matches(
     for element in elements if isinstance(elements, list) else []:
         if not isinstance(element, dict) or "sectionBreak" in element:
             continue
-        table = element.get("table")
-        if isinstance(table, dict):
-            if block_index >= len(expected.blocks) or expected.blocks[block_index].kind != "table":
-                return False
-            if not _table_brand_matches(document, tab, table, expected.blocks[block_index]):
-                return False
-            block_index += 1
-            continue
-        paragraph = element.get("paragraph")
-        if not isinstance(paragraph, dict):
-            continue
-        if not _paragraph_text(paragraph) and not _is_rule(paragraph):
+        if not _is_observed_body_element(element):
             continue
         if block_index >= len(expected.blocks):
             return False
-        if not _paragraph_brand_matches(document, tab, paragraph, expected.blocks[block_index]):
+        if not _body_element_brand_matches(document, tab, element, expected.blocks[block_index]):
             return False
         block_index += 1
     return block_index == len(expected.blocks)
+
+
+def _is_observed_body_element(element: dict[str, Any]) -> bool:
+    if isinstance(element.get("table"), dict):
+        return True
+    paragraph = element.get("paragraph")
+    return isinstance(paragraph, dict) and bool(_paragraph_text(paragraph) or _is_rule(paragraph))
+
+
+def _body_element_brand_matches(
+    document: dict[str, Any],
+    tab: dict[str, Any],
+    element: dict[str, Any],
+    expected: MarkdownImportBlock,
+) -> bool:
+    table = element.get("table")
+    if isinstance(table, dict):
+        return expected.kind == "table" and _table_brand_matches(document, tab, table, expected)
+    paragraph = element.get("paragraph")
+    return isinstance(paragraph, dict) and _paragraph_brand_matches(
+        document, tab, paragraph, expected
+    )
 
 
 def _table_brand_matches(

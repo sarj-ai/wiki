@@ -19,6 +19,8 @@ from app.document_transform.schemas import (
     DocumentTransformRequest,
     DocumentTransformResult,
     DriveFileSource,
+    MarkdownContent,
+    MarkdownSource,
     OutputName,
     OutputStrategy,
     TransformMode,
@@ -160,6 +162,31 @@ class PolishInput(McpModel):
             mode=self.mode,
             output_strategy=self.output_strategy,
             output_name=self.output_name,
+        )
+
+
+class MarkdownImportInput(McpModel):
+    content: MarkdownContent
+    name: OutputName
+    destination_folder_id: McpFileId
+    mode: TransformMode
+    idempotency_key: IdempotencyKey
+
+    @model_validator(mode="after")
+    def validate_shared_request(self) -> Self:
+        self.to_transform_request()
+        return self
+
+    def to_transform_request(self) -> DocumentTransformRequest:
+        return DocumentTransformRequest(
+            source=MarkdownSource(
+                kind="markdown",
+                content=self.content,
+                name=self.name,
+                destination_folder_id=self.destination_folder_id,
+            ),
+            mode=self.mode,
+            output_strategy=OutputStrategy.COPY,
         )
 
 

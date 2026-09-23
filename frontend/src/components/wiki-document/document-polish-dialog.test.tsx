@@ -1935,6 +1935,78 @@ describe("DocumentPolishDialog", () => {
     });
   });
 
+  it("cannot submit an old draft while a selected file is still loading", async () => {
+    renderDialog(root, {
+      initialDestination: {
+        driveId: "drive-1",
+        driveName: "Workspace",
+        folderId: "folder-1",
+        folderPath: [],
+      },
+      kind: "markdown",
+    });
+    typeTextarea("# Old draft");
+    await vi.waitFor(() => expect(findButtonNow("Import Google Doc")).toBeEnabled());
+    const bytes = deferred<ArrayBuffer>();
+    const file = new File(["# New draft"], "New.md");
+    vi.spyOn(file, "arrayBuffer").mockReturnValue(bytes.promise);
+    const dropZone = document.body.querySelector<HTMLElement>(
+      '[aria-label="Markdown file drop zone"]',
+    );
+    if (!dropZone) throw new Error("Markdown drop zone not found");
+    const drop = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, "dataTransfer", {
+      value: { files: { item: () => file } },
+    });
+    flushSync(() => dropZone.dispatchEvent(drop));
+
+    expect(document.body).toHaveTextContent("Reading Markdown file…");
+    expect(findButtonNow("Import Google Doc")).toBeDisabled();
+    const create = vi.spyOn(DOCUMENT_TRANSFORM_API, "create");
+    clickButton(findButtonNow("Import Google Doc"));
+    expect(create).not.toHaveBeenCalled();
+
+    bytes.resolve(new TextEncoder().encode("# New draft").buffer);
+    await vi.waitFor(() => {
+      expect(document.body.querySelector("textarea")).toHaveValue("# New draft");
+      expect(findButtonNow("Import Google Doc")).toBeEnabled();
+    });
+  });
+
+  it("keeps manual edits made after a slow file selection", async () => {
+    renderDialog(root, {
+      initialDestination: {
+        driveId: "drive-1",
+        driveName: "Workspace",
+        folderId: "folder-1",
+        folderPath: [],
+      },
+      kind: "markdown",
+    });
+    const bytes = deferred<ArrayBuffer>();
+    const file = new File(["# File draft"], "File.md");
+    vi.spyOn(file, "arrayBuffer").mockReturnValue(bytes.promise);
+    const dropZone = document.body.querySelector<HTMLElement>(
+      '[aria-label="Markdown file drop zone"]',
+    );
+    if (!dropZone) throw new Error("Markdown drop zone not found");
+    const drop = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, "dataTransfer", {
+      value: { files: { item: () => file } },
+    });
+    flushSync(() => dropZone.dispatchEvent(drop));
+    typeTextarea("# Manual draft");
+    expect(document.body).not.toHaveTextContent("Reading Markdown file…");
+
+    bytes.resolve(new TextEncoder().encode("# File draft").buffer);
+    await vi.waitFor(() => {
+      expect(document.body.querySelector("textarea")).toHaveValue("# Manual draft");
+      expect(document.body.querySelector<HTMLInputElement>("#polish-markdown-name")).toHaveValue(
+        "Untitled document",
+      );
+    });
+  });
+
   it("reports unsupported tab naming as a preserved optional enhancement", async () => {
     const pending = { id: "55555555-5555-4555-8555-555555555555", status: "pending" } as const;
     vi.spyOn(DOCUMENT_TRANSFORM_API, "create").mockResolvedValue(pending);

@@ -10,6 +10,7 @@ from app.document_transform.brand_manifest import (
     trusted_document_logo_description,
 )
 from app.document_transform.docx_renderer import markdown_import_manifest
+from app.document_transform.errors import UnsupportedSourceError
 from app.document_transform.gateway import OutputDraft, SourceSnapshot
 from app.document_transform.google_gateway import GoogleDocumentGateway
 from app.document_transform.ir import parse_markdown
@@ -178,6 +179,42 @@ Break
     assert verification.content_preserved is True
     assert verification.structure_preserved is True
     assert verification.brand_applied is True
+
+
+@pytest.mark.parametrize(
+    "markdown",
+    [
+        "```text\n[^literal]\n```",
+        "~~~\n[^literal]\n~~~",
+        "    [^literal]",
+        "Escaped \\[^literal]",
+        "Literal `[^literal]`",
+    ],
+)
+def test_literal_footnote_syntax_in_code_or_escaped_text_is_importable(markdown: str) -> None:
+    assert markdown_import_manifest(markdown, title="Literal", branded=False).blocks
+
+
+def test_actual_footnote_syntax_remains_unsupported() -> None:
+    with pytest.raises(UnsupportedSourceError):
+        markdown_import_manifest("Text[^note]", title="Footnote", branded=False)
+
+
+@pytest.mark.parametrize(
+    ("markdown", "kind", "text"),
+    [
+        ("- [ ] Task", "check", "Task"),
+        ("- [x] Done", "check", "Done"),
+        ("- `[ ] Task`", "list", "[ ] Task"),
+        ("- **[x] Done**", "list", "[x] Done"),
+    ],
+)
+def test_checklist_marker_is_only_consumed_when_it_is_plain_markdown(
+    markdown: str, kind: str, text: str
+) -> None:
+    manifest = markdown_import_manifest(markdown, title="List", branded=False)
+    assert manifest.blocks[-1].kind == kind
+    assert manifest.blocks[-1].text == text
 
 
 @pytest.mark.parametrize("extra_title", [False, True])
@@ -429,6 +466,66 @@ def test_unexpected_google_doc_topology_fails_closed(extra_kind: str) -> None:
         case _:
             document["tabs"][0]["documentTab"]["positionedObjects"] = {"foreign": {}}
     assert verify_markdown_import(document, manifest).structure_preserved is False
+
+
+@pytest.mark.parametrize(
+    "malformed_run",
+    [
+        pytest.param({"textStyle": {}}, id="missing-content"),
+        pytest.param({"content": 42}, id="non-text-content"),
+        pytest.param({"content": "", "textStyle": "bold"}, id="non-object-style"),
+        pytest.param(
+            {"content": "", "suggestedInsertionIds": ["unaccepted"]},
+            id="unaccepted-suggestion",
+        ),
+    ],
+)
+def test_import_readback_rejects_malformed_or_unaccepted_text_runs(
+    malformed_run: dict[str, Any],
+) -> None:
+    manifest = markdown_import_manifest("Body", title="Import", branded=False)
+    title = _paragraph([("Import\n", {})])
+    body = _paragraph([("Body\n", {})])
+    body["paragraph"]["elements"].append({"textRun": malformed_run})
+    document = {"tabs": [{"documentTab": {"body": {"content": [title, body]}}}]}
+
+    result = verify_markdown_import(document, manifest)
+
+    assert result.content_preserved is True
+    assert result.structure_preserved is False
+
+
+@pytest.mark.parametrize("span", ["rowSpan", "columnSpan"])
+def test_import_readback_rejects_merged_table_cells(span: str) -> None:
+    manifest = markdown_import_manifest("| A |\n| --- |\n| B |", title="Import", branded=False)
+    cell = {"content": [_paragraph([("A\n", {})])], span: 2}
+    second = {"content": [_paragraph([("B\n", {})])]}
+    document = {
+        "tabs": [
+            {
+                "documentTab": {
+                    "body": {
+                        "content": [
+                            _paragraph([("Import\n", {})]),
+                            {
+                                "table": {
+                                    "tableRows": [
+                                        {"tableCells": [cell]},
+                                        {"tableCells": [second]},
+                                    ]
+                                }
+                            },
+                        ]
+                    }
+                }
+            }
+        ]
+    }
+
+    result = verify_markdown_import(document, manifest)
+
+    assert result.content_preserved is True
+    assert result.structure_preserved is False
 
 
 @pytest.mark.parametrize("indexed_run", [False, True])

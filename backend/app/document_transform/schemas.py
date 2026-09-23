@@ -87,15 +87,21 @@ class DocumentTransformCapabilities(StrictTransformModel):
 
 class DriveFileSource(StrictTransformModel):
     kind: Literal["drive_file"]
-    file_id: FileId
-    expected_modified_time: str
+    file_id: FileId = Field(description="ID of the Drive file to transform.")
+    expected_modified_time: str = Field(
+        description="Drive modifiedTime read before submission; rejects stale requests."
+    )
 
 
 class MarkdownSource(StrictTransformModel):
     kind: Literal["markdown"]
-    content: MarkdownContent
-    name: OutputName
-    destination_folder_id: FileId
+    content: MarkdownContent = Field(
+        description="UTF-8 Markdown source, up to 512 KiB after UTF-8 encoding."
+    )
+    name: OutputName = Field(description="Title of the new Google Doc.")
+    destination_folder_id: FileId = Field(
+        description="Writable Google Drive folder in which to create the document."
+    )
 
     @field_validator("content")
     @classmethod
@@ -152,11 +158,22 @@ class QaQuarantinedOutputEvidence(StrictTransformModel):
 
 
 class DocumentTransformRequest(StrictTransformModel):
-    source: TransformSource
-    mode: TransformMode
-    output_name: OutputName | None = None
-    output_strategy: OutputStrategy = OutputStrategy.COPY
-    copy_destination_folder_id: FileId | None = None
+    source: TransformSource = Field(
+        description="Markdown content to import or a Drive file with its observed modified time."
+    )
+    mode: TransformMode = Field(
+        description="format applies document styling; unslop conservatively edits prose; both runs both."
+    )
+    output_name: OutputName | None = Field(
+        default=None, description="Optional name for a Drive file copy; Markdown uses source.name."
+    )
+    output_strategy: OutputStrategy = Field(
+        default=OutputStrategy.COPY,
+        description="copy creates a sibling; in_place is available only for eligible native Google Docs.",
+    )
+    copy_destination_folder_id: FileId | None = Field(
+        default=None, description="Optional destination for a Drive file copy."
+    )
 
     @model_validator(mode="after")
     def validate_output_strategy(self) -> Self:
@@ -470,7 +487,9 @@ class CopyCheckpoint(StrictTransformModel):
     tab_structure: StructureCheckpoint | None = None
 
     @model_validator(mode="after")
-    def validate_stage(self) -> Self:
+    def validate_stage(
+        self,
+    ) -> Self:
         if self.tab_naming is not None and self.tab_naming_declined_reason is not None:
             msg = "tab naming cannot be both planned and declined"
             raise ValueError(msg)
@@ -492,6 +511,17 @@ class CopyCheckpoint(StrictTransformModel):
         ):
             msg = "only a verified or attested copy checkpoint contains a result"
             raise ValueError(msg)
+        self._validate_qa_stage()
+        if (
+            self.output_parent_folder_id is not None
+            and self.output is not None
+            and self.output.parent_folder_id != self.output_parent_folder_id
+        ):
+            msg = "copy checkpoint output must remain in its planned destination"
+            raise ValueError(msg)
+        return self
+
+    def _validate_qa_stage(self) -> None:
         if self.qa_permission_evidence is not None and self.qa_quarantine is not None:
             msg = "copy checkpoint cannot be both permission-verified and quarantined"
             raise ValueError(msg)
@@ -519,14 +549,6 @@ class CopyCheckpoint(StrictTransformModel):
         if self.stage is CopyCheckpointStage.QUARANTINED and self.qa_destination_permission is None:
             msg = "quarantined copy checkpoint requires an internal QA permission binding"
             raise ValueError(msg)
-        if (
-            self.output_parent_folder_id is not None
-            and self.output is not None
-            and self.output.parent_folder_id != self.output_parent_folder_id
-        ):
-            msg = "copy checkpoint output must remain in its planned destination"
-            raise ValueError(msg)
-        return self
 
 
 class WordCopyCheckpoint(StrictTransformModel):
@@ -551,7 +573,9 @@ class WordCopyCheckpoint(StrictTransformModel):
     result: DocumentTransformResult | None = None
 
     @model_validator(mode="after")
-    def validate_stage(self) -> Self:
+    def validate_stage(
+        self,
+    ) -> Self:
         if not self.reserved_output_id or self.reserved_output_id == self.source_binding.get("id"):
             message = "Word copy requires a distinct reserved output ID"
             raise ValueError(message)

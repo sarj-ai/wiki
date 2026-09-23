@@ -418,7 +418,7 @@ async def test_different_key_same_source_reuses_active_task(
         status=task_status,
     )
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, row, None)
+    session = _Session(None, None, row, row, None)
     if task_status is TaskStatus.RUNNING:
         row.started_at = datetime.now(UTC)
         row.attempt_count = 1
@@ -453,7 +453,9 @@ async def test_different_key_same_source_reuses_active_task(
     assert "document-1" in params.values()
     assert "tasks.expires_at > now()" in str(query)
     assert "tasks.lease_expires_at > now()" in str(query)
-    assert "INSERT INTO task_replay_keys" in str(session.statements[3])
+    assert "FOR UPDATE" in str(session.statements[3])
+    assert "clock_timestamp()" in str(session.statements[3])
+    assert "INSERT INTO task_replay_keys" in str(session.statements[4])
     assert not any("INSERT INTO tasks " in str(statement) for statement in session.statements)
 
 
@@ -476,7 +478,7 @@ async def test_active_source_different_intent_is_busy(change: str) -> None:
             changed = payload.model_copy(update={"output_strategy": OutputStrategy.COPY})
         case _:
             changed = payload.model_copy(update={"output_name": "Different name"})
-    session = _Session(None, None, row)
+    session = _Session(None, None, row, row)
     with pytest.raises(TaskTargetBusyError):
         await _service(session).create_or_replay(
             kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -862,7 +864,7 @@ async def test_markdown_active_hash_reuse_authorizes_before_recording_new_key(
         request_hash=task_service_module._request_hash(task_service_module._serialize(payload))
     )
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, (row, expired), None)
+    session = _Session(None, None, (row, expired), (row, expired), None)
     admissions: list[bool] = []
 
     async def admit() -> None:
@@ -891,7 +893,7 @@ async def test_markdown_active_hash_reuse_authorizes_before_recording_new_key(
             await reserve()
         assert session.rollbacks == 1
         assert session.commits == 0
-        assert len(session.statements) == 3
+        assert len(session.statements) == 4
     else:
         reservation = await reserve()
         assert reservation.task.id == row.id

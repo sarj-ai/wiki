@@ -6,6 +6,7 @@ import json
 from typing import Never, override
 import uuid
 
+from cryptography.fernet import InvalidToken
 import httpx
 import pytest
 
@@ -133,6 +134,28 @@ class _RetryTasks:
     async def claim(self, task_id: TaskId, *, lease_duration: timedelta) -> TaskClaim:
         del lease_duration
         return _claim(task_id, attempt_count=self.attempt_count)
+
+
+class _UnreadableTask(_RetryTasks):
+    def __init__(self, failure: Exception | None) -> None:
+        super().__init__()
+        self.failure = failure
+        self.claimed = 0
+
+    @override
+    async def load_document_transform(self, task_id: TaskId) -> DocumentTransformTaskRecord:
+        if self.failure is not None:
+            raise self.failure
+        return DocumentTransformTaskRecord(
+            owner_user_id=uuid.uuid7(),
+            task=_claim(task_id, attempt_count=1).task,
+            payload=None,
+        )
+
+    @override
+    async def claim(self, task_id: TaskId, *, lease_duration: timedelta) -> TaskClaim:
+        self.claimed += 1
+        return await super().claim(task_id, lease_duration=lease_duration)
 
 
 class _DeadlineTransform:
@@ -626,6 +649,36 @@ async def test_encrypted_markdown_is_decrypted_only_for_successful_worker_execut
     assert isinstance(result, SucceededTaskRead)
     assert transform.markdown == payload.source.content
     assert tasks.recorded_resource == FileId("output")
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        pytest.param(ValueError("private Markdown content"), id="invalid-value"),
+        pytest.param(TypeError("bad checkpoint"), id="invalid-type"),
+        pytest.param(InvalidToken(), id="invalid-token"),
+        pytest.param(None, id="missing-payload"),
+    ],
+)
+async def test_unreadable_saved_request_fails_after_claim_without_provider_call(
+    monkeypatch: pytest.MonkeyPatch, failure: Exception | None
+) -> None:
+    tasks = _UnreadableTask(failure)
+    executor = object.__new__(DriveDocumentTransformTaskExecutor)
+    monkeypatch.setattr(executor, "_tasks", tasks, raising=False)
+
+    async def forbidden_runtime(*args: object, **kwargs: object) -> Never:
+        del args, kwargs
+        pytest.fail("unreadable request must not initialize the provider")
+
+    monkeypatch.setattr(DriveDocumentTransformTaskExecutor, "_runtime", forbidden_runtime)
+    result = await executor.execute(TaskId(uuid.uuid7()))
+
+    assert isinstance(result, FailedTaskRead)
+    assert tasks.claimed == 1
+    assert tasks.failed == 1
+    assert result.error_code == "invalid_task_payload"
+    assert result.error_detail == "The saved document transformation request could not be read"
 
 
 async def test_internal_document_transform_gets_worker_provider_budget() -> None:

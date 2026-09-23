@@ -34,7 +34,11 @@ from app.document_transform.brand_manifest import (
     normalize_header_title,
     trusted_document_logo_description,
 )
-from app.document_transform.errors import SourceTooLargeError, UnsupportedSourceError
+from app.document_transform.errors import (
+    EmptyMarkdownBlockError,
+    SourceTooLargeError,
+    UnsupportedSourceError,
+)
 from app.document_transform.limits import (
     MAX_DOCX_ESTIMATED_XML_BYTES,
     MAX_DOCX_HYPERLINKS,
@@ -220,6 +224,8 @@ def _validated_blocks(markdown: str, *, title: str) -> tuple[_Block, ...]:
     if _has_frontmatter(normalized_lines) or _has_unsupported_footnote(markdown):
         raise UnsupportedSourceError
     blocks = _parse_blocks(markdown)
+    if any(block.kind in {"heading", "code"} and not block.text for block in blocks):
+        raise EmptyMarkdownBlockError(EmptyMarkdownBlockError.public_detail)
     _validate_heading_hierarchy(blocks)
     _validate_render_complexity(blocks, title=title, markdown=markdown)
     return blocks
@@ -231,6 +237,27 @@ def _validate_render_complexity(
     title: str,
     markdown: str,
 ) -> None:
+    table_cells, inline_runs, styled_spans, hyperlinks = _render_complexity_counts(blocks, title)
+    if (
+        table_cells > MAX_DOCX_TABLE_CELLS
+        or inline_runs > MAX_DOCX_INLINE_RUNS
+        or styled_spans > MAX_DOCX_STYLED_SPANS
+        or hyperlinks > MAX_DOCX_HYPERLINKS
+    ):
+        raise SourceTooLargeError
+    estimated_xml_bytes = (
+        len(markdown.encode("utf-8")) * 4
+        + len(title.encode("utf-8")) * 4
+        + len(blocks) * 1_024
+        + table_cells * 512
+        + inline_runs * 256
+        + hyperlinks * 512
+    )
+    if estimated_xml_bytes > MAX_DOCX_ESTIMATED_XML_BYTES:
+        raise SourceTooLargeError
+
+
+def _render_complexity_counts(blocks: tuple[_Block, ...], title: str) -> tuple[int, int, int, int]:
     table_cells = 0
     inline_runs = 0
     styled_spans = 0
@@ -264,23 +291,7 @@ def _validate_render_complexity(
                 inline_runs += max(1, 2 * len(block.text.split("\n")) - 1)
             case _:
                 count_inlines(block.inlines)
-    if (
-        table_cells > MAX_DOCX_TABLE_CELLS
-        or inline_runs > MAX_DOCX_INLINE_RUNS
-        or styled_spans > MAX_DOCX_STYLED_SPANS
-        or hyperlinks > MAX_DOCX_HYPERLINKS
-    ):
-        raise SourceTooLargeError
-    estimated_xml_bytes = (
-        len(markdown.encode("utf-8")) * 4
-        + len(title.encode("utf-8")) * 4
-        + len(blocks) * 1_024
-        + table_cells * 512
-        + inline_runs * 256
-        + hyperlinks * 512
-    )
-    if estimated_xml_bytes > MAX_DOCX_ESTIMATED_XML_BYTES:
-        raise SourceTooLargeError
+    return table_cells, inline_runs, styled_spans, hyperlinks
 
 
 def markdown_import_manifest(
@@ -307,24 +318,9 @@ def markdown_import_manifest(
     active_ordered: dict[int, int] = {}
     next_list_group = 1
     for block in parsed:
-        list_group = 0
-        start = block.start
-        if block.kind == "list" and block.ordered:
-            for level in tuple(active_ordered):
-                if level > block.level:
-                    del active_ordered[level]
-            if block.level not in active_ordered:
-                active_ordered[block.level] = next_list_group
-                next_list_group += 1
-            else:
-                start = 0
-            list_group = active_ordered[block.level]
-        elif block.kind in {"list", "check"}:
-            for level in tuple(active_ordered):
-                if level >= block.level:
-                    del active_ordered[level]
-        else:
-            active_ordered.clear()
+        start, list_group, next_list_group = _manifest_list_position(
+            block, active_ordered, next_list_group
+        )
         blocks.append(_manifest_block(block, start=start, list_group=list_group))
     return MarkdownImportManifest(
         blocks=tuple(blocks),
@@ -337,6 +333,27 @@ def markdown_import_manifest(
     )
 
 
+def _manifest_list_position(
+    block: _Block, active_ordered: dict[int, int], next_list_group: int
+) -> tuple[int, int, int]:
+    if block.kind == "list" and block.ordered:
+        for level in tuple(active_ordered):
+            if level > block.level:
+                del active_ordered[level]
+        start = block.start if block.level not in active_ordered else 0
+        if block.level not in active_ordered:
+            active_ordered[block.level] = next_list_group
+            next_list_group += 1
+        return start, active_ordered[block.level], next_list_group
+    if block.kind in {"list", "check"}:
+        for level in tuple(active_ordered):
+            if level >= block.level:
+                del active_ordered[level]
+    else:
+        active_ordered.clear()
+    return block.start, 0, next_list_group
+
+
 def _manifest_block(
     block: _Block,
     *,
@@ -344,22 +361,8 @@ def _manifest_block(
     start: int | None = None,
     list_group: int = 0,
 ) -> MarkdownImportBlock:
-    inline_groups = (
-        tuple(cell for row in block.cell_inlines for cell in row)
-        if block.kind == "table"
-        else ((block.inlines,) if block.inlines else ())
-    )
-    inlines = tuple(inline for group in inline_groups for inline in group)
-    signature = tuple(
-        MarkdownImportInline(
-            text=inline.text,
-            bold=inline.bold,
-            italic=inline.italic,
-            code=inline.code,
-            url=inline.url,
-        )
-        for inline in inlines
-    )
+    inlines = _manifest_flat_inlines(block)
+    signature = tuple(_manifest_inline(inline) for inline in inlines)
     if block.kind == "code":
         signature = (MarkdownImportInline(block.text, code=True),)
     return MarkdownImportBlock(
@@ -370,32 +373,46 @@ def _manifest_block(
         start=block.start if start is None else start,
         list_group=list_group,
         rows=block.rows,
-        links=tuple(
-            (inline.text, inline.url)
-            for inline in inlines
-            if inline.url is not None and _is_safe_link(inline.url)
-        ),
+        links=_manifest_links(inlines),
         bold=tuple(inline.text for inline in inlines if inline.bold),
         italic=tuple(inline.text for inline in inlines if inline.italic),
         inline_code=tuple(inline.text for inline in inlines if inline.code),
         inline_signature=signature if block.kind != "table" else (),
-        cell_signatures=tuple(
-            tuple(
-                tuple(
-                    MarkdownImportInline(
-                        text=inline.text,
-                        bold=inline.bold,
-                        italic=inline.italic,
-                        code=inline.code,
-                        url=inline.url,
-                    )
-                    for inline in cell
-                )
-                for cell in row
-            )
-            for row in block.cell_inlines
-        ),
+        cell_signatures=_manifest_cell_signatures(block),
         checked=block.checked if block.kind == "check" else None,
+    )
+
+
+def _manifest_flat_inlines(block: _Block) -> tuple[_Inline, ...]:
+    if block.kind == "table":
+        return tuple(inline for row in block.cell_inlines for cell in row for inline in cell)
+    return block.inlines
+
+
+def _manifest_links(inlines: tuple[_Inline, ...]) -> tuple[tuple[str, str], ...]:
+    return tuple(
+        (inline.text, inline.url)
+        for inline in inlines
+        if inline.url is not None and _is_safe_link(inline.url)
+    )
+
+
+def _manifest_cell_signatures(
+    block: _Block,
+) -> tuple[tuple[tuple[MarkdownImportInline, ...], ...], ...]:
+    return tuple(
+        tuple(tuple(_manifest_inline(inline) for inline in cell) for cell in row)
+        for row in block.cell_inlines
+    )
+
+
+def _manifest_inline(inline: _Inline) -> MarkdownImportInline:
+    return MarkdownImportInline(
+        text=inline.text,
+        bold=inline.bold,
+        italic=inline.italic,
+        code=inline.code,
+        url=inline.url,
     )
 
 
@@ -412,7 +429,42 @@ def _has_frontmatter(lines: list[str]) -> bool:
     return any(line.strip() in {"---", "..."} for line in lines[1:])
 
 
-def _has_unsupported_footnote(markdown: str) -> bool:
+def _has_unsupported_footnote(
+    markdown: str,
+) -> bool:
+    return _contains_footnote_reference(_outside_code_blocks(markdown))
+
+
+def _outside_code_blocks(markdown: str) -> str:
+    # Footnote-looking text inside a code block is literal source. Exclude
+    # fenced and indented code before scanning for unsupported references.
+    visible_lines: list[str] = []
+    fence_character = ""
+    fence_length = 0
+    for line in markdown.splitlines(keepends=True):
+        marker = re.match(r" {0,3}(`{3,}|~{3,})", line)
+        if fence_character:
+            if (
+                marker
+                and marker.group(1)[0] == fence_character
+                and len(marker.group(1)) >= fence_length
+            ):
+                tail = line[marker.end() :].strip()
+                if not tail:
+                    fence_character = ""
+                    fence_length = 0
+            continue
+        if marker and (marker.group(1)[0] != "`" or "`" not in line[marker.end() :]):
+            fence_character = marker.group(1)[0]
+            fence_length = len(marker.group(1))
+            continue
+        if line.startswith(("    ", "\t")):
+            continue
+        visible_lines.append(line)
+    return "".join(visible_lines)
+
+
+def _contains_footnote_reference(markdown: str) -> bool:
     index = 0
     while index < len(markdown):
         if markdown[index] == "\\":
@@ -831,6 +883,13 @@ def _append_page_field(paragraph: Paragraph) -> None:
     _xml_member(final, "_r").append(end)
 
 
+@dataclass(slots=True)
+class _AppendListState:
+    ordered_by_level: dict[int, int]
+    next_num: int
+    default_ordered_available: bool = True
+
+
 def _append_blocks(
     document: Document,
     blocks: Iterable[_Block],
@@ -838,56 +897,12 @@ def _append_blocks(
     *,
     branded: bool,
 ) -> None:
-    ordered_by_level: dict[int, int] = {}
-    next_num = numbering.next_num
-    default_ordered_available = True
+    lists = _AppendListState({}, numbering.next_num)
     for block in blocks:
-        if block.kind == "heading":
-            paragraph = document.add_paragraph(style=f"Heading {min(max(block.level, 1), 6)}")
-            _append_inlines(paragraph, block.inlines, branded=branded)
-        elif block.kind == "paragraph":
-            paragraph = document.add_paragraph(style="Normal")
-            _append_inlines(paragraph, block.inlines, branded=branded)
-        elif block.kind == "list":
-            paragraph = document.add_paragraph(style="Sarj List" if branded else "List Paragraph")
-            for level in tuple(ordered_by_level):
-                if level > block.level:
-                    del ordered_by_level[level]
-            if block.ordered and block.level not in ordered_by_level:
-                if default_ordered_available:
-                    ordered_by_level[block.level] = numbering.ordered
-                    default_ordered_available = False
-                    if block.start != 1:
-                        _append_numbering_override(
-                            document,
-                            num_id=numbering.ordered,
-                            level=block.level,
-                            start=block.start,
-                        )
-                else:
-                    ordered_by_level[block.level] = next_num
-                    _append_concrete_numbering(
-                        document,
-                        abstract_id=numbering.ordered_abstract,
-                        num_id=next_num,
-                        level=block.level,
-                        start=block.start,
-                    )
-                    next_num += 1
-            if not block.ordered:
-                for level in tuple(ordered_by_level):
-                    if level >= block.level:
-                        del ordered_by_level[level]
-            _set_numbering(
-                paragraph,
-                ordered_by_level[block.level] if block.ordered else numbering.bullet,
-                block.level,
-            )
-            _append_inlines(paragraph, block.inlines, branded=branded)
+        if block.kind == "list":
+            _append_list_block(document, block, numbering, lists, branded=branded)
         elif block.kind == "check":
-            for level in tuple(ordered_by_level):
-                if level >= block.level:
-                    del ordered_by_level[level]
+            _drop_ordered_at_or_above(lists.ordered_by_level, block.level)
             paragraph = document.add_paragraph(style="Sarj List" if branded else "List Paragraph")
             _set_numbering(
                 paragraph,
@@ -895,21 +910,83 @@ def _append_blocks(
                 block.level,
             )
             _append_inlines(paragraph, block.inlines, branded=branded)
-        elif block.kind == "quote":
-            paragraph = document.add_paragraph(style="Sarj Quote" if branded else "Quote")
-            if branded:
-                _set_paragraph_box(paragraph, fill=_SARJ_PURPLE_LIGHT, left_border=_SARJ_PURPLE)
-            _append_inlines(paragraph, block.inlines, branded=branded)
-        elif block.kind == "code":
-            _append_code_block(document, block.text, branded=branded)
-        elif block.kind == "table":
-            _append_table(document, block, branded=branded)
-        elif block.kind == "rule":
-            paragraph = document.add_paragraph()
-            paragraph.paragraph_format.space_after = Pt(6)
-            _set_paragraph_bottom_border(paragraph)
-        if block.kind not in {"list", "check"}:
-            ordered_by_level.clear()
+        else:
+            _append_nonlist_block(document, block, branded=branded)
+            lists.ordered_by_level.clear()
+
+
+def _append_nonlist_block(document: Document, block: _Block, *, branded: bool) -> None:
+    if block.kind == "heading":
+        paragraph = document.add_paragraph(style=f"Heading {min(max(block.level, 1), 6)}")
+        _append_inlines(paragraph, block.inlines, branded=branded)
+    elif block.kind == "paragraph":
+        paragraph = document.add_paragraph(style="Normal")
+        _append_inlines(paragraph, block.inlines, branded=branded)
+    elif block.kind == "quote":
+        paragraph = document.add_paragraph(style="Sarj Quote" if branded else "Quote")
+        if branded:
+            _set_paragraph_box(paragraph, fill=_SARJ_PURPLE_LIGHT, left_border=_SARJ_PURPLE)
+        _append_inlines(paragraph, block.inlines, branded=branded)
+    elif block.kind == "code":
+        _append_code_block(document, block.text, branded=branded)
+    elif block.kind == "table":
+        _append_table(document, block, branded=branded)
+    elif block.kind == "rule":
+        paragraph = document.add_paragraph()
+        paragraph.paragraph_format.space_after = Pt(6)
+        _set_paragraph_bottom_border(paragraph)
+
+
+def _append_list_block(
+    document: Document,
+    block: _Block,
+    numbering: _NumberingIds,
+    state: _AppendListState,
+    *,
+    branded: bool,
+) -> None:
+    paragraph = document.add_paragraph(style="Sarj List" if branded else "List Paragraph")
+    for level in tuple(state.ordered_by_level):
+        if level > block.level:
+            del state.ordered_by_level[level]
+    if block.ordered and block.level not in state.ordered_by_level:
+        _start_ordered_list(document, block, numbering, state)
+    if not block.ordered:
+        _drop_ordered_at_or_above(state.ordered_by_level, block.level)
+    _set_numbering(
+        paragraph,
+        state.ordered_by_level[block.level] if block.ordered else numbering.bullet,
+        block.level,
+    )
+    _append_inlines(paragraph, block.inlines, branded=branded)
+
+
+def _start_ordered_list(
+    document: Document, block: _Block, numbering: _NumberingIds, state: _AppendListState
+) -> None:
+    if state.default_ordered_available:
+        state.ordered_by_level[block.level] = numbering.ordered
+        state.default_ordered_available = False
+        if block.start != 1:
+            _append_numbering_override(
+                document, num_id=numbering.ordered, level=block.level, start=block.start
+            )
+        return
+    state.ordered_by_level[block.level] = state.next_num
+    _append_concrete_numbering(
+        document,
+        abstract_id=numbering.ordered_abstract,
+        num_id=state.next_num,
+        level=block.level,
+        start=block.start,
+    )
+    state.next_num += 1
+
+
+def _drop_ordered_at_or_above(ordered_by_level: dict[int, int], level: int) -> None:
+    for active_level in tuple(ordered_by_level):
+        if active_level >= level:
+            del ordered_by_level[active_level]
 
 
 def _append_concrete_numbering(
@@ -973,7 +1050,9 @@ def _append_code_block(document: Document, text: str, *, branded: bool) -> None:
     for index, line in enumerate(text.split("\n")):
         if index:
             paragraph.add_run().add_break()
-        run = paragraph.add_run(line or " ")
+        # An empty source line is represented by the adjacent break. Adding a
+        # space here changes the code block's content after DOCX conversion.
+        run = paragraph.add_run(line)
         _format_run(
             run,
             font="Courier New",
@@ -1389,154 +1468,12 @@ class _BlockParseState:
     current_table_row: list[tuple[_Inline, ...]] | None = None
 
 
-def _parse_blocks(markdown: str) -> tuple[_Block, ...]:
+def _parse_blocks(
+    markdown: str,
+) -> tuple[_Block, ...]:
     state = _BlockParseState()
-
     for token in _MARKDOWN.parse(markdown):
-        kind = token.type
-        if kind == "html_block":
-            raise UnsupportedSourceError
-        if kind == "blockquote_open":
-            state.quote_depth += 1
-            if state.quote_depth > 1 or state.list_stack:
-                raise UnsupportedSourceError
-        elif kind == "blockquote_close":
-            state.quote_depth -= 1
-        elif kind in {"bullet_list_open", "ordered_list_open"}:
-            if state.quote_depth:
-                raise UnsupportedSourceError
-            level = len(state.list_stack)
-            if level > _MAX_LIST_LEVEL:
-                raise UnsupportedSourceError
-            start = token.attrGet("start") if kind == "ordered_list_open" else None
-            state.list_stack.append(
-                _ListContext(ordered=kind == "ordered_list_open", start=int(start or 1))
-            )
-        elif kind in {"bullet_list_close", "ordered_list_close"}:
-            if not state.list_stack:
-                raise UnsupportedSourceError
-            state.list_stack.pop()
-        elif kind == "list_item_open":
-            if not state.list_stack:
-                raise UnsupportedSourceError
-            state.list_stack[-1].item_index += 1
-            state.item_paragraphs.append(0)
-        elif kind == "list_item_close":
-            if not state.item_paragraphs:
-                raise UnsupportedSourceError
-            state.item_paragraphs.pop()
-        elif kind == "heading_open":
-            if state.quote_depth or state.list_stack or state.table_rows is not None:
-                raise UnsupportedSourceError
-            state.pending_kind = "heading"
-            state.pending_heading_level = int(token.tag.removeprefix("h"))
-        elif kind == "paragraph_open":
-            if state.table_rows is None:
-                state.pending_kind = "paragraph"
-                if state.list_stack:
-                    if not state.item_paragraphs or state.item_paragraphs[-1]:
-                        raise UnsupportedSourceError
-                    state.item_paragraphs[-1] += 1
-        elif kind == "inline":
-            inlines = _parse_inline_tokens(token.children)
-            if state.table_rows is not None:
-                if state.current_table_row is None:
-                    raise UnsupportedSourceError
-                state.current_table_row.append(inlines)
-                continue
-            if state.pending_kind is None:
-                raise UnsupportedSourceError
-            text = _inline_text(inlines)
-            if state.pending_kind == "heading":
-                state.blocks.append(
-                    _Block(
-                        "heading",
-                        text=text,
-                        level=state.pending_heading_level,
-                        inlines=inlines,
-                    )
-                )
-            elif state.list_stack:
-                context = state.list_stack[-1]
-                marker = _strip_check_marker(inlines)
-                state.blocks.append(
-                    _Block(
-                        "check" if marker.checked is not None else "list",
-                        text=_inline_text(marker.inlines),
-                        level=len(state.list_stack) - 1,
-                        ordered=context.ordered,
-                        start=context.start + context.item_index,
-                        checked=bool(marker.checked),
-                        inlines=marker.inlines,
-                    )
-                )
-            else:
-                state.blocks.append(
-                    _Block(
-                        "quote" if state.quote_depth else "paragraph",
-                        text=text,
-                        inlines=inlines,
-                    )
-                )
-            state.pending_kind = None
-        elif kind in {"heading_close", "paragraph_close"}:
-            continue
-        elif kind == "hr":
-            if state.quote_depth or state.list_stack:
-                raise UnsupportedSourceError
-            state.blocks.append(_Block("rule"))
-        elif kind in {"fence", "code_block"}:
-            if state.quote_depth or state.list_stack or state.table_rows is not None:
-                raise UnsupportedSourceError
-            state.blocks.append(_Block("code", text=token.content.removesuffix("\n")))
-        elif kind == "table_open":
-            if state.quote_depth or state.list_stack or state.table_rows is not None:
-                raise UnsupportedSourceError
-            state.table_rows = []
-        elif kind == "tr_open":
-            if state.table_rows is None or state.current_table_row is not None:
-                raise UnsupportedSourceError
-            state.current_table_row = []
-        elif kind == "tr_close":
-            if state.table_rows is None or state.current_table_row is None:
-                raise UnsupportedSourceError
-            state.table_rows.append(state.current_table_row)
-            state.current_table_row = None
-        elif kind == "table_close":
-            if (
-                state.table_rows is None
-                or state.current_table_row is not None
-                or not state.table_rows
-            ):
-                raise UnsupportedSourceError
-            width = max(len(row) for row in state.table_rows)
-            normalized_inlines = tuple(
-                tuple(row + [()] * (width - len(row))) for row in state.table_rows
-            )
-            rows = tuple(tuple(_inline_text(cell) for cell in row) for row in normalized_inlines)
-            state.blocks.append(
-                _Block(
-                    "table",
-                    rows=rows,
-                    cell_inlines=normalized_inlines,
-                    has_header=True,
-                )
-            )
-            state.table_rows = None
-        elif kind in {
-            "thead_open",
-            "thead_close",
-            "tbody_open",
-            "tbody_close",
-            "th_open",
-            "th_close",
-            "td_open",
-            "td_close",
-        }:
-            if state.table_rows is None:
-                raise UnsupportedSourceError
-        else:
-            raise UnsupportedSourceError
+        _consume_block_token(state, token)
     if (
         state.quote_depth
         or state.list_stack
@@ -1548,56 +1485,221 @@ def _parse_blocks(markdown: str) -> tuple[_Block, ...]:
     return tuple(state.blocks)
 
 
+def _consume_block_token(state: _BlockParseState, token: Token) -> None:
+    kind = token.type
+    if kind in {
+        "blockquote_open",
+        "blockquote_close",
+        "bullet_list_open",
+        "ordered_list_open",
+        "bullet_list_close",
+        "ordered_list_close",
+        "list_item_open",
+        "list_item_close",
+        "heading_open",
+        "paragraph_open",
+        "heading_close",
+        "paragraph_close",
+    }:
+        _consume_container_token(state, token)
+    elif kind in {
+        "table_open",
+        "tr_open",
+        "tr_close",
+        "table_close",
+        "thead_open",
+        "thead_close",
+        "tbody_open",
+        "tbody_close",
+        "th_open",
+        "th_close",
+        "td_open",
+        "td_close",
+    }:
+        _consume_table_token(state, kind)
+    elif kind == "inline":
+        _consume_block_inline(state, token)
+    elif kind == "hr":
+        if state.quote_depth or state.list_stack:
+            raise UnsupportedSourceError
+        state.blocks.append(_Block("rule"))
+    elif kind in {"fence", "code_block"}:
+        if state.quote_depth or state.list_stack or state.table_rows is not None:
+            raise UnsupportedSourceError
+        state.blocks.append(_Block("code", text=token.content.removesuffix("\n")))
+    else:
+        raise UnsupportedSourceError
+
+
+def _consume_container_token(state: _BlockParseState, token: Token) -> None:
+    kind = token.type
+    if kind in {
+        "bullet_list_open",
+        "ordered_list_open",
+        "bullet_list_close",
+        "ordered_list_close",
+        "list_item_open",
+        "list_item_close",
+    }:
+        _consume_list_container_token(state, token)
+    elif kind == "blockquote_open":
+        state.quote_depth += 1
+        if state.quote_depth > 1 or state.list_stack:
+            raise UnsupportedSourceError
+    elif kind == "blockquote_close":
+        state.quote_depth -= 1
+    elif kind == "heading_open":
+        if state.quote_depth or state.list_stack or state.table_rows is not None:
+            raise UnsupportedSourceError
+        state.pending_kind = "heading"
+        state.pending_heading_level = int(token.tag.removeprefix("h"))
+    elif kind == "paragraph_open" and state.table_rows is None:
+        state.pending_kind = "paragraph"
+        if state.list_stack:
+            if not state.item_paragraphs or state.item_paragraphs[-1]:
+                raise UnsupportedSourceError
+            state.item_paragraphs[-1] += 1
+
+
+def _consume_list_container_token(state: _BlockParseState, token: Token) -> None:
+    kind = token.type
+    if kind in {"bullet_list_open", "ordered_list_open"}:
+        if state.quote_depth or len(state.list_stack) > _MAX_LIST_LEVEL:
+            raise UnsupportedSourceError
+        start = token.attrGet("start") if kind == "ordered_list_open" else None
+        state.list_stack.append(
+            _ListContext(ordered=kind == "ordered_list_open", start=int(start or 1))
+        )
+    elif kind in {"bullet_list_close", "ordered_list_close"}:
+        if not state.list_stack:
+            raise UnsupportedSourceError
+        state.list_stack.pop()
+    elif kind == "list_item_open":
+        if not state.list_stack:
+            raise UnsupportedSourceError
+        state.list_stack[-1].item_index += 1
+        state.item_paragraphs.append(0)
+    elif kind == "list_item_close":
+        if not state.item_paragraphs:
+            raise UnsupportedSourceError
+        state.item_paragraphs.pop()
+
+
+def _consume_block_inline(state: _BlockParseState, token: Token) -> None:
+    inlines = _parse_inline_tokens(token.children)
+    if state.table_rows is not None:
+        if state.current_table_row is None:
+            raise UnsupportedSourceError
+        state.current_table_row.append(inlines)
+        return
+    if state.pending_kind is None:
+        raise UnsupportedSourceError
+    text = _inline_text(inlines)
+    if state.pending_kind == "heading":
+        block = _Block("heading", text=text, level=state.pending_heading_level, inlines=inlines)
+    elif state.list_stack:
+        context = state.list_stack[-1]
+        marker = _strip_check_marker(inlines)
+        block = _Block(
+            "check" if marker.checked is not None else "list",
+            text=_inline_text(marker.inlines),
+            level=len(state.list_stack) - 1,
+            ordered=context.ordered,
+            start=context.start + context.item_index,
+            checked=bool(marker.checked),
+            inlines=marker.inlines,
+        )
+    else:
+        block = _Block("quote" if state.quote_depth else "paragraph", text=text, inlines=inlines)
+    state.blocks.append(block)
+    state.pending_kind = None
+
+
+def _consume_table_token(state: _BlockParseState, kind: str) -> None:
+    if kind == "table_open":
+        if state.quote_depth or state.list_stack or state.table_rows is not None:
+            raise UnsupportedSourceError
+        state.table_rows = []
+    elif kind == "tr_open":
+        if state.table_rows is None or state.current_table_row is not None:
+            raise UnsupportedSourceError
+        state.current_table_row = []
+    elif kind == "tr_close":
+        if state.table_rows is None or state.current_table_row is None:
+            raise UnsupportedSourceError
+        state.table_rows.append(state.current_table_row)
+        state.current_table_row = None
+    elif kind == "table_close":
+        if state.table_rows is None or state.current_table_row is not None or not state.table_rows:
+            raise UnsupportedSourceError
+        state.blocks.append(_table_block_from_rows(state.table_rows))
+        state.table_rows = None
+    elif state.table_rows is None:
+        raise UnsupportedSourceError
+
+
+def _table_block_from_rows(table_rows: list[list[tuple[_Inline, ...]]]) -> _Block:
+    width = max(len(row) for row in table_rows)
+    normalized_inlines = tuple(tuple(row + [()] * (width - len(row))) for row in table_rows)
+    rows = tuple(tuple(_inline_text(cell) for cell in row) for row in normalized_inlines)
+    return _Block("table", rows=rows, cell_inlines=normalized_inlines, has_header=True)
+
+
+@dataclass(slots=True)
+class _InlineParseState:
+    result: list[_Inline] = field(default_factory=list)
+    bold_depth: int = 0
+    italic_depth: int = 0
+    link_url: str | None = None
+
+
 def _parse_inline_tokens(tokens: list[Token] | None) -> tuple[_Inline, ...]:
     if tokens is None:
         raise UnsupportedSourceError
-    result: list[_Inline] = []
-    bold_depth = 0
-    italic_depth = 0
-    link_url: str | None = None
+    state = _InlineParseState()
     for token in tokens:
-        kind = token.type
-        match kind:
-            case "strong_open":
-                bold_depth += 1
-            case "strong_close":
-                bold_depth -= 1
-            case "em_open":
-                italic_depth += 1
-            case "em_close":
-                italic_depth -= 1
-            case "link_open":
-                if link_url is not None:
-                    raise UnsupportedSourceError
-                destination = token.attrGet("href")
-                if not isinstance(destination, str) or not _is_safe_link(destination):
-                    raise UnsupportedSourceError
-                link_url = destination
-            case "link_close":
-                if link_url is None:
-                    raise UnsupportedSourceError
-                link_url = None
-            case "text" | "code_inline" | "softbreak" | "hardbreak":
-                content = (
-                    " " if kind == "softbreak" else "\n" if kind == "hardbreak" else token.content
-                )
-                _append_inline(
-                    result,
-                    content,
-                    bold=bold_depth > 0,
-                    italic=italic_depth > 0,
-                    code=kind == "code_inline",
-                    url=link_url,
-                )
-            case "image" | "html_inline" | "s_open" | "s_close":
-                raise UnsupportedSourceError
-            case _:
-                raise UnsupportedSourceError
-        if bold_depth < 0 or italic_depth < 0:
+        _consume_inline_token(state, token)
+        if state.bold_depth < 0 or state.italic_depth < 0:
             raise UnsupportedSourceError
-    if bold_depth or italic_depth or link_url is not None:
+    if state.bold_depth or state.italic_depth or state.link_url is not None:
         raise UnsupportedSourceError
-    return tuple(result)
+    return tuple(state.result)
+
+
+def _consume_inline_token(state: _InlineParseState, token: Token) -> None:
+    kind = token.type
+    match kind:
+        case "strong_open":
+            state.bold_depth += 1
+        case "strong_close":
+            state.bold_depth -= 1
+        case "em_open":
+            state.italic_depth += 1
+        case "em_close":
+            state.italic_depth -= 1
+        case "link_open":
+            if state.link_url is not None:
+                raise UnsupportedSourceError
+            destination = token.attrGet("href")
+            if not isinstance(destination, str) or not _is_safe_link(destination):
+                raise UnsupportedSourceError
+            state.link_url = destination
+        case "link_close":
+            if state.link_url is None:
+                raise UnsupportedSourceError
+            state.link_url = None
+        case "text" | "code_inline" | "softbreak" | "hardbreak":
+            content = " " if kind == "softbreak" else "\n" if kind == "hardbreak" else token.content
+            _append_inline(
+                state.result,
+                content,
+                bold=state.bold_depth > 0,
+                italic=state.italic_depth > 0,
+                code=kind == "code_inline",
+                url=state.link_url,
+            )
+        case _:
+            raise UnsupportedSourceError
 
 
 def _append_inline(
@@ -1635,6 +1737,13 @@ def _strip_check_marker(inlines: tuple[_Inline, ...]) -> _CheckMarker:
     visible = _inline_text(inlines)
     if len(visible) < marker_length or visible[:marker_length].casefold() not in {"[ ] ", "[x] "}:
         return _CheckMarker(None, inlines)
+    marker_characters = 0
+    for inline in inlines:
+        if marker_characters >= marker_length:
+            break
+        if inline.bold or inline.italic or inline.code or inline.url is not None:
+            return _CheckMarker(None, inlines)
+        marker_characters += len(inline.text)
     remaining = marker_length
     stripped: list[_Inline] = []
     for inline in inlines:

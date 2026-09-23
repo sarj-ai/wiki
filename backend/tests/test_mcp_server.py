@@ -10,6 +10,7 @@ from fastmcp import Client
 from fastmcp.server.auth import AuthProvider
 import pytest
 
+from app.document_transform.limits import MAX_MARKDOWN_BYTES
 from app.identifiers import TaskId
 from app.mcp.context import ValidatedMcpPrincipal
 from app.mcp.schemas import McpCapability
@@ -58,6 +59,7 @@ async def test_exact_curated_tools_and_annotations() -> None:
             "wiki_search",
             "wiki_get_document",
             "wiki_polish_document",
+            "wiki_import_markdown",
             "wiki_get_polish_admission",
             "wiki_get_task",
             "wiki_get_short_link",
@@ -67,7 +69,7 @@ async def test_exact_curated_tools_and_annotations() -> None:
         for tool in tools:
             assert set(tool.inputSchema["properties"]) == {"request"}
             assert tool.annotations is not None
-            writes = tool.name == "wiki_polish_document"
+            writes = tool.name in {"wiki_polish_document", "wiki_import_markdown"}
             assert tool.annotations.readOnlyHint is not writes
             assert tool.annotations.destructiveHint is writes
 
@@ -156,3 +158,72 @@ async def test_read_grant_cannot_dispatch_polish(monkeypatch: pytest.MonkeyPatch
         assert result.is_error
         assert "authorization required" in str(result.content)
     assert contexts.opened == contexts.closed == 1
+
+
+async def test_markdown_import_accepts_document_sized_input_then_checks_transform_grant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("Mutation reached without explicit transform capability")
+
+    monkeypatch.setattr("app.mcp.server.polish_document", forbidden)
+    contexts = Contexts()
+    async with Client(server(contexts)) as client:
+        result = await client.call_tool(
+            "wiki_import_markdown",
+            {
+                "request": {
+                    "content": "# Title\n\n" + "paragraph\n" * 2000,
+                    "name": "Report",
+                    "destination_folder_id": "folder_123",
+                    "mode": "both",
+                    "idempotency_key": str(uuid.uuid7()),
+                }
+            },
+            raise_on_error=False,
+        )
+        assert result.is_error
+        assert "authorization required" in str(result.content)
+    assert contexts.opened == contexts.closed == 1
+
+
+async def test_markdown_import_accepts_exact_limit_even_with_json_escaped_controls() -> None:
+    contexts = Contexts()
+    async with Client(server(contexts)) as client:
+        result = await client.call_tool(
+            "wiki_import_markdown",
+            {
+                "request": {
+                    "content": "\x01" * MAX_MARKDOWN_BYTES,
+                    "name": "Report",
+                    "destination_folder_id": "folder_123",
+                    "mode": "format",
+                    "idempotency_key": str(uuid.uuid7()),
+                }
+            },
+            raise_on_error=False,
+        )
+        assert result.is_error
+        assert "authorization required" in str(result.content)
+    assert contexts.opened == contexts.closed == 1
+
+
+async def test_markdown_import_rejects_content_above_limit_before_context() -> None:
+    contexts = Contexts()
+    async with Client(server(contexts)) as client:
+        result = await client.call_tool(
+            "wiki_import_markdown",
+            {
+                "request": {
+                    "content": "\x01" * (MAX_MARKDOWN_BYTES + 1),
+                    "name": "Report",
+                    "destination_folder_id": "folder_123",
+                    "mode": "format",
+                    "idempotency_key": str(uuid.uuid7()),
+                }
+            },
+            raise_on_error=False,
+        )
+        assert result.is_error
+        assert "Invalid Wiki tool arguments" in str(result.content)
+    assert contexts.opened == 0

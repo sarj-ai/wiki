@@ -11,7 +11,7 @@ from app.mcp.native_http_guard import NativeOAuthGuardSettings, NativeOAuthHTTPG
 from app.mcp.native_provider import NativeWikiOAuthProvider
 from app.mcp.native_schemas import NativeOAuthError
 from app.mcp.server import create_mcp_server
-from app.request_body import RequestBodyLimitMiddleware
+from app.request_body import MAX_MCP_REQUEST_BODY_BYTES, RequestBodyLimitMiddleware
 from app.tasks.queue import TaskEnqueuer
 
 
@@ -69,6 +69,10 @@ def create_native_runtime(
         ),
     )
     return NativeMcpRuntime(
-        app=RequestBodyLimitMiddleware(guarded, max_bytes=65_536),
+        app=RequestBodyLimitMiddleware(
+            guarded,
+            max_bytes=65_536,
+            path_limits={"/mcp": MAX_MCP_REQUEST_BODY_BYTES},
+        ),
         http_app=http_app,
     )

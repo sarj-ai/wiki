@@ -210,3 +210,14 @@ async def test_public_transform_route_rejects_internal_qa_binding() -> None:
 
     assert response.status_code == 422
     assert "qa_destination_permission" in response.text
+
+
+def test_transform_openapi_explains_markdown_submission_and_recovery() -> None:
+    schema = app.openapi()
+    operation = schema["paths"]["/document-transforms"]["post"]
+    assert "Markdown" in operation["summary"]
+    assert "admissions/{idempotency_key}" in operation["description"]
+    assert "Location" in operation["responses"]["202"]["headers"]
+    markdown = schema["components"]["schemas"]["MarkdownSource"]["properties"]
+    assert "UTF-8" in markdown["content"]["description"]
+    assert "folder" in markdown["destination_folder_id"]["description"]

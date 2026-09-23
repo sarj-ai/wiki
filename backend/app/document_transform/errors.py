@@ -23,6 +23,13 @@ class UnsupportedSourceError(DocumentTransformError):
     public_detail = "This source cannot be transformed without losing content"
 
 
+class EmptyMarkdownBlockError(UnsupportedSourceError):
+    public_detail = (
+        "Empty Markdown headings and code blocks cannot be verified after import; "
+        "add text or remove the empty block"
+    )
+
+
 class OutputConflictError(DocumentTransformError):
     code = "output_conflict"
     public_detail = "The existing output belongs to a different source revision"

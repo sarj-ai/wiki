@@ -15,6 +15,7 @@ from app.mcp.schemas import (
     DocumentExcerpt,
     DocumentInput,
     DocumentResponse,
+    MarkdownImportInput,
     McpCapability,
     PolishInput,
     PolishResponse,
@@ -71,6 +72,16 @@ def search_result() -> SearchResult:
         (SearchInput, {"query": "policy"}),
         (DocumentInput, {"file_id": "file_123"}),
         (PolishInput, polish_payload()),
+        (
+            MarkdownImportInput,
+            {
+                "content": "# Title\n\nText",
+                "name": "Report",
+                "destination_folder_id": "folder_123",
+                "mode": "both",
+                "idempotency_key": polish_payload()["idempotency_key"],
+            },
+        ),
         (AdmissionInput, {"idempotency_key": polish_payload()["idempotency_key"]}),
         (TaskInput, {"task_id": polish_payload()["idempotency_key"]}),
         (ShortLinkInput, {"file_id": "file_123"}),
@@ -103,6 +114,26 @@ def test_polish_adapts_without_changing_freshness_or_shared_enums():
     assert shared.mode is TransformMode.FORMAT
     assert shared.output_strategy is OutputStrategy.COPY
     assert "idempotency_key" not in shared.model_dump()
+
+
+def test_markdown_import_adapts_to_copy_and_shared_validation():
+    payload = {
+        "content": "# Report\n\nBody",
+        "name": "Report",
+        "destination_folder_id": "folder_123",
+        "mode": "both",
+        "idempotency_key": polish_payload()["idempotency_key"],
+    }
+    request = MarkdownImportInput.model_validate(payload)
+    shared = request.to_transform_request()
+    assert shared.source.kind == "markdown"
+    assert shared.source.content == payload["content"]
+    assert shared.source.destination_folder_id == payload["destination_folder_id"]
+    assert shared.mode is TransformMode.BOTH
+    assert shared.output_strategy is OutputStrategy.COPY
+    for invalid in [{"content": ""}, {"destination_folder_id": "../folder"}]:
+        with pytest.raises(ValidationError):
+            MarkdownImportInput.model_validate({**payload, **invalid})
 
 
 def test_polish_reuses_in_place_name_validation():

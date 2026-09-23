@@ -39,7 +39,11 @@ from app.mcp.native_composition import (
 from app.mcp.native_consent_router import NativeConsentSettings, create_native_consent_router
 from app.mcp.native_core import NativeOAuthCore
 from app.mcp.redirect_policy import McpRedirectPolicy
-from app.request_body import MAX_REQUEST_BODY_BYTES, RequestBodyLimitMiddleware
+from app.request_body import (
+    MAX_MCP_REQUEST_BODY_BYTES,
+    MAX_REQUEST_BODY_BYTES,
+    RequestBodyLimitMiddleware,
+)
 from app.request_id import RequestIDMiddleware
 from app.security_headers import SecurityHeadersMiddleware
 from app.sidebar.router import router as sidebar_router
@@ -160,7 +164,11 @@ def create_app(
         redoc_url="/redoc" if app_settings.API_DOCS_ENABLED else None,
         openapi_url="/openapi.json" if app_settings.API_DOCS_ENABLED else None,
     )
-    application.add_middleware(RequestBodyLimitMiddleware, max_bytes=MAX_REQUEST_BODY_BYTES)
+    application.add_middleware(
+        RequestBodyLimitMiddleware,
+        max_bytes=MAX_REQUEST_BODY_BYTES,
+        path_limits={"/mcp": MAX_MCP_REQUEST_BODY_BYTES},
+    )
     application.add_middleware(GZipMiddleware, minimum_size=1000)
     application.add_middleware(
         CORSMiddleware,

@@ -443,6 +443,87 @@ async def test_real_postgres_terminal_change_during_output_admission_creates_rep
         await engine.dispose()
 
 
+@pytest.mark.parametrize("active_change", ["completed", "expired"])
+async def test_real_postgres_active_change_during_source_admission_creates_replacement(
+    active_change: str,
+) -> None:
+    engine = _qa_engine()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    owner = UserId(uuid.uuid7())
+    payload = _markdown_payload()
+    admission_count = 0
+    terminal_checks = 0
+
+    try:
+        async with sessions() as session:
+            session.add(
+                User(id=owner, email=f"qa-{owner}@sarj.ai", google_id=GoogleUserId(str(owner)))
+            )
+            await session.commit()
+            first = await PostgresTaskService(db=session).create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=payload,
+            )
+
+        async def admit() -> None:
+            nonlocal admission_count
+            admission_count += 1
+            async with sessions() as session:
+                if active_change == "completed":
+                    values = {
+                        "status": TaskStatus.SUCCEEDED,
+                        "started_at": func.now(),
+                        "finished_at": func.now(),
+                        "attempt_count": 1,
+                        "result": _completed_result(first.task.id, payload.mode).model_dump(
+                            mode="json"
+                        ),
+                    }
+                else:
+                    values = {
+                        "created_at": func.now() - timedelta(days=8),
+                        "expires_at": func.now() - timedelta(seconds=1),
+                    }
+                await session.execute(update(Task).where(Task.id == first.task.id).values(**values))
+                await session.commit()
+
+        async def reject_terminal(_task: object) -> bool:
+            nonlocal terminal_checks
+            terminal_checks += 1
+            return False
+
+        async with sessions() as session:
+            replacement = await PostgresTaskService(db=session).create_or_replay(
+                kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+                owner_user_id=owner,
+                idempotency_key=IdempotencyKey(uuid.uuid7()),
+                payload=payload,
+                admit=admit,
+                admit_terminal_replay=reject_terminal,
+            )
+
+        assert replacement.created
+        assert replacement.task.id != first.task.id
+        assert admission_count == 1
+        assert terminal_checks == (1 if active_change == "completed" else 0)
+        async with sessions() as session:
+            replacement_row = await session.get(Task, replacement.task.id)
+            assert replacement_row is not None
+            assert replacement_row.dispatch_ready_at is not None
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(TaskReplayKey)
+                    .where(TaskReplayKey.task_id == first.task.id)
+                )
+                == 0
+            )
+    finally:
+        await engine.dispose()
+
+
 @pytest.mark.parametrize(
     "terminal_case",
     ["cancelled", "failed", "stale_pipeline", "stale_brand"],

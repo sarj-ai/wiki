@@ -9,6 +9,7 @@ import time
 from typing import Protocol, override
 import uuid
 
+from cryptography.fernet import InvalidToken
 import httpx
 from loguru import logger
 from sqlalchemy import select
@@ -73,6 +74,7 @@ from app.drive.retry import ProviderDeadlineError
 from app.drive.schemas import MIME_DOC, MIME_FOLDER, MIME_SLIDE
 from app.drive.service import GoogleDriveService
 from app.files.errors import FileNotInScopeError, FilesError
+from app.files.schemas import FileResponse
 from app.files.service import GoogleFilesService
 from app.identifiers import FileId, TaskId
 from app.models.user import User
@@ -183,7 +185,7 @@ class DocumentTransformRuntime:
 def _required_payload(record: DocumentTransformTaskRecord) -> DocumentTransformRequest:
     if record.payload is None:
         msg = "Active document-transform task is missing its payload"
-        raise RuntimeError(msg)
+        raise ValueError(msg)
     return record.payload
 
 
@@ -207,10 +209,16 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
 
     @override
     async def execute(self, task_id: TaskId) -> TaskRead:
-        record = await self._tasks.load_document_transform(task_id)
-        if isinstance(record.task, SucceededTaskRead | FailedTaskRead | CancelledTaskRead):
+        try:
+            record = await self._tasks.load_document_transform(task_id)
+        except ValueError, TypeError, InvalidToken:
+            # A malformed encrypted payload or checkpoint must not prevent the
+            # worker from claiming the task and recording a terminal failure.
+            record = None
+        if record is not None and isinstance(
+            record.task, SucceededTaskRead | FailedTaskRead | CancelledTaskRead
+        ):
             return record.task
-        _required_payload(record)
         try:
             claim = await self._tasks.claim(task_id, lease_duration=_EXECUTION_LEASE)
         except TaskNotClaimableError as exc:
@@ -218,6 +226,14 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
         try:
             claimed_record = await self._tasks.load_document_transform(task_id)
             claimed_payload = _required_payload(claimed_record)
+        except ValueError, TypeError, InvalidToken:
+            return await self._tasks.fail(
+                task_id,
+                lease_token=claim.lease_token,
+                error_code="invalid_task_payload",
+                error_detail="The saved document transformation request could not be read",
+            )
+        try:
             if claim.task.attempt_count > _MAX_TASK_ATTEMPTS:
                 return await self._tasks.fail(
                     task_id,
@@ -330,36 +346,9 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
             logo_uri = self._logo_uri if logo_bytes is not None else ""
         header_identity: HeaderIdentityProof | None = None
         if isinstance(payload.source, DriveFileSource):
-            try:
-                source_file = await files.get(payload.source.file_id)
-            except FileNotInScopeError as exc:
-                raise UnsupportedSourceError from exc
-            except FilesError as exc:
-                if exc.http_status in {401, 403}:
-                    raise UnsupportedSourceError from exc
-                raise DocumentGatewayError from exc
-            if (
-                isinstance(payload, QaDocumentTransformRequest)
-                and source_file.mime_type != MIME_DOC
-            ):
-                raise DestinationAccessChangedError
-            if payload.output_strategy is OutputStrategy.IN_PLACE:
-                provenance = (
-                    await self._db.execute(
-                        select(DocumentHeaderProvenance).where(
-                            DocumentHeaderProvenance.owner_user_id == owner_user_id,
-                            DocumentHeaderProvenance.file_id == payload.source.file_id,
-                        )
-                    )
-                ).scalar_one_or_none()
-                if provenance is not None:
-                    header_identity = HeaderIdentityProof(
-                        evidence=HeaderIdentityEvidence.model_validate(provenance.evidence),
-                        result_sha256=provenance.result_sha256,
-                        verified_revision_sha256=provenance.verified_revision_sha256,
-                    )
-                    if header_identity.evidence.operation_id != provenance.producer_operation_id:
-                        raise InPlaceNeedsReviewError
+            source_file, header_identity = await self._authorized_drive_source(
+                owner_user_id, payload, files
+            )
             if source_file.mime_type == WORD_MIME:
                 return DocumentTransformRuntime(
                     short_links=short_links,
@@ -497,6 +486,46 @@ class DriveDocumentTransformTaskExecutor(DocumentTransformTaskExecutor):
                 qa_created_copy_verifier=verify_qa_created_copy,
             ),
         )
+
+    async def _authorized_drive_source(
+        self,
+        owner_user_id: uuid.UUID,
+        payload: DocumentTransformRequest,
+        files: GoogleFilesService,
+    ) -> tuple[FileResponse, HeaderIdentityProof | None]:
+        if not isinstance(payload.source, DriveFileSource):
+            msg = "Drive source authorization requires a Drive file"
+            raise TypeError(msg)
+        try:
+            source_file = await files.get(payload.source.file_id)
+        except FileNotInScopeError as exc:
+            raise UnsupportedSourceError from exc
+        except FilesError as exc:
+            if exc.http_status in {401, 403}:
+                raise UnsupportedSourceError from exc
+            raise DocumentGatewayError from exc
+        if isinstance(payload, QaDocumentTransformRequest) and source_file.mime_type != MIME_DOC:
+            raise DestinationAccessChangedError
+        if payload.output_strategy is not OutputStrategy.IN_PLACE:
+            return source_file, None
+        provenance = (
+            await self._db.execute(
+                select(DocumentHeaderProvenance).where(
+                    DocumentHeaderProvenance.owner_user_id == owner_user_id,
+                    DocumentHeaderProvenance.file_id == payload.source.file_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if provenance is None:
+            return source_file, None
+        header_identity = HeaderIdentityProof(
+            evidence=HeaderIdentityEvidence.model_validate(provenance.evidence),
+            result_sha256=provenance.result_sha256,
+            verified_revision_sha256=provenance.verified_revision_sha256,
+        )
+        if header_identity.evidence.operation_id != provenance.producer_operation_id:
+            raise InPlaceNeedsReviewError
+        return source_file, header_identity
 
     async def _load_logo(self) -> bytes | None:
         if self._logo_uri != CURRENT_BRAND_MANIFEST.assets.logo_uri:

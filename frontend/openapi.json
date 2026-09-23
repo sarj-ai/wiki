@@ -475,10 +475,12 @@
                 "type": "null"
               }
             ],
+            "description": "Optional destination for a Drive file copy.",
             "title": "Copy Destination Folder Id"
           },
           "mode": {
-            "$ref": "#/components/schemas/TransformMode"
+            "$ref": "#/components/schemas/TransformMode",
+            "description": "format applies document styling; unslop conservatively edits prose; both runs both."
           },
           "output_name": {
             "anyOf": [
@@ -491,13 +493,16 @@
                 "type": "null"
               }
             ],
+            "description": "Optional name for a Drive file copy; Markdown uses source.name.",
             "title": "Output Name"
           },
           "output_strategy": {
             "$ref": "#/components/schemas/OutputStrategy",
-            "default": "copy"
+            "default": "copy",
+            "description": "copy creates a sibling; in_place is available only for eligible native Google Docs."
           },
           "source": {
+            "description": "Markdown content to import or a Drive file with its observed modified time.",
             "discriminator": {
               "mapping": {
                 "drive_file": "#/components/schemas/DriveFileSource",
@@ -721,10 +726,12 @@
         "additionalProperties": false,
         "properties": {
           "expected_modified_time": {
+            "description": "Drive modifiedTime read before submission; rejects stale requests.",
             "title": "Expected Modified Time",
             "type": "string"
           },
           "file_id": {
+            "description": "ID of the Drive file to transform.",
             "title": "File Id",
             "type": "string"
           },
@@ -1575,12 +1582,14 @@
         "additionalProperties": false,
         "properties": {
           "content": {
+            "description": "UTF-8 Markdown source, up to 512 KiB after UTF-8 encoding.",
             "maxLength": 524288,
             "minLength": 1,
             "title": "Content",
             "type": "string"
           },
           "destination_folder_id": {
+            "description": "Writable Google Drive folder in which to create the document.",
             "title": "Destination Folder Id",
             "type": "string"
           },
@@ -1590,6 +1599,7 @@
             "type": "string"
           },
           "name": {
+            "description": "Title of the new Google Doc.",
             "maxLength": 255,
             "minLength": 1,
             "title": "Name",
@@ -3334,6 +3344,7 @@
     },
     "/document-transforms": {
       "post": {
+        "description": "Submit a transform and poll the task in the Location header. Supply a new UUID in Idempotency-Key for each intended operation; reuse that UUID and the identical body for safe retries. After an ambiguous timeout, check GET /document-transforms/admissions/{idempotency_key} before resubmitting. For Markdown, use source.kind=markdown with UTF-8 content, name, and destination_folder_id. Set mode to format, unslop, or both. Copy is the default.",
         "operationId": "create_document_transform",
         "parameters": [
           {
@@ -3393,7 +3404,28 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Accepted task, or the task retained for an identical retry.",
+            "headers": {
+              "Idempotency-Replayed": {
+                "schema": {
+                  "enum": [
+                    "true",
+                    "false"
+                  ],
+                  "type": "string"
+                }
+              },
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           },
           "401": {
             "content": {
@@ -3436,7 +3468,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Create Document Transform",
+        "summary": "Import Markdown or polish a Drive document",
         "tags": [
           "document-transforms"
         ]
@@ -3444,6 +3476,7 @@
     },
     "/document-transforms/admissions/{idempotency_key}": {
       "get": {
+        "description": "Use the same Idempotency-Key UUID after a timed-out or disconnected POST. A retained admission returns the task ID and status without resubmitting the transform.",
         "operationId": "get_document_transform_admission",
         "parameters": [
           {
@@ -3500,7 +3533,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Get Document Transform Admission",
+        "summary": "Recover a transform submission by idempotency key",
         "tags": [
           "document-transforms"
         ]

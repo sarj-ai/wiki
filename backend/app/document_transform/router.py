@@ -44,6 +44,11 @@ router = APIRouter(
     "/admissions/{idempotency_key}",
     status_code=status.HTTP_200_OK,
     operation_id="get_document_transform_admission",
+    summary="Recover a transform submission by idempotency key",
+    description=(
+        "Use the same Idempotency-Key UUID after a timed-out or disconnected POST. "
+        "A retained admission returns the task ID and status without resubmitting the transform."
+    ),
     responses={404: {"description": "No retained admission for this owner and key"}},
 )
 async def get_document_transform_admission(
@@ -101,7 +106,24 @@ async def get_current_polish(
     "",
     status_code=status.HTTP_202_ACCEPTED,
     operation_id="create_document_transform",
+    summary="Import Markdown or polish a Drive document",
+    description=(
+        "Submit a transform and poll the task in the Location header. Supply a new UUID "
+        "in Idempotency-Key for each intended operation; reuse that UUID and the identical "
+        "body for safe retries. After an ambiguous timeout, check "
+        "GET /document-transforms/admissions/{idempotency_key} before resubmitting. "
+        "For Markdown, use source.kind=markdown with UTF-8 content, name, and "
+        "destination_folder_id. Set mode to format, unslop, or both. Copy is the default."
+    ),
     responses={
+        status.HTTP_202_ACCEPTED: {
+            "description": "Accepted task, or the task retained for an identical retry.",
+            "headers": {
+                "Location": {"schema": {"type": "string"}},
+                "Idempotency-Replayed": {"schema": {"type": "string", "enum": ["true", "false"]}},
+                "Retry-After": {"schema": {"type": "integer"}},
+            },
+        },
         status.HTTP_409_CONFLICT: {
             "description": "The source changed after this transformation was requested",
             "headers": {
@@ -144,6 +166,8 @@ async def create_document_transform(
         files=files,
     )
     response.headers["Idempotency-Replayed"] = str(submission.replayed).lower()
+    response.headers["Location"] = f"/tasks/{submission.task.id}"
     response.headers["Retry-After"] = str(submission.retry_after)
+    response.headers["Cache-Control"] = "no-store"
     response.headers["Server-Timing"] = f"total;dur={(monotonic() - started) * 1000:.1f}"
     return submission.task

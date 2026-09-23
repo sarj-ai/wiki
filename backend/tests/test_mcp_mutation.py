@@ -10,7 +10,7 @@ import pytest
 from app.document_transform.application import TransformSubmission
 from app.mcp.context import McpAuthorizationError, ValidatedMcpPrincipal
 from app.mcp.mutation import polish_document
-from app.mcp.schemas import McpCapability, PolishInput
+from app.mcp.schemas import MarkdownImportInput, McpCapability, PolishInput
 from app.tasks.schemas import PendingTaskRead, TaskKind
 
 
@@ -65,10 +65,23 @@ async def test_polish_denies_before_admission_or_provider_work(
 
 
 @pytest.mark.parametrize("replayed", [False, True])
+@pytest.mark.parametrize("source_kind", ["drive_file", "markdown"])
 async def test_polish_preserves_shared_admission_and_authenticated_identity(
-    monkeypatch: pytest.MonkeyPatch, replayed: bool
+    monkeypatch: pytest.MonkeyPatch, replayed: bool, source_kind: str
 ):
-    payload = request()
+    payload = (
+        request()
+        if source_kind == "drive_file"
+        else MarkdownImportInput.model_validate(
+            {
+                "content": "# Report\n\nBody",
+                "name": "Report",
+                "destination_folder_id": "folder_123",
+                "mode": "both",
+                "idempotency_key": str(uuid.uuid7()),
+            }
+        )
+    )
     enqueuer: Any = object()
     task = PendingTaskRead.model_validate(
         {
