@@ -1245,6 +1245,7 @@ def _payload_for_storage(
         kind is not TaskKind.FILE_DOCUMENT_TRANSFORM
         or not isinstance(payload, DocumentTransformRequest)
         or not isinstance(payload.source, MarkdownSource)
+        or payload.source.kind != "markdown"
     ):
         return serialized
     source = serialized.get("source")

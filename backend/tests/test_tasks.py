@@ -854,6 +854,32 @@ async def test_markdown_task_persists_ciphertext_and_hash_without_plaintext() ->
     assert "tasks.lease_expires_at <=" in gc_sql
 
 
+def test_uploaded_markdown_task_stores_reference_without_inline_encryption() -> None:
+    upload_id = uuid.uuid7()
+    payload = DocumentTransformRequest(
+        source=MarkdownSource(
+            kind="uploaded_markdown",
+            upload_id=upload_id,
+            name="Review",
+            destination_folder_id=FileId("folder"),
+        ),
+        mode=TransformMode.FORMAT,
+    )
+    serialized = task_service_module._serialize(payload)
+
+    stored = task_service_module._payload_for_storage(
+        kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
+        payload=payload,
+        serialized=serialized,
+    )
+
+    assert stored == serialized
+    assert task_service_module._deserialize_document_transform_payload(stored) == payload
+    source = stored["source"]
+    assert isinstance(source, dict)
+    assert "content_ciphertext" not in source
+
+
 @pytest.mark.parametrize("revoked", [False, True])
 @pytest.mark.parametrize("expired", [False, True])
 async def test_markdown_active_hash_reuse_authorizes_before_recording_new_key(
