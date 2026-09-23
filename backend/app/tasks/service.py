@@ -167,8 +167,6 @@ class TaskService(ABC):
         max_model_entries: int,
         max_tool_entries: int,
     ) -> TaskRead:
-        del self, task_id, owner_user_id, max_result_bytes, max_findings, max_model_entries
-        del max_tool_entries
         raise NotImplementedError
 
     async def get_qa_permission_evidence(
@@ -178,7 +176,6 @@ class TaskService(ABC):
         *,
         max_evidence_bytes: int,
     ) -> QaCopyPermissionEvidence:
-        del self, task_id, owner_user_id, max_evidence_bytes
         raise NotImplementedError
 
     @abstractmethod
@@ -431,7 +428,7 @@ class PostgresTaskService(TaskService):
             )
             if isinstance(source, DriveFileSource)
             else and_(
-                Task.payload["source"]["kind"].astext == "markdown",
+                Task.payload["source"]["kind"].astext == source.kind,
                 Task.request_hash == request_hash,
             )
         )
@@ -610,12 +607,11 @@ class PostgresTaskService(TaskService):
         lease_token: uuid.UUID,
         resource_id: FileId,
     ) -> None:
-        task = await self._owned_lease_update(
+        await self._owned_lease_update(
             task_id,
             lease_token,
             values={"resource_id": resource_id, "updated_at": datetime.now(UTC)},
         )
-        del task
 
     @override
     async def succeed(
@@ -1259,8 +1255,7 @@ def _payload_for_storage(
     if not isinstance(content, str):  # pragma: no cover - validated model invariant
         msg = "Markdown task payload is missing its content"
         raise TypeError(msg)
-    protected_source = dict(source)
-    del protected_source["content"]
+    protected_source = {key: value for key, value in source.items() if key != "content"}
     protected_source.update(
         {
             _MARKDOWN_CIPHERTEXT_FIELD: encrypt_cache(content),
@@ -1300,13 +1295,12 @@ def _deserialize_document_transform_payload(
     if not hmac.compare_digest(hashlib.sha256(content.encode()).hexdigest(), expected_sha256):
         msg = "Encrypted Markdown task payload hash does not match"
         raise ValueError(msg)
-    plaintext_source = dict(source)
-    for field in (
+    encrypted_fields = {
         _MARKDOWN_CIPHERTEXT_FIELD,
         _MARKDOWN_SHA256_FIELD,
         _MARKDOWN_ENCRYPTION_FIELD,
-    ):
-        del plaintext_source[field]
+    }
+    plaintext_source = {key: value for key, value in source.items() if key not in encrypted_fields}
     plaintext_source["content"] = content
     plaintext = dict(raw)
     plaintext["source"] = plaintext_source

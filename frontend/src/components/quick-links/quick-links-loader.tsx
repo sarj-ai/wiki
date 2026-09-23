@@ -42,10 +42,11 @@ export function QuickLinksLoader() {
 
   if (userQuery.isError) return <QuickLinks aliases={[]} error />;
   const isCurrentUserValidated = userId !== undefined && validatedUserId === userId;
+  const showError = isCurrentUserValidated && error;
   return (
     <QuickLinks
       aliases={isCurrentUserValidated ? aliases : []}
-      error={isCurrentUserValidated ? error : false}
+      error={showError}
       loading={!isCurrentUserValidated || loading}
     />
   );
