@@ -2,6 +2,7 @@
 dependencies = [
   "fastapi>=0.141.1",
   "fastmcp==3.4.7",
+  "mcp>=1.29.1",
   "uvicorn[standard]>=0.52.1",
   "sqlalchemy[asyncio]>=2.0.51",
   "asyncpg>=0.31.0",
@@ -9,6 +10,7 @@ dependencies = [
   "cryptography>=50.0.0",
   "httpx>=0.28.1",
   "google-api-python-client>=2.198.0",
+  "google-api-core>=2.34.0",
   "google-auth>=2.56.2",
   "google-auth-httplib2>=0.2.0",
   "google-genai>=1.65.0",
@@ -20,6 +22,9 @@ dependencies = [
   "tenacity>=9.1.4",
   "cloud-sql-python-connector[asyncpg]>=1.21.0",
   "pydantic[email]>=2.13.4",
+  "pydantic-core>=2.46.4",
+  "starlette>=1.6.0",
+  "py-key-value-aio>=0.4.5",
   "python-docx>=1.2.0",
   "markdown-it-py==4.2.0",
   "defusedxml>=0.7.1",
@@ -50,7 +55,25 @@ dev = [
     "sarj-sql-lint==0.17.3",
     "import-linter>=2.13",
     "pip-audit>=2.10.0",
+    "deptry>=0.25.1",
 ]
+
+[tool.deptry.package_module_name_map]
+# Standards runs deptry in an isolated environment; these distributions do not
+# expose their import names to that environment's package metadata.
+google-api-python-client = "googleapiclient"
+google-api-core = "google"
+google-auth = "google"
+google-cloud-storage = "google"
+google-cloud-tasks = "google"
+google-genai = "google"
+cloud-sql-python-connector = "google"
+python-docx = "docx"
+py-key-value-aio = "key_value"
+
+[tool.deptry.per_rule_ignores]
+# Executables and SQLAlchemy's driver string are used outside Python imports.
+DEP002 = ["alembic", "asyncpg", "uvicorn"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

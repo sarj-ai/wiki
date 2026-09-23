@@ -47,6 +47,7 @@ check-quality: check-repository
 	@cd backend && uv run --locked python scripts/export_openapi.py --check ../frontend/openapi.json
 
 check-backend: ## Run backend lint, type, architecture, and test checks.
+	@cd backend && uv run --locked deptry .
 	@cd backend && uv run ruff check .
 	@cd backend && uv run ruff format --check .
 	@cd backend && uv run mypy app
