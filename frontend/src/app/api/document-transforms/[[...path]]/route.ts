@@ -23,6 +23,7 @@ const RESPONSE_HEADERS = {
   "content-type": "application/json",
   "x-content-type-options": "nosniff",
 } as const;
+const WIKI_PUBLIC_ORIGIN = "https://wiki.sarj.ai";
 const SOURCE_CHANGED_MESSAGE =
   "The document changed since polishing was requested. Reload it before trying again.";
 
@@ -41,11 +42,15 @@ function failure(status: number, code?: ActionErrorCode): Response {
 
 function trustedRequest(request: Request): boolean {
   const site = request.headers.get("sec-fetch-site");
-  return (
-    request.headers.get("x-wiki-transform") === "1" &&
-    (site === null || site === "same-origin") &&
-    (request.method === "GET" || request.headers.get("origin") === new URL(request.url).origin)
-  );
+  if (request.headers.get("x-wiki-transform") !== "1") return false;
+  if (site !== null && site !== "same-origin") return false;
+  if (request.method === "GET") return true;
+
+  const originHeader = request.headers.get("origin");
+  if (!originHeader) return false;
+  // OpenNext can pass an internal URL to route handlers even when the browser
+  // posted to the Wiki custom domain. Keep that exact public origin allowlisted.
+  return originHeader === new URL(request.url).origin || originHeader === WIKI_PUBLIC_ORIGIN;
 }
 
 function resultResponse(result: ActionResult<string>, exposeReplay = false): Response {

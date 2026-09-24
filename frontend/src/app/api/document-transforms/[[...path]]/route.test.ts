@@ -58,6 +58,38 @@ it("forwards exact body/KEY through existing authenticated rate-limited operatio
   expect(Mocks.create).toHaveBeenCalledExactlyOnceWith(body, KEY);
 });
 
+it("trusts the Wiki public origin when OpenNext supplies an internal request URL", async () => {
+  const response = await POST(
+    new Request("https://internal-worker.example/api/document-transforms", {
+      method: "POST",
+      headers: { ...headers, "sec-fetch-site": "same-origin" },
+      body: "{}",
+    }),
+    { params: Promise.resolve({}) },
+  );
+
+  expect(response.status).toBe(200);
+  expect(Mocks.create).toHaveBeenCalledExactlyOnceWith("{}", KEY);
+});
+
+it("rejects an unrelated origin before admission despite an internal request URL", async () => {
+  const response = await POST(
+    new Request("https://internal-worker.example/api/document-transforms", {
+      method: "POST",
+      headers: {
+        ...headers,
+        origin: "https://attacker.example",
+        "sec-fetch-site": "same-origin",
+      },
+      body: "{}",
+    }),
+    { params: Promise.resolve({}) },
+  );
+
+  expect(response.status).toBe(403);
+  expect(Mocks.create).not.toHaveBeenCalled();
+});
+
 it("exposes only the typed replay bit on a successful submission", async () => {
   Mocks.create.mockResolvedValue({ ok: true, data: '{"id":"task"}', replayed: true });
   const response = await POST(new Request(URL, { method: "POST", headers, body: "{}" }), {
@@ -146,7 +178,7 @@ it("never proxies an arbitrary path", async () => {
 it("looks up only a validated KEY with server-side authentication", async () => {
   Mocks.read.mockResolvedValue({
     ok: true,
-    body: JSON.stringify({ task_id: KEY, status: "pending" }),
+    body: `{"task_id":"${KEY}","status":"pending"}`,
   });
   const response = await GET(new Request(URL, { headers }), {
     params: Promise.resolve({ path: ["admissions", KEY] }),
