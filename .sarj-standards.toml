@@ -1,6 +1,6 @@
 # Managed by `code-standards setup`; commit this file.
 schema = 4
-bundle = "7.31.6"
+bundle = "7.32.9"
 profile = "standard"
 rule_profile = "all"
 

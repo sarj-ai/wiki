@@ -50,6 +50,6 @@ repos:
         files: '(?i)\.py$'
       - id: sarj-current-text-config-registries
         name: "sarj-standards: every non-Python code, config, text, and artifact rule"
-        entry: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --trust-repository-code --
+        entry: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --staged --trust-repository-code --
         language: system
         files: '(?i)(\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|Dockerfile|Makefile)$'
