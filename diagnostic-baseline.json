@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "7.31.6",
-    "consumerBaseSha": "aaf915ba266a795729095e3966cba0e2fafd18b7",
-    "catalogDigest": "6035eadc13177810daca8a41fcd1f24aedfd158377080b29ec4c5402f93b3d69"
+    "bundleVersion": "7.32.2",
+    "consumerBaseSha": "20275751593d718bcf6bb254908fcd2db777d666",
+    "catalogDigest": "4a9d8879e9e3f12c11460aacffed74b60f315310b473919a5dab63cd65b8b68e"
   },
   "diagnostics": [
     {
@@ -529,6 +529,13 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-walrus-awaited-none-guard",
       "path": "backend/scripts/qa_markdown_transform.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "2852043110d3758558026e64fb8d6a489aae8f5a4ae021ce87086f025ca35754",
+      "source": "sarj-python-lint",
+      "ruleId": "require-pydantic-for-external-json",
+      "path": "backend/app/auth/google_tokens.py",
       "count": 1
     }
   ]
