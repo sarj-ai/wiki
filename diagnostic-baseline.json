@@ -14,6 +14,48 @@
       "count": 1
     },
     {
+      "fingerprint": "28b69d6e76a4475d9e033fa9d7a20e13e121566c3157a6253ecdb8fde92a75d0",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-nominal-id-types",
+      "path": "frontend/src/app/actions/wiki-actions.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "1d719a74b89aa15b30518826a785d68ba821b5551c3937cd6809768604c7c787",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-nominal-id-types",
+      "path": "frontend/src/components/wiki-search/command-palette.tsx",
+      "count": 1
+    },
+    {
+      "fingerprint": "72cace85399458335338b34754679275daab7645ebd87f8e00b8215358f9f808",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-nominal-id-types",
+      "path": "frontend/src/components/wiki-sidebar/use-wiki-reorder.ts",
+      "count": 4
+    },
+    {
+      "fingerprint": "3664d7fa7eb4e8f01d617803fceeea208533e1c84772769ddb1a061ed429521f",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-nominal-id-types",
+      "path": "frontend/src/hooks/use-expanded-folders.ts",
+      "count": 3
+    },
+    {
+      "fingerprint": "05c069351b729f67083a479bf7c39c498a28ff786e001ed967f43215067559b4",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-nominal-id-types",
+      "path": "frontend/src/lib/wiki-api.ts",
+      "count": 1
+    },
+    {
+      "fingerprint": "dcfe8fb26bb3cb9a3b74cf73767aeec78bad13404d9b2d01a346ef9f8799314b",
+      "source": "eslint",
+      "ruleId": "@sarj/prefer-nominal-id-types",
+      "path": "frontend/src/lib/wiki-cache.ts",
+      "count": 1
+    },
+    {
       "fingerprint": "54506165b2434b1e60f6c1def188bd41eeca7191dc897ea81de35d3830756e3b",
       "source": "eslint",
       "ruleId": "@sarj/require-camelcase-properties",
@@ -1754,13 +1796,6 @@
       "source": "eslint",
       "ruleId": "@sarj/require-camelcase-properties",
       "path": "frontend/src/lib/wiki-schemas.ts",
-      "count": 1
-    },
-    {
-      "fingerprint": "84fb9b90c03a986dc6a1bd94db5e7d3bd2a1c570527f402fff50011adfc3340a",
-      "source": "eslint",
-      "ruleId": "@sarj/sole-export-matches-filename",
-      "path": "frontend/src/components/ui/sonner.tsx",
       "count": 1
     },
     {
@@ -7595,6 +7630,13 @@
       "count": 1
     },
     {
+      "fingerprint": "413306792b6dac128185ca158c95385056da5d42b2e4d1e298e00d7444d859f2",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/document_transform/application.py",
+      "count": 1
+    },
+    {
       "fingerprint": "05816d982bdb4e11359de587c6b122bff81dadfb97971e8267639b900f19da37",
       "source": "sarj-python-lint",
       "ruleId": "prefer-nominal-id-types",
@@ -7616,6 +7658,20 @@
       "count": 2
     },
     {
+      "fingerprint": "a54b8bb4b7327fa48d0a45e5c0a6e65f604442d2fc40365280a8c3dc147ce434",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/document_transform/qa_grants.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "a655a1942a15c12c8b746d5b9ba764caede0489518e162ad20e7c9d8df54610e",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/document_transform/qa_router.py",
+      "count": 1
+    },
+    {
       "fingerprint": "84a6c44ba37e557f7a3c630c7cb10451ed1d018ce96acf50bff1d0413da237c4",
       "source": "sarj-python-lint",
       "ruleId": "prefer-nominal-id-types",
@@ -7627,6 +7683,34 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-nominal-id-types",
       "path": "backend/app/document_transform/slides_brand.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "0c0f8943d46bb407daab67859763e4fd00ecf405a1fd036fcc0db643a08b6b41",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/document_transform/task_executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "20cdf215d301eec19d2824832cf0f60c6b9701172b33a3aecc259386168820a9",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/tasks/router.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "2b87824d3b05ba42ec3fb10587c39a69906ab5585904318c61f2b0c79b7cd16b",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/tasks/service.py",
+      "count": 8
+    },
+    {
+      "fingerprint": "d6bff0ae40f48e2045c687b1a48376de150507d29c6e28f9098be395f8c49e59",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/app/tasks/service.py",
       "count": 1
     },
     {
@@ -7658,7 +7742,21 @@
       "count": 1
     },
     {
+      "fingerprint": "e222cf01433ad2d6001b784158fad068faf78e0777dd7b1c46dc65b4433f8671",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/scripts/qa_document_transform_cloud.py",
+      "count": 1
+    },
+    {
       "fingerprint": "1428d3558a40ccaad8ee1232eefcb0fa99076d8d1659c29841fd619f1dbf458c",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/scripts/qa_document_transform_corpus.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "1a8e03b535b9df91d722d0e1ba37a3767f97e53af1b1c669c62af8ed3b89e927",
       "source": "sarj-python-lint",
       "ruleId": "prefer-nominal-id-types",
       "path": "backend/scripts/qa_document_transform_corpus.py",
@@ -7672,7 +7770,28 @@
       "count": 2
     },
     {
+      "fingerprint": "61ec40f5d45c8211fa9d8a30cc9acb6ca53d5af1c0b30f26eb4a5380e20eb137",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/scripts/qa_document_transform_corpus.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "775bd60ec16bfa19299cc03393538cb4cc3a5c613e467a7d38bb00a02047e369",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/scripts/qa_document_transform_corpus.py",
+      "count": 1
+    },
+    {
       "fingerprint": "ac3f7137e4b555fbe83c4685004c9e4907eb62cae86f877cf212575f8fa4bcb2",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/scripts/qa_document_transform_corpus.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "c3f284affab3a552dac01be9039e78a9e902811d8042f77ffd9cfd7c072bcc00",
       "source": "sarj-python-lint",
       "ruleId": "prefer-nominal-id-types",
       "path": "backend/scripts/qa_document_transform_corpus.py",
@@ -7683,6 +7802,34 @@
       "source": "sarj-python-lint",
       "ruleId": "prefer-nominal-id-types",
       "path": "backend/scripts/qa_polish_rounds.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "782d67416f462389858850eb5d2b97f724ab509c26b68d802c80b88bccff7fc7",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/tests/test_document_transform_application.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "2c6a596100ce4ad351f9ff972d8fd8ca50fb9f6dab2f7e960b7a545d72791b5a",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/tests/test_document_transform_qa_broker.py",
+      "count": 4
+    },
+    {
+      "fingerprint": "3ad0d70a208fe33fc04dc7e12e49768bacc20f51c381fc58d34212e2e5c37165",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/tests/test_document_transform_qa_broker.py",
+      "count": 2
+    },
+    {
+      "fingerprint": "fdd621f9c8a317476a3d2bfd34e5f0278ab8bba13bc48a4cbf723a94c3f9fa11",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/tests/test_document_transform_qa_broker.py",
       "count": 1
     },
     {
@@ -7700,10 +7847,59 @@
       "count": 1
     },
     {
+      "fingerprint": "44766c5054386274664364e7f9759ec5238b6121c2862fe8b38fff66c80cd8ea",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/tests/test_smart_create_executor.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "5211d096d95a49080f6c5574b0a874448308373d45d9d76f09af747208023e71",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/tests/test_smart_create_executor.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "4483bb1f75bf3966eb6fa93ecb26b81e8dd16e973f9dd79a1fe995dd0bbde34e",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/tests/test_smart_create_router_tasks.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "4ade8c41b794af94cd5105c1efd0e5d7a3cca6dcaea4248c082a07880e880613",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/tests/test_smart_create_router_tasks.py",
+      "count": 3
+    },
+    {
+      "fingerprint": "3f9e2b783e21e6d713ac3f367d2da8029d12443cd1e17bbfa21623fb5e0b8bfd",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/tests/test_smart_creation.py",
+      "count": 3
+    },
+    {
       "fingerprint": "82b3fc7b2b6c9bd58e4210b3fc300cf5734d58bae48367c8e386ddd2ec03b981",
       "source": "sarj-python-lint",
       "ruleId": "prefer-nominal-id-types",
       "path": "backend/tests/test_smart_creation.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "b31fecb5585af154e890c794926ea99726a5fb5528f65239e7bb52a735f34b19",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/tests/test_smart_creation.py",
+      "count": 1
+    },
+    {
+      "fingerprint": "7ed42440cffb9290ade2b266b777e34bf2055f42a1c881239545511e9dfd3041",
+      "source": "sarj-python-lint",
+      "ruleId": "prefer-nominal-id-types",
+      "path": "backend/tests/test_task_unverified_output.py",
       "count": 1
     },
     {
@@ -7754,6 +7950,20 @@
       "ruleId": "prefer-walrus-awaited-none-guard",
       "path": "backend/scripts/qa_markdown_transform.py",
       "count": 1
+    },
+    {
+      "fingerprint": "c93c7c0114245cf7a5d183c61c373b3b0664ac9e8e7b2d1b05f14045884faf6b",
+      "source": "sarj-python-lint",
+      "ruleId": "repeated-test-composition",
+      "path": "backend/tests/test_document_transform_qa_router.py",
+      "count": 38
+    },
+    {
+      "fingerprint": "b7fc202c3ff63f0d6d19b38671ed19bbd832ac6ad33e2c8fbb2b8524e35a288b",
+      "source": "sarj-python-lint",
+      "ruleId": "repeated-test-composition",
+      "path": "backend/tests/test_request_body.py",
+      "count": 5
     },
     {
       "fingerprint": "f93c1c7dbc3485055880ad568cf7c2c999b36aa0b54a14e1032c2deba22e2276",
