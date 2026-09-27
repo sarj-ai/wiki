@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   standards:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
       - name: Harden the runner
@@ -26,7 +26,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
           version-file: "backend/uv.toml"
           enable-cache: true
@@ -36,6 +36,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
+          check-latest: true
       - name: Activate declared npm version
         run: npm install --global npm@12.0.2 --ignore-scripts
       - name: Install JavaScript dependencies

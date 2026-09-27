@@ -1,37 +1,205 @@
 {
   "schema_version": 1,
-  "merge_base": "65d0c276b1ea2163f5f7eea22bdb326113dbaac4",
-  "from_bundle": "7.14.26",
-  "to_bundle": "7.15.10",
-  "reason": "Standards 7.15.10 begins linting the previously excluded UI primitives; record only unchanged-source findings for rules already present elsewhere in the baseline.",
+  "merge_base": "f414acdae2864135da49aa7ef870017eece6a83a",
+  "from_bundle": "7.32.16",
+  "to_bundle": "8.10.1",
+  "reason": "Standards 8.10 enables @typescript-eslint/no-floating-promises with ignoreVoid: false, @sarj/stepdown and @sarj/sole-export-matches-filename; record only unchanged-source findings so existing app behavior is untouched while new code must satisfy every rule.",
   "allowances": {
     "frontend/eslint-suppressions.json": {
-      "src/components/ui/alert-dialog.tsx": {
-        "better-tailwindcss/enforce-shorthand-classes": {
+      "next.config.ts": {
+        "@sarj/sole-export-matches-filename": {
           "before": 0,
-          "after": 2
+          "after": 1
         }
       },
-      "src/components/ui/command.tsx": {
-        "better-tailwindcss/enforce-shorthand-classes": {
+      "postcss.config.mjs": {
+        "@sarj/sole-export-matches-filename": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/mcp/mcp-connections.tsx": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "src/components/mcp/mcp-consent.tsx": {
+        "@sarj/stepdown": {
+          "before": 0,
+          "after": 1
+        },
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "src/components/session-refresh.tsx": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/ui/sidebar.tsx": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/ui/sonner.tsx": {
+        "@sarj/sole-export-matches-filename": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-document/doc-viewer-store.ts": {
+        "@sarj/sole-export-matches-filename": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-document/doc-warmup.tsx": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-document/document-polish-dialog.tsx": {
+        "@sarj/stepdown": {
+          "before": 0,
+          "after": 2
+        },
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 9
+        }
+      },
+      "src/components/wiki-document/document-polish-recovery.tsx": {
+        "@sarj/stepdown": {
+          "before": 0,
+          "after": 2
+        },
+        "@typescript-eslint/no-floating-promises": {
           "before": 0,
           "after": 6
         }
       },
-      "src/components/ui/dialog.tsx": {
-        "better-tailwindcss/enforce-shorthand-classes": {
+      "src/components/wiki-document/file-page-client.tsx": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-document/reorganize-document.tsx": {
+        "@typescript-eslint/no-floating-promises": {
           "before": 0,
           "after": 2
         }
       },
-      "src/components/ui/sonner.tsx": {
-        "@typescript-eslint/consistent-type-assertions": {
+      "src/components/wiki-document/short-link-dialog.tsx": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "src/components/wiki-search/command-palette.tsx": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "src/components/wiki-sidebar/drive-access-sheet.tsx": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/components/wiki-sidebar/item-menu.tsx": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-sidebar/move-file-dialog.tsx": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-sidebar/preferences-dialog.tsx": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/components/wiki-sidebar/smart-create-dialog.tsx": {
+        "@sarj/stepdown": {
           "before": 0,
           "after": 2
         },
-        "@typescript-eslint/no-unsafe-type-assertion": {
+        "@typescript-eslint/no-floating-promises": {
           "before": 0,
           "after": 2
+        }
+      },
+      "src/components/wiki-sidebar/tree-node.tsx": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-sidebar/use-document-intent.ts": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 3
+        }
+      },
+      "src/components/wiki-sidebar/use-drive-predictive-loading.ts": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 2
+        }
+      },
+      "src/components/wiki-sidebar/use-wiki-reorder.ts": {
+        "@sarj/stepdown": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/components/wiki-sidebar/wiki-footer.tsx": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/hooks/use-wiki-mutations.ts": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 8
+        }
+      },
+      "src/lib/reorganize-client.ts": {
+        "@sarj/sole-export-matches-filename": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/session-client.ts": {
+        "@sarj/sole-export-matches-filename": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/session-isolation.ts": {
+        "@typescript-eslint/no-floating-promises": {
+          "before": 0,
+          "after": 1
+        }
+      },
+      "src/lib/smart-create-client.ts": {
+        "@sarj/sole-export-matches-filename": {
+          "before": 0,
+          "after": 1
         }
       }
     }

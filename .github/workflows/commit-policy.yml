@@ -16,15 +16,15 @@ concurrency:
 
 jobs:
   commit-policy-v1:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: sarj-ai/repo-standards/pull-request-commits@bac8511f40968ca16f4cf0f649aa96fae4b7be08 # v6.0.1
+      - uses: sarj-ai/repo-standards/pull-request-commits@3470e87191e7f3403c56aba55197f182a0a6f960 # v6.1.2
