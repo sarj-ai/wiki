@@ -39,10 +39,7 @@ jobs:
       - name: TypeScript check
         run: npm run typecheck
 
-      - name: ESLint
-        run: npm run lint
-
-      - name: Verify exact ESLint baseline
+      - name: ESLint with exact baseline
         run: npm run lint:baseline-check
 
       - name: Knip

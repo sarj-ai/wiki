@@ -187,7 +187,7 @@ jobs:
           load: true
           tags: backend:ci
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'type=gha,mode=max' || '' }}
           provenance: false
           sbom: false
 

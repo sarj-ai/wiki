@@ -61,7 +61,6 @@ check-frontend: ## Run frontend generation, lint, type, test, and build checks.
 	@cd frontend && npm run generate:api
 	@cd frontend && npm run format:check
 	@cd frontend && npm run typecheck
-	@cd frontend && npm run lint
 	@cd frontend && npm run lint:baseline-check
 	@cd frontend && npm run knip
 	@cd frontend && npm run type-coverage

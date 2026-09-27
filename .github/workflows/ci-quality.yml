@@ -62,7 +62,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/pre-commit
-          key: pre-commit-v4.6.2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('backend/.python-version', 'backend/uv.toml', 'backend/uv.lock', '.pre-commit-config.yaml') }}
+          key: pre-commit-v4.6.2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('backend/.python-version', '.pre-commit-config.yaml') }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
