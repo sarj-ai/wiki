@@ -44,7 +44,7 @@ concurrency:
 jobs:
   repository-quality:
     name: Repository hygiene and changed-file hooks
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -98,7 +98,7 @@ jobs:
 
   python-baseline:
     name: Exact Python Standards baseline
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -121,7 +121,7 @@ jobs:
     name: pre-commit (actionlint, hygiene, sarj rules)
     if: ${{ always() }}
     needs: [python-baseline, repository-quality]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 1
     steps:
       - name: Require every repository-quality gate
@@ -134,7 +134,7 @@ jobs:
 
   api-contract:
     name: OpenAPI spec in sync
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: read
     steps:
@@ -155,7 +155,7 @@ jobs:
 
   secret-scan:
     name: gitleaks (full history)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
