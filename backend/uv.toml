@@ -11,12 +11,16 @@ fastapi = "2026-08-04T00:00:00Z"
 filelock = "2026-08-04T00:00:00Z"
 google-genai = "2026-08-04T00:00:00Z"
 pip = "2026-08-04T00:00:00Z"
+# Standards 8.8 pins ruff 0.16.9 and sarj-python-lint pins sqlglot 30.19.0.
+# Admit exactly those releases; remove after 2026-10-01T20:38:00Z, once both
+# clear the seven-day gate.
+ruff = "2026-09-24T20:38:00Z"
 python-discovery = "2026-08-04T00:00:00Z"
 sarj-iac-lint = "2100-01-01T00:00:00Z"
 sarj-python-lint = "2100-01-01T00:00:00Z"
-# Standards 8.1.2 pins contracts 0.1.0; remove once it clears the seven-day gate.
-sarj-rule-contracts = "2026-09-26T14:17:09Z"
+sarj-rule-contracts = "2100-01-01T00:00:00Z"
 sarj-sql-lint = "2100-01-01T00:00:00Z"
+sqlglot = "2026-09-22T15:20:00Z"
 ty = "2026-08-04T00:00:00Z"
 uvicorn = "2026-08-04T00:00:00Z"
 virtualenv = "2026-08-04T00:00:00Z"
