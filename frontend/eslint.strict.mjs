@@ -162,15 +162,20 @@ const SUPPORTED_TEST_FRAMEWORKS = new Set(["vitest", "bun", "node", "testing-lib
 
 // typescript-eslint's strict presets assume ESLint's recommended preset is
 // composed before them: the later TypeScript configs disable compiler-owned
-// duplicates while leaving syntax/runtime correctness rules active. Introduce
-// the newly inherited rules at warning so fleet findings can be calibrated
-// before a separate promotion release.
-const ESLINT_RECOMMENDED_WARNING_CONFIG = {
+// duplicates while leaving syntax/runtime correctness rules active. Keep
+// uncalibrated rules at warning; promote only the reviewed correctness subset.
+const ESLINT_RECOMMENDED_CONFIG = {
   ...js.configs.recommended,
-  name: "sarj/eslint-recommended-warning",
-  rules: Object.fromEntries(
-    Object.keys(js.configs.recommended.rules).map((rule) => [rule, "warn"]),
-  ),
+  name: "sarj/eslint-recommended",
+  rules: {
+    ...Object.fromEntries(
+      Object.keys(js.configs.recommended.rules).map((rule) => [rule, "warn"]),
+    ),
+    "no-async-promise-executor": "error",
+    "no-constant-binary-expression": "error",
+    "no-unsafe-finally": "error",
+    "no-unsafe-optional-chaining": "error",
+  },
 };
 
 // Prefer expression bodies whenever an arrow contains only a return. Unlike
@@ -546,6 +551,7 @@ const BUILD_OUTPUT_IGNORES = [
   "**/.wrangler/**",
   "**/.pnp.cjs",
   "**/.pnp.loader.mjs",
+  "**/.yarn/releases/**",
   "**/storybook-static/**",
   "**/__generated__/**",
   "**/generated/**",
@@ -600,7 +606,7 @@ export function createConfig(options = {}) {
   // per-file entry that ignores nothing.
   { ignores: BUILD_OUTPUT_IGNORES },
 
-  ESLINT_RECOMMENDED_WARNING_CONFIG,
+  ESLINT_RECOMMENDED_CONFIG,
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
 
@@ -666,7 +672,7 @@ export function createConfig(options = {}) {
       "@typescript-eslint/no-unsafe-argument": "error",
       "@typescript-eslint/no-unsafe-call": "error",
       "@typescript-eslint/no-unsafe-return": "error",
-      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-floating-promises": ["error", { ignoreVoid: false }],
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-misused-promises": "error",
       // The upstream rule flags every nested then/catch/finally call, including
@@ -1237,12 +1243,13 @@ export function createConfig(options = {}) {
       "@sarj/prefer-module-level-refined-schema": "warn",
       "@sarj/prefer-multi-value-zod-literal": ["warn", { zodMajorVersion: 4 }],
       "@sarj/prefer-named-callback-domain": "error",
+      "@sarj/prefer-nominal-id-types": "warn",
       "@sarj/prefer-node-crypto-hash": "warn",
       "@sarj/prefer-node-fs-promises": "warn",
       "@sarj/prefer-shared-zod-enum": "warn",
       "@sarj/prefer-switch-for-repeated-equality": "warn",
       "@sarj/require-sql-access-class": "warn",
-      "@sarj/sole-export-matches-filename": "warn",
+      "@sarj/sole-export-matches-filename": "error",
       "@sarj/require-assert-never": "error",
       "@sarj/require-static-next-matcher": "error",
       "@sarj/require-zod-form-validation": "error",
@@ -1352,6 +1359,23 @@ export function createConfig(options = {}) {
     },
   },
 
+  // JavaScript needs JSDoc for type contracts that TypeScript expresses in its
+  // syntax. Preserve generic declarations as well as parsed type expressions.
+  {
+    files: ["**/*.{js,jsx,mjs,cjs}"],
+    rules: {
+      "jsdoc/no-restricted-syntax": [
+        "error",
+        {
+          contexts: [{
+            context: ":matches(ArrowFunctionExpression, FunctionDeclaration[body.type='BlockStatement'], FunctionExpression[body.type='BlockStatement'])",
+            comment: "JsdocBlock:not(:has(JsdocTag[parsedType])):not(:has(JsdocTag[tag='template']))",
+            message: "Do not attach untyped JSDoc to an implementation; preserve required type contracts.",
+          }],
+        },
+      ],
+    },
+  },
   {
     files: TEST_FILES,
     settings: {
@@ -1390,6 +1414,7 @@ export function createConfig(options = {}) {
       "jest/prefer-to-be": HAS_BUN && !HAS_VITEST ? "error" : "off",
 
       "node-test/no-assert-throws-multiple-statements": HAS_NODE ? "error" : "off",
+      "node-test/no-assert-throws-async": HAS_NODE ? "error" : "off",
       "node-test/no-unneeded-async-rejects-callback": HAS_NODE ? "error" : "off",
       "node-test/no-useless-assertion": HAS_NODE ? "error" : "off",
 
@@ -1397,6 +1422,9 @@ export function createConfig(options = {}) {
         ? ["error", { isStrict: false }]
         : "off",
       "testing-library/prefer-screen-queries": HAS_TESTING_LIBRARY ? "error" : "off",
+      "testing-library/await-async-queries": HAS_TESTING_LIBRARY ? "error" : "off",
+      "testing-library/await-async-utils": HAS_TESTING_LIBRARY ? "error" : "off",
+      "testing-library/await-async-events": HAS_TESTING_LIBRARY ? "error" : "off",
 
     },
   },
@@ -1418,6 +1446,7 @@ export function createConfig(options = {}) {
       ...Object.fromEntries(Object.keys(vitest.rules).map((name) => [`vitest/${name}`, "off"])),
       ...Object.fromEntries(Object.keys(jest.rules).map((name) => [`jest/${name}`, "off"])),
       "playwright/no-unnecessary-assertions": "error",
+      "playwright/missing-playwright-await": "error",
     },
   }] : []),
 

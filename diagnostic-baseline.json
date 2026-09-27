@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "provenance": {
-    "bundleVersion": "7.32.16",
-    "consumerBaseSha": "5acbbf3db3144e8d9c032bd89e998526dadbd709",
-    "catalogDigest": "b42c06b17afc79792fe896d9f980b5c335524cabea453480da6164fddc6cf782"
+    "bundleVersion": "8.10.1",
+    "consumerBaseSha": "f414acdae2864135da49aa7ef870017eece6a83a",
+    "catalogDigest": "f9de1621ec99869c645e6dd1048852ad1eb75a071db1157b3415408e3ed5f707"
   },
   "diagnostics": [
     {
@@ -7767,69 +7767,6 @@
       "source": "sarj-python-lint",
       "ruleId": "require-pydantic-for-external-json",
       "path": "backend/app/auth/google_tokens.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "09f4ccb5487b8b6d77e824f56ba145e093d0e989cdb478480a78890efbbae48d",
-      "source": "sarj-python-lint",
-      "ruleId": "require-typed-http-test-response",
-      "path": "backend/tests/test_alias_router.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "bea9b50c06915ac2f2a4d9921a4d6fb44be1c864af83b7f41f494fa9d741d8df",
-      "source": "sarj-python-lint",
-      "ruleId": "require-typed-http-test-response",
-      "path": "backend/tests/test_document_transform_qa_router.py",
-      "count": 42
-    },
-    {
-      "fingerprint": "cd75daccd588a00f312b8e946ddf44acff45aea51ffba0a2fbd49589673f6fb1",
-      "source": "sarj-python-lint",
-      "ruleId": "require-typed-http-test-response",
-      "path": "backend/tests/test_mcp_native_composition.py",
-      "count": 3
-    },
-    {
-      "fingerprint": "12db295d50e2594a059a0f1bee3f9930dc73b61303cfbb8c4fcc805aa2000f9e",
-      "source": "sarj-python-lint",
-      "ruleId": "require-typed-http-test-response",
-      "path": "backend/tests/test_mcp_native_consent_router.py",
-      "count": 5
-    },
-    {
-      "fingerprint": "452c81bbed54d962a466350dad58536b903ac7f1383817b0463e0caec83ce760",
-      "source": "sarj-python-lint",
-      "ruleId": "require-typed-http-test-response",
-      "path": "backend/tests/test_mcp_native_http_guard.py",
-      "count": 7
-    },
-    {
-      "fingerprint": "a20263c0b8557c075e0e16d3f6ec1180f2b6bd8cd10f3814bc35f7bc5f7293f9",
-      "source": "sarj-python-lint",
-      "ruleId": "require-typed-http-test-response",
-      "path": "backend/tests/test_mcp_native_metadata.py",
-      "count": 1
-    },
-    {
-      "fingerprint": "99af3810bdfc5e21ceae6af641f5e22d2c7104b1c3c6711f9b847b7be8337dad",
-      "source": "sarj-python-lint",
-      "ruleId": "require-typed-http-test-response",
-      "path": "backend/tests/test_mcp_native_runtime.py",
-      "count": 17
-    },
-    {
-      "fingerprint": "ef9b9bb92e15c2dfdf9bf0bd2ccfd0afd40701f806e4688fa08689a67a8fe76e",
-      "source": "sarj-python-lint",
-      "ruleId": "require-typed-http-test-response",
-      "path": "backend/tests/test_membership_gating.py",
-      "count": 2
-    },
-    {
-      "fingerprint": "8b4c3d406cfca2207ef03a2a006a3d7f93b1cf27db37a571bbf3079d380499fd",
-      "source": "sarj-python-lint",
-      "ruleId": "require-typed-http-test-response",
-      "path": "backend/tests/test_request_body.py",
       "count": 1
     }
   ]
