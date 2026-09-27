@@ -27,3 +27,4 @@ diagnostics = "diagnostic-baseline.json"
 
 [ci]
 bootstrap = ["npm --prefix frontend run generate:api", "npm --prefix frontend run typegen"]
+runner = "blacksmith-2vcpu-ubuntu-2404"
