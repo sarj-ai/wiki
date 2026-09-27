@@ -57,6 +57,7 @@ jobs:
           key: mypy-v1-${{ runner.os }}-${{ runner.arch }}-py${{ steps.mypy-toolchain.outputs.python }}-mypy${{ steps.mypy-toolchain.outputs.mypy }}-${{ hashFiles('backend/uv.lock', 'backend/pyproject.toml', 'backend/.python-version', 'backend/uv.toml', 'backend/mypy.ini', 'backend/.mypy.ini', 'backend/setup.cfg', '.sarj-standards.toml', '.github/workflows/ci-backend.yml') }}-${{ github.sha }}
           restore-keys: |
             mypy-v1-${{ runner.os }}-${{ runner.arch }}-py${{ steps.mypy-toolchain.outputs.python }}-mypy${{ steps.mypy-toolchain.outputs.mypy }}-${{ hashFiles('backend/uv.lock', 'backend/pyproject.toml', 'backend/.python-version', 'backend/uv.toml', 'backend/mypy.ini', 'backend/.mypy.ini', 'backend/setup.cfg', '.sarj-standards.toml', '.github/workflows/ci-backend.yml') }}-
+            mypy-v1-${{ runner.os }}-${{ runner.arch }}-py${{ steps.mypy-toolchain.outputs.python }}-mypy${{ steps.mypy-toolchain.outputs.mypy }}-
 
       - name: Mypy strict
         run: uv run mypy app
