@@ -87,7 +87,7 @@ def _svc(member_drive_id: str | None = None) -> GoogleFilesService:
 
 
 def _make_http_error(status_code: int) -> HttpError:
-    response = Response({"reason": "test", "status": str(status_code)})
+    response = Response({"reason": "test", "status": str(status_code), "retry-after": "0"})
     return HttpError(response, b'{"error": "test"}')
 
 
