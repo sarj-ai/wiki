@@ -26,7 +26,7 @@ _PROVIDER_BODY = f'{{"error":{{"message":"Bearer {_PROVIDER_TOKEN}"}}}}'
 
 
 def _raw_provider_error(status: int = 500) -> HttpError:
-    response = Response({"reason": "provider failure", "status": str(status)})
+    response = Response({"reason": "provider failure", "status": str(status), "retry-after": "0"})
     return HttpError(response, _PROVIDER_BODY.encode(), uri=_PROVIDER_URL)
 
 
