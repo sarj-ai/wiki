@@ -61,18 +61,16 @@ export function WikiToolbar({
     : [...breadcrumb, { id: fileId, name: displayTitle }];
 
   const handleCopy = (): void => {
-    void navigator.clipboard
-      .writeText(window.location.href)
-      .then(() => {
-        setCopied(true);
-        window.setTimeout(() => {
-          setCopied(false);
-        }, COPY_FEEDBACK_MS);
-      })
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : "Failed to copy link";
-        toast.error(message);
-      });
+    void (async () => {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      window.setTimeout(() => {
+        setCopied(false);
+      }, COPY_FEEDBACK_MS);
+    })().catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : "Failed to copy link";
+      toast.error(message);
+    });
   };
 
   return (

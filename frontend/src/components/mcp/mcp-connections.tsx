@@ -22,15 +22,16 @@ export function McpConnections() {
 
   useEffect(() => {
     let current = true;
-    void getMcpConnections()
-      .then((result) => {
-        if (current) {
-          setConnections(result);
-          setMessage(
-            "Only these app connections are affected when you disconnect. Your Wiki sign-in stays active.",
-          );
-        }
-      })
+    const load = async () => {
+      const result = await getMcpConnections();
+      if (current) {
+        setConnections(result);
+        setMessage(
+          "Only these app connections are affected when you disconnect. Your Wiki sign-in stays active.",
+        );
+      }
+    };
+    void load()
       .catch((error: unknown) => {
         if (current) {
           setSignin(error instanceof McpConsentRequestError && error.status === 401);

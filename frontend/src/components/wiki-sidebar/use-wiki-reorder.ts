@@ -273,27 +273,26 @@ export function useWikiReorder(): WikiReorder {
 
     const destinationName = lookupFolderName(qc, destinationDriveId, newParentFolderId);
 
-    void moveFile
-      .mutateAsync({
+    void (async () => {
+      await moveFile.mutateAsync({
         fileId: node.id,
         newParentFolderId,
         sourceDriveId,
         sourceParentFolderId,
-      })
-      .then(() => {
-        toast.success(`Moved “${node.name}” to “${destinationName}”`);
+      });
+      toast.success(`Moved “${node.name}” to “${destinationName}”`);
 
-        if (positionHint) {
-          const order = buildDestinationOrder(
-            qc,
-            destinationDriveId,
-            newParentFolderId,
-            node,
-            positionHint,
-          );
-          if (order) bulkSetSortOrders.mutate(order);
-        }
-      })
+      if (positionHint) {
+        const order = buildDestinationOrder(
+          qc,
+          destinationDriveId,
+          newParentFolderId,
+          node,
+          positionHint,
+        );
+        if (order) bulkSetSortOrders.mutate(order);
+      }
+    })()
       .catch((err: unknown) => {
         rollback();
         toast.error(translateMoveError(err));

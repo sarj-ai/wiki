@@ -20,17 +20,15 @@ export function ReadOnlyShortLink({ fileId }: ReadOnlyShortLinkProps) {
   if (!alias) return null;
 
   const handleCopy = (): void => {
-    void navigator.clipboard
-      .writeText(documentShortLink(window.location.origin, alias))
-      .then(() => {
-        setCopied(true);
-        window.setTimeout(() => {
-          setCopied(false);
-        }, SHORT_LINK_COPY_FEEDBACK_MS);
-      })
-      .catch(() => {
-        toast.error("Couldn't copy short link");
-      });
+    void (async () => {
+      await navigator.clipboard.writeText(documentShortLink(window.location.origin, alias));
+      setCopied(true);
+      window.setTimeout(() => {
+        setCopied(false);
+      }, SHORT_LINK_COPY_FEEDBACK_MS);
+    })().catch(() => {
+      toast.error("Couldn't copy short link");
+    });
   };
 
   return (
