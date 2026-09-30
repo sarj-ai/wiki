@@ -71,7 +71,8 @@ describe("SmartCreateDialog", () => {
     renderDialog(root);
     clickButton(await findButton("Template"));
 
-    await expect(findButton("PRD Template")).resolves.toBeEnabled();
+    const templateButton = await findButton("PRD Template");
+    expect(templateButton).toBeEnabled();
     expect(document.body).not.toHaveTextContent("Cross-drive template");
   });
 
@@ -83,11 +84,13 @@ describe("SmartCreateDialog", () => {
     renderDialog(root);
     clickButton(await findButton("Template"));
     clickButton(await findButton("PRD Template"));
-    await expect(findButton("Review")).resolves.toBeEnabled();
+    const reviewButton = await findButton("Review");
+    expect(reviewButton).toBeEnabled();
 
     clickButton(await findButton("Describe"));
 
-    await expect(findButton("Suggest details")).resolves.toBeDisabled();
+    const suggestButton = await findButton("Suggest details");
+    expect(suggestButton).toBeDisabled();
     expect(document.body).not.toHaveTextContent("Product requirements");
   });
 
@@ -99,7 +102,8 @@ describe("SmartCreateDialog", () => {
     clickButton(await findButton("Template"));
     catalog.resolve([template]);
 
-    await expect(findButton("PRD Template")).resolves.toBeEnabled();
+    const templateButton = await findButton("PRD Template");
+    expect(templateButton).toBeEnabled();
     expect(document.body).not.toHaveTextContent("Looking in Templates…");
   });
 
@@ -155,7 +159,8 @@ describe("SmartCreateDialog", () => {
     renderDialog(root);
     clickButton(await findButton("Template"));
     clickButton(await findButton("PRD Template"));
-    await expect(findButton("Review")).resolves.toBeEnabled();
+    const reviewButton = await findButton("Review");
+    expect(reviewButton).toBeEnabled();
     clickButton(await findButton("Refresh"));
 
     await vi.waitFor(() => {
@@ -215,7 +220,7 @@ function renderDialog(root: Root) {
         <SmartCreateDialog
           invokingDriveId="drive-1"
           invokingFolderId="folder-1"
-          onOpenChange={vi.fn()}
+          onOpenChange={vi.fn<(open: boolean) => void>()}
           open
         />
       </QueryClientProvider>,

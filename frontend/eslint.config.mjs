@@ -226,6 +226,7 @@ export default defineConfig([
     "out/**",
     "build/**",
     "coverage/**",
+    ".vitest/**",
     ".open-next/**",
     "next-env.d.ts",
     // Canonical generated Standards artifact; drift is checked byte-for-byte.
