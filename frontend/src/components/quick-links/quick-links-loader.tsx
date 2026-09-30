@@ -20,13 +20,14 @@ export function QuickLinksLoader() {
   useEffect(() => {
     if (userId === undefined) return;
     let cancelled = false;
-    void loadRecentForUser(userId)
-      .then((items) => {
-        if (cancelled) return;
-        setAliases(items);
-        setError(false);
-        setValidatedUserId(userId);
-      })
+    const load = async () => {
+      const items = await loadRecentForUser(userId);
+      if (cancelled) return;
+      setAliases(items);
+      setError(false);
+      setValidatedUserId(userId);
+    };
+    void load()
       .catch(() => {
         if (cancelled) return;
         setError(true);

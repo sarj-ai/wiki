@@ -45,10 +45,13 @@ function EmojiPickerSkeleton() {
   );
 }
 
-const Picker = dynamic(async () => import("@emoji-mart/react").then((m) => m.default), {
-  loading: () => <EmojiPickerSkeleton />,
-  ssr: false,
-});
+const Picker = dynamic(
+  async () => {
+    const { default: EmojiPicker } = await import("@emoji-mart/react");
+    return EmojiPicker;
+  },
+  { loading: () => <EmojiPickerSkeleton />, ssr: false },
+);
 
 let cachedData: null | Promise<unknown> = null;
 export function EmojiPickerPopover({ children, onChange, value }: EmojiPickerPopoverProps) {
@@ -103,7 +106,10 @@ export function EmojiPickerPopover({ children, onChange, value }: EmojiPickerPop
 }
 
 async function loadEmojiData(): Promise<unknown> {
-  cachedData ??= import("@emoji-mart/data").then((m: { default: unknown }) => m.default);
+  cachedData ??= (async () => {
+    const data: { default: unknown } = await import("@emoji-mart/data");
+    return data.default;
+  })();
   return cachedData;
 }
 

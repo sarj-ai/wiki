@@ -70,22 +70,20 @@ export function SmartCreateDialog({
     const sequence = ++catalogSequence.current;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Opening the dialog intentionally starts a fresh catalog load.
     setCatalogStatus({ kind: "loading" });
-    void smartCreateApi
-      .listTemplates()
-      .then((result) => {
-        if (sequence !== catalogSequence.current) return;
-        const scopedTemplates = templatesInDrive(result, invokingDriveId);
-        setTemplates(scopedTemplates);
-        setState((current) => reconcileTemplateSelection(current, scopedTemplates));
-        setCatalogStatus({ kind: "ready" });
-      })
-      .catch((error: unknown) => {
-        if (sequence !== catalogSequence.current) return;
-        setCatalogStatus({
-          kind: "error",
-          message: errorMessage(error, "Templates couldn’t be loaded."),
-        });
+    void (async () => {
+      const result = await smartCreateApi.listTemplates();
+      if (sequence !== catalogSequence.current) return;
+      const scopedTemplates = templatesInDrive(result, invokingDriveId);
+      setTemplates(scopedTemplates);
+      setState((current) => reconcileTemplateSelection(current, scopedTemplates));
+      setCatalogStatus({ kind: "ready" });
+    })().catch((error: unknown) => {
+      if (sequence !== catalogSequence.current) return;
+      setCatalogStatus({
+        kind: "error",
+        message: errorMessage(error, "Templates couldn’t be loaded."),
       });
+    });
     return () => {
       catalogSequence.current += 1;
     };
