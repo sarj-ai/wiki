@@ -5,10 +5,11 @@ import dynamic from "next/dynamic";
 import { useCommandPaletteHotkey, useCommandPaletteMounted } from "@/hooks/use-command-palette";
 
 const CommandPalette = dynamic(
-  async () => import("./command-palette").then((m) => m.CommandPalette),
-  {
-    ssr: false,
+  async () => {
+    const { CommandPalette: Palette } = await import("./command-palette");
+    return Palette;
   },
+  { ssr: false },
 );
 
 export function CommandPaletteMount() {

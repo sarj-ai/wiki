@@ -45,10 +45,12 @@ export function DocumentPolishReceipt({
         <div className="flex flex-wrap items-center gap-3">
           <Button
             onClick={() => {
-              void navigator.clipboard
-                .writeText(documentShortLink(window.location.origin, alias))
-                .then(() => toast.success("Short link copied"))
-                .catch(() => toast.error("Couldn’t copy short link"));
+              void (async () => {
+                await navigator.clipboard.writeText(
+                  documentShortLink(window.location.origin, alias),
+                );
+                toast.success("Short link copied");
+              })().catch(() => toast.error("Couldn’t copy short link"));
             }}
             type="button"
             variant="outline"
@@ -78,8 +80,10 @@ export function DocumentPolishReceipt({
                 if (retryLatch.current) return;
                 retryLatch.current = true;
                 setRetrying(true);
-                void onRetryShortLink()
-                  .then(() => toast.success("Short link created"))
+                void (async () => {
+                  await onRetryShortLink();
+                  toast.success("Short link created");
+                })()
                   .catch(() => toast.error("Couldn’t create the short link"))
                   .finally(() => {
                     retryLatch.current = false;

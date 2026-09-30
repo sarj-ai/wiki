@@ -24,19 +24,19 @@ export function McpConsentLoader({ intent }: { intent: string }) {
 
   useEffect(() => {
     let current = true;
-    void getMcpConsent(intent)
-      .then((view) => {
-        if (current) setState({ kind: "ready", view });
-      })
-      .catch((error: unknown) => {
-        if (current)
-          setState({
-            kind:
-              error instanceof McpConsentRequestError && error.status === 401
-                ? "signin"
-                : "unavailable",
-          });
-      });
+    const load = async () => {
+      const view = await getMcpConsent(intent);
+      if (current) setState({ kind: "ready", view });
+    };
+    void load().catch((error: unknown) => {
+      if (current)
+        setState({
+          kind:
+            error instanceof McpConsentRequestError && error.status === 401
+              ? "signin"
+              : "unavailable",
+        });
+    });
     return () => {
       current = false;
     };

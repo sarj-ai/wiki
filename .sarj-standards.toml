@@ -1,20 +1,38 @@
 # Managed by `code-standards setup`; commit this file.
-schema = 4
-bundle = "8.12.0"
-profile = "standard"
+bundle = "8.13.3"
 rule_profile = "all"
+schema = 4
 
 [capabilities]
-disable = ["swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security", "markdownlint", "taplo"]
+disable = [
+  "swiftformat",
+  "swiftlint",
+  "ktlint",
+  "detekt",
+  "mobile-security",
+  "markdownlint",
+  "taplo",
+  "zizmor",
+  "checkov",
+]
 
 [artifacts]
-durable = ["**/README.md", "docs/**", "**/docs/**", "architecture/**", "**/adr/**", ".github/**", "**/AGENTS.md", "**/CLAUDE.md"]
+durable = [
+  "**/README.md",
+  "docs/**",
+  "**/docs/**",
+  "architecture/**",
+  "**/adr/**",
+  ".github/**",
+  "**/AGENTS.md",
+  "**/CLAUDE.md",
+]
 
 [dest]
-python = "backend"
-typescript = "frontend"
-swift = "."
 kotlin = "."
+python = "backend"
+swift = "."
+typescript = "frontend"
 
 [hooks]
 manager = "lefthook"
@@ -26,5 +44,8 @@ exclude = ["**/.env.example"]
 diagnostics = "diagnostic-baseline.json"
 
 [ci]
-bootstrap = ["npm --prefix frontend run generate:api", "npm --prefix frontend run typegen"]
+bootstrap = [
+  "npm --prefix frontend run generate:api",
+  "npm --prefix frontend run typegen",
+]
 runner = "blacksmith-2vcpu-ubuntu-2404"
