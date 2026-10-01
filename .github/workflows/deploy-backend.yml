@@ -80,7 +80,7 @@ jobs:
 
   standards-receipt:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.verification_run_id == '' && inputs.verification_run_attempt == ''))
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 25
     permissions:
       contents: read
@@ -108,7 +108,7 @@ jobs:
   deploy:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.verification_run_id == '' && inputs.verification_run_attempt == ''))
     needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
 
     permissions:
       contents: read
@@ -223,7 +223,7 @@ jobs:
 
   verify-existing:
     if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.verification_run_id != '' && inputs.verification_run_attempt != ''
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 15
     permissions:
       contents: read
@@ -298,7 +298,7 @@ jobs:
 
   reject-partial-verification-inputs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && ((inputs.verification_run_id == '' && inputs.verification_run_attempt != '') || (inputs.verification_run_id != '' && inputs.verification_run_attempt == ''))
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 1
     permissions: {}
     steps:
