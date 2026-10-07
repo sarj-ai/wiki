@@ -27,7 +27,7 @@ import uuid
 from google import genai
 from google.genai import types as genai_types
 import httpx
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr, TypeAdapter
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, RootModel, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import select
 import typer
@@ -92,7 +92,7 @@ _TASK_TIMEOUT = timedelta(minutes=15)
 _COMMIT_SHA_LENGTH = 40
 _QA_NAMESPACE = uuid.UUID("ce3e8475-23f8-5b24-bef2-5369c7b0c45f")
 _TRANSFORM_OPERATION_PROPERTY = "sarjTransformOperation"
-_TASK_ADAPTER: TypeAdapter[TaskRead] = TypeAdapter(TaskRead)
+
 _PDF_MIME_TYPE = "application/pdf"
 _MAX_EXPORTED_PDF_BYTES = 50 * 1024 * 1024
 _SCREENSHOT_DPI: Literal[144] = 144
@@ -1661,7 +1661,7 @@ async def _submit_transform(
     )
     if response.status_code != httpx.codes.ACCEPTED:
         _fail(f"transform submission returned HTTP {response.status_code}")
-    task = _TASK_ADAPTER.validate_json(response.text)
+    task = _TaskReadPayload.model_validate_json(response.text).root
     replayed = response.headers.get("Idempotency-Replayed", "false").casefold() == "true"
     return SubmissionResult(task, replayed)
 
@@ -1679,7 +1679,7 @@ async def _poll_task(
         )
         if response.status_code != httpx.codes.OK:
             _fail(f"task read returned HTTP {response.status_code}")
-        task = _TASK_ADAPTER.validate_json(response.text)
+        task = _TaskReadPayload.model_validate_json(response.text).root
         if not isinstance(task, PendingTaskRead | RunningTaskRead):
             return task
         if asyncio.get_running_loop().time() >= deadline:
@@ -2439,6 +2439,10 @@ def _sha256_text(value: str) -> str:
 
 def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+class _TaskReadPayload(RootModel[TaskRead]):
+    pass
 
 
 if __name__ == "__main__":

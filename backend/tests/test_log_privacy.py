@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from loguru import logger
-from pydantic import TypeAdapter
 
 from app.aliases.router import resolve_alias, retire_file_alias, save_file_alias
 from app.aliases.schemas import (
@@ -32,7 +31,7 @@ async def test_alias_audit_events_do_not_log_resource_identifiers() -> None:
     messages: list[str] = []
     sink = logger.add(messages.append, format="{message}")
     service = _Aliases()
-    alias = TypeAdapter(DocumentAliasValue).validate_python("private-project-roadmap")
+    alias = DocumentAliasWrite.model_validate({"alias": "private-project-roadmap"}).alias
     file_id = FileId("private-google-file-id")
     try:
         await save_file_alias(file_id, DocumentAliasWrite(alias=alias), service)

@@ -2,7 +2,7 @@ from copy import deepcopy
 from dataclasses import replace
 from typing import Any
 
-from pydantic import TypeAdapter
+from pydantic import RootModel
 import pytest
 
 from app.document_transform.errors import DocumentGatewayError, InPlaceNeedsReviewError
@@ -51,8 +51,8 @@ def test_icons_are_native_exact_durable_metadata_and_never_title_prefixes(icon: 
     tab = NativeTabProperties(DocsTabId("tab"), "Security", icon_emoji=icon)
     document = DocumentIR("Title", (), "google_doc", tab_ids=(tab.tab_id,))
     plan = plan_tab_names(document, (tab,))
-    adapter = TypeAdapter(TabNamingPlan)
-    assert adapter.validate_json(adapter.dump_json(plan)) == plan
+    payload = _TabNamingPlanPayload(plan)
+    assert _TabNamingPlanPayload.model_validate_json(payload.model_dump_json()).root == plan
     expected_icon = icon or "🔒"
     after = (replace(tab, icon_emoji=expected_icon),)
     assert plan.matches_result(after)
@@ -139,3 +139,7 @@ async def test_provider_rejects_icon_without_silent_success_or_title_fallback(
         await gateway.apply_tab_naming(document_id=FileId("doc"), checkpoint=checkpoint)
     assert error.value.http_status == 400
     assert native == before
+
+
+class _TabNamingPlanPayload(RootModel[TabNamingPlan]):
+    pass
