@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "_comment": "Suppression ceilings, written by `sarj-ratchet --update`. Counts may only go DOWN: `codes` is per dialect+code, `packages` is per top-level package, `files.per_file_ceiling` caps any single file with `files.exceptions` grandfathering the pre-existing hot spots. Raising a ceiling requires `--update --allow-increase` and review.",
+  "_comment": "Suppression ceilings, written by `sarj-ratchet --update`. Counts may only go DOWN: `codes` is per dialect+code, `packages` is per top-level package, `files.per_file_ceiling` caps any single file with `files.exceptions` grandfathering the pre-existing hot spots, and `files.selectors` prevents debt from moving between files or lint rules. Raising a ceiling requires `--update --allow-increase` and review.",
   "packages_scanned": [
     "backend"
   ],
@@ -12,16 +12,55 @@
     "noqa:S603": 3,
     "sarj-noqa:SARJ071": 1,
     "sarj-noqa:SARJ428": 2,
+    "sarj-noqa:SARJ470": 8,
     "type-ignore:attr-defined": 1,
     "type-ignore:call-arg": 2,
     "type-ignore:no-untyped-call": 2
   },
   "packages": {
-    "backend": 17
+    "backend": 25
   },
   "excluded_subtrees": [],
   "files": {
     "per_file_ceiling": 10,
-    "exceptions": {}
+    "exceptions": {},
+    "selectors": {
+      "backend/alembic/env.py": {
+        "noqa:F401": 1
+      },
+      "backend/alembic/versions/0022_qa_corpus_campaigns.py": {
+        "sarj-noqa:SARJ470": 8
+      },
+      "backend/app/config.py": {
+        "type-ignore:call-arg": 1
+      },
+      "backend/app/drive/service.py": {
+        "type-ignore:attr-defined": 1,
+        "type-ignore:no-untyped-call": 2
+      },
+      "backend/app/mcp/native_core.py": {
+        "noqa:BLE001": 1
+      },
+      "backend/app/mcp/native_http_guard.py": {
+        "noqa:BLE001": 1,
+        "noqa:RUF029": 1
+      },
+      "backend/app/mcp/protection.py": {
+        "sarj-noqa:SARJ071": 1
+      },
+      "backend/app/mcp/server.py": {
+        "noqa:BLE001": 1
+      },
+      "backend/scripts/qa_document_transform_corpus.py": {
+        "noqa:S404": 1,
+        "noqa:S603": 3
+      },
+      "backend/tests/test_config.py": {
+        "type-ignore:call-arg": 1
+      },
+      "backend/tests/test_sidebar_cache.py": {
+        "sarj-noqa:SARJ428": 2
+      }
+    }
   }
 }
