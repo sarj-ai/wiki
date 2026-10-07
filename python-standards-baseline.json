@@ -137,7 +137,7 @@
   },
   "backend/app/document_transform/provider_diagnostics.py": {
     "SARJ444": 3,
-    "SARJ447": 4
+    "SARJ447": 3
   },
   "backend/app/document_transform/qa_broker.py": {
     "SARJ444": 2

@@ -7,7 +7,7 @@ from types import MappingProxyType
 from typing import Any, NamedTuple
 
 from googleapiclient.errors import HttpError
-from pydantic import TypeAdapter
+from pydantic import RootModel
 
 
 MAX_ERROR_BYTES = 16_384
@@ -49,7 +49,12 @@ MESSAGE_TOPICS = MappingProxyType(
         ),
     }
 )
-ERROR_JSON = TypeAdapter(dict[str, Any])
+
+
+class _ProviderErrorPayload(RootModel[dict[str, Any]]):
+    """Validate the bounded provider error object used for diagnostic projection."""
+
+
 PROPERTY_TOPIC_PATTERNS = MappingProxyType(
     {
         topic: re.compile(
@@ -117,7 +122,7 @@ def _envelope_diagnostics(error: Exception, request: dict[str, str | int]) -> di
     if not isinstance(cause, HttpError) or len(cause.content) > MAX_ERROR_BYTES:
         return {}
     try:
-        payload = ERROR_JSON.validate_json(cause.content)
+        payload = _ProviderErrorPayload.model_validate_json(cause.content).root
     except ValueError, UnicodeError, RecursionError:
         return {}
     body = payload.get("error")
@@ -174,7 +179,7 @@ def _request_diagnostics(error: Exception, requests: list[dict[str, Any]]) -> di
     if len(cause.content) > MAX_ERROR_BYTES:
         return unknown
     try:
-        payload = ERROR_JSON.validate_json(cause.content)
+        payload = _ProviderErrorPayload.model_validate_json(cause.content).root
     except ValueError, UnicodeError, RecursionError:
         return unknown
     if not isinstance(payload.get("error"), dict):

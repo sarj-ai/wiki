@@ -19,7 +19,7 @@ from googleapiclient.discovery_cache import get_static_doc
 from googleapiclient.errors import HttpError
 import httplib2
 from loguru import logger
-from pydantic import TypeAdapter, ValidationError
+from pydantic import RootModel, ValidationError
 
 from app.auth.encryption import decrypt_text
 from app.auth.google_tokens import GoogleRefreshResult
@@ -107,9 +107,14 @@ _DRIVE_LIST_CACHE_TTL = timedelta(seconds=30)
 
 _PROBE_CACHE_TTL = timedelta(minutes=5)
 
-_DRIVE_LIST = TypeAdapter(list[DriveSummary])
 
-_SHORTCUT_PROBE: TypeAdapter[ShortcutProbe | None] = TypeAdapter(ShortcutProbe | None)
+class _DriveList(RootModel[list[DriveSummary]]):
+    """Validate cached drive summaries before returning them to callers."""
+
+
+class _CachedShortcutProbe(RootModel[ShortcutProbe | None]):
+    """Validate a cached shortcut probe, including an explicit cached miss."""
+
 
 GoogleRefreshHandler = Callable[..., GoogleRefreshResult]
 
@@ -270,7 +275,7 @@ class GoogleDriveService(DriveService):
             cached = await self._cache.get(CacheNamespace.DRIVE_LIST, cache_key)
             if cached is not None:
                 try:
-                    drives = _DRIVE_LIST.validate_python(cached)
+                    drives = _DriveList.model_validate(cached).root
                 except ValidationError:
                     await self._cache.delete(CacheNamespace.DRIVE_LIST, cache_key)
                 else:
@@ -673,7 +678,9 @@ class GoogleDriveService(DriveService):
                 cache_key = self._probe_cache_key(target_id)
                 if cache_key in cached:
                     try:
-                        probes[target_id] = _SHORTCUT_PROBE.validate_python(cached[cache_key])
+                        probes[target_id] = _CachedShortcutProbe.model_validate(
+                            cached[cache_key]
+                        ).root
                     except ValidationError:
                         await self._cache.delete(CacheNamespace.SHORTCUT_PROBE, cache_key)
         missing = [tid for tid in unique_ids if tid not in probes]
