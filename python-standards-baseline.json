@@ -56,6 +56,7 @@
     "SARJ447": 9
   },
   "backend/app/document_transform/google_gateway.py": {
+    "SARJ430": 1,
     "SARJ442": 4,
     "SARJ444": 21,
     "SARJ447": 126
@@ -512,6 +513,7 @@
     "SARJ445": 2
   },
   "backend/tests/test_mcp_native_admission.py": {
+    "SARJ429": 1,
     "SARJ445": 3
   },
   "backend/tests/test_mcp_native_context.py": {
