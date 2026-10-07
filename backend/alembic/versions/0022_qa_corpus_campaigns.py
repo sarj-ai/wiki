@@ -344,7 +344,7 @@ def upgrade() -> None:
         unique=True,
         postgresql_where=sa.text("output_file_id IS NOT NULL"),
     )
-    op.execute(
+    op.execute(  # sarj-noqa: SARJ470 — DB guards preserve immutable QA campaign authority.
         """
         CREATE FUNCTION guard_qa_corpus_campaign_update() RETURNS trigger
         LANGUAGE plpgsql AS $$
@@ -411,14 +411,14 @@ def upgrade() -> None:
         $$;
         """
     )
-    op.execute(
+    op.execute(  # sarj-noqa: SARJ470 — DB trigger enforces immutable QA campaign authority.
         """
         CREATE TRIGGER guard_qa_corpus_campaign_update
         BEFORE UPDATE OR DELETE ON document_transform_qa_corpus_campaigns
         FOR EACH ROW EXECUTE FUNCTION guard_qa_corpus_campaign_update();
         """
     )
-    op.execute(
+    op.execute(  # sarj-noqa: SARJ470 — DB guards freeze the attested QA corpus membership.
         """
         CREATE FUNCTION guard_qa_corpus_member_mutation() RETURNS trigger
         LANGUAGE plpgsql AS $$
@@ -450,14 +450,14 @@ def upgrade() -> None:
         $$;
         """
     )
-    op.execute(
+    op.execute(  # sarj-noqa: SARJ470 — DB trigger freezes the attested QA corpus membership.
         """
         CREATE TRIGGER guard_qa_corpus_member_mutation
         BEFORE INSERT OR UPDATE OR DELETE ON document_transform_qa_corpus_members
         FOR EACH ROW EXECUTE FUNCTION guard_qa_corpus_member_mutation();
         """
     )
-    op.execute(
+    op.execute(  # sarj-noqa: SARJ470 — DB guards freeze QA submission authority and terminal results.
         """
         CREATE FUNCTION guard_qa_corpus_submission_mutation() RETURNS trigger
         LANGUAGE plpgsql AS $$
@@ -666,7 +666,7 @@ def upgrade() -> None:
         $$;
         """.replace("__QA_CORPUS_SUBMISSIONS__", _SUBMISSIONS_TABLE)
     )
-    op.execute(
+    op.execute(  # sarj-noqa: SARJ470 — DB rechecks enforce the deferred corpus completeness invariant.
         """
         CREATE FUNCTION recheck_qa_corpus_campaign() RETURNS trigger
         LANGUAGE plpgsql AS $$
@@ -698,7 +698,7 @@ def upgrade() -> None:
         $$;
         """
     )
-    op.execute(
+    op.execute(  # sarj-noqa: SARJ470 — DB constraint trigger validates a campaign at transaction commit.
         """
         CREATE CONSTRAINT TRIGGER ck_qa_corpus_campaign_complete_members
         AFTER INSERT OR UPDATE ON document_transform_qa_corpus_campaigns
@@ -706,7 +706,7 @@ def upgrade() -> None:
         FOR EACH ROW EXECUTE FUNCTION recheck_qa_corpus_campaign();
         """
     )
-    op.execute(
+    op.execute(  # sarj-noqa: SARJ470 — DB constraint trigger revalidates membership at transaction commit.
         """
         CREATE CONSTRAINT TRIGGER ck_qa_corpus_member_recheck_campaign
         AFTER INSERT OR UPDATE OR DELETE ON document_transform_qa_corpus_members

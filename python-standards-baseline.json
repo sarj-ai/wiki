@@ -1,7 +1,4 @@
 {
-  "backend/alembic/versions/0022_qa_corpus_campaigns.py": {
-    "SARJ470": 8
-  },
   "backend/app/aliases/router.py": {
     "SARJ451": 7
   },
