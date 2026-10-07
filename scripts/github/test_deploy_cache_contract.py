@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+from scripts.github.release_gate import ReleaseBlockedError, command_output
 import yaml
 
 
@@ -279,12 +281,13 @@ def test_frontend_build_restores_next_cache_but_only_trusted_main_saves() -> Non
 def test_required_ci_aggregators_remain_fail_closed() -> None:
     expected_needs = {
         "ci-backend.yml": {
+            "changes",
             "lint-and-typecheck",
             "test",
             "postgres-concurrency",
             "image",
         },
-        "ci-frontend.yml": {"lint-and-typecheck", "test", "build"},
+        "ci-frontend.yml": {"changes", "lint-and-typecheck", "test", "build"},
         "ci-iac.yml": {"terraform-validation", "trivy-config"},
     }
 
@@ -292,3 +295,91 @@ def test_required_ci_aggregators_remain_fail_closed() -> None:
         required = _workflow(name)["jobs"]["required"]
         assert required["if"] == "${{ always() }}"
         assert set(required["needs"]) == needs
+
+
+@pytest.mark.parametrize(
+    ("paths", "backend", "frontend"),
+    [
+        (["README.md", "docs/nested/guide.md", "terraform/main.tf"], False, False),
+        (["frontend/src/app/page.tsx"], False, True),
+        (["backend/tests/test_cache.py"], True, False),
+        (["backend/app/main.py"], True, True),
+        (["backend/uv.lock"], True, True),
+        (["frontend/openapi.json"], True, True),
+        (["frontend/src/lib/generated/types.ts"], True, True),
+        ([".github/workflows/ci-backend.yml"], True, True),
+        (["scripts/github/runtime-ci-policy.sh"], True, True),
+        (["docs/notes.txt"], True, True),
+        (["unknown\nbackend/app/main.py"], True, True),
+        (["backend/tests/old.py", "frontend/src/new.ts"], True, True),
+    ],
+)
+def test_runtime_selection_uses_complete_nul_delimited_paths(
+    paths: list[str], *, backend: bool, frontend: bool
+) -> None:
+    output = command_output(
+        [
+            "bash",
+            "-e",
+            "-c",
+            'script=$1; shift; printf "%s\\0" "$@" | bash "$script"',
+            "runtime-policy-test",
+            str(ROOT / "scripts/github/runtime-ci-policy.sh"),
+            *paths,
+        ]
+    )
+    assert output == f"backend={str(backend).lower()}\nfrontend={str(frontend).lower()}"
+
+
+@pytest.mark.parametrize("component", ["backend", "frontend"])
+def test_runtime_required_gates_reject_failure_missing_outputs_and_unexpected_skips(
+    component: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workflow = _workflow(f"ci-{component}.yml")
+    assert workflow["on"]["workflow_call"]["inputs"]["force_full"]["default"] is True
+    gate = workflow["jobs"]["required"]["steps"][0]
+    baseline = dict.fromkeys(gate["env"], "success")
+    baseline.update(
+        FORCE_FULL="false", ROUTING_RESULT="success", RUNTIME_SELECTED="true"
+    )
+    runtime_keys = (
+        ["TEST_RESULT", "POSTGRES_RESULT"]
+        if component == "backend"
+        else ["TEST_RESULT", "BUILD_RESULT"]
+    )
+    scenarios = [(baseline, True)]
+    unselected = {**baseline, "RUNTIME_SELECTED": "false"}
+    unselected.update(dict.fromkeys(runtime_keys, "skipped"))
+    scenarios.extend(
+        [
+            (unselected, True),
+            ({**baseline, "FORCE_FULL": "true", "ROUTING_RESULT": "skipped"}, True),
+        ]
+    )
+    scenarios.extend(
+        ({**baseline, key: result}, False)
+        for key in gate["env"]
+        if key not in {"FORCE_FULL", "RUNTIME_SELECTED"}
+        for result in ["failure", "cancelled", "skipped", ""]
+    )
+    scenarios.extend(
+        ({**baseline, "RUNTIME_SELECTED": value}, False) for value in ["", "unknown"]
+    )
+    scenarios.extend(
+        ({**unselected, key: result}, False)
+        for key in runtime_keys
+        for result in ["success", "failure"]
+    )
+    scenarios.append(
+        ({**unselected, "FORCE_FULL": "true", "ROUTING_RESULT": "skipped"}, False)
+    )
+    for environment, expected in scenarios:
+        for name, value in environment.items():
+            monkeypatch.setenv(name, value)
+        command = ["bash", "-e", "-c", gate["run"]]
+        if expected:
+            assert not command_output(command)
+        else:
+            with pytest.raises(ReleaseBlockedError, match="Release command failed"):
+                command_output(command)
