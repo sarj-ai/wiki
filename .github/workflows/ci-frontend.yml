@@ -2,6 +2,11 @@ name: CI Frontend
 
 "on":
   workflow_call:
+    inputs:
+      force_full:
+        description: Preserve complete qualification for reusable deployment calls
+        type: boolean
+        default: true
   pull_request:
 
 permissions:
@@ -16,6 +21,32 @@ defaults:
     working-directory: frontend
 
 jobs:
+  changes:
+    if: github.event_name == 'pull_request' && inputs.force_full != true
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    outputs:
+      runtime: ${{ steps.policy.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select runtime qualification
+        id: policy
+        working-directory: .
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Disable rename detection so both sides of a move select their domains.
+          if git diff --no-ext-diff --no-textconv --no-renames --name-only -z "$BASE_SHA" "$HEAD_SHA" -- > "$RUNNER_TEMP/changed-paths"; then
+            bash scripts/github/runtime-ci-policy.sh < "$RUNNER_TEMP/changed-paths" >> "$GITHUB_OUTPUT"
+          else
+            echo '::warning::Change detection failed; running full runtime qualification'
+            printf 'backend=true\nfrontend=true\n' >> "$GITHUB_OUTPUT"
+          fi
+
   lint-and-typecheck:
     name: Frontend / Lint + typecheck + format
     runs-on: blacksmith-2vcpu-ubuntu-2404
@@ -52,6 +83,8 @@ jobs:
         run: npm audit --omit=dev --audit-level=moderate
 
   test:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true')
     name: Frontend / Unit tests
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
@@ -72,6 +105,8 @@ jobs:
         run: npm test
 
   build:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true')
     name: Frontend / Next.js build
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
@@ -113,17 +148,31 @@ jobs:
   required:
     name: Frontend / required
     if: ${{ always() }}
-    needs: [lint-and-typecheck, test, build]
+    needs: [changes, lint-and-typecheck, test, build]
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 1
     steps:
       - name: Require every frontend gate
         working-directory: .
         env:
+          FORCE_FULL: ${{ github.event_name != 'pull_request' || inputs.force_full == true }}
+          ROUTING_RESULT: ${{ needs.changes.result }}
+          RUNTIME_SELECTED: ${{ needs.changes.outputs.runtime }}
           BUILD_RESULT: ${{ needs.build.result }}
           LINT_RESULT: ${{ needs.lint-and-typecheck.result }}
           TEST_RESULT: ${{ needs.test.result }}
         run: |
+          if [ "$FORCE_FULL" = true ]; then
+            test "$ROUTING_RESULT" = skipped
+            expected=success
+          else
+            test "$ROUTING_RESULT" = success
+            case "$RUNTIME_SELECTED" in
+              true) expected=success ;;
+              false) expected=skipped ;;
+              *) exit 1 ;;
+            esac
+          fi
           test "$LINT_RESULT" = success
-          test "$TEST_RESULT" = success
-          test "$BUILD_RESULT" = success
+          test "$TEST_RESULT" = "$expected"
+          test "$BUILD_RESULT" = "$expected"

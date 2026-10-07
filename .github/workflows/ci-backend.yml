@@ -2,6 +2,11 @@ name: CI Backend
 
 "on":
   workflow_call:
+    inputs:
+      force_full:
+        description: Preserve complete qualification for reusable deployment calls
+        type: boolean
+        default: true
   pull_request:
 
 permissions:
@@ -16,6 +21,32 @@ defaults:
     working-directory: backend
 
 jobs:
+  changes:
+    if: github.event_name == 'pull_request' && inputs.force_full != true
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    outputs:
+      runtime: ${{ steps.policy.outputs.backend }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select runtime qualification
+        id: policy
+        working-directory: .
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Disable rename detection so both sides of a move select their domains.
+          if git diff --no-ext-diff --no-textconv --no-renames --name-only -z "$BASE_SHA" "$HEAD_SHA" -- > "$RUNNER_TEMP/changed-paths"; then
+            bash scripts/github/runtime-ci-policy.sh < "$RUNNER_TEMP/changed-paths" >> "$GITHUB_OUTPUT"
+          else
+            echo '::warning::Change detection failed; running full runtime qualification'
+            printf 'backend=true\nfrontend=true\n' >> "$GITHUB_OUTPUT"
+          fi
+
   lint-and-typecheck:
     name: Backend / Lint + typecheck
     runs-on: blacksmith-2vcpu-ubuntu-2404
@@ -85,6 +116,8 @@ jobs:
           key: ${{ steps.mypy-cache.outputs.cache-primary-key }}
 
   test:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true')
     name: Backend / Unit tests
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
@@ -109,6 +142,8 @@ jobs:
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70
 
   postgres-concurrency:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true')
     name: Backend / PostgreSQL concurrency
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
@@ -203,19 +238,33 @@ jobs:
   required:
     name: Backend / required
     if: ${{ always() }}
-    needs: [lint-and-typecheck, test, postgres-concurrency, image]
+    needs: [changes, lint-and-typecheck, test, postgres-concurrency, image]
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 1
     steps:
       - name: Require every backend gate
         working-directory: .
         env:
+          FORCE_FULL: ${{ github.event_name != 'pull_request' || inputs.force_full == true }}
+          ROUTING_RESULT: ${{ needs.changes.result }}
+          RUNTIME_SELECTED: ${{ needs.changes.outputs.runtime }}
           IMAGE_RESULT: ${{ needs.image.result }}
           LINT_RESULT: ${{ needs.lint-and-typecheck.result }}
           POSTGRES_RESULT: ${{ needs.postgres-concurrency.result }}
           TEST_RESULT: ${{ needs.test.result }}
         run: |
+          if [ "$FORCE_FULL" = true ]; then
+            test "$ROUTING_RESULT" = skipped
+            expected=success
+          else
+            test "$ROUTING_RESULT" = success
+            case "$RUNTIME_SELECTED" in
+              true) expected=success ;;
+              false) expected=skipped ;;
+              *) exit 1 ;;
+            esac
+          fi
           test "$LINT_RESULT" = success
-          test "$TEST_RESULT" = success
-          test "$POSTGRES_RESULT" = success
+          test "$TEST_RESULT" = "$expected"
+          test "$POSTGRES_RESULT" = "$expected"
           test "$IMAGE_RESULT" = success
