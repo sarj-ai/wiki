@@ -6727,21 +6727,21 @@
       "count": 1
     },
     {
-      "fingerprint": "271b8b5c0c8d81f55209747b014a6be1db04e6a514904ea891dbaa100df8ea22",
+      "fingerprint": "10be5c4d9eac03d0d0bac995467207d482da3129580d9c9b18631fe846a6fc68",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/document_transform/provider_diagnostics.py",
       "count": 1
     },
     {
-      "fingerprint": "3cda2a9906725dbc0a8aca7b540297d84bd5e0447b96b9b5496e4362736ca208",
+      "fingerprint": "dbdf83cced98eae702207f7ab2fee0b101d5018ac31f749313634b387dbd9a7d",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/document_transform/provider_diagnostics.py",
       "count": 1
     },
     {
-      "fingerprint": "8e5d95bc72ea7ac90e4f61816386d6671c2296703580d5ca0877951d1af08cac",
+      "fingerprint": "ea3417ebec33e63e90cb62311c3dd9dd2fcc3043c0892428fafbdafd12db1b8b",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/document_transform/provider_diagnostics.py",
@@ -6888,63 +6888,63 @@
       "count": 1
     },
     {
-      "fingerprint": "0c646027e987b30937c422524d4bdf0e08bf39a57da91853dcae9c2b47441fbb",
+      "fingerprint": "05445657bf11ed68fcbd7c8e8aa38307daa43f149daef0edc910d2a667c48e69",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/drive/service.py",
       "count": 1
     },
     {
-      "fingerprint": "1a852907bee868ac407c0f7598309b0bf861e9aa29a45ac713d24070c0bacdf2",
+      "fingerprint": "147c053ffa4d7222459371a068f2e4599694cfefef8f41d2d67ab671e7abb52d",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/drive/service.py",
       "count": 1
     },
     {
-      "fingerprint": "248dce54fd5062704032c63f85e8c97954bca55c009b67b9d12fbb649bb43c4c",
+      "fingerprint": "7e50c42bfddd3f68766df6243f78676c01d2c67c2996f50b3773903b4452da34",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/drive/service.py",
       "count": 1
     },
     {
-      "fingerprint": "3deea00924163f06a21a617f68ddfdd83a6cd0c2504eca16a050b14810ebec1e",
+      "fingerprint": "7e622d9e444eea53787c256701f2adafadecd92e650596bf44084d25f5d6f752",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/drive/service.py",
       "count": 1
     },
     {
-      "fingerprint": "5f079403279cf2c45318ec323c973c4fd452c09a08acf0152815f124bc30ac8d",
+      "fingerprint": "95e3680c6235acd28e20f6ad5687217293518634862ef1cba4b5f2e14d6ba1fe",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/drive/service.py",
       "count": 1
     },
     {
-      "fingerprint": "a5fce29230505b26d24a81d0d024aea1ffc87c4a5d5339c564c9a0badbd217d0",
+      "fingerprint": "a9f8db4c181f3f4c3f0f4ece8c51ba3e346272f4f9dba7177dcebbb20f83af56",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/drive/service.py",
       "count": 1
     },
     {
-      "fingerprint": "bd7c86ad0d557a817d6ec348fc7ea220ba1b995fd19c779e22bd2bb7905ba03c",
+      "fingerprint": "bde07dcc1dce8f0351ac4f8ff54a169f86fc6266110f80ad9731da322b2044a7",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/drive/service.py",
       "count": 1
     },
     {
-      "fingerprint": "df8a4e1d06b6b91efcf3a31093a70862bcaa1e4415f847c8a4a24cee59d77ff6",
+      "fingerprint": "e39e7491526e92db019660acbc75b17d6c599b2dfe76129ed43bd2824f06889c",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/drive/service.py",
       "count": 1
     },
     {
-      "fingerprint": "eb4b47671a72ca75578b093333c84749464d7df267a5acb1792ff56624cee243",
+      "fingerprint": "f9204b00893d4729532c5d66b506827398425427e1db06963b63f0b2f5f518b6",
       "source": "sarj-python-lint",
       "ruleId": "no-excessive-cognitive-complexity",
       "path": "backend/app/drive/service.py",

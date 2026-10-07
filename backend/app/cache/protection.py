@@ -10,12 +10,15 @@ from typing import Self
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from pydantic import JsonValue, TypeAdapter, ValidationError
+from pydantic import JsonValue, RootModel, ValidationError
 
 from app.config import parse_fernet_keys
 
 
-_JSON_VALUE: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
+class _CacheValue(RootModel[JsonValue]):
+    """Validate the JSON value stored inside the authenticated cache envelope."""
+
+
 _LOOKUP_KEY_INFO = b"sarj.cache-entry.h1.lookup-key"
 _ENVELOPE_PREFIX = "f1."
 _MAX_ROTATION_KEYS = 3
@@ -75,7 +78,7 @@ class CacheEntryProtector:
             {
                 "key": logical_key,
                 "namespace": namespace,
-                "value": _JSON_VALUE.validate_python(value),
+                "value": _CacheValue.model_validate(value).root,
             },
             ensure_ascii=False,
             separators=(",", ":"),
@@ -97,7 +100,7 @@ class CacheEntryProtector:
                 or payload["key"] != logical_key
             ):
                 raise InvalidCacheEntryError
-            return _JSON_VALUE.validate_python(payload["value"])
+            return _CacheValue.model_validate(payload["value"]).root
         except (InvalidToken, json.JSONDecodeError, ValidationError, UnicodeDecodeError) as error:
             raise InvalidCacheEntryError from error
 

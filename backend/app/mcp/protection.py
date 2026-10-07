@@ -9,10 +9,15 @@ import json
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from pydantic import ConfigDict, JsonValue, TypeAdapter
+from pydantic import ConfigDict, JsonValue, RootModel
 
 
-_VALUE = TypeAdapter(dict[str, JsonValue], config=ConfigDict(hide_input_in_errors=True))
+class _OAuthValue(RootModel[dict[str, JsonValue]]):
+    """Validate authenticated state without exposing input in validation errors."""
+
+    model_config = ConfigDict(hide_input_in_errors=True)
+
+
 MAX_VALUE_BYTES = 262_144
 _MAX_KEYS = 3
 
@@ -60,7 +65,7 @@ class OAuthStateProtector:  # sarj-noqa: SARJ071 -- Consumers require this encry
             raise InvalidOAuthStateError from None
 
     def _seal(self, collection: str, key: str, value: Mapping[str, object]) -> str:
-        payload = _VALUE.validate_python(dict(value), strict=True)
+        payload = _OAuthValue.model_validate(dict(value), strict=True).root
         plaintext = json.dumps(
             {"version": 1, "collection": collection, "key": key, "value": payload},
             sort_keys=True,
@@ -103,4 +108,4 @@ class OAuthStateProtector:  # sarj-noqa: SARJ071 -- Consumers require this encry
             or envelope["key"] != key
         ):
             raise InvalidOAuthStateError
-        return _VALUE.validate_python(envelope["value"], strict=True)
+        return _OAuthValue.model_validate(envelope["value"], strict=True).root

@@ -10,7 +10,7 @@ from typing import override
 import uuid
 
 from cryptography.fernet import InvalidToken
-from pydantic import BaseModel, JsonValue, TypeAdapter
+from pydantic import BaseModel, JsonValue, RootModel
 from sqlalchemy import Text, and_, case, cast, delete, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.engine import Row
@@ -62,8 +62,14 @@ from app.tasks.schemas import (
 )
 
 
-_JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
-_TASK_READ: TypeAdapter[TaskRead] = TypeAdapter(TaskRead)
+class _TaskJsonObject(RootModel[dict[str, JsonValue]]):
+    """Validate serialized task payloads without changing their JSON shape."""
+
+
+class _TaskReadPayload(RootModel[TaskRead]):
+    """Validate the existing status-discriminated task union."""
+
+
 _DEFAULT_RETENTION = timedelta(days=7)
 _MAX_ERROR_DETAIL_LENGTH = 256
 _TASK_FAILURE_DETAIL = "Task could not be completed"
@@ -1199,7 +1205,7 @@ def _serialize(model: BaseModel) -> dict[str, JsonValue]:
         # Preserve the pre-output_strategy payload and idempotency hash for legacy copy calls.
         if model.output_strategy is OutputStrategy.COPY:
             serialized.pop("output_strategy", None)
-    return _JSON_OBJECT.validate_python(serialized)
+    return _TaskJsonObject.model_validate(serialized).root
 
 
 def _public_document_transform_payload(
@@ -1207,15 +1213,19 @@ def _public_document_transform_payload(
 ) -> dict[str, JsonValue]:
     serialized = result.model_dump(mode="json")
     serialized.pop("qa_permission_evidence", None)
-    return _JSON_OBJECT.validate_python(serialized)
+    return _TaskJsonObject.model_validate(serialized).root
 
 
 def _terminal_result_matches(
     checkpoint_result: DocumentTransformResult,
     submitted_result: DocumentTransformResult,
 ) -> bool:
-    checkpoint_payload = _JSON_OBJECT.validate_python(checkpoint_result.model_dump(mode="json"))
-    submitted_payload = _JSON_OBJECT.validate_python(submitted_result.model_dump(mode="json"))
+    checkpoint_payload = _TaskJsonObject.model_validate(
+        checkpoint_result.model_dump(mode="json")
+    ).root
+    submitted_payload = _TaskJsonObject.model_validate(
+        submitted_result.model_dump(mode="json")
+    ).root
     checkpoint_link = (
         checkpoint_result.short_link_alias,
         checkpoint_result.short_link_status,
@@ -1266,7 +1276,7 @@ def _payload_for_storage(
     )
     protected = dict(serialized)
     protected["source"] = protected_source
-    return _JSON_OBJECT.validate_python(protected)
+    return _TaskJsonObject.model_validate(protected).root
 
 
 def _deserialize_document_transform_payload(
@@ -1336,7 +1346,7 @@ def _serialize_checkpoint(checkpoint: DocumentTransformCheckpoint) -> dict[str, 
     if len(plaintext.encode()) > _MAX_CHECKPOINT_PLAN_BYTES:
         raise CheckpointTooLargeError
     serialized["plan_ciphertext"] = encrypt_cache(plaintext)
-    return _JSON_OBJECT.validate_python(serialized)
+    return _TaskJsonObject.model_validate(serialized).root
 
 
 def _deserialize_checkpoint(raw: Mapping[str, object]) -> DocumentTransformCheckpoint:
@@ -1380,7 +1390,7 @@ def _to_read(task: Task) -> TaskRead:
     if task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM and isinstance(result, dict):
         result = dict(result)
         result.pop("qa_permission_evidence", None)
-    return _TASK_READ.validate_python(
+    return _TaskReadPayload.model_validate(
         {
             "id": task.id,
             "kind": task.kind,
@@ -1394,4 +1404,4 @@ def _to_read(task: Task) -> TaskRead:
             "finished_at": task.finished_at,
             "created_at": task.created_at,
         }
-    )
+    ).root
