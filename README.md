@@ -502,3 +502,5 @@ Disabling does not revoke durable credentials, and it does not pause admitted do
 
 Released under the [MIT License](LICENSE). Report security concerns privately to the
 repository maintainers; do not open a public issue containing sensitive details.
+
+<!-- Temporary CI measurement: documentation-only qualification probe. -->
