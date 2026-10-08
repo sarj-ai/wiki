@@ -1,0 +1,27 @@
+{
+  "upstream_pull_request": "https://github.com/micromatch/braces/pull/72",
+  "upstream_merge_status": "closed, unmerged",
+  "revision": "28d440b5dd449dbf1fe6f3506cf94ecca4d02660",
+  "files": [
+    {
+      "file": "lib/compile.js",
+      "revision": "28d440b5dd449dbf1fe6f3506cf94ecca4d02660"
+    },
+    {
+      "file": "lib/constants.js",
+      "revision": "28d440b5dd449dbf1fe6f3506cf94ecca4d02660"
+    },
+    {
+      "file": "lib/expand.js",
+      "revision": "28d440b5dd449dbf1fe6f3506cf94ecca4d02660"
+    },
+    {
+      "file": "lib/parse.js",
+      "revision": "28d440b5dd449dbf1fe6f3506cf94ecca4d02660"
+    },
+    {
+      "file": "lib/stringify.js",
+      "revision": "28d440b5dd449dbf1fe6f3506cf94ecca4d02660"
+    }
+  ]
+}
