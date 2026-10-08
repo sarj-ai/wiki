@@ -513,7 +513,6 @@
     "SARJ445": 2
   },
   "backend/tests/test_mcp_native_admission.py": {
-    "SARJ429": 1,
     "SARJ445": 3
   },
   "backend/tests/test_mcp_native_context.py": {
