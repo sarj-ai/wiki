@@ -89,7 +89,7 @@
     "happy-dom": "^20.11.2",
     "knip": "^6.32.2",
     "lefthook": "2.1.10",
-    "markdownlint-cli2": "^0.23.2",
+    "markdownlint-cli2": "^0.23.3",
     "postcss": "^8.5.26",
     "prettier": "^3.9.6",
     "prettier-plugin-tailwindcss": "^0.8.1",
