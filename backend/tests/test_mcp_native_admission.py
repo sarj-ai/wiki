@@ -177,7 +177,10 @@ async def test_interrupted_admission_rolls_back_and_releases_lock(
 
 async def test_database_failure_is_constant_and_redacted(lab: Lab) -> None:
     async with lab.sessions.begin() as db:
-        await db.execute(text("DROP TABLE mcp_registration_admission"))
+        table = McpRegistrationAdmission.__table__
+        assert isinstance(table, Table)
+        connection = await db.connection()
+        await connection.run_sync(table.drop)
     with pytest.raises(RegistrationAdmissionUnavailableError) as error:
         await PostgresRegistrationAdmission(lab.sessions).admit()
     rendered = "".join(traceback.format_exception(error.value))
