@@ -42,8 +42,11 @@ jobs:
         run: uv sync --locked --project backend
       - name: Bootstrap analysis inputs
         run: |
-          npm --prefix frontend run generate:api
+          npm --prefix frontend run patches:apply
       - name: Bootstrap analysis inputs (2)
+        run: |
+          npm --prefix frontend run generate:api
+      - name: Bootstrap analysis inputs (3)
         run: |
           npm --prefix frontend run typegen
       - name: Run standards
