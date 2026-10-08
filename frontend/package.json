@@ -129,7 +129,7 @@
     "eslint-plugin-react": {
       "eslint": "10.11.0"
     },
-    "js-yaml": "^5.2.2",
+    "js-yaml": "^5.4.3",
     "markdownlint-cli2": {
       "smol-toml": "1.9.0"
     },
