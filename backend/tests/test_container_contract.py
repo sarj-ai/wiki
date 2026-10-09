@@ -29,8 +29,11 @@ def test_qa_container_uses_secretless_static_entrypoint_without_runtime_argument
     assert "COPY scripts/ scripts/" in dockerfile
     assert all("@sha256:" in line for line in dockerfile.splitlines() if line.startswith("FROM "))
     assert dockerfile.count("FROM ") == 2
-    assert "apk add --no-cache poppler-utils" in dockerfile
-    assert "USER app" in dockerfile
+    assert "/bin/sh /tmp/prepare-runtime.sh qa" in dockerfile
+    runtime_setup = (_QA_DOCKERFILE.parent / "scripts/prepare-runtime.sh").read_text()
+    assert "apk add --no-cache poppler-utils=" in runtime_setup
+    assert "adduser -D -u 1001 app" in runtime_setup
+    assert "USER 1001:1001" in dockerfile
     assert (
         'ENTRYPOINT [".venv/bin/python", "-m", "scripts.qa_document_transform_cloud"]' in dockerfile
     )
