@@ -142,6 +142,9 @@ def test_migrations_only_execute_verified_image_update(
 def test_pre_commit_ref_selection(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, base: str, expected: list[str]
 ) -> None:
+    github_path = tmp_path / "github-path"
+    github_path.write_text("")
+    monkeypatch.setenv("GITHUB_PATH", str(github_path))
     initialization = tmp_path / "commands.sh"
     initialization.write_text(
         "uv() { printf 'native-bootstrap\\n'; }\n"
@@ -173,6 +176,9 @@ def test_pre_commit_ref_selection(
 def test_pre_commit_failure_is_not_swallowed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    github_path = tmp_path / "github-path"
+    github_path.write_text("")
+    monkeypatch.setenv("GITHUB_PATH", str(github_path))
     initialization = tmp_path / "commands.sh"
     initialization.write_text("uv() { return 0; }\nuvx() { return 1; }\n")
     monkeypatch.setenv("BASH_ENV", str(initialization))
