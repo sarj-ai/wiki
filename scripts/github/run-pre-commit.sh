@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+UV_PYTHON_DOWNLOADS_JSON_URL=https://raw.githubusercontent.com/astral-sh/uv/f69fb50c8b28997af9c6b0e5c700a34470d86005/crates/uv-python-managed/download-metadata.json \
+  uv run --no-config --no-project --python 3.15.0 --with code-standards==8.40.2 python -m sarj_standards.libs.adoption.native_bootstrap
+uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards setup --tools-only
+
 if [[ -z "$BASE_SHA" ]]; then
   uvx --python 3.14.7 'pre-commit==4.6.2' run --all-files --show-diff-on-failure
   exit 0
