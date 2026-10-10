@@ -1,5 +1,5 @@
 # Managed by `code-standards setup`; commit this file.
-bundle = "8.38.4"
+bundle = "8.40.2"
 rule_profile = "all"
 schema = 4
 
@@ -45,6 +45,7 @@ diagnostics = "diagnostic-baseline.json"
 
 [ci]
 bootstrap = [
+  "npm --prefix frontend run patches:apply",
   "npm --prefix frontend run generate:api",
   "npm --prefix frontend run typegen",
 ]

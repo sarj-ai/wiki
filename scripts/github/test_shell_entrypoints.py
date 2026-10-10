@@ -19,9 +19,7 @@ def _migration_job(command: list[str], args: list[str], image: str) -> str:
                     "spec": {
                         "template": {
                             "spec": {
-                                "containers": [
-                                    {"command": command, "args": args, "image": image}
-                                ]
+                                "containers": [{"command": command, "args": args, "image": image}]
                             }
                         }
                     }
@@ -144,8 +142,12 @@ def test_migrations_only_execute_verified_image_update(
 def test_pre_commit_ref_selection(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, base: str, expected: list[str]
 ) -> None:
+    github_path = tmp_path / "github-path"
+    github_path.write_text("")
+    monkeypatch.setenv("GITHUB_PATH", str(github_path))
     initialization = tmp_path / "commands.sh"
     initialization.write_text(
+        "uv() { printf 'native-bootstrap\\n'; }\n"
         "uvx() { printf '%s\\n' \"$@\"; }\n"
         "git() { test \"$*\" = 'rev-list --max-parents=0 HEAD' || return 1; printf root; }\n"
     )
@@ -153,23 +155,39 @@ def test_pre_commit_ref_selection(
     monkeypatch.setenv("BASE_SHA", base)
     monkeypatch.setenv("HEAD_SHA", "head")
     result = command_output(["bash", str(ROOT / "scripts/github/run-pre-commit.sh")])
-    assert result.splitlines() == ["--python", "3.14.7", "pre-commit==4.6.2", *expected]
+    assert result.splitlines() == [
+        "native-bootstrap",
+        "--no-config",
+        "--isolated",
+        "--python",
+        "3.14",
+        "--from",
+        "sarj-standards-bootstrap",
+        "code-standards",
+        "setup",
+        "--tools-only",
+        "--python",
+        "3.14.7",
+        "pre-commit==4.6.2",
+        *expected,
+    ]
 
 
 def test_pre_commit_failure_is_not_swallowed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    github_path = tmp_path / "github-path"
+    github_path.write_text("")
+    monkeypatch.setenv("GITHUB_PATH", str(github_path))
     initialization = tmp_path / "commands.sh"
-    initialization.write_text("uvx() { return 1; }\n")
+    initialization.write_text("uv() { return 0; }\nuvx() { return 1; }\n")
     monkeypatch.setenv("BASH_ENV", str(initialization))
     monkeypatch.setenv("BASE_SHA", "")
     with pytest.raises(ReleaseBlockedError):
         command_output(["bash", str(ROOT / "scripts/github/run-pre-commit.sh")])
 
 
-@pytest.mark.parametrize(
-    "fault", ["none", "http", "body", "request-id", "cache", "transport"]
-)
+@pytest.mark.parametrize("fault", ["none", "http", "body", "request-id", "cache", "transport"])
 def test_health_requires_all_release_receipts(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fault: str
 ) -> None:
@@ -194,18 +212,14 @@ jq() { test "$FAULT" != body; }
     monkeypatch.setenv("FAULT", fault)
     monkeypatch.setenv("HTTP_STATUS", "500" if fault == "http" else "200")
     monkeypatch.setenv("RESPONSE_ID", "foreign" if fault == "request-id" else "canary")
-    monkeypatch.setenv(
-        "CACHE_CONTROL", "public" if fault == "cache" else "private, no-store"
-    )
+    monkeypatch.setenv("CACHE_CONTROL", "public" if fault == "cache" else "private, no-store")
     command = ["bash", str(ROOT / "scripts/frontend_release/verify-health.sh")]
     if fault == "none":
         assert command_output(command) == "Frontend production revision verified."
     else:
         with pytest.raises(ReleaseBlockedError):
             command_output(command)
-    assert (tmp_path / "calls").read_text().splitlines() == ["call"] * (
-        1 if fault == "none" else 6
-    )
+    assert (tmp_path / "calls").read_text().splitlines() == ["call"] * (1 if fault == "none" else 6)
     assert not (tmp_path / "frontend-health-body.json").exists()
     assert not (tmp_path / "frontend-health-headers.txt").exists()
 
@@ -221,10 +235,22 @@ jq() { test "$FAULT" != body; }
         ),
     ],
 )
-def test_workflow_calls_tested_entrypoint(
-    workflow: str, step_name: str, entrypoint: str
-) -> None:
+def test_workflow_calls_tested_entrypoint(workflow: str, step_name: str, entrypoint: str) -> None:
     document = yaml.safe_load((ROOT / ".github/workflows" / workflow).read_text())
     steps = [step for job in document["jobs"].values() for step in job.get("steps", [])]
     (step,) = [step for step in steps if step.get("name") == step_name]
     assert step["run"] == f"bash {entrypoint}"
+
+
+def test_pre_commit_native_bootstrap_failure_stops_before_hook_execution(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    initialization = tmp_path / "commands.sh"
+    marker = tmp_path / "hook-ran"
+    initialization.write_text('uv() { return 71; }\nuvx() { touch "$HOOK_MARKER"; }\n')
+    monkeypatch.setenv("BASH_ENV", str(initialization))
+    monkeypatch.setenv("HOOK_MARKER", str(marker))
+    monkeypatch.setenv("BASE_SHA", "")
+    with pytest.raises(ReleaseBlockedError):
+        command_output(["bash", str(ROOT / "scripts/github/run-pre-commit.sh")])
+    assert not marker.exists()

@@ -4,7 +4,7 @@ FROM python:3.14.7-alpine@sha256:05b2b8b732ecd268fee8727a369f936f022d1321b59befd
 
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:0.12.18@sha256:3adc3706091ce7c2fe595e669628caedd6d951551b92b258b7e7dbe06d9440bc /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.24@sha256:3af4716e991d6956a41e573eab705d0ee08500cd829ed30293eb8472f372c65a /uv /uvx /usr/local/bin/
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
@@ -26,16 +26,15 @@ WORKDIR /app
 ARG RELEASE_SHA=dev
 ENV RELEASE_SHA=$RELEASE_SHA
 
-RUN apk upgrade --no-cache \
-    && python -m pip uninstall --yes pip \
-    && adduser -D -u 1001 app
+RUN --mount=type=bind,source=scripts/prepare-runtime.sh,target=/tmp/prepare-runtime.sh \
+    /bin/sh /tmp/prepare-runtime.sh
 
 COPY --from=builder --chown=app:app /app/.venv .venv
 COPY --from=builder --chown=app:app /app/app app
 COPY --from=builder --chown=app:app /app/alembic alembic
 COPY --from=builder --chown=app:app /app/alembic.ini .
 
-USER app
+USER 1001:1001
 
 EXPOSE 8000
 
