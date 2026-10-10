@@ -111,6 +111,7 @@ jobs:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.verification_run_id == '' && inputs.verification_run_attempt == ''))
     needs: [ci-backend, ci-frontend, ci-quality, ci-iac, standards-receipt]
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 45
 
     permissions:
       contents: read
