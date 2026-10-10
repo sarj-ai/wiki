@@ -76,6 +76,7 @@ class PostgresAliasService(AliasService):
         row = await self._db.get(DocumentAlias, alias)
         if row is None or row.retired_at is not None:
             raise AliasNotFoundError
+        await self._db.commit()
         try:
             await self._files.get(row.file_id)
         except FilesError as exc:
@@ -136,9 +137,9 @@ class PostgresAliasService(AliasService):
             raise AliasTargetUnsupportedError
         if not file.can_edit:
             raise AliasEditForbiddenError
+        if (existing := await self._active_for_file(file.id)) is not None:
+            return _to_read(existing)
         for alias in candidates:
-            if (existing := await self._active_for_file(file.id)) is not None:
-                return _to_read(existing)
             statement = (
                 pg_insert(DocumentAlias)
                 .values(alias=alias, file_id=file.id, created_by=self._user.id)
@@ -189,6 +190,9 @@ class PostgresAliasService(AliasService):
         )
         rows_by_alias = {row.alias: row for row in result.scalars().all()}
         ordered_rows = [rows_by_alias[alias] for alias in unique_aliases if alias in rows_by_alias]
+        # Provider membership resolution uses independent cache sessions.
+        # Do not retain a connection for this completed alias read during it.
+        await self._db.commit()
         files_by_id = await self._files.get_accessible_many([row.file_id for row in ordered_rows])
 
         drive_names = (

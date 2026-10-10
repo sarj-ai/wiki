@@ -8,7 +8,7 @@ import { WIKI_READ_API } from "@/lib/wiki-read-api";
 
 export function useCurrentUser() {
   return useQuery<User>({
-    queryFn: WIKI_READ_API.getMe,
+    queryFn: async ({ signal }) => await WIKI_READ_API.getMe(signal),
     queryKey: authKeys.me,
     staleTime: 5 * 60 * 1000,
   });

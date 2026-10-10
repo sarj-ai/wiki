@@ -15,6 +15,7 @@ from sqlalchemy import Text, and_, case, cast, delete, func, literal, or_, selec
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.auth.encryption import decrypt_cache, encrypt_cache
 from app.document_transform.brand_manifest import CURRENT_BRAND_MANIFEST
@@ -87,6 +88,21 @@ _TERMINAL_REDACTED_PAYLOAD: dict[str, JsonValue] = {"redacted": True}
 _LEASE_RETENTION_GRACE = timedelta(minutes=10)
 _COPY_CHECKPOINT_CIPHERTEXT_FIELD = "checkpoint_ciphertext"
 _MAX_DISPATCH_RECONCILIATION_BATCH = 100
+_PUBLIC_TASK_COLUMNS = (
+    Task.id,
+    Task.kind,
+    Task.status,
+    Task.result,
+    Task.resource_id,
+    Task.error_code,
+    Task.error_detail,
+    Task.attempt_count,
+    Task.started_at,
+    Task.finished_at,
+    Task.created_at,
+)
+_PUBLIC_TASK_LOAD = load_only(*_PUBLIC_TASK_COLUMNS, raiseload=True)
+_REPLAY_TASK_LOAD = load_only(*_PUBLIC_TASK_COLUMNS, Task.request_hash, raiseload=True)
 
 
 class TaskService(ABC):
@@ -216,6 +232,7 @@ class PostgresTaskService(TaskService):
         row = (
             await self._db.execute(
                 select(Task)
+                .options(_PUBLIC_TASK_LOAD)
                 .where(
                     Task.owner_user_id == owner_user_id,
                     Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -338,6 +355,7 @@ class PostgresTaskService(TaskService):
             .on_conflict_do_nothing()
             .add_cte(expired)
             .returning(Task)
+            .options(_PUBLIC_TASK_LOAD)
         )
         task = (await self._db.execute(statement)).scalar_one_or_none()
         if task is not None:
@@ -441,6 +459,7 @@ class PostgresTaskService(TaskService):
         return (
             await self._db.execute(
                 select(Task, (Task.expires_at <= func.now()).label("expired"))
+                .options(_REPLAY_TASK_LOAD)
                 .where(
                     Task.owner_user_id == owner_user_id,
                     Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -479,6 +498,7 @@ class PostgresTaskService(TaskService):
         refreshed = (
             await self._db.execute(
                 select(Task, (Task.expires_at <= func.clock_timestamp()).label("expired"))
+                .options(_REPLAY_TASK_LOAD)
                 .where(
                     Task.id == active_row[0].id,
                     Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
@@ -510,42 +530,31 @@ class PostgresTaskService(TaskService):
     async def _check_document_transform_limits(
         self, owner_user_id: uuid.UUID, payload: DocumentTransformRequest
     ) -> None:
-        active_count = (
-            await self._db.execute(
-                select(func.count())
-                .select_from(Task)
-                .where(
-                    Task.owner_user_id == owner_user_id,
-                    Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM,
-                    Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
-                    Task.expires_at > func.now(),
-                )
+        statement = (
+            select(
+                func.count().filter(Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM),
+                func.count().filter(Task.in_place_target.is_not(None)),
             )
-        ).scalar_one_or_none()
-        if not isinstance(active_count, int):
-            msg = "Active document-transform task count query returned an invalid value"
-            raise TypeError(msg)
-        if active_count >= _MAX_ACTIVE_DOCUMENT_TRANSFORMS_PER_OWNER:
-            await self._db.rollback()
-            raise TaskAdmissionLimitError
+            .select_from(Task)
+            .where(
+                Task.owner_user_id == owner_user_id,
+                Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
+                Task.expires_at > func.now(),
+            )
+        )
         if payload.output_strategy is not OutputStrategy.IN_PLACE:
-            return
-        active_in_place_count = (
-            await self._db.execute(
-                select(func.count())
-                .select_from(Task)
-                .where(
-                    Task.owner_user_id == owner_user_id,
-                    Task.in_place_target.is_not(None),
-                    Task.status.in_((TaskStatus.PENDING, TaskStatus.RUNNING)),
-                    Task.expires_at > func.now(),
-                )
-            )
-        ).scalar_one_or_none()
-        if not isinstance(active_in_place_count, int):
-            msg = "Active in-place task count query returned an invalid value"
+            statement = statement.where(Task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM)
+        active_counts = (await self._db.execute(statement)).one()
+        active_count, active_in_place_count = active_counts
+        if not isinstance(active_count, int) or not isinstance(active_in_place_count, int):
+            msg = "Active task count query returned an invalid value"
             raise TypeError(msg)
-        if active_in_place_count >= _MAX_ACTIVE_IN_PLACE_TASKS_PER_OWNER:
+        owner_limit_reached = active_count >= _MAX_ACTIVE_DOCUMENT_TRANSFORMS_PER_OWNER
+        in_place_limit_reached = (
+            payload.output_strategy is OutputStrategy.IN_PLACE
+            and active_in_place_count >= _MAX_ACTIVE_IN_PLACE_TASKS_PER_OWNER
+        )
+        if owner_limit_reached or in_place_limit_reached:
             await self._db.rollback()
             raise TaskAdmissionLimitError
 
@@ -582,6 +591,7 @@ class PostgresTaskService(TaskService):
                 updated_at=now,
             )
             .returning(Task)
+            .options(_PUBLIC_TASK_LOAD)
         )
         task = (await self._db.execute(statement)).scalar_one_or_none()
         if task is None:
@@ -613,11 +623,21 @@ class PostgresTaskService(TaskService):
         lease_token: uuid.UUID,
         resource_id: FileId,
     ) -> None:
-        await self._owned_lease_update(
-            task_id,
-            lease_token,
-            values={"resource_id": resource_id, "updated_at": datetime.now(UTC)},
+        statement = (
+            update(Task)
+            .where(
+                Task.id == task_id,
+                Task.status == TaskStatus.RUNNING,
+                Task.lease_token.is_not_distinct_from(lease_token),
+            )
+            .values(resource_id=resource_id, updated_at=datetime.now(UTC))
+            .returning(Task.id)
         )
+        updated = (await self._db.execute(statement)).scalar_one_or_none()
+        if updated is None:
+            await self._db.rollback()
+            raise TaskLeaseLostError
+        await self._db.commit()
 
     @override
     async def succeed(
@@ -704,6 +724,7 @@ class PostgresTaskService(TaskService):
                 updated_at=now,
             )
             .returning(Task)
+            .options(_PUBLIC_TASK_LOAD)
         )
         task = (await self._db.execute(statement)).scalar_one_or_none()
         if task is None:
@@ -716,7 +737,9 @@ class PostgresTaskService(TaskService):
     async def get_for_owner(self, task_id: TaskId, owner_user_id: UserId) -> TaskRead:
         task = (
             await self._db.execute(
-                select(Task).where(
+                select(Task)
+                .options(_PUBLIC_TASK_LOAD)
+                .where(
                     Task.id == task_id,
                     Task.owner_user_id == owner_user_id,
                     Task.expires_at > func.now(),
@@ -742,52 +765,35 @@ class PostgresTaskService(TaskService):
             raise ValueError
         findings = Task.result["findings"]
         model_ids = Task.result["model_ids"]
-        row = (
+        valid_result = and_(
+            func.jsonb_typeof(Task.result) == "object",
+            func.octet_length(cast(Task.result, Text)).between(1, max_result_bytes),
+            case(
+                (func.jsonb_typeof(findings) == "array", func.jsonb_array_length(findings)),
+                else_=-1,
+            ).between(0, max_findings),
+            case(
+                (func.jsonb_typeof(model_ids) == "array", func.jsonb_array_length(model_ids)),
+                else_=-1,
+            ).between(0, max_model_entries),
+        )
+        task = (
             await self._db.execute(
-                select(
-                    Task.status,
-                    # Measure the uncompressed JSON text in PostgreSQL before
-                    # asyncpg can materialize it in the application process.
-                    func.coalesce(func.octet_length(cast(Task.result, Text)), 0).label(
-                        "result_bytes"
-                    ),
-                    func.jsonb_typeof(Task.result).label("result_type"),
-                    case(
-                        (func.jsonb_typeof(findings) == "array", func.jsonb_array_length(findings)),
-                        else_=-1,
-                    ).label("finding_count"),
-                    case(
-                        (
-                            func.jsonb_typeof(model_ids) == "array",
-                            func.jsonb_array_length(model_ids),
-                        ),
-                        else_=-1,
-                    ).label("model_id_count"),
-                )
+                select(Task)
+                .options(_PUBLIC_TASK_LOAD)
                 .where(
                     Task.id == task_id,
                     Task.owner_user_id == owner_user_id,
                     Task.expires_at > func.now(),
+                    # Filter before asyncpg materializes a terminal JSON result.
+                    or_(Task.status != TaskStatus.SUCCEEDED, valid_result),
                 )
-                # Hold a read lock through the following typed fetch so a task
-                # cannot transition to an oversized terminal result in between.
                 .with_for_update(read=True)
             )
-        ).one_or_none()
-        if row is None:
+        ).scalar_one_or_none()
+        if task is None:
             raise TaskNotFoundError
-        result_size_valid = 1 <= row.result_bytes <= max_result_bytes
-        collection_counts_valid = all(
-            (
-                0 <= row.finding_count <= max_findings,
-                0 <= row.model_id_count <= max_model_entries,
-            )
-        )
-        if row.status == TaskStatus.SUCCEEDED and not (
-            row.result_type == "object" and result_size_valid and collection_counts_valid
-        ):
-            raise TaskNotFoundError
-        return await self.get_for_owner(task_id, owner_user_id)
+        return _to_read(task)
 
     @override
     async def get_qa_permission_evidence(
@@ -824,7 +830,13 @@ class PostgresTaskService(TaskService):
     async def load_smart_create(self, task_id: TaskId) -> SmartCreateTaskRecord:
         task = (
             await self._db.execute(
-                select(Task).where(Task.id == task_id, Task.expires_at > func.now())
+                select(Task)
+                .options(
+                    load_only(
+                        *_PUBLIC_TASK_COLUMNS, Task.owner_user_id, Task.payload, raiseload=True
+                    )
+                )
+                .where(Task.id == task_id, Task.expires_at > func.now())
             )
         ).scalar_one_or_none()
         if task is None or task.kind != TaskKind.FILE_SMART_CREATE:
@@ -878,7 +890,18 @@ class PostgresTaskService(TaskService):
     async def load_document_transform(self, task_id: TaskId) -> DocumentTransformTaskRecord:
         task = (
             await self._db.execute(
-                select(Task).where(Task.id == task_id, Task.expires_at > func.now())
+                select(Task)
+                .options(
+                    load_only(
+                        *_PUBLIC_TASK_COLUMNS,
+                        Task.owner_user_id,
+                        Task.payload,
+                        Task.checkpoint,
+                        Task.checkpoint_generation,
+                        raiseload=True,
+                    )
+                )
+                .where(Task.id == task_id, Task.expires_at > func.now())
             )
         ).scalar_one_or_none()
         if task is None or task.kind != TaskKind.FILE_DOCUMENT_TRANSFORM:
@@ -915,7 +938,9 @@ class PostgresTaskService(TaskService):
     ) -> Task | None:
         return (
             await self._db.execute(
-                select(Task).where(
+                select(Task)
+                .options(_REPLAY_TASK_LOAD)
+                .where(
                     Task.owner_user_id == owner_user_id,
                     Task.kind == kind,
                     or_(
@@ -967,6 +992,7 @@ class PostgresTaskService(TaskService):
         terminal = (
             await self._db.execute(
                 select(Task)
+                .options(_PUBLIC_TASK_LOAD)
                 .where(
                     Task.owner_user_id == owner_user_id,
                     Task.kind == kind,
@@ -1006,6 +1032,7 @@ class PostgresTaskService(TaskService):
         terminal = (
             await self._db.execute(
                 select(Task)
+                .options(_PUBLIC_TASK_LOAD)
                 .where(
                     Task.id == terminal.id,
                     Task.owner_user_id == owner_user_id,
@@ -1079,6 +1106,14 @@ class PostgresTaskService(TaskService):
             .values(**values)
             .returning(Task)
         )
+        if header_result is not None and header_result.header_identity is not None:
+            statement = statement.options(
+                load_only(
+                    *_PUBLIC_TASK_COLUMNS, Task.owner_user_id, Task.checkpoint, raiseload=True
+                )
+            )
+        else:
+            statement = statement.options(_PUBLIC_TASK_LOAD)
         task = (await self._db.execute(statement)).scalar_one_or_none()
         if task is None:
             await self._db.rollback()

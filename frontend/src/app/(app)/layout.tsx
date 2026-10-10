@@ -1,6 +1,6 @@
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
 import { cookies } from "next/headers";
-import type { CSSProperties } from "react";
+import { type CSSProperties, Suspense } from "react";
 
 import { BrowserSessionBoundary } from "@/components/browser-session-boundary";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -25,7 +25,36 @@ interface SidebarStyle extends CSSProperties {
   "--sidebar-width"?: string;
 }
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<WorkspaceSkeleton />}>
+      <AuthenticatedLayout>{children}</AuthenticatedLayout>
+    </Suspense>
+  );
+}
+
+function WorkspaceSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Loading workspace" className="bg-background flex min-h-svh">
+      <aside className="bg-sidebar hidden w-72 shrink-0 space-y-4 border-r p-4 md:block">
+        <SarjLogoSkeleton />
+        <div className="bg-muted h-8 animate-pulse rounded-md" />
+        <div className="text-muted-foreground text-xs">Loading workspace…</div>
+      </aside>
+      <main className="min-w-0 flex-1">
+        <div className="border-border flex h-10 items-center border-b px-4">
+          <div className="bg-muted h-3 w-40 animate-pulse rounded-sm" />
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function SarjLogoSkeleton() {
+  return <div className="bg-muted h-7 w-20 animate-pulse rounded-sm" />;
+}
+
+async function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
   const defaultOpen = SidebarStateCookieSchema.parse(cookieStore.get("sidebar_state")?.value);
   const savedWidth = SidebarWidthCssSchema.parse(cookieStore.get(SIDEBAR_WIDTH_COOKIE)?.value);

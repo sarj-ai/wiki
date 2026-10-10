@@ -101,3 +101,30 @@ async def test_exception_propagates_to_concurrent_waiters() -> None:
         await task_a
     with pytest.raises(RuntimeError, match="boom"):
         await task_b
+
+
+async def test_cancelled_follower_does_not_cancel_leader_or_other_followers() -> None:
+    sf = Singleflight[str]()
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    async def work() -> str:
+        nonlocal calls
+        calls += 1
+        started.set()
+        await release.wait()
+        return "done"
+
+    leader = asyncio.create_task(sf.do("shared", work))
+    await started.wait()
+    cancelled = asyncio.create_task(sf.do("shared", work))
+    survivor = asyncio.create_task(sf.do("shared", work))
+    await asyncio.sleep(0)
+    cancelled.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled
+    release.set()
+    assert await asyncio.gather(leader, survivor) == ["done", "done"]
+    assert calls == 1
+    assert await sf.do("shared", work) == "done"

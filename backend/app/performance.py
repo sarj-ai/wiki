@@ -31,7 +31,7 @@ class RequestMetrics:
             }
 
     def server_timing_value(self) -> str | None:
-        allowed = ("auth", "db", "cache", "google")
+        allowed = ("app", "auth", "db", "cache", "google")
         with self._lock:
             parts = [
                 f"{name};dur={self.durations_ms[name]:.1f}"

@@ -10,5 +10,5 @@ def test_cache_protector_is_a_process_singleton() -> None:
     assert cache_entry_protector_dep() is first
 
 
-def test_cache_dependency_keeps_the_public_service_contract() -> None:
-    assert isinstance(cache_service_dep(), CachePSqlService)
+async def test_cache_dependency_keeps_the_public_service_contract() -> None:
+    assert isinstance(await cache_service_dep(), CachePSqlService)

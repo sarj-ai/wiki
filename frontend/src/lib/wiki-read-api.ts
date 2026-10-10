@@ -1,41 +1,97 @@
 "use client";
 
-import {
-  getCurrentUserAction,
-  getDocumentAliasAction,
-  getDriveFoldersAction,
-  getDrivePermissionsAction,
-  getDrivesAction,
-  getDriveSearchSnippetAction,
-  getFileAction,
-  getFolderFilesAction,
-  getPreferencesAction,
-  listDocIconsAction,
-  listFolderIconsAction,
-  listSortOrdersAction,
-  searchDriveAction,
-} from "@/app/actions/wiki-actions";
-import { runAction } from "@/lib/action-client";
+import { z } from "zod";
 
-/** Browser-safe reads through authenticated Server Actions. */
+import { wikiReadHttp } from "@/lib/clients/wiki-read-http";
+import {
+  docIcon,
+  documentAliasForFile,
+  driveNode,
+  drivePermissionsPage,
+  driveSummary,
+  driveTree,
+  fileDetail,
+  folderIcon,
+  preferences,
+  searchResult,
+  snippetResult,
+  sortOrder,
+  userProfile,
+} from "@/lib/wiki-schemas";
+
+const DriveSummariesSchema = z.array(driveSummary);
+const DriveNodesSchema = z.array(driveNode);
+const DocIconsSchema = z.array(docIcon);
+const FolderIconsSchema = z.array(folderIcon);
+const SortOrdersSchema = z.array(sortOrder);
+const SearchResultsSchema = z.array(searchResult);
+const QUERY_FIELDS = {
+  fileId: "file_id",
+  limitPerDrive: "limit_per_drive",
+  mimeType: "mime_type",
+  pageToken: "page_token",
+} as const;
+
+/** Concurrent reads through a restricted, authenticated same-origin route. */
 export const WIKI_READ_API = Object.freeze({
-  driveSearch: async (query: string, limitPerDrive?: number) =>
-    await runAction(async () => await searchDriveAction(query, limitPerDrive)),
-  driveSearchSnippet: async (fileId: string, query: string, mimeType?: string) =>
-    await runAction(async () => await getDriveSearchSnippetAction(fileId, query, mimeType)),
-  getDocumentAlias: async (fileId: string) =>
-    await runAction(async () => await getDocumentAliasAction(fileId)),
-  getDriveFolders: async (driveId: string) =>
-    await runAction(async () => await getDriveFoldersAction(driveId)),
-  getDrivePermissions: async (driveId: string, pageToken?: string) =>
-    await runAction(async () => await getDrivePermissionsAction(driveId, pageToken)),
-  getDrives: async () => await runAction(getDrivesAction),
-  getFile: async (fileId: string) => await runAction(async () => await getFileAction(fileId)),
-  getFolderFiles: async (folderId: string) =>
-    await runAction(async () => await getFolderFilesAction(folderId)),
-  getMe: async () => await runAction(getCurrentUserAction),
-  getPreferences: async () => await runAction(getPreferencesAction),
-  listDocIcons: async () => await runAction(listDocIconsAction),
-  listFolderIcons: async () => await runAction(listFolderIconsAction),
-  listSortOrders: async () => await runAction(listSortOrdersAction),
+  driveSearch: async (query: string, limitPerDrive?: number, signal?: AbortSignal) =>
+    await wikiReadHttp(
+      "/drive-search",
+      SearchResultsSchema,
+      { q: query, [QUERY_FIELDS.limitPerDrive]: limitPerDrive },
+      signal,
+    ),
+  driveSearchSnippet: async (
+    fileId: string,
+    query: string,
+    mimeType?: string,
+    signal?: AbortSignal,
+  ) =>
+    await wikiReadHttp(
+      "/drive-search/snippet",
+      snippetResult,
+      { [QUERY_FIELDS.fileId]: fileId, q: query, [QUERY_FIELDS.mimeType]: mimeType },
+      signal,
+    ),
+  getDocumentAlias: async (fileId: string, signal?: AbortSignal) =>
+    await wikiReadHttp(
+      `/aliases/files/${encodeURIComponent(fileId)}`,
+      documentAliasForFile,
+      {},
+      signal,
+    ),
+  getDriveFolders: async (driveId: string, signal?: AbortSignal) =>
+    await wikiReadHttp(
+      `/sidebar/drives/${encodeURIComponent(driveId)}/folders`,
+      driveTree,
+      {},
+      signal,
+    ),
+  getDrivePermissions: async (driveId: string, pageToken?: string, signal?: AbortSignal) =>
+    await wikiReadHttp(
+      `/sidebar/drives/${encodeURIComponent(driveId)}/permissions`,
+      drivePermissionsPage,
+      { [QUERY_FIELDS.pageToken]: pageToken },
+      signal,
+    ),
+  getDrives: async (signal?: AbortSignal) =>
+    await wikiReadHttp("/sidebar/drives", DriveSummariesSchema, {}, signal),
+  getFile: async (fileId: string, signal?: AbortSignal) =>
+    await wikiReadHttp(`/files/${encodeURIComponent(fileId)}`, fileDetail, {}, signal),
+  getFolderFiles: async (folderId: string, signal?: AbortSignal) =>
+    await wikiReadHttp(
+      `/sidebar/folders/${encodeURIComponent(folderId)}/files`,
+      DriveNodesSchema,
+      {},
+      signal,
+    ),
+  getMe: async (signal?: AbortSignal) => await wikiReadHttp("/auth/me", userProfile, {}, signal),
+  getPreferences: async (signal?: AbortSignal) =>
+    await wikiReadHttp("/extras/preferences", preferences, {}, signal),
+  listDocIcons: async (signal?: AbortSignal) =>
+    await wikiReadHttp("/extras/doc-icons", DocIconsSchema, {}, signal),
+  listFolderIcons: async (signal?: AbortSignal) =>
+    await wikiReadHttp("/extras/folder-icons", FolderIconsSchema, {}, signal),
+  listSortOrders: async (signal?: AbortSignal) =>
+    await wikiReadHttp("/extras/sort-order", SortOrdersSchema, {}, signal),
 });

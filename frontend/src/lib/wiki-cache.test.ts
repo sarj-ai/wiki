@@ -229,6 +229,19 @@ describe("findCachedNodeMeta", () => {
     });
   });
 
+  it("refreshes hints when an immutable query array is replaced", () => {
+    const qc = new QueryClient();
+    qc.setQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"), [
+      makeNode({ id: "doc-1", name: "Before" }),
+    ]);
+    expect(findCachedNodeMeta(qc, "doc-1")?.name).toBe("Before");
+    expect(findCachedNodeMeta(qc, "doc-1")?.name).toBe("Before");
+    qc.setQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"), [
+      makeNode({ id: "doc-1", name: "After" }),
+    ]);
+    expect(findCachedNodeMeta(qc, "doc-1")?.name).toBe("After");
+  });
+
   it("returns null when nothing cached matches", () => {
     const qc = new QueryClient();
     qc.setQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"), [makeNode({ id: "other" })]);

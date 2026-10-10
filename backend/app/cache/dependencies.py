@@ -14,5 +14,5 @@ def cache_entry_protector_dep() -> CacheEntryProtector:
     return CacheEntryProtector.from_key_string(raw_keys)
 
 
-def cache_service_dep() -> CacheService:
+async def cache_service_dep() -> CacheService:
     return CachePSqlService(async_session, cache_entry_protector_dep())

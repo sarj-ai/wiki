@@ -1,16 +1,12 @@
-import { cookies } from "next/headers";
 import * as z from "zod";
 
 import {
   createDocumentTransformAction,
   createDocumentTransformUploadAction,
-  getCurrentDocumentPolishAction,
-  getDocumentTransformCapabilitiesAction,
-  getSmartCreateTaskAction,
 } from "@/app/actions/smart-create-actions";
 import type { ActionErrorCode, ActionResult } from "@/lib/action-result";
 import { boundedTransformText } from "@/lib/bounded-transform-text";
-import { readSmartCreateApi } from "@/lib/smart-create-server-client";
+import { wikiReadResponse } from "@/lib/clients/wiki-read-response";
 
 interface RouteContext {
   params: Promise<{ path?: string[] }>;
@@ -25,6 +21,7 @@ const RESPONSE_HEADERS = {
 } as const;
 const SOURCE_CHANGED_MESSAGE =
   "The document changed since polishing was requested. Reload it before trying again.";
+const UPSTREAM_TIMEOUT_MS = 30_000;
 
 function failure(status: number, code?: ActionErrorCode): Response {
   const sourceChanged = status === 409 && code === "document_transform_source_changed";
@@ -46,15 +43,6 @@ function trustedRequest(request: Request): boolean {
     (site === null || site === "same-origin") &&
     (request.method === "GET" || request.headers.get("origin") === new URL(request.url).origin)
   );
-}
-
-function resultResponse(result: ActionResult<string>, exposeReplay = false): Response {
-  if (!result.ok) return failure(result.status, result.code);
-  const headers = new Headers(RESPONSE_HEADERS);
-  if (exposeReplay && result.replayed !== undefined) {
-    headers.set("Idempotency-Replayed", String(result.replayed));
-  }
-  return new Response(result.data, { headers });
 }
 
 async function post(request: Request, context: RouteContext): Promise<Response> {
@@ -89,28 +77,47 @@ async function get(request: Request, context: RouteContext): Promise<Response> {
   }
 }
 
+function resultResponse(result: ActionResult<string>, exposeReplay = false): Response {
+  if (!result.ok) return failure(result.status, result.code);
+  const headers = new Headers(RESPONSE_HEADERS);
+  if (exposeReplay && result.replayed !== undefined) {
+    headers.set("Idempotency-Replayed", String(result.replayed));
+  }
+  return new Response(result.data, { headers });
+}
+
 async function readPath(path: string[], request: Request): Promise<Response> {
   if (path.length === 1 && path[0] === "capabilities") {
-    return resultResponse(await getDocumentTransformCapabilitiesAction());
+    return await wikiReadResponse(
+      request,
+      "/document-transforms/capabilities",
+      failure,
+      UPSTREAM_TIMEOUT_MS,
+    );
   }
   if (path.length === 1 && path[0] === "current") {
     const url = new URL(request.url);
     const fileId = url.searchParams.get("file_id");
     const mode = TransformModeSchema.safeParse(url.searchParams.get("mode"));
     if (!fileId || fileId.length > 128 || !mode.success) return failure(400);
-    return resultResponse(await getCurrentDocumentPolishAction(fileId, mode.data));
+    return await wikiReadResponse(
+      request,
+      `/document-transforms/current?file_id=${encodeURIComponent(fileId)}&mode=${encodeURIComponent(mode.data)}`,
+      failure,
+      UPSTREAM_TIMEOUT_MS,
+    );
   }
   const id = UuidSchema.safeParse(path[1]);
   if (path.length !== 2 || !id.success) return failure(400);
-  if (path[0] === "tasks") return resultResponse(await getSmartCreateTaskAction(id.data));
+  if (path[0] === "tasks")
+    return await wikiReadResponse(request, `/tasks/${id.data}`, failure, UPSTREAM_TIMEOUT_MS);
   if (path[0] !== "admissions") return failure(404);
-  const cookieStore = await cookies();
-  const token = cookieStore.get("access_token")?.value;
-  if (!token) return failure(401);
-  const result = await readSmartCreateApi(`/document-transforms/admissions/${id.data}`, token);
-  return result.ok
-    ? new Response(result.body, { headers: RESPONSE_HEADERS })
-    : failure(result.status);
+  return await wikiReadResponse(
+    request,
+    `/document-transforms/admissions/${id.data}`,
+    failure,
+    UPSTREAM_TIMEOUT_MS,
+  );
 }
 
 export { get as GET, post as POST };

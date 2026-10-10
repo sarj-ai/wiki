@@ -12,7 +12,7 @@ from app.identifiers import FileId
 from app.models.user import User
 
 
-def files_service_dep(
+async def files_service_dep(
     user: Annotated[User, Depends(get_current_user)],
     drive: Annotated[DriveService, Depends(drive_service_dep)],
 ) -> FilesService:

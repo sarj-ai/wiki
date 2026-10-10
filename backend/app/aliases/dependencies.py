@@ -15,7 +15,7 @@ from app.files.service import FilesService
 from app.models.user import User
 
 
-def alias_service_dep(
+async def alias_service_dep(
     db: Annotated[AsyncSession, Depends(get_db)],
     files: Annotated[FilesService, Depends(files_service_dep)],
     drive: Annotated[DriveService, Depends(drive_service_dep)],

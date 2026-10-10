@@ -64,8 +64,13 @@ export function WikiSidebar() {
   const activeFileQuery = useFile(activeDriveId);
   const breadcrumb = activeFileQuery.data?.breadcrumb;
   useEffect(() => {
-    if (!activeDriveId || !breadcrumb || breadcrumb.length === 0) return;
-    if (!consumeRevealFor(activeDriveId)) return;
+    if (
+      !activeDriveId ||
+      !breadcrumb ||
+      breadcrumb.length === 0 ||
+      !consumeRevealFor(activeDriveId)
+    )
+      return;
     const [driveCrumb, ...folderCrumbs] = breadcrumb;
     if (!driveCrumb) return;
     expandPath(

@@ -5,6 +5,7 @@ import { Fragment, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { useDeferredDialog } from "@/hooks/use-deferred-dialog";
 import {
   displayFileName,
   iframeShowsOwnTitle,
@@ -15,7 +16,7 @@ import { openUrlFor } from "@/lib/file-urls";
 import type { BreadcrumbItem } from "@/types/wiki";
 import { MIME_DOC, MIME_DOCX, MIME_MARKDOWN, MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
 
-import { DocumentPolishDialog } from "./document-polish-dialog";
+import { LazyDocumentPolishDialog } from "./lazy-document-polish-dialog";
 import { ReadOnlyShortLink } from "./read-only-short-link";
 import { ReorganizeDocument } from "./reorganize-document";
 import { ShortLinkDialog } from "./short-link-dialog";
@@ -53,7 +54,7 @@ export function WikiToolbar({
   const openUrl = openUrlFor(mimeType, fileId);
   const openLabel = openInGoogleLabel(mimeType);
   const [copied, setCopied] = useState(false);
-  const [polishOpen, setPolishOpen] = useState(false);
+  const polishDialog = useDeferredDialog();
   const displayTitle = displayFileName(title, mimeType);
 
   const trail: BreadcrumbItem[] = iframeShowsOwnTitle(mimeType)
@@ -134,7 +135,7 @@ export function WikiToolbar({
                 : "Polish document"
             }
             onClick={() => {
-              setPolishOpen(true);
+              polishDialog.onOpenChange(true);
             }}
             size="xs"
             type="button"
@@ -143,26 +144,28 @@ export function WikiToolbar({
             <Sparkles className="size-3.5" />
             <span className="hidden sm:inline">Polish</span>
           </Button>
-          <DocumentPolishDialog
-            key={fileId}
-            onInPlaceComplete={onReload}
-            onOpenChange={setPolishOpen}
-            open={polishOpen}
-            source={{
-              allowInPlace: canEdit && mimeType === MIME_DOC,
-              expectedModifiedTime: modifiedTime,
-              fileId,
-              kind: "drive_file",
-              mimeType,
-              name: displayTitle,
-              refreshExpectedModifiedTime:
-                refreshModifiedTime ??
-                (() =>
-                  Promise.reject(
-                    new Error("Couldn’t verify the document’s latest revision. Please reload."),
-                  )),
-            }}
-          />
+          {polishDialog.mounted ? (
+            <LazyDocumentPolishDialog
+              key={fileId}
+              onInPlaceComplete={onReload}
+              onOpenChange={polishDialog.onOpenChange}
+              open={polishDialog.open}
+              source={{
+                allowInPlace: canEdit && mimeType === MIME_DOC,
+                expectedModifiedTime: modifiedTime,
+                fileId,
+                kind: "drive_file",
+                mimeType,
+                name: displayTitle,
+                refreshExpectedModifiedTime:
+                  refreshModifiedTime ??
+                  (() =>
+                    Promise.reject(
+                      new Error("Couldn’t verify the document’s latest revision. Please reload."),
+                    )),
+              }}
+            />
+          ) : null}
         </>
       ) : null}
       {authority === "resolved" ? (

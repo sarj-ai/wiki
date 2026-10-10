@@ -33,6 +33,7 @@ import { useRefreshDrive } from "@/hooks/use-wiki-mutations";
 import { useFolderFiles } from "@/hooks/use-wiki-tree";
 import { folderUrlFor } from "@/lib/file-urls";
 import { cn } from "@/lib/utils";
+import { EMPTY_NODES } from "@/lib/wiki-indexes";
 import {
   applyOptimisticOrder,
   compareNodeOrder,
@@ -52,6 +53,8 @@ import { TreeNode } from "./tree-node";
 import { useIsCrossContainerDropTarget } from "./use-drag-over-store";
 import { useDrivePredictiveLoading } from "./use-drive-predictive-loading";
 import { useDriveTreeIndex } from "./use-drive-tree-index";
+
+const EMPTY_ROOT_ITEMS: readonly KindedNode[] = [];
 
 export function DriveSection({
   activeDriveId,
@@ -92,14 +95,16 @@ export function DriveSection({
     id: rootContainerId,
   });
   const isDropTarget = useIsCrossContainerDropTarget(rootContainerId);
-  const rootItems = buildRootItems({
-    childrenByParent,
-    rootFiles: filesComplete ? (filesByParent.get("__root__") ?? []) : (lazyRootFiles.data ?? []),
-    showNonDocFiles,
-    sortOrderMap,
-  });
+  const rootFiles = filesComplete
+    ? (filesByParent.get("__root__") ?? EMPTY_NODES)
+    : (lazyRootFiles.data ?? EMPTY_NODES);
+  const rootItems = expanded
+    ? buildRootItems({ childrenByParent, rootFiles, showNonDocFiles, sortOrderMap })
+    : EMPTY_ROOT_ITEMS;
   const optimisticOrder = optimisticByContainer.get(rootContainerId) ?? null;
-  const displayItems = applyOptimisticOrder(rootItems, optimisticOrder);
+  const displayItems = expanded
+    ? applyOptimisticOrder(rootItems, optimisticOrder)
+    : EMPTY_ROOT_ITEMS;
   const displayItemIds = displayItems.map((item) => item.node.id);
 
   const contextValue: DriveSectionValue = {
@@ -262,7 +267,7 @@ interface DriveSectionProps {
 
 interface BuildRootItemsArgs {
   childrenByParent: Map<string, DriveNode[]>;
-  rootFiles: DriveNode[];
+  rootFiles: readonly DriveNode[];
   showNonDocFiles: boolean;
   sortOrderMap: Map<string, number>;
 }

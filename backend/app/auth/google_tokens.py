@@ -49,6 +49,7 @@ class ManagedGoogleToken:
     token: str
     expires_at: datetime
     generation: int
+    access_ciphertext: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +81,6 @@ class GoogleTokenManager:
 
     async def prepare(self, user: User) -> PreparedGoogleCredentials:
         token = await self.ensure_valid(user)
-        self._apply_to_user(user, token)
         loop = asyncio.get_running_loop()
         generation = token.generation
 
@@ -271,6 +271,7 @@ class GoogleTokenManager:
             else snapshot.credential_ciphertext
         )
         expires_at = received_at + payload.expires_in
+        access_ciphertext = encrypt_text(payload.access_token)
         session_revision_column = User.token_version
         credential_generation_column = User.google_token_generation
         credential_ciphertext_column = User.encrypted_refresh_token
@@ -289,7 +290,7 @@ class GoogleTokenManager:
                 ),
             )
             .values(
-                encrypted_access_token=encrypt_text(payload.access_token),
+                encrypted_access_token=access_ciphertext,
                 encrypted_refresh_token=encrypted_refresh,
                 google_access_token_expires_at=expires_at,
                 google_token_generation=snapshot.generation + 1,
@@ -312,6 +313,7 @@ class GoogleTokenManager:
             token=payload.access_token,
             expires_at=expires_at,
             generation=snapshot.generation + 1,
+            access_ciphertext=access_ciphertext,
         )
 
     async def _handle_refresh_error(
@@ -403,11 +405,14 @@ class GoogleTokenManager:
             token=decrypt_text(snapshot.access_ciphertext),
             expires_at=snapshot.expires_at,
             generation=snapshot.generation,
+            access_ciphertext=snapshot.access_ciphertext,
         )
 
     @staticmethod
     def _apply_to_user(user: User, token: ManagedGoogleToken) -> None:
-        user.encrypted_access_token = encrypt_text(token.token)
+        # Reuse the fresh database ciphertext. Re-encrypting an unchanged token
+        # would make the ORM issue an UPDATE on every authenticated Drive read.
+        user.encrypted_access_token = token.access_ciphertext or encrypt_text(token.token)
         user.google_access_token_expires_at = token.expires_at
         user.google_token_generation = token.generation
 

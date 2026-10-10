@@ -49,7 +49,7 @@ def reorganization_generator_dep() -> ReorganizationGenerator:
     return VertexReorganizationGenerator()
 
 
-def reorganization_service_dep(
+async def reorganization_service_dep(
     db: Annotated[AsyncSession, Depends(get_db)],
     drive: Annotated[DriveService, Depends(drive_service_dep)],
     files: Annotated[FilesService, Depends(files_service_dep)],
@@ -65,7 +65,7 @@ def reorganization_service_dep(
     )
 
 
-def smart_proposal_service_dep(
+async def smart_proposal_service_dep(
     db: Annotated[AsyncSession, Depends(get_db)],
     drive: Annotated[DriveService, Depends(drive_service_dep)],
     sidebar_cache: Annotated[SidebarCacheService, Depends(sidebar_cache_service_dep)],
@@ -81,7 +81,7 @@ def smart_proposal_service_dep(
     )
 
 
-def smart_file_creation_service_dep(
+async def smart_file_creation_service_dep(
     *,
     db: Annotated[AsyncSession, Depends(get_db)],
     files: Annotated[FilesService, Depends(files_service_dep)],
@@ -100,7 +100,7 @@ def smart_file_creation_service_dep(
     )
 
 
-def smart_create_task_executor_dep(
+async def smart_create_task_executor_dep(
     db: Annotated[AsyncSession, Depends(get_db)],
     tasks: Annotated[TaskService, Depends(task_service_dep)],
     cache: Annotated[CacheService, Depends(cache_service_dep)],

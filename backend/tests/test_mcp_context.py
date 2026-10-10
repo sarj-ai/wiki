@@ -19,6 +19,7 @@ class Session:
         self.user = user
         self.closed = False
         self.lookups: list[uuid.UUID] = []
+        self.commits = 0
 
     async def __aenter__(self) -> Self:
         return self
@@ -30,6 +31,9 @@ class Session:
         assert model is User
         self.lookups.append(user_id)
         return self.user
+
+    async def commit(self) -> None:
+        self.commits += 1
 
 
 @pytest.mark.parametrize("case", ["missing", "revision", "disconnected", "scope", "valid"])
@@ -75,6 +79,7 @@ async def test_context_requires_fresh_identity_and_connected_google(
                 assert session.closed is False
             assert prepared_users == [user]
             assert drive_users == [user]
+            assert session.commits == 1
         else:
             error = (
                 GoogleReauthenticationRequiredError

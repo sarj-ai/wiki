@@ -49,6 +49,25 @@ make standards-check
 `make check` mirrors CI. `make audit` performs network-backed dependency audits, and
 `make standards-check` verifies generated standards configuration, version pins, and code.
 
+See the [104-pass performance record and reproduction commands](docs/performance.json) for
+frontend loading and backend latency work.
+
+Local production-build measurements against the same locked main toolchain:
+
+| Measurement | Before | After |
+| ---------------------------------- | --------- | --------- |
+| Initial app JavaScript, raw | 676,364 B | 545,058 B |
+| Initial app JavaScript, gzip | 216,381 B | 177,713 B |
+| Gzip CPU for a 10,000-node tree | 25.034 ms | 7.796 ms |
+| Sidebar extras database round trips | 3 | 1 |
+
+Client chunks exclude shared framework assets and deferred dialogs in both builds.
+The compression benchmark compares levels 9 and 4 on the same fixture; compressed
+size grows 3.9%. These measurements isolate application costs, not overall live
+page-load time. Backend responses expose request timing and byte metrics for
+production follow-up. PostgreSQL CI covers connection release, task projections,
+bounded result reads, and large encrypted cache batches.
+
 ## Saudi production topology
 
 Production is pinned to Google Cloud `me-central2` (Dammam): Cloud Run, Cloud SQL, Cloud Tasks,

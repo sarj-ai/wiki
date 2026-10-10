@@ -29,6 +29,10 @@ async def drive_service_dep(
 ) -> DriveService:
     try:
         prepared = await GoogleTokenManager(db, http).prepare(user)
+        # Auth and credential reads open a transaction. Return its connection
+        # before provider I/O or a second cache session can exhaust the pool.
+        # Request sessions use expire_on_commit=False, preserving this identity.
+        await db.commit()
     except GoogleReauthenticationRequiredError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Google login required"

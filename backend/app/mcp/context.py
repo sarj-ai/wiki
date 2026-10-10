@@ -59,6 +59,7 @@ async def open_mcp_context(
         if user.encrypted_refresh_token is None:
             raise GoogleReauthenticationRequiredError
         prepared = await GoogleTokenManager(db, http).prepare(user)
+        await db.commit()
         drive = GoogleDriveService(
             prepared.user, cache_service=None, refresh_handler=prepared.refresh_handler
         )
