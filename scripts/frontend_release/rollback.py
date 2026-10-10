@@ -161,8 +161,12 @@ def _report(action: Callable[[], object]) -> None:
 
 
 @CLI.command("active")
-def active_command() -> None:
-    _report(lambda: sys.stdout.write(f"{current_deployment().version}\n"))
+def active_command(
+    *,
+    github_output: Annotated[bool, typer.Option("--github-output")] = False,
+) -> None:
+    prefix = "version_id=" if github_output else ""
+    _report(lambda: sys.stdout.write(f"{prefix}{current_deployment().version}\n"))
 
 
 @CLI.command("rollback")

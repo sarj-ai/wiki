@@ -38,15 +38,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          # Disable rename detection so both sides of a move select their domains.
-          if git diff --no-ext-diff --no-textconv --no-renames --name-only -z "$BASE_SHA" "$HEAD_SHA" -- > "$RUNNER_TEMP/changed-paths"; then
-            bash scripts/github/runtime-ci-policy.sh < "$RUNNER_TEMP/changed-paths" >> "$GITHUB_OUTPUT"
-          else
-            echo '::warning::Change detection failed; running full runtime qualification'
-            printf 'backend=true\nfrontend=true\n' >> "$GITHUB_OUTPUT"
-          fi
-
+        run: bash scripts/github/runtime-ci-policy.sh --diff "$BASE_SHA" "$HEAD_SHA"
   lint-and-typecheck:
     name: Backend / Lint + typecheck
     runs-on: blacksmith-2vcpu-ubuntu-2404
@@ -242,6 +234,14 @@ jobs:
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 1
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv for the required gate
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version-file: backend/uv.toml
+          enable-cache: false
       - name: Require every backend gate
         working-directory: .
         env:
@@ -252,19 +252,4 @@ jobs:
           LINT_RESULT: ${{ needs.lint-and-typecheck.result }}
           POSTGRES_RESULT: ${{ needs.postgres-concurrency.result }}
           TEST_RESULT: ${{ needs.test.result }}
-        run: |
-          if [ "$FORCE_FULL" = true ]; then
-            test "$ROUTING_RESULT" = skipped
-            expected=success
-          else
-            test "$ROUTING_RESULT" = success
-            case "$RUNTIME_SELECTED" in
-              true) expected=success ;;
-              false) expected=skipped ;;
-              *) exit 1 ;;
-            esac
-          fi
-          test "$LINT_RESULT" = success
-          test "$TEST_RESULT" = "$expected"
-          test "$POSTGRES_RESULT" = "$expected"
-          test "$IMAGE_RESULT" = success
+        run: uv run --no-project --with typer==0.27.2 --python 3.14 python scripts/github/release_gate.py ci backend

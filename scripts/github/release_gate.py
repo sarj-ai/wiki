@@ -43,6 +43,30 @@ def require(condition: object, reason: str) -> None:
         raise ReleaseBlockedError(reason)
 
 
+def require_ci_gates(environment: Mapping[str, str], component: str) -> None:
+    require(component in {"backend", "frontend"}, "Unknown CI component")
+    if environment.get("FORCE_FULL") == "true":
+        require(environment.get("ROUTING_RESULT") == "skipped", "Unexpected CI routing")
+        expected = "success"
+    else:
+        require(environment.get("ROUTING_RESULT") == "success", "CI routing failed")
+        selected = environment.get("RUNTIME_SELECTED")
+        require(selected in {"true", "false"}, "Missing runtime selection")
+        expected = "success" if selected == "true" else "skipped"
+    require(environment.get("LINT_RESULT") == "success", "CI lint failed")
+    require(environment.get("TEST_RESULT") == expected, "Unexpected CI tests result")
+    if component == "backend":
+        require(
+            environment.get("POSTGRES_RESULT") == expected,
+            "Unexpected CI Postgres result",
+        )
+        require(environment.get("IMAGE_RESULT") == "success", "CI image failed")
+    else:
+        require(
+            environment.get("BUILD_RESULT") == expected, "Unexpected CI build result"
+        )
+
+
 def object_value(value: JsonValue) -> JsonObject:
     require(isinstance(value, dict), "Invalid GitHub receipt shape")
     if not isinstance(value, dict):
@@ -286,6 +310,7 @@ def execute(phase: str, component: str) -> str:
 
 
 class _Phase(StrEnum):
+    CI = "ci"
     STANDARDS = "standards"
     READY = "ready"
 
@@ -306,9 +331,33 @@ CLI = typer.Typer(
 def main(
     phase: Annotated[_Phase, typer.Argument()],
     component: Annotated[_Component, typer.Argument()],
+    *,
+    force_full: Annotated[str, typer.Option(envvar="FORCE_FULL")] = "",
+    routing_result: Annotated[str, typer.Option(envvar="ROUTING_RESULT")] = "",
+    runtime_selected: Annotated[str, typer.Option(envvar="RUNTIME_SELECTED")] = "",
+    image_result: Annotated[str, typer.Option(envvar="IMAGE_RESULT")] = "",
+    lint_result: Annotated[str, typer.Option(envvar="LINT_RESULT")] = "",
+    postgres_result: Annotated[str, typer.Option(envvar="POSTGRES_RESULT")] = "",
+    test_result: Annotated[str, typer.Option(envvar="TEST_RESULT")] = "",
+    build_result: Annotated[str, typer.Option(envvar="BUILD_RESULT")] = "",
 ) -> None:
     """Fail closed before deploying an exact trusted main commit."""
     try:
+        if phase == _Phase.CI:
+            require_ci_gates(
+                {
+                    "FORCE_FULL": force_full,
+                    "ROUTING_RESULT": routing_result,
+                    "RUNTIME_SELECTED": runtime_selected,
+                    "IMAGE_RESULT": image_result,
+                    "LINT_RESULT": lint_result,
+                    "POSTGRES_RESULT": postgres_result,
+                    "TEST_RESULT": test_result,
+                    "BUILD_RESULT": build_result,
+                },
+                component,
+            )
+            return
         sha = execute(phase, component)
     except ReleaseBlockedError as error:
         sys.stderr.write(f"Release blocked: {error}\n")

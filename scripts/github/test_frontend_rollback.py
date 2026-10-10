@@ -273,7 +273,9 @@ def test_receipt_validates_deploy_among_other_wrangler_output(receipt: Path) -> 
     assert rollback.candidate_version(receipt) == CANDIDATE
 
 
-def test_workflow_uses_same_fresh_receipt_for_deploy_and_recovery() -> None:
+def test_workflow_uses_same_fresh_receipt_for_deploy_and_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     root = Path(__file__).resolve().parents[2]
     workflow = yaml.safe_load(
         (root / ".github/workflows/deploy-frontend.yml").read_text()
@@ -291,15 +293,20 @@ def test_workflow_uses_same_fresh_receipt_for_deploy_and_recovery() -> None:
         == "${{ runner.temp }}/frontend-deploy-${{ github.run_id }}-${{ github.run_attempt }}.jsonl"
     )
     assert recover["env"]["CANDIDATE_RECEIPT"] == receipt_path
-    assert shlex.split(deploy["run"]) == [
-        "test",
-        "!",
-        "-e",
-        "$WRANGLER_OUTPUT_FILE_PATH",
-        "npm",
-        "run",
-        "deploy",
-    ]
+    guard = steps[steps.index(deploy) - 1]
+    assert guard["name"] == "Require an unused deployment receipt path"
+    assert guard["env"] == {"WRANGLER_OUTPUT_FILE_PATH": receipt_path}
+    assert guard.get("if") is None
+    assert guard.get("continue-on-error") is None
+    assert shlex.split(deploy["run"]) == ["npm", "run", "deploy"]
+    output = tmp_path / "deployment.jsonl"
+    monkeypatch.setenv("WRANGLER_OUTPUT_FILE_PATH", str(output))
+    release_gate.command_output(["bash", "-e", "-c", guard["run"]])
+    output.write_text("stale receipt", encoding="utf-8")
+    with pytest.raises(
+        release_gate.ReleaseBlockedError, match="Release command failed"
+    ):
+        release_gate.command_output(["bash", "-e", "-c", guard["run"]])
     invocation = shlex.split(recover["run"].replace("\\\n", ""))
     assert invocation == [
         "uv",

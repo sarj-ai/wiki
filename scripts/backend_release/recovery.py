@@ -282,7 +282,9 @@ def verify_current_release(args: SourceArguments | ServingArguments) -> str | No
     return source_sha
 
 
-def _report(args: SourceArguments | ServingArguments) -> None:
+def _report(
+    args: SourceArguments | ServingArguments, *, github_output: bool = False
+) -> None:
     try:
         source_sha = verify_current_release(args)
     except ReleaseBlockedError, OSError, ValueError, TypeError:
@@ -291,7 +293,8 @@ def _report(args: SourceArguments | ServingArguments) -> None:
         )
         raise typer.Exit(1) from None
     if source_sha is not None:
-        sys.stdout.write(f"{source_sha}\n")
+        prefix = "source_sha=" if github_output else ""
+        sys.stdout.write(f"{prefix}{source_sha}\n")
     else:
         sys.stdout.write("Read-only recovery evidence verified.\n")
 
@@ -323,11 +326,14 @@ def source_command(
     context: typer.Context,
     run_id: Annotated[int, typer.Option()],
     run_attempt: Annotated[int, typer.Option()],
+    *,
+    github_output: Annotated[bool, typer.Option("--github-output")] = False,
 ) -> None:
     _report(
         SourceArguments(
             verifier_sha=_verifier_sha(context), run_id=run_id, run_attempt=run_attempt
-        )
+        ),
+        github_output=github_output,
     )
 
 
