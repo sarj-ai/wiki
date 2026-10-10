@@ -19,7 +19,7 @@ from app.sidebar.cache import SidebarCacheService
 from app.sidebar.dependencies import sidebar_cache_service_dep
 
 
-def bootstrap_service_dep(
+async def bootstrap_service_dep(
     *,
     drive: Annotated[DriveService, Depends(drive_service_dep)],
     extras: Annotated[ExtrasService, Depends(extras_service_dep)],

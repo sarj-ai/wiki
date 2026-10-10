@@ -1,8 +1,8 @@
 // @vitest-environment node
 
-import { callSmartCreateApi } from "@/lib/smart-create-server-client";
+import { smartCreateServerClient } from "@/lib/smart-create-server-client";
 
-describe("callSmartCreateApi", () => {
+describe("smartCreateServerClient", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -18,14 +18,14 @@ describe("callSmartCreateApi", () => {
       ),
     );
 
-    await expect(callSmartCreateApi("/document-transforms", "{}", "token", "key")).resolves.toEqual(
-      {
-        body: '{"id":"task"}',
-        idempotencyReplayed: value === "true",
-        ok: true,
-        status: 202,
-      },
-    );
+    await expect(
+      smartCreateServerClient("/document-transforms", "{}", "token", "key"),
+    ).resolves.toEqual({
+      body: '{"id":"task"}',
+      idempotencyReplayed: value === "true",
+      ok: true,
+      status: 202,
+    });
   });
 
   it("ignores an invalid replay header", async () => {
@@ -39,13 +39,13 @@ describe("callSmartCreateApi", () => {
       ),
     );
 
-    await expect(callSmartCreateApi("/document-transforms", "{}", "token", "key")).resolves.toEqual(
-      {
-        body: "{}",
-        ok: true,
-        status: 202,
-      },
-    );
+    await expect(
+      smartCreateServerClient("/document-transforms", "{}", "token", "key"),
+    ).resolves.toEqual({
+      body: "{}",
+      ok: true,
+      status: 202,
+    });
   });
 
   it("preserves only the allowlisted source-change error code", async () => {
@@ -70,23 +70,23 @@ describe("callSmartCreateApi", () => {
         ),
     );
 
-    await expect(callSmartCreateApi("/document-transforms", "{}", "token", "key")).resolves.toEqual(
-      {
-        body: '{"detail":"safe"}',
-        error: "safe",
-        errorCode: "document_transform_source_changed",
-        ok: false,
-        status: 409,
-      },
-    );
-    await expect(callSmartCreateApi("/document-transforms", "{}", "token", "key")).resolves.toEqual(
-      {
-        body: '{"detail":"private"}',
-        error: "private",
-        ok: false,
-        status: 409,
-      },
-    );
+    await expect(
+      smartCreateServerClient("/document-transforms", "{}", "token", "key"),
+    ).resolves.toEqual({
+      body: '{"detail":"safe"}',
+      error: "safe",
+      errorCode: "document_transform_source_changed",
+      ok: false,
+      status: 409,
+    });
+    await expect(
+      smartCreateServerClient("/document-transforms", "{}", "token", "key"),
+    ).resolves.toEqual({
+      body: '{"detail":"private"}',
+      error: "private",
+      ok: false,
+      status: 409,
+    });
   });
 
   it("ignores a source-change header on a non-conflict response", async () => {
@@ -103,13 +103,13 @@ describe("callSmartCreateApi", () => {
       ),
     );
 
-    await expect(callSmartCreateApi("/document-transforms", "{}", "token", "key")).resolves.toEqual(
-      {
-        body: '{"detail":"upstream unavailable"}',
-        error: "upstream unavailable",
-        ok: false,
-        status: 503,
-      },
-    );
+    await expect(
+      smartCreateServerClient("/document-transforms", "{}", "token", "key"),
+    ).resolves.toEqual({
+      body: '{"detail":"upstream unavailable"}',
+      error: "upstream unavailable",
+      ok: false,
+      status: 503,
+    });
   });
 });

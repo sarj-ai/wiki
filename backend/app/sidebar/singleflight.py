@@ -18,7 +18,9 @@ class Singleflight[T]:
                 self._inflight[key] = fut
 
         if existing is not None:
-            return await existing
+            # A cancelled follower must not cancel the shared Future and break
+            # the leader or other followers.
+            return await asyncio.shield(existing)
 
         try:
             result = await fn()

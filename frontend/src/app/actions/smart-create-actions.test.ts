@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
   createBindingAvailable: true,
   headers: vi.fn(),
   proposalLimit: vi.fn(),
-  readApi: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({
@@ -27,16 +26,12 @@ vi.mock("@opennextjs/cloudflare", () => ({
 }));
 
 vi.mock("@/lib/smart-create-server-client", () => ({
-  callSmartCreateApi: mocks.callApi,
-  readSmartCreateApi: mocks.readApi,
+  smartCreateServerClient: mocks.callApi,
 }));
 
 import {
   createDocumentTransformAction,
   createSmartFileAction,
-  getDocumentTransformCapabilitiesAction,
-  getSmartCreateTaskAction,
-  listSmartTemplatesAction,
   proposeFileReorganizationAction,
   proposeSmartFileAction,
 } from "./smart-create-actions";
@@ -50,7 +45,6 @@ describe("Smart Create edge actions", () => {
     mocks.createLimit.mockResolvedValue({ success: true });
     mocks.proposalLimit.mockResolvedValue({ success: true });
     mocks.callApi.mockResolvedValue({ body: "{}", ok: true, status: 200 });
-    mocks.readApi.mockResolvedValue({ body: "{}", ok: true, status: 200 });
   });
 
   it.each(["binding", "address"])(
@@ -174,39 +168,6 @@ describe("Smart Create edge actions", () => {
       error: "safe detail",
       ok: false,
       status: 409,
-    });
-  });
-
-  it("reads transform capabilities, tasks, and templates with authentication", async () => {
-    await expect(getDocumentTransformCapabilitiesAction()).resolves.toEqual({
-      data: "{}",
-      ok: true,
-    });
-    await expect(getSmartCreateTaskAction("55555555-5555-4555-8555-555555555555")).resolves.toEqual(
-      { data: "{}", ok: true },
-    );
-    await expect(listSmartTemplatesAction(true)).resolves.toEqual({ data: "{}", ok: true });
-
-    expect(mocks.readApi).toHaveBeenNthCalledWith(
-      1,
-      "/document-transforms/capabilities",
-      "access-token",
-    );
-    expect(mocks.readApi).toHaveBeenNthCalledWith(
-      2,
-      "/tasks/55555555-5555-4555-8555-555555555555",
-      "access-token",
-    );
-    expect(mocks.readApi).toHaveBeenNthCalledWith(3, "/templates?refresh=true", "access-token");
-  });
-
-  it("normalizes an upstream read rate limit", async () => {
-    mocks.readApi.mockResolvedValue({ body: "", ok: false, status: 429 });
-
-    await expect(listSmartTemplatesAction(false)).resolves.toEqual({
-      error: "Too many requests. Try again in a minute.",
-      ok: false,
-      status: 429,
     });
   });
 });

@@ -107,6 +107,19 @@ describe("SmartCreateDialog", () => {
     expect(document.body).not.toHaveTextContent("Looking in Templates…");
   });
 
+  it("cancels pending template discovery when its dialog closes", async () => {
+    const catalog = deferred<Awaited<ReturnType<typeof smartCreateApi.listTemplates>>>();
+    const loadCatalog = vi.spyOn(smartCreateApi, "listTemplates").mockReturnValue(catalog.promise);
+    renderDialog(root);
+    const signal = loadCatalog.mock.calls[0]?.[1];
+    expect(signal?.aborted).toBe(false);
+
+    clickButton(await findButton("Cancel"));
+
+    expect(signal?.aborted).toBe(true);
+    catalog.resolve([]);
+  });
+
   it("shows a retryable template rate limit instead of an empty catalog", async () => {
     vi.spyOn(smartCreateApi, "listTemplates").mockRejectedValue(
       new ApiError(429, "Too many requests. Try again in a minute."),

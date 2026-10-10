@@ -8,12 +8,12 @@ import { useDebouncedCallback } from "use-debounce";
 
 import { SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem } from "@/components/ui/sidebar";
 import { useExpandedFolder } from "@/hooks/use-expanded-folders";
-import { useSetFolderIcon } from "@/hooks/use-wiki-mutations";
 import { folderFilesQueryOptions, useFolderFiles } from "@/hooks/use-wiki-tree";
 import { renderNodeIcon } from "@/lib/file-icons";
-import { runWithErrorToast } from "@/lib/mutation-toast";
 import { resolveShortcutTarget } from "@/lib/shortcut-resolver";
+import { allowsReusableSpeculation, readNavigatorHints } from "@/lib/speculation-policy";
 import { cn } from "@/lib/utils";
+import { EMPTY_NODES } from "@/lib/wiki-indexes";
 import {
   applyOptimisticOrder,
   compareNodeOrder,
@@ -41,6 +41,12 @@ interface TreeNodeProps {
 }
 
 const HOVER_PREFETCH_DELAY_MS = 80;
+const EMPTY_CHILD_ITEMS: readonly KindedNode[] = [];
+
+interface ChildListing {
+  count: number;
+  items: readonly KindedNode[];
+}
 
 interface ShortcutMeta {
   expandFolderId: null | string;
@@ -72,7 +78,6 @@ interface FolderHeaderProps {
   node: DriveNode;
   onHoverEnd: () => void;
   onHoverStart: () => void;
-  onIconChange: (next: null | string) => Promise<void>;
   onToggle: () => void;
 }
 
@@ -108,15 +113,45 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
   const queryClient = useQueryClient();
   const prefetchChildren = useDebouncedCallback(() => {
     const folderId = meta.expandFolderId;
-    if (!needsLazyFiles || expanded || meta.inaccessible || !folderId) return;
+    if (
+      !needsLazyFiles ||
+      expanded ||
+      meta.inaccessible ||
+      !folderId ||
+      document.visibilityState !== "visible" ||
+      !allowsReusableSpeculation(readNavigatorHints(navigator))
+    ) {
+      return;
+    }
     void queryClient.prefetchQuery(folderFilesQueryOptions(folderId));
   }, HOVER_PREFETCH_DELAY_MS);
-
-  const setFolderIcon = useSetFolderIcon();
 
   const isDropIntoFolder = useIsDropIntoFolder(node.id);
 
   const isMoving = useIsMovingFile(node.id);
+
+  const {
+    childrenByParent,
+    filesByParent,
+    optimisticByContainer,
+    showNonDocFiles,
+    sortOrderMap,
+    treeFilesComplete,
+  } = ctx;
+  const { count: childCount, items: childItems } = buildChildItems(
+    node,
+    meta,
+    {
+      childrenByParent,
+      filesByParent,
+      optimisticByContainer,
+      showNonDocFiles,
+      sortOrderMap,
+      treeFilesComplete,
+    },
+    lazyFiles ?? EMPTY_NODES,
+    expanded && meta.isFolder,
+  );
 
   if (!meta.isFolder) {
     return (
@@ -131,16 +166,9 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
     );
   }
 
-  const childItems = buildChildItems(node, meta, ctx, lazyFiles ?? []);
   const sortableItems = childItems.map((c) => c.node.id);
   const iconEmoji = ctx.iconOverrides.get(node.id);
-  const itemCount = meta.isFolderShortcut || !ctx.treeFilesComplete ? undefined : childItems.length;
-
-  const handleFolderIconChange = async (next: null | string) => {
-    await runWithErrorToast(async () => {
-      await setFolderIcon.mutateAsync({ folderDriveId: node.id, icon: next });
-    }, "Failed to update icon");
-  };
+  const itemCount = meta.isFolderShortcut || !ctx.treeFilesComplete ? undefined : childCount;
 
   return (
     <>
@@ -169,7 +197,6 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
           prefetchChildren.cancel();
         }}
         onHoverStart={prefetchChildren}
-        onIconChange={handleFolderIconChange}
         onToggle={() => {
           if (meta.inaccessible) return;
           setExpanded(!expanded);
@@ -231,8 +258,9 @@ function buildChildItems(
   node: DriveNode,
   meta: ShortcutMeta,
   ctx: DriveSectionCtxShape,
-  lazyAll: DriveNode[],
-): KindedNode[] {
+  lazyAll: readonly DriveNode[],
+  expanded: boolean,
+): ChildListing {
   const rawFiles =
     meta.isFolderShortcut || !ctx.treeFilesComplete
       ? lazyAll.filter((n) => !isFolderLikeNode(n))
@@ -244,6 +272,9 @@ function buildChildItems(
     ? lazyAll.filter(isFolderLikeNode)
     : (ctx.childrenByParent.get(node.id) ?? []);
 
+  const count = folderChildren.length + filteredFiles.length;
+  if (!expanded) return { count, items: EMPTY_CHILD_ITEMS };
+
   const raw: KindedNode[] = [
     ...folderChildren.map((n): KindedNode => ({ node: n, type: "folder" })),
     ...filteredFiles.map((n): KindedNode => ({ node: n, type: "file" })),
@@ -252,8 +283,8 @@ function buildChildItems(
   const optimisticOrder = ctx.optimisticByContainer.get(`parent:${node.id}`) ?? null;
   const sorted = optimisticOrder
     ? raw
-    : [...raw].toSorted((a, b) => compareNodeOrder(a, b, ctx.sortOrderMap));
-  return applyOptimisticOrder(sorted, optimisticOrder);
+    : raw.toSorted((a, b) => compareNodeOrder(a, b, ctx.sortOrderMap));
+  return { count, items: applyOptimisticOrder(sorted, optimisticOrder) };
 }
 
 function FolderHeader({
@@ -268,7 +299,6 @@ function FolderHeader({
   node,
   onHoverEnd,
   onHoverStart,
-  onIconChange,
   onToggle,
 }: FolderHeaderProps) {
   const chevronPadding = `${rowIndent(depth)}px`;
@@ -296,7 +326,9 @@ function FolderHeader({
         onBlur={onHoverEnd}
         onClick={onToggle}
         onFocus={onHoverStart}
-        onPointerEnter={onHoverStart}
+        onPointerEnter={(event) => {
+          if (event.pointerType !== "touch") onHoverStart();
+        }}
         onPointerLeave={onHoverEnd}
         style={{ paddingLeft: chevronPadding }}
         title={meta.tooltip ?? node.name}
@@ -321,8 +353,8 @@ function FolderHeader({
         <PickableIcon
           ariaLabel="Change folder icon"
           dimmed={meta.inaccessible}
-          onChange={onIconChange}
           pickable={!meta.isShortcut && !meta.inaccessible}
+          target={{ id: node.id, kind: "folder" }}
           value={iconEmoji}
         >
           {iconContent}

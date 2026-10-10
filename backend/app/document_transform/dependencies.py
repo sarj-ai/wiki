@@ -62,6 +62,7 @@ async def current_polish_runtime_dep(
 ) -> CurrentPolishRuntime:
     try:
         prepared = await GoogleTokenManager(db, http).prepare(user)
+        await db.commit()
     except GoogleReauthenticationRequiredError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Google login required"
@@ -88,7 +89,7 @@ async def current_polish_runtime_dep(
     return CurrentPolishRuntime(files=files, revisions=revisions)
 
 
-def current_polish_context_dep(
+async def current_polish_context_dep(
     user: Annotated[User, Depends(get_current_user)],
     tasks: Annotated[TaskService, Depends(task_service_dep)],
     runtime: Annotated[CurrentPolishRuntime, Depends(current_polish_runtime_dep)],
@@ -117,7 +118,7 @@ def document_patch_generator_dep() -> PatchGenerator:
     return VertexGeminiPatchGenerator(policy=policy)
 
 
-def document_transform_task_executor_dep(
+async def document_transform_task_executor_dep(
     db: Annotated[AsyncSession, Depends(get_db)],
     tasks: Annotated[TaskService, Depends(task_service_dep)],
     cache_service: Annotated[CacheService, Depends(cache_service_dep)],

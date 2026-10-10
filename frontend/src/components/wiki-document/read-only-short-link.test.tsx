@@ -57,7 +57,9 @@ describe("ReadOnlyShortLink", () => {
         "success",
       );
     });
-    expect(WIKI_READ_API.getDocumentAlias).toHaveBeenCalledWith("read-only-file");
+    const [fileId, signal] = vi.mocked(WIKI_READ_API.getDocumentAlias).mock.calls[0] ?? [];
+    expect(fileId).toBe("read-only-file");
+    expect(signal).toBeInstanceOf(AbortSignal);
     expect(container).toBeEmptyDOMElement();
   });
 });

@@ -12,7 +12,7 @@ export const documentAliasKey = (fileId: string) => ["document-alias", fileId] a
 export function useDocumentAlias(fileId: string, enabled: boolean) {
   return useQuery({
     enabled,
-    queryFn: async () => await WIKI_READ_API.getDocumentAlias(fileId),
+    queryFn: async ({ signal }) => await WIKI_READ_API.getDocumentAlias(fileId, signal),
     queryKey: documentAliasKey(fileId),
   });
 }

@@ -9,6 +9,8 @@ from typing import override
 import uuid
 
 import pytest
+from sqlalchemy import inspect
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.auth.encryption import encrypt_text
 from app.auth.google_tokens import (
@@ -136,6 +138,33 @@ async def test_valid_access_token_does_not_refresh() -> None:
 
     assert token.token == access_token
     assert state.refreshes == 0
+
+
+async def test_preparing_valid_credentials_reuses_database_ciphertext() -> None:
+    user = _user()
+    ciphertext = encrypt_text(secrets.token_urlsafe())
+    expiry = datetime.now(UTC) + timedelta(hours=1)
+    set_committed_value(user, "encrypted_access_token", ciphertext)
+    set_committed_value(user, "google_access_token_expires_at", expiry)
+    set_committed_value(user, "google_token_generation", 0)
+    reads = 0
+
+    class SnapshotManager(GoogleTokenManager):
+        @override
+        async def _snapshot(self, user: User) -> TokenSnapshot:
+            nonlocal reads
+            reads += 1
+            return TokenSnapshot(ciphertext, None, expiry, 0, 0, None)
+
+    manager = SnapshotManager(dependency(None), dependency(None))
+    await manager.prepare(user)
+    await manager.prepare(user)
+
+    state = inspect(user)
+    assert state is not None
+    assert not state.attrs.encrypted_access_token.history.has_changes()
+    assert user.encrypted_access_token == ciphertext
+    assert reads == 2
 
 
 async def test_expiring_access_token_refreshes_proactively() -> None:

@@ -12,7 +12,7 @@ export function useDriveSearch(query: string) {
   return useQuery<DriveSearchResult[]>({
     enabled: debouncedQuery.length >= 2 && debouncedQuery.length <= 2048,
 
-    queryFn: async () => await WIKI_READ_API.driveSearch(debouncedQuery, 10),
+    queryFn: async ({ signal }) => await WIKI_READ_API.driveSearch(debouncedQuery, 10, signal),
     queryKey: wikiKeys.driveSearch(debouncedQuery),
 
     staleTime: 30_000,
@@ -28,7 +28,8 @@ export function useDriveSearchSnippet(
   return useQuery<SnippetResult>({
     enabled: enabled && !!fileId && query.length >= 2,
     gcTime: 10 * 60 * 1000,
-    queryFn: async () => await WIKI_READ_API.driveSearchSnippet(fileId ?? "", query, mimeType),
+    queryFn: async ({ signal }) =>
+      await WIKI_READ_API.driveSearchSnippet(fileId ?? "", query, mimeType, signal),
 
     queryKey: fileId
       ? wikiKeys.driveSearchSnippet(fileId, query)

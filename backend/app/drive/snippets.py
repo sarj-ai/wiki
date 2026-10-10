@@ -50,14 +50,15 @@ def _first_match_offset(text: str, query: str) -> _MatchOffset | None:
         return None
     text_lower = text.lower()
     best: _MatchOffset | None = None
-    for word in query.split():
-        w = word.strip().lower()
+    for w in dict.fromkeys(query.lower().split()):
         if len(w) < 3:
             continue
         match = _find_with_prefix_fallback(text_lower, w)
         if match is None:
             continue
         idx, length = match
+        if idx == 0:
+            return _MatchOffset(idx, length, text[idx : idx + length])
         if best is None or idx < best[0]:
             best = _MatchOffset(idx, length, text[idx : idx + length])
     return best

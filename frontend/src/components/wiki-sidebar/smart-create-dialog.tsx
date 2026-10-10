@@ -60,6 +60,7 @@ export function SmartCreateDialog({
   const [creationStage, setCreationStage] = useState<"enqueuing" | "idle" | "waiting">("idle");
   const [destinationOpen, setDestinationOpen] = useState(false);
   const catalogSequence = useRef(0);
+  const catalogAbort = useRef<AbortController | null>(null);
   const proposalSequence = useRef(0);
   const submitLatch = useRef(false);
   const createAbort = useRef<AbortController | null>(null);
@@ -68,10 +69,13 @@ export function SmartCreateDialog({
   useEffect(() => {
     if (!open) return;
     const sequence = ++catalogSequence.current;
+    catalogAbort.current?.abort();
+    const controller = new AbortController();
+    catalogAbort.current = controller;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Opening the dialog intentionally starts a fresh catalog load.
     setCatalogStatus({ kind: "loading" });
     void (async () => {
-      const result = await smartCreateApi.listTemplates();
+      const result = await smartCreateApi.listTemplates(false, controller.signal);
       if (sequence !== catalogSequence.current) return;
       const scopedTemplates = templatesInDrive(result, invokingDriveId);
       setTemplates(scopedTemplates);
@@ -86,11 +90,15 @@ export function SmartCreateDialog({
     });
     return () => {
       catalogSequence.current += 1;
+      catalogAbort.current?.abort();
+      catalogAbort.current = null;
     };
   }, [invokingDriveId, open]);
 
   const close = () => {
     catalogSequence.current += 1;
+    catalogAbort.current?.abort();
+    catalogAbort.current = null;
     proposalSequence.current += 1;
     createAbort.current?.abort();
     createAbort.current = null;
@@ -104,9 +112,12 @@ export function SmartCreateDialog({
 
   const refreshTemplates = async () => {
     const sequence = ++catalogSequence.current;
+    catalogAbort.current?.abort();
+    const controller = new AbortController();
+    catalogAbort.current = controller;
     setCatalogStatus({ kind: "loading" });
     try {
-      const result = await smartCreateApi.listTemplates(true);
+      const result = await smartCreateApi.listTemplates(true, controller.signal);
       if (sequence !== catalogSequence.current) return;
       const scopedTemplates = templatesInDrive(result, invokingDriveId);
       setTemplates(scopedTemplates);

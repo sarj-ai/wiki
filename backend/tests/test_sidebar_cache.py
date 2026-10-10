@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, override
 import uuid
 
 import pytest
@@ -280,6 +280,78 @@ def test_decoded_tree_cache_is_scoped_by_principal(monkeypatch: pytest.MonkeyPat
     asyncio.run(second.peek_drive_tree(_db(FakeSession(row=row)), row.drive_id))
 
     assert decode_calls == 2
+
+
+async def test_concurrent_cold_tree_reads_decode_once() -> None:
+    user = _user()
+    tree = _tree()
+    row = DriveTreeCache(
+        user_id=user.id,
+        drive_id=DriveId("decode-concurrent-test"),
+        tree=encrypt_cache(tree.model_dump_json()),
+        refreshed_at=datetime.now(UTC),
+    )
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    class CountingCache(PostgresSidebarCacheService):
+        @override
+        async def _decode_tree(self, blob: str) -> DriveTree:
+            nonlocal calls
+            calls += 1
+            started.set()
+            await release.wait()
+            return await super()._decode_tree(blob)
+
+    services = [
+        CountingCache(
+            drive=FakeDrive(tree),
+            user=user,
+            singleflight=Singleflight(),
+            bg_tasks=set(),
+            sessionmaker=dependency(None),
+        )
+        for _ in range(6)
+    ]
+    sessions = [FakeSession(row=row) for _ in services]
+    tasks = [
+        asyncio.create_task(service.peek_drive_tree(_db(db), row.drive_id))
+        for service, db in zip(services, sessions, strict=True)
+    ]
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        await asyncio.sleep(0)
+    finally:
+        release.set()
+    results = await asyncio.gather(*tasks)
+
+    assert calls == 1
+    first = results[0]
+    assert first is not None
+    assert all(result is not None and result.tree is first.tree for result in results)
+    assert all(db.commits == 1 for db in sessions)
+
+
+def test_decoded_cache_bounds_total_nodes_and_skips_oversized_trees() -> None:
+    cache = sidebar_cache._DecodedTreeCache(max_entries=32, max_nodes=3)
+    user = _user()
+    keys = [(UserId(user.id), DriveId(f"budget-{index}"), "version") for index in range(3)]
+    node = _tree().folders[0]
+    tree = DriveTree(
+        drive_id=DriveId("budget"), folders=[node, node], files=[], files_complete=True
+    )
+    cache.put(keys[0], tree)
+    cache.put(keys[1], tree)
+
+    assert cache.get(keys[0]) is None
+    assert cache.get(keys[1]) is tree
+    oversized = DriveTree(
+        drive_id=DriveId("large-budget"), folders=[node] * 4, files=[], files_complete=True
+    )
+    cache.put(keys[2], oversized)
+    assert cache.get(keys[2]) is None
+    assert cache.get(keys[1]) is tree
 
 
 @dataclass(frozen=True)

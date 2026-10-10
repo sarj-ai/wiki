@@ -156,8 +156,12 @@ export function makeWikiApi(client?: Client) {
         snippetResult,
       ),
 
-    getBootstrap: async (): Promise<Bootstrap> =>
-      call(getBootstrapRequest, { query: { defer_doc_icons: true } }, bootstrapRead),
+    getBootstrap: async (signal?: AbortSignal): Promise<Bootstrap> =>
+      call(
+        getBootstrapRequest,
+        { query: { defer_doc_icons: true }, ...optionalSignal(signal) },
+        bootstrapRead,
+      ),
 
     getDocumentAlias: async (fileId: string): Promise<DocumentAliasForFile> =>
       call(getFileAlias, { path: { file_id: fileId } }, documentAliasForFile),
@@ -184,16 +188,13 @@ export function makeWikiApi(client?: Client) {
     getDrives: async (): Promise<DriveSummary[]> => call(listDrives, {}, DriveSummariesSchema),
 
     getFile: async (fileId: string, signal?: AbortSignal): Promise<FileDetail> =>
-      call(
-        readFile,
-        { path: { file_id: fileId }, ...(signal === undefined ? {} : { signal }) },
-        fileDetail,
-      ),
+      call(readFile, { path: { file_id: fileId }, ...optionalSignal(signal) }, fileDetail),
 
     getFolderFiles: async (folderId: string): Promise<DriveNode[]> =>
       call(listFolderFiles, { path: { folder_id: folderId } }, DriveNodesSchema),
 
-    getMe: async (): Promise<UserProfile> => call(getCurrentUser, {}, userProfile),
+    getMe: async (signal?: AbortSignal): Promise<UserProfile> =>
+      call(getCurrentUser, optionalSignal(signal), userProfile),
 
     getPreferences: async (): Promise<Preferences> => call(readPreferences, {}, preferences),
 
@@ -255,3 +256,9 @@ export function makeWikiApi(client?: Client) {
 }
 
 export { ApiError } from "@/lib/api-client";
+
+function optionalSignal(signal?: AbortSignal): { signal?: AbortSignal } {
+  const options: { signal?: AbortSignal } = {};
+  if (signal !== undefined) options.signal = signal;
+  return options;
+}

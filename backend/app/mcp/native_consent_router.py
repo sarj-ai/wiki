@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable, Coroutine, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from dataclasses import dataclass
 import hashlib
 import hmac
@@ -111,7 +111,7 @@ def create_native_consent_router(
     *,
     settings: NativeConsentSettings,
     core_dependency: Callable[..., NativeOAuthCore],
-    auth_dependency: Callable[..., AuthService] = auth_service_dep,
+    auth_dependency: Callable[..., AuthService | Awaitable[AuthService]] = auth_service_dep,
 ) -> APIRouter:
     class ConsentRoute(APIRoute):
         @override

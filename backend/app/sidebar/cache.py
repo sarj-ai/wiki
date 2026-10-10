@@ -29,34 +29,55 @@ CACHE_MAX_AGE = timedelta(days=30)
 type SidebarFlightResult = DriveTree | list[DriveNode]
 
 SINGLEFLIGHT = Singleflight[SidebarFlightResult]()
+_DECODE_FLIGHTS = Singleflight[DriveTree]()
 
 BG_TASKS: set[asyncio.Task[None]] = set()
+_background_refreshes: dict[str, asyncio.Task[None]] = {}
 
 _DECODED_TREE_CACHE_MAX = 32
-_decoded_trees: OrderedDict[tuple[UserId, DriveId, str], DriveTree] = OrderedDict()
+_DECODED_TREE_CACHE_NODE_MAX = 40_000
+
+
+class _DecodedTreeCache:
+    def __init__(self, *, max_entries: int, max_nodes: int) -> None:
+        self._max_entries = max_entries
+        self._max_nodes = max_nodes
+        self._values: OrderedDict[tuple[UserId, DriveId, str], DriveTree] = OrderedDict()
+
+    def get(self, key: tuple[UserId, DriveId, str]) -> DriveTree | None:
+        tree = self._values.get(key)
+        if tree is not None:
+            self._values.move_to_end(key)
+        return tree
+
+    def put(self, key: tuple[UserId, DriveId, str], tree: DriveTree) -> None:
+        if len(tree.folders) + len(tree.files) > self._max_nodes:
+            return
+        self._values[key] = tree
+        self._values.move_to_end(key)
+        while (
+            len(self._values) > self._max_entries
+            or sum(len(value.folders) + len(value.files) for value in self._values.values())
+            > self._max_nodes
+        ):
+            self._values.popitem(last=False)
+
+    def invalidate_drive(self, drive_id: DriveId) -> None:
+        for key in [key for key in self._values if key[1] == drive_id]:
+            self._values.pop(key)
+
+
+_decoded_trees = _DecodedTreeCache(
+    max_entries=_DECODED_TREE_CACHE_MAX, max_nodes=_DECODED_TREE_CACHE_NODE_MAX
+)
 
 
 def _decrypt_and_parse(blob: str) -> DriveTree:
     return DriveTree.model_validate_json(decrypt_cache(blob))
 
 
-def _decoded_get(key: tuple[UserId, DriveId, str]) -> DriveTree | None:
-    tree = _decoded_trees.get(key)
-    if tree is not None:
-        _decoded_trees.move_to_end(key)
-    return tree
-
-
-def _decoded_put(key: tuple[UserId, DriveId, str], tree: DriveTree) -> None:
-    _decoded_trees[key] = tree
-    _decoded_trees.move_to_end(key)
-    while len(_decoded_trees) > _DECODED_TREE_CACHE_MAX:
-        _decoded_trees.popitem(last=False)
-
-
-def _decoded_invalidate_drive(drive_id: DriveId) -> None:
-    for key in [key for key in _decoded_trees if key[1] == drive_id]:
-        del _decoded_trees[key]
+def _encrypt_tree(tree: DriveTree) -> str:
+    return encrypt_cache(tree.model_dump_json())
 
 
 @dataclass(frozen=True)
@@ -121,7 +142,11 @@ class PostgresSidebarCacheService(SidebarCacheService):
 
     @override
     async def peek_drive_tree(self, db: AsyncSession, drive_id: DriveId) -> CachedDriveTree | None:
-        if (row := await self._load_row(db, drive_id)) is None:
+        row = await self._load_row(db, drive_id)
+        # The request session uses expire_on_commit=False. Release its read
+        # transaction before decoding or provider work needs another session.
+        await db.commit()
+        if row is None:
             return None
         if (tree := await self._decode_row(db, row)) is None:
             return None
@@ -134,6 +159,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
         self, db: AsyncSession, drive_id: DriveId
     ) -> datetime | None:
         refreshed_at = await self._load_refreshed_at(db, drive_id)
+        await db.commit()
         if (
             refreshed_at is not None
             and datetime.now(UTC) - refreshed_at > settings.SIDEBAR_CACHE_TTL
@@ -159,7 +185,7 @@ class PostgresSidebarCacheService(SidebarCacheService):
         # its own tree with its own Google credentials.
         await db.execute(delete(DriveTreeCache).where(DriveTreeCache.drive_id == drive_id))
         await db.commit()
-        _decoded_invalidate_drive(drive_id)
+        _decoded_trees.invalidate_drive(drive_id)
 
     @override
     async def refresh_drive(self, db: AsyncSession, drive_id: DriveId) -> DriveTree:
@@ -174,9 +200,20 @@ class PostgresSidebarCacheService(SidebarCacheService):
         return tree
 
     def _schedule_refresh(self, drive_id: DriveId) -> None:
+        key = self._singleflight_key("drive", drive_id)
+        pending = _background_refreshes.get(key)
+        if pending is not None and not pending.done():
+            return
         task = asyncio.create_task(self._refresh_in_background(drive_id))
+        _background_refreshes[key] = task
         self._bg_tasks.add(task)
-        task.add_done_callback(self._bg_tasks.discard)
+
+        def completed(done: asyncio.Task[None]) -> None:
+            self._bg_tasks.discard(done)
+            if _background_refreshes.get(key) is done:
+                _background_refreshes.pop(key, None)
+
+        task.add_done_callback(completed)
 
     async def _refresh_in_background(self, drive_id: DriveId) -> None:
         outcomes = await asyncio.gather(
@@ -206,25 +243,31 @@ class PostgresSidebarCacheService(SidebarCacheService):
 
     async def _decode_row(self, db: AsyncSession, row: DriveTreeCache) -> DriveTree | None:
         key = (UserId(self._user.id), row.drive_id, row.refreshed_at.isoformat())
-        cached = _decoded_get(key)
+        cached = _decoded_trees.get(key)
         if cached is not None:
             return cached
+
         try:
-            tree = await asyncio.to_thread(_decrypt_and_parse, row.tree)
+            tree = await _DECODE_FLIGHTS.do(str(key), lambda: self._decode_tree(row.tree))
         except InvalidToken, ValidationError:
             await db.delete(row)
             await db.commit()
             return None
-        _decoded_put(key, tree)
+        _decoded_trees.put(key, tree)
         return tree
 
+    async def _decode_tree(self, blob: str) -> DriveTree:
+        return await asyncio.to_thread(_decrypt_and_parse, blob)
+
     async def _save_tree(self, db: AsyncSession, tree: DriveTree) -> None:
+        # Serialization and encryption must not stall the request event loop.
+        encrypted = await asyncio.to_thread(_encrypt_tree, tree)
         stmt = (
             pg_insert(DriveTreeCache)
             .values(
                 user_id=self._user.id,
                 drive_id=tree.drive_id,
-                tree=encrypt_cache(tree.model_dump_json()),
+                tree=encrypted,
                 refreshed_at=datetime.now(UTC),
                 refreshed_by=self._user.id,
             )

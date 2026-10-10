@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import asyncio
 from collections.abc import Mapping
 from datetime import timedelta
 from enum import StrEnum
+from itertools import batched
 from typing import override
 
 from pydantic import JsonValue
@@ -24,6 +26,8 @@ class CacheNamespace(StrEnum):
 
 
 _MAX_LOOKUP_KEYS_PER_QUERY = 10_000
+_MAX_WRITE_ROWS_PER_QUERY = 1_000
+_BULK_CPU_OFFLOAD_THRESHOLD = 256
 _MAX_CACHE_TTL = timedelta(minutes=5)
 
 
@@ -145,7 +149,13 @@ class CachePSqlService(CacheService):
     ) -> dict[str, JsonValue]:
         if not keys:
             return {}
-        physical_by_logical = {key: self._protector.physical_keys(namespace, key) for key in keys}
+        unique_keys = list(dict.fromkeys(keys))
+        if len(unique_keys) >= _BULK_CPU_OFFLOAD_THRESHOLD:
+            physical_by_logical = await asyncio.to_thread(
+                self._physical_keys_by_logical, namespace, unique_keys
+            )
+        else:
+            physical_by_logical = self._physical_keys_by_logical(namespace, unique_keys)
         physical_key_owners: dict[str, tuple[str, int]] = {}
         for logical_key, physical_keys in physical_by_logical.items():
             for rank, candidate in enumerate(physical_keys):
@@ -165,23 +175,14 @@ class CachePSqlService(CacheService):
                 async with self._sessionmaker() as db:
                     rows = [(row[0], row[1]) for row in (await db.execute(statement)).all()]
                 rows_by_key.update(rows)
-        values: dict[str, JsonValue] = {}
-        for logical_key, physical_keys in physical_by_logical.items():
-            for candidate in physical_keys:
-                if candidate not in rows_by_key:
-                    continue
-                observed = rows_by_key[candidate]
-                try:
-                    values[logical_key] = self._protector.unprotect(
-                        namespace,
-                        logical_key,
-                        observed,
-                    )
-                except InvalidCacheEntryError:
-                    continue
-                break
+        if len(physical_by_logical) >= _BULK_CPU_OFFLOAD_THRESHOLD:
+            values = await asyncio.to_thread(
+                self._unprotect_rows, namespace, physical_by_logical, rows_by_key
+            )
+        else:
+            values = self._unprotect_rows(namespace, physical_by_logical, rows_by_key)
         increment("cache_hits", len(values))
-        increment("cache_misses", len(keys) - len(values))
+        increment("cache_misses", len(physical_by_logical) - len(values))
         return values
 
     @override
@@ -211,22 +212,17 @@ class CachePSqlService(CacheService):
         if ttl > _MAX_CACHE_TTL:
             msg = "cache ttl must not exceed five minutes"
             raise ValueError(msg)
-        physical_key_owners: dict[str, str] = {}
-        active_physical_keys: dict[str, str] = {}
-        for logical_key in values:
-            physical_key = self._protector.physical_keys(namespace, logical_key)[0]
-            if physical_key_owners.setdefault(physical_key, logical_key) != logical_key:
-                return
-            active_physical_keys[logical_key] = physical_key
-        protected_values = [
-            {
-                "namespace": namespace,
-                "key": active_physical_keys[logical_key],
-                "value": self._protector.protect(namespace, logical_key, value),
-                "expires_at": func.now() + ttl,
-            }
-            for logical_key, value in values.items()
-        ]
+        if len(values) >= _BULK_CPU_OFFLOAD_THRESHOLD:
+            protected_values = await asyncio.to_thread(
+                self._protect_values, namespace, dict(values)
+            )
+        else:
+            protected_values = self._protect_values(namespace, values)
+        if protected_values is None:
+            return
+        expires_at = func.now() + ttl
+        for row in protected_values:
+            row["expires_at"] = expires_at
         expired = (
             delete(CacheEntry)
             .where(
@@ -237,16 +233,21 @@ class CachePSqlService(CacheService):
             )
             .cte("delete_expired_cache_entries")
         )
-        insert = pg_insert(CacheEntry).values(protected_values)
-        statement = insert.on_conflict_do_update(
-            index_elements=[CacheEntry.namespace, CacheEntry.key],
-            set_={
-                "value": insert.excluded.value,
-                "expires_at": insert.excluded.expires_at,
-            },
-        ).add_cte(expired)
         async with self._sessionmaker() as db, db.begin():
-            await db.execute(statement)
+            for index, chunk in enumerate(
+                batched(protected_values, _MAX_WRITE_ROWS_PER_QUERY, strict=False)
+            ):
+                insert = pg_insert(CacheEntry).values(list(chunk))
+                statement = insert.on_conflict_do_update(
+                    index_elements=[CacheEntry.namespace, CacheEntry.key],
+                    set_={
+                        "value": insert.excluded.value,
+                        "expires_at": insert.excluded.expires_at,
+                    },
+                )
+                if index == 0:
+                    statement = statement.add_cte(expired)
+                await db.execute(statement)
 
     @override
     async def delete(self, namespace: CacheNamespace, key: str) -> None:
@@ -265,3 +266,47 @@ class CachePSqlService(CacheService):
                     CacheEntry.key.in_(keys),
                 )
             )
+
+    def _physical_keys_by_logical(
+        self, namespace: CacheNamespace, keys: list[str]
+    ) -> dict[str, tuple[str, ...]]:
+        return {key: self._protector.physical_keys(namespace, key) for key in keys}
+
+    def _unprotect_rows(
+        self,
+        namespace: CacheNamespace,
+        physical_by_logical: dict[str, tuple[str, ...]],
+        rows_by_key: dict[str, object],
+    ) -> dict[str, JsonValue]:
+        values: dict[str, JsonValue] = {}
+        for logical_key, physical_keys in physical_by_logical.items():
+            for candidate in physical_keys:
+                if candidate not in rows_by_key:
+                    continue
+                try:
+                    values[logical_key] = self._protector.unprotect(
+                        namespace, logical_key, rows_by_key[candidate]
+                    )
+                except InvalidCacheEntryError:
+                    continue
+                break
+        return values
+
+    def _protect_values(
+        self, namespace: CacheNamespace, values: Mapping[str, JsonValue]
+    ) -> list[dict[str, object]] | None:
+        physical_key_owners: dict[str, str] = {}
+        active_physical_keys: dict[str, str] = {}
+        for logical_key in values:
+            physical_key = self._protector.physical_keys(namespace, logical_key)[0]
+            if physical_key_owners.setdefault(physical_key, logical_key) != logical_key:
+                return None
+            active_physical_keys[logical_key] = physical_key
+        return [
+            {
+                "namespace": namespace,
+                "key": active_physical_keys[logical_key],
+                "value": self._protector.protect(namespace, logical_key, value),
+            }
+            for logical_key, value in values.items()
+        ]

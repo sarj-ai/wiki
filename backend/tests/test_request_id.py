@@ -94,7 +94,10 @@ async def test_generates_request_id_and_logs_safe_completion_fields() -> None:
     assert result.records[0]["extra"]["duration_ms"] >= 0
     assert "secret" not in str(result.records[0]["extra"])
     start = next(message for message in result.messages if message["type"] == "http.response.start")
-    assert dict(start["headers"])[b"server-timing"] == b"auth;dur=2.5"
+    timing = dict(start["headers"])[b"server-timing"]
+    assert timing.startswith(b"app;dur=")
+    assert b"auth;dur=2.5" in timing
+    assert result.records[0]["extra"]["response_bytes"] == 0
 
 
 @pytest.mark.asyncio

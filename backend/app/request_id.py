@@ -10,7 +10,9 @@ from loguru import logger
 from starlette.routing import Route
 
 from app.performance import (
+    add_duration,
     begin_request_metrics,
+    increment,
     reset_request_metrics,
     server_timing_value,
     snapshot,
@@ -44,6 +46,7 @@ class RequestIDMiddleware:
         async def send_with_header(message: Message) -> None:
             nonlocal status_code
             if message["type"] == "http.response.start":
+                add_duration("app", (time.perf_counter() - started_at) * 1000)
                 status_code = message["status"]
                 headers = list(message.get("headers", []))
                 headers.append((_HEADER, request_id.encode("latin-1")))
@@ -51,6 +54,8 @@ class RequestIDMiddleware:
                 if timing is not None:
                     headers.append((b"server-timing", timing.encode("latin-1")))
                 message["headers"] = headers
+            elif message["type"] == "http.response.body":
+                increment("response_bytes", len(message.get("body", b"")))
             await send(message)
 
         try:

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from datetime import timedelta
+from threading import get_ident
 from types import TracebackType
 from typing import NamedTuple, Self
 
 from cryptography.fernet import Fernet
+from pydantic import JsonValue
 import pytest
 from sqlalchemy.sql import ClauseElement
 
@@ -389,3 +391,61 @@ async def test_get_many_chunks_large_lookup_batches() -> None:
     assert factory.calls == 2
     assert len(first.statements) == 1
     assert len(second.statements) == 1
+
+
+class _ObservedProtector:
+    def __init__(self) -> None:
+        self.wrapped = _protector()
+        self.lookup_keys: list[str] = []
+        self.lookup_threads: set[int] = set()
+        self.protection_threads: set[int] = set()
+        self.unprotection_threads: set[int] = set()
+
+    def physical_keys(self, namespace: str, logical_key: str) -> tuple[str, ...]:
+        self.lookup_keys.append(logical_key)
+        self.lookup_threads.add(get_ident())
+        return self.wrapped.physical_keys(namespace, logical_key)
+
+    def protect(self, namespace: str, logical_key: str, value: JsonValue) -> str:
+        self.protection_threads.add(get_ident())
+        return self.wrapped.protect(namespace, logical_key, value)
+
+    def unprotect(self, namespace: str, logical_key: str, envelope: object) -> JsonValue:
+        self.unprotection_threads.add(get_ident())
+        return self.wrapped.unprotect(namespace, logical_key, envelope)
+
+
+async def test_duplicate_lookup_keys_are_hashed_once() -> None:
+    protector = _ObservedProtector()
+    values = await _service(_Session(_Result()), protector=dependency(protector)).get_many(
+        CacheNamespace.SHORTCUT_PROBE, ["same"] * 1000
+    )
+    assert values == {}
+    assert protector.lookup_keys == ["same"]
+    assert protector.lookup_threads == {get_ident()}
+
+
+async def test_large_cache_batch_crypto_does_not_run_on_the_request_thread() -> None:
+    protector = _ObservedProtector()
+    namespace = CacheNamespace.SHORTCUT_PROBE
+    values: dict[str, JsonValue] = {f"bulk-{index}": {"accessible": True} for index in range(1000)}
+    rows = [
+        _CacheRow(
+            protector.wrapped.physical_keys(namespace, key)[0],
+            protector.wrapped.protect(namespace, key, value),
+        )
+        for key, value in values.items()
+    ]
+    read, write = _Session(_Result(rows=rows)), _Session()
+    service = _service(read, write, protector=dependency(protector))
+
+    assert await service.get_many(namespace, list(values)) == values
+    await service.put_many(namespace, values, ttl=timedelta(minutes=1))
+
+    assert get_ident() not in protector.lookup_threads
+    assert get_ident() not in protector.protection_threads
+    assert get_ident() not in protector.unprotection_threads
+    assert protector.lookup_threads
+    assert protector.protection_threads
+    assert protector.unprotection_threads
+    assert write.commits == 1

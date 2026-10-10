@@ -1,12 +1,9 @@
 import * as z from "zod";
 
-import {
-  createSmartFileAction,
-  getSmartCreateTaskAction,
-  listSmartTemplatesAction,
-  proposeSmartFileAction,
-} from "@/app/actions/smart-create-actions";
+import { createSmartFileAction, proposeSmartFileAction } from "@/app/actions/smart-create-actions";
+import { abortableDelay } from "@/lib/abortable-delay";
 import { runAction } from "@/lib/action-client";
+import { wikiReadHttp } from "@/lib/clients/wiki-read-http";
 import {
   zBlankSource,
   zCancelledTaskRead,
@@ -83,15 +80,17 @@ const SmartCreateApi = {
   },
 
   getTask: async (taskId: string, signal?: AbortSignal): Promise<SmartCreateTask> => {
-    signal?.throwIfAborted();
-    const responseBody = await runAction(async () => await getSmartCreateTaskAction(taskId));
-    signal?.throwIfAborted();
-    return parseTask(TaskSchema.parse(JSON.parse(responseBody)));
+    const task = await wikiReadHttp(`/tasks/${encodeURIComponent(taskId)}`, TaskSchema, {}, signal);
+    return parseTask(task);
   },
 
-  listTemplates: async (refresh = false): Promise<DriveTemplate[]> => {
-    const responseBody = await runAction(async () => await listSmartTemplatesAction(refresh));
-    const result = TemplateCatalogSchema.parse(JSON.parse(responseBody));
+  listTemplates: async (refresh = false, signal?: AbortSignal): Promise<DriveTemplate[]> => {
+    const result = await wikiReadHttp(
+      "/templates",
+      TemplateCatalogSchema,
+      { refresh: String(refresh) },
+      signal,
+    );
     return result.templates.map((template) => ({
       categoryPath: template.category_path,
       ...(template.description === null ? {} : { description: template.description }),
@@ -142,18 +141,21 @@ async function waitForTask(
   signal: AbortSignal | undefined,
   pollIntervalMs: number,
 ): Promise<SmartCreateResult> {
-  switch (task.status) {
-    case "cancelled":
-      throw new Error("File creation was cancelled");
-    case "failed":
-      throw new Error(task.errorDetail ?? `File creation failed (${task.errorCode})`);
-    case "succeeded":
-      return task.result;
-    case "pending":
-    case "running": {
-      await abortableDelay(pollIntervalMs, signal);
-      const nextTask = await SmartCreateApi.getTask(task.id, signal);
-      return await waitForTask(nextTask, signal, pollIntervalMs);
+  let current = task;
+  for (;;) {
+    switch (current.status) {
+      case "cancelled":
+        throw new Error("File creation was cancelled");
+      case "failed":
+        throw new Error(current.errorDetail ?? `File creation failed (${current.errorCode})`);
+      case "succeeded":
+        return current.result;
+      case "pending":
+      case "running":
+        // eslint-disable-next-line no-await-in-loop -- Wait before issuing the next status request.
+        await abortableDelay(pollIntervalMs, signal);
+        // eslint-disable-next-line no-await-in-loop -- Each poll depends on the preceding task status.
+        current = await SmartCreateApi.getTask(current.id, signal);
     }
   }
 }
@@ -191,24 +193,6 @@ function parseCreateResult(result: z.infer<typeof CreateResultSchema>): SmartCre
     taskId: result.task_id,
     warnings: result.warnings,
   };
-}
-
-async function abortableDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const timeout = window.setTimeout(resolve, milliseconds);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        window.clearTimeout(timeout);
-        reject(
-          signal.reason instanceof Error
-            ? signal.reason
-            : new DOMException("The operation was aborted", "AbortError"),
-        );
-      },
-      { once: true },
-    );
-  });
 }
 
 function parseSource(source: z.infer<typeof SourceSchema>): CreationSource {

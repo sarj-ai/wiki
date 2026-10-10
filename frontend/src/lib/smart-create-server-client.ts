@@ -18,7 +18,7 @@ export interface SmartUpstreamResponse {
   status: number;
 }
 
-export async function callSmartCreateApi(
+export async function smartCreateServerClient(
   path: string,
   body: string,
   token: string,
@@ -71,31 +71,6 @@ function smartCreateResponse(response: Response, body: string): SmartUpstreamRes
     ok: false,
     status: response.status,
   };
-}
-
-export async function readSmartCreateApi(
-  path: string,
-  token: string,
-): Promise<SmartUpstreamResponse> {
-  try {
-    const response = await fetch(`${API_URL}${path}`, {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
-    const responseBody = await boundedTransformText(response.body);
-    if (response.ok) return { body: responseBody, ok: true, status: response.status };
-    const parsed = ErrorResponseSchema.safeParse(safeJson(responseBody));
-    const error = parsed.success ? parsed.data.detail : undefined;
-    return {
-      body: responseBody,
-      ...(error === undefined ? {} : { error }),
-      ok: false,
-      status: response.status,
-    };
-  } catch {
-    return { body: "", error: "Smart Create could not reach the API", ok: false, status: 502 };
-  }
 }
 
 function safeJson(value: string): unknown {

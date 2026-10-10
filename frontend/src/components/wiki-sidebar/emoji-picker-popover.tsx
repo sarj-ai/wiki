@@ -6,15 +6,24 @@ import { useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useDeferredDialog } from "@/hooks/use-deferred-dialog";
 import { useIsClient } from "@/hooks/use-is-client";
+import { useSetDocIcon, useSetFolderIcon } from "@/hooks/use-wiki-mutations";
+import { runWithErrorToast } from "@/lib/mutation-toast";
 
-interface EmojiPickerPopoverProps {
-  children: React.ReactElement;
-
-  onChange: (next: null | string) => Promise<void> | void;
-
-  value: string | undefined;
+export interface IconTarget {
+  id: string;
+  kind: "doc" | "folder";
 }
+
+type IconChange = (next: null | string) => Promise<void> | void;
+type IconChangeProps =
+  { onChange: IconChange; target?: never } | { onChange?: never; target: IconTarget };
+
+type EmojiPickerPopoverProps = IconChangeProps & {
+  children: React.ReactElement;
+  value: string | undefined;
+};
 
 interface EmojiPickerBodyProps {
   onSelect: (emoji: string) => void;
@@ -54,7 +63,66 @@ const Picker = dynamic(
 );
 
 let cachedData: null | Promise<unknown> = null;
-export function EmojiPickerPopover({ children, onChange, value }: EmojiPickerPopoverProps) {
+export function EmojiPickerPopover(props: EmojiPickerPopoverProps) {
+  const picker = useDeferredDialog();
+  return (
+    <Popover onOpenChange={picker.onOpenChange} open={picker.open}>
+      <PopoverTrigger asChild>{props.children}</PopoverTrigger>
+      {picker.mounted ? <IconPickerContent {...props} /> : null}
+    </Popover>
+  );
+}
+
+function IconPickerContent({
+  onChange,
+  target,
+  value,
+}: IconChangeProps & { value: string | undefined }) {
+  if (target) {
+    return target.kind === "doc" ? (
+      <DocIconPicker fileId={target.id} value={value} />
+    ) : (
+      <FolderIconPicker folderId={target.id} value={value} />
+    );
+  }
+  return <EmojiPickerContent onChange={onChange} value={value} />;
+}
+
+function DocIconPicker({ fileId, value }: { fileId: string; value: string | undefined }) {
+  const mutation = useSetDocIcon();
+  return (
+    <EmojiPickerContent
+      onChange={async (icon) => {
+        await runWithErrorToast(async () => {
+          await mutation.mutateAsync({ driveId: fileId, icon });
+        }, "Failed to update icon");
+      }}
+      value={value}
+    />
+  );
+}
+
+function FolderIconPicker({ folderId, value }: { folderId: string; value: string | undefined }) {
+  const mutation = useSetFolderIcon();
+  return (
+    <EmojiPickerContent
+      onChange={async (icon) => {
+        await runWithErrorToast(async () => {
+          await mutation.mutateAsync({ folderDriveId: folderId, icon });
+        }, "Failed to update icon");
+      }}
+      value={value}
+    />
+  );
+}
+
+function EmojiPickerContent({
+  onChange,
+  value,
+}: {
+  onChange: IconChange;
+  value: string | undefined;
+}) {
   const { resolvedTheme } = useTheme();
   const mounted = useIsClient();
   const theme = mounted && resolvedTheme === "dark" ? "dark" : "light";
@@ -68,40 +136,32 @@ export function EmojiPickerPopover({ children, onChange, value }: EmojiPickerPop
   };
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent
-        align="start"
-        className="w-auto border-0 bg-transparent p-0 shadow-none"
-        onOpenAutoFocus={(e) => {
-          e.preventDefault();
-        }}
-        side="right"
-        sideOffset={8}
-      >
-        <EmojiPickerBody
-          onSelect={(emoji) => {
-            handleChange(emoji);
-          }}
-          theme={theme}
-        />
-        {value ? (
-          <div className="mt-2 flex justify-end">
-            <Button
-              disabled={pending}
-              onClick={() => {
-                handleChange(null);
-              }}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              Remove icon
-            </Button>
-          </div>
-        ) : null}
-      </PopoverContent>
-    </Popover>
+    <PopoverContent
+      align="start"
+      className="w-auto border-0 bg-transparent p-0 shadow-none"
+      onOpenAutoFocus={(event) => {
+        event.preventDefault();
+      }}
+      side="right"
+      sideOffset={8}
+    >
+      <EmojiPickerBody onSelect={handleChange} theme={theme} />
+      {value ? (
+        <div className="mt-2 flex justify-end">
+          <Button
+            disabled={pending}
+            onClick={() => {
+              handleChange(null);
+            }}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Remove icon
+          </Button>
+        </div>
+      ) : null}
+    </PopoverContent>
   );
 }
 

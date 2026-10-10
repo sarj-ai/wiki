@@ -1,5 +1,6 @@
 import * as z from "zod";
 
+import { abortableDelay } from "@/lib/abortable-delay";
 import { runAction, runActionResult } from "@/lib/action-client";
 import { ApiError } from "@/lib/api-error";
 import { transformHttp } from "@/lib/clients/transform-http";
@@ -134,11 +135,18 @@ export const DOCUMENT_TRANSFORM_API = {
     if (!response.ok) throw new Error("Markdown upload failed. Choose the file again to retry.");
     return upload.upload_id;
   },
-  admission: async (key: string) => {
+  admission: async (key: string, signal?: AbortSignal) => {
     const id = UuidSchema.parse(key);
     try {
       const raw = await runAction(
-        async () => await transformHttp(`/admissions/${encodeURIComponent(id)}`),
+        async () =>
+          await transformHttp(
+            `/admissions/${encodeURIComponent(id)}`,
+            undefined,
+            undefined,
+            signal,
+          ),
+        signal,
       );
       return AdmissionSchema.parse(JSON.parse(raw));
     } catch (error: unknown) {
@@ -146,8 +154,11 @@ export const DOCUMENT_TRANSFORM_API = {
       throw error;
     }
   },
-  capabilities: async () => {
-    const responseBody = await runAction(async () => await transformHttp("/capabilities"));
+  capabilities: async (signal?: AbortSignal) => {
+    const responseBody = await runAction(
+      async () => await transformHttp("/capabilities", undefined, undefined, signal),
+      signal,
+    );
     const capabilities = CapabilitiesSchema.parse(JSON.parse(responseBody));
     return {
       copy: capabilities.copy,
@@ -157,12 +168,16 @@ export const DOCUMENT_TRANSFORM_API = {
     } as const;
   },
 
-  current: async (fileId: string, mode: "both" | "format" | "unslop") => {
+  current: async (fileId: string, mode: "both" | "format" | "unslop", signal?: AbortSignal) => {
     const responseBody = await runAction(
       async () =>
         await transformHttp(
           `/current?file_id=${encodeURIComponent(fileId)}&mode=${encodeURIComponent(mode)}`,
+          undefined,
+          undefined,
+          signal,
         ),
+      signal,
     );
     const current = CurrentPolishSchema.parse(JSON.parse(responseBody));
     return current.result === null ? null : parseResult(current.result);
@@ -193,7 +208,9 @@ export const DOCUMENT_TRANSFORM_API = {
   getTask: async (taskId: string, signal?: AbortSignal): Promise<DocumentTransformTask> => {
     signal?.throwIfAborted();
     const responseBody = await runAction(
-      async () => await transformHttp(`/tasks/${encodeURIComponent(taskId)}`),
+      async () =>
+        await transformHttp(`/tasks/${encodeURIComponent(taskId)}`, undefined, undefined, signal),
+      signal,
     );
     signal?.throwIfAborted();
     return parseTask(TaskSchema.parse(JSON.parse(responseBody)));
@@ -371,25 +388,6 @@ function serializeSource(source: DocumentTransformSource): Record<string, string
           kind: source.kind,
           name: source.name,
         };
-}
-
-async function abortableDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
-  signal?.throwIfAborted();
-  await new Promise<void>((resolve, reject) => {
-    const onAbort = () => {
-      window.clearTimeout(timeout);
-      reject(
-        signal?.reason instanceof Error
-          ? signal.reason
-          : new DOMException("The operation was aborted", "AbortError"),
-      );
-    };
-    const timeout = window.setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, milliseconds);
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
 }
 
 function isTransientPollError(error: unknown): boolean {

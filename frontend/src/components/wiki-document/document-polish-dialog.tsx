@@ -112,7 +112,7 @@ export type DocumentPolishSource =
       kind: "markdown";
     };
 
-interface DocumentPolishDialogProps {
+export interface DocumentPolishDialogProps {
   onInPlaceComplete?: () => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
@@ -204,7 +204,7 @@ export function DocumentPolishDialog({
   }, [open, submitting, outcomeIdentity]);
   const capabilities = useQuery({
     enabled: open && source.kind === "drive_file" && source.allowInPlace && !isWord,
-    queryFn: DOCUMENT_TRANSFORM_API.capabilities,
+    queryFn: async ({ signal }) => await DOCUMENT_TRANSFORM_API.capabilities(signal),
     queryKey: ["document-transform", "capabilities"],
     staleTime: 60_000,
   });
@@ -239,9 +239,9 @@ export function DocumentPolishDialog({
       recovery.isSuccess &&
       unresolved === null &&
       completedResult === null,
-    queryFn: async () =>
+    queryFn: async ({ signal }) =>
       source.kind === "drive_file"
-        ? await DOCUMENT_TRANSFORM_API.current(source.fileId, requestedMode)
+        ? await DOCUMENT_TRANSFORM_API.current(source.fileId, requestedMode, signal)
         : null,
     queryKey: [
       "document-transform-current",

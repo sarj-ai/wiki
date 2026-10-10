@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 _FIELDS = (
     "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,"
-    "capabilities(canEdit,canAddChildren),appProperties"
+    "capabilities(canEdit,canAddChildren)"
 )
 _QA_CORPUS_FIELDS = "id,name,mimeType,parents,driveId,modifiedTime,version,trashed"
 _SMART_TASK_PROPERTY = "sarjWikiTaskId"

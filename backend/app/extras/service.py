@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, NamedTuple, override
 
-from sqlalchemy import select
+from sqlalchemy import func, literal, select, union_all
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +35,12 @@ if TYPE_CHECKING:
 _DEFAULT_PREFS = PreferencesRead(show_non_doc_files=True, hidden_workspace_ids=[])
 
 
+class SidebarExtras(NamedTuple):
+    preferences: PreferencesRead
+    folder_icons: list[FolderIconRead]
+    sort_orders: list[SortOrderRead]
+
+
 async def list_accessible_doc_icons(
     extras: ExtrasService,
     files: FilesService,
@@ -45,6 +51,14 @@ async def list_accessible_doc_icons(
 
 
 class ExtrasService(ABC):
+    async def load_sidebar(self) -> SidebarExtras:
+        # These reads share one AsyncSession and must not run concurrently.
+        return SidebarExtras(
+            await self.get_preferences(),
+            await self.list_folder_icons(),
+            await self.list_sort_orders(),
+        )
+
     @abstractmethod
     async def list_doc_icons(self) -> list[DocIconRead]: ...
     @abstractmethod
@@ -73,8 +87,62 @@ class PostgresExtrasService(ExtrasService):
         self._user = user
 
     @override
+    async def load_sidebar(self) -> SidebarExtras:
+        # UNION ALL keeps each indexed user-scoped lookup independent while
+        # paying one database round trip and avoiding ORM entity construction.
+        statement = union_all(
+            select(
+                literal("preferences"),
+                func.jsonb_build_object(
+                    "show_non_doc_files",
+                    UserPreferences.show_non_doc_files,
+                    "hidden_workspace_ids",
+                    UserPreferences.hidden_workspace_ids,
+                ),
+            ).where(UserPreferences.user_id == self._user.id),
+            select(
+                literal("folder"),
+                func.jsonb_build_object(
+                    "folder_drive_id",
+                    UserFolderIcon.folder_drive_id,
+                    "icon",
+                    UserFolderIcon.icon,
+                ),
+            ).where(UserFolderIcon.user_id == self._user.id),
+            select(
+                literal("sort"),
+                func.jsonb_build_object(
+                    "drive_id",
+                    UserSortOrder.drive_id,
+                    "sort_order",
+                    UserSortOrder.sort_order,
+                ),
+            ).where(UserSortOrder.user_id == self._user.id),
+        )
+        preferences = _DEFAULT_PREFS
+        folder_icons: list[FolderIconRead] = []
+        sort_orders: list[SortOrderRead] = []
+        for kind, payload in (await self._db.execute(statement)).all():
+            match kind:
+                case "preferences":
+                    preferences = PreferencesRead.model_validate(payload)
+                case "folder":
+                    folder_icons.append(FolderIconRead.model_validate(payload))
+                case "sort":
+                    sort_orders.append(SortOrderRead.model_validate(payload))
+                case _:
+                    msg = "Unexpected sidebar overlay kind"
+                    raise ValueError(msg)
+        return SidebarExtras(preferences, folder_icons, sort_orders)
+
+    @override
     async def list_doc_icons(self) -> list[DocIconRead]:
-        rows = (await self._db.execute(select(DocIcon))).scalars().all()
+        rows = (
+            await self._db.execute(select(DocIcon.drive_id, DocIcon.icon, DocIcon.cover_url))
+        ).all()
+        # Permission filtering can open an independent cache session. Release
+        # this read transaction before waiting on the provider/cache path.
+        await self._db.commit()
         return [DocIconRead(drive_id=r.drive_id, icon=r.icon, cover_url=r.cover_url) for r in rows]
 
     @override
@@ -106,14 +174,12 @@ class PostgresExtrasService(ExtrasService):
     @override
     async def list_folder_icons(self) -> list[FolderIconRead]:
         rows = (
-            (
-                await self._db.execute(
-                    select(UserFolderIcon).where(UserFolderIcon.user_id == self._user.id)
+            await self._db.execute(
+                select(UserFolderIcon.folder_drive_id, UserFolderIcon.icon).where(
+                    UserFolderIcon.user_id == self._user.id
                 )
             )
-            .scalars()
-            .all()
-        )
+        ).all()
         return [FolderIconRead(folder_drive_id=r.folder_drive_id, icon=r.icon) for r in rows]
 
     @override
@@ -143,14 +209,12 @@ class PostgresExtrasService(ExtrasService):
     @override
     async def list_sort_orders(self) -> list[SortOrderRead]:
         rows = (
-            (
-                await self._db.execute(
-                    select(UserSortOrder).where(UserSortOrder.user_id == self._user.id)
+            await self._db.execute(
+                select(UserSortOrder.drive_id, UserSortOrder.sort_order).where(
+                    UserSortOrder.user_id == self._user.id
                 )
             )
-            .scalars()
-            .all()
-        )
+        ).all()
         return [SortOrderRead(drive_id=r.drive_id, sort_order=r.sort_order) for r in rows]
 
     @override
@@ -176,7 +240,14 @@ class PostgresExtrasService(ExtrasService):
 
     @override
     async def get_preferences(self) -> PreferencesRead:
-        if (row := await self._db.get(UserPreferences, self._user.id)) is None:
+        row = (
+            await self._db.execute(
+                select(
+                    UserPreferences.show_non_doc_files, UserPreferences.hidden_workspace_ids
+                ).where(UserPreferences.user_id == self._user.id)
+            )
+        ).one_or_none()
+        if row is None:
             return _DEFAULT_PREFS
         return PreferencesRead(
             show_non_doc_files=row.show_non_doc_files,
@@ -207,9 +278,9 @@ class PostgresExtrasService(ExtrasService):
         if updates_hidden_workspaces:
             set_["hidden_workspace_ids"] = stmt.excluded.hidden_workspace_ids
         upsert = stmt.on_conflict_do_update(index_elements=["user_id"], set_=set_).returning(
-            UserPreferences
+            UserPreferences.show_non_doc_files, UserPreferences.hidden_workspace_ids
         )
-        row = (await self._db.execute(upsert)).scalar_one()
+        row = (await self._db.execute(upsert)).one()
         await self._db.commit()
         return PreferencesRead(
             show_non_doc_files=row.show_non_doc_files,

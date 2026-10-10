@@ -13,6 +13,7 @@ from app.drive.service import DriveService
 from app.extras.schemas import DocIconRead, FolderIconRead, PreferencesRead, SortOrderRead
 from app.extras.service import ExtrasService, list_accessible_doc_icons
 from app.files.service import FilesService
+from app.identifiers import DriveId
 from app.models.user import User
 from app.sidebar.cache import SidebarCacheService
 
@@ -59,20 +60,25 @@ class AggregatingBootstrapService(BootstrapService):
             folder_icons=folder_icons,
             doc_icons=doc_icons,
             sort_orders=sort_orders,
-            first_drive_tree=await self._peek_first_tree(drives),
+            first_drive_tree=await self._peek_first_tree(drives, preferences.hidden_workspace_ids),
             me=UserProfile.from_user(self._user),
         )
 
-    async def _peek_first_tree(self, drives: list[DriveSummary]) -> DriveTree | None:
-        if not drives:
+    async def _peek_first_tree(
+        self, drives: list[DriveSummary], hidden_workspace_ids: list[DriveId]
+    ) -> DriveTree | None:
+        hidden = set(hidden_workspace_ids)
+        first_drive = next((drive for drive in drives if drive.id not in hidden), None)
+        if first_drive is None:
             return None
-        cached = await self._cache.peek_drive_tree(self._db, drives[0].id)
+        cached = await self._cache.peek_drive_tree(self._db, first_drive.id)
         return cached.tree if cached is not None else None
 
     async def _extras_reads(self, *, defer_doc_icons: bool) -> _ExtrasReads:
+        sidebar = await self._extras.load_sidebar()
         return _ExtrasReads(
-            await self._extras.get_preferences(),
-            await self._extras.list_folder_icons(),
+            sidebar.preferences,
+            sidebar.folder_icons,
             ([] if defer_doc_icons else await list_accessible_doc_icons(self._extras, self._files)),
-            await self._extras.list_sort_orders(),
+            sidebar.sort_orders,
         )

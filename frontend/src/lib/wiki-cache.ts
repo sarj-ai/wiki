@@ -10,15 +10,23 @@ export interface CachedNodeMeta {
   name: string;
 }
 
+// Pending document renders can request the same hint repeatedly. Keep only the
+// last lookup per immutable query array, so misses are cheap without indexing
+// every node or retaining query data after eviction.
+const NODE_META_CACHE = new WeakMap<
+  readonly DriveNode[],
+  { fileId: string; meta: CachedNodeMeta | null }
+>();
+
 export function findCachedNodeMeta(qc: QueryClient, fileId: string): CachedNodeMeta | null {
   for (const [, nodes] of qc.getQueriesData<DriveNode[]>({
     queryKey: wikiKeys.folderFilesPrefix,
   })) {
-    const meta = metaFromNodes(nodes ?? [], fileId);
+    const meta = metaFromNodes(nodes, fileId);
     if (meta) return meta;
   }
   for (const [, tree] of qc.getQueriesData<DriveTree>({ queryKey: wikiKeys.driveTreePrefix })) {
-    const meta = tree && metaFromNodes([...tree.folders, ...tree.files], fileId);
+    const meta = tree && (metaFromNodes(tree.folders, fileId) ?? metaFromNodes(tree.files, fileId));
     if (meta) return meta;
   }
   return null;
@@ -131,7 +139,19 @@ export function removeFileFromCaches(
   }
 }
 
-function metaFromNodes(nodes: DriveNode[], fileId: string): CachedNodeMeta | null {
+function metaFromNodes(
+  nodes: readonly DriveNode[] | undefined,
+  fileId: string,
+): CachedNodeMeta | null {
+  if (!nodes) return null;
+  const cached = NODE_META_CACHE.get(nodes);
+  if (cached?.fileId === fileId) return cached.meta;
+  const meta = lookupNodeMeta(nodes, fileId);
+  NODE_META_CACHE.set(nodes, { fileId, meta });
+  return meta;
+}
+
+function lookupNodeMeta(nodes: readonly DriveNode[], fileId: string): CachedNodeMeta | null {
   for (const node of nodes) {
     if (node.id === fileId && node.mimeType !== MIME_SHORTCUT) {
       return {

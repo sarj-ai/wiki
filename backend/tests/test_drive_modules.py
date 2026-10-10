@@ -873,6 +873,103 @@ async def test_walk_populates_files_from_parallel_drive_listing(
     files_call = next(c for c in client.files_captured if c.get("q", "").startswith("trashed"))
     assert files_call["corpora"] == "drive"
     assert files_call["driveId"] == "d"
+    assert f"mimeType!='{MIME_FOLDER}'" in files_call["q"]
+
+
+async def test_walk_resolves_folder_and_file_shortcuts_in_one_probe_batch(
+    patch_drive_client: Any,
+) -> None:
+    client = _FakeClient(
+        files_pages=[
+            {
+                "files": [
+                    {
+                        "id": "folder-link",
+                        "name": "Folder link",
+                        "mimeType": MIME_SHORTCUT,
+                        "parents": ["d"],
+                        "shortcutDetails": {
+                            "targetId": "folder-target",
+                            "targetMimeType": MIME_FOLDER,
+                        },
+                    }
+                ]
+            }
+        ],
+        children_pages=[
+            {
+                "files": [
+                    {
+                        "id": "file-link",
+                        "name": "File link",
+                        "mimeType": MIME_SHORTCUT,
+                        "parents": ["d"],
+                        "shortcutDetails": {
+                            "targetId": "file-target",
+                            "targetMimeType": "application/vnd.google-apps.document",
+                        },
+                    }
+                ]
+            }
+        ],
+    )
+    patch_drive_client(client)
+    calls: list[list[FileId]] = []
+
+    class RecordingDrive(GoogleDriveService):
+        @override
+        def _probe_targets_sync(
+            self, target_ids: list[FileId]
+        ) -> dict[FileId, ShortcutProbe | None]:
+            calls.append(target_ids)
+            return {target_id: ShortcutProbe(accessible=True) for target_id in target_ids}
+
+    service = RecordingDrive(_user(), _Cache())
+    tree = await service.walk_drive_folders(DriveId("d"))
+
+    assert calls == [["file-target", "folder-target"]]
+    assert [node.id for node in tree.folders] == ["folder-link"]
+    assert [node.id for node in tree.files] == ["file-link"]
+
+
+async def test_shortcut_resolution_keeps_authorization_bound_to_each_target() -> None:
+    class TargetDrive(GoogleDriveService):
+        @override
+        async def _drive_names(self) -> dict[DriveId, str]:
+            return {DriveId("available-drive"): "Available"}
+
+        @override
+        def _probe_targets_sync(
+            self, target_ids: list[FileId]
+        ) -> dict[FileId, ShortcutProbe | None]:
+            return {
+                target_id: ShortcutProbe(
+                    accessible=target_id != "denied-target",
+                    target_drive_id=DriveId("available-drive")
+                    if target_id != "denied-target"
+                    else None,
+                )
+                for target_id in target_ids
+            }
+
+    nodes = [
+        DriveNode(
+            id=FileId("same-shortcut"),
+            name="Shortcut",
+            mime_type=MIME_SHORTCUT,
+            parent_id=None,
+            modified_time=None,
+            shortcut_target_id=FileId(target),
+            shortcut_target_mime_type=MIME_FOLDER,
+        )
+        for target in ("denied-target", "available-target")
+    ]
+    resolved = await TargetDrive(_user())._resolve_shortcut_nodes(nodes)
+
+    assert resolved[0].shortcut_inaccessible is True
+    assert resolved[0].shortcut_target_drive_id is None
+    assert resolved[1].shortcut_inaccessible is False
+    assert resolved[1].shortcut_target_drive_id == "available-drive"
 
 
 async def test_walk_truncates_oversized_drive_file_listings(

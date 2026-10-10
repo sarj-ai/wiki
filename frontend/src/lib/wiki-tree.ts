@@ -8,7 +8,7 @@ export function isFolderLikeNode(node: DriveNode): boolean {
   );
 }
 
-export function buildChildrenIndex(folders: DriveNode[]): Map<string, DriveNode[]> {
+export function buildChildrenIndex(folders: readonly DriveNode[]): Map<string, DriveNode[]> {
   const map = new Map<string, DriveNode[]>();
   for (const folder of folders) {
     const key = folder.parentId ?? "__root__";
@@ -39,9 +39,9 @@ export function compareNodeOrder(
 }
 
 export function applyOptimisticOrder(
-  items: KindedNode[],
+  items: readonly KindedNode[],
   order: null | readonly string[],
-): KindedNode[] {
+): readonly KindedNode[] {
   if (!order) return items;
   const byId = new Map<string, KindedNode>(items.map((item) => [item.node.id, item]));
   const ordered: KindedNode[] = [];

@@ -7,89 +7,16 @@ import { getRecentDocumentAliases, type RecentDocumentAlias } from "@/lib/alias-
 import { RATE_LIMIT_MESSAGE } from "@/lib/api-error";
 import { zRecentDocumentAliasesRequest } from "@/lib/generated/zod.gen";
 import { ServerApiError, serverWikiApi } from "@/lib/server-api";
-import type { CreateFileInput, DocIconInput, PreferencesInput, UserProfile } from "@/lib/wiki-api";
+import type { CreateFileInput, DocIconInput, PreferencesInput } from "@/lib/wiki-api";
 import type {
   DocIcon,
   DocumentAlias,
-  DocumentAliasForFile,
-  DriveNode,
-  DrivePermissionsPage,
-  DriveSearchResult,
-  DriveSummary,
   DriveTree,
-  FileDetail,
   FileResponse,
   FolderIcon,
   Preferences,
-  SnippetResult,
   SortOrder,
 } from "@/types/wiki";
-
-export async function getCurrentUserAction(): Promise<ActionResult<UserProfile>> {
-  return await resultOf(async () => await serverWikiApi.getMe());
-}
-
-export async function getDrivesAction(): Promise<ActionResult<DriveSummary[]>> {
-  return await resultOf(async () => await serverWikiApi.getDrives());
-}
-
-export async function getDriveFoldersAction(driveId: string): Promise<ActionResult<DriveTree>> {
-  return await resultOf(async () => await serverWikiApi.getDriveFolders(driveId));
-}
-
-export async function getDrivePermissionsAction(
-  driveId: string,
-  pageToken?: string,
-): Promise<ActionResult<DrivePermissionsPage>> {
-  return await resultOf(async () => await serverWikiApi.getDrivePermissions(driveId, pageToken));
-}
-
-export async function getFileAction(fileId: string): Promise<ActionResult<FileDetail>> {
-  return await resultOf(async () => await serverWikiApi.getFile(fileId));
-}
-
-export async function getFolderFilesAction(folderId: string): Promise<ActionResult<DriveNode[]>> {
-  return await resultOf(async () => await serverWikiApi.getFolderFiles(folderId));
-}
-
-export async function getPreferencesAction(): Promise<ActionResult<Preferences>> {
-  return await resultOf(async () => await serverWikiApi.getPreferences());
-}
-
-export async function listFolderIconsAction(): Promise<ActionResult<FolderIcon[]>> {
-  return await resultOf(async () => await serverWikiApi.listFolderIcons());
-}
-
-export async function listDocIconsAction(): Promise<ActionResult<DocIcon[]>> {
-  return await resultOf(async () => await serverWikiApi.listDocIcons());
-}
-
-export async function listSortOrdersAction(): Promise<ActionResult<SortOrder[]>> {
-  return await resultOf(async () => await serverWikiApi.listSortOrders());
-}
-
-export async function searchDriveAction(
-  query: string,
-  limitPerDrive?: number,
-): Promise<ActionResult<DriveSearchResult[]>> {
-  return await resultOf(async () => await serverWikiApi.driveSearch(query, limitPerDrive));
-}
-
-export async function getDriveSearchSnippetAction(
-  fileId: string,
-  query: string,
-  mimeType?: string,
-): Promise<ActionResult<SnippetResult>> {
-  return await resultOf(
-    async () => await serverWikiApi.driveSearchSnippet(fileId, query, mimeType),
-  );
-}
-
-export async function getDocumentAliasAction(
-  fileId: string,
-): Promise<ActionResult<DocumentAliasForFile>> {
-  return await resultOf(async () => await serverWikiApi.getDocumentAlias(fileId));
-}
 
 export async function getRecentDocumentAliasesAction(
   aliases: string[],

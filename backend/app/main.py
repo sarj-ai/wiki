@@ -107,7 +107,9 @@ async def task_error_handler(
 
 async def _health_check(app_settings: Settings) -> dict[str, str]:
     result: dict[str, str] = {"revision": app_settings.RELEASE_SHA, "status": "ok"}
-    database_result = await asyncio.gather(_probe_database(), return_exceptions=True)
+    database_result = await asyncio.gather(
+        asyncio.wait_for(_probe_database(), timeout=3.0), return_exceptions=True
+    )
     database_outcome = database_result[0]
     if not isinstance(database_outcome, BaseException):
         result["database"] = "ok"
@@ -169,7 +171,7 @@ def create_app(
         max_bytes=MAX_REQUEST_BODY_BYTES,
         path_limits={"/mcp": MAX_MCP_REQUEST_BODY_BYTES},
     )
-    application.add_middleware(GZipMiddleware, minimum_size=1000)
+    application.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=4)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=[app_settings.frontend_origin],

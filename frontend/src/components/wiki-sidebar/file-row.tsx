@@ -6,10 +6,8 @@ import { usePathname } from "next/navigation";
 import { memo } from "react";
 
 import { SidebarMenuButton } from "@/components/ui/sidebar";
-import { useSetDocIcon } from "@/hooks/use-wiki-mutations";
 import { displayFileName, renderNodeIcon } from "@/lib/file-icons";
 import { openUrlFor } from "@/lib/file-urls";
-import { runWithErrorToast } from "@/lib/mutation-toast";
 import { markNav } from "@/lib/perf-marks";
 import { type ResolvedShortcut, resolveShortcutTarget } from "@/lib/shortcut-resolver";
 import { cn } from "@/lib/utils";
@@ -80,13 +78,6 @@ function FileRowImpl({
     title: displayName,
   });
 
-  const setDocIcon = useSetDocIcon();
-  const handleIconChange = async (next: null | string) => {
-    await runWithErrorToast(async () => {
-      await setDocIcon.mutateAsync({ driveId: node.id, icon: next });
-    }, "Failed to update icon");
-  };
-
   const iconContent =
     iconOverride && !route.isShortcut ? (
       <span className="text-base leading-none">{iconOverride}</span>
@@ -127,8 +118,8 @@ function FileRowImpl({
       >
         <PickableIcon
           ariaLabel="Change icon"
-          onChange={handleIconChange}
           pickable={isDoc}
+          target={{ id: node.id, kind: "doc" }}
           value={iconOverride}
         >
           {iconContent}
