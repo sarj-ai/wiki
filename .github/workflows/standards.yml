@@ -58,7 +58,7 @@ jobs:
           npm --prefix frontend run typegen
       - name: Bootstrap analysis inputs (4)
         run: |
-          terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
+          mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.15.8 -- terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
       - name: Run standards
         env:
           SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}

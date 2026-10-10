@@ -17,12 +17,13 @@ def test_cold_quality_checks_initialize_locked_local_providers_after_tool_setup(
     initialize = (
         "terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly"
     )
+    standards_initialize = f"mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.15.8 -- {initialize}"
     manifest = tomllib.loads((ROOT / ".sarj-standards.toml").read_text())
     assert manifest["ci"]["bootstrap"] == [
         "npm --prefix frontend run patches:apply",
         "npm --prefix frontend run generate:api",
         "npm --prefix frontend run typegen",
-        initialize,
+        standards_initialize,
     ]
     iac = yaml.safe_load((ROOT / ".github/workflows/ci-iac.yml").read_text())
     provider_setup = next(
@@ -47,7 +48,9 @@ def test_cold_quality_checks_initialize_locked_local_providers_after_tool_setup(
         if step.get("run", "").endswith("code-standards setup --tools-only")
     )
     standards_init = next(
-        step for step in standards_steps if step.get("run", "").strip() == initialize
+        step
+        for step in standards_steps
+        if step.get("run", "").strip() == standards_initialize
     )
     check = next(
         step for step in standards_steps if step.get("name") == "Run standards"
