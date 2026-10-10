@@ -1,25 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ driveSearch: vi.fn() }));
+const MOCKS = vi.hoisted(() => ({ renameFile: vi.fn() }));
 
 vi.mock("@/lib/server-api", () => {
   class ServerApiError extends Error {
     readonly status: number;
 
-    constructor(status: number) {
-      super(`Server API error: ${status}`);
+    constructor(status: number, options: ErrorOptions) {
+      super(`Server API error: ${status}`, options);
+      this.name = "ServerApiError";
       this.status = status;
     }
   }
   return {
     ServerApiError,
-    serverWikiApi: { driveSearch: mocks.driveSearch },
+    serverWikiApi: { renameFile: MOCKS.renameFile },
   };
 });
 
 import { ServerApiError } from "@/lib/server-api";
 
-import { searchDriveAction } from "./wiki-actions";
+import { renameFileAction } from "./wiki-actions";
 
 describe("Wiki Server Action errors", () => {
   beforeEach(() => {
@@ -27,9 +28,9 @@ describe("Wiki Server Action errors", () => {
   });
 
   it("uses stable copy for a perimeter rate limit", async () => {
-    mocks.driveSearch.mockRejectedValue(new ServerApiError(429));
+    MOCKS.renameFile.mockRejectedValue(new ServerApiError(429));
 
-    await expect(searchDriveAction("roadmap")).resolves.toEqual({
+    await expect(renameFileAction("doc-1", "Roadmap")).resolves.toEqual({
       error: "Too many requests. Try again in a minute.",
       ok: false,
       status: 429,

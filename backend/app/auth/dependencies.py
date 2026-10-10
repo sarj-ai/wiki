@@ -20,12 +20,12 @@ _access_cookie = APIKeyCookie(name="access_token", auto_error=False)
 _bearer_token = HTTPBearer(auto_error=False)
 
 
-def http_client_dep(request: Request) -> httpx.AsyncClient:
+async def http_client_dep(request: Request) -> httpx.AsyncClient:
     client: httpx.AsyncClient = request.app.state.http_client
     return client
 
 
-def auth_service_dep(
+async def auth_service_dep(
     db: Annotated[AsyncSession, Depends(get_db)],
     http: Annotated[httpx.AsyncClient, Depends(http_client_dep)],
     cache: Annotated[CacheService, Depends(cache_service_dep)],

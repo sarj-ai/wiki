@@ -46,19 +46,6 @@ const ROLE_LABELS: Record<string, string> = {
 
 export function DriveAccessSheet({ drive }: { drive: DriveSummary }) {
   const [open, setOpen] = useState(false);
-  const query = useDrivePermissions(drive.isPersonal ? null : drive.id, open && !drive.isPersonal);
-  const permissions = dedupePermissions(
-    query.data?.pages.flatMap((page) => page.permissions) ?? [],
-  );
-  const generalAccess = permissions.filter(
-    (permission) => permission.principalType === "domain" || permission.principalType === "anyone",
-  );
-  const people = permissions
-    .filter(
-      (permission) =>
-        permission.principalType !== "domain" && permission.principalType !== "anyone",
-    )
-    .toSorted(comparePermissions);
 
   return (
     <Sheet onOpenChange={setOpen} open={open}>
@@ -75,85 +62,107 @@ export function DriveAccessSheet({ drive }: { drive: DriveSummary }) {
         </Button>
       </SheetTrigger>
       <SheetContent className="w-[min(24rem,calc(100vw-1rem))] gap-0 sm:max-w-sm">
-        <SheetHeader className="border-b pb-4">
-          <div className="flex items-center gap-2 pr-8">
-            <div className="bg-primary/10 text-primary flex size-8 items-center justify-center rounded-full">
-              <UsersRound className="size-4" />
-            </div>
-            <div className="min-w-0">
-              <SheetTitle className="truncate">{drive.name} access</SheetTitle>
-              <SheetDescription>
-                {drive.isPersonal
-                  ? "Sharing is managed on each file and folder."
-                  : permissionSummary(permissions.length)}
-              </SheetDescription>
-            </div>
-          </div>
-        </SheetHeader>
-
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {drive.isPersonal ? (
-            <PersonalDriveNotice driveId={drive.id} />
-          ) : query.isPending ? (
-            <AccessSkeleton />
-          ) : query.isError ? (
-            <AccessError
-              onRetry={() => {
-                void query.refetch();
-              }}
-            />
-          ) : (
-            <div className="space-y-5">
-              {generalAccess.length > 0 ? (
-                <AccessSection label="General access">
-                  {generalAccess.map((permission) => (
-                    <PermissionRow key={permission.id} permission={permission} />
-                  ))}
-                </AccessSection>
-              ) : null}
-
-              <AccessSection label="People and groups">
-                {people.length === 0 ? (
-                  <p className="text-muted-foreground px-1 py-3 text-sm">
-                    Google Drive returned no members for this drive.
-                  </p>
-                ) : (
-                  people.map((permission) => (
-                    <PermissionRow key={permission.id} permission={permission} />
-                  ))
-                )}
-              </AccessSection>
-
-              {query.hasNextPage ? (
-                <Button
-                  className="w-full"
-                  disabled={query.isFetchingNextPage}
-                  onClick={() => {
-                    void query.fetchNextPage();
-                  }}
-                  type="button"
-                  variant="outline"
-                >
-                  {query.isFetchingNextPage ? <Loader2 className="size-4 animate-spin" /> : null}
-                  {query.isFetchingNextPage ? "Loading…" : "Load more people"}
-                </Button>
-              ) : null}
-            </div>
-          )}
-        </div>
-
-        {!drive.isPersonal ? (
-          <div className="border-t p-4">
-            <Button asChild className="w-full" variant="outline">
-              <a href={folderUrlFor(drive.id)} rel="noopener noreferrer" target="_blank">
-                <ExternalLink className="size-4" />
-                Manage in Google Drive
-              </a>
-            </Button>
-          </div>
-        ) : null}
+        <DriveAccessContent drive={drive} open={open} />
       </SheetContent>
     </Sheet>
+  );
+}
+
+function DriveAccessContent({ drive, open }: { drive: DriveSummary; open: boolean }) {
+  const query = useDrivePermissions(drive.isPersonal ? null : drive.id, open && !drive.isPersonal);
+  const permissions = dedupePermissions(
+    query.data?.pages.flatMap((page) => page.permissions) ?? [],
+  );
+  const generalAccess = permissions.filter(
+    (permission) => permission.principalType === "domain" || permission.principalType === "anyone",
+  );
+  const people = permissions
+    .filter(
+      (permission) =>
+        permission.principalType !== "domain" && permission.principalType !== "anyone",
+    )
+    .toSorted(comparePermissions);
+
+  return (
+    <>
+      <SheetHeader className="border-b pb-4">
+        <div className="flex items-center gap-2 pr-8">
+          <div className="bg-primary/10 text-primary flex size-8 items-center justify-center rounded-full">
+            <UsersRound className="size-4" />
+          </div>
+          <div className="min-w-0">
+            <SheetTitle className="truncate">{drive.name} access</SheetTitle>
+            <SheetDescription>
+              {drive.isPersonal
+                ? "Sharing is managed on each file and folder."
+                : permissionSummary(permissions.length)}
+            </SheetDescription>
+          </div>
+        </div>
+      </SheetHeader>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {drive.isPersonal ? (
+          <PersonalDriveNotice driveId={drive.id} />
+        ) : query.isPending ? (
+          <AccessSkeleton />
+        ) : query.isError ? (
+          <AccessError
+            onRetry={() => {
+              void query.refetch();
+            }}
+          />
+        ) : (
+          <div className="space-y-5">
+            {generalAccess.length > 0 ? (
+              <AccessSection label="General access">
+                {generalAccess.map((permission) => (
+                  <PermissionRow key={permission.id} permission={permission} />
+                ))}
+              </AccessSection>
+            ) : null}
+
+            <AccessSection label="People and groups">
+              {people.length === 0 ? (
+                <p className="text-muted-foreground px-1 py-3 text-sm">
+                  Google Drive returned no members for this drive.
+                </p>
+              ) : (
+                people.map((permission) => (
+                  <PermissionRow key={permission.id} permission={permission} />
+                ))
+              )}
+            </AccessSection>
+
+            {query.hasNextPage ? (
+              <Button
+                className="w-full"
+                disabled={query.isFetchingNextPage}
+                onClick={() => {
+                  void query.fetchNextPage();
+                }}
+                type="button"
+                variant="outline"
+              >
+                {query.isFetchingNextPage ? <Loader2 className="size-4 animate-spin" /> : null}
+                {query.isFetchingNextPage ? "Loading…" : "Load more people"}
+              </Button>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      {!drive.isPersonal ? (
+        <div className="border-t p-4">
+          <Button asChild className="w-full" variant="outline">
+            <a href={folderUrlFor(drive.id)} rel="noopener noreferrer" target="_blank">
+              <ExternalLink className="size-4" />
+              Manage in Google Drive
+            </a>
+          </Button>
+        </div>
+      ) : null}
+    </>
   );
 }
 

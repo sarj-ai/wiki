@@ -1,14 +1,17 @@
 // @vitest-environment happy-dom
-
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
+import type { WIKI_READ_API } from "@/lib/wiki-read-api";
+
 import { DRIVE_PREFETCH_DELAY_MS, useDrivePredictiveLoading } from "./use-drive-predictive-loading";
 
+type WikiReadApi = typeof WIKI_READ_API;
+
 const API = vi.hoisted(() => ({
-  getDriveFolders: vi.fn(),
-  getFolderFiles: vi.fn(),
+  getDriveFolders: vi.fn<WikiReadApi["getDriveFolders"]>(),
+  getFolderFiles: vi.fn<WikiReadApi["getFolderFiles"]>(),
 }));
 
 vi.mock("@/lib/wiki-read-api", () => ({
@@ -26,7 +29,12 @@ describe("useDrivePredictiveLoading", () => {
     Object.defineProperty(navigator, "connection", { configurable: true, value: undefined });
     API.getDriveFolders.mockReset();
     API.getFolderFiles.mockReset();
-    API.getDriveFolders.mockResolvedValue({ filesComplete: false });
+    API.getDriveFolders.mockResolvedValue({
+      driveId: "drive-1",
+      files: [],
+      folders: [],
+      filesComplete: false,
+    });
     API.getFolderFiles.mockResolvedValue([]);
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     container = document.createElement("div");
@@ -51,7 +59,10 @@ describe("useDrivePredictiveLoading", () => {
     await advance(1);
 
     expect(API.getDriveFolders).toHaveBeenCalledOnce();
-    expect(API.getFolderFiles).toHaveBeenCalledExactlyOnceWith("drive-1");
+    expect(API.getFolderFiles).toHaveBeenCalledOnce();
+    const [folderId, signal] = API.getFolderFiles.mock.calls[0] ?? [];
+    expect(folderId).toBe("drive-1");
+    expect(signal).toBeInstanceOf(AbortSignal);
   });
 
   it("keeps the timer while either hover or focus still owns the intent", async () => {

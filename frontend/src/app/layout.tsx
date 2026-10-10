@@ -76,7 +76,7 @@ export default function RootLayout({
         <link href={API_URL} rel="dns-prefetch" />
 
         {GOOGLE_DOC_ORIGINS.map((origin) => (
-          <link href={origin} key={origin} rel="preconnect" />
+          <link href={origin} key={origin} rel="dns-prefetch" />
         ))}
 
         {/* eslint-disable react/no-danger -- The SWC name helper must exist before hydration. */}

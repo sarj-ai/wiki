@@ -5,14 +5,14 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-import { EmojiPickerPopover } from "./emoji-picker-popover";
+import { EmojiPickerPopover, type IconTarget } from "./emoji-picker-popover";
 
 export function PickableIcon({
   ariaLabel,
   children,
   dimmed,
-  onChange,
   pickable,
+  target,
   value,
 }: PickableIconProps) {
   if (!pickable) {
@@ -25,7 +25,7 @@ export function PickableIcon({
     );
   }
   return (
-    <EmojiPickerPopover onChange={onChange} value={value}>
+    <EmojiPickerPopover target={target} value={value}>
       <Button
         aria-label={ariaLabel}
         className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground size-6 shrink-0 cursor-pointer transition-colors"
@@ -42,7 +42,7 @@ interface PickableIconProps {
   ariaLabel: string;
   children: ReactNode;
   dimmed?: boolean;
-  onChange: (next: null | string) => Promise<void>;
   pickable: boolean;
+  target: IconTarget;
   value: string | undefined;
 }

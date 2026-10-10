@@ -4,6 +4,27 @@ import { runAction } from "@/lib/action-client";
 import { TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
 
 describe("server action session expiry", () => {
+  it("discards a cancelled read waiting on the shared session refresh", async () => {
+    const refresh = Promise.withResolvers<Response>();
+    const fetchMock = vi.fn<typeof fetch>().mockReturnValue(refresh.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    const expired = vi.fn().mockResolvedValue({ error: "expired", ok: false, status: 401 });
+    const controller = new AbortController();
+    const discarded = runAction(expired, controller.signal);
+    const discardedResult = discarded.catch((error: unknown) => error);
+    const retained = runAction(expired);
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledOnce();
+    });
+
+    controller.abort();
+    await expect(discardedResult).resolves.toMatchObject({ name: "AbortError" });
+    expired.mockResolvedValue({ data: "ready", ok: true });
+    refresh.resolve(new Response(null));
+    await expect(retained).resolves.toBe("ready");
+    expect(expired).toHaveBeenCalledTimes(3);
+    vi.unstubAllGlobals();
+  });
   it("announces one terminal 401 after refresh cannot recover", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
     const expired = vi.fn().mockResolvedValue({ error: "expired", ok: false, status: 401 });

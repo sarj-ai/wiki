@@ -227,11 +227,12 @@ async def test_ensure_alias_reuses_concurrent_winner_without_retiring_it() -> No
 
 @pytest.mark.asyncio
 async def test_ensure_alias_tries_next_candidate_after_reserved_alias_collision() -> None:
-    session = _EnsureSession([None, None, None, None, _alias_row("second-link")])
+    session = _EnsureSession([None, None, None, _alias_row("second-link")])
     result = await _service(session, _Files()).ensure_for_file(
         FileId("file-1"), ("first-link", "second-link")
     )
     assert result.alias == "second-link"
+    assert session.execute_calls == 4
     assert session.commits == 1
     assert session.flushes == session.rollbacks == 0
 

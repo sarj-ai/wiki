@@ -202,7 +202,6 @@
   },
   "backend/app/drive/service.py": {
     "SARJ442": 2,
-    "SARJ444": 9,
     "SARJ447": 10
   },
   "backend/app/extras/router.py": {
@@ -223,9 +222,6 @@
   },
   "backend/app/openapi.py": {
     "SARJ447": 1
-  },
-  "backend/app/sidebar/cache.py": {
-    "SARJ442": 1
   },
   "backend/app/sidebar/router.py": {
     "SARJ451": 6

@@ -150,7 +150,8 @@ async def move_file(
 ) -> FileResponse:
     result = await files.move(file_id, payload.new_parent_folder_id)
     await _invalidate_drive_of(db, cache, result.source)
-    await _invalidate_drive_of(db, cache, result.moved)
+    if result.moved.drive_id != result.source.drive_id:
+        await _invalidate_drive_of(db, cache, result.moved)
     return result.moved
 
 

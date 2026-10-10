@@ -11,6 +11,7 @@ export default defineConfig({
     },
   },
   test: {
+    benchmark: { include: ["src/**/*.bench.ts"] },
     coverage: {
       exclude: ["src/**/*.test.{ts,tsx}", "src/**/__tests__/**"],
       include: ["src/**/*.{ts,tsx}"],

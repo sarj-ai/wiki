@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from functools import cache
 from typing import Annotated
 
@@ -13,12 +12,11 @@ from app.tasks.queue import CloudTasksEnqueuer, TaskEnqueuer
 from app.tasks.service import PostgresTaskService, TaskService
 
 
-def task_service_dep(db: Annotated[AsyncSession, Depends(get_db)]) -> TaskService:
+async def task_service_dep(db: Annotated[AsyncSession, Depends(get_db)]) -> TaskService:
     return PostgresTaskService(db=db)
 
 
 async def task_enqueuer_dep() -> TaskEnqueuer:
-    await asyncio.sleep(0)
     return _cached_task_enqueuer()
 
 

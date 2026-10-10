@@ -89,6 +89,8 @@ line-length = 100
 target-version = "py314"
 
 [tool.ruff.lint.extend-per-file-ignores]
+# FastAPI object factories run on the event loop to avoid a thread-pool hop.
+"app/*/dependencies.py" = ["unused-async"]
 "alembic/env.py" = ["ALL"]
 "app/**" = [
   # FastAPI, Pydantic, and SQLAlchemy evaluate annotations for dependency

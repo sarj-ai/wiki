@@ -2,11 +2,15 @@ const MAX_TRANSFORM_BODY_BYTES = 4 * 1024 * 1024;
 
 export async function boundedTransformText(
   body: null | ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
 ): Promise<string> {
+  signal?.throwIfAborted();
   if (!body) return "";
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let size = 0;
   const fragments: string[] = [];
+  const options: StreamPipeOptions = { preventCancel: true };
+  if (signal !== undefined) options.signal = signal;
   try {
     await body.pipeTo(
       new WritableStream<Uint8Array>({
@@ -18,7 +22,7 @@ export async function boundedTransformText(
           if (text) fragments.push(text);
         },
       }),
-      { preventCancel: true },
+      options,
     );
     fragments.push(decoder.decode());
     return fragments.join("");

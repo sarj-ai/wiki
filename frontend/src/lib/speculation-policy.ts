@@ -31,8 +31,11 @@ export function allowsReusableSpeculation(hints: NavigatorHints): boolean {
 }
 
 export function allowsIframeSpeculation(hints: NavigatorHints): boolean {
-  if (!allowsReusableSpeculation(hints)) return false;
-  if (hints.connection?.effectiveType === "slow-2g" || hints.connection?.effectiveType === "2g") {
+  if (
+    !allowsReusableSpeculation(hints) ||
+    hints.connection?.effectiveType === "slow-2g" ||
+    hints.connection?.effectiveType === "2g"
+  ) {
     return false;
   }
   return hints.deviceMemory === undefined || hints.deviceMemory > 2;

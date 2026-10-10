@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import timedelta
@@ -140,6 +141,41 @@ async def test_caches_catalog_until_explicit_refresh() -> None:
     assert first == second
     assert [template.file_id for template in refreshed.templates] == ["slides", "memo", "prd"]
     assert drive.calls[FileId("drive-1")] == 2
+
+
+async def test_template_categories_load_concurrently_with_bounded_provider_work() -> None:
+    class DelayedDrive(_TemplateDrive):
+        def __init__(self) -> None:
+            super().__init__()
+            self.active = 0
+            self.peak_active = 0
+            self._children[FileId("templates")] = [
+                _node(f"category-{index}", f"Category {index}", MIME_FOLDER, "templates")
+                for index in range(20)
+            ]
+            for index in range(20):
+                self._children[FileId(f"category-{index}")] = [
+                    _node(f"template-{index}", f"Template {index}", MIME_DOC, f"category-{index}"),
+                    _node("templates", "Cycle", MIME_FOLDER, f"category-{index}"),
+                ]
+
+        @override
+        async def list_folder_children(self, folder_id: FileId) -> list[DriveNode]:
+            self.active += 1
+            self.peak_active = max(self.peak_active, self.active)
+            try:
+                await asyncio.sleep(0.002)
+                return await super().list_folder_children(folder_id)
+            finally:
+                self.active -= 1
+
+    drive = DelayedDrive()
+    catalog = await DriveTemplateCatalogService(drive=drive, user_id=uuid7()).list_templates()
+
+    assert len(catalog.templates) == 20
+    assert drive.peak_active == 8
+    assert drive.calls[FileId("templates")] == 1
+    assert all(template.category_path[0].startswith("Category ") for template in catalog.templates)
 
 
 def _node(

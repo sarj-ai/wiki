@@ -11,7 +11,7 @@ from app.extras.service import ExtrasService, PostgresExtrasService
 from app.models.user import User
 
 
-def extras_service_dep(
+async def extras_service_dep(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> ExtrasService:

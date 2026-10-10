@@ -22,8 +22,7 @@ export function DocWarmup() {
   useEffect(() => {
     if (hasWarmed.current) return;
     const run = () => {
-      if (document.visibilityState !== "visible") return;
-      if (useDocViewerStore.getState().active) return;
+      if (document.visibilityState !== "visible" || useDocViewerStore.getState().active) return;
       hasWarmed.current = true;
       const limit = warmCountFor(readNavigatorHints(navigator));
       if (limit === 0) return;

@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "npm run hooks:install && next dev",
     "build": "next build --webpack",
+    "benchmark:bundle": "node scripts/benchmark-bundle.mjs",
+    "benchmark:sidebar": "vitest bench --run src/lib/wiki-indexes.bench.ts",
     "build:worker": "opennextjs-cloudflare build",
     "deploy": "wrangler deploy",
     "start": "next start",

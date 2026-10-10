@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bootstrap.service import AggregatingBootstrapService
@@ -229,3 +230,36 @@ async def test_load_keeps_document_icons_for_legacy_callers() -> None:
 
     assert [icon.drive_id for icon in out.doc_icons] == ["doc-1"]
     assert files.requested == ["doc-1", "private-doc"]
+
+
+@pytest.mark.parametrize("hide_all", [False, True])
+async def test_bootstrap_preloads_only_the_first_visible_workspace(*, hide_all: bool) -> None:
+    class _HiddenExtras(_FakeExtrasService):
+        async def get_preferences(self) -> PreferencesRead:
+            hidden = [DriveId("hidden-first")]
+            if hide_all:
+                hidden.append(DriveId("visible-second"))
+            return PreferencesRead(show_non_doc_files=True, hidden_workspace_ids=hidden)
+
+    cache = _FakeCacheService(_tree("visible-second"))
+    result = await AggregatingBootstrapService(
+        drive=_FakeDriveService(
+            [
+                DriveSummary(id=DriveId("hidden-first"), name="Hidden"),
+                DriveSummary(id=DriveId("visible-second"), name="Visible"),
+            ]
+        ),
+        extras=_HiddenExtras(),
+        files=dependency(_FakeFilesService()),
+        cache=cache,
+        db=dependency(_NO_DB),
+        user=_user(),
+    ).load(defer_doc_icons=True)
+
+    assert [drive.id for drive in result.drives] == ["hidden-first", "visible-second"]
+    assert cache.peeked == ([] if hide_all else ["visible-second"])
+    if hide_all:
+        assert result.first_drive_tree is None
+    else:
+        assert result.first_drive_tree is not None
+        assert result.first_drive_tree.drive_id == "visible-second"

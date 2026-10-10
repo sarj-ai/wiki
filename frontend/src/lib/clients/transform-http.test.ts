@@ -7,6 +7,40 @@ describe("transformHttp", () => {
     vi.unstubAllGlobals();
   });
 
+  it("does not dispatch a transform read after cancellation", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      transformHttp("/tasks/id", undefined, undefined, controller.signal),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("cancels decoding an unfinished transform read body", async () => {
+    const controller = new AbortController();
+    const cancelBody = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(stream) {
+        stream.enqueue(new TextEncoder().encode("{"));
+      },
+      cancel: cancelBody,
+    });
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(body)));
+    const pending = transformHttp("/tasks/id", undefined, undefined, controller.signal);
+    const result = pending.catch((error: unknown) => error);
+    await vi.waitFor(() => {
+      expect(body.locked).toBe(true);
+    });
+
+    controller.abort();
+
+    await expect(result).resolves.toMatchObject({ name: "AbortError" });
+    expect(cancelBody).toHaveBeenCalledOnce();
+  });
+
   it.each(["true", "false"])("preserves a valid replay header on POST: %s", async (value) => {
     vi.stubGlobal(
       "fetch",

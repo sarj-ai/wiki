@@ -1,0 +1,814 @@
+{
+  "recordedAt": "2026-10-10",
+  "baselineRevision": "f63e8f6f342a27d3b3f085e2150417ccd45756bf",
+  "totalPasses": 104,
+  "initialPasses": [
+    {
+      "pass": 1,
+      "change": "Replace browser read Server Actions with authenticated GET handlers",
+      "purpose": "Start independent reads concurrently"
+    },
+    {
+      "pass": 2,
+      "change": "Stream successful upstream JSON through the GET handler",
+      "purpose": "Avoid a second JSON/Flight encoding"
+    },
+    {
+      "pass": 3,
+      "change": "Forward query cancellation to reads and upstream fetches",
+      "purpose": "Stop obsolete search and navigation work"
+    },
+    {
+      "pass": 4,
+      "change": "Bound server bootstrap and identity fallback",
+      "purpose": "Keep slow provider preload from holding the shell"
+    },
+    {
+      "pass": 5,
+      "change": "Stream the authenticated layout with Suspense",
+      "purpose": "Render the loading shell before bootstrap completes"
+    },
+    {
+      "pass": 6,
+      "change": "Load smart creation on first use",
+      "purpose": "Remove unused dialog code from initial load"
+    },
+    {
+      "pass": 7,
+      "change": "Load Markdown import on first use",
+      "purpose": "Defer another infrequently used dialog"
+    },
+    {
+      "pass": 8,
+      "change": "Load document polish on first use",
+      "purpose": "Defer document transformation UI"
+    },
+    {
+      "pass": 9,
+      "change": "Load file movement on first use",
+      "purpose": "Defer movement UI"
+    },
+    {
+      "pass": 10,
+      "change": "Load preferences on first use",
+      "purpose": "Defer preferences UI"
+    },
+    {
+      "pass": 11,
+      "change": "Share deferred dialog state and polish loading",
+      "purpose": "Preserve task state while removing repeated logic"
+    },
+    {
+      "pass": 12,
+      "change": "Cache child indexes by immutable query arrays",
+      "purpose": "Reuse indexes across drive sections"
+    },
+    {
+      "pass": 13,
+      "change": "Share icon and sorting indexes",
+      "purpose": "Avoid rebuilding three maps per drive"
+    },
+    {
+      "pass": 14,
+      "change": "Reuse the empty root file array",
+      "purpose": "Stabilize incomplete-tree inputs"
+    },
+    {
+      "pass": 15,
+      "change": "Limit tree derivation inputs to relevant context",
+      "purpose": "Avoid sorting when active selection changes"
+    },
+    {
+      "pass": 16,
+      "change": "Remove a redundant clone before immutable sorting",
+      "purpose": "Reduce allocation during tree rendering"
+    },
+    {
+      "pass": 17,
+      "change": "Scan cached folders and files without concatenating",
+      "purpose": "Avoid copying large trees for metadata lookup"
+    },
+    {
+      "pass": 18,
+      "change": "Share the parsed tree transformation",
+      "purpose": "Avoid validating nested bootstrap trees twice"
+    },
+    {
+      "pass": 19,
+      "change": "Run lightweight auth dependency factories asynchronously",
+      "purpose": "Avoid a thread-pool dispatch per request"
+    },
+    {
+      "pass": 20,
+      "change": "Run lightweight route service factories asynchronously",
+      "purpose": "Reduce dispatch across route families"
+    },
+    {
+      "pass": 21,
+      "change": "Run lightweight task and transform factories asynchronously",
+      "purpose": "Extend the same improvement to task routes"
+    },
+    {
+      "pass": 22,
+      "change": "Use gzip level 4",
+      "purpose": "Reduce CPU spent compressing large responses"
+    },
+    {
+      "pass": 23,
+      "change": "Bound the database health probe",
+      "purpose": "Prevent indefinitely stalled health requests"
+    },
+    {
+      "pass": 24,
+      "change": "Release the auth transaction before Drive/cache work",
+      "purpose": "Prevent connection-pool starvation"
+    },
+    {
+      "pass": 25,
+      "change": "Release the transform credential transaction",
+      "purpose": "Free connections before provider operations"
+    },
+    {
+      "pass": 26,
+      "change": "Release the MCP credential transaction",
+      "purpose": "Apply the pool fix to MCP requests"
+    },
+    {
+      "pass": 27,
+      "change": "Load sidebar preferences, icons, and sorting in one query",
+      "purpose": "Remove two bootstrap database round trips"
+    },
+    {
+      "pass": 28,
+      "change": "Preload the first visible drive",
+      "purpose": "Avoid wasting bootstrap work on hidden drives"
+    },
+    {
+      "pass": 29,
+      "change": "Shield shared singleflight waiters from follower cancellation",
+      "purpose": "Prevent duplicate retries and broken shared work"
+    },
+    {
+      "pass": 30,
+      "change": "Coalesce concurrent drive discovery per principal",
+      "purpose": "Share provider discovery across request instances"
+    },
+    {
+      "pass": 31,
+      "change": "Deduplicate scheduled stale-tree refreshes",
+      "purpose": "Bound background tasks during traffic bursts"
+    },
+    {
+      "pass": 32,
+      "change": "Serialize and encrypt trees off the event loop",
+      "purpose": "Keep unrelated requests responsive"
+    },
+    {
+      "pass": 33,
+      "change": "Invalidate a same-drive move once",
+      "purpose": "Remove duplicate database invalidation"
+    },
+    {
+      "pass": 34,
+      "change": "Batch large cache inserts in one transaction",
+      "purpose": "Support 10,000 entries without driver parameter overflow"
+    },
+    {
+      "pass": 35,
+      "change": "Count unique cache misses",
+      "purpose": "Avoid inflated metrics for repeated keys"
+    },
+    {
+      "pass": 36,
+      "change": "Project public task columns during polling",
+      "purpose": "Avoid fetching large private payload/checkpoint columns"
+    },
+    {
+      "pass": 37,
+      "change": "Use a deque for template traversal",
+      "purpose": "Avoid repeated linear queue shifts"
+    },
+    {
+      "pass": 38,
+      "change": "Add total request timing and response byte metrics",
+      "purpose": "Make every normal backend route measurable"
+    }
+  ],
+  "additionalAgentPasses": [
+    {
+      "scope": "frontend-loading",
+      "passCount": 10,
+      "passes": [
+        {
+          "pass": 1,
+          "result": "Cancelled reads waiting for session refresh. Previously a discarded request waited for the shared refresh (up to its 10-second timeout). `deduplicatedRefresh` now accepts an optional AbortSignal and cancels the waiter while retaining the shared refresh for other requests. Cleanup removes listeners when refresh settles. Tests cover concurrent retained/discarded waiters and pre-aborted callers. A controlled 100 ms refresh with cancellation at 5 ms settled 0.055 ms after abort, compared with 95.202 ms before (20 samples). This is cancellation latency, not page load time."
+        },
+        {
+          "pass": 2,
+          "result": "Obsolete request dispatch and decoding. `wikiReadHttp` checks cancellation before dispatch, after refresh, and after body decoding. A stale query cannot start another GET or validate/publish a late body. The regression test deliberately finishes a body after abort and verifies its Zod transform never runs. This avoids extra requests and unnecessary validation work during navigation/session changes."
+        },
+        {
+          "pass": 3,
+          "result": "Cancellation across all read families. Added optional signals to identity, Drive-list, preferences, metadata-icon, sort-order, and document-alias reads. Updated identity and alias hooks; agent 2 updated the sidebar hooks in its own scope. The remaining direct TanStack query callbacks were converted to explicit signal-forwarding wrappers, preserving existing positional arguments and preventing the query context from accidentally being passed as an AbortSignal."
+        },
+        {
+          "pass": 4,
+          "result": "Terminal refresh failure fast path. A denied refresh now returns the established expired-session error immediately. It no longer attempts to decode the already-cancelled initial 401 body. The unauthorized notification still fires once, and unavailable refreshes remain retryable 503 errors without clearing the user session. Tests exercise both failure classes."
+        },
+        {
+          "pass": 5,
+          "result": "Parallel expired-session recovery. Verified two independently started reads produce two initial GETs, one shared refresh, and one replay per GET. The cancellation variant verifies only the retained read replays. Retained the shared refresh design rather than aborting it when one observer disappears, which would break other active reads."
+        },
+        {
+          "pass": 6,
+          "result": "Streaming BFF response. Added a stream regression that supplies an upstream body without EOF. The route returns headers before the body finishes and subsequently decodes the complete body correctly. Retained direct authorized body streaming; buffering or another JSON/Flight serialization would reintroduce a loading barrier and allocations."
+        },
+        {
+          "pass": 7,
+          "result": "Read-route coverage and disconnect propagation. Exercised all 13 allowed paths, including search/snippets and every extras family. Existing tests cover write/unknown-path rejection, cookie protection, no-store responses, and error redaction. Added a disconnect test showing abort reaches the pending upstream fetch. Retained the route's request-plus-timeout cancellation and restricted path list."
+        },
+        {
+          "pass": 8,
+          "result": "Bootstrap deadline measurement. Controlled-clock tests verify fresh identity recovery begins at 1,500 ms and two stalled reads settle by a combined 3,000 ms. Retained the streaming shell and bounded preload instead of waiting indefinitely for Drive. A successful bootstrap continues to avoid a second identity request."
+        },
+        {
+          "pass": 9,
+          "result": "Avoid an unsafe bootstrap shortcut. Reviewed skipping `/auth/me` after a bootstrap 401. Rejected it: `backend/app/drive/dependencies.py` can return 401 for missing Google credentials while the app identity remains authenticated. The new regression confirms a fresh identity read still succeeds in this case. Browser-cached profiles and broader authenticated response caching were also rejected because they undermine identity isolation and revocation checks."
+        },
+        {
+          "pass": 10,
+          "result": "Remove repeated bootstrap validation and DRY transforms. `zBootstrapRead` already validates every nested resource. Extracted shared pure transforms for Drive summaries, icons, preferences, profile, and sort order; standalone resource schemas retain their wire validation while bootstrap maps its already-validated data directly. This extends the first tranche's nested-tree improvement to the other metadata arrays. Tests preserve default values, nullable fields, and rejection of malformed nested data. A 1,409,370-byte fixture with 100 drives and 10,000 each of document icons, folder icons, and sort orders has deeply equal before/after output: median 4.190 \u2192 1.407 ms (66.4% less CPU), p95 7.302 \u2192 3.365 ms, 100 samples. The fixture has no tree, so the result isolates this additional metadata improvement. Converted wire-property reads to bracket access and constant-backed test/query keys so strict lint and Prettier agree without additional suppressions."
+        }
+      ]
+    },
+    {
+      "scope": "frontend-sidebar",
+      "passCount": 14,
+      "passes": [
+        {
+          "pass": 1,
+          "result": "File action menu initialization. Every file/folder action menu previously initialized rename, delete, and copy mutation observers and closed dialog trees. Extracted `item-menu-actions.tsx`; `ItemMenu` keeps its native accessible dropdown trigger and loads/mounts actions through `next/dynamic` only after first opening. Actions remain mounted afterward. A 500-trigger regression renders zero mutation hook calls, eliminating 1,500 initial action observers for that case. Enter-key opening and selecting Rename verify that its dialog survives dropdown dismissal."
+        },
+        {
+          "pass": 2,
+          "result": "Create menu initialization. Extracted `create-file-menu-actions.tsx`, preserving Smart Create, Markdown import, Google file types, defaults, destinations, and mutation behavior. The trigger lazily loads/mounts the body on first opening and retains it afterward. A 500-trigger check creates zero create-mutation observers. Enter-key opening and choosing Doc show the `New Doc` dialog with `Untitled Doc` after the menu closes."
+        },
+        {
+          "pass": 3,
+          "result": "Emoji picker theme/client subscriptions. Initial rows previously subscribed each closed picker to theme/client state and initialized a transition. These hooks now initialize only on first picker opening. The controlled Popover and existing focus primitive are retained. Tests confirm no theme subscription before opening."
+        },
+        {
+          "pass": 4,
+          "result": "Document/folder icon mutation observers. Removed unconditional icon mutation hooks from `FileRow` and `TreeNode`. `PickableIcon` passes an explicit typed document/folder target; the corresponding existing mutation hook initializes inside the opened picker body. Existing optimistic mutation logic, target IDs, error toasts, shortcut restrictions, and read-only restrictions are preserved. The body stays mounted after first opening; a pending-change regression verifies that closing/reopening retains its busy state and prevents a second concurrent icon change. Only the selected target's hook initializes."
+        },
+        {
+          "pass": 5,
+          "result": "Closed Drive access sheets. Moved permissions query initialization, page flattening, deduplication, and sorting into content mounted by the Sheet primitive only when opened. Closed drives create no permissions observers and derive no unused lists. Opening still requests the exact drive with fresh permissions and the established access UI. The native Sheet opening regression verifies the drive ID and enabled query state."
+        },
+        {
+          "pass": 6,
+          "result": "Collapsed folder and Drive derivation. Collapsed folders still display their visible child count but skip child object construction, sorting, optimistic ordering, and sortable IDs. Collapsed Drive roots skip unused root sorting and optimistic derivation. The 10,000-child folder test retains its count and performs zero locale comparisons. Expanded ordering, shortcut handling, lazy file loading, drop targets, and node accessibility remain intact."
+        },
+        {
+          "pass": 7,
+          "result": "Repeated metadata hints during navigation. Added a WeakMap cache containing only the last metadata lookup per immutable query array. Initial lookups keep the existing early-exit scan; repeated hits and misses avoid rescanning large arrays. Array replacement invalidates the hint naturally, and eviction/session replacement does not retain arrays. Existing shortcut timestamp rules are preserved. A synthetic 10,000-node repeated final-node lookup measured a median of 0.030093 ms for the linear reference versus 0.000193 ms for the cached helper (25 samples, 1,000 iterations each). Immutable data replacement tests confirm current names replace cached hints. Results: `/private/tmp/sarj-wiki-perf-sidebar-cache-benchmark.json`."
+        },
+        {
+          "pass": 8,
+          "result": "Global sidebar request cancellation. Coordinated with agent 1's optional AbortSignal read API additions. Drives, preferences, folder icons, document icons, and sort orders now forward the TanStack Query signal explicitly instead of passing the entire query context as a positional argument. A real hook/provider regression verifies five AbortSignals and their cancellation on unmount. Existing tree/permissions/file/folder query gates remain unchanged. Renamed `use-wiki-tree.test.ts` to `.tsx` to run the hook harness with JSX."
+        },
+        {
+          "pass": 9,
+          "result": "Constrained folder hover speculation. Folder hover reads now use the same reusable-speculation policy as Drive navigation: hidden pages and save-data connections avoid unused background reads, and touch hover does not start prefetching. Direct expansion remains ungated and immediately loads requested content. Parameterized native event tests verify one healthy hover read and zero hidden/save-data/touch reads."
+        },
+        {
+          "pass": 10,
+          "result": "Cold overlay index allocation. Replaced `new Map(items.map(...))` in the shared index builder with direct insertion. This preserves key/value and duplicate-key semantics while avoiding a transient mapped array and one tuple per entry. The local 10,000-overlay benchmark measured 0.506167 ms for tuple mapping versus 0.261459 ms for direct insertion (50 samples after warmup, approximately 48% less CPU for this cold builder). Existing immutable shared-index tests pass. Results: `/private/tmp/sarj-wiki-perf-sidebar-map-benchmark.json`."
+        },
+        {
+          "pass": 11,
+          "result": "Repeated deferred-dialog state updates. The shared deferred-dialog hook returns its existing state when the requested open state is already current. Duplicate close notifications no longer allocate state or rerender mounted action/picker bodies. The monotonic first-mount behavior and pending/recovery state remain intact. Existing menu/create/picker lifecycle and index tests passed again after this change."
+        },
+        {
+          "pass": 12,
+          "result": "Collation candidate retained. Measured replacing default `localeCompare` with a cached `Intl.Collator().compare` for a 10,000-name sort containing ASCII and international names. The current comparator was faster: 0.633542 ms versus 2.077458 ms (25 samples). Retained the existing locale behavior and faster implementation."
+        },
+        {
+          "pass": 13,
+          "result": "Viewer pool and warmup candidate retained. Reviewed viewer ownership, HTML content version requirements, iframe reuse, warmup count, and strong-intent metadata authorization. The existing pool is capped at three documents and idle warmup at one, with constrained-device safeguards. Increasing speculation or the pool would add competing Google/iframe work, while removing fresh metadata authorization would weaken permissions. Existing viewer store, host, intent, and warmup tests passed; retained these limits."
+        },
+        {
+          "pass": 14,
+          "result": "Tree virtualization/context candidate retained. Reviewed the remaining per-row native tree and drag subscriptions. Replacing live rows or blanket containment without browser traces would affect measured drag geometry, keyboard focus, accessible menus, and nested folder targets. React Compiler, shared immutable indexes, memoized rows, selective drag/move stores, and the new closed-content deferral already remove avoidable derivation. Retained native tree rendering rather than adding unmeasured structural complexity or a new dependency under the current scope. Large real-workspace browser traces are the appropriate next evidence for that separate change."
+        }
+      ]
+    },
+    {
+      "scope": "backend-routes",
+      "passCount": 14,
+      "passes": [
+        {
+          "pass": 1,
+          "result": "Reuse the authoritative token ciphertext from each fresh database snapshot instead of re-encrypting unchanged tokens",
+          "evidence": "PostgreSQL regression records exactly one SELECT and no UPDATE during valid credential preparation"
+        },
+        {
+          "pass": 2,
+          "result": "Remove the second credential application/encryption in prepare",
+          "evidence": "SQLAlchemy history regression proves two preparations preserve ciphertext without marking it changed"
+        },
+        {
+          "pass": 3,
+          "result": "Release Sidebar cache read transactions before decode, provider traversal, and independent-session save",
+          "evidence": "Cold cache loads complete with pool size 1, zero overflow"
+        },
+        {
+          "pass": 4,
+          "result": "Coalesce concurrent cold tree decryption/validation per principal, drive, and cache version",
+          "evidence": "Six concurrent reads decode once and share the resulting tree"
+        },
+        {
+          "pass": 5,
+          "result": "Add a total decoded-cache node retention budget alongside the entry limit",
+          "evidence": "Node-budget regression proves eviction and oversized-tree exclusion; memory measurement below"
+        },
+        {
+          "pass": 6,
+          "result": "Exclude folders from the parallel Drive file-preload query",
+          "evidence": "Provider query assertion; folders still come from the dedicated folder query"
+        },
+        {
+          "pass": 7,
+          "result": "Share shortcut metadata discovery/probe work across folder and file preload groups",
+          "evidence": "A mixed shortcut tree makes one provider probe batch"
+        },
+        {
+          "pass": 8,
+          "result": "Bind shortcut probe results to target IDs when sharing groups",
+          "evidence": "Regression proves duplicate shortcut IDs with differing targets cannot reuse each other's authorization result"
+        },
+        {
+          "pass": 9,
+          "result": "Omit unused appProperties from normal file response field projections",
+          "evidence": "Existing read/write/recovery tests pass; tracked-create/copy request bodies and task recovery queries still include their tracking property"
+        },
+        {
+          "pass": 10,
+          "result": "Remove repeated active-alias lookups between collision retries",
+          "evidence": "Two-candidate reservation regression uses four queries instead of five, retaining concurrent-winner readback"
+        },
+        {
+          "pass": 11,
+          "result": "Release alias read transactions before provider metadata/membership work",
+          "evidence": "Both direct alias resolution and bulk recent resolution complete with a one-connection pool and real independent cache sessions"
+        },
+        {
+          "pass": 12,
+          "result": "Load sibling template categories concurrently with a service-wide limit of eight provider reads",
+          "evidence": "Cycle-safe category regression and simulated latency benchmark below"
+        },
+        {
+          "pass": 13,
+          "result": "Deduplicate normalized snippet query terms and stop at the earliest possible match",
+          "evidence": "Existing snippet correctness cases pass; repeated-term CPU benchmark below"
+        },
+        {
+          "pass": 14,
+          "result": "Build the Google client only when unknown snippet MIME metadata or an export is needed",
+          "evidence": "Known unsupported MIME path no longer constructs a Drive client; existing no-provider-call snippet regression passes"
+        }
+      ]
+    },
+    {
+      "scope": "backend-storage",
+      "passCount": 16,
+      "passes": [
+        {
+          "pass": 1,
+          "result": "Release the document-icon SELECT transaction before external permission filtering",
+          "evidence": "Real PostgreSQL test completes with a pool of one connection and a permission reader that checks out an independent cache session"
+        },
+        {
+          "pass": 2,
+          "result": "Select only public icon/folder/sort/preference columns, rather than constructing complete ORM entities",
+          "evidence": "Read projections retain all response fields and user predicates; existing sidebar snapshot and bootstrap tests remain green"
+        },
+        {
+          "pass": 3,
+          "result": "Return only the two preference response columns after an upsert",
+          "evidence": "Real PostgreSQL partial-update/readback test proves omitted hidden-workspace fields are preserved"
+        },
+        {
+          "pass": 4,
+          "result": "Share the public task column list and enable raiseload for private fields",
+          "evidence": "Polling and mutation paths use the same field set; real PostgreSQL responses succeed with large, intentionally non-worker-decodable private payload/checkpoint values"
+        },
+        {
+          "pass": 5,
+          "result": "Project public columns for claim, cancel, and initial task reservation RETURNING",
+          "evidence": "Actual PostgreSQL claim SQL excludes payload/checkpoint from RETURNING; task lifecycle and source-deduplication regressions pass"
+        },
+        {
+          "pass": 6,
+          "result": "Project ordinary owned lease updates, retaining owner/checkpoint only when header attestation needs them",
+          "evidence": "Fail/defer/success behavior remains typed; actual fail SQL excludes private payload/checkpoint; header verification stays in the attestation path"
+        },
+        {
+          "pass": 7,
+          "result": "Return only task ID from resource recording and omit unused public-model validation",
+          "evidence": "Real PostgreSQL and offline regressions prove lease ownership, stale-lease rejection, commit/rollback behavior, and resource readback"
+        },
+        {
+          "pass": 8,
+          "result": "Project replay/current-result reads to public columns plus request hash where required",
+          "evidence": "Existing active, exact-key, semantic-terminal, expiration, and concurrent-source replay tests pass; provider admission and row locking remain in place"
+        },
+        {
+          "pass": 9,
+          "result": "Project worker reads to exactly the public data and worker payload/checkpoint/owner/generation fields they use",
+          "evidence": "Offline worker task suite passes; checkpoint ciphertext and payload are still loaded only for worker paths that need them"
+        },
+        {
+          "pass": 10,
+          "result": "Filter bounded terminal results within one locked SELECT, removing the preceding metadata round trip",
+          "evidence": "Eleven new PostgreSQL cases cover valid/oversized/malformed results, owner/expiry, task transitions, icon checkout, and preference readback; bounded reads use exactly one query and retain FOR SHARE"
+        },
+        {
+          "pass": 11,
+          "result": "Compute both in-place admission counts in one aggregate query",
+          "evidence": "Offline cap-boundary cases and PostgreSQL source-deduplication suite pass; copy tasks retain their existing kind predicate to avoid scanning unrelated task kinds"
+        },
+        {
+          "pass": 12,
+          "result": "Deduplicate logical cache lookup keys before computing their HMAC candidates",
+          "evidence": "Regression records one hash for 1,000 duplicate keys; local 10,000-duplicate fixture median improves from 13.179 ms to 0.049 ms"
+        },
+        {
+          "pass": 13,
+          "result": "Offload large batches of cache key derivation, encryption, and decryption",
+          "evidence": "Crypto thread regression passes; 10,000-entry fixture event-loop heartbeat gaps shrink materially, as described below; small batches remain inline"
+        },
+        {
+          "pass": 14,
+          "result": "Share one SQL expiry expression throughout a cache batch",
+          "evidence": "A 1,000-row fixture uses 3,001 bind parameters instead of 4,000; SQL construction/compile median falls from 37.376 ms to 26.579 ms"
+        },
+        {
+          "pass": 15,
+          "result": "Review hidden-workspace bootstrap work",
+          "evidence": "Added regression for hidden first workspace and all workspaces hidden; the first-tranche implementation already avoids unnecessary tree reads, so no further code change was needed"
+        },
+        {
+          "pass": 16,
+          "result": "Review indexes, pool tuning, retention cleanup, encryption shortcuts, and task replay locks",
+          "evidence": "Existing expiry/user/lease/semantic indexes cover the inspected predicates. Rejected arbitrary pool/index tuning without production plans and rejected removing locks, validation, key rotation, freshness, or cleanup to claim lower latency"
+        }
+      ]
+    },
+    {
+      "scope": "cross-stack",
+      "passCount": 12,
+      "passes": [
+        {
+          "pass": 1,
+          "result": "Remove obsolete Wiki read Server Actions",
+          "evidence": "Removed 13 unused read exports and their type imports. Their authenticated GET replacements were already active; retained the rate-limit regression using the live rename mutation instead of a test-only search wrapper. Source scan finds no old read-action references."
+        },
+        {
+          "pass": 2,
+          "result": "Move Smart Create task polling out of the browser Server Action queue",
+          "evidence": "`getTask` now uses the restricted authenticated GET BFF and its existing strict discriminated task schema. The route accepts only UUID-shaped task IDs; task ownership remains checked by the backend. Polling and template reads both dispatch before either response settles."
+        },
+        {
+          "pass": 3,
+          "result": "Move template catalog loading out of the same queue",
+          "evidence": "`listTemplates` uses authenticated GET with explicit refresh query and optional cancellation. Generated strict template validation, field transforms, invoking-drive scope, and refresh behavior remain covered by API/dialog tests."
+        },
+        {
+          "pass": 4,
+          "result": "Stream document-transform GET responses",
+          "evidence": "Capabilities, current receipts, task polls, and admissions now return the authorized upstream stream immediately. Four route tests hold the upstream body open and prove headers return before EOF. The complete response retains the browser's 4 MiB decoding limit."
+        },
+        {
+          "pass": 5,
+          "result": "Share the server read transport",
+          "evidence": "Extracted `wikiReadResponse` for both BFF routes; removed four obsolete Smart read actions, their shared action wrapper, and the buffered server read function. Restricted path validation and separate redacted error policies stay in each route. Fresh HTTP-only tokens, no-store policy, request IDs, timing, redirect rejection, and disconnect propagation are shared. The transform route retains its original 30-second upstream deadline; existing Wiki reads keep 25 seconds."
+        },
+        {
+          "pass": 6,
+          "result": "Cancel obsolete transform fetches and body decoding",
+          "evidence": "Added optional signals through the transform transport, admission/capability/current/task APIs, and TanStack capability/current queries. The bounded decoder uses signal-aware stream piping and releases/cancels unfinished bodies. Tests cover no dispatch after abort and cancellation during an unfinished body. Write submission calls keep their existing arguments and replay behavior."
+        },
+        {
+          "pass": 7,
+          "result": "Cancel transform reads waiting for session recovery",
+          "evidence": "`runAction`/`runActionResult` accept optional signals and pass them to the existing shared refresh waiter. A cancelled read settles while an independent retained request completes through the same refresh; no shared refresh is cancelled and no discarded request is replayed. Existing unauthorized and unavailable-session behavior is preserved."
+        },
+        {
+          "pass": 8,
+          "result": "Remove the polling wait listener leak and duplicate helpers",
+          "evidence": "Both polling clients use one `abortableDelay`, including an immediate pre-abort check and listener cleanup on timer settlement. Actual-code measurement of 50 completed Smart Create waits finds 50 retained listeners before and zero after. Tests exercise repeated waits, active cancellation, and pre-aborted calls."
+        },
+        {
+          "pass": 9,
+          "result": "Avoid retaining an async recursion chain for Smart Create polls",
+          "evidence": "Replaced recursive task polling with a loop. Terminal results/failures and serial poll timing are unchanged; each poll no longer retains its parent's pending async promise until completion. Existing typed task-success and terminal failure tests pass. No arbitrary poll limit was added."
+        },
+        {
+          "pass": 10,
+          "result": "Cancel template discovery on close, replacement, and unmount",
+          "evidence": "The dialog aborts its current catalog fetch before a refreshed/replaced load and on cleanup or close, while retaining the sequence guard against obsolete publication. A DOM regression closes the dialog during an unresolved catalog load and verifies its signal is aborted."
+        },
+        {
+          "pass": 11,
+          "result": "Reduce eager connection hints",
+          "evidence": "Changed nine secondary Google origins from TLS preconnects to DNS hints. The main Docs origin and API retain preconnects: Docs is immediately embedded, and the API remains used directly for credential refresh, login, and MCP settings. Source count falls from eleven preconnect hints to two; all secondary DNS hints remain. This is a resource-hint count, not a claim that every browser opened eleven sockets."
+        },
+        {
+          "pass": 12,
+          "result": "Review the remaining read/write and cache boundaries",
+          "evidence": "Retained the single bounded bulk recent-alias POST action rather than putting potentially long alias lists into GET URLs or broadening the generic read proxy into an arbitrary POST forwarder. Also retained mutation edge limits, revision conflict handling, idempotency replay, fresh permission checks, strict schema validation, and primary-origin hints. No additional safe, material improvement was found in this assigned scope without measured production evidence or a separately scoped bulk-read transport change."
+        }
+      ]
+    }
+  ],
+  "measurements": {
+    "initialAppJavaScript": {
+      "rawBytesBefore": 676364,
+      "rawBytesAfter": 545058,
+      "gzipBytesBefore": 216381,
+      "gzipBytesAfter": 177713,
+      "scope": "Synchronous application client-reference chunks, excluding shared framework and deferred chunks; same locked toolchain"
+    },
+    "bootstrapMetadata": {
+      "medianMillisecondsBefore": 4.19,
+      "medianMillisecondsAfter": 1.407,
+      "samples": 100,
+      "fixtureBytes": 1409370
+    },
+    "templateDiscovery": {
+      "medianMillisecondsBefore": 314.203,
+      "medianMillisecondsAfter": 49.618,
+      "samples": 5,
+      "fixture": "48 sibling categories; simulated 5 ms provider latency; 50 calls both variants"
+    },
+    "snippetSearch": {
+      "medianMillisecondsBefore": 608.134,
+      "medianMillisecondsAfter": 6.482,
+      "samples": 5,
+      "fixture": "1,850,000 characters, 100 repeated absent terms"
+    },
+    "bulkCacheHeartbeatGap": {
+      "writesMillisecondsBefore": 156.284,
+      "writesMillisecondsAfter": 63.804,
+      "readsMillisecondsBefore": 87.34,
+      "readsMillisecondsAfter": 31.148,
+      "samples": 5,
+      "fixture": "10,000 encrypted entries, isolated fake DB, 2 ms heartbeat; thread dispatch increases isolated operation time"
+    },
+    "cacheInsertParameters": {
+      "before": 4000,
+      "after": 3001,
+      "rows": 1000
+    },
+    "streamHeaders": {
+      "medianMillisecondsBefore": 42.43,
+      "medianMillisecondsAfter": 0.133,
+      "samples": 20,
+      "fixture": "1,000,013-byte JSON, controlled 40 ms remainder delay; complete body remains unchanged"
+    },
+    "completedPollAbortListeners": {
+      "before": 50,
+      "after": 0,
+      "completedWaits": 50
+    },
+    "gzipTree": {
+      "fixtureNodes": 10000,
+      "medianMillisecondsBefore": 25.034,
+      "medianMillisecondsAfter": 7.796,
+      "gzipLevelBefore": 9,
+      "gzipLevelAfter": 4,
+      "bytesBefore": 81399,
+      "bytesAfter": 84605
+    },
+    "streamedShell": {
+      "headersMilliseconds": 12.442,
+      "firstChunkMilliseconds": 12.667,
+      "completeMilliseconds": 729.769,
+      "fixtureBootstrapDelayMilliseconds": 700,
+      "scope": "Local production Next.js server with isolated fixtures; first chunk contains the loading shell and completed body contains the authenticated fixture"
+    },
+    "compressionRouteShapes": {
+      "fixture_kind": "synthetic route-shaped JSON with fixed-seed opaque provider IDs",
+      "repeats": 41,
+      "fixtures": {
+        "profile": {
+          "raw_bytes": 149,
+          "below_gzip_1000_byte_threshold": true,
+          "level_1": {
+            "bytes": 142,
+            "median_ms": 0.0046
+          },
+          "level_4": {
+            "bytes": 142,
+            "median_ms": 0.0047
+          },
+          "level_9": {
+            "bytes": 142,
+            "median_ms": 0.0047
+          },
+          "level_1_vs_4": {
+            "extra_bytes": 0,
+            "extra_bytes_percent": 0.0,
+            "cpu_saved_ms": 0.0001,
+            "extra_transfer_ms_at_10Mbps": 0.0
+          }
+        },
+        "task_poll": {
+          "raw_bytes": 302,
+          "below_gzip_1000_byte_threshold": true,
+          "level_1": {
+            "bytes": 226,
+            "median_ms": 0.0058
+          },
+          "level_4": {
+            "bytes": 225,
+            "median_ms": 0.0065
+          },
+          "level_9": {
+            "bytes": 225,
+            "median_ms": 0.0065
+          },
+          "level_1_vs_4": {
+            "extra_bytes": 1,
+            "extra_bytes_percent": 0.444,
+            "cpu_saved_ms": 0.0007,
+            "extra_transfer_ms_at_10Mbps": 0.0008
+          }
+        },
+        "drive_inventory_30": {
+          "raw_bytes": 2965,
+          "below_gzip_1000_byte_threshold": false,
+          "level_1": {
+            "bytes": 1212,
+            "median_ms": 0.0128
+          },
+          "level_4": {
+            "bytes": 1180,
+            "median_ms": 0.0192
+          },
+          "level_9": {
+            "bytes": 1161,
+            "median_ms": 0.0204
+          },
+          "level_1_vs_4": {
+            "extra_bytes": 32,
+            "extra_bytes_percent": 2.712,
+            "cpu_saved_ms": 0.0064,
+            "extra_transfer_ms_at_10Mbps": 0.0256
+          }
+        },
+        "folder_50_mixed_metadata": {
+          "raw_bytes": 30938,
+          "below_gzip_1000_byte_threshold": false,
+          "level_1": {
+            "bytes": 6650,
+            "median_ms": 0.0461
+          },
+          "level_4": {
+            "bytes": 5853,
+            "median_ms": 0.1089
+          },
+          "level_9": {
+            "bytes": 5440,
+            "median_ms": 0.2887
+          },
+          "level_1_vs_4": {
+            "extra_bytes": 797,
+            "extra_bytes_percent": 13.617,
+            "cpu_saved_ms": 0.0628,
+            "extra_transfer_ms_at_10Mbps": 0.6376
+          }
+        },
+        "folder_200_mixed_metadata": {
+          "raw_bytes": 123712,
+          "below_gzip_1000_byte_threshold": false,
+          "level_1": {
+            "bytes": 25933,
+            "median_ms": 0.2518
+          },
+          "level_4": {
+            "bytes": 22425,
+            "median_ms": 0.4796
+          },
+          "level_9": {
+            "bytes": 20159,
+            "median_ms": 1.9075
+          },
+          "level_1_vs_4": {
+            "extra_bytes": 3508,
+            "extra_bytes_percent": 15.643,
+            "cpu_saved_ms": 0.2278,
+            "extra_transfer_ms_at_10Mbps": 2.8064
+          }
+        },
+        "tree_1000_default_metadata": {
+          "raw_bytes": 394048,
+          "below_gzip_1000_byte_threshold": false,
+          "level_1": {
+            "bytes": 79325,
+            "median_ms": 1.1738
+          },
+          "level_4": {
+            "bytes": 73859,
+            "median_ms": 1.8021
+          },
+          "level_9": {
+            "bytes": 69075,
+            "median_ms": 4.776
+          },
+          "level_1_vs_4": {
+            "extra_bytes": 5466,
+            "extra_bytes_percent": 7.401,
+            "cpu_saved_ms": 0.6283,
+            "extra_transfer_ms_at_10Mbps": 4.3728
+          }
+        },
+        "tree_1000_nonempty_descriptions": {
+          "raw_bytes": 619561,
+          "below_gzip_1000_byte_threshold": false,
+          "level_1": {
+            "bytes": 128720,
+            "median_ms": 1.9781
+          },
+          "level_4": {
+            "bytes": 111293,
+            "median_ms": 3.0051
+          },
+          "level_9": {
+            "bytes": 98581,
+            "median_ms": 11.091
+          },
+          "level_1_vs_4": {
+            "extra_bytes": 17427,
+            "extra_bytes_percent": 15.659,
+            "cpu_saved_ms": 1.027,
+            "extra_transfer_ms_at_10Mbps": 13.9416
+          }
+        },
+        "permissions_100": {
+          "raw_bytes": 35308,
+          "below_gzip_1000_byte_threshold": false,
+          "level_1": {
+            "bytes": 3953,
+            "median_ms": 0.0362
+          },
+          "level_4": {
+            "bytes": 3918,
+            "median_ms": 0.1147
+          },
+          "level_9": {
+            "bytes": 3751,
+            "median_ms": 0.2184
+          },
+          "level_1_vs_4": {
+            "extra_bytes": 35,
+            "extra_bytes_percent": 0.893,
+            "cpu_saved_ms": 0.0785,
+            "extra_transfer_ms_at_10Mbps": 0.028
+          }
+        }
+      }
+    }
+  },
+  "validation": {
+    "backendTestsPassed": 4114,
+    "backendCoveragePercent": 88.29,
+    "frontendTestsPassed": 571,
+    "frontendTestFiles": 77,
+    "frontendSecurityScriptTestsPassed": 13,
+    "browserSmokeChecks": [
+      "Keyboard-open file menu and rename dialog after dismissal",
+      "Keyboard-open create menu and new Doc defaults after dismissal"
+    ],
+    "nativeStandardsErrors": 0,
+    "nativeStandardsExecutionIssues": 0
+  },
+  "reproduce": [
+    "cd frontend && npm run build && npm run benchmark:bundle",
+    "cd frontend && npm run benchmark:sidebar",
+    "cd backend && uv run python scripts/benchmark_performance.py"
+  ],
+  "limitations": [
+    "Local build and fixture measurements do not establish end-to-end production latency.",
+    "Fresh permissions, authenticated principal scope, locks, encryption, and output validation remain enforced.",
+    "Reviewed candidates retained or rejected are explicitly included in the pass record.",
+    "No physical maximum is claimed; further tuning requires production traces and query plans."
+  ],
+  "finalIntegration": {
+    "driveTraversal": "Shared provider query parameters, permission mapping, page validation, and ancestry error handling reduce duplication and eliminate nine existing cognitive-complexity findings without increasing allowances.",
+    "compressionDecision": "Retain level 4: the fixed-seed, opaque-ID 1,000-node default-metadata tree at level 1 adds 7.4% bytes for 0.628 ms CPU saved. Those bytes take approximately 4.373 ms at 10 Mbps; transfer estimates exclude round trips and queueing.",
+    "taskFactory": "Remove an unnecessary event-loop yield from the already-async task dependency while retaining the running event loop required by the Cloud Tasks client.",
+    "drivePageCpuTradeoff": "Isolated 1,000-node helper separation adds approximately 0.055 ms for navigator reads and 0.128 ms for strict QA reads; provider requests and public/internal results are preserved."
+  }
+}

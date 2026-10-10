@@ -13,7 +13,7 @@ from app.models.user import User
 from app.templates.service import DriveTemplateCatalogService, TemplateCatalogService
 
 
-def template_catalog_service_dep(
+async def template_catalog_service_dep(
     user: Annotated[User, Depends(get_current_user)],
     drive: Annotated[DriveService, Depends(drive_service_dep)],
     cache: Annotated[CacheService, Depends(cache_service_dep)],

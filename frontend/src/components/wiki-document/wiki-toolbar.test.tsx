@@ -1,3 +1,5 @@
+import { flushSync } from "react-dom";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { MIME_DOC, MIME_MARKDOWN, MIME_PDF, MIME_PPTX, MIME_SLIDE } from "@/types/wiki";
@@ -16,9 +18,9 @@ vi.mock("./reorganize-document", () => ({
   // eslint-disable-next-line @typescript-eslint/naming-convention -- matches the component export
   ReorganizeDocument: ({ fileId }: { fileId: string }) => `reorganize:${fileId}`,
 }));
-vi.mock("./document-polish-dialog", () => ({
+vi.mock("./lazy-document-polish-dialog", () => ({
   // eslint-disable-next-line @typescript-eslint/naming-convention -- matches the component export
-  DocumentPolishDialog: ({ source }: { source: { allowInPlace: boolean; fileId: string } }) =>
+  LazyDocumentPolishDialog: ({ source }: { source: { allowInPlace: boolean; fileId: string } }) =>
     `polish:${source.fileId}:in-place-${String(source.allowInPlace)}`,
 }));
 
@@ -95,7 +97,7 @@ describe("WikiToolbar", () => {
     );
 
     expect(view).toContain("Polish");
-    expect(view).toContain("polish:doc-file:in-place-true");
+    expect(view).not.toContain("polish:doc-file:in-place-true");
   });
 
   it("never offers in-place polishing for a read-only Google Doc", () => {
@@ -113,7 +115,7 @@ describe("WikiToolbar", () => {
       />,
     );
 
-    expect(view).toContain("polish:read-only-doc:in-place-false");
+    expect(view).not.toContain("polish:read-only-doc:in-place-false");
   });
 
   it("offers the same copy-safe action for Drive-hosted Markdown", () => {
@@ -131,7 +133,7 @@ describe("WikiToolbar", () => {
       />,
     );
 
-    expect(view).toContain("polish:markdown-file:in-place-false");
+    expect(view).not.toContain("polish:markdown-file:in-place-false");
   });
 
   it.each([MIME_SLIDE, MIME_PPTX])("offers copy-safe presentation polishing for %s", (mimeType) => {
@@ -149,6 +151,51 @@ describe("WikiToolbar", () => {
       />,
     );
 
-    expect(view).toContain("polish:deck-file:in-place-false");
+    expect(view).not.toContain("polish:deck-file:in-place-false");
   });
+  it.each([
+    { mimeType: MIME_DOC, canEdit: true, expected: true },
+    { mimeType: MIME_DOC, canEdit: false, expected: false },
+    { mimeType: MIME_MARKDOWN, canEdit: true, expected: false },
+    { mimeType: MIME_SLIDE, canEdit: true, expected: false },
+    { mimeType: MIME_PPTX, canEdit: true, expected: false },
+  ])(
+    "loads polishing on demand with the correct in-place authority: $mimeType / $canEdit",
+    ({ mimeType, canEdit, expected }) => {
+      const host = document.createElement("div");
+      document.body.append(host);
+      const root = createRoot(host);
+      flushSync(() =>
+        root.render(
+          <WikiToolbar
+            breadcrumb={[]}
+            canEdit={canEdit}
+            driveId="drive"
+            fileId="deferred-file"
+            mimeType={mimeType}
+            modifiedTime="2026-09-03T12:00:00Z"
+            onReload={vi.fn()}
+            parentFolderId="folder"
+            title="Review"
+          />,
+        ),
+      );
+      try {
+        expect(host.textContent).not.toContain(`polish:deferred-file:in-place-${String(expected)}`);
+        flushSync(() => polishButton(host).click());
+        expect(host.textContent).toContain(`polish:deferred-file:in-place-${String(expected)}`);
+      } finally {
+        flushSync(() => root.unmount());
+        host.remove();
+      }
+    },
+  );
 });
+
+function polishButton(host: HTMLElement): HTMLButtonElement {
+  const button = [...host.querySelectorAll("button")].find((element) =>
+    /Polish (?:document|presentation)/u.test(element.getAttribute("aria-label") ?? ""),
+  );
+  if (!button) throw new Error("Polish action is missing");
+  return button;
+}

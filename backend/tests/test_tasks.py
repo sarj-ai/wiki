@@ -60,6 +60,9 @@ class _Result:
             return (self._row, False)
         return self._row
 
+    def one(self) -> Any:
+        return self._row
+
 
 class _Session:
     def __init__(self, *rows: object) -> None:
@@ -270,7 +273,7 @@ def _transform_success_result(task_id: TaskId, mode: TransformMode) -> DocumentT
 async def test_in_place_admission_reserves_target_before_queueing() -> None:
     row = _task(request_hash="0" * 64)
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, None, 0, 0, row)
+    session = _Session(None, None, None, None, (0, 0), row)
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -289,7 +292,7 @@ async def test_in_place_admission_reserves_target_before_queueing() -> None:
 async def test_admission_finishes_before_dispatch_intent_is_committed() -> None:
     row = _task(request_hash="0" * 64)
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, None, 0, 0, row)
+    session = _Session(None, None, None, None, (0, 0), row)
 
     async def admit() -> None:
         assert session.commits == 0
@@ -352,7 +355,7 @@ async def test_admitted_replay_does_not_revalidate_changed_provider_state() -> N
 
 async def test_distinct_active_in_place_task_for_same_target_is_rejected() -> None:
     row = _task(request_hash="0" * 64)
-    session = _Session(None, None, None, None, 0, 0, None, None, None)
+    session = _Session(None, None, None, None, (0, 0), None, None, None)
 
     with pytest.raises(TaskTargetBusyError):
         await _service(session).create_or_replay(
@@ -375,7 +378,7 @@ async def test_document_transform_admission_caps_all_active_owner_tasks() -> Non
         ),
         mode=TransformMode.UNSLOP,
     )
-    session = _Session(None, None, None, None, 20)
+    session = _Session(None, None, None, None, (20, 0))
 
     with pytest.raises(TaskAdmissionLimitError):
         await _service(session).create_or_replay(
@@ -682,7 +685,7 @@ async def test_terminal_changed_during_output_admission_creates_replacement(
     terminal.result = _transform_success_result(terminal.id, payload.mode).model_dump(mode="json")
     replacement = _task(request_hash=request_hash)
     replacement.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, terminal, None, 0, replacement)
+    session = _Session(None, None, None, terminal, None, (0, 0), replacement)
     new_admissions: list[bool] = []
 
     async def admit_terminal_replay(_task: TaskRead) -> bool:
@@ -729,7 +732,7 @@ async def test_missing_terminal_output_creates_exactly_one_replacement() -> None
     terminal.result = _transform_success_result(terminal.id, payload.mode).model_dump(mode="json")
     replacement = _task(request_hash=request_hash)
     replacement.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, terminal, 0, replacement)
+    session = _Session(None, None, None, terminal, (0, 0), replacement)
     output_checks: list[TaskId] = []
     new_admissions: list[bool] = []
 
@@ -825,7 +828,7 @@ async def test_markdown_task_persists_ciphertext_and_hash_without_plaintext() ->
     serialized = task_service_module._serialize(payload)
     row = _task(request_hash=task_service_module._request_hash(serialized))
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, None, 0, row)
+    session = _Session(None, None, None, None, (0, 0), row)
 
     reservation = await _service(session).create_or_replay(
         kind=TaskKind.FILE_DOCUMENT_TRANSFORM,
@@ -942,7 +945,7 @@ async def test_expired_transform_key_retries_identical_insert_once(
 ) -> None:
     row = _task(request_hash="0" * 64)
     row.kind = TaskKind.FILE_DOCUMENT_TRANSFORM
-    session = _Session(None, None, None, None, 0, None, None, row if insert_succeeds else None)
+    session = _Session(None, None, None, None, (0, 0), None, None, row if insert_succeeds else None)
     admissions: list[bool] = []
 
     async def admit() -> None:
@@ -1215,3 +1218,52 @@ def test_database_model_carries_legal_state_and_idempotency_constraints() -> Non
 
     assert "ck_tasks_legal_state" in names
     assert "uq_tasks_owner_kind_idempotency" in names
+
+
+async def test_resource_recording_returns_only_identity_and_retains_lease_guard() -> None:
+    row = _task(request_hash="0" * 64)
+    session = _Session(row.id)
+
+    await _service(session).record_resource(
+        row.id, lease_token=uuid.uuid7(), resource_id=FileId("created-resource")
+    )
+
+    assert session.commits == 1
+    sql = str(session.statements[0])
+    assert "tasks.status" in sql
+    assert "tasks.lease_token IS NOT DISTINCT FROM" in sql
+    assert sql.partition(" RETURNING ")[2] == "tasks.id"
+
+
+async def test_resource_recording_rejects_a_lost_lease_without_commit() -> None:
+    session = _Session(None)
+    with pytest.raises(TaskLeaseLostError):
+        await _service(session).record_resource(
+            TaskId(uuid.uuid7()), lease_token=uuid.uuid7(), resource_id=FileId("created-resource")
+        )
+    assert session.commits == 0
+    assert session.rollbacks == 1
+
+
+@pytest.mark.parametrize(
+    ("active_count", "in_place_count", "strategy", "rejected"),
+    [
+        (19, 9, OutputStrategy.IN_PLACE, False),
+        (20, 0, OutputStrategy.COPY, True),
+        (0, 10, OutputStrategy.IN_PLACE, True),
+        (0, 10, OutputStrategy.COPY, False),
+    ],
+)
+async def test_admission_limits_share_one_count_query(
+    active_count: int, in_place_count: int, strategy: OutputStrategy, *, rejected: bool
+) -> None:
+    session = _Session((active_count, in_place_count))
+    payload = _in_place_payload().model_copy(update={"output_strategy": strategy})
+    if rejected:
+        with pytest.raises(TaskAdmissionLimitError):
+            await _service(session)._check_document_transform_limits(uuid.uuid7(), payload)
+    else:
+        await _service(session)._check_document_transform_limits(uuid.uuid7(), payload)
+    assert len(session.statements) == 1
+    assert "FILTER" in str(session.statements[0])
+    assert session.rollbacks == int(rejected)

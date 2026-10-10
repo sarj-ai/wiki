@@ -2,8 +2,8 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronsUpDown, LogOut, Moon, Settings, Sun } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
-import { useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -16,11 +16,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SidebarFooter } from "@/components/ui/sidebar";
 import { useCurrentUser } from "@/hooks/use-current-user";
+import { useDeferredDialog } from "@/hooks/use-deferred-dialog";
 import { useIsClient } from "@/hooks/use-is-client";
 import { logout as apiLogout } from "@/lib/auth";
 import { broadcastSessionClear, clearAuthenticatedSession } from "@/lib/session-isolation";
 
-import { PreferencesDialog } from "./preferences-dialog";
+const PreferencesDialog = dynamic(
+  async () => {
+    const loadedModule = await import("./preferences-dialog");
+    return loadedModule.PreferencesDialog;
+  },
+  { ssr: false },
+);
 
 export function WikiFooter() {
   const user = useCurrentUser().data ?? null;
@@ -35,7 +42,7 @@ export function WikiFooter() {
   const { resolvedTheme, setTheme } = useTheme();
   const mounted = useIsClient();
 
-  const [prefsOpen, setPrefsOpen] = useState(false);
+  const preferencesDialog = useDeferredDialog();
 
   const isDark = mounted && resolvedTheme === "dark";
   const toggleTheme = () => {
@@ -87,7 +94,7 @@ export function WikiFooter() {
             className="flex items-center gap-2 text-sm"
             onSelect={(e) => {
               e.preventDefault();
-              setPrefsOpen(true);
+              preferencesDialog.onOpenChange(true);
             }}
           >
             <Settings className="size-4" />
@@ -115,7 +122,12 @@ export function WikiFooter() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <PreferencesDialog onOpenChange={setPrefsOpen} open={prefsOpen} />
+      {preferencesDialog.mounted ? (
+        <PreferencesDialog
+          onOpenChange={preferencesDialog.onOpenChange}
+          open={preferencesDialog.open}
+        />
+      ) : null}
     </SidebarFooter>
   );
 }
