@@ -43,6 +43,4 @@ def test_iac_validation_uses_locked_provider_cache_without_weakening_gates() -> 
         "TRIVY_RESULT": "${{ needs.trivy-config.result }}",
         "TERRAFORM_RESULT": "${{ needs.terraform-validation.result }}",
     }
-    assert required_step["run"] == (
-        'test "$TRIVY_RESULT" = success && test "$TERRAFORM_RESULT" = success'
-    )
+    assert required_step["run"] == "bash scripts/github/require-iac-ci.sh"

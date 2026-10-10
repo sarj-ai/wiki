@@ -9,6 +9,10 @@ name: Deploy Frontend
       - ".github/workflows/deploy-frontend.yml"
       - "scripts/github/release_gate.py"
       - "scripts/github/verify-release-gate.sh"
+      - "scripts/github/capture-frontend-version.sh"
+      - "scripts/github/deploy-frontend.sh"
+      - "scripts/github/require-frontend-ci.sh"
+      - "scripts/github/select-runtime-ci.sh"
       - "scripts/frontend_release/**"
   workflow_dispatch:
 
@@ -126,16 +130,11 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          previous_version="$(uv run --no-project --with typer==0.27.2 --python 3.14 \
-            python -m scripts.frontend_release.rollback active)"
-          echo "version_id=$previous_version" >> "$GITHUB_OUTPUT"
+        run: bash scripts/github/capture-frontend-version.sh
 
       - name: Deploy to Cloudflare
         id: deploy
-        run: |
-          test ! -e "$WRANGLER_OUTPUT_FILE_PATH"
-          npm run deploy
+        run: bash ../scripts/github/deploy-frontend.sh
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

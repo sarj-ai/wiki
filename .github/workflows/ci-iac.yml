@@ -71,13 +71,7 @@ jobs:
 
       - name: Publish report to job summary
         if: always()
-        run: |
-          {
-            echo '## Trivy IaC scan (terraform/)'
-            echo '```'
-            cat trivy-report.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: bash scripts/github/publish-iac-scan.sh
 
   required:
     name: IaC / required
@@ -90,4 +84,4 @@ jobs:
         env:
           TRIVY_RESULT: ${{ needs.trivy-config.result }}
           TERRAFORM_RESULT: ${{ needs.terraform-validation.result }}
-        run: test "$TRIVY_RESULT" = success && test "$TERRAFORM_RESULT" = success
+        run: bash scripts/github/require-iac-ci.sh

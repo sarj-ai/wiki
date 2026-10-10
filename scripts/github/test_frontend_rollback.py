@@ -291,7 +291,11 @@ def test_workflow_uses_same_fresh_receipt_for_deploy_and_recovery() -> None:
         == "${{ runner.temp }}/frontend-deploy-${{ github.run_id }}-${{ github.run_attempt }}.jsonl"
     )
     assert recover["env"]["CANDIDATE_RECEIPT"] == receipt_path
-    assert shlex.split(deploy["run"]) == [
+    assert deploy["run"] == "bash ../scripts/github/deploy-frontend.sh"
+    deploy_program = (
+        (root / "scripts/github/deploy-frontend.sh").read_text().split("\n\n", 1)[1]
+    )
+    assert shlex.split(deploy_program) == [
         "test",
         "!",
         "-e",

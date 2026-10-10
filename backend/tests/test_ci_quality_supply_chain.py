@@ -30,20 +30,24 @@ def test_protected_pre_commit_check_requires_both_parallel_quality_jobs() -> Non
     assert "name: pre-commit (actionlint, hygiene, sarj rules)" in protected_job
     assert "if: ${{ always() }}" in protected_job
     assert "needs: [python-baseline, repository-quality]" in protected_job
-    assert 'test "$PYTHON_BASELINE_RESULT" = success' in protected_job
-    assert 'test "$REPOSITORY_QUALITY_RESULT" = success' in protected_job
+    assert "run: bash scripts/github/require-quality-ci.sh" in protected_job
+    gate = (_REPOSITORY_ROOT / "scripts/github/require-quality-ci.sh").read_text()
+    assert 'test "$PYTHON_BASELINE_RESULT" = success' in gate
+    assert 'test "$REPOSITORY_QUALITY_RESULT" = success' in gate
 
 
 def test_gitleaks_archive_is_verified_before_extraction_and_execution() -> None:
     workflow = _QUALITY_WORKFLOW.read_text()
     secret_scan_job = workflow[workflow.index("  secret-scan:") :]
+    assert "run: bash scripts/github/run-gitleaks.sh" in secret_scan_job
+    program = (_REPOSITORY_ROOT / "scripts/github/run-gitleaks.sh").read_text()
 
-    download = secret_scan_job.index("--output gitleaks.tar.gz")
-    checksum = secret_scan_job.index("sha256sum --check --strict")
-    extraction = secret_scan_job.index("tar -xzf gitleaks.tar.gz gitleaks")
-    execution = secret_scan_job.index("./gitleaks detect")
+    download = program.index("--output gitleaks.tar.gz")
+    checksum = program.index("sha256sum --check --strict")
+    extraction = program.index("tar -xzf gitleaks.tar.gz gitleaks")
+    execution = program.index("./gitleaks detect")
 
     assert _GITLEAKS_SHA256 in secret_scan_job
     assert "GITLEAKS_VERSION: 8.30.1" in secret_scan_job
     assert download < checksum < extraction < execution
-    assert "curl -sSfL" not in secret_scan_job
+    assert "curl -sSfL" not in program

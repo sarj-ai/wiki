@@ -38,14 +38,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          # Disable rename detection so both sides of a move select their domains.
-          if git diff --no-ext-diff --no-textconv --no-renames --name-only -z "$BASE_SHA" "$HEAD_SHA" -- > "$RUNNER_TEMP/changed-paths"; then
-            bash scripts/github/runtime-ci-policy.sh < "$RUNNER_TEMP/changed-paths" >> "$GITHUB_OUTPUT"
-          else
-            echo '::warning::Change detection failed; running full runtime qualification'
-            printf 'backend=true\nfrontend=true\n' >> "$GITHUB_OUTPUT"
-          fi
+        run: bash scripts/github/select-runtime-ci.sh
 
   lint-and-typecheck:
     name: Backend / Lint + typecheck
@@ -252,19 +245,4 @@ jobs:
           LINT_RESULT: ${{ needs.lint-and-typecheck.result }}
           POSTGRES_RESULT: ${{ needs.postgres-concurrency.result }}
           TEST_RESULT: ${{ needs.test.result }}
-        run: |
-          if [ "$FORCE_FULL" = true ]; then
-            test "$ROUTING_RESULT" = skipped
-            expected=success
-          else
-            test "$ROUTING_RESULT" = success
-            case "$RUNTIME_SELECTED" in
-              true) expected=success ;;
-              false) expected=skipped ;;
-              *) exit 1 ;;
-            esac
-          fi
-          test "$LINT_RESULT" = success
-          test "$TEST_RESULT" = "$expected"
-          test "$POSTGRES_RESULT" = "$expected"
-          test "$IMAGE_RESULT" = success
+        run: bash scripts/github/require-backend-ci.sh

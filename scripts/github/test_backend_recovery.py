@@ -474,10 +474,10 @@ def test_recovery_job_is_exclusive_and_contains_no_deployment_mutations() -> Non
     ]
     script_calls = [step["run"] for step in steps if "run" in step]
     assert script_calls == [
-        'source_sha="$(uv run --no-project --with typer==0.27.2 --python 3.14 \\\n  python -m scripts.backend_release.recovery \\\n  --verifier-sha "$GITHUB_SHA" source --run-id "$SOURCE_RUN_ID" \\\n  --run-attempt "$SOURCE_RUN_ATTEMPT")"\necho "source_sha=$source_sha" >> "$GITHUB_OUTPUT"\n',
+        "bash scripts/github/verify-backend-source.sh",
         "bash scripts/backend_release/verify-serving.sh",
         "scripts/github/verify-smart-create-queue.sh",
-        'echo "started_at=$(date -u +\'%Y-%m-%dT%H:%M:%S.%NZ\')" >> "$GITHUB_OUTPUT"',
+        "bash scripts/github/begin-verification-window.sh",
         "scripts/github/verify-backend-production-health.sh",
         "scripts/github/resolve-mcp-release-mode.sh",
         "scripts/github/verify-mcp-release.sh",
