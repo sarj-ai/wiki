@@ -84,4 +84,4 @@ jobs:
         env:
           TRIVY_RESULT: ${{ needs.trivy-config.result }}
           TERRAFORM_RESULT: ${{ needs.terraform-validation.result }}
-        run: bash scripts/github/require-iac-ci.sh
+        run: test "$TRIVY_RESULT:$TERRAFORM_RESULT" = success:success

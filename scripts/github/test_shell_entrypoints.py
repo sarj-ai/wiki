@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+import re
+import shutil
 
 import pytest
 from scripts.github.release_gate import ReleaseBlockedError, command_output
@@ -7,6 +9,87 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_repository_shell_entrypoints_are_checked_out_in_their_job() -> None:
+    for path in (ROOT / ".github/workflows").glob("*.yml"):
+        workflow = yaml.safe_load(path.read_text())
+        for job in workflow["jobs"].values():
+            checked_out = False
+            for step in job.get("steps", []):
+                checked_out |= step.get("uses", "").startswith("actions/checkout@")
+                if re.search(r"\bbash (?:\./)?scripts/", step.get("run", "")):
+                    assert checked_out, (
+                        f"{path.name}: {step.get('name')} has no checkout"
+                    )
+
+
+@pytest.mark.parametrize("family", ["quality", "iac"])
+@pytest.mark.parametrize("failed_dependency", [None, 0, 1])
+@pytest.mark.parametrize("failure", ["failure", "cancelled", "skipped", ""])
+def test_simple_aggregate_guards_run_without_a_checkout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    family: str,
+    failed_dependency: int | None,
+    failure: str,
+) -> None:
+    workflow = yaml.safe_load((ROOT / f".github/workflows/ci-{family}.yml").read_text())
+    job = workflow["jobs"]["pre-commit" if family == "quality" else "required"]
+    (step,) = job["steps"]
+    monkeypatch.chdir(tmp_path)
+    for index, name in enumerate(step["env"]):
+        monkeypatch.setenv(name, failure if index == failed_dependency else "success")
+    command = ["bash", "-eo", "pipefail", "-c", step["run"]]
+    if failed_dependency is None:
+        assert not command_output(command)
+    else:
+        with pytest.raises(ReleaseBlockedError):
+            command_output(command)
+
+
+@pytest.mark.parametrize("family", ["backend", "frontend"])
+@pytest.mark.parametrize("mode", ["full", "selected", "unselected"])
+@pytest.mark.parametrize(
+    "fault", [None, "ROUTING_RESULT", "LINT_RESULT", "TEST_RESULT"]
+)
+def test_runtime_aggregate_guards_use_only_their_sparse_checkout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    family: str,
+    mode: str,
+    fault: str | None,
+) -> None:
+    workflow = yaml.safe_load((ROOT / f".github/workflows/ci-{family}.yml").read_text())
+    checkout, step = workflow["jobs"]["required"]["steps"]
+    assert checkout["uses"].startswith("actions/checkout@")
+    assert checkout["with"]["persist-credentials"] is False
+    assert checkout["with"]["sparse-checkout-cone-mode"] is False
+    script = checkout["with"]["sparse-checkout"]
+    destination = tmp_path / script
+    destination.parent.mkdir(parents=True)
+    shutil.copyfile(ROOT / script, destination)
+    monkeypatch.chdir(tmp_path)
+    env = dict.fromkeys(step["env"], "success")
+    env.update(
+        FORCE_FULL="true" if mode == "full" else "false",
+        ROUTING_RESULT="skipped" if mode == "full" else "success",
+        RUNTIME_SELECTED="" if mode == "full" else str(mode == "selected").lower(),
+    )
+    if mode == "unselected":
+        for name in ("TEST_RESULT", "POSTGRES_RESULT", "BUILD_RESULT"):
+            if name in env:
+                env[name] = "skipped"
+    if fault is not None:
+        env[fault] = "failure"
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    command = ["bash", "-eo", "pipefail", "-c", step["run"]]
+    if fault is None:
+        assert not command_output(command)
+    else:
+        with pytest.raises(ReleaseBlockedError):
+            command_output(command)
 
 
 def _migration_job(command: list[str], args: list[str], image: str) -> str:
@@ -19,7 +102,9 @@ def _migration_job(command: list[str], args: list[str], image: str) -> str:
                     "spec": {
                         "template": {
                             "spec": {
-                                "containers": [{"command": command, "args": args, "image": image}]
+                                "containers": [
+                                    {"command": command, "args": args, "image": image}
+                                ]
                             }
                         }
                     }
@@ -187,7 +272,9 @@ def test_pre_commit_failure_is_not_swallowed(
         command_output(["bash", str(ROOT / "scripts/github/run-pre-commit.sh")])
 
 
-@pytest.mark.parametrize("fault", ["none", "http", "body", "request-id", "cache", "transport"])
+@pytest.mark.parametrize(
+    "fault", ["none", "http", "body", "request-id", "cache", "transport"]
+)
 def test_health_requires_all_release_receipts(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fault: str
 ) -> None:
@@ -212,14 +299,18 @@ jq() { test "$FAULT" != body; }
     monkeypatch.setenv("FAULT", fault)
     monkeypatch.setenv("HTTP_STATUS", "500" if fault == "http" else "200")
     monkeypatch.setenv("RESPONSE_ID", "foreign" if fault == "request-id" else "canary")
-    monkeypatch.setenv("CACHE_CONTROL", "public" if fault == "cache" else "private, no-store")
+    monkeypatch.setenv(
+        "CACHE_CONTROL", "public" if fault == "cache" else "private, no-store"
+    )
     command = ["bash", str(ROOT / "scripts/frontend_release/verify-health.sh")]
     if fault == "none":
         assert command_output(command) == "Frontend production revision verified."
     else:
         with pytest.raises(ReleaseBlockedError):
             command_output(command)
-    assert (tmp_path / "calls").read_text().splitlines() == ["call"] * (1 if fault == "none" else 6)
+    assert (tmp_path / "calls").read_text().splitlines() == ["call"] * (
+        1 if fault == "none" else 6
+    )
     assert not (tmp_path / "frontend-health-body.json").exists()
     assert not (tmp_path / "frontend-health-headers.txt").exists()
 
@@ -235,7 +326,9 @@ jq() { test "$FAULT" != body; }
         ),
     ],
 )
-def test_workflow_calls_tested_entrypoint(workflow: str, step_name: str, entrypoint: str) -> None:
+def test_workflow_calls_tested_entrypoint(
+    workflow: str, step_name: str, entrypoint: str
+) -> None:
     document = yaml.safe_load((ROOT / ".github/workflows" / workflow).read_text())
     steps = [step for job in document["jobs"].values() for step in job.get("steps", [])]
     (step,) = [step for step in steps if step.get("name") == step_name]

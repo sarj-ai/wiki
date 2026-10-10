@@ -132,7 +132,7 @@ jobs:
         env:
           PYTHON_BASELINE_RESULT: ${{ needs.python-baseline.result }}
           REPOSITORY_QUALITY_RESULT: ${{ needs.repository-quality.result }}
-        run: bash scripts/github/require-quality-ci.sh
+        run: test "$PYTHON_BASELINE_RESULT:$REPOSITORY_QUALITY_RESULT" = success:success
 
   api-contract:
     name: OpenAPI spec in sync

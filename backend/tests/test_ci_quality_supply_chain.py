@@ -30,10 +30,10 @@ def test_protected_pre_commit_check_requires_both_parallel_quality_jobs() -> Non
     assert "name: pre-commit (actionlint, hygiene, sarj rules)" in protected_job
     assert "if: ${{ always() }}" in protected_job
     assert "needs: [python-baseline, repository-quality]" in protected_job
-    assert "run: bash scripts/github/require-quality-ci.sh" in protected_job
-    gate = (_REPOSITORY_ROOT / "scripts/github/require-quality-ci.sh").read_text()
-    assert 'test "$PYTHON_BASELINE_RESULT" = success' in gate
-    assert 'test "$REPOSITORY_QUALITY_RESULT" = success' in gate
+    assert (
+        'run: test "$PYTHON_BASELINE_RESULT:$REPOSITORY_QUALITY_RESULT" = success:success'
+        in protected_job
+    )
 
 
 def test_gitleaks_archive_is_verified_before_extraction_and_execution() -> None:
