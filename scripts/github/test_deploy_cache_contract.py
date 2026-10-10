@@ -248,10 +248,7 @@ def test_frontend_build_restores_next_cache_but_only_trusted_main_saves() -> Non
     restore = _named_step(steps, "Restore Next.js incremental build cache")
     save = _named_step(steps, "Save trusted main Next.js incremental build cache")
     expected_path = "frontend/.next/cache"
-    expected_prefix = (
-        "nextjs-v1-${{ runner.os }}-${{ runner.arch }}-"
-        "${{ hashFiles('frontend/package-lock.json') }}-"
-    )
+    expected_prefix = "nextjs-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('frontend/package-lock.json') }}-"
 
     assert restore["id"] == "next-cache"
     assert restore["uses"] == _CACHE_RESTORE_ACTION
@@ -332,13 +329,60 @@ def test_runtime_selection_uses_complete_nul_delimited_paths(
 
 
 @pytest.mark.parametrize("component", ["backend", "frontend"])
+@pytest.mark.parametrize("diff_status", [0, 1])
+def test_runtime_diff_preserves_routing_and_fails_open_on_unavailable_diff(
+    component: str,
+    diff_status: int,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable = tmp_path / "git"
+    executable.write_text(
+        '#!/bin/sh\nprintf "%s\\n" "$*" > "$GIT_CALLS"\nprintf "%s\\0" "$DIFF_PATH"\nexit "$DIFF_STATUS"\n',
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    output = tmp_path / "output"
+    monkeypatch.setenv("PATH", f"{tmp_path}:/usr/bin:/bin")
+    for name, value in {
+        "BASE_SHA": "a" * 40,
+        "HEAD_SHA": "b" * 40,
+        "RUNNER_TEMP": str(tmp_path),
+        "GITHUB_OUTPUT": str(output),
+        "GIT_CALLS": str(tmp_path / "git-calls"),
+        "DIFF_PATH": "backend/tests/test_example.py",
+        "DIFF_STATUS": str(diff_status),
+    }.items():
+        monkeypatch.setenv(name, value)
+    steps = _workflow(f"ci-{component}.yml")["jobs"]["changes"]["steps"]
+    (selection,) = [step for step in steps if step.get("id") == "policy"]
+
+    log = command_output(["bash", "-e", "-c", selection["run"]])
+
+    assert output.read_text() == (
+        "backend=true\nfrontend=true\n"
+        if diff_status
+        else "backend=true\nfrontend=false\n"
+    )
+    assert ("::warning::Change detection failed" in log) is bool(diff_status)
+    assert (tmp_path / "git-calls").read_text() == (
+        f"diff --no-ext-diff --no-textconv --no-renames --name-only -z {'a' * 40} {'b' * 40} --\n"
+    )
+
+
+@pytest.mark.parametrize("component", ["backend", "frontend"])
 def test_runtime_required_gates_reject_failure_missing_outputs_and_unexpected_skips(
     component: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workflow = _workflow(f"ci-{component}.yml")
     assert workflow["on"]["workflow_call"]["inputs"]["force_full"]["default"] is True
-    gate = workflow["jobs"]["required"]["steps"][0]
+    steps = workflow["jobs"]["required"]["steps"]
+    assert steps[0]["uses"].startswith("actions/checkout@")
+    assert steps[0]["with"]["persist-credentials"] is False
+    assert steps[1]["uses"].startswith("astral-sh/setup-uv@")
+    assert steps[1]["with"]["version-file"] == "backend/uv.toml"
+    gate = steps[2]
     baseline = dict.fromkeys(gate["env"], "success")
     baseline.update(
         FORCE_FULL="false", ROUTING_RESULT="success", RUNTIME_SELECTED="true"
@@ -364,7 +408,12 @@ def test_runtime_required_gates_reject_failure_missing_outputs_and_unexpected_sk
         for result in ["failure", "cancelled", "skipped", ""]
     )
     scenarios.extend(
-        ({**baseline, "RUNTIME_SELECTED": value}, False) for value in ["", "unknown"]
+        ({**baseline, "RUNTIME_SELECTED": value}, False)
+        for value in ["", "unknown", "TRUE", "1", " true", "true "]
+    )
+    scenarios.extend(
+        ({**baseline, "FORCE_FULL": value, "ROUTING_RESULT": "skipped"}, False)
+        for value in ["", "TRUE", "1", "yes", " true", "true "]
     )
     scenarios.extend(
         ({**unselected, key: result}, False)

@@ -3,6 +3,7 @@ name: Standards
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
 
@@ -43,7 +44,7 @@ jobs:
       - name: Install the pinned native tool bootstrap
         env:
           UV_PYTHON_DOWNLOADS_JSON_URL: https://raw.githubusercontent.com/astral-sh/uv/f69fb50c8b28997af9c6b0e5c700a34470d86005/crates/uv-python-managed/download-metadata.json
-        run: uv run --no-config --no-project --python 3.15.0 --with code-standards==8.40.2 python -m sarj_standards.libs.adoption.native_bootstrap
+        run: uv run --no-config --no-project --python 3.15.0 --with code-standards==8.42.0 python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Install and attest applicable native tools
         run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards setup --tools-only
       - name: Bootstrap analysis inputs
@@ -55,7 +56,10 @@ jobs:
       - name: Bootstrap analysis inputs (3)
         run: |
           npm --prefix frontend run typegen
+      - name: Bootstrap analysis inputs (4)
+        run: |
+          mise --no-config --no-env --no-hooks exec aqua:hashicorp/terraform@1.15.8 -- terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
       - name: Run standards
         env:
-          SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check --trust-repository-code --format github

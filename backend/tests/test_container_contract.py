@@ -77,7 +77,8 @@ def test_qa_grant_concurrency_suite_is_in_required_postgres_ci() -> None:
     assert "tests/test_document_transform_qa_campaigns_postgres.py" in postgres_job
     required = workflow[workflow.index("  required:") :]
     assert "needs: [changes, lint-and-typecheck, test, postgres-concurrency, image]" in required
-    assert 'test "$POSTGRES_RESULT" = "$expected"' in required
+    assert "POSTGRES_RESULT: ${{ needs.postgres-concurrency.result }}" in required
+    assert "scripts/github/release_gate.py ci backend" in required
 
 
 def test_deployment_runs_one_shot_migrations_before_traffic_switch() -> None:

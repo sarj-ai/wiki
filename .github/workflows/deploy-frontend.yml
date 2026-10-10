@@ -126,16 +126,14 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          previous_version="$(uv run --no-project --with typer==0.27.2 --python 3.14 \
-            python -m scripts.frontend_release.rollback active)"
-          echo "version_id=$previous_version" >> "$GITHUB_OUTPUT"
-
+        run: uv run --no-project --with typer==0.27.2 --python 3.14 python -m scripts.frontend_release.rollback active --github-output >> "$GITHUB_OUTPUT"
+      - name: Require an unused deployment receipt path
+        env:
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/frontend-deploy-${{ github.run_id }}-${{ github.run_attempt }}.jsonl
+        run: test ! -e "$WRANGLER_OUTPUT_FILE_PATH"
       - name: Deploy to Cloudflare
         id: deploy
-        run: |
-          test ! -e "$WRANGLER_OUTPUT_FILE_PATH"
-          npm run deploy
+        run: npm run deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

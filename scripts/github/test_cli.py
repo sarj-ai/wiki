@@ -88,6 +88,70 @@ def test_node_guard_checks_the_active_executable(
         assert "repository check failed:" in result.stderr
 
 
+@pytest.mark.parametrize("github_output", [False, True])
+def test_source_cli_preserves_verified_identity_output(
+    monkeypatch: pytest.MonkeyPatch, *, github_output: bool
+) -> None:
+    sha = "a" * 40
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the Typer entrypoint resolves verification globally; test output dispatch without cloud reads.
+        recovery, "verify_current_release", lambda _args: sha
+    )
+    arguments = ["--verifier-sha", sha, "source", "--run-id", "1", "--run-attempt", "1"]
+    if github_output:
+        arguments.append("--github-output")
+
+    result = CliRunner().invoke(recovery.CLI, arguments)
+
+    assert result.exit_code == 0
+    prefix = "source_sha=" if github_output else ""
+    assert result.stdout == f"{prefix}{sha}\n"
+
+
+@pytest.mark.parametrize("github_output", [False, True])
+def test_active_cli_preserves_verified_version_output(
+    monkeypatch: pytest.MonkeyPatch, *, github_output: bool
+) -> None:
+    version = "12345678-abcd-1234-abcd-123456789abc"
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the Typer entrypoint resolves deployment globally; test output dispatch without cloud reads.
+        rollback, "current_deployment", lambda: rollback.Deployment(version, version)
+    )
+    arguments = ["active"]
+    if github_output:
+        arguments.append("--github-output")
+
+    result = CliRunner().invoke(rollback.CLI, arguments)
+
+    assert result.exit_code == 0
+    prefix = "version_id=" if github_output else ""
+    assert result.stdout == f"{prefix}{version}\n"
+
+
+@pytest.mark.parametrize("cli", [recovery.CLI, rollback.CLI])
+def test_github_output_is_not_published_when_verification_fails(
+    monkeypatch: pytest.MonkeyPatch, cli: typer.Typer
+) -> None:
+    def blocked(*_args: object) -> None:
+        message = "Unverified identity"
+        raise release_gate.ReleaseBlockedError(message)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the Typer entrypoint resolves verification globally; test failure output without cloud reads.
+        recovery, "verify_current_release", blocked
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the Typer entrypoint resolves deployment globally; test failure output without cloud reads.
+        rollback, "current_deployment", blocked
+    )
+    arguments = (
+        ["--verifier-sha", "a" * 40, "source", "--run-id", "1", "--run-attempt", "1"]
+        if cli is recovery.CLI
+        else ["active"]
+    )
+
+    result = CliRunner().invoke(cli, [*arguments, "--github-output"])
+
+    assert result.exit_code == 1
+    assert not result.stdout
+
+
 @pytest.fixture
 def forbid_operations(monkeypatch: pytest.MonkeyPatch) -> None:
     def forbidden(*_args: object, **_kwargs: object) -> None:

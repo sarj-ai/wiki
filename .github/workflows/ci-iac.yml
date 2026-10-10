@@ -70,15 +70,16 @@ jobs:
           output: trivy-report.txt
 
       - name: Publish report to job summary
+        id: trivy_summary_header
         if: always()
-        run: |
-          {
-            echo '## Trivy IaC scan (terraform/)'
-            echo '```'
-            cat trivy-report.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
+        run: printf '%s\n' '## Trivy IaC scan (terraform/)' "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+      - name: Append IaC scan report
+        id: trivy_summary_report
+        if: always() && steps.trivy_summary_header.outcome == 'success'
+        run: cat trivy-report.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Close IaC scan summary
+        if: always() && steps.trivy_summary_header.outcome == 'success' && steps.trivy_summary_report.outcome == 'success'
+        run: printf '%s\n' "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
   required:
     name: IaC / required
     if: ${{ always() }}
@@ -90,4 +91,8 @@ jobs:
         env:
           TRIVY_RESULT: ${{ needs.trivy-config.result }}
           TERRAFORM_RESULT: ${{ needs.terraform-validation.result }}
-        run: test "$TRIVY_RESULT" = success && test "$TERRAFORM_RESULT" = success
+        run: test "$TRIVY_RESULT" = success
+      - name: Require Terraform validation
+        env:
+          TERRAFORM_RESULT: ${{ needs.terraform-validation.result }}
+        run: test "$TERRAFORM_RESULT" = success

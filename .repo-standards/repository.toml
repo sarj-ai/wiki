@@ -1,2 +1,3 @@
+enabled_rules = ["repository/artifacts/makefile-growth"]
 repository_id = "wiki"
 components = []
