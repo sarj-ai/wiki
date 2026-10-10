@@ -338,7 +338,9 @@ def test_runtime_required_gates_reject_failure_missing_outputs_and_unexpected_sk
 ) -> None:
     workflow = _workflow(f"ci-{component}.yml")
     assert workflow["on"]["workflow_call"]["inputs"]["force_full"]["default"] is True
-    gate = workflow["jobs"]["required"]["steps"][0]
+    gate = _named_step(
+        workflow["jobs"]["required"]["steps"], f"Require every {component} gate"
+    )
     baseline = dict.fromkeys(gate["env"], "success")
     baseline.update(
         FORCE_FULL="false", ROUTING_RESULT="success", RUNTIME_SELECTED="true"
