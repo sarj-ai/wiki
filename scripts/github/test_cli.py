@@ -17,6 +17,43 @@ _USAGE_ERROR = 2
 
 
 @pytest.fixture
+def readme_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    (tmp_path / "README.md").write_text("Run `make setup`.\n", encoding="utf-8")
+    (tmp_path / "Makefile").write_text("setup:\n", encoding="utf-8")
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the CLI resolves its repository root globally.
+        repository_checks, "ROOT", tmp_path
+    )
+    return tmp_path
+
+
+def test_readme_without_backend_makefile(readme_repository: Path) -> None:
+    assert not (readme_repository / "backend" / "Makefile").exists()
+    assert CliRunner().invoke(repository_checks.CLI, ["readme"]).exit_code == 0
+
+
+def test_readme_rejects_deleted_backend_target(readme_repository: Path) -> None:
+    (readme_repository / "README.md").write_text(
+        "Run `make -C backend setup`.\n", encoding="utf-8"
+    )
+
+    result = CliRunner().invoke(repository_checks.CLI, ["readme"])
+
+    assert result.exit_code == 1
+    assert "README references missing Make targets: ['setup']" in result.output
+
+
+def test_readme_accepts_existing_backend_target(readme_repository: Path) -> None:
+    backend = readme_repository / "backend"
+    backend.mkdir()
+    (backend / "Makefile").write_text("install:\n", encoding="utf-8")
+    (readme_repository / "README.md").write_text(
+        "Run `make -C backend install`.\n", encoding="utf-8"
+    )
+
+    assert CliRunner().invoke(repository_checks.CLI, ["readme"]).exit_code == 0
+
+
+@pytest.fixture
 def forbid_operations(monkeypatch: pytest.MonkeyPatch) -> None:
     def forbidden(*_args: object, **_kwargs: object) -> None:
         pytest.fail("Rejected arguments or help must not run an operation")

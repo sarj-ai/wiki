@@ -28,7 +28,7 @@ standards-upgrade: ## Upgrade all managed Standards packages and configuration.
 	@$(MAKE) standards-check
 
 setup: setup-hooks standards-sync ## Install backend, frontend, and repository tooling.
-	@$(MAKE) -C backend setup-dependencies
+	@cd backend && uv sync --locked
 	@npm ci --prefix frontend
 
 check: check-node check-quality check-backend check-frontend check-iac ## Run the complete local CI mirror.

@@ -36,7 +36,10 @@ def check_markdown() -> None:
 def check_readme() -> None:
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     root_targets = _make_targets(ROOT / "Makefile")
-    backend_targets = _make_targets(ROOT / "backend" / "Makefile")
+    backend_makefile = ROOT / "backend" / "Makefile"
+    backend_targets = (
+        _make_targets(backend_makefile) if backend_makefile.exists() else set()
+    )
     missing: list[str] = []
     for match in MAKE_REFERENCE.finditer(text):
         target = match.group(2)
