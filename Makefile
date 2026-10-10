@@ -1,19 +1,14 @@
-GCP_PROJECT := sarj-docs
-STAMPS := .stamps
-SECRETS_TTL := 1440
 STANDARDS_RUN := uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards
 
 .PHONY: help setup setup-hooks standards-sync standards-check standards-upgrade \
-	check check-node check-quality check-backend check-frontend check-iac check-repository fix audit doctor \
-	branch-protection-check branch-protection-apply branch-protection-rollback \
-	pull-local-secrets pull-local-secrets-force pull-tf-secrets pull-tf-secrets-force \
-	push-local-secrets push-tf-secrets
+	check check-node check-quality check-backend check-frontend check-iac check-repository fix audit \
+	branch-protection-check branch-protection-apply branch-protection-rollback
 
 help: ## List supported repository commands.
 	@uv run --no-project --with typer==0.27.2 --python 3.14 python scripts/repository_checks.py make-help Makefile
 
 setup-hooks: ## Install the repository Git hooks.
-	@bash scripts/setup-hooks.sh
+	@npm --prefix frontend exec -- lefthook install
 
 standards-sync: ## Regenerate pinned Standards configuration without network access.
 	@$(STANDARDS_RUN) update --offline --no-install
@@ -28,14 +23,14 @@ standards-upgrade: ## Upgrade all managed Standards packages and configuration.
 	@$(MAKE) standards-check
 
 setup: setup-hooks standards-sync ## Install backend, frontend, and repository tooling.
-	@$(MAKE) -C backend setup-dependencies
+	@uv sync --project backend --locked
 	@npm ci --prefix frontend
 
 check: check-node check-quality check-backend check-frontend check-iac ## Run the complete local CI mirror.
 	@echo "make check: all CI-mirror steps passed"
 
 check-node:
-	@node frontend/scripts/check-node.mjs
+	@uv run --no-project --with typer==0.27.2 --python 3.14 python scripts/repository_checks.py node
 
 check-quality: check-repository
 	@$(MAKE) standards-check
@@ -74,14 +69,11 @@ audit: ## Run network-backed production dependency vulnerability audits.
 	@uv --directory backend run pip-audit
 	@npm --prefix frontend audit --omit=dev --audit-level=moderate
 
-doctor: ## Diagnose repository Standards drift in a clean tree copy.
-	@bash scripts/doctor-clean-tree.sh $(STANDARDS_RUN)
-
 fix: ## Apply safe backend and frontend formatter/linter fixes.
 	@uv --directory backend run ruff check --fix .
 	@uv --directory backend run ruff format .
 	@npm --prefix frontend run format
-	@bash scripts/fix-frontend-lint.sh
+	-@uv --directory frontend run --no-project node_modules/.bin/eslint --fix --suppressions-location eslint-suppressions.json .
 	@echo "make fix: autofixes applied — run 'make check' to verify"
 
 check-repository: ## Verify Markdown, README commands, and environment-example parity.
@@ -96,32 +88,3 @@ branch-protection-apply: ## Refuse unconfirmed apply; use the CLI with a reviewe
 
 branch-protection-rollback: ## Disabled; restore a reviewed policy instead of deleting protection.
 	@uv run --no-project --with typer==0.27.2 --python 3.14 python scripts/github/branch_protection.py rollback
-
-$(STAMPS):
-	@mkdir -p $(STAMPS)
-
-pull-local-secrets: | $(STAMPS) ## Refresh local backend secrets when the cached copy is stale.
-	@bash scripts/refresh-secret-cache.sh "$(STAMPS)/secrets" "$(SECRETS_TTL)" pull-local-secrets-force "Secrets" "$(MAKE)"
-
-pull-local-secrets-force: | $(STAMPS)
-	gcloud secrets versions access latest --secret="env-backend-local" --project=$(GCP_PROJECT) > backend/.env
-	@touch $(STAMPS)/secrets
-	@echo "● Secrets refreshed"
-
-pull-tf-secrets: | $(STAMPS) ## Refresh Terraform secrets when the cached copy is stale.
-	@bash scripts/refresh-secret-cache.sh "$(STAMPS)/tf-secrets" "$(SECRETS_TTL)" pull-tf-secrets-force "Terraform secrets" "$(MAKE)"
-
-pull-tf-secrets-force: | $(STAMPS)
-	gcloud secrets versions access latest --secret="terraform-tfvars" --project=$(GCP_PROJECT) > terraform/terraform.tfvars
-	@touch $(STAMPS)/tf-secrets
-	@echo "● Terraform secrets refreshed"
-
-push-local-secrets: ## Publish backend/.env to Google Secret Manager.
-	@bash scripts/ensure-secret.sh env-backend-local "$(GCP_PROJECT)"
-	gcloud secrets versions add env-backend-local --project=$(GCP_PROJECT) --data-file=backend/.env
-	@echo "● backend/.env published as env-backend-local"
-
-push-tf-secrets: ## Publish terraform/terraform.tfvars to Google Secret Manager.
-	@bash scripts/ensure-secret.sh terraform-tfvars "$(GCP_PROJECT)"
-	gcloud secrets versions add terraform-tfvars --project=$(GCP_PROJECT) --data-file=terraform/terraform.tfvars
-	@echo "● terraform/terraform.tfvars published as terraform-tfvars"

@@ -17,6 +17,78 @@ _USAGE_ERROR = 2
 
 
 @pytest.fixture
+def readme_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    (tmp_path / "README.md").write_text("Run `make setup`.\n", encoding="utf-8")
+    (tmp_path / "Makefile").write_text("setup:\n", encoding="utf-8")
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the CLI resolves its repository root globally.
+        repository_checks, "ROOT", tmp_path
+    )
+    return tmp_path
+
+
+def test_readme_without_backend_makefile(readme_repository: Path) -> None:
+    assert not (readme_repository / "backend" / "Makefile").exists()
+    assert CliRunner().invoke(repository_checks.CLI, ["readme"]).exit_code == 0
+
+
+def test_readme_rejects_deleted_backend_target(readme_repository: Path) -> None:
+    (readme_repository / "README.md").write_text(
+        "Run `make -C backend setup`.\n", encoding="utf-8"
+    )
+
+    result = CliRunner().invoke(repository_checks.CLI, ["readme"])
+
+    assert result.exit_code == 1
+    assert "README references missing Make targets: ['setup']" in result.output
+
+
+def test_readme_accepts_existing_backend_target(readme_repository: Path) -> None:
+    backend = readme_repository / "backend"
+    backend.mkdir()
+    (backend / "Makefile").write_text("install:\n", encoding="utf-8")
+    (readme_repository / "README.md").write_text(
+        "Run `make -C backend install`.\n", encoding="utf-8"
+    )
+
+    assert CliRunner().invoke(repository_checks.CLI, ["readme"]).exit_code == 0
+
+
+@pytest.mark.parametrize(
+    ("version", "exit_code"),
+    [
+        ("v24.21.0", 1),
+        ("v26.6.99", 1),
+        ("v26.7.0", 0),
+        ("v26.10.0", 0),
+        ("invalid", 1),
+        (None, 1),
+    ],
+    ids=[
+        "older-major",
+        "older-minor",
+        "minimum",
+        "newer-minor",
+        "malformed",
+        "missing",
+    ],
+)
+def test_node_guard_checks_the_active_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str | None, exit_code: int
+) -> None:
+    if version is not None:
+        node = tmp_path / "node"
+        node.write_text(f"#!/bin/sh\nprintf '%s\\n' '{version}'\n", encoding="utf-8")
+        node.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    result = CliRunner().invoke(repository_checks.CLI, ["node"])
+
+    assert result.exit_code == exit_code
+    if exit_code:
+        assert "repository check failed:" in result.stderr
+
+
+@pytest.fixture
 def forbid_operations(monkeypatch: pytest.MonkeyPatch) -> None:
     def forbidden(*_args: object, **_kwargs: object) -> None:
         pytest.fail("Rejected arguments or help must not run an operation")

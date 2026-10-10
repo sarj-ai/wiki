@@ -19,7 +19,7 @@ through a focused workspace interface for Sarj.
 ```sh
 mise install
 make setup
-make pull-local-secrets
+gcloud secrets versions access latest --secret=env-backend-local --project=sarj-docs > backend/.env
 ```
 
 Initialize the database:
@@ -43,11 +43,11 @@ cd frontend && npm run dev
 ```sh
 make check
 make audit
-make doctor
+make standards-check
 ```
 
 `make check` mirrors CI. `make audit` performs network-backed dependency audits, and
-`make doctor` verifies generated standards configuration and version pins.
+`make standards-check` verifies generated standards configuration, version pins, and code.
 
 ## Saudi production topology
 

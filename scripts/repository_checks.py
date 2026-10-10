@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import re
 import shutil
-import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed git CLI, no shell
+import subprocess  # ruff: ignore[suspicious-subprocess-import] -- resolved CLI executables, no shell
 import sys
 from typing import TYPE_CHECKING, Annotated
 
@@ -25,6 +25,27 @@ ENV_KEY = re.compile(r"^\s*(?:#\s*)?([A-Z][A-Z0-9_]*)\s*=")
 SETTINGS_FIELD = re.compile(r"^    ([A-Z][A-Z0-9_]*):")
 
 
+def check_node() -> None:
+    executable = shutil.which("node")
+    if executable is None:
+        message = "node >= 26.7.0 required. Run mise install."
+        raise RuntimeError(message)
+    result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- resolved active Node executable, no shell
+        [executable, "--version"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    version = result.stdout.strip()
+    match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", version)
+    if match is None or tuple(map(int, match.groups())) < (26, 7, 0):
+        message = (
+            f"node >= 26.7.0 required (found {version}). Run mise install or "
+            "mise exec node@26.7.0 -- make check."
+        )
+        raise ValueError(message)
+
+
 def check_markdown() -> None:
     actual = _tracked_markdown()
     expected = ["README.md"]
@@ -36,7 +57,10 @@ def check_markdown() -> None:
 def check_readme() -> None:
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     root_targets = _make_targets(ROOT / "Makefile")
-    backend_targets = _make_targets(ROOT / "backend" / "Makefile")
+    backend_makefile = ROOT / "backend" / "Makefile"
+    backend_targets = (
+        _make_targets(backend_makefile) if backend_makefile.exists() else set()
+    )
     missing: list[str] = []
     for match in MAKE_REFERENCE.finditer(text):
         target = match.group(2)
@@ -99,6 +123,11 @@ def _run(check: Callable[[], None]) -> None:
 @CLI.command("all", help="Run every repository consistency check")
 def all_command() -> None:
     _run(check_all)
+
+
+@CLI.command("node", help="Verify the active Node version meets the repository minimum")
+def node_command() -> None:
+    _run(check_node)
 
 
 @CLI.command("markdown", help="Enforce README.md as the only tracked Markdown")
