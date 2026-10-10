@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -329,3 +330,54 @@ def test_release_error_is_redacted(monkeypatch: pytest.MonkeyPatch) -> None:
     result = CliRunner().invoke(release_gate.CLI, ["ready", "backend"])
     assert result.exit_code == 1
     assert result.stderr == "Release blocked: verification unavailable\n"
+
+
+@pytest.mark.parametrize("main_advances", [False, True])
+def test_components_cli_publishes_selection_only_for_fresh_main(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, main_advances: bool
+) -> None:
+    sha = "a" * 40
+    output = tmp_path / "github-output"
+    main_reads: list[str] = []
+
+    def fetch(endpoint: str) -> release_gate.JsonObject:
+        if endpoint != release_gate.MAIN_REF:
+            message = "No prior shared release"
+            raise release_gate.ReleaseBlockedError(message)
+        main_reads.append(endpoint)
+        target = "b" * 40 if main_advances and len(main_reads) > 1 else sha
+        return {"ref": "refs/heads/main", "object": {"type": "commit", "sha": target}}
+
+    def command(arguments: list[str]) -> str:
+        assert arguments == ["git", "rev-parse", "HEAD"]
+        return sha
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise real CLI dispatch and freshness fences with deterministic read-only receipts.
+        release_gate, "fetch_github", fetch
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the CLI resolves its checkout globally; avoid depending on the test runner's worktree.
+        release_gate, "command_output", command
+    )
+    environment = {
+        "GITHUB_SHA": sha,
+        "GITHUB_REPOSITORY": release_gate.REPOSITORY,
+        "GITHUB_REPOSITORY_ID": str(release_gate.REPOSITORY_ID),
+        "GITHUB_EVENT_NAME": "push",
+        "GITHUB_REF": "refs/heads/main",
+        "GITHUB_WORKFLOW_SHA": sha,
+        "GITHUB_WORKFLOW_REF": release_gate.MAIN_RELEASE_REF,
+        "GITHUB_OUTPUT": str(output),
+    }
+
+    result = CliRunner().invoke(
+        release_gate.CLI, ["components", "main"], input=json.dumps(environment)
+    )
+
+    assert main_reads == [release_gate.MAIN_REF, release_gate.MAIN_REF]
+    if main_advances:
+        assert result.exit_code == 1
+        assert "main advanced" in result.stderr
+        assert not output.exists()
+    else:
+        assert result.exit_code == 0
+        assert output.read_text() == "backend=true\nfrontend=true\n"

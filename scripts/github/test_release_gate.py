@@ -87,7 +87,8 @@ def test_workflow_requires_all_local_gates_without_cloud_secrets(
     expected_fences = 1 if component == "backend" else 2
     assert len(verification) == expected_fences
     assert all(
-        step["env"]["RELEASE_NEEDS"] == "${{ toJSON(needs) }}" for step in verification
+        step["env"]["RELEASE_NEEDS"] == "${{ inputs.release_needs || toJSON(needs) }}"
+        for step in verification
     )
 
 
@@ -273,3 +274,201 @@ def test_missing_standards_times_out() -> None:
         GATE["wait_for_standards"](
             fetch, SHA, now=lambda: next(times), pause=lambda _seconds: None
         )
+
+
+@pytest.mark.parametrize("component", ["main", "backend", "frontend"])
+def test_shared_push_context_matches_exact_main_workflow(component: str) -> None:
+    environment = {**context(), "GITHUB_WORKFLOW_REF": GATE["MAIN_RELEASE_REF"]}
+    assert GATE["validate_context"](environment, component, SHA) == SHA
+
+
+@pytest.mark.parametrize("event", ["pull_request", "workflow_dispatch", "workflow_run"])
+def test_shared_receipt_cannot_authorize_other_events(event: str) -> None:
+    environment = {
+        **context(),
+        "GITHUB_WORKFLOW_REF": GATE["MAIN_RELEASE_REF"],
+        "GITHUB_EVENT_NAME": event,
+    }
+    with pytest.raises(GATE["ReleaseBlockedError"], match="event"):
+        GATE["validate_context"](environment, "backend", SHA)
+
+
+@pytest.mark.parametrize("selected", ["true", "false", "", None])
+def test_shared_dag_requires_explicit_component_selection(selected: str | None) -> None:
+    needs = {name: {"result": "success"} for name in GATE["REQUIRED_JOBS"]}
+    needs["standards-receipt"]["outputs"] = {
+        "release_sha": SHA,
+        "backend": selected,
+    }
+    if selected == "true":
+        GATE["validate_needs"](needs, SHA, "backend")
+    else:
+        with pytest.raises(GATE["ReleaseBlockedError"], match="not selected"):
+            GATE["validate_needs"](needs, SHA, "backend")
+
+
+@pytest.mark.parametrize(
+    ("paths", "expected"),
+    [
+        (["backend/app/main.py"], {"backend": True, "frontend": False}),
+        (["backend/alembic/versions/new.py"], {"backend": True, "frontend": False}),
+        (["frontend/src/app/page.tsx"], {"backend": False, "frontend": True}),
+        (
+            ["backend/tests/test_main.py", "README.md"],
+            {"backend": False, "frontend": False},
+        ),
+        (
+            ["backend/app/deleted.py", "frontend/src/new.ts"],
+            {"backend": True, "frontend": True},
+        ),
+        (["scripts/github/release_gate.py"], {"backend": True, "frontend": True}),
+        ([".github/workflows/release-main.yml"], {"backend": True, "frontend": True}),
+        (
+            ["scripts/backend_release/recovery.py"],
+            {"backend": True, "frontend": False},
+        ),
+        (
+            ["scripts/frontend_release/rollback.py"],
+            {"backend": False, "frontend": True},
+        ),
+    ],
+    ids=[
+        "backend-source",
+        "backend-migration",
+        "frontend-source",
+        "non-production",
+        "both-components",
+        "shared-release-gate",
+        "shared-workflow",
+        "backend-verification-entrypoint",
+        "frontend-deployment-entrypoint",
+    ],
+)
+def test_release_selection_preserves_production_input_boundaries(
+    paths: list[str], expected: dict[str, bool]
+) -> None:
+    assert GATE["selected_components"](paths) == expected
+
+
+def baseline_receipts(sha: str) -> dict:
+    repository = {"id": GATE["REPOSITORY_ID"], "full_name": GATE["REPOSITORY"]}
+    return {
+        GATE["MAIN_RELEASE_WORKFLOW"]: {
+            "id": 303,
+            "path": GATE["MAIN_RELEASE_PATH"],
+            "state": "active",
+        },
+        f"{GATE['MAIN_RELEASE_WORKFLOW']}/runs?event=push&branch=main&status=success&per_page=1&page=1": {
+            "workflow_runs": [
+                {
+                    "workflow_id": 303,
+                    "path": GATE["MAIN_RELEASE_PATH"],
+                    "repository": repository,
+                    "head_repository": repository,
+                    "head_sha": sha,
+                    "head_branch": "main",
+                    "event": "push",
+                    "status": "completed",
+                    "conclusion": "success",
+                }
+            ]
+        },
+    }
+
+
+@pytest.mark.parametrize("backend_push", ["superseded", "reverted", "merged"])
+def test_cumulative_selection_includes_intervening_backend_pushes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, backend_push: str
+) -> None:
+    run = GATE["command_output"]
+    # Hooks export repository-local Git variables; this test owns a disposable repo.
+    for name in run(["git", "rev-parse", "--local-env-vars"]).splitlines():
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(tmp_path)
+    run(["git", "init", "--quiet"])
+    run(["git", "config", "user.name", "CI routing test"])
+    run(["git", "config", "user.email", "ci-routing@example.invalid"])
+    primary = run(["git", "symbolic-ref", "--short", "HEAD"])
+    (tmp_path / "README.md").write_text("baseline\n")
+    (tmp_path / "backend/app").mkdir(parents=True)
+    backend = tmp_path / "backend/app/main.py"
+    backend.write_text("changed = False\n")
+    run(["git", "add", "."])
+    run(["git", "commit", "--quiet", "-m", "baseline"])
+    baseline = run(["git", "rev-parse", "HEAD"])
+    if backend_push == "merged":
+        run(["git", "checkout", "--quiet", "-b", "backend-push"])
+    backend.write_text("changed = True\n")
+    run(["git", "add", "."])
+    run(["git", "commit", "--quiet", "-m", "backend push superseded before deployment"])
+    if backend_push == "merged":
+        run(["git", "checkout", "--quiet", primary])
+    elif backend_push == "reverted":
+        backend.write_text("changed = False\n")
+    (tmp_path / "frontend/src").mkdir(parents=True)
+    (tmp_path / "frontend/src/page.tsx").write_text("frontend change\n")
+    run(["git", "add", "."])
+    run(["git", "commit", "--quiet", "-m", "latest frontend push"])
+    if backend_push == "merged":
+        run(["git", "merge", "--quiet", "--no-ff", "--no-edit", "backend-push"])
+    sha = run(["git", "rev-parse", "HEAD"])
+    assert GATE["release_components"](baseline_receipts(baseline).__getitem__, sha) == {
+        "backend": True,
+        "frontend": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "fault", ["missing", "failed", "fork", "bad-sha", "wrong-workflow"]
+)
+def test_unusable_baseline_selects_full_release(fault: str) -> None:
+    data = baseline_receipts(SHA)
+    page = data[
+        f"{GATE['MAIN_RELEASE_WORKFLOW']}/runs?event=push&branch=main&status=success&per_page=1&page=1"
+    ]
+    run = page["workflow_runs"][0]
+    if fault == "missing":
+        page["workflow_runs"] = []
+    else:
+        field, value = {
+            "failed": ("conclusion", "failure"),
+            "fork": ("head_repository", {}),
+            "bad-sha": ("head_sha", "bad"),
+            "wrong-workflow": ("workflow_id", 999),
+        }[fault]
+        run[field] = value
+    assert GATE["release_components"](data.__getitem__, SHA) == {
+        "backend": True,
+        "frontend": True,
+    }
+
+
+def test_shared_main_dag_qualifies_once_without_release_secrets() -> None:
+    root = Path(__file__).resolve().parents[2]
+    workflow = yaml.safe_load((root / GATE["MAIN_RELEASE_PATH"]).read_text())
+    assert set(workflow["on"]) == {"push"}
+    assert workflow["on"]["push"]["branches"] == ["main"]
+    assert workflow["concurrency"] == {
+        "group": "release-main",
+        "cancel-in-progress": False,
+    }
+    jobs = workflow["jobs"]
+    assert set(workflow["on"]["push"]["paths"]) == set(
+        GATE["BACKEND_RELEASE_PATHS"]
+        + GATE["FRONTEND_RELEASE_PATHS"]
+        + GATE["SHARED_RELEASE_PATHS"]
+    )
+    for name in GATE["REQUIRED_JOBS"] - {"standards-receipt"}:
+        assert jobs[name]["uses"] == f"./.github/workflows/{name}.yml"
+        assert jobs[name]["permissions"] == {"contents": "read"}
+        assert "secrets" not in jobs[name]
+    for component in ("backend", "frontend"):
+        job = jobs[f"{component}-deploy"]
+        assert set(job["needs"]) == GATE["REQUIRED_JOBS"]
+        assert job["with"] == {"release_needs": "${{ toJSON(needs) }}"}
+        assert job["if"] == f"needs.standards-receipt.outputs.{component} == 'true'"
+        deploy = yaml.safe_load(
+            (root / f".github/workflows/deploy-{component}.yml").read_text()
+        )
+        for name in GATE["REQUIRED_JOBS"]:
+            assert "inputs.release_needs == ''" in deploy["jobs"][name]["if"]

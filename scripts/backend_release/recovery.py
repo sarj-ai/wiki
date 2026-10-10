@@ -5,10 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 import sys
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, NewType
 
 from scripts.github.release_gate import (
     API_PREFIX,
+    MAIN_RELEASE_PATH,
+    MAIN_RELEASE_WORKFLOW,
     ReleaseBlockedError,
     command_output,
     fetch_github,
@@ -27,6 +29,8 @@ if TYPE_CHECKING:
 
 WORKFLOW_ID = 247052637
 WORKFLOW_PATH = ".github/workflows/deploy-backend.yml"
+WorkflowId = NewType("WorkflowId", int)
+RunId = NewType("RunId", int)
 REQUIRED_STEPS = (
     "Deploy candidate without traffic",
     "Run database migrations once",
@@ -53,12 +57,19 @@ def source_jobs_endpoint(run_id: int, run_attempt: int) -> str:
     return f"{source_attempt_endpoint(run_id, run_attempt)}/jobs?per_page=100&page=1"
 
 
-def verify_source_run(run: JsonObject, run_id: int, run_attempt: int) -> str:
+def verify_source_run(
+    run: JsonObject,
+    run_id: RunId,
+    run_attempt: int,
+    shared_workflow_id: WorkflowId | None = None,
+) -> str:
     source_sha = run.get("head_sha")
     require(
         run.get("id") == run_id
-        and run.get("workflow_id") == WORKFLOW_ID
-        and run.get("path") == WORKFLOW_PATH
+        and run.get("workflow_id")
+        == (shared_workflow_id if shared_workflow_id is not None else WORKFLOW_ID)
+        and run.get("path")
+        == (MAIN_RELEASE_PATH if shared_workflow_id is not None else WORKFLOW_PATH)
         and isinstance(source_sha, str)
         and re.fullmatch(r"[0-9a-f]{40}", source_sha)
         and run.get("head_branch") == "main"
@@ -68,6 +79,8 @@ def verify_source_run(run: JsonObject, run_id: int, run_attempt: int) -> str:
         and run.get("run_attempt") == run_attempt,
         "Untrusted or unfinished source release",
     )
+    if shared_workflow_id is not None:
+        require(run.get("event") == "push", "Untrusted shared release event")
     validate_repository(run.get("repository"))
     validate_repository(run.get("head_repository"))
     require(
@@ -112,9 +125,15 @@ def verify_prerequisite_jobs(
 
 
 def verify_deploy_job(
-    jobs: list[JsonObject], source_sha: str, run_id: int, run_attempt: int
+    jobs: list[JsonObject],
+    source_sha: str,
+    run_id: int,
+    run_attempt: int,
+    *,
+    shared: bool = False,
 ) -> None:
-    deployments = [job for job in jobs if job.get("name") == "deploy"]
+    name = "backend-deploy / deploy" if shared else "deploy"
+    deployments = [job for job in jobs if job.get("name") == name]
     require(len(deployments) == 1, "Missing or ambiguous source deploy job")
     job = deployments[0]
     require(
@@ -155,11 +174,21 @@ def verify_source(fetch: Fetch, run_id: int, run_attempt: int) -> str:
     attempt_endpoint = source_attempt_endpoint(run_id, run_attempt)
     jobs_endpoint = source_jobs_endpoint(run_id, run_attempt)
     run = fetch(attempt_endpoint)
-    source_sha = verify_source_run(run, run_id, run_attempt)
+    shared_workflow_id = None
+    if run.get("path") == MAIN_RELEASE_PATH:
+        workflow = fetch(MAIN_RELEASE_WORKFLOW)
+        require(
+            workflow.get("path") == MAIN_RELEASE_PATH,
+            "Untrusted shared release workflow",
+        )
+        shared_workflow_id = WorkflowId(positive_id(workflow.get("id")))
+    source_sha = verify_source_run(run, RunId(run_id), run_attempt, shared_workflow_id)
     page = fetch(jobs_endpoint)
     jobs = verified_jobs(page)
     verify_prerequisite_jobs(jobs, source_sha, run_id, run_attempt)
-    verify_deploy_job(jobs, source_sha, run_id, run_attempt)
+    verify_deploy_job(
+        jobs, source_sha, run_id, run_attempt, shared=shared_workflow_id is not None
+    )
     # Attempt-specific metadata and jobs are immutable after completion. Re-read
     # both exact resources so a provider inconsistency cannot race authorization.
     require(fetch(attempt_endpoint) == run, "Source attempt metadata changed")

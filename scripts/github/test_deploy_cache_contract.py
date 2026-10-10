@@ -32,7 +32,7 @@ def _step_index(steps: list[dict[str, Any]], name: str) -> int:
     return steps.index(_named_step(steps, name))
 
 
-def test_component_ci_runs_once_on_main_through_its_deploy_workflow() -> None:
+def test_component_ci_runs_once_on_main_through_shared_release() -> None:
     components = {"frontend": "frontend/**"}
 
     for component, source_path in components.items():
@@ -41,8 +41,9 @@ def test_component_ci_runs_once_on_main_through_its_deploy_workflow() -> None:
         ci_workflow = _workflow(ci_name)
         ci_triggers = ci_workflow["on"]
         deploy_workflow = _workflow(deploy_name)
-        deploy_push = deploy_workflow["on"]["push"]
-        callable_job = deploy_workflow["jobs"][f"ci-{component}"]
+        release = _workflow("release-main.yml")
+        deploy_push = release["on"]["push"]
+        callable_job = release["jobs"][f"ci-{component}"]
 
         assert "workflow_call" in ci_triggers
         assert "pull_request" in ci_triggers
@@ -51,13 +52,16 @@ def test_component_ci_runs_once_on_main_through_its_deploy_workflow() -> None:
         assert source_path in deploy_push["paths"]
         assert f".github/workflows/{ci_name}" in deploy_push["paths"]
         assert callable_job["uses"] == f"./.github/workflows/{ci_name}"
+        assert "push" not in deploy_workflow["on"]
+        assert "workflow_dispatch" in deploy_workflow["on"]
         assert f"ci-{component}" in deploy_workflow["jobs"]["deploy"]["needs"]
 
 
 def test_backend_deploy_runs_only_for_production_inputs() -> None:
     ci_workflow = _workflow("ci-backend.yml")
     deploy_workflow = _workflow("deploy-backend.yml")
-    deploy_paths = set(deploy_workflow["on"]["push"]["paths"])
+    release = _workflow("release-main.yml")
+    deploy_paths = set(release["on"]["push"]["paths"])
     production_inputs = {
         "backend/.dockerignore",
         "backend/Dockerfile",
@@ -70,7 +74,7 @@ def test_backend_deploy_runs_only_for_production_inputs() -> None:
     }
 
     assert ci_workflow["on"]["pull_request"] is None
-    assert deploy_workflow["on"]["push"]["branches"] == ["main"]
+    assert release["on"]["push"]["branches"] == ["main"]
     assert production_inputs <= deploy_paths
     assert "backend/**" not in deploy_paths
     assert ".github/workflows/ci-backend.yml" not in deploy_paths
@@ -90,16 +94,14 @@ def test_backend_deploy_runs_only_for_production_inputs() -> None:
 def test_standalone_quality_skips_only_exact_domain_deploy_paths_on_main() -> None:
     quality = _workflow("ci-quality.yml")
     ignored = set(quality["on"]["push"]["paths-ignore"])
-    deploy_paths = {
-        path
-        for workflow_name in ("deploy-backend.yml", "deploy-frontend.yml")
-        for path in _workflow(workflow_name)["on"]["push"]["paths"]
-    }
+    deploy_paths = set(_workflow("release-main.yml")["on"]["push"]["paths"])
 
     assert ignored == deploy_paths
     assert quality["on"]["push"]["branches"] == ["main"]
     assert quality["on"]["pull_request"] is None
-    assert quality["on"]["workflow_call"] is None
+    assert quality["on"]["workflow_call"]["inputs"]["force_full"]["default"] is False
+    release = _workflow("release-main.yml")
+    assert release["jobs"]["ci-quality"]["with"] == {"force_full": True}
 
 
 def test_deploys_trust_exact_sha_gates_without_repeating_generic_validation() -> None:

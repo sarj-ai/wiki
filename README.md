@@ -73,6 +73,18 @@ while supplying only one fails closed without running deployment mutations. Reco
 source attempt's exact Standards, backend, frontend, IaC, and quality job receipts before obtaining
 cloud credentials, so it does not rerun suites already proven for the same immutable main commit.
 
+Main pushes use `Release Main` to run backend, frontend, quality, IaC, and the exact Standards
+receipt once before the selected deployments. Component routing compares against the last
+successful whole main release, so superseded pushes remain included. Missing or unusable history
+selects both deployments. The first release after this workflow is introduced therefore deploys
+both components. Each deployment retains its fresh-main fences and release-specific verification;
+the existing manual deploy and backend verification-only inputs remain available.
+
+Coding agents should batch related commits locally and push complete review or verification
+checkpoints, rather than each edit. Keep incomplete work in a draft PR, use the normal hooks,
+and mark it ready when the change is reviewable. Merge only after all required checks succeed
+for the exact revision being merged.
+
 ## Document Transform and Markdown Import
 
 Document Transform creates a branded Google Doc or Google Slides sibling from an existing Drive

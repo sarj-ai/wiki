@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from datetime import timedelta
 from enum import StrEnum
+from fnmatch import fnmatchcase
 import json
 from pathlib import Path
 import re
@@ -27,6 +28,41 @@ STANDARDS_PATH = ".github/workflows/standards.yml"
 API_PREFIX = f"repos/{REPOSITORY}"
 MAIN_REF = f"{API_PREFIX}/git/ref/heads/main"
 WORKFLOW = f"{API_PREFIX}/actions/workflows/{STANDARDS_ID}"
+MAIN_RELEASE_PATH = ".github/workflows/release-main.yml"
+MAIN_RELEASE_REF = f"{REPOSITORY}/{MAIN_RELEASE_PATH}@refs/heads/main"
+MAIN_RELEASE_WORKFLOW = f"{API_PREFIX}/actions/workflows/release-main.yml"
+BACKEND_RELEASE_PATHS = (
+    "backend/.dockerignore",
+    "backend/Dockerfile",
+    "backend/alembic.ini",
+    "backend/alembic/**",
+    "backend/app/**",
+    "backend/pyproject.toml",
+    "backend/uv.lock",
+    "backend/uv.toml",
+    ".github/workflows/deploy-backend.yml",
+    "scripts/backend_release/**",
+    "scripts/github/deploy-backend-candidate.sh",
+    "scripts/github/report-blocked-backend-release.sh",
+    "scripts/github/run-backend-migrations.sh",
+    "scripts/github/switch-backend-production-traffic.sh",
+    "scripts/github/verify-backend-production-health.sh",
+    "scripts/github/verify-backend-correlated-logs.sh",
+    "scripts/github/verify-mcp-release.sh",
+    "scripts/github/resolve-mcp-release-mode.sh",
+    "scripts/github/verify-smart-create-queue.sh",
+)
+FRONTEND_RELEASE_PATHS = (
+    "frontend/**",
+    ".github/workflows/ci-frontend.yml",
+    ".github/workflows/deploy-frontend.yml",
+    "scripts/frontend_release/**",
+)
+SHARED_RELEASE_PATHS = (
+    MAIN_RELEASE_PATH,
+    "scripts/github/release_gate.py",
+    "scripts/github/verify-release-gate.sh",
+)
 REQUIRED_JOBS = frozenset(
     {"ci-backend", "ci-frontend", "ci-quality", "ci-iac", "standards-receipt"}
 )
@@ -79,7 +115,7 @@ def validate_context(
     environment: Mapping[str, str], component: str, checkout_sha: str
 ) -> str:
     sha = environment.get("GITHUB_SHA", "")
-    require(component in {"backend", "frontend"}, "Unknown release workflow")
+    require(component in {"backend", "frontend", "main"}, "Unknown release workflow")
     require(
         environment.get("GITHUB_REPOSITORY") == REPOSITORY,
         "Untrusted release repository",
@@ -102,6 +138,15 @@ def validate_context(
     expected_workflow = (
         f"{REPOSITORY}/.github/workflows/deploy-{component}.yml@refs/heads/main"
     )
+    if (
+        component == "main"
+        or environment.get("GITHUB_WORKFLOW_REF") == MAIN_RELEASE_REF
+    ):
+        require(
+            environment.get("GITHUB_EVENT_NAME") == "push",
+            "Untrusted shared release event",
+        )
+        expected_workflow = MAIN_RELEASE_REF
     require(
         environment.get("GITHUB_WORKFLOW_REF") == expected_workflow,
         "Untrusted release workflow source",
@@ -232,7 +277,7 @@ def wait_for_standards(
     raise ReleaseBlockedError(msg)
 
 
-def validate_needs(needs: JsonObject, sha: str) -> None:
+def validate_needs(needs: JsonObject, sha: str, component: str | None = None) -> None:
     require(needs.keys() == REQUIRED_JOBS, "Missing or unexpected required CI gates")
     for receipt in needs.values():
         require(
@@ -244,6 +289,95 @@ def validate_needs(needs: JsonObject, sha: str) -> None:
         object_value(standards.get("outputs")).get("release_sha") == sha,
         "Standards receipt SHA does not match release",
     )
+    if component is not None:
+        require(
+            object_value(standards.get("outputs")).get(component) == "true",
+            "Component was not selected for release",
+        )
+
+
+def selected_components(paths: list[str]) -> dict[str, bool]:
+    return {
+        component: any(
+            fnmatchcase(path, pattern)
+            for path in paths
+            for pattern in patterns + SHARED_RELEASE_PATHS
+        )
+        for component, patterns in (
+            ("backend", BACKEND_RELEASE_PATHS),
+            ("frontend", FRONTEND_RELEASE_PATHS),
+        )
+    }
+
+
+def release_baseline(fetch: Fetch) -> str:
+    workflow = fetch(MAIN_RELEASE_WORKFLOW)
+    require(
+        workflow.get("path") == MAIN_RELEASE_PATH and workflow.get("state") == "active",
+        "Invalid shared release workflow",
+    )
+    workflow_id = positive_id(workflow.get("id"))
+    page = fetch(
+        f"{MAIN_RELEASE_WORKFLOW}/runs?event=push&branch=main&status=success&per_page=1&page=1"
+    )
+    runs = page.get("workflow_runs")
+    require(
+        isinstance(runs, list) and len(runs) == 1,
+        "Shared release baseline unavailable",
+    )
+    if not isinstance(runs, list):
+        msg = "Shared release baseline unavailable"
+        raise ReleaseBlockedError(msg)
+    run = object_value(runs[0])
+    validate_repository(run.get("repository"))
+    validate_repository(run.get("head_repository"))
+    baseline = run.get("head_sha")
+    require(
+        run.get("workflow_id") == workflow_id
+        and run.get("path") == MAIN_RELEASE_PATH
+        and run.get("event") == "push"
+        and run.get("head_branch") == "main"
+        and run.get("status") == "completed"
+        and run.get("conclusion") == "success"
+        and isinstance(baseline, str)
+        and re.fullmatch(r"[0-9a-f]{40}", baseline),
+        "Untrusted shared release baseline",
+    )
+
+    return str(baseline)
+
+
+def release_components(fetch: Fetch, sha: str) -> dict[str, bool]:
+    # A successful whole release proves every selected component completed.
+    # Include every path touched since that SHA: an intervening failed release
+    # may have switched traffic, so reverting its tree still needs deployment.
+    try:
+        baseline = release_baseline(fetch)
+        command_output(["git", "merge-base", "--is-ancestor", str(baseline), sha])
+        changed = command_output(
+            [
+                "git",
+                "log",
+                "--first-parent",
+                "--diff-merges=first-parent",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--no-renames",
+                "--name-only",
+                "-z",
+                f"{baseline}..{sha}",
+                "--",
+            ]
+        )
+        return selected_components(changed.split("\0"))
+    except ReleaseBlockedError:
+        # Missing history, rebased main, or unavailable receipts select both;
+        # they never exempt qualification or the fresh-main deployment fences.
+        sys.stderr.write(
+            "::warning::No usable main release baseline; selecting both components\n"
+        )
+        return {"backend": True, "frontend": True}
 
 
 def read_json(raw: str) -> JsonObject:
@@ -299,23 +433,45 @@ def execute(phase: str, component: str) -> str:
     sha = validate_context(
         environment, component, command_output(["git", "rev-parse", "HEAD"])
     )
-    if phase == "standards":
-        wait_for_standards(fetch_github, sha)
-        with Path(environment["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
-            output.write(f"release_sha={sha}\n")
-    else:
-        validate_needs(read_json(environment["RELEASE_NEEDS"]), sha)
-        require_current_main(fetch_github, sha)
+    match phase:
+        case "components":
+            require(component == "main", "Routing requires the shared main workflow")
+            require_current_main(fetch_github, sha)
+            selected = release_components(fetch_github, sha)
+            require_current_main(fetch_github, sha)
+            with Path(environment["GITHUB_OUTPUT"]).open(
+                "a", encoding="utf-8"
+            ) as output:
+                output.writelines(
+                    f"{name}={str(enabled).lower()}\n"
+                    for name, enabled in selected.items()
+                )
+        case "standards":
+            wait_for_standards(fetch_github, sha)
+            with Path(environment["GITHUB_OUTPUT"]).open(
+                "a", encoding="utf-8"
+            ) as output:
+                output.write(f"release_sha={sha}\n")
+        case _:
+            shared = environment.get("GITHUB_WORKFLOW_REF") == MAIN_RELEASE_REF
+            validate_needs(
+                read_json(environment["RELEASE_NEEDS"]),
+                sha,
+                component if shared else None,
+            )
+            require_current_main(fetch_github, sha)
     return sha
 
 
 class _Phase(StrEnum):
     CI = "ci"
+    COMPONENTS = "components"
     STANDARDS = "standards"
     READY = "ready"
 
 
 class _Component(StrEnum):
+    MAIN = "main"
     BACKEND = "backend"
     FRONTEND = "frontend"
 
