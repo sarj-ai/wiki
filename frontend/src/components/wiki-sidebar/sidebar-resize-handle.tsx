@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { SIDEBAR_WIDTH_COOKIE } from "@/lib/storage-schemas";
 
@@ -11,51 +11,79 @@ const clampSidebarWidth = (px: number) => Math.max(MIN_WIDTH_PX, Math.min(MAX_WI
 
 export function SidebarResizeHandle() {
   const [dragging, setDragging] = useState(false);
+  const releaseDrag = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => releaseDrag.current?.(), []);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
+    releaseDrag.current?.();
     const wrapper = document.querySelector<HTMLElement>('[data-slot="sidebar-wrapper"]');
     const sidebar = document.querySelector<HTMLElement>('[data-slot="sidebar-inner"]');
-    if (!wrapper || !sidebar) return;
+    if (!wrapper || !sidebar) {
+      setDragging(false);
+      return;
+    }
 
+    const pointerId = event.pointerId;
     const startX = event.clientX;
     const startWidth = sidebar.getBoundingClientRect().width;
-    const widthElements = document.querySelectorAll<HTMLElement>(
-      '[data-slot="sidebar-gap"], [data-slot="sidebar-container"]',
+    const widthElements = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '[data-slot="sidebar-gap"], [data-slot="sidebar-container"]',
+      ),
+      (element) => ({ element, transition: element.style.transition }),
     );
-    for (const el of widthElements) {
+    for (const { element: el } of widthElements) {
       el.style.transition = "none";
     }
+    const previousUserSelect = document.body.style.userSelect;
+    const previousCursor = document.body.style.cursor;
     document.body.style.userSelect = "none";
     document.body.style.cursor = "col-resize";
     setDragging(true);
 
     let pendingX: null | number = null;
     let rafId: null | number = null;
+    let released = false;
     const apply = () => {
       rafId = null;
-      if (pendingX === null) return;
+      if (released || pendingX === null) return;
       const next = clampSidebarWidth(startWidth + (pendingX - startX));
       wrapper.style.setProperty("--sidebar-width", `${next}px`);
       pendingX = null;
     };
 
     const onMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
       pendingX = moveEvent.clientX;
       rafId ??= requestAnimationFrame(apply);
     };
 
-    const onUp = (upEvent: PointerEvent) => {
+    const release = () => {
+      if (released) return;
+      released = true;
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("blur", onBlur);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = null;
+      pendingX = null;
+      document.body.style.userSelect = previousUserSelect;
+      document.body.style.cursor = previousCursor;
+      for (const { element: el, transition } of widthElements) {
+        el.style.transition = transition;
+      }
+      releaseDrag.current = null;
+    };
+
+    const onUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId !== pointerId) return;
       if (rafId !== null) cancelAnimationFrame(rafId);
       pendingX = upEvent.clientX;
       apply();
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
-      for (const el of widthElements) {
-        el.style.transition = "";
-      }
+      release();
       const final = wrapper.style.getPropertyValue("--sidebar-width");
       if (final) {
         // eslint-disable-next-line unicorn/no-document-cookie -- SSR reads this non-sensitive preference before hydration to prevent a width jump.
@@ -64,8 +92,20 @@ export function SidebarResizeHandle() {
       setDragging(false);
     };
 
+    const onCancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId !== pointerId) return;
+      onBlur();
+    };
+    const onBlur = () => {
+      release();
+      setDragging(false);
+    };
+
+    releaseDrag.current = release;
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("blur", onBlur);
   };
 
   return (

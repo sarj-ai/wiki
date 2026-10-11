@@ -235,11 +235,14 @@ function useIconMutation<TItem, TVars>(config: {
     onMutate: (vars: TVars) => {
       const previous = qc.getQueryData<TItem[]>(config.queryKey);
       if (previous) {
-        const existing = previous.find((item) => config.matches(item, vars));
-        qc.setQueryData<TItem[]>(config.queryKey, [
-          ...previous.filter((item) => !config.matches(item, vars)),
-          config.buildItem(vars, existing),
-        ]);
+        let existing: TItem | undefined;
+        const next: TItem[] = [];
+        for (const item of previous) {
+          if (config.matches(item, vars)) existing ??= item;
+          else next.push(item);
+        }
+        next.push(config.buildItem(vars, existing));
+        qc.setQueryData<TItem[]>(config.queryKey, next);
       }
       return previous === undefined ? {} : { previous };
     },

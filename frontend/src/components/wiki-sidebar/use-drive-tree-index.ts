@@ -2,7 +2,10 @@
 
 import { useDriveTree } from "@/hooks/use-wiki-tree";
 import {
+  EMPTY_DOC_ICONS,
+  EMPTY_FOLDER_ICONS,
   EMPTY_NODES,
+  EMPTY_SORT_ORDERS,
   indexChildren,
   indexDocIcons,
   indexFolderIcons,
@@ -19,11 +22,15 @@ export function useDriveTreeIndex(
 ): DriveTreeIndex {
   const treeQuery = useDriveTree(driveId, enabled);
 
-  const childrenByParent = indexChildren(treeQuery.data?.folders ?? EMPTY_NODES);
-  const filesByParent = indexChildren(treeQuery.data?.files ?? EMPTY_NODES);
-  const iconOverrides = indexFolderIcons(folderIcons);
-  const docIconOverrides = indexDocIcons(docIcons);
-  const sortOrderMap = indexSortOrders(sortOrders);
+  const childrenByParent = indexChildren(
+    enabled ? (treeQuery.data?.folders ?? EMPTY_NODES) : EMPTY_NODES,
+  );
+  const filesByParent = indexChildren(
+    enabled ? (treeQuery.data?.files ?? EMPTY_NODES) : EMPTY_NODES,
+  );
+  const iconOverrides = indexFolderIcons(enabled ? folderIcons : EMPTY_FOLDER_ICONS);
+  const docIconOverrides = indexDocIcons(enabled ? docIcons : EMPTY_DOC_ICONS);
+  const sortOrderMap = indexSortOrders(enabled ? sortOrders : EMPTY_SORT_ORDERS);
 
   const filesComplete = treeQuery.data?.filesComplete ?? true;
 

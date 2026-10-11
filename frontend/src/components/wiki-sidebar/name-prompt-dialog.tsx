@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +27,18 @@ export function NamePromptDialog({
   const [value, setValue] = useState(defaultValue);
   const [submitting, startSubmit] = useTransition();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const promptOwner = useRef<{ submitted: boolean } | null>(null);
+  const focusFrame = useRef<null | number>(null);
+
+  useLayoutEffect(() => {
+    const owner = { submitted: false };
+    promptOwner.current = open ? owner : null;
+    return () => {
+      promptOwner.current = null;
+      if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current);
+      focusFrame.current = null;
+    };
+  }, [open]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Prop changes intentionally reset controlled input state.
@@ -34,12 +46,18 @@ export function NamePromptDialog({
   }, [open, defaultValue]);
 
   const handleSubmit = () => {
-    if (submitting) return;
+    const owner = promptOwner.current;
+    if (!owner || owner.submitted || submitting) return;
     const trimmed = value.trim();
     if (!trimmed) return;
+    owner.submitted = true;
     startSubmit(async () => {
-      await onConfirm(trimmed);
-      onOpenChange(false);
+      try {
+        await onConfirm(trimmed);
+        if (promptOwner.current === owner) onOpenChange(false);
+      } finally {
+        owner.submitted = false;
+      }
     });
   };
 
@@ -49,7 +67,12 @@ export function NamePromptDialog({
         className="max-w-sm"
         onOpenAutoFocus={(e) => {
           e.preventDefault();
-          requestAnimationFrame(() => {
+          const owner = promptOwner.current;
+          if (!owner) return;
+          if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current);
+          focusFrame.current = requestAnimationFrame(() => {
+            focusFrame.current = null;
+            if (promptOwner.current !== owner) return;
             const el = inputRef.current;
             if (!el) return;
             el.focus();
