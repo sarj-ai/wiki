@@ -34,6 +34,29 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("authenticated parallel wiki reads", () => {
+  it.each(["auth/me", "sidebar/drives", "files/recent"])(
+    "keeps failed %s reads private and traceable without exposing the upstream body",
+    async (path) => {
+      const requestId = "0682fc60-2dcd-4786-a99b-0f419fd7ab68";
+      fetchMock.mockResolvedValue(
+        Response.json({ detail: "private provider error" }, { status: 401 }),
+      );
+      const response = await GET(request(path, { "x-request-id": requestId }), context(path));
+      expect(response.status).toBe(401);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("x-request-id")).toBe(requestId);
+      expect(response.headers.get("location")).toBeNull();
+      await expect(response.json()).resolves.toEqual({ detail: "Your session has expired" });
+    },
+  );
+
+  it("traces an unauthenticated read without sending a backend request", async () => {
+    MOCKS.token = "";
+    const response = await GET(request("sidebar/drives"), context("sidebar/drives"));
+    expect(response.status).toBe(401);
+    expect(response.headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it.each(["disconnect", "deadline"] as const)(
     "discards a late successful upstream body after %s without exposing it",
     async (reason) => {
