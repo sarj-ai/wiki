@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, Path, Response, status
+from fastapi import APIRouter, Body, Depends, Path, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
 from app.drive.dependencies import drive_service_dep
+from app.drive.schemas import MIME_FOLDER, MIME_SHORTCUT
 from app.drive.service import DriveService
 from app.files.breadcrumb import build_breadcrumb
 from app.files.dependencies import files_service_dep
@@ -19,6 +20,9 @@ from app.files.schemas import (
     FileMove,
     FileRename,
     FileResponse,
+    RecentFile,
+    RecentFileId,
+    RecentFilesResponse,
 )
 from app.files.service import FilesService
 from app.identifiers import FileId
@@ -92,6 +96,39 @@ async def create_file(
     result = await files.create(payload.parent_folder_id, payload.name, payload.mime_type)
     await _invalidate_drive_of(db, cache, result)
     return result
+
+
+@router.get(
+    "/recent",
+    status_code=status.HTTP_200_OK,
+    response_model=RecentFilesResponse,
+    operation_id="read_recent_files",
+)
+async def read_recent_files(
+    file_ids: Annotated[list[RecentFileId], Query(min_length=1, max_length=6)],
+    files: Annotated[FilesService, Depends(files_service_dep)],
+    drive: Annotated[DriveService, Depends(drive_service_dep)],
+    response: Response,
+) -> RecentFilesResponse:
+    response.headers["Cache-Control"] = "private, no-store"
+    unique_ids = list(dict.fromkeys(file_ids))
+    accessible, drives = await asyncio.gather(
+        files.get_search_metadata_many(unique_ids), drive.list_drives()
+    )
+    drive_names = {item.id: item.name for item in drives}
+    return RecentFilesResponse(
+        pages=[
+            RecentFile(
+                id=file.id,
+                name=file.name,
+                mime_type=file.mime_type,
+                drive_name=drive_names.get(file.drive_id) if file.drive_id else None,
+            )
+            for file_id in unique_ids
+            if (file := accessible.get(file_id)) is not None
+            and file.mime_type not in {MIME_FOLDER, MIME_SHORTCUT}
+        ][:5]
+    )
 
 
 @router.get(

@@ -47,12 +47,17 @@ describe("folder listing observer ownership", () => {
     queryClient.clear();
     resetExpansionState(null);
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
-  function wrap(children: ReactNode, complete = true) {
+  function wrap(
+    children: ReactNode,
+    complete = true,
+    childrenByParent = new Map<string, DriveNode[]>(),
+  ) {
     const value: DriveSectionValue = {
       activeDriveId: null,
-      childrenByParent: new Map(),
+      childrenByParent,
       docIconOverrides: new Map(),
       driveId: "drive",
       filesByParent: new Map([["folder-0", [node("doc", MIME_DOC)]]]),
@@ -107,6 +112,65 @@ describe("folder listing observer ownership", () => {
     expect(READ).not.toHaveBeenCalled();
     toggle();
     expect(host).not.toHaveTextContent("doc");
+  });
+
+  it("skips hidden child counts for 500 incomplete folder headers and still lists expanded children", () => {
+    const childrenByParent = new Map<string, DriveNode[]>();
+    const readBucket = vi.spyOn(childrenByParent, "get");
+    flushSync(() =>
+      root.render(
+        wrap(
+          <>
+            {Array.from({ length: 500 }, (_, index) => (
+              <TreeNode
+                depth={0}
+                key={index}
+                node={node(`folder-${index}`, MIME_FOLDER)}
+                parentFolderId={undefined}
+              />
+            ))}
+          </>,
+          false,
+          childrenByParent,
+        ),
+      ),
+    );
+    expect(readBucket).not.toHaveBeenCalled();
+    queryClient.setQueryData(wikiKeys.folderFiles("folder-0"), [node("lazy-doc", MIME_DOC)]);
+    toggle();
+    expect(host).toHaveTextContent("lazy-doc");
+    expect(readBucket).toHaveBeenCalledOnce();
+  });
+
+  it("does not schedule hover timers for 500 folders whose complete children are already available", () => {
+    vi.useFakeTimers();
+    flushSync(() =>
+      root.render(
+        wrap(
+          <>
+            {Array.from({ length: 500 }, (_, index) => (
+              <TreeNode
+                depth={0}
+                key={index}
+                node={node(`folder-${index}`, MIME_FOLDER)}
+                parentFolderId={undefined}
+              />
+            ))}
+          </>,
+        ),
+      ),
+    );
+    const schedule = vi.spyOn(window, "setTimeout");
+    for (const trigger of host.querySelectorAll("[data-file-id]")) {
+      trigger.dispatchEvent(
+        new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }),
+      );
+      trigger.dispatchEvent(
+        new PointerEvent("pointerout", { bubbles: true, pointerType: "mouse" }),
+      );
+    }
+    expect(schedule.mock.calls.filter(([, delay]) => delay === 80)).toHaveLength(0);
+    expect(READ).not.toHaveBeenCalled();
   });
 
   it("admits lazy reads on expansion and releases the last observer on collapse", async () => {

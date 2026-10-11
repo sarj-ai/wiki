@@ -1,8 +1,10 @@
 "use client";
 
 import { ChevronRight, Folder, HardDrive, Loader2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useStore } from "zustand";
+import { createStore, type StoreApi } from "zustand/vanilla";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -34,7 +36,13 @@ export function MoveFileDialog({
 }: MoveFileDialogProps) {
   const drivesQuery = useDrives();
   const moveFile = useMoveFile();
-  const [selectedId, setSelectedId] = useState<null | string>(null);
+  const [selection] = useState(() =>
+    createStore<DestinationSelection>((set) => ({
+      select: (selectedId) => set({ selectedId }),
+      selectedId: null,
+    })),
+  );
+  const selectedId = useStore(selection, (state) => state.selectedId);
   const admission = useRef({ pending: false });
 
   const handleConfirm = async () => {
@@ -52,7 +60,7 @@ export function MoveFileDialog({
           });
           toast.success(`Moved "${fileName}"`);
           onOpenChange(false);
-          setSelectedId(null);
+          selection.getState().select(null);
         },
 
         (err) =>
@@ -91,8 +99,7 @@ export function MoveFileDialog({
                 driveId={drive.id}
                 driveName={drive.name}
                 key={drive.id}
-                onSelect={setSelectedId}
-                selectedId={selectedId}
+                selection={selection}
               />
             ))}
           </div>
@@ -137,31 +144,34 @@ interface MoveFileDialogProps {
   open: boolean;
 }
 
+interface DestinationSelection {
+  select: (selectedId: null | string) => void;
+  selectedId: null | string;
+}
+
 interface FolderRowProps {
   childrenByParent: Map<string, DriveNode[]>;
   depth: number;
   disabledId: string;
   folder: DriveNode;
-  onSelect: (id: string) => void;
-  selectedId: null | string;
+  selection: StoreApi<DestinationSelection>;
 }
 
 interface DriveRowProps {
   disabledId: string;
   driveId: string;
   driveName: string;
-  onSelect: (id: string) => void;
-  selectedId: null | string;
+  selection: StoreApi<DestinationSelection>;
 }
 
-function FolderRow({
+const FolderRow = memo(function FolderRowContent({
   childrenByParent,
   depth,
   disabledId,
   folder,
-  onSelect,
-  selectedId,
+  selection,
 }: FolderRowProps) {
+  const selected = useStore(selection, (state) => state.selectedId === folder.id);
   const [expanded, setExpanded] = useState(false);
   const subFolders = childrenByParent.get(folder.id) ?? EMPTY_NODES;
   const isDisabled = folder.id === disabledId;
@@ -186,12 +196,12 @@ function FolderRow({
         <Button
           className={cn(
             "h-7 flex-1 justify-start gap-1 px-2 font-normal",
-            selectedId === folder.id && "bg-accent",
+            selected && "bg-accent",
             isDisabled && "opacity-40",
           )}
           disabled={isDisabled}
           onClick={() => {
-            onSelect(folder.id);
+            selection.getState().select(folder.id);
           }}
           size="sm"
           type="button"
@@ -209,16 +219,21 @@ function FolderRow({
               disabledId={disabledId}
               folder={child}
               key={child.id}
-              onSelect={onSelect}
-              selectedId={selectedId}
+              selection={selection}
             />
           ))
         : null}
     </>
   );
-}
+});
 
-function DriveRow({ disabledId, driveId, driveName, onSelect, selectedId }: DriveRowProps) {
+const DriveRow = memo(function DriveRowContent({
+  disabledId,
+  driveId,
+  driveName,
+  selection,
+}: DriveRowProps) {
+  const selected = useStore(selection, (state) => state.selectedId === driveId);
   const [expanded, setExpanded] = useState(false);
 
   const treeQuery = useDriveTree(expanded ? driveId : null);
@@ -245,12 +260,12 @@ function DriveRow({ disabledId, driveId, driveName, onSelect, selectedId }: Driv
         <Button
           className={cn(
             "h-7 flex-1 justify-start gap-1 px-2",
-            selectedId === driveId && !isDriveDisabled && "bg-accent",
+            selected && !isDriveDisabled && "bg-accent",
             isDriveDisabled && "opacity-60",
           )}
           disabled={isDriveDisabled}
           onClick={() => {
-            onSelect(driveId);
+            selection.getState().select(driveId);
           }}
           size="sm"
           type="button"
@@ -274,11 +289,10 @@ function DriveRow({ disabledId, driveId, driveName, onSelect, selectedId }: Driv
               disabledId={disabledId}
               folder={folder}
               key={folder.id}
-              onSelect={onSelect}
-              selectedId={selectedId}
+              selection={selection}
             />
           ))
         : null}
     </>
   );
-}
+});

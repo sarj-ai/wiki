@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import override
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -171,10 +171,14 @@ class PostgresAliasService(AliasService):
         file = await self._files.get(file_id)
         if not file.can_edit:
             raise AliasEditForbiddenError
-        if (row := await self._active_for_file(file_id)) is None:
+        retired = await self._db.execute(
+            update(DocumentAlias)
+            .where(DocumentAlias.file_id == file_id, DocumentAlias.retired_at.is_(None))
+            .values(retired_at=datetime.now(UTC), retired_by=self._user.id)
+            .returning(DocumentAlias.alias)
+        )
+        if retired.scalar_one_or_none() is None:
             return
-        row.retired_at = datetime.now(UTC)
-        row.retired_by = self._user.id
         await self._db.commit()
 
     @override

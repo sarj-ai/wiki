@@ -1975,6 +1975,58 @@
         "title": "RecentDocumentAliasesRequest",
         "type": "object"
       },
+      "RecentFile": {
+        "properties": {
+          "drive_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drive Name"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mime_type",
+          "drive_name"
+        ],
+        "title": "RecentFile",
+        "type": "object"
+      },
+      "RecentFilesResponse": {
+        "properties": {
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/RecentFile"
+            },
+            "maxItems": 5,
+            "title": "Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pages"
+        ],
+        "title": "RecentFilesResponse",
+        "type": "object"
+      },
       "ReorganizationProposalRead": {
         "additionalProperties": false,
         "properties": {
@@ -4510,6 +4562,74 @@
           }
         ],
         "summary": "Create File",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/files/recent": {
+      "get": {
+        "operationId": "read_recent_files",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "file_ids",
+            "required": true,
+            "schema": {
+              "items": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "maxItems": 6,
+              "minItems": 1,
+              "title": "File Ids",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentFilesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required or the session is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Recent Files",
         "tags": [
           "files"
         ]

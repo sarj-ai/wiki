@@ -140,6 +140,7 @@ class _Session:
         self.inserted = inserted
         self.recent_rows = recent_rows
         self.execute_calls = 0
+        self.statements: list[object] = []
         self.commits = 0
         self.rollbacks = 0
         self.flushes = 0
@@ -149,6 +150,7 @@ class _Session:
 
     async def execute(self, _statement: object) -> _Result:
         self.execute_calls += 1
+        self.statements.append(_statement)
         if self.recent_rows is not None:
             return _Result(rows=self.recent_rows)
         if self.execute_calls == 1:
@@ -354,12 +356,15 @@ async def test_retire_is_idempotent_and_preserves_tombstone() -> None:
 
     await service.retire(FileId("file-1"))
 
-    assert row.retired_at is not None
-    assert row.retired_by is not None
+    sql = str(session.statements[0])
+    assert "UPDATE document_aliases" in sql
+    assert "document_aliases.file_id" in sql
+    assert "document_aliases.retired_at IS NULL" in sql
     assert session.commits == 1
 
     empty_session = _Session()
     await _service(empty_session, _Files()).retire(FileId("file-1"))
+    assert empty_session.execute_calls == 1
     assert empty_session.commits == 0
 
 

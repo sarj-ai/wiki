@@ -10,6 +10,33 @@ beforeEach(() => {
 });
 
 describe("WIKI_READ_API", () => {
+  it("loads recent pages in one cancellable batch and validates current metadata", async () => {
+    fetchMock.mockResolvedValue(
+      Response.json({
+        pages: [
+          {
+            id: "file-1",
+            name: "Updated plan",
+            mime_type: "text/plain",
+            drive_name: "Engineering",
+          },
+        ],
+      }),
+    );
+    const controller = new AbortController();
+    await expect(
+      WIKI_READ_API.getRecentFiles(["file-1", "file-2"], controller.signal),
+    ).resolves.toEqual([
+      { id: "file-1", name: "Updated plan", mimeType: "text/plain", driveName: "Engineering" },
+    ]);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/wiki/files/recent?file_ids=file-1&file_ids=file-2",
+    );
+    controller.abort();
+    expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+  });
+
   it("validates and transforms file metadata through the authenticated GET route", async () => {
     fetchMock.mockResolvedValue(
       Response.json({

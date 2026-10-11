@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { StrictMode } from "react";
+import { StrictMode, useState } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { toast } from "sonner";
@@ -7,8 +7,8 @@ import { toast } from "sonner";
 import type { ActionResult } from "@/lib/action-result";
 import { retireMutationSession } from "@/lib/mutation-session";
 import { wikiKeys } from "@/lib/wiki-keys";
-import type { FileResponse } from "@/types/wiki";
-import { MIME_DOC } from "@/types/wiki";
+import type { DriveNode, DriveTree, FileResponse } from "@/types/wiki";
+import { MIME_DOC, MIME_FOLDER } from "@/types/wiki";
 
 import { MoveFileDialog } from "./move-file-dialog";
 
@@ -112,7 +112,94 @@ describe("move dialog admission", () => {
     expect(toast.error).not.toHaveBeenCalled();
     expect(close).not.toHaveBeenCalled();
   });
+
+  it("keeps the selected destination through cancel/reopen and does not select a disabled source", async () => {
+    client.setQueryData(wikiKeys.drives, [
+      { id: "destination", isPersonal: false, name: "Destination" },
+      { id: "source", isPersonal: false, name: "Source" },
+    ]);
+    flushSync(() =>
+      root.render(
+        <QueryClientProvider client={client}>
+          <ReopenHarness />
+        </QueryClientProvider>,
+      ),
+    );
+    expect(button("Source")).toBeDisabled();
+    flushSync(() => button("Source").click());
+    expect(button("Move")).toBeDisabled();
+    flushSync(() => button("Destination").click());
+    flushSync(() => button("Cancel").click());
+    await vi.advanceTimersByTimeAsync(0);
+    flushSync(() => button("Show move").click());
+    expect(button("Destination")).toHaveClass("bg-accent");
+    expect(button("Move")).not.toBeDisabled();
+    expect(MOVE).not.toHaveBeenCalled();
+  });
+
+  it("updates only the changed destination rows in an expanded 1,000-folder picker", async () => {
+    let nameReads = 0;
+    const folders = Array.from({ length: 1_000 }, (_, index): DriveNode => ({
+      id: `folder-${index}`,
+      mimeType: MIME_FOLDER,
+      modifiedTime: undefined,
+      get name() {
+        nameReads += 1;
+        return `Folder ${index}`;
+      },
+      parentId: undefined,
+      shortcutInaccessible: false,
+      shortcutTargetDriveId: undefined,
+      shortcutTargetDriveName: undefined,
+      shortcutTargetId: undefined,
+      shortcutTargetMimeType: undefined,
+    }));
+    client.setQueryData<DriveTree>(wikiKeys.driveTree("destination"), {
+      driveId: "destination",
+      files: [],
+      filesComplete: true,
+      folders,
+    });
+    render();
+    const expand = document.querySelector('button[aria-label="Expand"]');
+    if (!(expand instanceof HTMLButtonElement)) throw new TypeError("Drive expansion missing");
+    flushSync(() => expand.click());
+    nameReads = 0;
+    flushSync(() => button("Folder 0").click());
+    expect(nameReads).toBe(2);
+    expect(button("Folder 0")).toHaveClass("bg-accent");
+    expect(button("Destination")).not.toHaveClass("bg-accent");
+    nameReads = 0;
+    flushSync(() => button("Folder 999").click());
+    expect(nameReads).toBe(4);
+    expect(button("Folder 0")).not.toHaveClass("bg-accent");
+    expect(button("Folder 999")).toHaveClass("bg-accent");
+    expect(button("Folder 999").type).toBe("button");
+    MOVE.mockResolvedValueOnce({ ok: true, data: movedFile() });
+    flushSync(() => button("Move").click());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(MOVE).toHaveBeenCalledWith("file", "folder-999");
+  });
 });
+
+function ReopenHarness() {
+  const [open, setOpen] = useState(true);
+  return (
+    <>
+      <button onClick={() => setOpen(true)} type="button">
+        Show move
+      </button>
+      <MoveFileDialog
+        currentDriveId="source"
+        currentParentFolderId={undefined}
+        fileId="file"
+        fileName="Plan"
+        onOpenChange={setOpen}
+        open={open}
+      />
+    </>
+  );
+}
 
 function button(text: string): HTMLButtonElement {
   const result = [...document.querySelectorAll("button")].find((item) => item.textContent === text);

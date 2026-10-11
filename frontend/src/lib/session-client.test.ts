@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe("session refresh classification", () => {
-  it("releases discarded waiters' listeners before the shared refresh settles", async () => {
+  it("shares one session listener and releases discarded callers before refresh settles", async () => {
     const owner = {};
     claimBrowserSession(owner);
     const session = captureBrowserSession();
@@ -21,7 +21,11 @@ describe("session refresh classification", () => {
     const fetchMock = vi.fn<typeof fetch>().mockReturnValue(response.promise);
     vi.stubGlobal("fetch", fetchMock);
     const removed = vi.spyOn(session, "removeEventListener");
+    const added = vi.spyOn(session, "addEventListener");
     const controllers = Array.from({ length: 100 }, () => new AbortController());
+    const callerRemovals = controllers.map((controller) =>
+      vi.spyOn(controller.signal, "removeEventListener"),
+    );
     const discarded = controllers.map(
       async (controller) =>
         await deduplicatedRefresh(controller.signal, session).catch((error: unknown) => error),
@@ -30,14 +34,45 @@ describe("session refresh classification", () => {
     try {
       for (const controller of controllers) controller.abort();
       await expect(Promise.all(discarded)).resolves.toHaveLength(100);
-      expect(removed).toHaveBeenCalledTimes(100);
+      // Happy DOM also exposes AbortSignal.any's one shared network listener.
+      expect(added).toHaveBeenCalledTimes(2);
+      expect(removed).not.toHaveBeenCalled();
+      expect(
+        callerRemovals.map((spy) => spy.mock.calls.some(([event]) => event === "abort")),
+      ).toEqual(Array.from({ length: 100 }, () => true));
       expect(fetchMock).toHaveBeenCalledOnce();
       expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
     } finally {
       response.resolve(new Response(null));
       await expect(retained).resolves.toBe("refreshed");
+      expect(removed).toHaveBeenCalledOnce();
       retireBrowserSession(owner);
     }
+  });
+
+  it("rejects every retained waiter on session retirement before fetch settles", async () => {
+    const owner = {};
+    claimBrowserSession(owner);
+    const session = captureBrowserSession();
+    const response = Promise.withResolvers<Response>();
+    const fetchMock = vi.fn<typeof fetch>().mockReturnValue(response.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    const added = vi.spyOn(session, "addEventListener");
+    const removed = vi.spyOn(session, "removeEventListener");
+    const controllers = Array.from({ length: 100 }, () => new AbortController());
+    const waiters = controllers.map(
+      async (controller) =>
+        await deduplicatedRefresh(controller.signal, session).catch((error: unknown) => error),
+    );
+    retireBrowserSession(owner);
+    const results = await Promise.all(waiters);
+    expect(results).toHaveLength(100);
+    for (const result of results) expect(result).toMatchObject({ name: "AbortError" });
+    expect(added).toHaveBeenCalledTimes(2);
+    expect(removed).toHaveBeenCalledWith("abort", expect.any(Function));
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+    response.resolve(new Response(null));
   });
 
   it("retires the shared refresh without reusing it or clearing a new owner's pending refresh", async () => {

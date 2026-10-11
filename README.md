@@ -49,7 +49,7 @@ make standards-check
 `make check` mirrors CI. `make audit` performs network-backed dependency audits, and
 `make standards-check` verifies generated standards configuration, version pins, and code.
 
-See the [259-pass performance record and reproduction commands](docs/performance.json) for
+See the [309-pass performance record and reproduction commands](docs/performance.json) for
 frontend loading and backend latency work.
 
 Original-tranche production-build measurements against the same locked main toolchain:
@@ -112,7 +112,7 @@ document 190,761 to 191,806 B. Read, resource and controlled timing reductions
 are separate from this bundle tradeoff and do not establish production page-load
 latency. The record includes candidate-specific methods and rejected regressions.
 
-The newest tranche adds another 30 distinct candidates across five agents: 25
+The following tranche adds another 30 distinct candidates across five agents: 25
 retained improvements and five measured rejections, bringing the record to 259.
 Against the deployed `edfc6588` baseline, controlled measurements include:
 
@@ -138,6 +138,37 @@ The integrated gate passes 4,299 backend tests and 870 frontend tests. Final
 compressed app inventories grow about 0.4%: home 180,375 to 181,032 B and document
 191,806 to 192,517 B. Resource and CPU gains are separate from this transfer-size
 tradeoff and do not establish production page-load latency.
+
+The October 11 follow-up evaluates [50 more candidates across five agents](docs/performance/round5-20261011.json),
+bringing the record to 309: 31 retained improvements and 19 measured rejections.
+Controlled measurements against `040541f1` include:
+
+| Measurement                                       | Before    | After     |
+| ------------------------------------------------- | --------- | --------- |
+| Cold tree read, 10,000 nodes                      | 37.796 ms | 32.722 ms |
+| Sidebar overlay conversion, 20,001 rows           | 32.986 ms | 22.048 ms |
+| Bounded text preparation, wordy two-MiB fixture   | 4.602 ms  | 0.145 ms  |
+| Folder refetches after one drive refresh          | 11        | 3         |
+| Move-selection folder-name reads, 1,000 rows      | 2,000     | 4         |
+| Shared session-refresh abort listeners, 100 reads | 100       | 1         |
+
+The homepage now shows up to five recent accessible pages, with links and workspace
+names. It reuses the existing per-user browser history and checks current file
+metadata and permissions in one request for at most six IDs; an empty history makes
+no request. The Sarj logo returns to this landing view. Account changes and retired
+reads cannot republish old results. History is local to the browser.
+
+These gains measure isolated work and resources. Small inputs and large icon
+workers have documented cost tradeoffs; the move picker adds local row subscriptions
+and its variable cold-mount timings do not establish faster browser mounting. The
+record preserves rejected candidates and reports the final client-bundle inventory
+separately from production page-load latency.
+
+The final local CI mirror passes 4,362 backend tests (88.99% coverage), 906 frontend
+tests and 11 infrastructure tests. The new landing UI increases the compressed app
+inventory by 6,343 B on home (181,032 to 187,375 B, 3.50%) and 6,377 B on the
+document route (192,517 to 198,894 B, 3.31%). These inventories exclude framework
+and deferred chunks; they do not establish live load time.
 
 The drive-loading regression was reproduced in the compiled Cloudflare Worker:
 server `fetch` rejects `redirect: "error"` before reaching the API. Server clients

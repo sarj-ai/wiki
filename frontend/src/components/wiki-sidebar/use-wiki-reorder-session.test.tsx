@@ -205,6 +205,49 @@ describe("sidebar mutation session ownership", () => {
     ]);
   });
 
+  it("moves between validated containers without reading unused sibling arrays", async () => {
+    ACTIONS.move.mockResolvedValue({ data: movedFile(), ok: true });
+    renderProvider("user-a");
+    let itemReads = 0;
+    const items = new Proxy(
+      Array.from({ length: 1_000 }, (_, index) => `id-${index}`),
+      {
+        get(target, key, receiver) {
+          if (typeof key === "string" && /^\d+$/.test(key)) itemReads += 1;
+          const value: unknown = Reflect.get(target, key, receiver);
+          return value;
+        },
+      },
+    );
+    const event = dragEvent(SIBLING.id, {
+      driveId: "shared-drive",
+      sortable: { containerId: `parent:${DESTINATION.id}`, items },
+    });
+    event.active.data.current = {
+      driveId: "shared-drive",
+      sortable: { containerId: "parent:shared-drive", items },
+    };
+    flushSync(() => hooks.reorder.onDragStart(event));
+    flushSync(() => hooks.reorder.onDragOver(event));
+    flushSync(() => hooks.reorder.onDragEnd(event));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(itemReads).toBe(0);
+    expect(ACTIONS.move).toHaveBeenCalledExactlyOnceWith(FILE.id, DESTINATION.id);
+  });
+
+  it("rejects malformed same-container commit arrays", async () => {
+    renderProvider("user-a");
+    const event = dragEvent(DESTINATION.id, {
+      driveId: "shared-drive",
+      sortable: { containerId: "parent:shared-drive", items: [FILE.id, 1] },
+    });
+    flushSync(() => hooks.reorder.onDragStart(event));
+    flushSync(() => hooks.reorder.onDragEnd(event));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ACTIONS.bulk).not.toHaveBeenCalled();
+    expect(ACTIONS.move).not.toHaveBeenCalled();
+  });
+
   it("does not copy or publish an unchanged 10,000-entry rank list for an unranked move", async () => {
     const pending = Promise.withResolvers<ActionResult<unknown>>();
     ACTIONS.move.mockReturnValue(pending.promise);

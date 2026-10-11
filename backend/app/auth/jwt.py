@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+import time
 from typing import Literal
 import uuid
 
@@ -33,7 +33,7 @@ def create_access_token(
     session_id: AuthSessionId,
     token_version: int = 0,
 ) -> str:
-    now = datetime.now(UTC)
+    now = int(time.time())
     payload = {
         "sub": str(user_id),
         "sid": str(session_id),
@@ -41,7 +41,7 @@ def create_access_token(
         "iss": JWT_ISSUER,
         "aud": JWT_AUDIENCE,
         "iat": now,
-        "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+        "exp": now + ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "type": "access",
         "tv": token_version,
     }
@@ -54,7 +54,7 @@ def create_refresh_token(
     refresh_jti: TokenId,
     token_version: int = 0,
 ) -> str:
-    now = datetime.now(UTC)
+    now = int(time.time())
     payload = {
         "sub": str(user_id),
         "sid": str(session_id),
@@ -62,7 +62,7 @@ def create_refresh_token(
         "iss": JWT_ISSUER,
         "aud": JWT_AUDIENCE,
         "iat": now,
-        "exp": now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        "exp": now + REFRESH_TOKEN_EXPIRE_DAYS * 86400,
         "type": "refresh",
         "tv": token_version,
     }

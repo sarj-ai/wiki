@@ -77,6 +77,47 @@ describe("useDrivePredictiveLoading", () => {
     expect(API.getDriveFolders).toHaveBeenCalledOnce();
   });
 
+  it("shares one preparation continuation across four overlapping primary activations", async () => {
+    const pending = Promise.withResolvers<DriveTree>();
+    API.getDriveFolders.mockReturnValue(pending.promise);
+    const prepare = vi.spyOn(queryClient, "prefetchQuery");
+    mount();
+    for (let index = 0; index < 4; index += 1) pointer("pointerdown", "mouse");
+    await advance(0);
+    expect(API.getDriveFolders).toHaveBeenCalledOnce();
+    pending.resolve({ driveId: "drive-1", files: [], folders: [], filesComplete: false });
+    await advance(0);
+    expect(API.getFolderFiles).toHaveBeenCalledOnce();
+    expect(
+      prepare.mock.calls.filter(([options]) => options.queryKey[1] === "drive-tree"),
+    ).toHaveLength(1);
+    expect(
+      prepare.mock.calls.filter(([options]) => options.queryKey[1] === "folder-files"),
+    ).toHaveLength(1);
+  });
+
+  it("upgrades pending hover to explicit intent and retries after a failed preparation", async () => {
+    const pending = Promise.withResolvers<DriveTree>();
+    API.getDriveFolders.mockReturnValueOnce(pending.promise);
+    mount();
+    pointer("pointerover", "mouse");
+    await advance(DRIVE_PREFETCH_DELAY_MS);
+    pointer("pointerdown", "mouse");
+    pointer("pointerout", "mouse");
+    pending.resolve({ driveId: "drive-1", files: [], folders: [], filesComplete: false });
+    await advance(0);
+    expect(API.getFolderFiles).toHaveBeenCalledOnce();
+
+    queryClient.clear();
+    API.getDriveFolders.mockRejectedValueOnce(new Error("temporarily unavailable"));
+    pointer("pointerdown", "mouse");
+    await advance(0);
+    pointer("pointerdown", "mouse");
+    await advance(0);
+    expect(API.getDriveFolders).toHaveBeenCalledTimes(3);
+    expect(API.getFolderFiles).toHaveBeenCalledTimes(2);
+  });
+
   it("cancels speculative work after the last intent leaves", async () => {
     mount();
     pointer("pointerover", "mouse");

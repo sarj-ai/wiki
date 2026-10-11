@@ -19,6 +19,32 @@ afterEach(() => {
 });
 
 describe("authenticated wiki read recovery", () => {
+  it("does not construct query parameters for reads with no defined query fields", async () => {
+    const parameters = vi.spyOn(globalThis, "URLSearchParams");
+    fetchMock
+      .mockResolvedValueOnce(Response.json({ value: "fresh" }))
+      .mockResolvedValueOnce(Response.json({ value: "fresh" }));
+    await expect(wikiReadHttp("/auth/me", PayloadSchema)).resolves.toEqual({ value: "fresh" });
+    await expect(wikiReadHttp("/auth/me", PayloadSchema, { ignored: undefined })).resolves.toEqual({
+      value: "fresh",
+    });
+    expect(parameters).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/wiki/auth/me",
+      "/api/wiki/auth/me",
+    ]);
+  });
+
+  it("retains defined empty, zero and escaped query values", async () => {
+    fetchMock.mockResolvedValue(Response.json({ value: "fresh" }));
+    await wikiReadHttp("/drive-search", PayloadSchema, {
+      q: "a b&c",
+      empty: "",
+      zero: 0,
+      ignored: undefined,
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/wiki/drive-search?q=a+b%26c&empty=&zero=0");
+  });
   it("stops and redacts an oversized BFF error body", async () => {
     const cancel = vi.fn();
     const body = new ReadableStream<Uint8Array>({

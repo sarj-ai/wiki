@@ -143,6 +143,23 @@ describe("authenticated parallel wiki reads", () => {
     expect(options?.headers).toMatchObject({ authorization: "Bearer private-session-token" });
   });
 
+  it("forwards recent-page IDs in order through one private authenticated read", async () => {
+    fetchMock.mockResolvedValue(Response.json({ pages: [] }));
+
+    const response = await GET(
+      request("files/recent?file_ids=doc-2&file_ids=doc-1&file_ids=doc-2"),
+      context("files/recent"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, options] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toContain("/files/recent?file_ids=doc-2&file_ids=doc-1&file_ids=doc-2");
+    expect(options?.headers).toMatchObject({ authorization: "Bearer private-session-token" });
+    await expect(response.json()).resolves.toEqual({ pages: [] });
+  });
+
   it.each([
     "auth/logout",
     "internal/tasks/run",

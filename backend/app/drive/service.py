@@ -102,7 +102,7 @@ _QA_CORPUS_FOLDER_FIELDS = (
 _PERMISSION_PAGE_FIELDS = (
     "nextPageToken,permissions(id,type,role,displayName,emailAddress,domain,"
     "allowFileDiscovery,expirationTime,deleted,pendingOwner,"
-    "permissionDetails(inherited,inheritedFrom,permissionType,role))"
+    "permissionDetails(inherited,permissionType,role))"
 )
 
 _MY_DRIVE_ALIAS = FileId("root")
@@ -629,10 +629,10 @@ class GoogleDriveService(DriveService):
             raise ValueError(msg)
         hits: list[SearchResult] = []
         for record in records:
-            hit = _search_result_from_api(record, drive.id)
+            hit = _search_result_from_api(record, drive.id, drive_name=drive.name)
             if drive.is_personal and hit.drive_id is not None:
                 continue
-            hits.append(hit.model_copy(update={"drive_name": drive.name}))
+            hits.append(hit)
         return hits
 
     async def _search_per_drive(
@@ -1203,14 +1203,7 @@ class GoogleDriveService(DriveService):
         text = self._export_text_sync(file_id)
         if text is None:
             return None
-        collapsed = " ".join(text.split())
-        if not collapsed:
-            return None
-        if len(collapsed) <= _MAX_REORGANIZATION_TEXT_CHARS:
-            return collapsed
-        head_chars = _MAX_REORGANIZATION_TEXT_CHARS * 2 // 3
-        tail_chars = _MAX_REORGANIZATION_TEXT_CHARS - head_chars
-        return f"{collapsed[:head_chars]} … [middle omitted] … {collapsed[-tail_chars:]}"
+        return _bounded_reorganization_text(text)
 
     def _list_drive_permissions_sync(
         self,
@@ -1614,6 +1607,33 @@ def _preload_file_node(
     return _node_from_api(file, drive_id)
 
 
+def _bounded_reorganization_text(text: str) -> str | None:
+    limit = _MAX_REORGANIZATION_TEXT_CHARS
+    window = min(len(text), limit * 2)
+    prefix = " ".join(text[:window].split())
+    if not prefix:
+        text = text.lstrip()
+        window = min(len(text), limit * 2)
+        prefix = " ".join(text[:window].split())
+    while len(prefix) <= limit:
+        if window == len(text):
+            return prefix or None
+        window = min(len(text), window * 2)
+        prefix = " ".join(text[:window].split())
+    head_chars = limit * 2 // 3
+    tail_chars = limit - head_chars
+    tail_window = min(len(text), limit * 2)
+    suffix = " ".join(text[-tail_window:].split())
+    if len(suffix) < tail_chars:
+        text = text.rstrip()
+        tail_window = min(len(text), limit * 2)
+        suffix = " ".join(text[-tail_window:].split())
+    while len(suffix) < tail_chars and tail_window < len(text):
+        tail_window = min(len(text), tail_window * 2)
+        suffix = " ".join(text[-tail_window:].split())
+    return f"{prefix[:head_chars]} … [middle omitted] … {suffix[-tail_chars:]}"
+
+
 def _parse_folder_member_page(
     raw_files: list[Any],
     *,
@@ -1628,7 +1648,7 @@ def _parse_folder_member_page(
     for raw in raw_files:
         if max_metadata_bytes is not None:
             metadata_bytes += len(
-                json.dumps(raw, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+                json.dumps(raw, ensure_ascii=False, separators=(",", ":")).encode()
             )
             if metadata_bytes > max_metadata_bytes:
                 raise DriveTraversalIncompleteError
@@ -1654,7 +1674,7 @@ def _folder_member_node(
 ) -> DriveNode | None:
     if include_unsupported:
         expected_provider_drive = None if is_personal else drive_id
-        if file.parents != [folder_id] or file.drive_id != expected_provider_drive:
+        if file.parents != (folder_id,) or file.drive_id != expected_provider_drive:
             raise DriveTraversalIncompleteError
     details = file.shortcut_details
     target_mime = details.target_mime_type if details else None
@@ -1729,7 +1749,9 @@ def _search_shortcut_update(
     }
 
 
-def _search_result_from_api(raw: Any, drive_id: DriveId | None = None) -> SearchResult:
+def _search_result_from_api(
+    raw: Any, drive_id: DriveId | None = None, *, drive_name: str | None = None
+) -> SearchResult:
     file = GoogleFile.model_validate(raw)
     home_drive_id = file.drive_id or drive_id
     parent_id: FileId | None = file.parents[0] if file.parents else None
@@ -1741,7 +1763,7 @@ def _search_result_from_api(raw: Any, drive_id: DriveId | None = None) -> Search
         name=file.name,
         mime_type=file.mime_type,
         drive_id=file.drive_id,
-        drive_name=None,
+        drive_name=drive_name,
         parent_id=parent_id,
         modified_time=file.modified_time,
         shortcut_target_id=details.target_id if details else None,

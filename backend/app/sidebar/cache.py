@@ -11,6 +11,7 @@ from typing import NamedTuple, override
 from cryptography.fernet import InvalidToken, MultiFernet
 from loguru import logger
 from pydantic import ValidationError
+from pydantic_core import to_json
 from sqlalchemy import (
     BigInteger,
     Integer,
@@ -28,7 +29,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.auth.encryption import cache_decoder_identity, decrypt_cache, encrypt_cache
+from app.auth.encryption import cache_decoder_identity, decrypt_cache_bytes, encrypt_cache_bytes
 from app.auth.google_tokens import provider_refresh_scope
 from app.config import settings
 from app.drive.schemas import DriveNode, DriveTree
@@ -115,11 +116,11 @@ _decoded_trees = _DecodedTreeCache(
 
 
 def _decrypt_and_parse(blob: str, decoder: MultiFernet) -> DriveTree:
-    return DriveTree.model_validate_json(decrypt_cache(blob, decoder=decoder))
+    return DriveTree.model_validate_json(decrypt_cache_bytes(blob, decoder=decoder))
 
 
 def _encrypt_tree(tree: DriveTree) -> str:
-    return encrypt_cache(tree.model_dump_json())
+    return encrypt_cache_bytes(to_json(tree))
 
 
 @dataclass(frozen=True)

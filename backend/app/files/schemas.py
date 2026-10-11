@@ -8,6 +8,9 @@ from app.identifiers import DriveId, FileId
 
 
 FileName = Annotated[str, StringConstraints(min_length=1, max_length=255)]
+RecentFileId = Annotated[
+    FileId, StringConstraints(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+]
 
 
 class FileCreate(BaseModel):
@@ -58,3 +61,14 @@ class BreadcrumbItem(BaseModel):
 class FileDetail(FileResponse):
     drive_name: str | None
     breadcrumb: list[BreadcrumbItem]
+
+
+class RecentFile(BaseModel):
+    id: FileId
+    name: str
+    mime_type: str
+    drive_name: str | None
+
+
+class RecentFilesResponse(BaseModel):
+    pages: list[RecentFile] = Field(max_length=5)

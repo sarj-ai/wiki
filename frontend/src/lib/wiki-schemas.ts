@@ -13,6 +13,7 @@ import {
   zFileResponse,
   zFolderIconRead,
   zPreferencesRead,
+  zRecentFile,
   zSearchResult,
   zSnippetResult,
   zSortOrderBulkResult,
@@ -117,6 +118,13 @@ export const snippetResult = zSnippetResult.transform((s) => ({
 }));
 
 export const fileResponse = zFileResponse.transform(toFileResponse);
+
+export const RecentFileSchema = zRecentFile.transform((file) => ({
+  driveName: file["drive_name"],
+  id: file.id,
+  mimeType: file["mime_type"],
+  name: file.name,
+}));
 
 export const fileDetail = zFileDetail.transform((f) => ({
   ...toFileResponse(f),

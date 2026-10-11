@@ -13,6 +13,7 @@ import {
   fileDetail,
   folderIcon,
   preferences,
+  RecentFileSchema,
   searchResult,
   snippetResult,
   sortOrder,
@@ -25,6 +26,9 @@ const DocIconsSchema = z.array(docIcon);
 const FolderIconsSchema = z.array(folderIcon);
 const SortOrdersSchema = z.array(sortOrder);
 const SearchResultsSchema = z.array(searchResult);
+const RecentFilesSchema = z
+  .object({ pages: z.array(RecentFileSchema).max(5) })
+  .transform((response) => response.pages);
 const QUERY_FIELDS = {
   fileId: "file_id",
   limitPerDrive: "limit_per_drive",
@@ -88,6 +92,10 @@ export const WIKI_READ_API = Object.freeze({
   getMe: async (signal?: AbortSignal) => await wikiReadHttp("/auth/me", userProfile, {}, signal),
   getPreferences: async (signal?: AbortSignal) =>
     await wikiReadHttp("/extras/preferences", preferences, {}, signal),
+  getRecentFiles: async (fileIds: string[], signal?: AbortSignal) => {
+    const params = new URLSearchParams(fileIds.map((id) => ["file_ids", id]));
+    return await wikiReadHttp(`/files/recent?${params.toString()}`, RecentFilesSchema, {}, signal);
+  },
   listDocIcons: async (signal?: AbortSignal) =>
     await wikiReadHttp("/extras/doc-icons", DocIconsSchema, {}, signal),
   listFolderIcons: async (signal?: AbortSignal) =>

@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 
+import { recentDocsStorageKey } from "@/lib/browser-storage";
 import { readRecentDocs, saveLastDoc } from "@/lib/last-doc";
 import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
@@ -47,5 +48,19 @@ describe("recent document warmup metadata", () => {
       "file-3",
       "file-2",
     ]);
+  });
+
+  it("discards oversized stored history before admitting recent-page reads", () => {
+    window.localStorage.setItem(
+      recentDocsStorageKey("user-a"),
+      JSON.stringify(
+        Array.from({ length: 7 }, (_, index) => ({
+          fileId: `file-${index}`,
+          mimeType: "text/plain",
+          title: "Page",
+        })),
+      ),
+    );
+    expect(readRecentDocs("user-a")).toEqual([]);
   });
 });

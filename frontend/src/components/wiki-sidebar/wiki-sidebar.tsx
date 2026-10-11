@@ -8,6 +8,7 @@ import {
   pointerWithin,
   rectIntersection,
 } from "@dnd-kit/core";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
@@ -100,9 +101,14 @@ export function WikiSidebar() {
   return (
     <Sidebar>
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 py-1.5">
+        <Link
+          aria-label="Recent pages"
+          className="focus-visible:ring-ring flex items-center gap-2 rounded-sm px-2 py-1.5 focus-visible:ring-2 focus-visible:outline-none"
+          href="/"
+          prefetch={false}
+        >
           <SarjLogo priority size={28} />
-        </div>
+        </Link>
         <div className="px-2 pb-1">
           <DriveSearchBox />
         </div>

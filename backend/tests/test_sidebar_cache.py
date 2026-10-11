@@ -12,7 +12,7 @@ from cryptography.fernet import MultiFernet
 import pytest
 from sqlalchemy.sql import ClauseElement
 
-from app.auth.encryption import decrypt_cache, encrypt_cache
+from app.auth.encryption import cache_decoder_identity, decrypt_cache, encrypt_cache
 from app.config import settings
 from app.drive.schemas import DriveNode, DriveTree, SearchResult, SnippetResult
 from app.drive.service import DriveService
@@ -489,3 +489,25 @@ def test_peek_cold_cache_returns_none_and_never_walks() -> None:
 
     assert cached is None
     assert drive.walks == 0
+
+
+def test_byte_tree_crypto_preserves_legacy_json_and_model_field_exclusions() -> None:
+    original = _tree()
+    folder = original.folders[0].model_copy(
+        update={
+            "name": "Résumé 📚 知識",
+            "description": "نص محفوظ",
+            "version": "excluded-provider-version",
+            "drive_id": DriveId("excluded-provider-drive"),
+        }
+    )
+    tree = original.model_copy(update={"folders": [folder]})
+    legacy_json = tree.model_dump_json()
+    decoder = cache_decoder_identity()
+    encrypted = sidebar_cache._encrypt_tree(tree)
+
+    assert decoder.decrypt(encrypted.encode()) == legacy_json.encode()
+    assert "excluded-provider" not in legacy_json
+    assert sidebar_cache._decrypt_and_parse(encrypted, decoder) == DriveTree.model_validate_json(
+        legacy_json
+    )

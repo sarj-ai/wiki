@@ -510,7 +510,7 @@ class GoogleFilesService(FilesService):
         def collect(request_id: str, response: Any, exception: BaseException | None) -> None:
             if exception is not None:
                 status = getattr(getattr(exception, "resp", None), "status", None)
-                if status not in {403, 404}:
+                if status not in {403, 404} and not failures:
                     failures.append(exception)
                 return
             file = model.model_validate(response)
@@ -658,7 +658,9 @@ class GoogleFilesService(FilesService):
         body: File = {"trashed": True}
         with _translated_drive_errors():
             execute_with_retry(
-                client.files().update(fileId=file_id, body=body, supportsAllDrives=True)
+                client.files().update(
+                    fileId=file_id, body=body, fields="id", supportsAllDrives=True
+                )
             )
 
     def _ensure_current_drive_membership_sync(self, drive_id: DriveId | None) -> None:

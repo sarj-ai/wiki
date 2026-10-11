@@ -76,6 +76,9 @@ class AggregatingBootstrapService(BootstrapService):
 
     async def _extras_reads(self, *, defer_doc_icons: bool) -> _ExtrasReads:
         sidebar = await self._extras.load_sidebar()
+        # Bootstrap owns a read-only request session. Release the overlay read
+        # before the independent Drive inventory needs a cache connection.
+        await self._db.commit()
         return _ExtrasReads(
             sidebar.preferences,
             sidebar.folder_icons,

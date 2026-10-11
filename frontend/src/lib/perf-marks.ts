@@ -44,6 +44,8 @@ const SAMPLE_MAX_AGE_MS = 120_000;
 
 export function markNav(id: string, phase: string, extra: null | PerfExtra = null): void {
   if (typeof window === "undefined") return;
+  const sample = NAVIGATION_SAMPLES.get(id);
+  if (!PERF_ENABLED && phase !== "click" && sample === undefined) return;
   const now = performance.now();
   if (PERF_ENABLED) {
     // eslint-disable-next-line unicorn/no-global-object-property-assignment -- This opt-in probe intentionally records navigation timings on window.
@@ -53,9 +55,7 @@ export function markNav(id: string, phase: string, extra: null | PerfExtra = nul
     startSample(id, now);
     return;
   }
-  if (!["commit", "toolbarPaint", "iframeMount", "iframeLoad"].includes(phase)) return;
-  const sample = NAVIGATION_SAMPLES.get(id);
-  if (!sample) return;
+  if (!sample || !["commit", "toolbarPaint", "iframeMount", "iframeLoad"].includes(phase)) return;
   if (phase === "iframeLoad") {
     NAVIGATION_SAMPLES.delete(id);
     window.clearTimeout(sample.timeout);
