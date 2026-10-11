@@ -1,0 +1,1333 @@
+{
+  "scope": "Backend caching: 10 new candidates for round6; 6 retained and 4 rejected, within cache/sidebar/extras reservations. No auth/router/Drive/file/alias/transform source edits.",
+  "baselineRevision": "fdc479beea4488ad5869e8957be8c646fc470527",
+  "passCount": 10,
+  "acceptedCount": 6,
+  "rejectedCount": 4,
+  "changedPaths": [
+    "backend/app/cache/protection.py",
+    "backend/app/cache/service.py",
+    "backend/app/extras/service.py",
+    "backend/app/sidebar/cache.py",
+    "backend/tests/test_cache_service.py",
+    "backend/tests/test_sidebar_cache.py",
+    "backend/tests/test_round6_cache_reuse.py",
+    "backend/tests/test_round6_sidebar_reuse.py",
+    "backend/tests/test_round6_cache_postgres.py"
+  ],
+  "sourceHashes": [
+    {
+      "path": "backend/app/cache/protection.py",
+      "sha256": "7cd341b6c658005eb894da77b4fb64d8420e2bafcb4a58686f2d36cf01e1cc6d"
+    },
+    {
+      "path": "backend/app/cache/service.py",
+      "sha256": "0d68bbdd52baeb8d2a00a4d9142db2c0e29d556227b46680443107974f766e95"
+    },
+    {
+      "path": "backend/app/extras/service.py",
+      "sha256": "ac00dbec6c91c14208411cfa46e58b2a0ea77623ee6b8aa8cd000c4fdd1d3d59"
+    },
+    {
+      "path": "backend/app/sidebar/cache.py",
+      "sha256": "4bc19aa96391f431f366473aa6d038484b205661fdc2ae63ebcb1d8955cb6348"
+    },
+    {
+      "path": "backend/tests/test_cache_service.py",
+      "sha256": "8c4302559f79d713fd8a3c85235ae74abdb58e89a887a6bb10179f4d26f27192"
+    },
+    {
+      "path": "backend/tests/test_sidebar_cache.py",
+      "sha256": "e87a0a6815a3fed59cf780875a878f3bcc4281a9cfa836020e9623552ac2ef95"
+    },
+    {
+      "path": "backend/tests/test_round6_cache_reuse.py",
+      "sha256": "d1c5501fc1a77ed9423b03dadbd267fe7b6523ef5e45b6895ec100ed5b74b871"
+    },
+    {
+      "path": "backend/tests/test_round6_sidebar_reuse.py",
+      "sha256": "5ad0e0d5be246fbbfac4fe86e6ff5e2d2ce6b59f5715cf3ed555496c03238511"
+    },
+    {
+      "path": "backend/tests/test_round6_cache_postgres.py",
+      "sha256": "f490ca0193e6e08a1abaea17c6e8b49912a3f768d95aa2f755434d41cff9ba36"
+    }
+  ],
+  "passes": [
+    {
+      "id": "round6-cache-01",
+      "candidate": "Reuse complete immutable bulk-cache, cold/warm sidebar tree, refreshed-at, and sidebar-overlay read statements with fresh execution bindings.",
+      "outcome": "accepted",
+      "status": "complete",
+      "method": "Memoize the remaining complete read shapes, parameterize current namespace/key arrays and current user/drive/exact tuple-version values, and cache the overlay UNION shape. Compare saved baseline service modules with final modules using the same protector, data, and PostgreSQL engine; separately measure shape construction with injected sessions.",
+      "workload": {
+        "cache": "4096 encrypted rows with keys round6:{fixture_owner}:{i} and values {value:key}; read 1,32,4096 keys, 21 alternating pairs each, one operation/sample.",
+        "overlay": "Two current users, one with hidden workspace hidden, folder-1 icon and drive-1 order, one with defaults; 31 pairs each.",
+        "sidebar": "Already-decoded warm trees with 1 or 1000 document files f-{i}, names File {i}; each call still performs a fresh PostgreSQL exact-version query, 31 pairs each.",
+        "shapeOnly": "Injected no-I/O session and deterministic query protector, q{i} keys at 1,32,128,4096; 31 pairs of three calls."
+      },
+      "evidence": {
+        "cacheReadsMs": {
+          "1": {
+            "before": {
+              "medianMs": 0.606792,
+              "p95Ms": 0.765459,
+              "samples": 21
+            },
+            "after": {
+              "medianMs": 0.481333,
+              "p95Ms": 0.590375,
+              "samples": 21
+            },
+            "batch": 1
+          },
+          "32": {
+            "before": {
+              "medianMs": 0.993459,
+              "p95Ms": 1.202709,
+              "samples": 21
+            },
+            "after": {
+              "medianMs": 0.851167,
+              "p95Ms": 1.127792,
+              "samples": 21
+            },
+            "batch": 1
+          },
+          "4096": {
+            "before": {
+              "medianMs": 43.750458,
+              "p95Ms": 73.101875,
+              "samples": 21
+            },
+            "after": {
+              "medianMs": 43.605458,
+              "p95Ms": 71.114458,
+              "samples": 21
+            },
+            "batch": 1
+          }
+        },
+        "sidebarOverlayReadsMs": [
+          {
+            "ownerFixture": 1,
+            "before": {
+              "medianMs": 0.588375,
+              "p95Ms": 0.709167,
+              "samples": 31
+            },
+            "after": {
+              "medianMs": 0.427708,
+              "p95Ms": 0.486917,
+              "samples": 31
+            },
+            "batch": 1
+          },
+          {
+            "ownerFixture": 2,
+            "before": {
+              "medianMs": 0.609125,
+              "p95Ms": 0.802583,
+              "samples": 31
+            },
+            "after": {
+              "medianMs": 0.418292,
+              "p95Ms": 0.486125,
+              "samples": 31
+            },
+            "batch": 1
+          }
+        ],
+        "warmSidebarReadsMs": {
+          "1": {
+            "before": {
+              "medianMs": 0.629875,
+              "p95Ms": 0.768,
+              "samples": 31
+            },
+            "after": {
+              "medianMs": 0.442041,
+              "p95Ms": 0.628542,
+              "samples": 31
+            },
+            "batch": 1
+          },
+          "1000": {
+            "before": {
+              "medianMs": 0.65675,
+              "p95Ms": 0.8485,
+              "samples": 31
+            },
+            "after": {
+              "medianMs": 0.48375,
+              "p95Ms": 0.625625,
+              "samples": 31
+            },
+            "batch": 1
+          }
+        },
+        "constructionWithoutIOms": {
+          "1": {
+            "before": {
+              "medianMs": 0.042222333333333334,
+              "p95Ms": 0.04706933333333333,
+              "samples": 31
+            },
+            "after": {
+              "medianMs": 0.002375,
+              "p95Ms": 0.0027223333333333335,
+              "samples": 31
+            },
+            "batch": 3
+          },
+          "32": {
+            "before": {
+              "medianMs": 0.051166666666666666,
+              "p95Ms": 0.05244466666666667,
+              "samples": 31
+            },
+            "after": {
+              "medianMs": 0.008027666666666667,
+              "p95Ms": 0.008402666666666668,
+              "samples": 31
+            },
+            "batch": 3
+          },
+          "128": {
+            "before": {
+              "medianMs": 0.07568066666666666,
+              "p95Ms": 0.07856933333333334,
+              "samples": 31
+            },
+            "after": {
+              "medianMs": 0.025138999999999998,
+              "p95Ms": 0.026430333333333333,
+              "samples": 31
+            },
+            "batch": 3
+          },
+          "4096": {
+            "before": {
+              "medianMs": 1.1556666666666666,
+              "p95Ms": 1.2350973333333333,
+              "samples": 31
+            },
+            "after": {
+              "medianMs": 1.018778,
+              "p95Ms": 1.0689863333333334,
+              "samples": 31
+            },
+            "batch": 3
+          }
+        },
+        "semanticEvidence": "Public-service tests verify shared statement identity with different namespaces, principal IDs, drive IDs and keys; real PostgreSQL tests observe expiration, cross-user isolation and same-refreshed-at row replacement. No cache result or fresh PostgreSQL expression is memoized."
+      },
+      "limits": [
+        "This is one read-shape reuse candidate across related read paths, not one candidate per statement. Prior storage-r5-02 single-cache SELECT reuse, prior UNION batching and prior JOIN UNNEST/tuple-version selection are not recounted.",
+        "4096-key real read median 43.750458 to 43.605458 ms is effectively flat; retain for repeatable small/warm construction savings, not a large-read throughput claim.",
+        "Statement caches have finite boolean read variants; sidebar expression-shape reuse is bounded to four entries. Every call binds fresh values and evaluates current expiry/snapshot metadata.",
+        "Tree benchmark is warm and includes the final metadata index; construction-only cache probes isolate shape reuse more directly. No authorization path was modified."
+      ],
+      "changedPaths": [
+        "backend/app/cache/service.py",
+        "backend/app/sidebar/cache.py",
+        "backend/app/extras/service.py",
+        "backend/tests/test_cache_service.py",
+        "backend/tests/test_sidebar_cache.py",
+        "backend/tests/test_round6_cache_reuse.py",
+        "backend/tests/test_round6_sidebar_reuse.py",
+        "backend/tests/test_round6_cache_postgres.py"
+      ],
+      "repro": {
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "harness": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "measurementArtifact": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.json",
+        "prerequisites": [
+          "The temporary harness and saved baseline/prototype modules listed in validation.reproductionArtifacts are required; these timing commands are not repository-only reproductions.",
+          "Use the existing locked backend/.venv (Python 3.14.7), repository import path, and owned PostgreSQL 18.6 database wiki_round6_cache_bench at 127.0.0.1:15488.",
+          "The shared guard serializes CPU/SQL probes across agents; no lock is held during the ordinary scoped tests."
+        ],
+        "seedDefinition": "Business data is deterministic (explicit counts and f-string identifiers in each workload). Fresh Fernet keys and UUID7 fixture owners are generated for each run, shared by each before/after pair, and are not benchmark tuning seeds. No business-data PRNG is used.",
+        "sampleDefinition": "Before/after order alternates per sample after three warmups unless a semantic witness is specified. medianMs is the sample median; p95Ms is sorted_samples[int(0.95*(n-1))]. Batched results are elapsed time divided by batch count. Timing is local fixture/resource evidence, not controlled production latency."
+      },
+      "validation": [
+        "test_bulk_read_shape_reuses_only_sql_and_binds_current_namespace_and_keys",
+        "test_warm_tree_statement_binds_fresh_owner_drive_and_exact_version",
+        "test_sidebar_overlay_shape_binds_current_user_per_public_service",
+        "test_reused_sql_keeps_namespace_key_ttl_and_current_value_bindings",
+        "test_sidebar_reuse_is_owner_scoped_and_detects_same_timestamp_row_replacement",
+        "test_reused_sidebar_union_observes_current_user_and_fresh_preferences",
+        "Scoped shared tests/lint/types passed; see validation."
+      ]
+    },
+    {
+      "id": "round6-cache-02",
+      "candidate": "Reuse complete parameterized array upsert and first-chunk cleanup statement shapes across cache writes.",
+      "outcome": "accepted",
+      "status": "complete",
+      "method": "Cache complete array INSERT/upsert variants with and without first-chunk cleanup, binding current namespace, paired sorted key/envelope arrays and Interval TTL per execution; retain tiny VALUES below eight rows. Explicit raw DML execution preserves parameter ownership through AsyncSession. Compare actual protected writes and injected shape-only writes against saved source.",
+      "workload": {
+        "postgres": "Write 1,8,128,1001 values {value:i} at keys round6-write-{fixture_owner}-{i}, TTL five minutes; 21 alternating pairs per size, all protected by the same per-run key.",
+        "shapeOnly": "q{i}:1 values at 8,128,1001, TTL 30 seconds, injected deterministic protector/session; 31 pairs of three writes.",
+        "atomicity": "Real database fixtures exercise 1008 rows over two chunks, injected second-chunk failure and concurrent opposite-order writers."
+      },
+      "evidence": {
+        "postgresWriteMs": {
+          "1": {
+            "before": {
+              "medianMs": 1.051792,
+              "p95Ms": 1.2615,
+              "samples": 21
+            },
+            "after": {
+              "medianMs": 0.90275,
+              "p95Ms": 1.078417,
+              "samples": 21
+            },
+            "batch": 1
+          },
+          "8": {
+            "before": {
+              "medianMs": 1.418458,
+              "p95Ms": 1.81725,
+              "samples": 21
+            },
+            "after": {
+              "medianMs": 1.0695,
+              "p95Ms": 1.404167,
+              "samples": 21
+            },
+            "batch": 1
+          },
+          "128": {
+            "before": {
+              "medianMs": 3.911833,
+              "p95Ms": 4.427709,
+              "samples": 21
+            },
+            "after": {
+              "medianMs": 3.379541,
+              "p95Ms": 3.958708,
+              "samples": 21
+            },
+            "batch": 1
+          },
+          "1001": {
+            "before": {
+              "medianMs": 17.129209,
+              "p95Ms": 17.605958,
+              "samples": 21
+            },
+            "after": {
+              "medianMs": 16.864792,
+              "p95Ms": 17.292875,
+              "samples": 21
+            },
+            "batch": 1
+          }
+        },
+        "constructionWithoutIOms": {
+          "8": {
+            "before": {
+              "medianMs": 0.146986,
+              "p95Ms": 0.19768066666666664,
+              "samples": 31
+            },
+            "after": {
+              "medianMs": 0.021791666666666668,
+              "p95Ms": 0.023388999999999997,
+              "samples": 31
+            },
+            "batch": 3
+          },
+          "128": {
+            "before": {
+              "medianMs": 0.21001366666666665,
+              "p95Ms": 0.2604863333333333,
+              "samples": 31
+            },
+            "after": {
+              "medianMs": 0.08322233333333333,
+              "p95Ms": 0.08756966666666667,
+              "samples": 31
+            },
+            "batch": 3
+          },
+          "1001": {
+            "before": {
+              "medianMs": 0.6051803333333333,
+              "p95Ms": 0.7845276666666666,
+              "samples": 31
+            },
+            "after": {
+              "medianMs": 0.4190416666666667,
+              "p95Ms": 0.4812083333333333,
+              "samples": 31
+            },
+            "batch": 3
+          }
+        },
+        "semanticEvidence": "Key/envelope arrays stay paired in the existing physical lock order, current namespaces/TTL values bind per call, cleanup appears only in the first chunk, and a later-chunk failure rolls back the entire batch. Concurrent opposite-order 1008-row writers leave one complete writer value set."
+      },
+      "limits": [
+        "Prior array UNNEST insertion, tiny-write threshold, batching, cleanup predicate/index and ordered physical row locks remain unchanged and count zero. New work is complete write-shape reuse with fresh bound inputs.",
+        "1001-row write median 17.129209 to 16.864792 ms is a modest local difference. Retention is primarily supported by smaller-batch statement-construction savings.",
+        "Tiny VALUES statements still carry row data; only the finite array-write and cleanup shapes are cached. No mutation admission, cache envelope validation or transaction ownership changed."
+      ],
+      "changedPaths": [
+        "backend/app/cache/service.py",
+        "backend/tests/test_cache_service.py",
+        "backend/tests/test_round6_cache_reuse.py",
+        "backend/tests/test_round6_cache_postgres.py"
+      ],
+      "repro": {
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "harness": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "measurementArtifact": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.json",
+        "prerequisites": [
+          "The temporary harness and saved baseline/prototype modules listed in validation.reproductionArtifacts are required; these timing commands are not repository-only reproductions.",
+          "Use the existing locked backend/.venv (Python 3.14.7), repository import path, and owned PostgreSQL 18.6 database wiki_round6_cache_bench at 127.0.0.1:15488.",
+          "The shared guard serializes CPU/SQL probes across agents; no lock is held during the ordinary scoped tests."
+        ],
+        "seedDefinition": "Business data is deterministic (explicit counts and f-string identifiers in each workload). Fresh Fernet keys and UUID7 fixture owners are generated for each run, shared by each before/after pair, and are not benchmark tuning seeds. No business-data PRNG is used.",
+        "sampleDefinition": "Before/after order alternates per sample after three warmups unless a semantic witness is specified. medianMs is the sample median; p95Ms is sorted_samples[int(0.95*(n-1))]. Batched results are elapsed time divided by batch count. Timing is local fixture/resource evidence, not controlled production latency."
+      },
+      "validation": [
+        "test_cached_array_write_keeps_chunk_pairing_lock_order_and_fresh_ttl",
+        "test_parameterized_cache_write_preserves_later_chunk_rollback",
+        "test_shared_array_statement_preserves_concurrent_atomic_writer_ownership",
+        "Scoped shared tests/lint/types passed; see validation."
+      ]
+    },
+    {
+      "id": "round6-cache-03",
+      "candidate": "Add a bounded principal/drive latest-version index to the existing decoded-tree LRU.",
+      "outcome": "accepted",
+      "status": "complete",
+      "method": "Use one latest decoded key per (principal,drive) to replace reverse LRU scan and old-version replacement scan; update the index on replacement, eviction and invalidation, retaining decoder identity checks and live mutable-tree node-budget calculation.",
+      "workload": "Populate the existing 32-entry/40000-node cache with cache-{i} trees, ten nodes each; compare oldest-entry, newest-entry and missing lookup, 41 alternating pairs of 1000 calls; invalidate cache-0 and compare retained counts.",
+      "evidence": {
+        "lookup": {
+          "cache-0": {
+            "before": {
+              "medianMs": 0.0018876250000000002,
+              "p95Ms": 0.001921417,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.00018208299999999998,
+              "p95Ms": 0.000187417,
+              "samples": 41
+            },
+            "batch": 1000
+          },
+          "cache-31": {
+            "before": {
+              "medianMs": 0.00020033300000000002,
+              "p95Ms": 0.00020466699999999998,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.00018083299999999998,
+              "p95Ms": 0.000186417,
+              "samples": 41
+            },
+            "batch": 1000
+          },
+          "missing": {
+            "before": {
+              "medianMs": 0.0018620000000000002,
+              "p95Ms": 0.001933917,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.000135375,
+              "p95Ms": 0.000144875,
+              "samples": 41
+            },
+            "batch": 1000
+          }
+        },
+        "retainedEntries": [31, 31],
+        "metadataEntries": 31,
+        "semanticEvidence": "Both versions retain 31 values after drive invalidation; final index retains 31 metadata entries. Public service fixtures verify fresh owner/drive/version changes, decoder capture, 33-drive eviction and replacement. The dictionary never exceeds retained decoded entries."
+      },
+      "limits": [
+        "Existing decoded tree caching, coalescing and node budget are not new candidates; the new index removes metadata scan work only.",
+        "Benefit is at most a scan of the existing 32 entries; absolute lookup cost is sub-millisecond and is not a network latency claim.",
+        "Live node-budget sums remain because DriveTree models can mutate. No counter assumes immutable tree contents, and no authority information is added to the global cache."
+      ],
+      "changedPaths": [
+        "backend/app/sidebar/cache.py",
+        "backend/tests/test_round6_sidebar_reuse.py"
+      ],
+      "repro": {
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "harness": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "measurementArtifact": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.json",
+        "prerequisites": [
+          "The temporary harness and saved baseline/prototype modules listed in validation.reproductionArtifacts are required; these timing commands are not repository-only reproductions.",
+          "Use the existing locked backend/.venv (Python 3.14.7), repository import path, and owned PostgreSQL 18.6 database wiki_round6_cache_bench at 127.0.0.1:15488.",
+          "The shared guard serializes CPU/SQL probes across agents; no lock is held during the ordinary scoped tests."
+        ],
+        "seedDefinition": "Business data is deterministic (explicit counts and f-string identifiers in each workload). Fresh Fernet keys and UUID7 fixture owners are generated for each run, shared by each before/after pair, and are not benchmark tuning seeds. No business-data PRNG is used.",
+        "sampleDefinition": "Before/after order alternates per sample after three warmups unless a semantic witness is specified. medianMs is the sample median; p95Ms is sorted_samples[int(0.95*(n-1))]. Batched results are elapsed time divided by batch count. Timing is local fixture/resource evidence, not controlled production latency."
+      },
+      "validation": [
+        "test_decoded_latest_index_tracks_entry_eviction_and_old_version_replacement",
+        "test_warm_tree_statement_binds_fresh_owner_drive_and_exact_version",
+        "Existing sidebar invalidation/node-budget tests passed."
+      ]
+    },
+    {
+      "id": "round6-cache-04",
+      "candidate": "Avoid worker scheduling for bounded small sidebar ciphertext decoding.",
+      "outcome": "accepted",
+      "status": "complete",
+      "method": "Decrypt and strictly parse sidebar trees inline only when ciphertext is at most 16384 bytes; preserve worker offload above that boundary, captured decoder ownership, malformed-data behavior and always-offloaded encryption.",
+      "workload": "Actual encrypted DriveTree fixtures: 0,8,32 document nodes; 8 nodes with 4096-character descriptions; 1000 nodes. Tree IDs decode-{count}-{description_length}, files f-{i}/File {i}; 41 alternating pairs of five decodes.",
+      "evidence": {
+        "decryptValidateMs": {
+          "0-0": {
+            "cipherBytes": 184,
+            "dispatch": "inline",
+            "before": {
+              "medianMs": 0.046216600000000004,
+              "p95Ms": 0.0739084,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.0068168000000000005,
+              "p95Ms": 0.0085168,
+              "samples": 41
+            },
+            "batch": 5
+          },
+          "8-0": {
+            "cipherBytes": 3364,
+            "dispatch": "inline",
+            "before": {
+              "medianMs": 0.07242499999999999,
+              "p95Ms": 0.0948666,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.0182,
+              "p95Ms": 0.0225,
+              "samples": 41
+            },
+            "batch": 5
+          },
+          "32-0": {
+            "cipherBytes": 13004,
+            "dispatch": "inline",
+            "before": {
+              "medianMs": 0.104925,
+              "p95Ms": 0.1209334,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.0501084,
+              "p95Ms": 0.0543334,
+              "samples": 41
+            },
+            "batch": 5
+          },
+          "8-4096": {
+            "cipherBytes": 47096,
+            "dispatch": "worker",
+            "before": {
+              "medianMs": 0.1169834,
+              "p95Ms": 0.1457,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.1179332,
+              "p95Ms": 0.1431666,
+              "samples": 41
+            },
+            "batch": 5
+          },
+          "1000-0": {
+            "cipherBytes": 406564,
+            "dispatch": "worker",
+            "before": {
+              "medianMs": 1.6432834,
+              "p95Ms": 3.0617416,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 1.65345,
+              "p95Ms": 5.4309332,
+              "samples": 41
+            },
+            "batch": 5
+          }
+        },
+        "semanticEvidence": "Ciphertext byte sizes 184,3364,13004 run inline; 47096 and 406564 retain worker dispatch. Public injected-decoder fixtures assert main-thread small decode and worker large decode; all before/after parsed trees equal the exact fixture."
+      },
+      "limits": [
+        "Ciphertext-byte threshold bounds inline CPU; descriptions and other content contribute to the boundary rather than node count alone.",
+        "Larger tree medians remain essentially flat (1000 nodes: 1.6432834 to 1.65345 ms) and observed p95 varied 3.0617416 to 5.4309332 ms. No retained large-tree performance claim.",
+        "Inline small decode consumes event-loop CPU, bounded by 16 KiB ciphertext. Existing offload of large generic-cache crypto and existing bytes serialization are not recounted."
+      ],
+      "changedPaths": [
+        "backend/app/sidebar/cache.py",
+        "backend/tests/test_round6_sidebar_reuse.py"
+      ],
+      "repro": {
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "harness": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "measurementArtifact": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.json",
+        "prerequisites": [
+          "The temporary harness and saved baseline/prototype modules listed in validation.reproductionArtifacts are required; these timing commands are not repository-only reproductions.",
+          "Use the existing locked backend/.venv (Python 3.14.7), repository import path, and owned PostgreSQL 18.6 database wiki_round6_cache_bench at 127.0.0.1:15488.",
+          "The shared guard serializes CPU/SQL probes across agents; no lock is held during the ordinary scoped tests."
+        ],
+        "seedDefinition": "Business data is deterministic (explicit counts and f-string identifiers in each workload). Fresh Fernet keys and UUID7 fixture owners are generated for each run, shared by each before/after pair, and are not benchmark tuning seeds. No business-data PRNG is used.",
+        "sampleDefinition": "Before/after order alternates per sample after three warmups unless a semantic witness is specified. medianMs is the sample median; p95Ms is sorted_samples[int(0.95*(n-1))]. Batched results are elapsed time divided by batch count. Timing is local fixture/resource evidence, not controlled production latency."
+      },
+      "validation": [
+        "test_small_tree_decode_is_inline_and_large_ciphertext_uses_a_worker",
+        "Existing strict decoding/key-rotation/sidebar corruption tests passed."
+      ]
+    },
+    {
+      "id": "round6-cache-05",
+      "candidate": "Move bulk ownership/collision preparation and physical-key write sorting into the already scheduled crypto worker.",
+      "outcome": "rejected",
+      "status": "complete",
+      "method": "Built an executable cache-service prototype returning read owner/collision maps and sorted write tuples from the existing worker. After removing it from production, isolate it against the final retained service with the same protector and reused query shapes; measure elapsed time plus a sleep(0) heartbeat maximum gap.",
+      "workload": "Read or write 256 and 10000 prep-{i} logical keys/values, three shared rotation keys, injected no-I/O session, TTL 30 seconds. Three warmups then 21 alternating paired samples per operation/size, one operation/sample.",
+      "evidence": {
+        "isolatedFinalServiceVsPrototype": {
+          "256-False": {
+            "elapsed": {
+              "before": {
+                "medianMs": 0.812792,
+                "p95Ms": 0.971416,
+                "samples": 21
+              },
+              "after": {
+                "medianMs": 0.808917,
+                "p95Ms": 1.010583,
+                "samples": 21
+              }
+            },
+            "loopGap": {
+              "before": {
+                "medianMs": 0.6768328603357077,
+                "p95Ms": 0.760416965931654,
+                "samples": 21
+              },
+              "after": {
+                "medianMs": 0.7360000163316727,
+                "p95Ms": 0.8622498717159033,
+                "samples": 21
+              }
+            }
+          },
+          "256-True": {
+            "elapsed": {
+              "before": {
+                "medianMs": 2.896417,
+                "p95Ms": 3.422291,
+                "samples": 21
+              },
+              "after": {
+                "medianMs": 2.761959,
+                "p95Ms": 3.097041,
+                "samples": 21
+              }
+            },
+            "loopGap": {
+              "before": {
+                "medianMs": 1.7299160826951265,
+                "p95Ms": 2.6367090176790953,
+                "samples": 21
+              },
+              "after": {
+                "medianMs": 1.7046250868588686,
+                "p95Ms": 2.6142080314457417,
+                "samples": 21
+              }
+            }
+          },
+          "10000-False": {
+            "elapsed": {
+              "before": {
+                "medianMs": 29.002375,
+                "p95Ms": 29.945,
+                "samples": 21
+              },
+              "after": {
+                "medianMs": 29.159792,
+                "p95Ms": 30.35025,
+                "samples": 21
+              }
+            },
+            "loopGap": {
+              "before": {
+                "medianMs": 6.998666096478701,
+                "p95Ms": 7.0332500617951155,
+                "samples": 21
+              },
+              "after": {
+                "medianMs": 7.003040984272957,
+                "p95Ms": 7.037165807560086,
+                "samples": 21
+              }
+            }
+          },
+          "10000-True": {
+            "elapsed": {
+              "before": {
+                "medianMs": 105.74475,
+                "p95Ms": 109.137208,
+                "samples": 21
+              },
+              "after": {
+                "medianMs": 107.173917,
+                "p95Ms": 133.4525,
+                "samples": 21
+              }
+            },
+            "loopGap": {
+              "before": {
+                "medianMs": 7.526332978159189,
+                "p95Ms": 12.562500080093741,
+                "samples": 21
+              },
+              "after": {
+                "medianMs": 7.854708004742861,
+                "p95Ms": 26.73475001938641,
+                "samples": 21
+              }
+            }
+          }
+        },
+        "decision": "10000-key read gap median 6.998666 to 7.003041 ms does not improve. 10000-row write median 105.744750 to 107.173917 ms, p95 109.137208 to 133.452500 ms; heartbeat gap median 7.526333 to 7.854708 ms and p95 12.562500 to 26.734750 ms. A 256-row write improves slightly, but the large-batch target does not justify additional worker result ownership complexity.",
+        "earlierMixedProbe": "The main harness also retains an earlier 15-sample baseline/prototype probe; it mixes statement-shape improvements and is not used to attribute this candidate. The separate final isolated artifact drives rejection.",
+        "restoration": "Current production service derives owner/collision maps and sorts protected rows in their original event-loop locations. The rejected prototype remains only at its explicitly temporary path for reproduction."
+      },
+      "limits": [
+        "Heartbeat measurements include CPython GIL/thread scheduling and do not model production traffic. No SQL/network work occurs in this isolated probe.",
+        "Original worker dispatch thresholds, ownership/collision validation and physical write ordering are retained. Prototype resource savings were not dependable enough."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-cache-preparation-final.py",
+        "harness": "/private/tmp/sarj-wiki-perf-round6-cache-preparation-final.py",
+        "measurementArtifact": "/private/tmp/sarj-wiki-perf-round6-cache-preparation-final.json",
+        "prerequisites": [
+          "The temporary harness and saved baseline/prototype modules listed in validation.reproductionArtifacts are required; these timing commands are not repository-only reproductions.",
+          "Use the existing locked backend/.venv (Python 3.14.7), repository import path, and owned PostgreSQL 18.6 database wiki_round6_cache_bench at 127.0.0.1:15488.",
+          "The shared guard serializes CPU/SQL probes across agents; no lock is held during the ordinary scoped tests."
+        ],
+        "seedDefinition": "Business data is deterministic (explicit counts and f-string identifiers in each workload). Fresh Fernet keys and UUID7 fixture owners are generated for each run, shared by each before/after pair, and are not benchmark tuning seeds. No business-data PRNG is used.",
+        "sampleDefinition": "Before/after order alternates per sample after three warmups unless a semantic witness is specified. medianMs is the sample median; p95Ms is sorted_samples[int(0.95*(n-1))]. Batched results are elapsed time divided by batch count. Timing is local fixture/resource evidence, not controlled production latency.",
+        "prototype": "/private/tmp/sarj-wiki-perf-round6-cache-preparation-prototype.py"
+      },
+      "validation": [
+        "Retained public cache service tests and real transaction/ordering tests pass after full production reversion.",
+        "Temporary prototype executed with real crypto and deterministic injected session."
+      ]
+    },
+    {
+      "id": "round6-cache-06",
+      "candidate": "Retain at most eight namespace HMAC prefix seed tuples per immutable protector for repeated small lookups.",
+      "outcome": "accepted",
+      "status": "complete",
+      "method": "Cache namespace-only HMAC seeds per immutable key configuration; clone a seed for each length-delimited logical suffix. Apply it to physical_keys and batches below eight. Prototype extension to larger batches was measured and reverted; batches of at least eight keep original per-call prefix setup.",
+      "workload": {
+        "retainedSmallScope": "Compare one and three rotation keys; physical_keys on drive.list/user:絵📚 (41 pairs of 200 calls); physical_keys_many sizes 1,8,256 with lookup-{i}:絵 (41 pairs of 30 calls). Warm namespace ownership/Unicode checks exercise drive.list,絵📚 and namespace-{i}, i=0..19.",
+        "revertedBulkExtension": "Main harness bulk-seed prototype uses 1 or 3 keys, sizes 1,8,256, same logical strings,41 pairs of 30 calls; namespaces drive.list,template.catalog,絵📚 and evict-{i}, i=0..19."
+      },
+      "evidence": {
+        "finalSmallOnlyImplementation": {
+          "1-single": {
+            "before": {
+              "medianMs": 0.00142708,
+              "p95Ms": 0.001495,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.001007915,
+              "p95Ms": 0.0011077049999999998,
+              "samples": 41
+            },
+            "batch": 200
+          },
+          "1-many-1": {
+            "before": {
+              "medianMs": 0.0014722,
+              "p95Ms": 0.0015069333333333332,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.0011027666666666668,
+              "p95Ms": 0.0011222333333333334,
+              "samples": 41
+            },
+            "batch": 30
+          },
+          "1-many-8": {
+            "before": {
+              "medianMs": 0.008258333333333333,
+              "p95Ms": 0.008504166666666667,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.0082361,
+              "p95Ms": 0.008416666666666666,
+              "samples": 41
+            },
+            "batch": 30
+          },
+          "1-many-256": {
+            "before": {
+              "medianMs": 0.23853056666666667,
+              "p95Ms": 0.24584026666666667,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.23938473333333335,
+              "p95Ms": 0.2465375,
+              "samples": 41
+            },
+            "batch": 30
+          },
+          "1-namespaceCache": {
+            "hits": 9436,
+            "misses": 23,
+            "maxsize": 8,
+            "currsize": 8
+          },
+          "3-single": {
+            "before": {
+              "medianMs": 0.0032400000000000003,
+              "p95Ms": 0.0034612500000000004,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.0025435400000000004,
+              "p95Ms": 0.002637705,
+              "samples": 41
+            },
+            "batch": 200
+          },
+          "3-many-1": {
+            "before": {
+              "medianMs": 0.0034152666666666665,
+              "p95Ms": 0.0035375,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.0027055333333333336,
+              "p95Ms": 0.0027277666666666667,
+              "samples": 41
+            },
+            "batch": 30
+          },
+          "3-many-8": {
+            "before": {
+              "medianMs": 0.021286133333333335,
+              "p95Ms": 0.022047233333333336,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.021286133333333335,
+              "p95Ms": 0.022181933333333334,
+              "samples": 41
+            },
+            "batch": 30
+          },
+          "3-many-256": {
+            "before": {
+              "medianMs": 0.6122680666666667,
+              "p95Ms": 0.6300041666666666,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.6147333333333334,
+              "p95Ms": 0.6422361,
+              "samples": 41
+            },
+            "batch": 30
+          },
+          "3-namespaceCache": {
+            "hits": 9436,
+            "misses": 23,
+            "maxsize": 8,
+            "currsize": 8
+          }
+        },
+        "discardedLargerBatchPrototype": {
+          "1-1": {
+            "before": {
+              "medianMs": 0.0014958333333333332,
+              "p95Ms": 0.0015152666666666667,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.0011375,
+              "p95Ms": 0.0011527666666666667,
+              "samples": 41
+            },
+            "batch": 30
+          },
+          "1-8": {
+            "before": {
+              "medianMs": 0.008438866666666666,
+              "p95Ms": 0.024569433333333335,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.007870833333333334,
+              "p95Ms": 0.01975973333333333,
+              "samples": 41
+            },
+            "batch": 30
+          },
+          "1-256": {
+            "before": {
+              "medianMs": 0.2506430666666667,
+              "p95Ms": 0.30375556666666664,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.2672777666666667,
+              "p95Ms": 0.30630276666666667,
+              "samples": 41
+            },
+            "batch": 30
+          },
+          "1-boundedCache": {
+            "hits": 3701,
+            "misses": 24,
+            "maxsize": 8,
+            "currsize": 8
+          },
+          "3-1": {
+            "before": {
+              "medianMs": 0.0033222333333333335,
+              "p95Ms": 0.0033569333333333335,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.002618066666666667,
+              "p95Ms": 0.0026444333333333334,
+              "samples": 41
+            },
+            "batch": 30
+          },
+          "3-8": {
+            "before": {
+              "medianMs": 0.0217,
+              "p95Ms": 0.03372916666666667,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.019743033333333333,
+              "p95Ms": 0.0327986,
+              "samples": 41
+            },
+            "batch": 30
+          },
+          "3-256": {
+            "before": {
+              "medianMs": 0.7251291666666667,
+              "p95Ms": 1.0969027666666666,
+              "samples": 41
+            },
+            "after": {
+              "medianMs": 0.7207555666666666,
+              "p95Ms": 0.9209972333333333,
+              "samples": 41
+            },
+            "batch": 30
+          },
+          "3-boundedCache": {
+            "hits": 3701,
+            "misses": 24,
+            "maxsize": 8,
+            "currsize": 8
+          }
+        },
+        "decision": "Retained single-key median with 1 key: 0.00142708 to 0.001007915 ms and with 3 keys: 0.003240 to 0.00254354 ms; size 1 batches: 0.0014722 to 0.001102767 ms and 0.003415267 to 0.002705533 ms. Final 8/256 branches are unchanged and effectively flat. The all-batch prototype at 1 key/256 lookups regressed 0.2506431 to 0.2672778 ms ; 3 keys/256 lookups was essentially flat 0.725129 to 0.720756 ms. Retain only the clearly supported small scope.",
+        "semanticEvidence": "Public tests cover 20+ namespaces, ambiguous length-delimited boundary pairs, Unicode, new rotation configurations, current-first key ordering, include_rotation=False and threaded reads. Cache maxsize=8/currsize=8 in the final harness, at most 24 seed objects with three rotation keys; logical keys and values never enter the prefix cache."
+      },
+      "limits": [
+        "This extends prefix reuse across calls for small lookups; prior within-one-bulk-call namespace prefix reuse is retained and not recounted.",
+        "No full lookup result is cached. Every suffix is fresh, seeds are copied before mutation, HKDF domain separation is unchanged, and a new protector/rotation configuration owns fresh seeds.",
+        "Microbenchmarks show a small CPU benefit only; no larger-batch or production latency benefit is claimed."
+      ],
+      "changedPaths": [
+        "backend/app/cache/protection.py",
+        "backend/tests/test_round6_cache_reuse.py"
+      ],
+      "repro": {
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-cache-hmac-final.py",
+        "harness": "/private/tmp/sarj-wiki-perf-round6-cache-hmac-final.py",
+        "measurementArtifact": "/private/tmp/sarj-wiki-perf-round6-cache-hmac-final.json",
+        "prerequisites": [
+          "The temporary harness and saved baseline/prototype modules listed in validation.reproductionArtifacts are required; these timing commands are not repository-only reproductions.",
+          "Use the existing locked backend/.venv (Python 3.14.7), repository import path, and owned PostgreSQL 18.6 database wiki_round6_cache_bench at 127.0.0.1:15488.",
+          "The shared guard serializes CPU/SQL probes across agents; no lock is held during the ordinary scoped tests."
+        ],
+        "seedDefinition": "Business data is deterministic (explicit counts and f-string identifiers in each workload). Fresh Fernet keys and UUID7 fixture owners are generated for each run, shared by each before/after pair, and are not benchmark tuning seeds. No business-data PRNG is used.",
+        "sampleDefinition": "Before/after order alternates per sample after three warmups unless a semantic witness is specified. medianMs is the sample median; p95Ms is sorted_samples[int(0.95*(n-1))]. Batched results are elapsed time divided by batch count. Timing is local fixture/resource evidence, not controlled production latency.",
+        "discardedExtensionCommand": "PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "discardedExtensionPrototype": "/private/tmp/sarj-wiki-perf-round6-cache-hmac-bulk-prototype.py"
+      },
+      "validation": [
+        "test_namespace_seeds_preserve_rotation_and_unicode_under_threaded_reads",
+        "Existing cache protection/dependency tests and scoped type checks passed."
+      ]
+    },
+    {
+      "id": "round6-cache-07",
+      "candidate": "Replace the shared singleflight result Future with the current leader caller Task.",
+      "outcome": "rejected",
+      "status": "complete",
+      "method": "Executable TaskOnly prototype maps the coalescing key to asyncio.current_task and shields follower waits. Compare with the current public Singleflight using gated inner work and extra outer caller work.",
+      "workload": "One leader and one follower, key=owned; inner work yields shared after an Event; outer leader then waits for a second Event and returns outer-shared. Observe follower completion/value before releasing outer work.",
+      "evidence": {
+        "before": {
+          "calls": 1,
+          "followerCompletedBeforeOuter": true,
+          "followerValue": "shared"
+        },
+        "prototype": {
+          "calls": 1,
+          "followerCompletedBeforeOuter": false,
+          "followerValue": "outer-shared"
+        },
+        "resourceIntent": "Prototype removes one dedicated shared result Future but makes followers wait for unrelated caller completion and returns the caller return value.",
+        "decision": "Current follower completes before outer work and returns shared; prototype follower stays pending and returns outer-shared. Both invoke inner work once, so coalescing count alone is insufficient.",
+        "restoration": "No changes retained in backend/app/sidebar/singleflight.py; baseline and final source are identical."
+      },
+      "limits": [
+        "Semantic witness rejects the allocation shortcut before latency measurement; it is a distinct task-only prototype, not the earlier retained follower-Future allocation improvement.",
+        "Original result ownership, shielding, leader failure/cancellation retirement and retry semantics remain intact."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "harness": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "measurementArtifact": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.json",
+        "prerequisites": [
+          "The temporary harness and saved baseline/prototype modules listed in validation.reproductionArtifacts are required; these timing commands are not repository-only reproductions.",
+          "Use the existing locked backend/.venv (Python 3.14.7), repository import path, and owned PostgreSQL 18.6 database wiki_round6_cache_bench at 127.0.0.1:15488.",
+          "The shared guard serializes CPU/SQL probes across agents; no lock is held during the ordinary scoped tests."
+        ],
+        "seedDefinition": "Business data is deterministic (explicit counts and f-string identifiers in each workload). Fresh Fernet keys and UUID7 fixture owners are generated for each run, shared by each before/after pair, and are not benchmark tuning seeds. No business-data PRNG is used.",
+        "sampleDefinition": "Before/after order alternates per sample after three warmups unless a semantic witness is specified. medianMs is the sample median; p95Ms is sorted_samples[int(0.95*(n-1))]. Batched results are elapsed time divided by batch count. Timing is local fixture/resource evidence, not controlled production latency.",
+        "prototype": "TaskOnly class inside the temporary main harness; Event order and return strings define the deterministic workload."
+      },
+      "validation": [
+        "Executable before/prototype semantic witness.",
+        "Existing test_singleflight.py suite passed."
+      ]
+    },
+    {
+      "id": "round6-cache-08",
+      "candidate": "Speculatively overlap bootstrap first-tree cache and document-icon reads on the existing request AsyncSession.",
+      "outcome": "rejected",
+      "status": "complete",
+      "method": "Execute the proposed concurrent public extras/sidebar reads with asyncio.gather on one owned PostgreSQL AsyncSession; compare sequential reads. Also run an injected session checkout witness that makes the ownership conflict explicit.",
+      "workload": "One fresh session, current user, PostgresExtrasService.list_doc_icons and PostgresSidebarCacheService.peek_drive_tree for the existing 1-file fixture. Sequential pair versus simultaneous pair; outcomes recorded by exception/result type. Fake witness has two gated reads on one owned session.",
+      "evidence": {
+        "before": {
+          "reads": 2,
+          "outcome": "success"
+        },
+        "prototype": {
+          "reads": 1,
+          "outcome": "concurrent request AsyncSession checkout"
+        },
+        "actualAsyncSession": {
+          "before": ["list", "CachedDriveTree"],
+          "prototype": ["list", "InterfaceError"]
+        },
+        "decision": "Actual sequential service reads return list and CachedDriveTree; overlap returns list and InterfaceError. Proposed overlap violates AsyncSession ownership rather than saving a safe critical-path roundtrip.",
+        "restoration": "No bootstrap/session concurrency changes retained; backend/app/bootstrap/service.py is unchanged."
+      },
+      "limits": [
+        "One real ownership witness is enough to reject the concurrency proposal; no latency benefit is claimed and no permission/read work is skipped.",
+        "Separate-session architectures would require a different design and evidence; they are outside this candidate. Earlier safe bootstrap transaction release remains unchanged."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "harness": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "measurementArtifact": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.json",
+        "prerequisites": [
+          "The temporary harness and saved baseline/prototype modules listed in validation.reproductionArtifacts are required; these timing commands are not repository-only reproductions.",
+          "Use the existing locked backend/.venv (Python 3.14.7), repository import path, and owned PostgreSQL 18.6 database wiki_round6_cache_bench at 127.0.0.1:15488.",
+          "The shared guard serializes CPU/SQL probes across agents; no lock is held during the ordinary scoped tests."
+        ],
+        "seedDefinition": "Business data is deterministic (explicit counts and f-string identifiers in each workload). Fresh Fernet keys and UUID7 fixture owners are generated for each run, shared by each before/after pair, and are not benchmark tuning seeds. No business-data PRNG is used.",
+        "sampleDefinition": "Before/after order alternates per sample after three warmups unless a semantic witness is specified. medianMs is the sample median; p95Ms is sorted_samples[int(0.95*(n-1))]. Batched results are elapsed time divided by batch count. Timing is local fixture/resource evidence, not controlled production latency.",
+        "prototype": "actual_session_witness(overlap=True) and session_witness in the temporary main harness."
+      },
+      "validation": [
+        "Actual PostgreSQL public-service witness plus deterministic injected ownership witness.",
+        "Existing bootstrap and sidebar transaction-release tests passed."
+      ]
+    },
+    {
+      "id": "round6-cache-09",
+      "candidate": "Remove the redundant gather child Task from an already-owned background singleflight refresh.",
+      "outcome": "accepted",
+      "status": "complete",
+      "method": "Await singleflight directly inside the existing provider refresh scope. A small ExitStack exception callback logs and suppresses only ordinary Exception failures after that scope resets; cancellation and other BaseExceptions propagate. Count tasks with an injected loop task factory and compare scheduling with the saved gather implementation.",
+      "workload": "Public service subclasses provide immediate empty refresh trees to isolate scheduler cost, drive refresh; 41 alternating pairs of 20 refresh calls after three warmups. Task factory counts tasks created during one refresh before/after.",
+      "evidence": {
+        "cpu": {
+          "before": {
+            "medianMs": 0.22874585,
+            "p95Ms": 0.7768979500000001,
+            "samples": 41
+          },
+          "after": {
+            "medianMs": 0.004197950000000001,
+            "p95Ms": 0.0325583,
+            "samples": 41
+          },
+          "batch": 20
+        },
+        "extraTasksBeforeAfter": [1, 0],
+        "semanticEvidence": "Public stale-cache paths schedule real background tasks using injected provider failures/blockers. Ordinary errors log only error_type with no exception object/traceback; CancelledError and a custom BaseException propagate, background bookkeeping retires work, and retry performs fresh provider work.",
+        "decision": "Extra inner tasks fall 1 to 0; isolated scheduler median 0.22874585 to 0.00419795 ms in the final guarded whole-harness run. Deterministic task count is the primary resource result."
+      },
+      "limits": [
+        "No provider, database or crypto latency is modeled in the scheduling microbenchmark; absolute scheduler medians vary with host load. No production latency claim.",
+        "An initial direct-await except Exception variant failed broad-exception lint and was replaced before retention; repairs and all repeated gate runs count zero.",
+        "The callback protocol adds a small helper to preserve the existing redacted failure contract without weakening cancellation or singleflight result ownership. Full integration gates remain parent-owned."
+      ],
+      "changedPaths": [
+        "backend/app/sidebar/cache.py",
+        "backend/tests/test_round6_sidebar_reuse.py"
+      ],
+      "repro": {
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "harness": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "measurementArtifact": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.json",
+        "prerequisites": [
+          "The temporary harness and saved baseline/prototype modules listed in validation.reproductionArtifacts are required; these timing commands are not repository-only reproductions.",
+          "Use the existing locked backend/.venv (Python 3.14.7), repository import path, and owned PostgreSQL 18.6 database wiki_round6_cache_bench at 127.0.0.1:15488.",
+          "The shared guard serializes CPU/SQL probes across agents; no lock is held during the ordinary scoped tests."
+        ],
+        "seedDefinition": "Business data is deterministic (explicit counts and f-string identifiers in each workload). Fresh Fernet keys and UUID7 fixture owners are generated for each run, shared by each before/after pair, and are not benchmark tuning seeds. No business-data PRNG is used.",
+        "sampleDefinition": "Before/after order alternates per sample after three warmups unless a semantic witness is specified. medianMs is the sample median; p95Ms is sorted_samples[int(0.95*(n-1))]. Batched results are elapsed time divided by batch count. Timing is local fixture/resource evidence, not controlled production latency."
+      },
+      "validation": [
+        "test_direct_background_refresh_preserves_redacted_failure_logging",
+        "test_direct_background_refresh_propagates_cancellation_and_allows_retry",
+        "test_direct_background_refresh_propagates_non_exception_interruption",
+        "Scoped Ruff/native Standards/mypy/ty and targeted basedpyright passed."
+      ]
+    },
+    {
+      "id": "round6-cache-10",
+      "candidate": "Memoize sequential folder-child responses within a sidebar service instance.",
+      "outcome": "rejected",
+      "status": "complete",
+      "method": "Executable MemoizedFolder public-service subclass stores folder results in a per-instance dictionary. Compare two sequential inventory reads around provider changes and a third read after fresh provider denial.",
+      "workload": "Folder initially contains f-0, provider then returns an empty inventory, and subsequently raises PermissionError. Same current service instance calls get_folder_children three times; original Singleflight continues to coalesce concurrent work only.",
+      "evidence": {
+        "before": {
+          "providerReads": 3,
+          "firstIds": ["f-0"],
+          "secondIds": [],
+          "currentProviderDenialObserved": true
+        },
+        "prototype": {
+          "providerReads": 1,
+          "firstIds": ["f-0"],
+          "secondIds": ["f-0"],
+          "currentProviderDenialObserved": false
+        },
+        "resourceIntent": "Memoization saves two provider reads but retains an obsolete child and hides a current provider denial.",
+        "decision": "Baseline performs 3 provider reads, returns [] on the second call and observes the current denial. Prototype performs 1 read, returns stale f-0 on the second call and does not observe the denial.",
+        "restoration": "No sequential folder response cache retained in production."
+      },
+      "limits": [
+        "Service lifetime alone is not a provider revision or invalidation protocol. This bounded semantic witness proves unsafe freshness/permission behavior before timing.",
+        "No fresh access checks, denial handling or provider fetches are hidden behind a TTL. Concurrent singleflight behavior remains unchanged."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "harness": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "measurementArtifact": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.json",
+        "prerequisites": [
+          "The temporary harness and saved baseline/prototype modules listed in validation.reproductionArtifacts are required; these timing commands are not repository-only reproductions.",
+          "Use the existing locked backend/.venv (Python 3.14.7), repository import path, and owned PostgreSQL 18.6 database wiki_round6_cache_bench at 127.0.0.1:15488.",
+          "The shared guard serializes CPU/SQL probes across agents; no lock is held during the ordinary scoped tests."
+        ],
+        "seedDefinition": "Business data is deterministic (explicit counts and f-string identifiers in each workload). Fresh Fernet keys and UUID7 fixture owners are generated for each run, shared by each before/after pair, and are not benchmark tuning seeds. No business-data PRNG is used.",
+        "sampleDefinition": "Before/after order alternates per sample after three warmups unless a semantic witness is specified. medianMs is the sample median; p95Ms is sorted_samples[int(0.95*(n-1))]. Batched results are elapsed time divided by batch count. Timing is local fixture/resource evidence, not controlled production latency.",
+        "prototype": "MemoizedFolder class and folder_witness inside the temporary main harness."
+      },
+      "validation": [
+        "Executable fresh inventory/current denial witness.",
+        "Existing sidebar folder and singleflight tests passed."
+      ]
+    }
+  ],
+  "validation": {
+    "qualifications": [
+      {
+        "command": "PATH=/Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin:$PATH UV_CACHE_DIR=/tmp/sarj-docs-uv-cache MYPY_CACHE_DIR=/dev/null WIKI_ROUND6_CACHE_DATABASE_URL=postgresql+asyncpg://postgres:wiki-perf-local-only@127.0.0.1:15488/wiki_round6_cache_bench backend/.venv/bin/python -m pytest -q backend/tests/test_cache_service.py backend/tests/test_cache_protection.py backend/tests/test_cache_dependencies.py backend/tests/test_sidebar_cache.py backend/tests/test_singleflight.py backend/tests/test_bootstrap.py backend/tests/test_round6_cache_reuse.py backend/tests/test_round6_sidebar_reuse.py backend/tests/test_round6_cache_postgres.py",
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010",
+        "outcome": "passed",
+        "result": "108 passed in 0.88s, including five real PostgreSQL tests with the owned DB explicitly enabled."
+      },
+      {
+        "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py backend/.venv/bin/ruff check backend/app/cache/protection.py backend/app/cache/service.py backend/app/extras/service.py backend/app/sidebar/cache.py backend/tests/test_cache_service.py backend/tests/test_sidebar_cache.py backend/tests/test_round6_cache_reuse.py backend/tests/test_round6_sidebar_reuse.py backend/tests/test_round6_cache_postgres.py",
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010",
+        "outcome": "passed",
+        "result": "All checks passed."
+      },
+      {
+        "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py backend/.venv/bin/ruff format --check backend/app/cache/protection.py backend/app/cache/service.py backend/app/extras/service.py backend/app/sidebar/cache.py backend/tests/test_cache_service.py backend/tests/test_sidebar_cache.py backend/tests/test_round6_cache_reuse.py backend/tests/test_round6_sidebar_reuse.py backend/tests/test_round6_cache_postgres.py",
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010",
+        "outcome": "passed",
+        "result": "9 files already formatted."
+      },
+      {
+        "command": "PATH=/Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin:$PATH UV_CACHE_DIR=/tmp/sarj-docs-uv-cache MYPY_CACHE_DIR=/dev/null backend/.venv/bin/python scripts/check_standards.py backend/app/cache/protection.py backend/app/cache/service.py backend/app/extras/service.py backend/app/sidebar/cache.py backend/tests/test_cache_service.py backend/tests/test_sidebar_cache.py backend/tests/test_round6_cache_reuse.py backend/tests/test_round6_sidebar_reuse.py backend/tests/test_round6_cache_postgres.py",
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010",
+        "outcome": "passed_with_existing_warning",
+        "result": "Exit 0; only pre-existing SARJ468 warning on the unchanged CachePSqlService constructor protector fallback. New private app imports/ambient monkeypatch/config suppressions were not introduced."
+      },
+      {
+        "command": "PATH=/Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin:$PATH UV_CACHE_DIR=/tmp/sarj-docs-uv-cache MYPY_CACHE_DIR=/dev/null .venv/bin/mypy app",
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "outcome": "passed",
+        "result": "Success: no issues found in 193 source files."
+      },
+      {
+        "command": "PATH=/Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin:$PATH UV_CACHE_DIR=/tmp/sarj-docs-uv-cache MYPY_CACHE_DIR=/dev/null .venv/bin/ty check app",
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "outcome": "passed",
+        "result": "All checks passed."
+      },
+      {
+        "command": "PATH=/Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin:$PATH UV_CACHE_DIR=/tmp/sarj-docs-uv-cache MYPY_CACHE_DIR=/dev/null .venv/bin/basedpyright -p pyrightconfig.json",
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "outcome": "failed_other_agent_in_progress_fixture",
+        "result": "At this earlier check, one dict invariance error in tests/bulk_round6_support.py:202, owned by the bulk agent; no caching diagnostics. Parent was notified and owns final full gate."
+      },
+      {
+        "command": "PATH=/Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin:$PATH UV_CACHE_DIR=/tmp/sarj-docs-uv-cache MYPY_CACHE_DIR=/dev/null python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/basedpyright -p pyrightconfig.json app/cache/protection.py app/cache/service.py app/extras/service.py app/sidebar/cache.py tests/test_cache_service.py tests/test_sidebar_cache.py tests/test_round6_cache_reuse.py tests/test_round6_sidebar_reuse.py tests/test_round6_cache_postgres.py",
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "outcome": "passed",
+        "result": "0 errors, 0 warnings, 0 notes across all nine changed files."
+      },
+      {
+        "command": "git diff --check -- backend/app/cache/protection.py backend/app/cache/service.py backend/app/extras/service.py backend/app/sidebar/cache.py backend/tests/test_cache_service.py backend/tests/test_sidebar_cache.py backend/tests/test_round6_cache_reuse.py backend/tests/test_round6_sidebar_reuse.py backend/tests/test_round6_cache_postgres.py",
+        "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010",
+        "outcome": "passed",
+        "result": "Exit 0, no whitespace errors."
+      }
+    ],
+    "priorCandidateReview": {
+      "index": "/private/tmp/sarj-wiki-perf-round6-prior-candidates.json",
+      "directEntriesRead": 309,
+      "detailedRecordsRead": [
+        "docs/performance.json",
+        "docs/performance/round5-20261011.json"
+      ],
+      "excludedPriorWork": [
+        "Single-cache parameterized SELECT storage-r5-02",
+        "Existing overlay UNION batching",
+        "Existing bulk array INSERT/tiny threshold/JOIN UNNEST predicates",
+        "Existing exact PostgreSQL tuple-version suppression and decoded-node budget",
+        "Existing within-bulk-call HMAC namespace prefix reuse",
+        "Existing large crypto offload/bytes serialization",
+        "Existing follower Future allocation/cancellation shielding",
+        "Existing safe bootstrap read transaction release"
+      ],
+      "counting": "Tests, formatting, typing repairs, rejection prototype cleanup, repeat measurements and changed workload sizes count zero. Related complete read statement shapes are grouped as one candidate."
+    },
+    "environment": {
+      "python": "3.14.7 existing locked backend/.venv",
+      "postgresql": "18.6 owned loopback 127.0.0.1:15488, database wiki_round6_cache_bench only",
+      "coordination": "All paired CPU/SQL benchmarks and remaining broad lint/type qualifications used the shared flock guard.",
+      "toolFallback": "Normal pinned uv tool initialization could not create a forbidden Git marker through the shared UV cache symlink. Parent approved existing locked .venv tools; shared cache contents were not altered."
+    },
+    "reproductionArtifacts": [
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "sha256": "53a2e3670ef419d91fc221581bd8bd35fbe5c000e46e836755b83de8498e4c47"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-hmac-final.py",
+        "sha256": "5aa844433909aeb1e39566ccf9539d3be65e27af2518608f83808d524d9b7175"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-preparation-final.py",
+        "sha256": "5616a8c172c8286aedd13e0485959433a9a694715d1e632b0fac5b84b51564a8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-preparation-prototype.py",
+        "sha256": "364c216b325e10a6c0fc0e66c046b4178276292efe624b6556b6c50f23d5fa67"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-hmac-bulk-prototype.py",
+        "sha256": "d6c9db5b222dc9fa7c44562522aa4df4008970eaf918c085ff22297881db263f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-baseline/backend_app_cache_service.py",
+        "sha256": "a7e821c1ccb6d99cdfd393496b28a6f529689f422505abe522c0c143eb7b43d3"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-baseline/backend_app_cache_protection.py",
+        "sha256": "72fb2d203d1c6878cd6930648c84b6777da156a849af8df89c2e6c334650d1c4"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-baseline/backend_app_sidebar_cache.py",
+        "sha256": "7cf1023e8779559b0408f45849daa9c03e592b01016db96ad7c28393240fd638"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-baseline/backend_app_sidebar_singleflight.py",
+        "sha256": "d3d7c2c6d81ed38156549f015ec7db30890913632a98b52c6fbe53b142984d59"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-baseline/backend_app_bootstrap_service.py",
+        "sha256": "9f589b4871c9f444631ddc95b8450a332ec6f41abc8c7acb091110b686735a21"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-baseline/backend_app_extras_service.py",
+        "sha256": "e75f677f7b696d4a16fcf49518022bca150ec885ba0cbf066c2f9df79af10b77"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-benchmark-guard.py",
+        "sha256": "7e7f57f1e05763616655e424ee04875cdcb0718b0be45c4b48cd6221f800029c"
+      }
+    ],
+    "measurementArtifacts": [
+      "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.json",
+      "/private/tmp/sarj-wiki-perf-round6-cache-hmac-final.json",
+      "/private/tmp/sarj-wiki-perf-round6-cache-preparation-final.json"
+    ],
+    "fixtureOwnership": "Created a new owned wiki_round6_cache_bench database; harness creates only seven bounded fixture tables via metadata.create_all. Cleanup deletes only process/fixture-owned user rows and known physical ciphertext keys. No existing databases dropped; wiki_polish29_qa untouched.",
+    "freshnessAndSafety": "No authorization/session/Google permission check changed, no fresh access metadata cached, no logical keys/value cache added in prefix reuse, decoder/key rotation remains scoped, no mutation admission/transaction ownership relaxed, and cancellation/BaseException/error redaction verified.",
+    "sourceIntegrity": "All six saved baseline source modules compared byte-for-byte with git show of the baseline revision. Singleflight/bootstrap production files unchanged. Four protected transform files untouched.",
+    "finalIntegration": "Parent owns the full pinned gate, complete-repository typecheck, build, release and live verification. This agent did not run full make check, builds/generation, migrations, commits or pushes.",
+    "evidenceLimits": "All timings are paired local fixture/resource measurements, not production latency claims. The report includes medians,p95,sample counts, exact temporary harness commands and negative evidence. Raw measurements remain in /private/tmp; this report contains aggregate evidence only."
+  }
+}

@@ -90,6 +90,12 @@ export function PreferencesDialog({ onOpenChange, open }: PreferencesDialogProps
           </section>
         </div>
 
+        {setPreferences.isPending ? (
+          <p aria-live="polite" className="text-muted-foreground text-xs" role="status">
+            Saving preferences…
+          </p>
+        ) : null}
+
         <DialogFooter>
           <DialogClose asChild>
             <Button type="button">Done</Button>

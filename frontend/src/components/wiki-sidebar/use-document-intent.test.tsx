@@ -90,6 +90,18 @@ describe("predictive document intent", () => {
     expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
   });
 
+  it("takes one current navigator snapshot at each iframe-policy boundary", async () => {
+    const connection = vi.fn(() => ({ effectiveType: "4g", saveData: false }));
+    Object.defineProperty(navigator, "connection", { configurable: true, get: connection });
+    renderHarness(root);
+    dispatchPointer(getLink(container), "pointerover", { pointerType: "mouse" });
+    advance(DOCUMENT_INTENT_PREWARM_MS);
+    await flushAsync();
+
+    expect(connection).toHaveBeenCalledTimes(4);
+    expect(useDocViewerStore.getState().prewarm).toMatchObject({ fileId: "doc-1" });
+  });
+
   it("keeps the initial intent alive while hover and focus overlap", () => {
     renderHarness(root);
     const link = getLink(container);

@@ -318,6 +318,9 @@ class GoogleFilesService(FilesService):
         if len(file_ids) <= _FILE_GET_BATCH_SIZE:
             return await asyncio.to_thread(read, file_ids)
         failed = asyncio.Event()
+        chunk_count = (len(file_ids) + _FILE_GET_BATCH_SIZE - 1) // _FILE_GET_BATCH_SIZE
+        pending = iter(enumerate(batched(file_ids, _FILE_GET_BATCH_SIZE, strict=False)))
+        chunks: list[dict[FileId, Record] | BaseException | None] = [None] * chunk_count
 
         async def run_chunk(chunk: tuple[FileId, ...]) -> dict[FileId, Record]:
             async with self._metadata_slots:
@@ -332,12 +335,20 @@ class GoogleFilesService(FilesService):
                     raise result
                 return result
 
-        async def read_chunk(chunk: tuple[FileId, ...]) -> dict[FileId, Record]:
-            worker = asyncio.create_task(run_chunk(chunk))
+        async def run_chunks() -> None:
+            for index, chunk in pending:
+                try:
+                    chunks[index] = await run_chunk(chunk)
+                except BaseException as exc:
+                    chunks[index] = exc
+                    raise
+
+        async def read_chunks() -> None:
+            worker = asyncio.create_task(run_chunks())
             self._metadata_reads.add(worker)
             worker.add_done_callback(self._finish_metadata_read)
             try:
-                return await asyncio.shield(worker)
+                await asyncio.shield(worker)
             except asyncio.CancelledError:
                 failed.set()
                 raise
@@ -345,15 +356,19 @@ class GoogleFilesService(FilesService):
         # Each worker owns its thread-local Google HTTP client. Publish nothing
         # until all admitted batches finish, and stop queued work on failure.
         # Canceling a waiter cannot release a running thread's concurrency slot.
-        chunks = await asyncio.gather(
-            *(read_chunk(chunk) for chunk in batched(file_ids, _FILE_GET_BATCH_SIZE, strict=False)),
+        owners = await asyncio.gather(
+            *(read_chunks() for _ in range(min(chunk_count, _FILE_GET_BATCH_CONCURRENCY))),
             return_exceptions=True,
         )
         records: dict[FileId, Record] = {}
         for result in chunks:
             if isinstance(result, BaseException):
                 raise result
-            records.update(result)
+            if result is not None:
+                records.update(result)
+        for owner in owners:
+            if isinstance(owner, BaseException):
+                raise owner
         return records
 
     def _finish_metadata_read(self, task: asyncio.Task[Any]) -> None:

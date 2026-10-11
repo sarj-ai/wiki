@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections.abc import Awaitable, Iterable
+from collections.abc import Awaitable, Iterable, Iterator
 from dataclasses import dataclass
 from heapq import nsmallest
-from itertools import islice
-import json
+from itertools import chain, islice
 import re
 from types import MappingProxyType
 from typing import Annotated, override
@@ -118,6 +117,19 @@ class GeneratedReorganization(BaseModel):
     ]
 
 
+class _ReorganizationPromptContext(BaseModel):
+    current_destination: ProposalDestination
+    document: ReorganizationEvidence
+    folders: list[ProposalDestination]
+
+
+class _ProposalPromptContext(BaseModel):
+    description: str
+    file_type: SmartFileType
+    folders: list[ProposalDestination]
+    templates: list[TemplateRead]
+
+
 class ReorganizationGenerator(ABC):
     @abstractmethod
     async def generate(
@@ -130,17 +142,27 @@ class ReorganizationGenerator(ABC):
 
 
 class VertexReorganizationGenerator(ReorganizationGenerator):
-    def __init__(self, *, project: str | None = None, model: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        project: str | None = None,
+        model: str | None = None,
+        client: genai.Client | None = None,
+    ) -> None:
         resolved_project = project or settings.GOOGLE_CLOUD_PROJECT
         self._model = model or settings.GEMINI_REORGANIZATION_MODEL
         self._client = (
-            genai.Client(
-                vertexai=True,
-                project=resolved_project,
-                location=settings.GEMINI_LOCATION,
+            client
+            if client is not None
+            else (
+                genai.Client(
+                    vertexai=True,
+                    project=resolved_project,
+                    location=settings.GEMINI_LOCATION,
+                )
+                if resolved_project is not None
+                else None
             )
-            if resolved_project is not None
-            else None
         )
 
     @override
@@ -286,15 +308,19 @@ class ProposalGenerator(ABC):
 
 
 class VertexProposalGenerator(ProposalGenerator):
-    def __init__(self) -> None:
+    def __init__(self, *, client: genai.Client | None = None) -> None:
         self._client = (
-            genai.Client(
-                vertexai=True,
-                project=settings.GOOGLE_CLOUD_PROJECT,
-                location=settings.GEMINI_LOCATION,
+            client
+            if client is not None
+            else (
+                genai.Client(
+                    vertexai=True,
+                    project=settings.GOOGLE_CLOUD_PROJECT,
+                    location=settings.GEMINI_LOCATION,
+                )
+                if settings.GOOGLE_CLOUD_PROJECT is not None
+                else None
             )
-            if settings.GOOGLE_CLOUD_PROJECT is not None
-            else None
         )
 
     @override
@@ -417,12 +443,9 @@ def _build_reorganization_prompt(
     current: ProposalDestination,
     folders: list[ProposalDestination],
 ) -> str:
-    context = {
-        "current_destination": current.model_dump(mode="json"),
-        "document": evidence.model_dump(mode="json"),
-        "folders": [folder.model_dump(mode="json") for folder in folders],
-    }
-    serialized_context = json.dumps(context, ensure_ascii=False, separators=(",", ":"))
+    serialized_context = _ReorganizationPromptContext(
+        current_destination=current, document=evidence, folders=folders
+    ).model_dump_json(ensure_ascii=False)
     instructions = (
         "Choose the best folder for this existing Sarj Wiki file using its available content, title, "
         "description, modified time, and the meaning of each complete folder path. Empty content "
@@ -524,13 +547,12 @@ def _build_prompt(
     folders: list[ProposalDestination],
     templates: list[TemplateRead],
 ) -> str:
-    context = {
-        "description": request.description,
-        "file_type": request.file_type,
-        "folders": [folder.model_dump(mode="json") for folder in folders],
-        "templates": [template.model_dump(mode="json") for template in templates],
-    }
-    serialized_context = json.dumps(context, ensure_ascii=False, separators=(",", ":"))
+    serialized_context = _ProposalPromptContext(
+        description=request.description,
+        file_type=request.file_type,
+        folders=folders,
+        templates=templates,
+    ).model_dump_json(ensure_ascii=False)
     instructions = (
         "Recommend concise metadata and placement for a Sarj Wiki file. "
         "Use the description's complete meaning and phrases, not an isolated overlapping word. "
@@ -562,12 +584,15 @@ def smart_create_candidates(
     )
     if invoking_drive is None:
         return []
-    destinations = _smart_create_destinations(invoking_drive, trees)
-
-    destinations = _destinations_within_candidate_depth(
-        destinations,
-        invoking_folder_id=request.invoking_folder_id,
-        candidate_depth=candidate_depth,
+    destinations = (
+        _smart_create_destinations(invoking_drive, trees)
+        if candidate_depth is None
+        else _smart_create_bounded_destinations(
+            invoking_drive,
+            trees,
+            invoking_folder_id=request.invoking_folder_id,
+            candidate_depth=candidate_depth,
+        )
     )
     terms = frozenset(_WORD_PATTERN.findall(request.description.casefold()))
     return nsmallest(
@@ -600,31 +625,60 @@ def _smart_create_destinations(
     return destinations
 
 
-def _destinations_within_candidate_depth(
-    destinations: list[ProposalDestination],
+def _smart_create_bounded_destinations(
+    drive: DriveSummary,
+    trees: list[DriveTree],
     *,
     invoking_folder_id: FileId | None,
-    candidate_depth: int | None,
+    candidate_depth: int,
 ) -> list[ProposalDestination]:
-    if candidate_depth is None:
-        return destinations
-    by_id = {destination.folder_id: destination for destination in destinations}
-    invoking = by_id.get(invoking_folder_id) if invoking_folder_id is not None else None
-    invoking_depth = len(invoking.folder_path) - 1 if invoking is not None else 0
+    paths = chain(
+        [(FileId(drive.id), [drive.name])],
+        (
+            item
+            for tree in trees
+            if tree.drive_id == drive.id
+            for item in _tree_folder_paths(drive, tree)
+        ),
+    )
+    retained = (
+        ((folder_id, path) for folder_id, path in paths if len(path) - 1 <= candidate_depth)
+        if invoking_folder_id is None
+        else _paths_within_candidate_depth(
+            list(paths), invoking_folder_id=invoking_folder_id, candidate_depth=candidate_depth
+        )
+    )
+    return [
+        ProposalDestination(
+            folder_id=folder_id,
+            drive_id=drive.id,
+            drive_name=drive.name,
+            folder_path=path,
+        )
+        for folder_id, path in retained
+    ]
+
+
+def _paths_within_candidate_depth(
+    paths: list[tuple[FileId, list[str]]],
+    *,
+    invoking_folder_id: FileId,
+    candidate_depth: int,
+) -> list[tuple[FileId, list[str]]]:
+    by_id = dict(paths)
+    invoking = by_id.get(invoking_folder_id)
+    invoking_depth = len(invoking) - 1 if invoking is not None else 0
     maximum_depth = invoking_depth + candidate_depth
     retained_ids: set[FileId] = set()
     if invoking is not None:
-        invoking_path = tuple(part.casefold() for part in invoking.folder_path)
+        invoking_path = tuple(part.casefold() for part in invoking)
         retained_ids.update(
-            destination.folder_id
-            for destination in destinations
-            if _is_path_prefix(destination.folder_path, invoking_path)
+            folder_id for folder_id, path in paths if _is_path_prefix(path, invoking_path)
         )
     return [
-        destination
-        for destination in destinations
-        if len(destination.folder_path) - 1 <= maximum_depth
-        or destination.folder_id in retained_ids
+        (folder_id, path)
+        for folder_id, path in paths
+        if len(path) - 1 <= maximum_depth or folder_id in retained_ids
     ]
 
 
@@ -634,16 +688,55 @@ def _is_path_prefix(path: list[str], invoking_path: tuple[str, ...]) -> bool:
 
 
 def _tree_destinations(drive: DriveSummary, tree: DriveTree) -> list[ProposalDestination]:
-    by_id = {folder.id: folder for folder in tree.folders}
     return [
         ProposalDestination(
-            folder_id=folder.id,
+            folder_id=folder_id,
             drive_id=drive.id,
             drive_name=drive.name,
-            folder_path=[drive.name, *_folder_ancestry(folder, by_id)],
+            folder_path=path,
         )
-        for folder in tree.folders
+        for folder_id, path in _tree_folder_paths(drive, tree)
     ]
+
+
+def _tree_folder_paths(drive: DriveSummary, tree: DriveTree) -> Iterator[tuple[FileId, list[str]]]:
+    by_id = {folder.id: folder for folder in tree.folders}
+    parent_ids = {folder.parent_id for folder in tree.folders if folder.parent_id is not None}
+    paths: dict[FileId, list[str]] = {}
+    for folder in tree.folders:
+        if folder.parent_id is None or folder.parent_id not in by_id:
+            yield folder.id, [drive.name, folder.name]
+        else:
+            ancestry = _memoized_folder_ancestry(folder, by_id, parent_ids=parent_ids, paths=paths)
+            yield folder.id, [drive.name, *ancestry]
+
+
+def _memoized_folder_ancestry(
+    folder: DriveNode,
+    by_id: dict[FileId, DriveNode],
+    *,
+    parent_ids: set[FileId],
+    paths: dict[FileId, list[str]],
+) -> list[str]:
+    if folder is not by_id[folder.id]:
+        return _folder_ancestry(folder, by_id)
+    pending: list[DriveNode] = []
+    visited: set[FileId] = set()
+    current: DriveNode | None = folder
+    while current is not None and current.id not in paths:
+        if current.id in visited:
+            break
+        pending.append(current)
+        visited.add(current.id)
+        current = by_id.get(current.parent_id) if current.parent_id is not None else None
+    if current is not None and current.id in visited:
+        return _folder_ancestry(folder, by_id)
+    path = paths[current.id] if current is not None else []
+    for ancestor in reversed(pending):
+        path = [*path, ancestor.name]
+        if ancestor.id in parent_ids:
+            paths[ancestor.id] = path
+    return path
 
 
 def _folder_ancestry(folder: DriveNode, by_id: dict[FileId, DriveNode]) -> list[str]:
@@ -742,10 +835,12 @@ def _has_explicit_sensitive_destination_intent(
     description: str,
     destination: ProposalDestination,
 ) -> bool:
-    description_terms = frozenset(_WORD_PATTERN.findall(description.casefold()))
     path_terms = frozenset(_WORD_PATTERN.findall(" ".join(destination.folder_path).casefold()))
     sensitive_categories = path_terms & _SENSITIVE_DESTINATION_INTENT_TERMS.keys()
-    return not sensitive_categories or any(
+    if not sensitive_categories:
+        return True
+    description_terms = frozenset(_WORD_PATTERN.findall(description.casefold()))
+    return any(
         description_terms & _SENSITIVE_DESTINATION_INTENT_TERMS[category]
         for category in sensitive_categories
     )

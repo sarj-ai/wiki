@@ -10,6 +10,7 @@ from typing import NamedTuple, Self
 from cryptography.fernet import Fernet
 from pydantic import JsonValue, ValidationError
 import pytest
+from sqlalchemy import Select
 from sqlalchemy.sql import ClauseElement
 
 from app.cache.protection import CacheEntryProtector
@@ -41,7 +42,7 @@ class _Session:
     ) -> _Result:
         self.statements.append(
             statement.params(parameters)
-            if isinstance(statement, ClauseElement) and parameters is not None
+            if isinstance(statement, Select) and parameters is not None
             else statement
         )
         return next(self._results, _Result())

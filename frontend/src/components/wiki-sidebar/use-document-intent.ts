@@ -176,7 +176,7 @@ function allowsSpeculation(): boolean {
 }
 
 function allowsIframeIntentSpeculation(): boolean {
-  if (!allowsSpeculation()) return false;
+  if (document.visibilityState !== "visible") return false;
   return allowsIframeSpeculation(readNavigatorHints(navigator));
 }
 

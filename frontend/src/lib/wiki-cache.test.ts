@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { wikiKeys } from "@/hooks/use-wiki-tree";
 import {
@@ -11,6 +11,8 @@ import {
 } from "@/lib/wiki-cache";
 import type { DriveNode, DriveTree, FileResponse } from "@/types/wiki";
 import { MIME_DOC, MIME_FOLDER, MIME_SHEET, MIME_SHORTCUT } from "@/types/wiki";
+
+import { activateMutationSession, retireMutationSession } from "./mutation-session";
 
 function makeFile(overrides: Partial<FileResponse> = {}): FileResponse {
   return {
@@ -116,6 +118,42 @@ describe("injectNewFileIntoCaches", () => {
     injectNewFileIntoCaches(qc, makeFile({ id: "dup" }));
 
     expect(qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"))).toHaveLength(1);
+  });
+
+  it("reconciles duplicate physical IDs in place without discarding shortcut metadata", () => {
+    const qc = new QueryClient();
+    const node = makeNode({
+      id: "dup",
+      mimeType: MIME_SHORTCUT,
+      parentId: "folder-a",
+      shortcutTargetId: "target",
+      shortcutTargetMimeType: MIME_DOC,
+    });
+    const sibling = makeNode({ id: "sibling" });
+    const nodes = [node, sibling, { ...node }];
+    qc.setQueryData(wikiKeys.folderFiles("folder-a"), nodes);
+    qc.setQueryData<DriveTree>(wikiKeys.driveTree("drive-1"), {
+      driveId: "drive-1",
+      files: nodes,
+      filesComplete: false,
+      folders: [],
+    });
+
+    injectNewFileIntoCaches(
+      qc,
+      makeFile({ id: "dup", mimeType: MIME_SHORTCUT, name: "Confirmed" }),
+    );
+
+    for (const updated of [
+      qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a")),
+      qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files,
+    ]) {
+      expect(updated?.map((item) => item.id)).toEqual(["dup", "sibling"]);
+      expect(updated?.[0]).toMatchObject({ name: "Confirmed", shortcutTargetId: "target" });
+      expect(updated?.[1]).toBe(sibling);
+    }
+    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.filesComplete).toBe(false);
+    qc.clear();
   });
 
   it("splices nested files into tree.files with their parent retained", () => {
@@ -320,6 +358,198 @@ describe("removeFileFromCaches", () => {
 });
 
 describe("optimisticMoveFile", () => {
+  it("redacts read-cancellation failures without interrupting a local move patch", async () => {
+    const qc = new QueryClient();
+    const node = makeNode({ id: "moving" });
+    const key = wikiKeys.folderFiles("folder-b");
+    qc.setQueryData<DriveNode[]>(key, []);
+    const providerError = new Error("private provider response body");
+    const cancel = vi.spyOn(qc, "cancelQueries").mockRejectedValue(providerError);
+    const warning = vi.spyOn(console, "warn").mockImplementation(vi.fn<() => void>());
+    try {
+      const rollback = optimisticMoveFile(
+        qc,
+        node,
+        { driveId: "drive-1", parentFolderId: "folder-b" },
+        { driveId: "drive-1", parentFolderId: "folder-a" },
+      );
+      await Promise.resolve();
+      expect(qc.getQueryData<DriveNode[]>(key)?.[0]?.id).toBe("moving");
+      expect(warning).toHaveBeenCalledWith("Cache read cancellation failed", "Error");
+      expect(warning.mock.calls.flat()).not.toContain(providerError);
+      expect(warning.mock.calls.flat()).not.toContain(providerError.message);
+      rollback.commit();
+    } finally {
+      warning.mockRestore();
+      cancel.mockRestore();
+      qc.clear();
+    }
+  });
+
+  it("keeps equal external manual move confirmations authoritative under structural sharing", () => {
+    const qc = new QueryClient();
+    const node = makeNode({ id: "moving" });
+    const key = wikiKeys.driveTree("drive-1");
+    qc.setQueryData<DriveTree>(key, {
+      driveId: "drive-1",
+      files: [node],
+      filesComplete: true,
+      folders: [],
+    });
+    const rollback = optimisticMoveFile(
+      qc,
+      node,
+      { driveId: "drive-1", parentFolderId: "folder-b" },
+      { driveId: "drive-1", parentFolderId: undefined },
+    );
+    const current = qc.getQueryData<DriveTree>(key);
+    qc.setQueryData(key, structuredClone(current));
+    rollback();
+    expect(qc.getQueryData<DriveTree>(key)?.files[0]?.parentId).toBe("folder-b");
+    qc.clear();
+  });
+
+  it("does not resurrect a source listing whose absent node was manually confirmed", () => {
+    const qc = new QueryClient();
+    const node = makeNode({ id: "moving", parentId: "folder-a" });
+    const key = wikiKeys.folderFiles("folder-a");
+    qc.setQueryData(key, [node]);
+    const rollback = optimisticMoveFile(
+      qc,
+      node,
+      { driveId: "drive-1", parentFolderId: "folder-b" },
+      { driveId: "drive-1", parentFolderId: "folder-a" },
+    );
+    qc.setQueryData(key, []);
+    rollback();
+    expect(qc.getQueryData(key)).toEqual([]);
+    qc.clear();
+  });
+
+  it("publishes a same-drive relocation once and preserves shortcut fields and exact rollback order", () => {
+    const qc = new QueryClient();
+    const shortcut = makeNode({
+      id: "moving",
+      mimeType: MIME_SHORTCUT,
+      parentId: "folder-a",
+      shortcutTargetId: "target",
+      shortcutTargetMimeType: MIME_DOC,
+      shortcutTargetDriveId: "target-drive",
+      shortcutTargetDriveName: "Target Drive",
+    });
+    const sibling = makeNode({ id: "sibling" });
+    qc.setQueryData<DriveTree>(wikiKeys.driveTree("drive-1"), {
+      driveId: "drive-1",
+      files: [shortcut, sibling],
+      filesComplete: false,
+      folders: [],
+    });
+    qc.setQueryData(wikiKeys.folderFiles("folder-a"), [shortcut, sibling]);
+    qc.setQueryData(wikiKeys.folderFiles("folder-b"), []);
+    let treeUpdates = 0;
+    const release = qc.getQueryCache().subscribe((event) => {
+      if (
+        event.type === "updated" &&
+        event.query.queryHash === JSON.stringify(wikiKeys.driveTree("drive-1")) &&
+        event.action.type === "success"
+      )
+        treeUpdates++;
+    });
+    const rollback = optimisticMoveFile(
+      qc,
+      shortcut,
+      { driveId: "drive-1", parentFolderId: "folder-b" },
+      { driveId: "drive-1", parentFolderId: "folder-a" },
+    );
+    expect(treeUpdates).toBe(1);
+    const moved = qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"));
+    expect(moved?.files[0]).toMatchObject({ ...shortcut, parentId: "folder-b" });
+    expect(moved?.filesComplete).toBe(false);
+    qc.setQueryData<DriveTree>(wikiKeys.driveTree("drive-1"), (tree) =>
+      tree ? { ...tree, files: [...tree.files, makeNode({ id: "newer" })] } : tree,
+    );
+    rollback();
+    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files).toEqual([
+      shortcut,
+      sibling,
+      makeNode({ id: "newer" }),
+    ]);
+    expect(qc.getQueryData(wikiKeys.folderFiles("folder-a"))).toEqual([shortcut, sibling]);
+    expect(qc.getQueryData(wikiKeys.folderFiles("folder-b"))).toEqual([]);
+    release();
+    qc.clear();
+  });
+
+  it("keeps confirmed move metadata when the server returns FileResponse without shortcut fields", () => {
+    const qc = new QueryClient();
+    const shortcut = makeNode({
+      id: "moving",
+      mimeType: MIME_SHORTCUT,
+      shortcutTargetId: "target",
+      shortcutTargetMimeType: MIME_DOC,
+    });
+    qc.setQueryData<DriveTree>(wikiKeys.driveTree("drive-1"), {
+      driveId: "drive-1",
+      files: [shortcut],
+      filesComplete: true,
+      folders: [],
+    });
+    const rollback = optimisticMoveFile(
+      qc,
+      shortcut,
+      { driveId: "drive-1", parentFolderId: "folder-b" },
+      { driveId: "drive-1", parentFolderId: undefined },
+    );
+    injectNewFileIntoCaches(
+      qc,
+      makeFile({
+        id: shortcut.id,
+        mimeType: MIME_SHORTCUT,
+        name: "Provider name",
+        parentFolderId: "folder-b",
+      }),
+    );
+    rollback.commit();
+    expect(qc.getQueryData<DriveTree>(wikiKeys.driveTree("drive-1"))?.files[0]).toMatchObject({
+      name: "Provider name",
+      shortcutTargetId: "target",
+      shortcutTargetMimeType: MIME_DOC,
+    });
+    qc.clear();
+  });
+
+  it("does not restore nodes superseded by a fresh read or a retired session", async () => {
+    const qc = new QueryClient();
+    const node = makeNode({ id: "moving" });
+    const key = wikiKeys.driveTree("drive-1");
+    qc.setQueryData<DriveTree>(key, {
+      driveId: "drive-1",
+      files: [node],
+      filesComplete: true,
+      folders: [],
+    });
+    const old = optimisticMoveFile(
+      qc,
+      node,
+      { driveId: "drive-1", parentFolderId: "folder-b" },
+      { driveId: "drive-1", parentFolderId: undefined },
+    );
+    await qc.fetchQuery({ queryKey: key, queryFn: () => qc.getQueryData<DriveTree>(key) });
+    old();
+    expect(qc.getQueryData<DriveTree>(key)?.files[0]?.parentId).toBe("folder-b");
+    const retired = optimisticMoveFile(
+      qc,
+      node,
+      { driveId: "drive-1", parentFolderId: "folder-c" },
+      { driveId: "drive-1", parentFolderId: "folder-b" },
+    );
+    retireMutationSession(qc);
+    activateMutationSession(qc);
+    qc.clear();
+    retired();
+    expect(qc.getQueryCache().getAll()).toHaveLength(0);
+  });
+
   it("moves across drive caches and rolls both sides back", () => {
     const qc = new QueryClient();
     const node = makeNode({ id: "moving", name: "Moving" });

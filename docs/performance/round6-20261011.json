@@ -1,0 +1,2012 @@
+{
+  "recordedAt": "2026-10-11",
+  "baselineRevision": "fdc479beea4488ad5869e8957be8c646fc470527",
+  "name": "Fifty additional bulk-query, caching, optimistic UI, preloading and advanced candidates",
+  "passCount": 50,
+  "agentPassCount": 50,
+  "integrationPassCount": 0,
+  "acceptedCount": 26,
+  "rejectedCount": 24,
+  "counting": "Ten distinct new measured candidates from each of five agents. A retained improvement or evidenced rejection counts once. Prototype tuning, correctness repairs, tests, builds, qualification, documentation and release administration count zero.",
+  "scopeCounts": [
+    {
+      "scope": "bulk",
+      "agent": "/root/bulk_queries_round6",
+      "passCount": 10,
+      "acceptedCount": 4,
+      "rejectedCount": 6
+    },
+    {
+      "scope": "cache",
+      "agent": "/root/backend_caching_round6",
+      "passCount": 10,
+      "acceptedCount": 6,
+      "rejectedCount": 4
+    },
+    {
+      "scope": "optimistic",
+      "agent": "/root/optimistic_ui_round6",
+      "passCount": 10,
+      "acceptedCount": 7,
+      "rejectedCount": 3
+    },
+    {
+      "scope": "preload",
+      "agent": "/root/preloading_round6",
+      "passCount": 10,
+      "acceptedCount": 3,
+      "rejectedCount": 7
+    },
+    {
+      "scope": "advanced",
+      "agent": "/root/advanced_round6",
+      "passCount": 10,
+      "acceptedCount": 6,
+      "rejectedCount": 4
+    }
+  ],
+  "record": "docs/performance/round6-20261011.json",
+  "priorPasses": 309,
+  "totalPasses": 359,
+  "priorLedgerPreserved": true,
+  "scopes": [
+    {
+      "scope": "bulk",
+      "agent": "/root/bulk_queries_round6",
+      "passCount": 10,
+      "acceptedCount": 4,
+      "rejectedCount": 6,
+      "record": "docs/performance/round6-20261011-bulk.json",
+      "recordSha256": "9acf3fd3f7b725b81934d2423258d312c97ef12a64729f46d46cd2827593a4ec",
+      "changedPaths": [
+        "backend/app/aliases/service.py",
+        "backend/app/drive/service.py",
+        "backend/app/files/service.py",
+        "backend/tests/test_aliases.py",
+        "backend/tests/bulk_round6_support.py",
+        "backend/tests/test_bulk_round6.py",
+        "backend/tests/test_bulk_round6_postgres.py"
+      ],
+      "passes": [
+        {
+          "id": "round6-bulk-01",
+          "candidate": "Defer full FileResponse construction until final membership filtering",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-bulk.json"
+        },
+        {
+          "id": "round6-bulk-02",
+          "candidate": "Validate Drive inventory metadata in bounded 64-record RootModel buffers",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-bulk.json"
+        },
+        {
+          "id": "round6-bulk-03",
+          "candidate": "Bypass multipart batching for a singleton metadata request",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-bulk.json"
+        },
+        {
+          "id": "round6-bulk-04",
+          "candidate": "Bound metadata chunk ownership to four long-lived scheduling tasks",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-bulk.json"
+        },
+        {
+          "id": "round6-bulk-05",
+          "candidate": "Eagerly batch the first personal-ancestry parent frontier",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-bulk.json"
+        },
+        {
+          "id": "round6-bulk-06",
+          "candidate": "Use fresh search-metadata projection for recent aliases",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-bulk.json"
+        },
+        {
+          "id": "round6-bulk-07",
+          "candidate": "Reuse one array-bound fresh recent-alias SELECT instead of expanding IN binds",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-bulk.json"
+        },
+        {
+          "id": "round6-bulk-08",
+          "candidate": "Prefetch reserved alias candidates before conflict-safe insertion",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-bulk.json"
+        },
+        {
+          "id": "round6-bulk-09",
+          "candidate": "Batch mutation source/destination preflights through filtering bulk reads",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-bulk.json"
+        },
+        {
+          "id": "round6-bulk-10",
+          "candidate": "Overlap drive inventory with the recent-alias database read",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-bulk.json"
+        }
+      ]
+    },
+    {
+      "scope": "cache",
+      "agent": "/root/backend_caching_round6",
+      "passCount": 10,
+      "acceptedCount": 6,
+      "rejectedCount": 4,
+      "record": "docs/performance/round6-20261011-cache.json",
+      "recordSha256": "5890f11731ab4f57f61aa173726eea85a0f4bc48d9ef09cafad1bcc1b8bc92d7",
+      "changedPaths": [
+        "backend/app/cache/protection.py",
+        "backend/app/cache/service.py",
+        "backend/app/extras/service.py",
+        "backend/app/sidebar/cache.py",
+        "backend/tests/test_cache_service.py",
+        "backend/tests/test_sidebar_cache.py",
+        "backend/tests/test_round6_cache_reuse.py",
+        "backend/tests/test_round6_sidebar_reuse.py",
+        "backend/tests/test_round6_cache_postgres.py"
+      ],
+      "passes": [
+        {
+          "id": "round6-cache-01",
+          "candidate": "Reuse complete immutable bulk-cache, cold/warm sidebar tree, refreshed-at, and sidebar-overlay read statements with fresh execution bindings.",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-cache.json"
+        },
+        {
+          "id": "round6-cache-02",
+          "candidate": "Reuse complete parameterized array upsert and first-chunk cleanup statement shapes across cache writes.",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-cache.json"
+        },
+        {
+          "id": "round6-cache-03",
+          "candidate": "Add a bounded principal/drive latest-version index to the existing decoded-tree LRU.",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-cache.json"
+        },
+        {
+          "id": "round6-cache-04",
+          "candidate": "Avoid worker scheduling for bounded small sidebar ciphertext decoding.",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-cache.json"
+        },
+        {
+          "id": "round6-cache-05",
+          "candidate": "Move bulk ownership/collision preparation and physical-key write sorting into the already scheduled crypto worker.",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-cache.json"
+        },
+        {
+          "id": "round6-cache-06",
+          "candidate": "Retain at most eight namespace HMAC prefix seed tuples per immutable protector for repeated small lookups.",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-cache.json"
+        },
+        {
+          "id": "round6-cache-07",
+          "candidate": "Replace the shared singleflight result Future with the current leader caller Task.",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-cache.json"
+        },
+        {
+          "id": "round6-cache-08",
+          "candidate": "Speculatively overlap bootstrap first-tree cache and document-icon reads on the existing request AsyncSession.",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-cache.json"
+        },
+        {
+          "id": "round6-cache-09",
+          "candidate": "Remove the redundant gather child Task from an already-owned background singleflight refresh.",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-cache.json"
+        },
+        {
+          "id": "round6-cache-10",
+          "candidate": "Memoize sequential folder-child responses within a sidebar service instance.",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-cache.json"
+        }
+      ]
+    },
+    {
+      "scope": "optimistic",
+      "agent": "/root/optimistic_ui_round6",
+      "passCount": 10,
+      "acceptedCount": 7,
+      "rejectedCount": 3,
+      "record": "docs/performance/round6-20261011-optimistic.json",
+      "recordSha256": "a5c5c9a2ce02bb1ac1706f9c82d8d42cb5b0b5bc072e66ade14a387974f96919",
+      "changedPaths": [
+        "frontend/src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts",
+        "frontend/src/components/wiki-sidebar/preferences-dialog.test.tsx",
+        "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+        "frontend/src/components/wiki-sidebar/use-in-flight-moves.ts",
+        "frontend/src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx",
+        "frontend/src/components/wiki-sidebar/use-wiki-reorder.ts",
+        "frontend/src/hooks/use-wiki-mutations-round6.test.tsx",
+        "frontend/src/hooks/use-wiki-mutations.ts",
+        "frontend/src/lib/optimistic-cache.test.ts",
+        "frontend/src/lib/optimistic-cache.ts",
+        "frontend/src/lib/wiki-cache.test.ts",
+        "frontend/src/lib/wiki-cache.ts"
+      ],
+      "passes": [
+        {
+          "id": "round6-optimistic-01",
+          "candidate": "Sparse optimistic icon/rank rollback with per-entry operation and publication ownership",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-optimistic.json"
+        },
+        {
+          "id": "round6-optimistic-02",
+          "candidate": "Coordinate exact optimistic read cancellation and reconcile only after the pending query group settles",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-optimistic.json"
+        },
+        {
+          "id": "round6-optimistic-03",
+          "candidate": "Show reversible pending preferences while serializing provider writes and reconciling owned fields",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-optimistic.json"
+        },
+        {
+          "id": "round6-optimistic-04",
+          "candidate": "Relocate same-drive cached nodes atomically with metadata-preserving confirmed reconciliation and exact rollback",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-optimistic.json"
+        },
+        {
+          "id": "round6-optimistic-05",
+          "candidate": "Suppress overlapping same-session drag moves for the same file while preserving retry",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-optimistic.json"
+        },
+        {
+          "id": "round6-optimistic-06",
+          "candidate": "Retire pending move display leases in one per-session store update",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-optimistic.json"
+        },
+        {
+          "id": "round6-optimistic-07",
+          "candidate": "Publish confirmed rename fields immediately to bounded existing caches before read reconciliation",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-optimistic.json"
+        },
+        {
+          "id": "round6-optimistic-08",
+          "candidate": "Evict active file metadata and folder nodes before destructive trash acknowledgment",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-optimistic.json"
+        },
+        {
+          "id": "round6-optimistic-09",
+          "candidate": "Navigate to a fabricated optimistic provider ID for newly created or copied documents",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-optimistic.json"
+        },
+        {
+          "id": "round6-optimistic-10",
+          "candidate": "Skip an icon/settings provider write when the desired value equals the cached value",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-optimistic.json"
+        }
+      ]
+    },
+    {
+      "scope": "preload",
+      "agent": "/root/preloading_round6",
+      "passCount": 10,
+      "acceptedCount": 3,
+      "rejectedCount": 7,
+      "record": "docs/performance/round6-20261011-preload.json",
+      "recordSha256": "c9b9012c20e0b548a74b10c8e74de05eabd054fc9d43ac61507d62bb9cc16ada",
+      "changedPaths": [
+        "frontend/src/components/wiki-document/doc-viewer-host.tsx",
+        "frontend/src/components/wiki-document/doc-viewer-host.test.tsx",
+        "frontend/src/components/wiki-sidebar/use-document-intent.ts",
+        "frontend/src/components/wiki-sidebar/use-document-intent.test.tsx"
+      ],
+      "passes": [
+        {
+          "id": "round6-preload-01",
+          "candidate": "Suppress publication of an exactly unchanged active document only when its owner is also unchanged.",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-preload.json"
+        },
+        {
+          "id": "round6-preload-02",
+          "candidate": "Suppress re-publication of the identical non-null viewer slot only when its owner is also unchanged.",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-preload.json"
+        },
+        {
+          "id": "round6-preload-03",
+          "candidate": "Suppress publication of an equivalent ordered warm document list using all document fields.",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-preload.json"
+        },
+        {
+          "id": "round6-preload-04",
+          "candidate": "Reuse one live reduced-motion MediaQueryList for snapshot reads, and release its cached reference when the final viewer preference subscription retires.",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-preload.json"
+        },
+        {
+          "id": "round6-preload-05",
+          "candidate": "Skip both animation-frame scheduling steps when ready document content has reduced motion enabled, retaining the announcement minimum.",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-preload.json"
+        },
+        {
+          "id": "round6-preload-06",
+          "candidate": "Disable retries for weak speculative document prefetch while leaving explicit/foreground query options unchanged.",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-preload.json"
+        },
+        {
+          "id": "round6-preload-07",
+          "candidate": "Disable retries for weak speculative Drive prefetch while leaving explicit/foreground query options unchanged.",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-preload.json"
+        },
+        {
+          "id": "round6-preload-08",
+          "candidate": "Stop fallback warmup cache scanning after locating the first eligible workspace target, eliminating matching-query tuples before the one-document authorization.",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-preload.json"
+        },
+        {
+          "id": "round6-preload-09",
+          "candidate": "Replace the existing bounded viewer generator and Set with direct indexed traversal and bounded duplicate comparison.",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-preload.json"
+        },
+        {
+          "id": "round6-preload-10",
+          "candidate": "Read one current navigator-hint snapshot for each iframe-intent policy decision rather than parsing hints twice through the reusable-policy wrapper.",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-preload.json"
+        }
+      ]
+    },
+    {
+      "scope": "advanced",
+      "agent": "/root/advanced_round6",
+      "passCount": 10,
+      "acceptedCount": 6,
+      "rejectedCount": 4,
+      "record": "docs/performance/round6-20261011-advanced.json",
+      "recordSha256": "876bcd29c2784541448c4d5b465f3426d7988fff8c4006ddaa44be5d8b04ccba",
+      "changedPaths": [
+        "backend/app/smart_create/service.py",
+        "backend/app/tasks/service.py",
+        "backend/tests/advanced_round6_support.py",
+        "backend/tests/test_advanced_round6.py"
+      ],
+      "passes": [
+        {
+          "id": "round6-advanced-01",
+          "candidate": "Build the deterministic Smart Create fallback only after generation fails",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-advanced.json"
+        },
+        {
+          "id": "round6-advanced-02",
+          "candidate": "Stop fallback metadata scanning after three distinct alias tokens and eight title words",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-advanced.json"
+        },
+        {
+          "id": "round6-advanced-03",
+          "candidate": "Serialize typed Smart Create and reorganization prompt contexts directly to JSON",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-advanced.json"
+        },
+        {
+          "id": "round6-advanced-04",
+          "candidate": "Memoize shared folder ancestry within each backend candidate assembly",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-advanced.json"
+        },
+        {
+          "id": "round6-advanced-05",
+          "candidate": "Discard depth-excluded destination paths before constructing proposal models",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-advanced.json"
+        },
+        {
+          "id": "round6-advanced-06",
+          "candidate": "Defer description tokenization until a selected destination is sensitive",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-advanced.json"
+        },
+        {
+          "id": "round6-advanced-07",
+          "candidate": "Fuse task-worker public-envelope validation into the existing worker record",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-advanced.json"
+        },
+        {
+          "id": "round6-advanced-08",
+          "candidate": "Exclude allowed link-enrichment fields during terminal result serialization",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-advanced.json"
+        },
+        {
+          "id": "round6-advanced-09",
+          "candidate": "Avoid canonical key sorting for encrypted checkpoint plaintext only",
+          "outcome": "accepted",
+          "record": "docs/performance/round6-20261011-advanced.json"
+        },
+        {
+          "id": "round6-advanced-10",
+          "candidate": "Stop fresh selected-workspace template traversal at the requested match",
+          "outcome": "rejected",
+          "record": "docs/performance/round6-20261011-advanced.json"
+        }
+      ]
+    }
+  ],
+  "scopeRecords": [
+    "docs/performance/round6-20261011-bulk.json",
+    "docs/performance/round6-20261011-cache.json",
+    "docs/performance/round6-20261011-optimistic.json",
+    "docs/performance/round6-20261011-preload.json",
+    "docs/performance/round6-20261011-advanced.json"
+  ],
+  "changedPaths": [
+    "backend/app/aliases/service.py",
+    "backend/app/cache/protection.py",
+    "backend/app/cache/service.py",
+    "backend/app/drive/service.py",
+    "backend/app/extras/service.py",
+    "backend/app/files/service.py",
+    "backend/app/sidebar/cache.py",
+    "backend/app/smart_create/service.py",
+    "backend/app/tasks/service.py",
+    "backend/tests/advanced_round6_support.py",
+    "backend/tests/bulk_round6_support.py",
+    "backend/tests/test_advanced_round6.py",
+    "backend/tests/test_aliases.py",
+    "backend/tests/test_bulk_round6.py",
+    "backend/tests/test_bulk_round6_postgres.py",
+    "backend/tests/test_cache_service.py",
+    "backend/tests/test_round6_cache_postgres.py",
+    "backend/tests/test_round6_cache_reuse.py",
+    "backend/tests/test_round6_sidebar_reuse.py",
+    "backend/tests/test_sidebar_cache.py",
+    "frontend/src/components/wiki-document/doc-viewer-host.test.tsx",
+    "frontend/src/components/wiki-document/doc-viewer-host.tsx",
+    "frontend/src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts",
+    "frontend/src/components/wiki-sidebar/preferences-dialog.test.tsx",
+    "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+    "frontend/src/components/wiki-sidebar/use-document-intent.test.tsx",
+    "frontend/src/components/wiki-sidebar/use-document-intent.ts",
+    "frontend/src/components/wiki-sidebar/use-in-flight-moves.ts",
+    "frontend/src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx",
+    "frontend/src/components/wiki-sidebar/use-wiki-reorder.ts",
+    "frontend/src/hooks/use-wiki-mutations-round6.test.tsx",
+    "frontend/src/hooks/use-wiki-mutations.ts",
+    "frontend/src/lib/optimistic-cache.test.ts",
+    "frontend/src/lib/optimistic-cache.ts",
+    "frontend/src/lib/wiki-cache.test.ts",
+    "frontend/src/lib/wiki-cache.ts"
+  ],
+  "integrationChangedPaths": [],
+  "generatedArtifacts": [
+    "frontend/src/lib/generated/sdk.gen.ts",
+    "frontend/src/lib/generated/types.gen.ts",
+    "frontend/src/lib/generated/zod.gen.ts"
+  ],
+  "sourceHashes": [
+    {
+      "path": "backend/app/aliases/service.py",
+      "sha256": "1d175db333308eff63e04f7480ce81857e1513e2e99615a9ef4060233f6179e1"
+    },
+    {
+      "path": "backend/app/cache/protection.py",
+      "sha256": "7cd341b6c658005eb894da77b4fb64d8420e2bafcb4a58686f2d36cf01e1cc6d"
+    },
+    {
+      "path": "backend/app/cache/service.py",
+      "sha256": "0d68bbdd52baeb8d2a00a4d9142db2c0e29d556227b46680443107974f766e95"
+    },
+    {
+      "path": "backend/app/drive/service.py",
+      "sha256": "b63df9c49a0bb79bcaa321d029532c747ee8471faedc1e81bf2234f068a8a16e"
+    },
+    {
+      "path": "backend/app/extras/service.py",
+      "sha256": "ac00dbec6c91c14208411cfa46e58b2a0ea77623ee6b8aa8cd000c4fdd1d3d59"
+    },
+    {
+      "path": "backend/app/files/service.py",
+      "sha256": "2c8afe381908f05e8779ebc05e372ad6d2a622050715bf7bdac1d08f27836f79"
+    },
+    {
+      "path": "backend/app/sidebar/cache.py",
+      "sha256": "4bc19aa96391f431f366473aa6d038484b205661fdc2ae63ebcb1d8955cb6348"
+    },
+    {
+      "path": "backend/app/smart_create/service.py",
+      "sha256": "847c4e2c18201b4f52b638a576d9bc4cf606773d335827834b94521e021ab544"
+    },
+    {
+      "path": "backend/app/tasks/service.py",
+      "sha256": "2f4c4c4dd9a518c01ba0b7397a672023b69cbeb2b9d35ddf6b0ce7dc3a74e991"
+    },
+    {
+      "path": "backend/tests/advanced_round6_support.py",
+      "sha256": "725aad16333fbdf7d244e343f5ce6c08b4b0308a382e942e5912f57169f7bf1d"
+    },
+    {
+      "path": "backend/tests/bulk_round6_support.py",
+      "sha256": "cd45265beb48699e4c1ad3f0a31087f2ec120db4e44750c318a665ee27ac2676"
+    },
+    {
+      "path": "backend/tests/test_advanced_round6.py",
+      "sha256": "8e105329e120eed83e4705e8eb5aa44a228d58f84caf417abcbd7977f0ffd8ff"
+    },
+    {
+      "path": "backend/tests/test_aliases.py",
+      "sha256": "2ff1cd1eb075376691ed337bd9a05594964e47518942016c8126d3d8ac632190"
+    },
+    {
+      "path": "backend/tests/test_bulk_round6.py",
+      "sha256": "1da6632396d97a464cbdf4add7bef53019e7572ed648a0237a8702ba08f4b2e5"
+    },
+    {
+      "path": "backend/tests/test_bulk_round6_postgres.py",
+      "sha256": "7176c8b7e4a15b021773cd51816d06ba02e250882e4df8da331e912344af8695"
+    },
+    {
+      "path": "backend/tests/test_cache_service.py",
+      "sha256": "8c4302559f79d713fd8a3c85235ae74abdb58e89a887a6bb10179f4d26f27192"
+    },
+    {
+      "path": "backend/tests/test_round6_cache_postgres.py",
+      "sha256": "f490ca0193e6e08a1abaea17c6e8b49912a3f768d95aa2f755434d41cff9ba36"
+    },
+    {
+      "path": "backend/tests/test_round6_cache_reuse.py",
+      "sha256": "d1c5501fc1a77ed9423b03dadbd267fe7b6523ef5e45b6895ec100ed5b74b871"
+    },
+    {
+      "path": "backend/tests/test_round6_sidebar_reuse.py",
+      "sha256": "5ad0e0d5be246fbbfac4fe86e6ff5e2d2ce6b59f5715cf3ed555496c03238511"
+    },
+    {
+      "path": "backend/tests/test_sidebar_cache.py",
+      "sha256": "e87a0a6815a3fed59cf780875a878f3bcc4281a9cfa836020e9623552ac2ef95"
+    },
+    {
+      "path": "frontend/src/components/wiki-document/doc-viewer-host.test.tsx",
+      "sha256": "6f699a182dd8adefa78257eeee2a46c7a57f331e1b7c10bf56a75565ecfe5f60"
+    },
+    {
+      "path": "frontend/src/components/wiki-document/doc-viewer-host.tsx",
+      "sha256": "0c55953c0f7836cad45c8bbedac68c784f1a561d9ebf26b37bbd20e4c5704ec9"
+    },
+    {
+      "path": "frontend/src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts",
+      "sha256": "36340f4d460be5dcf6ae28c3736272eda45d995cec9058f414d44f6b654b89a1"
+    },
+    {
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.test.tsx",
+      "sha256": "288fd92201e8bed2e50ab3c2ca030825050b86532fd6ab99f1ff753fdd8718b7"
+    },
+    {
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "sha256": "084a1c8cd65b79650dcf81051390d0321d05e078865512ee62807508e1ab8821"
+    },
+    {
+      "path": "frontend/src/components/wiki-sidebar/use-document-intent.test.tsx",
+      "sha256": "74e3f5f02a058d082fd3c8fc50ba8b99ac6bbbe00e289f44d1c199f8f741ba52"
+    },
+    {
+      "path": "frontend/src/components/wiki-sidebar/use-document-intent.ts",
+      "sha256": "e06b026286a0cd0f18a02980576aa13f57b5103e5d353866e7b9d8427d074b3f"
+    },
+    {
+      "path": "frontend/src/components/wiki-sidebar/use-in-flight-moves.ts",
+      "sha256": "6a395733f2d428a3958839d0a393117048f81b5e72bf5dbc716883c1400fbaab"
+    },
+    {
+      "path": "frontend/src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx",
+      "sha256": "21adfb102e58a391a55e2546d7a7be6a3c31322f2f8a876402e3e50b9beed8fe"
+    },
+    {
+      "path": "frontend/src/components/wiki-sidebar/use-wiki-reorder.ts",
+      "sha256": "17378d8e3dbcc09a86c67c5e6e5b84957c409cd77c197b8abce4c9e37a873d71"
+    },
+    {
+      "path": "frontend/src/hooks/use-wiki-mutations-round6.test.tsx",
+      "sha256": "78ead019bd73297f1cd7d121f37569b6a57a7a3781aad9cefc80817d8d2c667a"
+    },
+    {
+      "path": "frontend/src/hooks/use-wiki-mutations.ts",
+      "sha256": "90cc62f38137e0f81028c27c0d1286383c68398807c04668926bc544bd3e8d91"
+    },
+    {
+      "path": "frontend/src/lib/optimistic-cache.test.ts",
+      "sha256": "ace3013a2a69d049b453c793b970a8186e0f8c1b3c1e16d128baa7ef60b1a69d"
+    },
+    {
+      "path": "frontend/src/lib/optimistic-cache.ts",
+      "sha256": "aed0579d00369e6c634a2d32f876ddb2ed8b1e16086b6b853bed340b168584c0"
+    },
+    {
+      "path": "frontend/src/lib/wiki-cache.test.ts",
+      "sha256": "763e4e2012b142ba83bd16b80ba3f95f9e84f70ea99dfcec47bc5a4db687b9b2"
+    },
+    {
+      "path": "frontend/src/lib/wiki-cache.ts",
+      "sha256": "9e37058baed24c811d31eb3cb63cbdbf3dac0778b11e7a9eb0830a8a1c1f1df4"
+    }
+  ],
+  "measurements": {
+    "selectedFixtures": [
+      {
+        "candidate": "round6-bulk-07",
+        "record": "docs/performance/round6-20261011-bulk.json",
+        "measurement": "Fresh recent-alias read, 50 total inputs",
+        "unit": "median ms",
+        "before": 14.268625,
+        "after": 1.11575,
+        "workload": {
+          "totalAliases": [1, 6, 50],
+          "largestCase": "49 existing aliases plus one absent alias; some existing aliases retired, leaving 39 output rows",
+          "statementsPerRead": 1,
+          "database": "wiki_round6_bulk_bench only",
+          "provider": "identical fresh read fixture outside SQL phase"
+        },
+        "controlsAndLimits": "51 alternating local PostgreSQL pairs. Plan/statistics dependent; forced custom-plan, generic one-key and smaller-input regressions/controls remain in the scope report. One fresh SQL read and identical provider work in both arms."
+      },
+      {
+        "candidate": "round6-optimistic-02",
+        "record": "docs/performance/round6-20261011-optimistic.json",
+        "measurement": "Reconciliation reads after eight overlapping edits",
+        "unit": "reads",
+        "before": 8,
+        "after": 1,
+        "workload": {
+          "overlappingWrites": 8,
+          "readKeys": "exact icon/sort key only",
+          "provider": "deferred local action spies; no remote calls"
+        },
+        "controlsAndLimits": "Exact shared icon/sort key. Eight writes remain admitted; read reconciliation occurs after the last pending group settles. Independent fresh authoritative reads still reconcile normally."
+      },
+      {
+        "candidate": "round6-optimistic-04",
+        "record": "docs/performance/round6-20261011-optimistic.json",
+        "measurement": "Same-drive cached move, 5,000 nodes",
+        "unit": "median ms",
+        "before": 3.6668750000000045,
+        "after": 1.8870000000000005,
+        "workload": {
+          "nodes": [100, 5000],
+          "cacheKeys": [
+            "source parent listing",
+            "destination parent listing",
+            "same-drive tree"
+          ],
+          "filesComplete": false,
+          "shortcutFieldsChecked": 4
+        },
+        "controlsAndLimits": "21 alternating fixture pairs after four warmups; metadata, physical-ID deduplication, first position, incomplete-file state, rollback ownership and shortcut fields are qualified separately."
+      },
+      {
+        "candidate": "round6-optimistic-06",
+        "record": "docs/performance/round6-20261011-optimistic.json",
+        "measurement": "Retire 1,000 pending move display leases",
+        "unit": "median ms",
+        "before": 4.101832999999999,
+        "after": 0.11508299999997007,
+        "workload": {
+          "moves": 1000,
+          "sessions": 1,
+          "observable": "Zustand store publications"
+        },
+        "controlsAndLimits": "21 fixture pairs after four warmups. Abort listeners and display publications both fall from 1,000 to one. Already-admitted provider writes continue and old finalizers cannot retire a newer session owner."
+      },
+      {
+        "candidate": "round6-preload-09",
+        "record": "docs/performance/round6-20261011-preload.json",
+        "measurement": "Bounded viewer selection, 100,000 derivations",
+        "unit": "median ms per 100,000",
+        "before": 19.740250000000742,
+        "after": 2.0249579999999696,
+        "workload": "100,000 derivations per sample over 200 seeded fixtures: pool length 0..3, prewarm 0..1, warm 0..1, overlapping IDs, active versus inactive HTML.",
+        "controlsAndLimits": "60 alternating samples after 12 warmups over 200 seeded bounded fixtures. Exact IDs/order and inactive HTML filtering match; this measures selection work, not iframe or browser load time."
+      },
+      {
+        "candidate": "round6-advanced-03",
+        "record": "docs/performance/round6-20261011-advanced.json",
+        "measurement": "Smart Create prompt, 80 folders and 80 templates",
+        "unit": "median ms",
+        "before": 0.24229082,
+        "after": 0.08756332,
+        "workload": {
+          "seed": 6061011,
+          "folderCounts": [1, 80],
+          "templateCounts": [1, 80],
+          "folders": "Workspace 絵 / Category 絵 (index modulo 8) / quoted folder names; stable folder IDs 0..79.",
+          "templates": "80 native Google Doc templates with Unicode, quotes, escaped newline descriptions and eight category IDs.",
+          "description": "('Project decision record 絵 ' * 100)[:2000]",
+          "reorganizationContent": "('Evidence content 絵 ' * 1000)[:12000]",
+          "batchCalls": 50,
+          "provider": "FixtureGenaiClient: fixed valid schema JSON, no network or credentials."
+        },
+        "controlsAndLimits": "41 alternating local pairs with variance and small/unbounded controls in the scope record. Depth pruning holds ancestry memoization constant. Canonical attestation/request hashes, UTF-8 caps, encryption, status invariants, prompt bytes and malformed-graph behavior remain qualified."
+      },
+      {
+        "candidate": "round6-advanced-04",
+        "record": "docs/performance/round6-20261011-advanced.json",
+        "measurement": "Folder candidate assembly, 2,048 folders and a 64-node spine",
+        "unit": "median ms",
+        "before": 34.194083,
+        "after": 27.673459,
+        "workload": {
+          "seed": 6061011,
+          "graphs": [
+            {
+              "folders": 16,
+              "spine": 0
+            },
+            {
+              "folders": 2048,
+              "spine": 0
+            },
+            {
+              "folders": 2048,
+              "spine": 64
+            }
+          ],
+          "graphConstruction": "For a spine, f-0 has no parent; f-i for 1..63 has parent f-(i-1). Remaining nodes have parent f-(32 + index modulo 32). Without a spine every folder is a root. Names are Folder 絵 index.",
+          "request": "Folder project record",
+          "candidateDepth": null,
+          "returnedCandidateCap": 80,
+          "batchCalls": {
+            "16": 10,
+            "2048": 1
+          },
+          "semanticGraphs": "120 seeded 40-node shuffled graphs; duplicate canonical ID every third graph; parents randomly missing or cyclic, repeated names and randomized invoking IDs; depths None/0/1/2."
+        },
+        "controlsAndLimits": "41 alternating local pairs with variance and small/unbounded controls in the scope record. Depth pruning holds ancestry memoization constant. Canonical attestation/request hashes, UTF-8 caps, encryption, status invariants, prompt bytes and malformed-graph behavior remain qualified."
+      },
+      {
+        "candidate": "round6-advanced-05",
+        "record": "docs/performance/round6-20261011-advanced.json",
+        "measurement": "Depth-limited candidate assembly, 2,048 folders",
+        "unit": "median ms",
+        "before": 4.6265,
+        "after": 1.736792,
+        "workload": {
+          "seed": 6061011,
+          "folders": 2048,
+          "spines": [0, 64],
+          "graphConstruction": "Same deterministic root and shared-spine graphs as candidate 04.",
+          "candidateDepths": [1, null],
+          "invokingFolderIdForTimedRuns": null,
+          "request": "Folder project record",
+          "batchCalls": 1,
+          "pairedBaseline": "The final round6-advanced-04 prototype, not the original baseline.",
+          "semanticGraphs": "The same 120 seeded malformed graphs include randomized invoking IDs and depths None/0/1/2; public fixtures cover the retained invoking ancestry at relative depth zero."
+        },
+        "controlsAndLimits": "41 alternating local pairs with variance and small/unbounded controls in the scope record. Depth pruning holds ancestry memoization constant. Canonical attestation/request hashes, UTF-8 caps, encryption, status invariants, prompt bytes and malformed-graph behavior remain qualified."
+      },
+      {
+        "candidate": "round6-advanced-09",
+        "record": "docs/performance/round6-20261011-advanced.json",
+        "measurement": "Encrypted in-place checkpoint, 1,500 requests",
+        "unit": "median ms",
+        "before": 4.0186375,
+        "after": 3.6667791999999997,
+        "workload": {
+          "seed": 6061011,
+          "checkpoints": [
+            "in-place with 1 request/replacement",
+            "in-place with 1500 requests/replacements",
+            "verified copy with 100 findings",
+            "word-copy reference"
+          ],
+          "inPlaceShape": "Each request is updateTextStyle with weightedFontFamily Fixture 絵, range tab/start/end and fields; replacements are ordered z-index keys with Unicode text. Fixture has one finding and one header.",
+          "batchCalls": {
+            "inplace1500": 10,
+            "others": 50
+          },
+          "fixedLimits": {
+            "encryptedPlanUtf8Bytes": 2097152
+          },
+          "publicOperation": "save_document_transform_checkpoint with task 602, lease 603, expected generation 0; fixture returns generation 1.",
+          "legacyRoundTrips": "Each of four shapes saved in sorted baseline and unsorted current envelopes and read by both baseline/current loaders: 16 public restoration checks."
+        },
+        "controlsAndLimits": "41 alternating local pairs with variance and small/unbounded controls in the scope record. Depth pruning holds ancestry memoization constant. Canonical attestation/request hashes, UTF-8 caps, encryption, status invariants, prompt bytes and malformed-graph behavior remain qualified."
+      }
+    ],
+    "clientBundleInventory": {
+      "home": {
+        "before": {
+          "files": [
+            {
+              "file": "static/chunks/3549-0962241baa87ed46.js",
+              "bytes": 8663,
+              "gzipBytes": 3583
+            },
+            {
+              "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+              "bytes": 1278,
+              "gzipBytes": 742
+            },
+            {
+              "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+              "bytes": 4433,
+              "gzipBytes": 2009
+            },
+            {
+              "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+              "bytes": 1221,
+              "gzipBytes": 741
+            },
+            {
+              "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+              "bytes": 75365,
+              "gzipBytes": 20750
+            },
+            {
+              "file": "static/chunks/6325-d67c0ff50280111f.js",
+              "bytes": 27319,
+              "gzipBytes": 8606
+            },
+            {
+              "file": "static/chunks/5047-dd811c71717cadff.js",
+              "bytes": 34311,
+              "gzipBytes": 11455
+            },
+            {
+              "file": "static/chunks/3508-8807ce197bd83e94.js",
+              "bytes": 12398,
+              "gzipBytes": 4500
+            },
+            {
+              "file": "static/chunks/1045-0e37935b27741cab.js",
+              "bytes": 72353,
+              "gzipBytes": 21893
+            },
+            {
+              "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+              "bytes": 7170,
+              "gzipBytes": 2696
+            },
+            {
+              "file": "static/chunks/504-210a10656fbc47a9.js",
+              "bytes": 140132,
+              "gzipBytes": 46875
+            },
+            {
+              "file": "static/chunks/8254-e283dcd5056dbd01.js",
+              "bytes": 30517,
+              "gzipBytes": 9346
+            },
+            {
+              "file": "static/chunks/7463-c6c648d31d366bf0.js",
+              "bytes": 18999,
+              "gzipBytes": 6661
+            },
+            {
+              "file": "static/chunks/app/(app)/layout-7eb031597b035cc3.js",
+              "bytes": 121521,
+              "gzipBytes": 41002
+            },
+            {
+              "file": "static/chunks/app/(app)/page-299019a6e8fbc0cd.js",
+              "bytes": 16623,
+              "gzipBytes": 6665
+            }
+          ],
+          "bytes": 572303,
+          "gzipBytes": 187524
+        },
+        "after": {
+          "files": [
+            {
+              "file": "static/chunks/3549-0962241baa87ed46.js",
+              "bytes": 8663,
+              "gzipBytes": 3583
+            },
+            {
+              "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+              "bytes": 1278,
+              "gzipBytes": 742
+            },
+            {
+              "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+              "bytes": 4433,
+              "gzipBytes": 2009
+            },
+            {
+              "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+              "bytes": 1221,
+              "gzipBytes": 741
+            },
+            {
+              "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+              "bytes": 75365,
+              "gzipBytes": 20750
+            },
+            {
+              "file": "static/chunks/6325-d67c0ff50280111f.js",
+              "bytes": 27319,
+              "gzipBytes": 8606
+            },
+            {
+              "file": "static/chunks/5047-dd811c71717cadff.js",
+              "bytes": 34311,
+              "gzipBytes": 11455
+            },
+            {
+              "file": "static/chunks/3508-8807ce197bd83e94.js",
+              "bytes": 12398,
+              "gzipBytes": 4500
+            },
+            {
+              "file": "static/chunks/1045-0e37935b27741cab.js",
+              "bytes": 72353,
+              "gzipBytes": 21893
+            },
+            {
+              "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+              "bytes": 7170,
+              "gzipBytes": 2696
+            },
+            {
+              "file": "static/chunks/504-210a10656fbc47a9.js",
+              "bytes": 140132,
+              "gzipBytes": 46875
+            },
+            {
+              "file": "static/chunks/8254-e283dcd5056dbd01.js",
+              "bytes": 30517,
+              "gzipBytes": 9346
+            },
+            {
+              "file": "static/chunks/9598-1a41929618e84087.js",
+              "bytes": 26911,
+              "gzipBytes": 9225
+            },
+            {
+              "file": "static/chunks/app/(app)/layout-744ac9915f333cf7.js",
+              "bytes": 122077,
+              "gzipBytes": 41197
+            },
+            {
+              "file": "static/chunks/app/(app)/page-a7dfa8b33ff6b869.js",
+              "bytes": 16654,
+              "gzipBytes": 6661
+            }
+          ],
+          "bytes": 580802,
+          "gzipBytes": 190279
+        },
+        "rawChangeBytes": 8499,
+        "gzipChangeBytes": 2755,
+        "gzipChangePercent": 1.4691
+      },
+      "document": {
+        "before": {
+          "files": [
+            {
+              "file": "static/chunks/3549-0962241baa87ed46.js",
+              "bytes": 8663,
+              "gzipBytes": 3583
+            },
+            {
+              "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+              "bytes": 1278,
+              "gzipBytes": 742
+            },
+            {
+              "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+              "bytes": 4433,
+              "gzipBytes": 2009
+            },
+            {
+              "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+              "bytes": 1221,
+              "gzipBytes": 741
+            },
+            {
+              "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+              "bytes": 75365,
+              "gzipBytes": 20750
+            },
+            {
+              "file": "static/chunks/6325-d67c0ff50280111f.js",
+              "bytes": 27319,
+              "gzipBytes": 8606
+            },
+            {
+              "file": "static/chunks/5047-dd811c71717cadff.js",
+              "bytes": 34311,
+              "gzipBytes": 11455
+            },
+            {
+              "file": "static/chunks/3508-8807ce197bd83e94.js",
+              "bytes": 12398,
+              "gzipBytes": 4500
+            },
+            {
+              "file": "static/chunks/1045-0e37935b27741cab.js",
+              "bytes": 72353,
+              "gzipBytes": 21893
+            },
+            {
+              "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+              "bytes": 7170,
+              "gzipBytes": 2696
+            },
+            {
+              "file": "static/chunks/8254-e283dcd5056dbd01.js",
+              "bytes": 30517,
+              "gzipBytes": 9346
+            },
+            {
+              "file": "static/chunks/7463-c6c648d31d366bf0.js",
+              "bytes": 18999,
+              "gzipBytes": 6661
+            },
+            {
+              "file": "static/chunks/4429-24205f1fe7bb120c.js",
+              "bytes": 30467,
+              "gzipBytes": 10485
+            },
+            {
+              "file": "static/chunks/app/(app)/d/%5BdriveId%5D/page-5ff6e99776dd62d0.js",
+              "bytes": 2155,
+              "gzipBytes": 1005
+            },
+            {
+              "file": "static/chunks/504-210a10656fbc47a9.js",
+              "bytes": 140132,
+              "gzipBytes": 46875
+            },
+            {
+              "file": "static/chunks/app/(app)/layout-7eb031597b035cc3.js",
+              "bytes": 121521,
+              "gzipBytes": 41002
+            },
+            {
+              "file": "static/chunks/app/(app)/page-299019a6e8fbc0cd.js",
+              "bytes": 16623,
+              "gzipBytes": 6665
+            }
+          ],
+          "bytes": 604925,
+          "gzipBytes": 199014
+        },
+        "after": {
+          "files": [
+            {
+              "file": "static/chunks/3549-0962241baa87ed46.js",
+              "bytes": 8663,
+              "gzipBytes": 3583
+            },
+            {
+              "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+              "bytes": 1278,
+              "gzipBytes": 742
+            },
+            {
+              "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+              "bytes": 4433,
+              "gzipBytes": 2009
+            },
+            {
+              "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+              "bytes": 1221,
+              "gzipBytes": 741
+            },
+            {
+              "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+              "bytes": 75365,
+              "gzipBytes": 20750
+            },
+            {
+              "file": "static/chunks/6325-d67c0ff50280111f.js",
+              "bytes": 27319,
+              "gzipBytes": 8606
+            },
+            {
+              "file": "static/chunks/5047-dd811c71717cadff.js",
+              "bytes": 34311,
+              "gzipBytes": 11455
+            },
+            {
+              "file": "static/chunks/3508-8807ce197bd83e94.js",
+              "bytes": 12398,
+              "gzipBytes": 4500
+            },
+            {
+              "file": "static/chunks/1045-0e37935b27741cab.js",
+              "bytes": 72353,
+              "gzipBytes": 21893
+            },
+            {
+              "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+              "bytes": 7170,
+              "gzipBytes": 2696
+            },
+            {
+              "file": "static/chunks/8254-e283dcd5056dbd01.js",
+              "bytes": 30517,
+              "gzipBytes": 9346
+            },
+            {
+              "file": "static/chunks/9598-1a41929618e84087.js",
+              "bytes": 26911,
+              "gzipBytes": 9225
+            },
+            {
+              "file": "static/chunks/4429-eb789618505aa92d.js",
+              "bytes": 30467,
+              "gzipBytes": 10484
+            },
+            {
+              "file": "static/chunks/app/(app)/d/%5BdriveId%5D/page-4827f4ae3c42efd6.js",
+              "bytes": 2155,
+              "gzipBytes": 1005
+            },
+            {
+              "file": "static/chunks/504-210a10656fbc47a9.js",
+              "bytes": 140132,
+              "gzipBytes": 46875
+            },
+            {
+              "file": "static/chunks/app/(app)/layout-744ac9915f333cf7.js",
+              "bytes": 122077,
+              "gzipBytes": 41197
+            },
+            {
+              "file": "static/chunks/app/(app)/page-a7dfa8b33ff6b869.js",
+              "bytes": 16654,
+              "gzipBytes": 6661
+            }
+          ],
+          "bytes": 613424,
+          "gzipBytes": 201768
+        },
+        "rawChangeBytes": 8499,
+        "gzipChangeBytes": 2754,
+        "gzipChangePercent": 1.3838
+      }
+    },
+    "limitation": "Locked local app inventory excludes framework/deferred assets. Controlled fixture work/resources and bundle bytes do not establish live page-load time or a physical maximum."
+  },
+  "validation": {
+    "initialIntegratedLocalGate": {
+      "startedAt": "2026-10-11T19:13:56.250521+00:00",
+      "completedAt": "2026-10-11T19:18:58.545750+00:00",
+      "seconds": 302.294,
+      "command": ["make", "check"],
+      "exitCode": 0,
+      "log": "/private/tmp/sarj-wiki-perf-round6-integrated-check-2.log",
+      "logSha256": "03dd9cd698e82f9d1ce5e271d6ddf5152d720bea049e9da92dc8764af198d3d5",
+      "backendTestsPassed": 4403,
+      "backendCoveragePercent": 89.2,
+      "frontendTestsPassed": 946,
+      "frontendTestFilesPassed": 119,
+      "frontendTypeCoveragePercent": 99.71,
+      "repositoryTestsPassed": 323,
+      "infrastructureTestsPassed": 11,
+      "productionBuild": "passed",
+      "toolchain": "Pinned uv 0.12.24, locked Python 3.14.7, Node >=26.7 and locked npm dependencies",
+      "databaseFixtures": "Owned loopback PostgreSQL QA, round6 bulk and round6 cache databases explicitly enabled; fixture-owned rows only"
+    },
+    "firstAttempt": {
+      "startedAt": "2026-10-11T19:12:48.682451+00:00",
+      "completedAt": "2026-10-11T19:12:49.466670+00:00",
+      "seconds": 0.784,
+      "command": ["make", "check"],
+      "exitCode": 2,
+      "log": "/private/tmp/sarj-wiki-perf-round6-integrated-check-1.log",
+      "logSha256": "5cd626c20bbbaac61b3551f10438b72cd0231ee4610f61ef57d75a66cb9bae0b",
+      "cause": "System Python shim reselected uv 0.12.19. The retry uses backend/.venv/bin/python and preserves pinned PATH; repository code/configuration were unchanged."
+    },
+    "scopeReportsVerified": 5,
+    "distinctCandidateIdsVerified": 50,
+    "qualifiedSourceHashCount": 36,
+    "referencedArtifactsWithExplicitHashesVerified": 14,
+    "scopeSourceHashes": [
+      {
+        "path": "backend/app/aliases/service.py",
+        "sha256": "1d175db333308eff63e04f7480ce81857e1513e2e99615a9ef4060233f6179e1"
+      },
+      {
+        "path": "backend/app/cache/protection.py",
+        "sha256": "7cd341b6c658005eb894da77b4fb64d8420e2bafcb4a58686f2d36cf01e1cc6d"
+      },
+      {
+        "path": "backend/app/cache/service.py",
+        "sha256": "0d68bbdd52baeb8d2a00a4d9142db2c0e29d556227b46680443107974f766e95"
+      },
+      {
+        "path": "backend/app/drive/service.py",
+        "sha256": "b63df9c49a0bb79bcaa321d029532c747ee8471faedc1e81bf2234f068a8a16e"
+      },
+      {
+        "path": "backend/app/extras/service.py",
+        "sha256": "ac00dbec6c91c14208411cfa46e58b2a0ea77623ee6b8aa8cd000c4fdd1d3d59"
+      },
+      {
+        "path": "backend/app/files/service.py",
+        "sha256": "2c8afe381908f05e8779ebc05e372ad6d2a622050715bf7bdac1d08f27836f79"
+      },
+      {
+        "path": "backend/app/sidebar/cache.py",
+        "sha256": "4bc19aa96391f431f366473aa6d038484b205661fdc2ae63ebcb1d8955cb6348"
+      },
+      {
+        "path": "backend/app/smart_create/service.py",
+        "sha256": "847c4e2c18201b4f52b638a576d9bc4cf606773d335827834b94521e021ab544"
+      },
+      {
+        "path": "backend/app/tasks/service.py",
+        "sha256": "2f4c4c4dd9a518c01ba0b7397a672023b69cbeb2b9d35ddf6b0ce7dc3a74e991"
+      },
+      {
+        "path": "backend/tests/advanced_round6_support.py",
+        "sha256": "725aad16333fbdf7d244e343f5ce6c08b4b0308a382e942e5912f57169f7bf1d"
+      },
+      {
+        "path": "backend/tests/bulk_round6_support.py",
+        "sha256": "cd45265beb48699e4c1ad3f0a31087f2ec120db4e44750c318a665ee27ac2676"
+      },
+      {
+        "path": "backend/tests/test_advanced_round6.py",
+        "sha256": "8e105329e120eed83e4705e8eb5aa44a228d58f84caf417abcbd7977f0ffd8ff"
+      },
+      {
+        "path": "backend/tests/test_aliases.py",
+        "sha256": "2ff1cd1eb075376691ed337bd9a05594964e47518942016c8126d3d8ac632190"
+      },
+      {
+        "path": "backend/tests/test_bulk_round6.py",
+        "sha256": "1da6632396d97a464cbdf4add7bef53019e7572ed648a0237a8702ba08f4b2e5"
+      },
+      {
+        "path": "backend/tests/test_bulk_round6_postgres.py",
+        "sha256": "7176c8b7e4a15b021773cd51816d06ba02e250882e4df8da331e912344af8695"
+      },
+      {
+        "path": "backend/tests/test_cache_service.py",
+        "sha256": "8c4302559f79d713fd8a3c85235ae74abdb58e89a887a6bb10179f4d26f27192"
+      },
+      {
+        "path": "backend/tests/test_round6_cache_postgres.py",
+        "sha256": "f490ca0193e6e08a1abaea17c6e8b49912a3f768d95aa2f755434d41cff9ba36"
+      },
+      {
+        "path": "backend/tests/test_round6_cache_reuse.py",
+        "sha256": "d1c5501fc1a77ed9423b03dadbd267fe7b6523ef5e45b6895ec100ed5b74b871"
+      },
+      {
+        "path": "backend/tests/test_round6_sidebar_reuse.py",
+        "sha256": "5ad0e0d5be246fbbfac4fe86e6ff5e2d2ce6b59f5715cf3ed555496c03238511"
+      },
+      {
+        "path": "backend/tests/test_sidebar_cache.py",
+        "sha256": "e87a0a6815a3fed59cf780875a878f3bcc4281a9cfa836020e9623552ac2ef95"
+      },
+      {
+        "path": "frontend/src/components/wiki-document/doc-viewer-host.test.tsx",
+        "sha256": "6f699a182dd8adefa78257eeee2a46c7a57f331e1b7c10bf56a75565ecfe5f60"
+      },
+      {
+        "path": "frontend/src/components/wiki-document/doc-viewer-host.tsx",
+        "sha256": "0c55953c0f7836cad45c8bbedac68c784f1a561d9ebf26b37bbd20e4c5704ec9"
+      },
+      {
+        "path": "frontend/src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts",
+        "sha256": "36340f4d460be5dcf6ae28c3736272eda45d995cec9058f414d44f6b654b89a1"
+      },
+      {
+        "path": "frontend/src/components/wiki-sidebar/preferences-dialog.test.tsx",
+        "sha256": "288fd92201e8bed2e50ab3c2ca030825050b86532fd6ab99f1ff753fdd8718b7"
+      },
+      {
+        "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+        "sha256": "084a1c8cd65b79650dcf81051390d0321d05e078865512ee62807508e1ab8821"
+      },
+      {
+        "path": "frontend/src/components/wiki-sidebar/use-document-intent.test.tsx",
+        "sha256": "74e3f5f02a058d082fd3c8fc50ba8b99ac6bbbe00e289f44d1c199f8f741ba52"
+      },
+      {
+        "path": "frontend/src/components/wiki-sidebar/use-document-intent.ts",
+        "sha256": "e06b026286a0cd0f18a02980576aa13f57b5103e5d353866e7b9d8427d074b3f"
+      },
+      {
+        "path": "frontend/src/components/wiki-sidebar/use-in-flight-moves.ts",
+        "sha256": "6a395733f2d428a3958839d0a393117048f81b5e72bf5dbc716883c1400fbaab"
+      },
+      {
+        "path": "frontend/src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx",
+        "sha256": "21adfb102e58a391a55e2546d7a7be6a3c31322f2f8a876402e3e50b9beed8fe"
+      },
+      {
+        "path": "frontend/src/components/wiki-sidebar/use-wiki-reorder.ts",
+        "sha256": "17378d8e3dbcc09a86c67c5e6e5b84957c409cd77c197b8abce4c9e37a873d71"
+      },
+      {
+        "path": "frontend/src/hooks/use-wiki-mutations-round6.test.tsx",
+        "sha256": "78ead019bd73297f1cd7d121f37569b6a57a7a3781aad9cefc80817d8d2c667a"
+      },
+      {
+        "path": "frontend/src/hooks/use-wiki-mutations.ts",
+        "sha256": "90cc62f38137e0f81028c27c0d1286383c68398807c04668926bc544bd3e8d91"
+      },
+      {
+        "path": "frontend/src/lib/optimistic-cache.test.ts",
+        "sha256": "ace3013a2a69d049b453c793b970a8186e0f8c1b3c1e16d128baa7ef60b1a69d"
+      },
+      {
+        "path": "frontend/src/lib/optimistic-cache.ts",
+        "sha256": "aed0579d00369e6c634a2d32f876ddb2ed8b1e16086b6b853bed340b168584c0"
+      },
+      {
+        "path": "frontend/src/lib/wiki-cache.test.ts",
+        "sha256": "763e4e2012b142ba83bd16b80ba3f95f9e84f70ea99dfcec47bc5a4db687b9b2"
+      },
+      {
+        "path": "frontend/src/lib/wiki-cache.ts",
+        "sha256": "9e37058baed24c811d31eb3cb63cbdbf3dac0778b11e7a9eb0830a8a1c1f1df4"
+      }
+    ],
+    "referencedArtifactHashes": [
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-benchmark-guard.py",
+        "sha256": "7e7f57f1e05763616655e424ee04875cdcb0718b0be45c4b48cd6221f800029c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-baseline/backend_app_bootstrap_service.py",
+        "sha256": "9f589b4871c9f444631ddc95b8450a332ec6f41abc8c7acb091110b686735a21"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-baseline/backend_app_cache_protection.py",
+        "sha256": "72fb2d203d1c6878cd6930648c84b6777da156a849af8df89c2e6c334650d1c4"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-baseline/backend_app_cache_service.py",
+        "sha256": "a7e821c1ccb6d99cdfd393496b28a6f529689f422505abe522c0c143eb7b43d3"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-baseline/backend_app_extras_service.py",
+        "sha256": "e75f677f7b696d4a16fcf49518022bca150ec885ba0cbf066c2f9df79af10b77"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-baseline/backend_app_sidebar_cache.py",
+        "sha256": "7cf1023e8779559b0408f45849daa9c03e592b01016db96ad7c28393240fd638"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-baseline/backend_app_sidebar_singleflight.py",
+        "sha256": "d3d7c2c6d81ed38156549f015ec7db30890913632a98b52c6fbe53b142984d59"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-benchmark.py",
+        "sha256": "53a2e3670ef419d91fc221581bd8bd35fbe5c000e46e836755b83de8498e4c47"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-hmac-bulk-prototype.py",
+        "sha256": "d6c9db5b222dc9fa7c44562522aa4df4008970eaf918c085ff22297881db263f"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-hmac-final.py",
+        "sha256": "5aa844433909aeb1e39566ccf9539d3be65e27af2518608f83808d524d9b7175"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-preparation-final.py",
+        "sha256": "5616a8c172c8286aedd13e0485959433a9a694715d1e632b0fac5b84b51564a8"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-cache-preparation-prototype.py",
+        "sha256": "364c216b325e10a6c0fc0e66c046b4178276292efe624b6556b6c50f23d5fa67"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-optimistic-measurements.json",
+        "sha256": "8b3c8f9e15111a62657cd0bcb09d232b5d7f9d35ce3249b45cf4cc057cec861c"
+      },
+      {
+        "path": "/private/tmp/sarj-wiki-perf-round6-optimistic-probe.mjs",
+        "sha256": "d6e76dffee9f5519c8a3aa276bf75c942b8bbf16c09ae1a9a5d12f4cdafb574a"
+      }
+    ],
+    "integrationChangedPaths": [],
+    "integrationRepairsCountedAsPasses": 0,
+    "managedConfigBaselineChanges": 0,
+    "newSuppressions": 0,
+    "measurements": {
+      "selectedFixtures": [
+        {
+          "candidate": "round6-bulk-07",
+          "record": "docs/performance/round6-20261011-bulk.json",
+          "measurement": "Fresh recent-alias read, 50 total inputs",
+          "unit": "median ms",
+          "before": 14.268625,
+          "after": 1.11575,
+          "workload": {
+            "totalAliases": [1, 6, 50],
+            "largestCase": "49 existing aliases plus one absent alias; some existing aliases retired, leaving 39 output rows",
+            "statementsPerRead": 1,
+            "database": "wiki_round6_bulk_bench only",
+            "provider": "identical fresh read fixture outside SQL phase"
+          },
+          "controlsAndLimits": "51 alternating local PostgreSQL pairs. Plan/statistics dependent; forced custom-plan, generic one-key and smaller-input regressions/controls remain in the scope report. One fresh SQL read and identical provider work in both arms."
+        },
+        {
+          "candidate": "round6-optimistic-02",
+          "record": "docs/performance/round6-20261011-optimistic.json",
+          "measurement": "Reconciliation reads after eight overlapping edits",
+          "unit": "reads",
+          "before": 8,
+          "after": 1,
+          "workload": {
+            "overlappingWrites": 8,
+            "readKeys": "exact icon/sort key only",
+            "provider": "deferred local action spies; no remote calls"
+          },
+          "controlsAndLimits": "Exact shared icon/sort key. Eight writes remain admitted; read reconciliation occurs after the last pending group settles. Independent fresh authoritative reads still reconcile normally."
+        },
+        {
+          "candidate": "round6-optimistic-04",
+          "record": "docs/performance/round6-20261011-optimistic.json",
+          "measurement": "Same-drive cached move, 5,000 nodes",
+          "unit": "median ms",
+          "before": 3.6668750000000045,
+          "after": 1.8870000000000005,
+          "workload": {
+            "nodes": [100, 5000],
+            "cacheKeys": [
+              "source parent listing",
+              "destination parent listing",
+              "same-drive tree"
+            ],
+            "filesComplete": false,
+            "shortcutFieldsChecked": 4
+          },
+          "controlsAndLimits": "21 alternating fixture pairs after four warmups; metadata, physical-ID deduplication, first position, incomplete-file state, rollback ownership and shortcut fields are qualified separately."
+        },
+        {
+          "candidate": "round6-optimistic-06",
+          "record": "docs/performance/round6-20261011-optimistic.json",
+          "measurement": "Retire 1,000 pending move display leases",
+          "unit": "median ms",
+          "before": 4.101832999999999,
+          "after": 0.11508299999997007,
+          "workload": {
+            "moves": 1000,
+            "sessions": 1,
+            "observable": "Zustand store publications"
+          },
+          "controlsAndLimits": "21 fixture pairs after four warmups. Abort listeners and display publications both fall from 1,000 to one. Already-admitted provider writes continue and old finalizers cannot retire a newer session owner."
+        },
+        {
+          "candidate": "round6-preload-09",
+          "record": "docs/performance/round6-20261011-preload.json",
+          "measurement": "Bounded viewer selection, 100,000 derivations",
+          "unit": "median ms per 100,000",
+          "before": 19.740250000000742,
+          "after": 2.0249579999999696,
+          "workload": "100,000 derivations per sample over 200 seeded fixtures: pool length 0..3, prewarm 0..1, warm 0..1, overlapping IDs, active versus inactive HTML.",
+          "controlsAndLimits": "60 alternating samples after 12 warmups over 200 seeded bounded fixtures. Exact IDs/order and inactive HTML filtering match; this measures selection work, not iframe or browser load time."
+        },
+        {
+          "candidate": "round6-advanced-03",
+          "record": "docs/performance/round6-20261011-advanced.json",
+          "measurement": "Smart Create prompt, 80 folders and 80 templates",
+          "unit": "median ms",
+          "before": 0.24229082,
+          "after": 0.08756332,
+          "workload": {
+            "seed": 6061011,
+            "folderCounts": [1, 80],
+            "templateCounts": [1, 80],
+            "folders": "Workspace 絵 / Category 絵 (index modulo 8) / quoted folder names; stable folder IDs 0..79.",
+            "templates": "80 native Google Doc templates with Unicode, quotes, escaped newline descriptions and eight category IDs.",
+            "description": "('Project decision record 絵 ' * 100)[:2000]",
+            "reorganizationContent": "('Evidence content 絵 ' * 1000)[:12000]",
+            "batchCalls": 50,
+            "provider": "FixtureGenaiClient: fixed valid schema JSON, no network or credentials."
+          },
+          "controlsAndLimits": "41 alternating local pairs with variance and small/unbounded controls in the scope record. Depth pruning holds ancestry memoization constant. Canonical attestation/request hashes, UTF-8 caps, encryption, status invariants, prompt bytes and malformed-graph behavior remain qualified."
+        },
+        {
+          "candidate": "round6-advanced-04",
+          "record": "docs/performance/round6-20261011-advanced.json",
+          "measurement": "Folder candidate assembly, 2,048 folders and a 64-node spine",
+          "unit": "median ms",
+          "before": 34.194083,
+          "after": 27.673459,
+          "workload": {
+            "seed": 6061011,
+            "graphs": [
+              {
+                "folders": 16,
+                "spine": 0
+              },
+              {
+                "folders": 2048,
+                "spine": 0
+              },
+              {
+                "folders": 2048,
+                "spine": 64
+              }
+            ],
+            "graphConstruction": "For a spine, f-0 has no parent; f-i for 1..63 has parent f-(i-1). Remaining nodes have parent f-(32 + index modulo 32). Without a spine every folder is a root. Names are Folder 絵 index.",
+            "request": "Folder project record",
+            "candidateDepth": null,
+            "returnedCandidateCap": 80,
+            "batchCalls": {
+              "16": 10,
+              "2048": 1
+            },
+            "semanticGraphs": "120 seeded 40-node shuffled graphs; duplicate canonical ID every third graph; parents randomly missing or cyclic, repeated names and randomized invoking IDs; depths None/0/1/2."
+          },
+          "controlsAndLimits": "41 alternating local pairs with variance and small/unbounded controls in the scope record. Depth pruning holds ancestry memoization constant. Canonical attestation/request hashes, UTF-8 caps, encryption, status invariants, prompt bytes and malformed-graph behavior remain qualified."
+        },
+        {
+          "candidate": "round6-advanced-05",
+          "record": "docs/performance/round6-20261011-advanced.json",
+          "measurement": "Depth-limited candidate assembly, 2,048 folders",
+          "unit": "median ms",
+          "before": 4.6265,
+          "after": 1.736792,
+          "workload": {
+            "seed": 6061011,
+            "folders": 2048,
+            "spines": [0, 64],
+            "graphConstruction": "Same deterministic root and shared-spine graphs as candidate 04.",
+            "candidateDepths": [1, null],
+            "invokingFolderIdForTimedRuns": null,
+            "request": "Folder project record",
+            "batchCalls": 1,
+            "pairedBaseline": "The final round6-advanced-04 prototype, not the original baseline.",
+            "semanticGraphs": "The same 120 seeded malformed graphs include randomized invoking IDs and depths None/0/1/2; public fixtures cover the retained invoking ancestry at relative depth zero."
+          },
+          "controlsAndLimits": "41 alternating local pairs with variance and small/unbounded controls in the scope record. Depth pruning holds ancestry memoization constant. Canonical attestation/request hashes, UTF-8 caps, encryption, status invariants, prompt bytes and malformed-graph behavior remain qualified."
+        },
+        {
+          "candidate": "round6-advanced-09",
+          "record": "docs/performance/round6-20261011-advanced.json",
+          "measurement": "Encrypted in-place checkpoint, 1,500 requests",
+          "unit": "median ms",
+          "before": 4.0186375,
+          "after": 3.6667791999999997,
+          "workload": {
+            "seed": 6061011,
+            "checkpoints": [
+              "in-place with 1 request/replacement",
+              "in-place with 1500 requests/replacements",
+              "verified copy with 100 findings",
+              "word-copy reference"
+            ],
+            "inPlaceShape": "Each request is updateTextStyle with weightedFontFamily Fixture 絵, range tab/start/end and fields; replacements are ordered z-index keys with Unicode text. Fixture has one finding and one header.",
+            "batchCalls": {
+              "inplace1500": 10,
+              "others": 50
+            },
+            "fixedLimits": {
+              "encryptedPlanUtf8Bytes": 2097152
+            },
+            "publicOperation": "save_document_transform_checkpoint with task 602, lease 603, expected generation 0; fixture returns generation 1.",
+            "legacyRoundTrips": "Each of four shapes saved in sorted baseline and unsorted current envelopes and read by both baseline/current loaders: 16 public restoration checks."
+          },
+          "controlsAndLimits": "41 alternating local pairs with variance and small/unbounded controls in the scope record. Depth pruning holds ancestry memoization constant. Canonical attestation/request hashes, UTF-8 caps, encryption, status invariants, prompt bytes and malformed-graph behavior remain qualified."
+        }
+      ],
+      "clientBundleInventory": {
+        "home": {
+          "before": {
+            "files": [
+              {
+                "file": "static/chunks/3549-0962241baa87ed46.js",
+                "bytes": 8663,
+                "gzipBytes": 3583
+              },
+              {
+                "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+                "bytes": 1278,
+                "gzipBytes": 742
+              },
+              {
+                "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+                "bytes": 4433,
+                "gzipBytes": 2009
+              },
+              {
+                "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+                "bytes": 1221,
+                "gzipBytes": 741
+              },
+              {
+                "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+                "bytes": 75365,
+                "gzipBytes": 20750
+              },
+              {
+                "file": "static/chunks/6325-d67c0ff50280111f.js",
+                "bytes": 27319,
+                "gzipBytes": 8606
+              },
+              {
+                "file": "static/chunks/5047-dd811c71717cadff.js",
+                "bytes": 34311,
+                "gzipBytes": 11455
+              },
+              {
+                "file": "static/chunks/3508-8807ce197bd83e94.js",
+                "bytes": 12398,
+                "gzipBytes": 4500
+              },
+              {
+                "file": "static/chunks/1045-0e37935b27741cab.js",
+                "bytes": 72353,
+                "gzipBytes": 21893
+              },
+              {
+                "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+                "bytes": 7170,
+                "gzipBytes": 2696
+              },
+              {
+                "file": "static/chunks/504-210a10656fbc47a9.js",
+                "bytes": 140132,
+                "gzipBytes": 46875
+              },
+              {
+                "file": "static/chunks/8254-e283dcd5056dbd01.js",
+                "bytes": 30517,
+                "gzipBytes": 9346
+              },
+              {
+                "file": "static/chunks/7463-c6c648d31d366bf0.js",
+                "bytes": 18999,
+                "gzipBytes": 6661
+              },
+              {
+                "file": "static/chunks/app/(app)/layout-7eb031597b035cc3.js",
+                "bytes": 121521,
+                "gzipBytes": 41002
+              },
+              {
+                "file": "static/chunks/app/(app)/page-299019a6e8fbc0cd.js",
+                "bytes": 16623,
+                "gzipBytes": 6665
+              }
+            ],
+            "bytes": 572303,
+            "gzipBytes": 187524
+          },
+          "after": {
+            "files": [
+              {
+                "file": "static/chunks/3549-0962241baa87ed46.js",
+                "bytes": 8663,
+                "gzipBytes": 3583
+              },
+              {
+                "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+                "bytes": 1278,
+                "gzipBytes": 742
+              },
+              {
+                "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+                "bytes": 4433,
+                "gzipBytes": 2009
+              },
+              {
+                "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+                "bytes": 1221,
+                "gzipBytes": 741
+              },
+              {
+                "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+                "bytes": 75365,
+                "gzipBytes": 20750
+              },
+              {
+                "file": "static/chunks/6325-d67c0ff50280111f.js",
+                "bytes": 27319,
+                "gzipBytes": 8606
+              },
+              {
+                "file": "static/chunks/5047-dd811c71717cadff.js",
+                "bytes": 34311,
+                "gzipBytes": 11455
+              },
+              {
+                "file": "static/chunks/3508-8807ce197bd83e94.js",
+                "bytes": 12398,
+                "gzipBytes": 4500
+              },
+              {
+                "file": "static/chunks/1045-0e37935b27741cab.js",
+                "bytes": 72353,
+                "gzipBytes": 21893
+              },
+              {
+                "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+                "bytes": 7170,
+                "gzipBytes": 2696
+              },
+              {
+                "file": "static/chunks/504-210a10656fbc47a9.js",
+                "bytes": 140132,
+                "gzipBytes": 46875
+              },
+              {
+                "file": "static/chunks/8254-e283dcd5056dbd01.js",
+                "bytes": 30517,
+                "gzipBytes": 9346
+              },
+              {
+                "file": "static/chunks/9598-1a41929618e84087.js",
+                "bytes": 26911,
+                "gzipBytes": 9225
+              },
+              {
+                "file": "static/chunks/app/(app)/layout-744ac9915f333cf7.js",
+                "bytes": 122077,
+                "gzipBytes": 41197
+              },
+              {
+                "file": "static/chunks/app/(app)/page-a7dfa8b33ff6b869.js",
+                "bytes": 16654,
+                "gzipBytes": 6661
+              }
+            ],
+            "bytes": 580802,
+            "gzipBytes": 190279
+          },
+          "rawChangeBytes": 8499,
+          "gzipChangeBytes": 2755,
+          "gzipChangePercent": 1.4691
+        },
+        "document": {
+          "before": {
+            "files": [
+              {
+                "file": "static/chunks/3549-0962241baa87ed46.js",
+                "bytes": 8663,
+                "gzipBytes": 3583
+              },
+              {
+                "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+                "bytes": 1278,
+                "gzipBytes": 742
+              },
+              {
+                "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+                "bytes": 4433,
+                "gzipBytes": 2009
+              },
+              {
+                "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+                "bytes": 1221,
+                "gzipBytes": 741
+              },
+              {
+                "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+                "bytes": 75365,
+                "gzipBytes": 20750
+              },
+              {
+                "file": "static/chunks/6325-d67c0ff50280111f.js",
+                "bytes": 27319,
+                "gzipBytes": 8606
+              },
+              {
+                "file": "static/chunks/5047-dd811c71717cadff.js",
+                "bytes": 34311,
+                "gzipBytes": 11455
+              },
+              {
+                "file": "static/chunks/3508-8807ce197bd83e94.js",
+                "bytes": 12398,
+                "gzipBytes": 4500
+              },
+              {
+                "file": "static/chunks/1045-0e37935b27741cab.js",
+                "bytes": 72353,
+                "gzipBytes": 21893
+              },
+              {
+                "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+                "bytes": 7170,
+                "gzipBytes": 2696
+              },
+              {
+                "file": "static/chunks/8254-e283dcd5056dbd01.js",
+                "bytes": 30517,
+                "gzipBytes": 9346
+              },
+              {
+                "file": "static/chunks/7463-c6c648d31d366bf0.js",
+                "bytes": 18999,
+                "gzipBytes": 6661
+              },
+              {
+                "file": "static/chunks/4429-24205f1fe7bb120c.js",
+                "bytes": 30467,
+                "gzipBytes": 10485
+              },
+              {
+                "file": "static/chunks/app/(app)/d/%5BdriveId%5D/page-5ff6e99776dd62d0.js",
+                "bytes": 2155,
+                "gzipBytes": 1005
+              },
+              {
+                "file": "static/chunks/504-210a10656fbc47a9.js",
+                "bytes": 140132,
+                "gzipBytes": 46875
+              },
+              {
+                "file": "static/chunks/app/(app)/layout-7eb031597b035cc3.js",
+                "bytes": 121521,
+                "gzipBytes": 41002
+              },
+              {
+                "file": "static/chunks/app/(app)/page-299019a6e8fbc0cd.js",
+                "bytes": 16623,
+                "gzipBytes": 6665
+              }
+            ],
+            "bytes": 604925,
+            "gzipBytes": 199014
+          },
+          "after": {
+            "files": [
+              {
+                "file": "static/chunks/3549-0962241baa87ed46.js",
+                "bytes": 8663,
+                "gzipBytes": 3583
+              },
+              {
+                "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+                "bytes": 1278,
+                "gzipBytes": 742
+              },
+              {
+                "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+                "bytes": 4433,
+                "gzipBytes": 2009
+              },
+              {
+                "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+                "bytes": 1221,
+                "gzipBytes": 741
+              },
+              {
+                "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+                "bytes": 75365,
+                "gzipBytes": 20750
+              },
+              {
+                "file": "static/chunks/6325-d67c0ff50280111f.js",
+                "bytes": 27319,
+                "gzipBytes": 8606
+              },
+              {
+                "file": "static/chunks/5047-dd811c71717cadff.js",
+                "bytes": 34311,
+                "gzipBytes": 11455
+              },
+              {
+                "file": "static/chunks/3508-8807ce197bd83e94.js",
+                "bytes": 12398,
+                "gzipBytes": 4500
+              },
+              {
+                "file": "static/chunks/1045-0e37935b27741cab.js",
+                "bytes": 72353,
+                "gzipBytes": 21893
+              },
+              {
+                "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+                "bytes": 7170,
+                "gzipBytes": 2696
+              },
+              {
+                "file": "static/chunks/8254-e283dcd5056dbd01.js",
+                "bytes": 30517,
+                "gzipBytes": 9346
+              },
+              {
+                "file": "static/chunks/9598-1a41929618e84087.js",
+                "bytes": 26911,
+                "gzipBytes": 9225
+              },
+              {
+                "file": "static/chunks/4429-eb789618505aa92d.js",
+                "bytes": 30467,
+                "gzipBytes": 10484
+              },
+              {
+                "file": "static/chunks/app/(app)/d/%5BdriveId%5D/page-4827f4ae3c42efd6.js",
+                "bytes": 2155,
+                "gzipBytes": 1005
+              },
+              {
+                "file": "static/chunks/504-210a10656fbc47a9.js",
+                "bytes": 140132,
+                "gzipBytes": 46875
+              },
+              {
+                "file": "static/chunks/app/(app)/layout-744ac9915f333cf7.js",
+                "bytes": 122077,
+                "gzipBytes": 41197
+              },
+              {
+                "file": "static/chunks/app/(app)/page-a7dfa8b33ff6b869.js",
+                "bytes": 16654,
+                "gzipBytes": 6661
+              }
+            ],
+            "bytes": 613424,
+            "gzipBytes": 201768
+          },
+          "rawChangeBytes": 8499,
+          "gzipChangeBytes": 2754,
+          "gzipChangePercent": 1.3838
+        }
+      },
+      "limitation": "Locked local app inventory excludes framework/deferred assets. Controlled fixture work/resources and bundle bytes do not establish live page-load time or a physical maximum."
+    },
+    "remainingRequiredQualification": [
+      "normal commit hooks",
+      "normal pre-push full make check",
+      "all hosted required checks",
+      "exact merged-tree Release Main",
+      "strict production health/auth proxies",
+      "authenticated production navigation",
+      "guarded original workspace sync"
+    ],
+    "normalCommitFirstAttempt": {
+      "startedAt": "2026-10-11T19:22:25.721952+00:00",
+      "completedAt": "2026-10-11T19:23:04.289042+00:00",
+      "seconds": 38.567,
+      "command": [
+        "git",
+        "commit",
+        "-m",
+        "perf: reduce wiki query and optimistic update overhead"
+      ],
+      "exitCode": 1,
+      "log": "/private/tmp/sarj-wiki-perf-round6-commit-1.log",
+      "logSha256": "9f9de9d95a809ef4ff53ab0c0c1c5239955aefc43ac1f5ed0aebbf6916954707",
+      "cause": "The generic API-key secret detector matched ten synthetic benchmark labels under measurementKey. Renamed the documentation field to measurementLabel; numeric evidence and production source are unchanged. No allowlist, suppression, hook bypass or baseline edit."
+    },
+    "artifactNormalizationCountedAsPasses": 0
+  },
+  "reproduce": [
+    "Follow the fixture commands and raw-artifact hashes in each of the five scope records. Use the same locked dependency/tool versions and fixture parameters in both arms.",
+    "Serialize local paired probes through /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py; do not overlap benchmarks with builds or type checks.",
+    "Run the unchanged make check with the pinned toolchain and explicitly enabled owned loopback PostgreSQL QA, bulk and cache fixtures.",
+    "From repository root: node frontend/scripts/benchmark-bundle.mjs frontend/.next",
+    "Document inventory: node frontend/scripts/benchmark-bundle.mjs frontend/.next '(app)/d/[driveId]/page'"
+  ],
+  "limitations": [
+    "CPU, SDK response sizes, SQL timings and resource counts are controlled local fixtures; they do not establish production load time or an absolute optimization maximum.",
+    "Array-bound recent-alias timing depends on PostgreSQL plan/statistics behavior. Custom-plan and small-key controls, regressions and exact API bounds are preserved in the bulk record.",
+    "Some accepted candidates reduce bounded allocations, native resources or task ownership without a measured latency gain. Small/large workload controls and noisy tails are reported separately.",
+    "Optimistic values remain pending until the server confirms them. Fresh authoritative reads, session retirement, failures and overlapping writes retain ownership-aware reconciliation and rollback.",
+    "Speculation retains reduced-motion paints, foreground query retries, network/device policy, session ownership, exact candidate ordering and the existing iframe cap.",
+    "Frontend inventories exclude shared framework assets and deferred chunks and are separate from live transfer/LCP measurements.",
+    "Normal commit/pre-push hooks, all hosted required checks, exact merged-tree release identity, authenticated production navigation and guarded source sync remain required after the initial integrated gate. Their final receipts are recorded separately to avoid self-referential commit identifiers."
+  ]
+}

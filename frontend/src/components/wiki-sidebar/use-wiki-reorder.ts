@@ -307,6 +307,7 @@ export function useWikiReorder(): WikiReorder {
         sourceDriveId,
         sourceParentFolderId,
       });
+      rollback.commit();
       if (session.aborted) return;
       toast.success(`Moved “${node.name}” to “${destinationName}”`);
 
@@ -327,6 +328,7 @@ export function useWikiReorder(): WikiReorder {
         toast.error(translateMoveError(err));
       })
       .finally(() => {
+        rollback.commit();
         movesStore.end(node.id, owner);
       });
   };

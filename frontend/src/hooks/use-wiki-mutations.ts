@@ -17,9 +17,31 @@ import {
 import { useSessionMutation } from "@/hooks/use-session-mutation";
 import { wikiKeys } from "@/hooks/use-wiki-tree";
 import { runAction } from "@/lib/action-client";
+import { captureMutationSession } from "@/lib/mutation-session";
+import {
+  type OptimisticFieldsChange,
+  type OptimisticListChange,
+  updateOptimisticFields,
+  updateOptimisticList,
+} from "@/lib/optimistic-cache";
 import type { CreateFileInput, PreferencesInput } from "@/lib/wiki-api";
 import { injectNewFileIntoCaches, removeFileFromCaches } from "@/lib/wiki-cache";
-import type { DocIcon, DriveTree, FolderIcon, SortOrder } from "@/types/wiki";
+import type {
+  DocIcon,
+  DriveTree,
+  FileDetail,
+  FolderIcon,
+  Preferences,
+  SortOrder,
+} from "@/types/wiki";
+
+interface ListMutationContext {
+  change: OptimisticListChange | undefined;
+}
+
+interface PreferencesMutationContext {
+  change: OptimisticFieldsChange<Preferences> | undefined;
+}
 
 export function useCreateFile() {
   const qc = useQueryClient();
@@ -39,6 +61,10 @@ export function useRenameFile() {
     mutationFn: async ({ fileId, name }: { fileId: string; name: string }, _context, session) =>
       runAction(async () => await renameFileAction(fileId, name), session),
     onSuccess: (file) => {
+      injectNewFileIntoCaches(qc, file);
+      qc.setQueryData<FileDetail>(wikiKeys.file(file.id), (previous) =>
+        previous ? { ...previous, modifiedTime: file.modifiedTime, name: file.name } : previous,
+      );
       invalidate([file.driveId]);
       void qc.invalidateQueries({ queryKey: wikiKeys.file(file.id) });
     },
@@ -70,23 +96,37 @@ export function useMoveFile() {
       );
       return { result, sourceDriveId, sourceParentFolderId };
     },
-    onError: (_err, _vars, context: { previousSortOrders?: SortOrder[] } | undefined) => {
-      if (context?.previousSortOrders) {
-        qc.setQueryData(wikiKeys.sortOrders, context.previousSortOrders);
-      }
+    onError: (_err, _vars, context: ListMutationContext | undefined) => {
+      context?.change?.rollback();
     },
-    onMutate: ({ fileId }) => {
-      const previousSortOrders = dropSortOrderLocally(qc, fileId);
-      return previousSortOrders === undefined ? {} : { previousSortOrders };
+    onMutate: async ({ fileId }) => {
+      const previous = qc.getQueryData<SortOrder[]>(wikiKeys.sortOrders);
+      if (!previous?.some((item) => item.driveId === fileId)) return { change: undefined };
+      const session = captureMutationSession(qc);
+      await qc.cancelQueries({ exact: true, queryKey: wikiKeys.sortOrders });
+      session.throwIfAborted();
+      const change = updateOptimisticList<SortOrder>(
+        qc,
+        wikiKeys.sortOrders,
+        session,
+        new Map([[fileId, undefined]]),
+        (item) => item.driveId,
+      );
+      return { change };
+    },
+    onSettled: (_data, _error, _vars, context) => {
+      if (!context?.change || context.change.settle()) {
+        void qc.invalidateQueries({ exact: true, queryKey: wikiKeys.sortOrders });
+      }
     },
     onSuccess: ({ result, sourceDriveId, sourceParentFolderId }) => {
       removeFileFromCaches(qc, result.id, sourceParentFolderId, sourceDriveId, {
+        removeDriveTree: sourceDriveId !== result.driveId,
         removeFileQuery: false,
       });
       injectNewFileIntoCaches(qc, result);
 
       void qc.invalidateQueries({ queryKey: wikiKeys.file(result.id) });
-      void qc.invalidateQueries({ queryKey: wikiKeys.sortOrders });
     },
   });
 }
@@ -147,20 +187,26 @@ export function useBulkSetSortOrders() {
     mutationFn: async (items: SortOrder[], _context, session) =>
       await runAction(async () => await bulkSetSortOrdersAction(items), session),
 
-    onError: (_err, _items, context: { previous: SortOrder[] } | undefined) => {
-      if (context) {
-        qc.setQueryData(wikiKeys.sortOrders, context.previous);
+    onError: (_err, _items, context: ListMutationContext | undefined) => {
+      context?.change?.rollback();
+    },
+    onMutate: async (items) => {
+      const session = captureMutationSession(qc);
+      await qc.cancelQueries({ exact: true, queryKey: wikiKeys.sortOrders });
+      session.throwIfAborted();
+      const change = updateOptimisticList<SortOrder>(
+        qc,
+        wikiKeys.sortOrders,
+        session,
+        new Map(items.map((item) => [item.driveId, () => item])),
+        (item) => item.driveId,
+      );
+      return { change };
+    },
+    onSettled: (_data, _error, _vars, context) => {
+      if (!context?.change || context.change.settle()) {
+        void qc.invalidateQueries({ exact: true, queryKey: wikiKeys.sortOrders });
       }
-    },
-    onMutate: (items) => {
-      const previous = qc.getQueryData<SortOrder[]>(wikiKeys.sortOrders) ?? [];
-      const byId = new Map(previous.map((s) => [s.driveId, s] as const));
-      for (const item of items) byId.set(item.driveId, item);
-      qc.setQueryData<SortOrder[]>(wikiKeys.sortOrders, byId.values().toArray());
-      return { previous };
-    },
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: wikiKeys.sortOrders });
     },
   });
 }
@@ -170,9 +216,27 @@ export function useSetPreferences() {
   return useSessionMutation({
     mutationFn: async (input: PreferencesInput, _context, session) =>
       await runAction(async () => await setPreferencesAction(input), session),
-    onSuccess: (prefs) => {
-      qc.setQueryData(wikiKeys.preferences, prefs);
+    onError: (_error, _input, context: PreferencesMutationContext | undefined) => {
+      context?.change?.rollback();
     },
+    onMutate: async (input) => {
+      const session = captureMutationSession(qc);
+      await qc.cancelQueries({ exact: true, queryKey: wikiKeys.preferences });
+      session.throwIfAborted();
+      return {
+        change: updateOptimisticFields<Preferences>(qc, wikiKeys.preferences, session, input),
+      };
+    },
+    onSettled: async (_data, _error, _input, context) => {
+      if (context?.change?.settle()) {
+        await qc.invalidateQueries({ exact: true, queryKey: wikiKeys.preferences });
+      }
+    },
+    onSuccess: (prefs, _input, context) => {
+      if (context.change) context.change.confirm(prefs);
+      else qc.setQueryData(wikiKeys.preferences, prefs);
+    },
+    scope: { id: "wiki-preferences" },
   });
 }
 
@@ -183,7 +247,8 @@ export function useSetDocIcon() {
       driveId,
       icon: icon ?? undefined,
     }),
-    matches: (item, { driveId }) => item.driveId === driveId,
+    itemId: (item) => item.driveId,
+    variableId: ({ driveId }) => driveId,
     mutationFn: async ({ driveId, icon }, session) =>
       await runAction(async () => await setDocIconAction(driveId, { icon }), session),
 
@@ -194,7 +259,8 @@ export function useSetDocIcon() {
 export function useSetFolderIcon() {
   return useIconMutation<FolderIcon, { folderDriveId: string; icon: null | string }>({
     buildItem: ({ folderDriveId, icon }) => ({ folderDriveId, icon: icon ?? undefined }),
-    matches: (item, { folderDriveId }) => item.folderDriveId === folderDriveId,
+    itemId: (item) => item.folderDriveId,
+    variableId: ({ folderDriveId }) => folderDriveId,
     mutationFn: async ({ folderDriveId, icon }, session) =>
       await runAction(async () => await setFolderIconAction(folderDriveId, icon), session),
     queryKey: wikiKeys.folderIcons,
@@ -225,23 +291,6 @@ function unrelatedFolderIds(
   return unrelated;
 }
 
-function dropSortOrderLocally(
-  qc: ReturnType<typeof useQueryClient>,
-  fileId: string,
-): SortOrder[] | undefined {
-  const previous = qc.getQueryData<SortOrder[]>(wikiKeys.sortOrders);
-  if (!previous) return undefined;
-  const first = previous.findIndex((item) => item.driveId === fileId);
-  if (first === -1) return previous;
-  const next = previous.slice(0, first);
-  for (let index = first + 1; index < previous.length; index += 1) {
-    const item = previous[index];
-    if (item && item.driveId !== fileId) next.push(item);
-  }
-  qc.setQueryData<SortOrder[]>(wikiKeys.sortOrders, next);
-  return previous;
-}
-
 function useInvalidateTrees() {
   const qc = useQueryClient();
   return (driveIds: (null | string | undefined)[]) => {
@@ -256,31 +305,34 @@ function useInvalidateTrees() {
 function useIconMutation<TItem, TVars>(config: {
   queryKey: readonly unknown[];
   mutationFn: (vars: TVars, session: AbortSignal) => Promise<unknown>;
-  matches: (item: TItem, vars: TVars) => boolean;
+  itemId: (item: TItem) => string;
+  variableId: (vars: TVars) => string;
   buildItem: (vars: TVars, existing: TItem | undefined) => TItem;
 }) {
   const qc = useQueryClient();
   return useSessionMutation({
     mutationFn: async (vars: TVars, _context, session) => await config.mutationFn(vars, session),
-    onError: (_err, _vars, context: { previous?: TItem[] } | undefined) => {
-      if (context?.previous) qc.setQueryData(config.queryKey, context.previous);
+    onError: (_err, _vars, context: ListMutationContext | undefined) => {
+      context?.change?.rollback();
     },
-    onMutate: (vars: TVars) => {
-      const previous = qc.getQueryData<TItem[]>(config.queryKey);
-      if (previous) {
-        let existing: TItem | undefined;
-        const next: TItem[] = [];
-        for (const item of previous) {
-          if (config.matches(item, vars)) existing ??= item;
-          else next.push(item);
-        }
-        next.push(config.buildItem(vars, existing));
-        qc.setQueryData<TItem[]>(config.queryKey, next);
+    onMutate: async (vars: TVars) => {
+      const session = captureMutationSession(qc);
+      await qc.cancelQueries({ exact: true, queryKey: config.queryKey });
+      session.throwIfAborted();
+      const change = updateOptimisticList<TItem>(
+        qc,
+        config.queryKey,
+        session,
+        new Map([[config.variableId(vars), (existing) => config.buildItem(vars, existing)]]),
+        config.itemId,
+        true,
+      );
+      return { change };
+    },
+    onSettled: (_data, _error, _vars, context) => {
+      if (!context?.change || context.change.settle()) {
+        void qc.invalidateQueries({ exact: true, queryKey: config.queryKey });
       }
-      return previous === undefined ? {} : { previous };
-    },
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: config.queryKey });
     },
   });
 }

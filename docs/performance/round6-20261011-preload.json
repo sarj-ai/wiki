@@ -1,0 +1,913 @@
+{
+  "scope": "preload",
+  "baselineRevision": "fdc479beea4488ad5869e8957be8c646fc470527",
+  "passCount": 10,
+  "acceptedCount": 3,
+  "rejectedCount": 7,
+  "changedPaths": [
+    "frontend/src/components/wiki-document/doc-viewer-host.tsx",
+    "frontend/src/components/wiki-document/doc-viewer-host.test.tsx",
+    "frontend/src/components/wiki-sidebar/use-document-intent.ts",
+    "frontend/src/components/wiki-sidebar/use-document-intent.test.tsx"
+  ],
+  "sourceHashes": [
+    {
+      "path": "frontend/src/components/wiki-document/doc-viewer-host.tsx",
+      "sha256": "0c55953c0f7836cad45c8bbedac68c784f1a561d9ebf26b37bbd20e4c5704ec9"
+    },
+    {
+      "path": "frontend/src/components/wiki-document/doc-viewer-host.test.tsx",
+      "sha256": "6f699a182dd8adefa78257eeee2a46c7a57f331e1b7c10bf56a75565ecfe5f60"
+    },
+    {
+      "path": "frontend/src/components/wiki-sidebar/use-document-intent.ts",
+      "sha256": "e06b026286a0cd0f18a02980576aa13f57b5103e5d353866e7b9d8427d074b3f"
+    },
+    {
+      "path": "frontend/src/components/wiki-sidebar/use-document-intent.test.tsx",
+      "sha256": "74e3f5f02a058d082fd3c8fc50ba8b99ac6bbbe00e289f44d1c199f8f741ba52"
+    }
+  ],
+  "passes": [
+    {
+      "id": "round6-preload-01",
+      "candidate": "Suppress publication of an exactly unchanged active document only when its owner is also unchanged.",
+      "outcome": "rejected",
+      "status": "rejected",
+      "method": "Temporary isolated baseline-source store prototype, Node source-function probe; 12 warmups then 60 AB/BA paired samples per workload.",
+      "workload": "20,000 repeated API values versus 20,000 existing cleanup/publication lifecycle cycles; exact owner and all document fields.",
+      "evidence": {
+        "paired": [
+          {
+            "workload": "artificial repeat of an unchanged owned value",
+            "iterations": 20000,
+            "repeats": 60,
+            "warmups": 12,
+            "order": "AB/BA alternating",
+            "baseline": {
+              "medianMs": 2.359041999999988,
+              "p95Ms": 2.53454099999999,
+              "minMs": 2.2323339999999803,
+              "maxMs": 2.5687500000000227
+            },
+            "candidate": {
+              "medianMs": 1.2976659999999924,
+              "p95Ms": 1.4437500000000227,
+              "minMs": 1.2326249999999845,
+              "maxMs": 1.467583999999988
+            },
+            "resourcePublications": { "baseline": 1000, "candidate": 0 },
+            "publicationsPer1000Iterations": {
+              "baseline": 1000,
+              "candidate": 0
+            }
+          },
+          {
+            "workload": "existing owner cleanup then publication lifecycle",
+            "iterations": 20000,
+            "repeats": 60,
+            "warmups": 12,
+            "order": "AB/BA alternating",
+            "baseline": {
+              "medianMs": 3.682166999999936,
+              "p95Ms": 3.895750000000021,
+              "minMs": 3.5304589999999507,
+              "maxMs": 6.053417000000081
+            },
+            "candidate": {
+              "medianMs": 3.6773330000000897,
+              "p95Ms": 3.851083000000017,
+              "minMs": 3.5064159999999447,
+              "maxMs": 3.9184170000000904
+            },
+            "resourcePublications": { "baseline": 2000, "candidate": 2000 },
+            "publicationsPer1000Iterations": {
+              "baseline": 2000,
+              "candidate": 2000
+            }
+          }
+        ],
+        "semantics": "Metadata changes to title, version, reload key and MIME remain observable; replacement active/slot owners cannot be cleared by prior owners."
+      },
+      "limits": [
+        "The synthetic repeated-value fixture removes 1,000 unchanged publications, but existing FilePageBody clears active/slot ownership before publishing a replacement; each 1,000 actual clear-then-set cycles still emits 2,000 publications in both variants.",
+        "setWarm is currently admitted once per verified warmup owner; no duplicate warm-list publication was witnessed in its live caller.",
+        "The hot API loop includes one store subscriber in the repeated-value fixture and two in the lifecycle fixture, identically for baseline/candidate. Loop timing is not a browser navigation measurement.",
+        "Actual lifecycle median is essentially unchanged: 3.682167 to 3.677333 ms per 20,000 cycles."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-preload-artifacts/cpu-probe.mjs",
+        "artifactStatus": "temporary, uncommitted",
+        "prototype": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/candidate01.ts",
+        "rawSamples": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/cpu-results.json"
+      },
+      "validation": [
+        "Source-level public API owner/title/version/reload/MIME assertions passed in paired probe.",
+        "Rejected source never retained; final doc-viewer-store.ts remains byte-identical to baseline."
+      ]
+    },
+    {
+      "id": "round6-preload-02",
+      "candidate": "Suppress re-publication of the identical non-null viewer slot only when its owner is also unchanged.",
+      "outcome": "rejected",
+      "status": "rejected",
+      "method": "Temporary isolated baseline-source store prototype, Node source-function probe; 12 warmups then 60 AB/BA paired samples per workload.",
+      "workload": "20,000 repeated API values versus 20,000 existing cleanup/publication lifecycle cycles; exact owner and all document fields.",
+      "evidence": {
+        "paired": [
+          {
+            "workload": "artificial repeat of an unchanged owned value",
+            "iterations": 20000,
+            "repeats": 60,
+            "warmups": 12,
+            "order": "AB/BA alternating",
+            "baseline": {
+              "medianMs": 1.1032920000000104,
+              "p95Ms": 1.222250000000031,
+              "minMs": 1.0432499999999436,
+              "maxMs": 1.881458000000066
+            },
+            "candidate": {
+              "medianMs": 0.2614579999999478,
+              "p95Ms": 0.37879099999986465,
+              "minMs": 0.2528340000001208,
+              "maxMs": 1.668916999999965
+            },
+            "resourcePublications": { "baseline": 1000, "candidate": 0 },
+            "publicationsPer1000Iterations": {
+              "baseline": 1000,
+              "candidate": 0
+            }
+          },
+          {
+            "workload": "existing owner cleanup then publication lifecycle",
+            "iterations": 20000,
+            "repeats": 60,
+            "warmups": 12,
+            "order": "AB/BA alternating",
+            "baseline": {
+              "medianMs": 2.4992500000000746,
+              "p95Ms": 2.689875000000029,
+              "minMs": 2.3606250000000273,
+              "maxMs": 2.8317910000000666
+            },
+            "candidate": {
+              "medianMs": 2.2480419999999413,
+              "p95Ms": 2.495208000000048,
+              "minMs": 2.125541999999996,
+              "maxMs": 2.541332999999895
+            },
+            "resourcePublications": { "baseline": 2000, "candidate": 2000 },
+            "publicationsPer1000Iterations": {
+              "baseline": 2000,
+              "candidate": 2000
+            }
+          }
+        ],
+        "semantics": "Metadata changes to title, version, reload key and MIME remain observable; replacement active/slot owners cannot be cleared by prior owners."
+      },
+      "limits": [
+        "The synthetic repeated-value fixture removes 1,000 unchanged publications, but existing FilePageBody clears active/slot ownership before publishing a replacement; each 1,000 actual clear-then-set cycles still emits 2,000 publications in both variants.",
+        "setWarm is currently admitted once per verified warmup owner; no duplicate warm-list publication was witnessed in its live caller.",
+        "The hot API loop includes one store subscriber in the repeated-value fixture and two in the lifecycle fixture, identically for baseline/candidate. Loop timing is not a browser navigation measurement.",
+        "Actual lifecycle hot-loop median is 2.499250 to 2.248042 ms per 20,000 cycles, but the guard does not suppress a single lifecycle publication; this does not demonstrate its intended resource benefit in the caller."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-preload-artifacts/cpu-probe.mjs",
+        "artifactStatus": "temporary, uncommitted",
+        "prototype": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/candidate02.ts",
+        "rawSamples": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/cpu-results.json"
+      },
+      "validation": [
+        "Source-level public API owner/title/version/reload/MIME assertions passed in paired probe.",
+        "Rejected source never retained; final doc-viewer-store.ts remains byte-identical to baseline."
+      ]
+    },
+    {
+      "id": "round6-preload-03",
+      "candidate": "Suppress publication of an equivalent ordered warm document list using all document fields.",
+      "outcome": "rejected",
+      "status": "rejected",
+      "method": "Temporary isolated baseline-source store prototype, Node source-function probe; 12 warmups then 60 AB/BA paired samples per workload.",
+      "workload": "20,000 repeated API values versus 20,000 existing cleanup/publication lifecycle cycles; exact owner and all document fields.",
+      "evidence": {
+        "paired": [
+          {
+            "workload": "artificial repeat of an unchanged owned value",
+            "iterations": 20000,
+            "repeats": 60,
+            "warmups": 12,
+            "order": "AB/BA alternating",
+            "baseline": {
+              "medianMs": 1.3460419999998976,
+              "p95Ms": 1.4803750000000946,
+              "minMs": 1.2566659999999956,
+              "maxMs": 1.5708750000001146
+            },
+            "candidate": {
+              "medianMs": 1.5412919999998849,
+              "p95Ms": 1.702291999999943,
+              "minMs": 1.4374579999998787,
+              "maxMs": 1.7819999999999254
+            },
+            "resourcePublications": { "baseline": 1000, "candidate": 0 },
+            "publicationsPer1000Iterations": {
+              "baseline": 1000,
+              "candidate": 0
+            }
+          },
+          {
+            "workload": "existing owner cleanup then publication lifecycle",
+            "iterations": 20000,
+            "repeats": 60,
+            "warmups": 12,
+            "order": "AB/BA alternating",
+            "baseline": {
+              "medianMs": 3.4794160000001284,
+              "p95Ms": 3.767749999999978,
+              "minMs": 3.2280829999999696,
+              "maxMs": 4.560083999999961
+            },
+            "candidate": {
+              "medianMs": 2.860791000000063,
+              "p95Ms": 3.1112920000000486,
+              "minMs": 2.6431660000000647,
+              "maxMs": 10.199540999999954
+            },
+            "resourcePublications": { "baseline": 2000, "candidate": 2000 },
+            "publicationsPer1000Iterations": {
+              "baseline": 2000,
+              "candidate": 2000
+            }
+          }
+        ],
+        "semantics": "Metadata changes to title, version, reload key and MIME remain observable; replacement active/slot owners cannot be cleared by prior owners."
+      },
+      "limits": [
+        "The synthetic repeated-value fixture removes 1,000 unchanged publications, but existing FilePageBody clears active/slot ownership before publishing a replacement; each 1,000 actual clear-then-set cycles still emits 2,000 publications in both variants.",
+        "setWarm is currently admitted once per verified warmup owner; no duplicate warm-list publication was witnessed in its live caller.",
+        "The hot API loop includes one store subscriber in the repeated-value fixture and two in the lifecycle fixture, identically for baseline/candidate. Loop timing is not a browser navigation measurement.",
+        "Even the synthetic unchanged-list case regresses from 1.346042 to 1.541292 ms per 20,000 iterations while adding comparison work to the once-per-owner path. The reset/list hot-loop variation does not establish a live caller gain."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-preload-artifacts/cpu-probe.mjs",
+        "artifactStatus": "temporary, uncommitted",
+        "prototype": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/candidate03.ts",
+        "rawSamples": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/cpu-results.json"
+      },
+      "validation": [
+        "Source-level public API owner/title/version/reload/MIME assertions passed in paired probe.",
+        "Rejected source never retained; final doc-viewer-store.ts remains byte-identical to baseline."
+      ]
+    },
+    {
+      "id": "round6-preload-04",
+      "candidate": "Reuse one live reduced-motion MediaQueryList for snapshot reads, and release its cached reference when the final viewer preference subscription retires.",
+      "outcome": "accepted",
+      "status": "accepted",
+      "method": "Temporary isolated viewer host variants in happy-dom; 3 warmups then 20 AB/BA paired samples; same rendered document sequence and live change notification.",
+      "workload": "20 pooled viewer navigations plus live reduced-motion change, three-frame pool, one subscription",
+      "evidence": {
+        "pairedRenderMs": {
+          "baseline": {
+            "medianMs": 24.372666999999865,
+            "p95Ms": 51.698040999999876,
+            "minMs": 20.29870799999992,
+            "maxMs": 51.698040999999876
+          },
+          "candidate": {
+            "medianMs": 24.695582999999942,
+            "p95Ms": 30.79424999999992,
+            "minMs": 19.69229099999984,
+            "maxMs": 30.79424999999992
+          }
+        },
+        "nativeObjectsPerSample": { "baseline": 50, "candidate": 1 },
+        "subscriptions": { "baseline": 1, "candidate": 1 },
+        "unsubscriptions": { "baseline": 1, "candidate": 1 },
+        "mountedFrames": { "baseline": 3, "candidate": 3 }
+      },
+      "limits": [
+        "Render median 24.372667 to 24.695583 ms (+1.3%) does not support a render-time improvement; retained only for avoiding 49 native media-query objects in this workload.",
+        "The browser-owned query remains live. Reduced-motion changes are read from the existing MediaQueryList; server snapshot remains false. Cached reference is retired after the last subscription.",
+        "No production browser or Google editor network timing is claimed."
+      ],
+      "changedPaths": [
+        "frontend/src/components/wiki-document/doc-viewer-host.tsx",
+        "frontend/src/components/wiki-document/doc-viewer-host.test.tsx"
+      ],
+      "repro": {
+        "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py /private/tmp/sarj-wiki-performance-20261010/frontend/node_modules/.bin/vitest run --config /private/tmp/sarj-wiki-perf-round6-preload-artifacts/ui-probe.config.mjs --reporter=dot",
+        "artifactStatus": "temporary, uncommitted",
+        "prototype": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/candidate04.tsx",
+        "rawSamples": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/ui-results.json"
+      },
+      "validation": [
+        "Public UI test checks a live reduced-motion change, one query across pooled viewer changes, cleanup, and a fresh query for the replacement host.",
+        "Existing four-frame subscription, Strict Mode, iframe identity and loading lifecycle tests pass."
+      ]
+    },
+    {
+      "id": "round6-preload-05",
+      "candidate": "Skip both animation-frame scheduling steps when ready document content has reduced motion enabled, retaining the announcement minimum.",
+      "outcome": "rejected",
+      "status": "rejected",
+      "method": "Temporary isolated host variant; 3 warmups, 20 AB/BA pairs, fake clock and deterministic 16 ms paint steps.",
+      "workload": "Iframe load at 150 ms, 300 ms visible announcement minimum; observe loading mask before either paint callback.",
+      "evidence": {
+        "overlayRemovalMs": { "baseline": 482, "candidate": 450 },
+        "scheduledAnimationFrames": { "baseline": 2, "candidate": 0 },
+        "exposedBeforePaint": { "baseline": false, "candidate": true },
+        "pairedSamplesPerVariant": 20
+      },
+      "limits": [
+        "The apparent 32 ms win removes the established paint barrier: candidate content is exposed before the controlled paint steps. Reduced motion disables the exit animation, but does not prove early content revelation is ready.",
+        "Happy-dom cannot validate Google editor paint readiness; preserve the existing two-paint mask contract."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py /private/tmp/sarj-wiki-performance-20261010/frontend/node_modules/.bin/vitest run --config /private/tmp/sarj-wiki-perf-round6-preload-artifacts/ui-probe.config.mjs --reporter=dot",
+        "artifactStatus": "temporary, uncommitted",
+        "prototype": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/candidate05.tsx",
+        "rawSamples": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/ui-results.json"
+      },
+      "validation": [
+        "Paired loading-mask/RAF fixture passes and witnesses the semantic regression.",
+        "Final source retains both RAF gates, 300 ms minimum, slow feedback, and reduced-motion animation behavior."
+      ]
+    },
+    {
+      "id": "round6-preload-06",
+      "candidate": "Disable retries for weak speculative document prefetch while leaving explicit/foreground query options unchanged.",
+      "outcome": "rejected",
+      "status": "rejected",
+      "method": "Temporary actual-hook variants with real matching-key TanStack Query coalescing; 2 warmups and 12 AB/BA pairs per scenario; first request is rejected after a foreground and/or strong-intent join.",
+      "workload": "first speculative request fails after a foreground/strong-intent join; existing single 20 ms retry then success; matching-key coalescing",
+      "evidence": {
+        "pairedScenarios": [
+          {
+            "scenario": "speculative only",
+            "baseline": {
+              "pairedSamples": 12,
+              "attempts": [2],
+              "queryStatus": ["success"],
+              "settlementMsSinceDispatch": 25.0,
+              "followupReads": [0],
+              "foregroundObservation": ["None"],
+              "publishedTitle": ["None"]
+            },
+            "candidate": {
+              "pairedSamples": 12,
+              "attempts": [1],
+              "queryStatus": ["error"],
+              "settlementMsSinceDispatch": 5.0,
+              "followupReads": [0],
+              "foregroundObservation": ["None"],
+              "publishedTitle": ["None"]
+            }
+          },
+          {
+            "scenario": "foreground joins",
+            "baseline": {
+              "pairedSamples": 12,
+              "attempts": [2],
+              "queryStatus": ["success"],
+              "settlementMsSinceDispatch": 26.0,
+              "followupReads": [0],
+              "foregroundObservation": [
+                "success:Fresh permission-confirmed title"
+              ],
+              "publishedTitle": ["None"]
+            },
+            "candidate": {
+              "pairedSamples": 12,
+              "attempts": [1],
+              "queryStatus": ["error"],
+              "settlementMsSinceDispatch": 5.0,
+              "followupReads": [0],
+              "foregroundObservation": ["error:"],
+              "publishedTitle": ["None"]
+            }
+          },
+          {
+            "scenario": "committed joins",
+            "baseline": {
+              "pairedSamples": 12,
+              "attempts": [2],
+              "queryStatus": ["success"],
+              "settlementMsSinceDispatch": 25.0,
+              "followupReads": [0],
+              "foregroundObservation": ["None"],
+              "publishedTitle": ["Fresh permission-confirmed title"]
+            },
+            "candidate": {
+              "pairedSamples": 12,
+              "attempts": [1],
+              "queryStatus": ["error"],
+              "settlementMsSinceDispatch": 5.0,
+              "followupReads": [0],
+              "foregroundObservation": ["None"],
+              "publishedTitle": ["None"]
+            }
+          },
+          {
+            "scenario": "foreground committed joins",
+            "baseline": {
+              "pairedSamples": 12,
+              "attempts": [2],
+              "queryStatus": ["success"],
+              "settlementMsSinceDispatch": 26.0,
+              "followupReads": [0],
+              "foregroundObservation": [
+                "success:Fresh permission-confirmed title"
+              ],
+              "publishedTitle": ["Fresh permission-confirmed title"]
+            },
+            "candidate": {
+              "pairedSamples": 12,
+              "attempts": [1],
+              "queryStatus": ["error"],
+              "settlementMsSinceDispatch": 5.0,
+              "followupReads": [0],
+              "foregroundObservation": ["error:"],
+              "publishedTitle": ["None"]
+            }
+          }
+        ]
+      },
+      "limits": [
+        "Attempts decrease 2 to 1 and controlled settlement 25 to 5 ms, but every candidate shared query fails while the baseline succeeds on its existing single retry.",
+        "Changing query/observer options at the join does not replace the in-flight Retryer initial policy. Document strong intent loses its authorized prewarm; Drive strong intent loses the incomplete-root followup.",
+        "Fixtures model retryable transient failure; existing permanent authorization failures remain non-retryable and are not bypassed.",
+        "Controlled fake-clock settlement is not production latency."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py /private/tmp/sarj-wiki-performance-20261010/frontend/node_modules/.bin/vitest run --config /private/tmp/sarj-wiki-perf-round6-preload-artifacts/ui-probe.config.mjs --reporter=dot",
+        "artifactStatus": "temporary, uncommitted",
+        "prototype": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/candidate06.ts",
+        "rawSamples": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/ui-results.json"
+      },
+      "validation": [
+        "Paired actual-hook fixture checks speculative-only, foreground, committed and combined joins.",
+        "Final source preserves existing retry options, matching-key sharing, query cancellation and permission publication behavior."
+      ]
+    },
+    {
+      "id": "round6-preload-07",
+      "candidate": "Disable retries for weak speculative Drive prefetch while leaving explicit/foreground query options unchanged.",
+      "outcome": "rejected",
+      "status": "rejected",
+      "method": "Temporary actual-hook variants with real matching-key TanStack Query coalescing; 2 warmups and 12 AB/BA pairs per scenario; first request is rejected after a foreground and/or strong-intent join.",
+      "workload": "first speculative request fails after a foreground/strong-intent join; existing single 20 ms retry then success; matching-key coalescing",
+      "evidence": {
+        "pairedScenarios": [
+          {
+            "scenario": "speculative only",
+            "baseline": {
+              "pairedSamples": 12,
+              "attempts": [2],
+              "queryStatus": ["success"],
+              "settlementMsSinceDispatch": 25.0,
+              "followupReads": [1],
+              "foregroundObservation": ["None"],
+              "publishedTitle": ["None"]
+            },
+            "candidate": {
+              "pairedSamples": 12,
+              "attempts": [1],
+              "queryStatus": ["error"],
+              "settlementMsSinceDispatch": 5.0,
+              "followupReads": [0],
+              "foregroundObservation": ["None"],
+              "publishedTitle": ["None"]
+            }
+          },
+          {
+            "scenario": "foreground joins",
+            "baseline": {
+              "pairedSamples": 12,
+              "attempts": [2],
+              "queryStatus": ["success"],
+              "settlementMsSinceDispatch": 26.0,
+              "followupReads": [1],
+              "foregroundObservation": ["success:drive-1"],
+              "publishedTitle": ["None"]
+            },
+            "candidate": {
+              "pairedSamples": 12,
+              "attempts": [1],
+              "queryStatus": ["error"],
+              "settlementMsSinceDispatch": 5.0,
+              "followupReads": [0],
+              "foregroundObservation": ["error:"],
+              "publishedTitle": ["None"]
+            }
+          },
+          {
+            "scenario": "committed joins",
+            "baseline": {
+              "pairedSamples": 12,
+              "attempts": [2],
+              "queryStatus": ["success"],
+              "settlementMsSinceDispatch": 25.0,
+              "followupReads": [1],
+              "foregroundObservation": ["None"],
+              "publishedTitle": ["None"]
+            },
+            "candidate": {
+              "pairedSamples": 12,
+              "attempts": [1],
+              "queryStatus": ["error"],
+              "settlementMsSinceDispatch": 5.0,
+              "followupReads": [0],
+              "foregroundObservation": ["None"],
+              "publishedTitle": ["None"]
+            }
+          },
+          {
+            "scenario": "foreground committed joins",
+            "baseline": {
+              "pairedSamples": 12,
+              "attempts": [2],
+              "queryStatus": ["success"],
+              "settlementMsSinceDispatch": 26.0,
+              "followupReads": [1],
+              "foregroundObservation": ["success:drive-1"],
+              "publishedTitle": ["None"]
+            },
+            "candidate": {
+              "pairedSamples": 12,
+              "attempts": [1],
+              "queryStatus": ["error"],
+              "settlementMsSinceDispatch": 5.0,
+              "followupReads": [0],
+              "foregroundObservation": ["error:"],
+              "publishedTitle": ["None"]
+            }
+          }
+        ]
+      },
+      "limits": [
+        "Attempts decrease 2 to 1 and controlled settlement 25 to 5 ms, but every candidate shared query fails while the baseline succeeds on its existing single retry.",
+        "Changing query/observer options at the join does not replace the in-flight Retryer initial policy. Document strong intent loses its authorized prewarm; Drive strong intent loses the incomplete-root followup.",
+        "Fixtures model retryable transient failure; existing permanent authorization failures remain non-retryable and are not bypassed.",
+        "Controlled fake-clock settlement is not production latency."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py /private/tmp/sarj-wiki-performance-20261010/frontend/node_modules/.bin/vitest run --config /private/tmp/sarj-wiki-perf-round6-preload-artifacts/ui-probe.config.mjs --reporter=dot",
+        "artifactStatus": "temporary, uncommitted",
+        "prototype": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/candidate07.ts",
+        "rawSamples": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/ui-results.json"
+      },
+      "validation": [
+        "Paired actual-hook fixture checks speculative-only, foreground, committed and combined joins.",
+        "Final source preserves existing retry options, matching-key sharing, query cancellation and permission publication behavior."
+      ]
+    },
+    {
+      "id": "round6-preload-08",
+      "candidate": "Stop fallback warmup cache scanning after locating the first eligible workspace target, eliminating matching-query tuples before the one-document authorization.",
+      "outcome": "rejected",
+      "status": "rejected",
+      "method": "Temporary typed-public-API prototype using QueryCache.getAll prefix checks and getQueryData<DriveTree>; 12 warmups, 60 AB/BA pairs per fixture. Source-function outputs deeply equal baseline.",
+      "workload": "1/25/250 cached Drive trees plus 200 unrelated folder queries; first tree eligible versus no workspace MIME target.",
+      "evidence": {
+        "paired": [
+          {
+            "workload": "1 cached Drive trees + 200 unrelated folder queries, first tree eligible",
+            "iterations": 1000,
+            "repeats": 60,
+            "warmups": 12,
+            "order": "AB/BA alternating",
+            "baseline": {
+              "medianMs": 3.6376670000000217,
+              "p95Ms": 4.190584000000001,
+              "minMs": 3.396833000000015,
+              "maxMs": 4.24091599999997
+            },
+            "candidate": {
+              "medianMs": 0.7069169999999758,
+              "p95Ms": 0.8728750000000218,
+              "minMs": 0.6668339999999944,
+              "maxMs": 0.9660409999999899
+            },
+            "resourceCountsPerSelection": {
+              "queryKeyReads": { "baseline": 202, "candidate": 3 },
+              "matchingTupleArrays": { "baseline": 1, "candidate": 0 },
+              "temporaryMatchingArrays": { "baseline": 2, "candidate": 0 }
+            }
+          },
+          {
+            "workload": "25 cached Drive trees + 200 unrelated folder queries, first tree eligible",
+            "iterations": 1000,
+            "repeats": 60,
+            "warmups": 12,
+            "order": "AB/BA alternating",
+            "baseline": {
+              "medianMs": 4.3347499999999854,
+              "p95Ms": 4.730332999999973,
+              "minMs": 4.056042000000048,
+              "maxMs": 4.8761670000000095
+            },
+            "candidate": {
+              "medianMs": 0.7642079999999396,
+              "p95Ms": 0.8533330000000205,
+              "minMs": 0.677915999999982,
+              "maxMs": 0.8940000000000055
+            },
+            "resourceCountsPerSelection": {
+              "queryKeyReads": { "baseline": 250, "candidate": 3 },
+              "matchingTupleArrays": { "baseline": 25, "candidate": 0 },
+              "temporaryMatchingArrays": { "baseline": 2, "candidate": 0 }
+            }
+          },
+          {
+            "workload": "250 cached Drive trees + 200 unrelated folder queries, first tree eligible",
+            "iterations": 1000,
+            "repeats": 60,
+            "warmups": 12,
+            "order": "AB/BA alternating",
+            "baseline": {
+              "medianMs": 9.933541999999989,
+              "p95Ms": 10.403374999999869,
+              "minMs": 9.570584000000053,
+              "maxMs": 10.537166999999954
+            },
+            "candidate": {
+              "medianMs": 0.9936250000000655,
+              "p95Ms": 1.0669170000001031,
+              "minMs": 0.9425829999997859,
+              "maxMs": 1.1572499999999764
+            },
+            "resourceCountsPerSelection": {
+              "queryKeyReads": { "baseline": 700, "candidate": 3 },
+              "matchingTupleArrays": { "baseline": 250, "candidate": 0 },
+              "temporaryMatchingArrays": { "baseline": 2, "candidate": 0 }
+            }
+          },
+          {
+            "workload": "1 cached Drive trees + 200 unrelated folder queries, no workspace MIME candidate",
+            "iterations": 1000,
+            "repeats": 60,
+            "warmups": 12,
+            "order": "AB/BA alternating",
+            "baseline": {
+              "medianMs": 3.7973329999999805,
+              "p95Ms": 4.150667000000112,
+              "minMs": 3.5526669999999285,
+              "maxMs": 4.189166000000114
+            },
+            "candidate": {
+              "medianMs": 2.480083999999806,
+              "p95Ms": 2.642665999999963,
+              "minMs": 2.320750000000089,
+              "maxMs": 2.6947499999998854
+            },
+            "resourceCountsPerSelection": {
+              "queryKeyReads": { "baseline": 202, "candidate": 403 },
+              "matchingTupleArrays": { "baseline": 1, "candidate": 0 },
+              "temporaryMatchingArrays": { "baseline": 2, "candidate": 0 }
+            }
+          },
+          {
+            "workload": "25 cached Drive trees + 200 unrelated folder queries, no workspace MIME candidate",
+            "iterations": 1000,
+            "repeats": 60,
+            "warmups": 12,
+            "order": "AB/BA alternating",
+            "baseline": {
+              "medianMs": 6.347957999999835,
+              "p95Ms": 6.847208999999566,
+              "minMs": 5.88254199999983,
+              "maxMs": 7.239000000000033
+            },
+            "candidate": {
+              "medianMs": 13.296499999999924,
+              "p95Ms": 13.89449999999988,
+              "minMs": 12.675666000000092,
+              "maxMs": 13.954541999999947
+            },
+            "resourceCountsPerSelection": {
+              "queryKeyReads": { "baseline": 250, "candidate": 475 },
+              "matchingTupleArrays": { "baseline": 25, "candidate": 0 },
+              "temporaryMatchingArrays": { "baseline": 2, "candidate": 0 }
+            }
+          },
+          {
+            "workload": "250 cached Drive trees + 200 unrelated folder queries, no workspace MIME candidate",
+            "iterations": 1000,
+            "repeats": 60,
+            "warmups": 12,
+            "order": "AB/BA alternating",
+            "baseline": {
+              "medianMs": 29.970124999999825,
+              "p95Ms": 30.848291999999674,
+              "minMs": 28.95295900000019,
+              "maxMs": 31.506124999999884
+            },
+            "candidate": {
+              "medianMs": 114.39420799999971,
+              "p95Ms": 118.28754200000003,
+              "minMs": 112.32333300000028,
+              "maxMs": 119.13970900000004
+            },
+            "resourceCountsPerSelection": {
+              "queryKeyReads": { "baseline": 700, "candidate": 1150 },
+              "matchingTupleArrays": { "baseline": 250, "candidate": 0 },
+              "temporaryMatchingArrays": { "baseline": 2, "candidate": 0 }
+            }
+          }
+        ]
+      },
+      "limits": [
+        "The first eligible 25-tree fixture improves 4.334750 to 0.764208 ms per 1,000 selections and matching tuples fall 25 to 0.",
+        "The no-workspace 25-tree fixture regresses 6.347958 to 13.296500 ms per 1,000 selections; 250-tree miss regresses 29.970125 to 114.394208 ms. Additional typed cache/hash lookups outweigh eliminated tuples when no early target exists.",
+        "QueryCache.getAll still allocates its all-query array. Fresh file authorization, the one-warm limit and HTML exclusion are unchanged; no cached titles are published.",
+        "An initial direct Query.state prototype was refined to avoid an unsafe narrowing assertion; these refinements add zero passes.",
+        "Fallback runs at most once per warmup owner; microbenchmark batch timings are not navigation or network latency."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-preload-artifacts/cpu-final-probe.mjs",
+        "artifactStatus": "temporary, uncommitted",
+        "prototype": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/candidate08.tsx",
+        "rawSamples": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/cpu-final-results.json"
+      },
+      "validation": [
+        "All eligible/empty source-function fixtures preserve exact selected IDs/order/titles.",
+        "Final doc-warmup.tsx remains byte-identical to baseline."
+      ]
+    },
+    {
+      "id": "round6-preload-09",
+      "candidate": "Replace the existing bounded viewer generator and Set with direct indexed traversal and bounded duplicate comparison.",
+      "outcome": "accepted",
+      "status": "accepted",
+      "method": "Temporary baseline/current source-function derivation; deterministic LCG seed 0x6a11, constants 1664525 and 1013904223; 12 warmups then 60 AB/BA pairs. All 200 fixtures are deeply equal.",
+      "workload": "100,000 derivations per sample over 200 seeded fixtures: pool length 0..3, prewarm 0..1, warm 0..1, overlapping IDs, active versus inactive HTML.",
+      "evidence": {
+        "paired": {
+          "workload": "200 seeded viewer fixtures, pool 0..3, prewarm 0..1, warm 0..1, duplicates and inactive HTML",
+          "iterations": 100000,
+          "repeats": 60,
+          "warmups": 12,
+          "order": "AB/BA alternating",
+          "baseline": {
+            "medianMs": 19.740250000000742,
+            "p95Ms": 20.39979200000016,
+            "minMs": 19.24420800000007,
+            "maxMs": 20.75891700000102
+          },
+          "candidate": {
+            "medianMs": 2.0249579999999696,
+            "p95Ms": 2.108582999999271,
+            "minMs": 1.9247919999997976,
+            "maxMs": 2.6824999999989814
+          },
+          "resourceAllocationsPer100000": {
+            "baseline": { "generators": 100000, "sets": 100000 },
+            "candidate": { "generators": 0, "sets": 0 }
+          }
+        },
+        "matchedSemanticFixtures": 200
+      },
+      "limits": [
+        "This is a new removal of the existing generator/Set, not a recount of introducing the generator or of the existing HTML exclusion/caps.",
+        "Linear duplicate comparison is bounded by MAX_MOUNTED=4 and the existing three-document pool. General unbounded-list speed is not claimed.",
+        "One Set and one generator per derivation are eliminated; total heap/React/callback allocations are not measured.",
+        "The isolated hot-loop CPU reduction does not establish browser load or Google editor latency."
+      ],
+      "changedPaths": [
+        "frontend/src/components/wiki-document/doc-viewer-host.tsx",
+        "frontend/src/components/wiki-document/doc-viewer-host.test.tsx"
+      ],
+      "repro": {
+        "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-preload-artifacts/cpu-final-probe.mjs",
+        "artifactStatus": "temporary, uncommitted",
+        "prototype": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/candidate09.tsx",
+        "rawSamples": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/cpu-final-results.json"
+      },
+      "validation": [
+        "Public rendered viewer tests preserve source priority, duplicate handling, four-frame limit, and omission of formerly active HTML from background frames.",
+        "Existing owner/slot, HTML sandbox/content-version, iframe identity, subscription and loading lifecycle tests pass."
+      ]
+    },
+    {
+      "id": "round6-preload-10",
+      "candidate": "Read one current navigator-hint snapshot for each iframe-intent policy decision rather than parsing hints twice through the reusable-policy wrapper.",
+      "outcome": "accepted",
+      "status": "accepted",
+      "method": "Temporary baseline/current source-function policy checks with stable native-style connection object/getters; 12 warmups then 60 AB/BA pairs. 12 visibility/device/network semantic cases match.",
+      "workload": "100,000 visible eligible iframe-policy decisions per sample; current Save-Data/hidden/slow-connection/low-memory checks remain at each timer/publication boundary.",
+      "evidence": {
+        "paired": {
+          "workload": "100000 visible eligible document iframe policy checks with native-style navigator getters",
+          "iterations": 100000,
+          "repeats": 60,
+          "warmups": 12,
+          "order": "AB/BA alternating",
+          "baseline": {
+            "medianMs": 126.69683400000031,
+            "p95Ms": 132.85920799999985,
+            "minMs": 123.6825830000007,
+            "maxMs": 142.32445800000096
+          },
+          "candidate": {
+            "medianMs": 65.67820900000152,
+            "p95Ms": 68.72516700000051,
+            "minMs": 63.655249999999796,
+            "maxMs": 76.09387500000048
+          },
+          "navigatorPropertyReadsPerCheck": { "baseline": 4, "candidate": 2 }
+        },
+        "semanticMatrixCases": 12
+      },
+      "limits": [
+        "No long-lived hint cache is introduced; each decision re-reads current visibility and hints. allowsIframeSpeculation still applies reusable-policy Save-Data enforcement.",
+        "This removes redundant parsing inside a decision, not an existing hover-timer/budget or permission-check pass.",
+        "Controlled Node wrapper CPU and getter counts are not production navigation latency."
+      ],
+      "changedPaths": [
+        "frontend/src/components/wiki-sidebar/use-document-intent.ts",
+        "frontend/src/components/wiki-sidebar/use-document-intent.test.tsx"
+      ],
+      "repro": {
+        "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-preload-artifacts/policy-probe.mjs",
+        "artifactStatus": "temporary, uncommitted",
+        "prototype": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/candidate10.ts",
+        "rawSamples": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/policy-results.json"
+      },
+      "validation": [
+        "Public native-event test witnesses one current navigator snapshot per iframe-policy boundary.",
+        "All late hide/Save-Data, low-memory, strong-intent, modifier/touch, unmount, generation and retired-session tests pass."
+      ]
+    }
+  ],
+  "validation": {
+    "focusedTests": {
+      "status": "passed",
+      "files": 6,
+      "tests": 68,
+      "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node_modules/.bin/vitest run src/components/wiki-document/doc-viewer-host.test.tsx src/components/wiki-document/doc-viewer-store.test.ts src/components/wiki-document/doc-warmup.test.ts src/components/wiki-document/doc-warmup-lifecycle.test.tsx src/components/wiki-sidebar/use-document-intent.test.tsx src/components/wiki-sidebar/use-drive-predictive-loading.test.tsx --reporter=dot",
+      "cwd": "/private/tmp/sarj-wiki-performance-20261010/frontend"
+    },
+    "temporaryPairedUiProbes": {
+      "status": "passed",
+      "tests": 4,
+      "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py /private/tmp/sarj-wiki-performance-20261010/frontend/node_modules/.bin/vitest run --config /private/tmp/sarj-wiki-perf-round6-preload-artifacts/ui-probe.config.mjs --reporter=dot"
+    },
+    "scopedTypecheck": {
+      "status": "passed",
+      "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node_modules/.bin/tsc --project /private/tmp/sarj-wiki-perf-round6-preload-artifacts/tsconfig.scoped.json",
+      "temporaryConfig": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts/tsconfig.scoped.json"
+    },
+    "scopedLint": {
+      "status": "passed",
+      "errors": 0,
+      "existingWarnings": 6,
+      "warningLimits": "Five existing shadcn/no-inline-styles diagnostics on unchanged slot geometry style and one existing no-arbitrary-values diagnostic on unchanged 160 ms exit duration. No new suppression or managed configuration change.",
+      "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node_modules/.bin/eslint --suppressions-location eslint-suppressions.json src/components/wiki-document/doc-viewer-host.tsx src/components/wiki-document/doc-viewer-host.test.tsx src/components/wiki-sidebar/use-document-intent.ts src/components/wiki-sidebar/use-document-intent.test.tsx"
+    },
+    "formatCheck": {
+      "status": "passed",
+      "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node_modules/.bin/prettier --check src/components/wiki-document/doc-viewer-host.tsx src/components/wiki-document/doc-viewer-host.test.tsx src/components/wiki-sidebar/use-document-intent.ts src/components/wiki-sidebar/use-document-intent.test.tsx"
+    },
+    "diffCheck": {
+      "status": "passed",
+      "command": "git diff --check -- frontend/src/components/wiki-document/doc-viewer-host.tsx frontend/src/components/wiki-document/doc-viewer-host.test.tsx frontend/src/components/wiki-sidebar/use-document-intent.ts frontend/src/components/wiki-sidebar/use-document-intent.test.tsx"
+    },
+    "qualificationRepairsCountAsPasses": 0,
+    "buildsGenerationCommitsPushesProductionWrites": "none; root owns integration, build, hooks and release",
+    "standardsReviewed": [
+      ".sarj-standards.toml",
+      ".repo-standards/repository.toml",
+      "frontend/package.json",
+      "frontend/tsconfig.json",
+      "frontend/eslint.config.mjs",
+      "frontend/eslint.strict.mjs"
+    ],
+    "authorityLimits": "Existing fresh authorization/publication guards, per-client/session retirement, query sharing, read cancellation, owner/slot semantics, pool limits, hidden/Save-Data/low-memory budgets, and HTML sandbox/CSP remain unchanged."
+  },
+  "environment": {
+    "node": "v26.10.0",
+    "frontendTools": "Existing locked node_modules; direct .bin tools",
+    "measurementIsolation": "All timed CPU/resource probes and heavy qualifications use the shared advisory lock wrapper. No overlaps with other locked agent measurements.",
+    "baselineAppInventoryProvidedByRoot": {
+      "home": { "rawBytes": 572303, "gzipBytes": 187524 },
+      "document": { "rawBytes": 604925, "gzipBytes": 199014 }
+    },
+    "bundleLimit": "No app build or bundle/gzip improvement measured in this scope."
+  },
+  "temporaryArtifacts": [
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round6-preload-artifacts",
+      "status": "temporary, uncommitted",
+      "contents": "Saved baseline modules; exactly ten isolated prototype modules; CPU/UI source probes and raw sample JSON; scoped TypeScript config. Repro commands assume these artifacts and the shared clone still exist."
+    }
+  ]
+}

@@ -49,7 +49,7 @@ make standards-check
 `make check` mirrors CI. `make audit` performs network-backed dependency audits, and
 `make standards-check` verifies generated standards configuration, version pins, and code.
 
-See the [309-pass performance record and reproduction commands](docs/performance.json) for
+See the [359-pass performance record and reproduction commands](docs/performance.json) for
 frontend loading and backend latency work.
 
 Original-tranche production-build measurements against the same locked main toolchain:
@@ -174,6 +174,46 @@ Production qualification also found configured HTML headers overriding private
 API response headers. An API-specific header preserves private/no-store caching,
 and redacted read failures retain request IDs. This repair adds zero passes; its
 complete frontend gate passes 911 tests.
+
+The next October 11 tranche evaluates [50 further candidates across five agents](docs/performance/round6-20261011.json),
+bringing the record to 359: 26 retained improvements and 24 evidenced rejections.
+Each agent measures ten distinct bulk-query, caching, optimistic UI, preloading or
+advanced candidates. Controlled results against `fdc479be` include:
+
+| Measurement                                          | Before    | After    |
+| ---------------------------------------------------- | --------- | -------- |
+| Fresh recent-alias read, 50 inputs, local PostgreSQL | 14.269 ms | 1.116 ms |
+| Reconciliation reads after eight overlapping edits   | 8         | 1        |
+| Same-drive cached move, 5,000 nodes                  | 3.667 ms  | 1.887 ms |
+| Retire 1,000 pending move display leases             | 4.102 ms  | 0.115 ms |
+| Viewer selection, 100,000 bounded derivations        | 19.740 ms | 2.025 ms |
+| Smart Create prompt, 80 folders and 80 templates     | 0.242 ms  | 0.088 ms |
+| Depth-limited candidate assembly, 2,048 folders      | 4.627 ms  | 1.737 ms |
+| Encrypted in-place checkpoint, 1,500 requests        | 4.019 ms  | 3.667 ms |
+
+Recent aliases use fresh, smaller provider metadata and one array-bound SQL read.
+The large SQL gain depends on PostgreSQL planning and statistics; custom-plan and
+small-input regressions remain documented. Large metadata jobs retain four worker
+owners, and immutable SQL construction, bounded HMAC seeds and small-tree decoding
+reduce cache preparation without extending authoritative result lifetimes.
+
+Pending preferences appear immediately with reversible ownership-aware patches.
+Overlapping edits reconcile after their last pending write, and confirmed renames
+update existing caches before the next read. Failure, fresh reads and session
+retirement cannot roll back a newer publication. Viewer preloading retains
+foreground retries, reduced-motion paints, network/device limits and iframe caps.
+Candidate assembly preserves cycles, missing parents and depth ordering; task
+checkpoints retain encryption, UTF-8 limits, lease/version checks and canonical
+attestation hashes.
+
+The unchanged local CI mirror passes 4,403 backend tests (89.20% coverage), 946
+frontend tests, 323 repository tests and 11 infrastructure tests. Type coverage is
+99.71%. Compressed app inventory grows 2,755 B on home (187,524 to 190,279 B,
+1.47%) and 2,754 B on the document route (199,014 to 201,768 B, 1.38%). These
+inventories exclude framework and deferred chunks. The measurements isolate local
+work, resources and bytes; they do not establish live load time or an absolute
+optimization maximum. All five scope records include rejected prototypes, controls,
+variance, reproduction commands and final source hashes.
 
 The drive-loading regression was reproduced in the compiled Cloudflare Worker:
 server `fetch` rejects `redirect: "error"` before reaching the API. Server clients

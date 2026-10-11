@@ -3,9 +3,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import asyncio
 from collections import OrderedDict
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from functools import cache
+from functools import cache, lru_cache
+from types import TracebackType
 from typing import NamedTuple, override
 
 from cryptography.fernet import InvalidToken, MultiFernet
@@ -14,9 +16,13 @@ from pydantic import ValidationError
 from pydantic_core import to_json
 from sqlalchemy import (
     BigInteger,
+    DateTime,
     Integer,
+    Select,
     Text,
+    Uuid,
     and_,
+    bindparam,
     case,
     cast,
     delete,
@@ -53,6 +59,7 @@ _background_refreshes: dict[str, asyncio.Task[None]] = {}
 _DECODED_TREE_CACHE_MAX = 32
 _DECODED_TREE_CACHE_NODE_MAX = 40_000
 _TRANSACTION_ID_EPOCH_BITS = 32
+_INLINE_TREE_DECODE_BYTES = 16 * 1024
 
 
 class _TreeVersion(NamedTuple):
@@ -76,6 +83,7 @@ class _DecodedTreeCache:
         self._max_entries = max_entries
         self._max_nodes = max_nodes
         self._values: OrderedDict[_DecodedTreeKey, DriveTree] = OrderedDict()
+        self._latest: dict[tuple[UserId, DriveId], _DecodedTreeKey] = {}
 
     def get(self, key: _DecodedTreeKey) -> DriveTree | None:
         tree = self._values.get(key)
@@ -86,16 +94,18 @@ class _DecodedTreeCache:
     def latest(
         self, user_id: UserId, drive_id: DriveId, decoder: object
     ) -> tuple[_TreeVersion, DriveTree] | None:
-        for key in reversed(self._values):
-            if key[0] == user_id and key[1] == drive_id and key[3] is decoder:
-                return key[2], self._values[key]
-        return None
+        key = self._latest.get((user_id, drive_id))
+        if key is None or key[3] is not decoder:
+            return None
+        return key[2], self._values[key]
 
     def put(self, key: _DecodedTreeKey, tree: DriveTree) -> None:
         if len(tree.folders) + len(tree.files) > self._max_nodes:
             return
-        for previous in [previous for previous in self._values if previous[:2] == key[:2]]:
+        resource = (key[0], key[1])
+        if (previous := self._latest.get(resource)) is not None:
             self._values.pop(previous)
+        self._latest[resource] = key
         self._values[key] = tree
         self._values.move_to_end(key)
         while (
@@ -103,16 +113,32 @@ class _DecodedTreeCache:
             or sum(len(value.folders) + len(value.files) for value in self._values.values())
             > self._max_nodes
         ):
-            self._values.popitem(last=False)
+            evicted, _ = self._values.popitem(last=False)
+            self._latest.pop((evicted[0], evicted[1]))
 
     def invalidate_drive(self, drive_id: DriveId) -> None:
         for key in [key for key in self._values if key[1] == drive_id]:
             self._values.pop(key)
+            self._latest.pop((key[0], key[1]))
 
 
 _decoded_trees = _DecodedTreeCache(
     max_entries=_DECODED_TREE_CACHE_MAX, max_nodes=_DECODED_TREE_CACHE_NODE_MAX
 )
+
+
+def _log_refresh_failure(
+    _error_type: type[BaseException] | None,
+    error: BaseException | None,
+    _traceback: TracebackType | None,
+) -> bool:
+    if not isinstance(error, Exception):
+        return False
+    logger.warning(
+        "background drive refresh failed error_type={error_type}",
+        error_type=type(error).__name__,
+    )
+    return True
 
 
 def _decrypt_and_parse(blob: str, decoder: MultiFernet) -> DriveTree:
@@ -269,25 +295,14 @@ class PostgresSidebarCacheService(SidebarCacheService):
         task.add_done_callback(completed)
 
     async def _refresh_in_background(self, drive_id: DriveId) -> None:
-        with provider_refresh_scope():
-            outcomes = await asyncio.gather(
-                self._sf.do(
-                    self._singleflight_key("drive", drive_id),
-                    lambda: self._walk_and_save(drive_id),
-                ),
-                return_exceptions=True,
+        # The outer scope handles only ordinary failures after provider refresh
+        # ownership resets. Cancellation and other BaseExceptions propagate.
+        with ExitStack() as failures, provider_refresh_scope():
+            failures.push(_log_refresh_failure)
+            await self._sf.do(
+                self._singleflight_key("drive", drive_id),
+                lambda: self._walk_and_save(drive_id),
             )
-        outcome = outcomes[0]
-        match outcome:
-            case Exception():
-                logger.warning(
-                    "background drive refresh failed error_type={error_type}",
-                    error_type=type(outcome).__name__,
-                )
-            case BaseException():
-                raise outcome
-            case _:
-                pass
 
     async def _walk_and_save(self, drive_id: DriveId) -> DriveTree:
         tree = await self._drive.walk_drive_folders(drive_id)
@@ -330,6 +345,8 @@ class PostgresSidebarCacheService(SidebarCacheService):
         return tree
 
     async def _decode_tree(self, blob: str, decoder: MultiFernet) -> DriveTree:
+        if len(blob) <= _INLINE_TREE_DECODE_BYTES:
+            return _decrypt_and_parse(blob, decoder)
         return await asyncio.to_thread(_decrypt_and_parse, blob, decoder)
 
     async def _save_tree(self, db: AsyncSession, tree: DriveTree) -> None:
@@ -367,35 +384,21 @@ class PostgresSidebarCacheService(SidebarCacheService):
     async def _load_row(
         self, db: AsyncSession, drive_id: DriveId, decoded_version: _TreeVersion | None
     ) -> _TreeSnapshot | None:
-        transaction_id = _tree_transaction_id()
-        tuple_location = _tree_tuple_location()
-        transaction_epoch = self._transaction_epoch()
-        ciphertext: ColumnElement[str] = cast(DriveTreeCache.tree, Text)
+        parameters: dict[str, object] = {
+            "tree_user_id": self._user.id,
+            "tree_drive_id": drive_id,
+        }
         if decoded_version is not None:
-            ciphertext = case(
-                (
-                    and_(
-                        DriveTreeCache.refreshed_at == decoded_version.refreshed_at,
-                        transaction_id == decoded_version.transaction_id,
-                        tuple_location == decoded_version.tuple_location,
-                        transaction_epoch == decoded_version.transaction_epoch,
-                    ),
-                    None,
-                ),
-                else_=DriveTreeCache.tree,
+            parameters.update(
+                tree_refreshed_at=decoded_version.refreshed_at,
+                tree_transaction_id=decoded_version.transaction_id,
+                tree_tuple_location=decoded_version.tuple_location,
+                tree_transaction_epoch=decoded_version.transaction_epoch,
             )
         row = (
             await db.execute(
-                select(
-                    DriveTreeCache.refreshed_at,
-                    transaction_epoch.label("transaction_epoch"),
-                    transaction_id.label("transaction_id"),
-                    tuple_location.label("tuple_location"),
-                    ciphertext.label("tree"),
-                ).where(
-                    DriveTreeCache.user_id == self._user.id,
-                    DriveTreeCache.drive_id == drive_id,
-                )
+                _tree_read_statement(self._transaction_epoch(), warm=decoded_version is not None),
+                parameters,
             )
         ).one_or_none()
         if row is None:
@@ -413,10 +416,8 @@ class PostgresSidebarCacheService(SidebarCacheService):
 
     async def _load_refreshed_at(self, db: AsyncSession, drive_id: DriveId) -> datetime | None:
         result = await db.execute(
-            select(DriveTreeCache.refreshed_at).where(
-                DriveTreeCache.user_id == self._user.id,
-                DriveTreeCache.drive_id == drive_id,
-            )
+            _tree_refreshed_statement(),
+            {"tree_user_id": self._user.id, "tree_drive_id": drive_id},
         )
         return result.scalar_one_or_none()
 
@@ -449,3 +450,44 @@ def _tree_transaction_epoch() -> ColumnElement[int]:
     # Python identity from being recycled while a decoded tree remains cached.
     snapshot_xmax = cast(cast(func.pg_snapshot_xmax(func.pg_current_snapshot()), Text), BigInteger)
     return snapshot_xmax.op(">>")(literal(_TRANSACTION_ID_EPOCH_BITS, type_=Integer))
+
+
+@cache
+def _tree_refreshed_statement() -> Select[tuple[datetime]]:
+    return select(DriveTreeCache.refreshed_at).where(
+        DriveTreeCache.user_id == bindparam("tree_user_id", type_=Uuid),
+        DriveTreeCache.drive_id == bindparam("tree_drive_id", type_=Text),
+    )
+
+
+@lru_cache(maxsize=4)
+def _tree_read_statement(
+    transaction_epoch: ColumnElement[int], *, warm: bool
+) -> Select[tuple[datetime, int, str, str, str]]:
+    transaction_id = _tree_transaction_id()
+    tuple_location = _tree_tuple_location()
+    ciphertext: ColumnElement[str] = cast(DriveTreeCache.tree, Text)
+    if warm:
+        ciphertext = case(
+            (
+                and_(
+                    DriveTreeCache.refreshed_at
+                    == bindparam("tree_refreshed_at", type_=DateTime(timezone=True)),
+                    transaction_id == bindparam("tree_transaction_id", type_=Text),
+                    tuple_location == bindparam("tree_tuple_location", type_=Text),
+                    transaction_epoch == bindparam("tree_transaction_epoch", type_=BigInteger),
+                ),
+                None,
+            ),
+            else_=DriveTreeCache.tree,
+        )
+    return select(
+        DriveTreeCache.refreshed_at,
+        transaction_epoch.label("transaction_epoch"),
+        transaction_id.label("transaction_id"),
+        tuple_location.label("tuple_location"),
+        ciphertext.label("tree"),
+    ).where(
+        DriveTreeCache.user_id == bindparam("tree_user_id", type_=Uuid),
+        DriveTreeCache.drive_id == bindparam("tree_drive_id", type_=Text),
+    )

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from base64 import urlsafe_b64decode, urlsafe_b64encode
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from functools import lru_cache, partial
 import hashlib
 import hmac
 import json
@@ -29,6 +30,13 @@ _LOOKUP_KEY_INFO = b"sarj.cache-entry.h1.lookup-key"
 _ENVELOPE_PREFIX = "f1."
 _MAX_ROTATION_KEYS = 3
 _BULK_LOOKUP_PREFIX_THRESHOLD = 8
+_NAMESPACE_PREFIX_CACHE_MAX = 8
+
+
+def _namespace_hmac_states(lookup_keys: tuple[bytes, ...], namespace: str) -> tuple[hmac.HMAC, ...]:
+    namespace_bytes = namespace.encode()
+    prefix = len(namespace_bytes).to_bytes(8, "big") + namespace_bytes
+    return tuple(hmac.new(key, prefix, hashlib.sha256) for key in lookup_keys)
 
 
 class InvalidCacheEntryError(ValueError):
@@ -40,6 +48,7 @@ class CacheEntryProtector:
     _fernets: tuple[Fernet, ...] = field(init=False, repr=False)
     _lookup_keys: tuple[bytes, ...] = field(init=False, repr=False)
     _decryptor: MultiFernet = field(init=False, repr=False)
+    _initial_states: Callable[[str], tuple[hmac.HMAC, ...]] = field(init=False, repr=False)
 
     def __init__(self, keys: tuple[str, ...]) -> None:
         if not keys:
@@ -60,27 +69,27 @@ class CacheEntryProtector:
         object.__setattr__(self, "_fernets", fernets)
         object.__setattr__(self, "_lookup_keys", lookup_keys)
         object.__setattr__(self, "_decryptor", MultiFernet(list(fernets)))
+        # Only namespace seeds are retained, bounded per immutable protector.
+        # Logical keys and values never enter this cache; copied states remain
+        # request-local and a new rotation configuration builds new seeds.
+        initial_states = lru_cache(maxsize=_NAMESPACE_PREFIX_CACHE_MAX)(
+            partial(_namespace_hmac_states, lookup_keys)
+        )
+        object.__setattr__(self, "_initial_states", initial_states)
 
     @classmethod
     def from_key_string(cls, raw: str) -> Self:
         return cls(tuple(parse_fernet_keys(raw)))
 
     def physical_keys(self, namespace: str, logical_key: str) -> tuple[str, ...]:
-        namespace_bytes = namespace.encode()
         logical_key_bytes = logical_key.encode()
-        message = (
-            len(namespace_bytes).to_bytes(8, "big")
-            + namespace_bytes
-            + len(logical_key_bytes).to_bytes(8, "big")
-            + logical_key_bytes
-        )
-        return tuple(
-            "h1."
-            + urlsafe_b64encode(hmac.new(key, message, hashlib.sha256).digest())
-            .rstrip(b"=")
-            .decode()
-            for key in self._lookup_keys
-        )
+        suffix = len(logical_key_bytes).to_bytes(8, "big") + logical_key_bytes
+        candidates: list[str] = []
+        for initial in self._initial_states(namespace):
+            state = initial.copy()
+            state.update(suffix)
+            candidates.append("h1." + urlsafe_b64encode(state.digest()).rstrip(b"=").decode())
+        return tuple(candidates)
 
     def physical_keys_many(
         self,

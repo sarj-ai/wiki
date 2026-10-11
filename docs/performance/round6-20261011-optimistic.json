@@ -1,0 +1,680 @@
+{
+  "scope": "optimistic mutation UI and confirmed cache reconciliation",
+  "baselineRevision": "fdc479beea4488ad5869e8957be8c646fc470527",
+  "passCount": 10,
+  "acceptedCount": 7,
+  "rejectedCount": 3,
+  "changedPaths": [
+    "frontend/src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts",
+    "frontend/src/components/wiki-sidebar/preferences-dialog.test.tsx",
+    "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+    "frontend/src/components/wiki-sidebar/use-in-flight-moves.ts",
+    "frontend/src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx",
+    "frontend/src/components/wiki-sidebar/use-wiki-reorder.ts",
+    "frontend/src/hooks/use-wiki-mutations-round6.test.tsx",
+    "frontend/src/hooks/use-wiki-mutations.ts",
+    "frontend/src/lib/optimistic-cache.test.ts",
+    "frontend/src/lib/optimistic-cache.ts",
+    "frontend/src/lib/wiki-cache.test.ts",
+    "frontend/src/lib/wiki-cache.ts"
+  ],
+  "sourceHashes": [
+    {
+      "path": "frontend/src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts",
+      "sha256": "36340f4d460be5dcf6ae28c3736272eda45d995cec9058f414d44f6b654b89a1"
+    },
+    {
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.test.tsx",
+      "sha256": "288fd92201e8bed2e50ab3c2ca030825050b86532fd6ab99f1ff753fdd8718b7"
+    },
+    {
+      "path": "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+      "sha256": "084a1c8cd65b79650dcf81051390d0321d05e078865512ee62807508e1ab8821"
+    },
+    {
+      "path": "frontend/src/components/wiki-sidebar/use-in-flight-moves.ts",
+      "sha256": "6a395733f2d428a3958839d0a393117048f81b5e72bf5dbc716883c1400fbaab"
+    },
+    {
+      "path": "frontend/src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx",
+      "sha256": "21adfb102e58a391a55e2546d7a7be6a3c31322f2f8a876402e3e50b9beed8fe"
+    },
+    {
+      "path": "frontend/src/components/wiki-sidebar/use-wiki-reorder.ts",
+      "sha256": "17378d8e3dbcc09a86c67c5e6e5b84957c409cd77c197b8abce4c9e37a873d71"
+    },
+    {
+      "path": "frontend/src/hooks/use-wiki-mutations-round6.test.tsx",
+      "sha256": "78ead019bd73297f1cd7d121f37569b6a57a7a3781aad9cefc80817d8d2c667a"
+    },
+    {
+      "path": "frontend/src/hooks/use-wiki-mutations.ts",
+      "sha256": "90cc62f38137e0f81028c27c0d1286383c68398807c04668926bc544bd3e8d91"
+    },
+    {
+      "path": "frontend/src/lib/optimistic-cache.test.ts",
+      "sha256": "ace3013a2a69d049b453c793b970a8186e0f8c1b3c1e16d128baa7ef60b1a69d"
+    },
+    {
+      "path": "frontend/src/lib/optimistic-cache.ts",
+      "sha256": "aed0579d00369e6c634a2d32f876ddb2ed8b1e16086b6b853bed340b168584c0"
+    },
+    {
+      "path": "frontend/src/lib/wiki-cache.test.ts",
+      "sha256": "763e4e2012b142ba83bd16b80ba3f95f9e84f70ea99dfcec47bc5a4db687b9b2"
+    },
+    {
+      "path": "frontend/src/lib/wiki-cache.ts",
+      "sha256": "9e37058baed24c811d31eb3cb63cbdbf3dac0778b11e7a9eb0830a8a1c1f1df4"
+    }
+  ],
+  "passes": [
+    {
+      "id": "round6-optimistic-01",
+      "candidate": "Sparse optimistic icon/rank rollback with per-entry operation and publication ownership",
+      "outcome": "accepted",
+      "status": "retained",
+      "method": "Paired semantic QueryClient fixtures: a control equivalent to the baseline whole-array snapshot rollback versus the retained helper. Mounted hooks and ownership tests corroborate the call sites; no CPU benefit is claimed for the array builder.",
+      "workload": {
+        "entries": 2,
+        "interleavings": [
+          "unrelated confirmed sibling",
+          "two same-ID denials in both orders",
+          "older denial after newer success",
+          "earlier success followed by newer denial",
+          "equal fetched confirmation",
+          "equal external manual confirmation"
+        ]
+      },
+      "evidence": {
+        "before": {
+          "unrelatedConfirmedValue": "old-b",
+          "sameKeyTwoDeniedValue": "first",
+          "lateOlderDenialValue": "old-a",
+          "equalFreshReadValue": "old-a",
+          "equalManualConfirmationValue": "old-a"
+        },
+        "after": {
+          "unrelatedConfirmedValue": "confirmed-b",
+          "sameKeyTwoDeniedValue": "old-a",
+          "lateOlderDenialValue": "confirmed-a",
+          "equalFreshReadValue": "server-confirmed",
+          "equalManualConfirmationValue": "manually-confirmed"
+        }
+      },
+      "limits": [
+        "Each immutable query key must retain one element type. Fresh fetched data and equal whole-array external manual publications supersede rollback authority; the latter has no finer publication provenance. Unrelated manual sibling changes retain owned rollback.",
+        "One candidate covers icon, bulk-rank and move-rank ownership. Prior r3-sidebar-05 scan fusion and sidebar-round5-02 sparse bulk merge are not recounted; those investigated builder CPU, while this pass fixes rollback ownership."
+      ],
+      "changedPaths": [
+        "frontend/src/hooks/use-wiki-mutations-round6.test.tsx",
+        "frontend/src/hooks/use-wiki-mutations.ts",
+        "frontend/src/lib/optimistic-cache.test.ts",
+        "frontend/src/lib/optimistic-cache.ts"
+      ],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010",
+        "pairedCommand": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-optimistic-probe.mjs",
+        "focusedTestsCommand": "node node_modules/vitest/vitest.mjs run src/lib/optimistic-cache.test.ts src/hooks/use-wiki-mutations-round6.test.tsx",
+        "focusedTestsCwd": "/private/tmp/sarj-wiki-performance-20261010/frontend",
+        "measurementLabel": "round6-optimistic-01"
+      },
+      "validation": {
+        "result": "passed",
+        "qualification": "Both denial orders, newer success, fresh read confirming absence, equal manual confirmation, unrelated manual changes, replacement queries, abort/Strict Mode reactivation and late old finalizers pass. Retired finalizers delete a WeakMap entry only if it is still their own owner.",
+        "testPaths": [
+          "frontend/src/lib/optimistic-cache.test.ts",
+          "frontend/src/hooks/use-wiki-mutations-round6.test.tsx"
+        ]
+      }
+    },
+    {
+      "id": "round6-optimistic-02",
+      "candidate": "Coordinate exact optimistic read cancellation and reconcile only after the pending query group settles",
+      "outcome": "accepted",
+      "status": "retained",
+      "method": "Paired actual QueryClient/QueryObserver fixtures exercise a deferred stale GET and eight overlapping writes; the control uses baseline settlement behavior and the retained side uses the shared owner. Actual mounted mutation actions verify admitted writes continue independently of canceled reads.",
+      "workload": {
+        "overlappingWrites": 8,
+        "readKeys": "exact icon/sort key only",
+        "provider": "deferred local action spies; no remote calls"
+      },
+      "evidence": {
+        "readBarrier": {
+          "before": {
+            "exactReadAborted": false,
+            "pendingValueAfterLateRead": "stale-read"
+          },
+          "after": {
+            "exactReadAborted": true,
+            "pendingValueAfterLateRead": "pending-write"
+          }
+        },
+        "settlement": {
+          "overlappingWrites": 8,
+          "before": {
+            "startedReconciliationReads": 8,
+            "earlierSettlementsErasingLastPendingIntent": 7
+          },
+          "after": {
+            "startedReconciliationReads": 1,
+            "earlierSettlementsErasingLastPendingIntent": 0
+          }
+        }
+      },
+      "limits": [
+        "Only self-triggered settlement reconciliation is coalesced. Independently started fresh focus/manual reads remain authoritative and can supersede pending display state. No debounce and no provider-write cancellation is introduced.",
+        "Group counters and subscriptions are retired on session abort even when useSessionMutation suppresses onSettled. An unavailable cache retains the prior final invalidation path."
+      ],
+      "changedPaths": [
+        "frontend/src/hooks/use-wiki-mutations-round6.test.tsx",
+        "frontend/src/hooks/use-wiki-mutations.ts",
+        "frontend/src/lib/optimistic-cache.test.ts",
+        "frontend/src/lib/optimistic-cache.ts"
+      ],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010",
+        "pairedCommand": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-optimistic-probe.mjs",
+        "focusedTestsCommand": "node node_modules/vitest/vitest.mjs run src/lib/optimistic-cache.test.ts src/hooks/use-wiki-mutations-round6.test.tsx",
+        "focusedTestsCwd": "/private/tmp/sarj-wiki-performance-20261010/frontend",
+        "measurementLabel": "round6-optimistic-02"
+      },
+      "validation": {
+        "result": "passed",
+        "qualification": "The exact stale GET is aborted while the admitted action remains pending; eight actual hook writes invalidate once. Retirement during async cancellation prevents old admission, and retirement after a staged patch cannot suppress new-epoch reconciliation.",
+        "testPaths": [
+          "frontend/src/lib/optimistic-cache.test.ts",
+          "frontend/src/hooks/use-wiki-mutations-round6.test.tsx"
+        ]
+      }
+    },
+    {
+      "id": "round6-optimistic-03",
+      "candidate": "Show reversible pending preferences while serializing provider writes and reconciling owned fields",
+      "outcome": "accepted",
+      "status": "retained",
+      "method": "Paired cache-state fixtures exercise immediate display and an old full-response acknowledgment. Actual MutationCache execution counters compare baseline parallel options with the retained preference scope; mounted action spies corroborate serial admission and field rollback.",
+      "workload": {
+        "pendingChanges": [
+          "showNonDocFiles=false",
+          "hiddenWorkspaceIds=[drive]"
+        ],
+        "provider": "two deferred local writes"
+      },
+      "evidence": {
+        "before": {
+          "immediatelyVisibleShowNonDocs": true,
+          "hiddenDriveAfterOldFullAck": [],
+          "providerWritesActiveBeforeFirstAck": 2
+        },
+        "after": {
+          "immediatelyVisibleShowNonDocs": false,
+          "hiddenDriveAfterOldFullAck": ["drive"],
+          "providerWritesActiveBeforeFirstAck": 1,
+          "unknownField": "kept"
+        },
+        "activeProviderWriteCountsValidatedBy": "Paired actual MutationCache execution counters, corroborated by src/hooks/use-wiki-mutations-round6.test.tsx actual scoped mutation action spies"
+      },
+      "limits": [
+        "Preference provider writes are serialized per QueryClient, so rapid later changes can wait for the prior acknowledgment while their display remains staged. Pending state says Saving preferences and success is not claimed before acknowledgment.",
+        "Fresh defaults and unknown fields become the rollback base; an older acknowledgment cannot overwrite a later publication. A fresh reconciliation is awaited when such a publication intervened. Dialog close behavior and server authentication/access checks remain in force."
+      ],
+      "changedPaths": [
+        "frontend/src/components/wiki-sidebar/preferences-dialog.test.tsx",
+        "frontend/src/components/wiki-sidebar/preferences-dialog.tsx",
+        "frontend/src/hooks/use-wiki-mutations-round6.test.tsx",
+        "frontend/src/hooks/use-wiki-mutations.ts",
+        "frontend/src/lib/optimistic-cache.test.ts",
+        "frontend/src/lib/optimistic-cache.ts"
+      ],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010",
+        "pairedCommand": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-optimistic-probe.mjs",
+        "focusedTestsCommand": "node node_modules/vitest/vitest.mjs run src/lib/optimistic-cache.test.ts src/hooks/use-wiki-mutations-round6.test.tsx src/components/wiki-sidebar/preferences-dialog.test.tsx",
+        "focusedTestsCwd": "/private/tmp/sarj-wiki-performance-20261010/frontend",
+        "measurementLabel": "round6-optimistic-03"
+      },
+      "validation": {
+        "result": "passed",
+        "qualification": "Actual provider action spies show one write started before the first acknowledgment, both display intents remain visible, denial rolls back only its field, fresh defaults/unknown fields survive, and pending status disappears after acknowledgment. Same-query epoch reactivation preserves the new fields owner.",
+        "testPaths": [
+          "frontend/src/lib/optimistic-cache.test.ts",
+          "frontend/src/hooks/use-wiki-mutations-round6.test.tsx",
+          "frontend/src/components/wiki-sidebar/preferences-dialog.test.tsx"
+        ]
+      }
+    },
+    {
+      "id": "round6-optimistic-04",
+      "candidate": "Relocate same-drive cached nodes atomically with metadata-preserving confirmed reconciliation and exact rollback",
+      "outcome": "accepted",
+      "status": "retained",
+      "method": "Actual baseline and retained wiki-cache modules are loaded into isolated local QueryClient fixtures, with runtime import aliases rewritten only for module resolution. Count success publications and shortcut fields; time each complete patch in 21 alternating paired samples after four warmup pairs. Fixture seed and teardown are outside timed windows.",
+      "workload": {
+        "nodes": [100, 5000],
+        "cacheKeys": [
+          "source parent listing",
+          "destination parent listing",
+          "same-drive tree"
+        ],
+        "filesComplete": false,
+        "shortcutFieldsChecked": 4
+      },
+      "evidence": {
+        "before": {
+          "treePublications": 2,
+          "cachePublications": 4,
+          "preservedShortcutFields": 0,
+          "orderWhilePending": ["sibling-0", "sibling-1", "moving"],
+          "filesComplete": false,
+          "orderAfterDenial": ["sibling-0", "sibling-1", "moving"]
+        },
+        "after": {
+          "treePublications": 1,
+          "cachePublications": 3,
+          "preservedShortcutFields": 4,
+          "orderWhilePending": ["moving", "sibling-0", "sibling-1"],
+          "filesComplete": false,
+          "orderAfterDenial": ["moving", "sibling-0", "sibling-1"]
+        },
+        "timing": [
+          {
+            "nodes": 100,
+            "pairedSamples": 21,
+            "warmupPairs": 4,
+            "beforeMedianMs": 0.09304199999999696,
+            "afterMedianMs": 0.06545799999999247
+          },
+          {
+            "nodes": 5000,
+            "pairedSamples": 21,
+            "warmupPairs": 4,
+            "beforeMedianMs": 3.6668750000000045,
+            "afterMedianMs": 1.8870000000000005
+          }
+        ]
+      },
+      "limits": [
+        "Synthetic cache-patch CPU and publication counts are not live provider latency or React render latency. Cancellation/subscription overhead is included in each patch.",
+        "Only existing bounded cache keys are patched. Root/direct/shortcut parent normalization and filesComplete stay intact; cross-drive caches receive separate required patches. Fresh fetched/equal manual confirmation supersedes rollback, while unrelated manual sibling edits remain."
+      ],
+      "changedPaths": [
+        "frontend/src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx",
+        "frontend/src/components/wiki-sidebar/use-wiki-reorder.ts",
+        "frontend/src/hooks/use-wiki-mutations.ts",
+        "frontend/src/lib/wiki-cache.test.ts",
+        "frontend/src/lib/wiki-cache.ts"
+      ],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010",
+        "pairedCommand": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-optimistic-probe.mjs",
+        "focusedTestsCommand": "node node_modules/vitest/vitest.mjs run src/lib/wiki-cache.test.ts src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx",
+        "focusedTestsCwd": "/private/tmp/sarj-wiki-performance-20261010/frontend",
+        "measurementLabel": "round6-optimistic-04"
+      },
+      "validation": {
+        "result": "passed",
+        "qualification": "Same-drive tree publishes once; all four shortcut target fields and original order survive denial and provider FileResponse acknowledgment. Cross-drive rollback, root normalization, unrelated sibling publication, equal fetched/manual confirmation, confirmed source absence, eviction/logout and redacted cancellation failures pass. Confirmed upserts remove duplicate physical IDs while preserving shortcut metadata, original position, untouched sibling object identity and filesComplete.",
+        "testPaths": [
+          "frontend/src/lib/wiki-cache.test.ts",
+          "frontend/src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx"
+        ]
+      }
+    },
+    {
+      "id": "round6-optimistic-05",
+      "candidate": "Suppress overlapping same-session drag moves for the same file while preserving retry",
+      "outcome": "accepted",
+      "status": "retained",
+      "method": "Actual baseline and retained move stores receive two same-file starts before settlement; count non-null admitted leases. A mounted reorder witness corroborates that two rapid drag gestures call the provider action once, denial releases the lease and a later retry is admitted.",
+      "workload": {
+        "sameFileGesturesBeforeSettlement": 2,
+        "sessions": 1,
+        "retryAfterDeniedSettlement": 1
+      },
+      "evidence": {
+        "before": {
+          "providerAdmissionsBeforeSettlement": 2,
+          "retryAfterSettlementAdmitted": true
+        },
+        "after": {
+          "providerAdmissionsBeforeSettlement": 1,
+          "retryAfterSettlementAdmitted": true
+        }
+      },
+      "limits": [
+        "A repeated same-file gesture while an admitted drag is pending is ignored; the user can retry once it settles. Independent files still proceed concurrently. No admitted provider write is canceled.",
+        "This is a drag-store operation lease, distinct from the prior sidebar-round4-03 MoveFileDialog prompt admission latch. Cross-session replacement remains guarded against old abort/finalizer cleanup."
+      ],
+      "changedPaths": [
+        "frontend/src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts",
+        "frontend/src/components/wiki-sidebar/use-in-flight-moves.ts",
+        "frontend/src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx"
+      ],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010",
+        "pairedCommand": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-optimistic-probe.mjs",
+        "focusedTestsCommand": "node node_modules/vitest/vitest.mjs run src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx",
+        "focusedTestsCwd": "/private/tmp/sarj-wiki-performance-20261010/frontend",
+        "measurementLabel": "round6-optimistic-05"
+      },
+      "validation": {
+        "result": "passed",
+        "qualification": "Duplicate lease is denied, retry is admitted after settlement, actual duplicate drag action count is one, provider success toast occurs only after the confirmed retry, and old-session completion cannot release a replacement lease.",
+        "testPaths": [
+          "frontend/src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts",
+          "frontend/src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx"
+        ]
+      }
+    },
+    {
+      "id": "round6-optimistic-06",
+      "candidate": "Retire pending move display leases in one per-session store update",
+      "outcome": "accepted",
+      "status": "retained",
+      "method": "Actual baseline and retained Zustand stores own 1000 move leases in one session. Count registered abort listeners and retirement publications. Time abort delivery in 21 alternating paired samples after four warmup pairs; lease setup is outside the measured window.",
+      "workload": {
+        "moves": 1000,
+        "sessions": 1,
+        "observable": "Zustand store publications"
+      },
+      "evidence": {
+        "moves": 1000,
+        "pairedSamples": 21,
+        "warmupPairs": 4,
+        "before": {
+          "moves": 1000,
+          "abortListeners": 1000,
+          "abortPublications": 1000,
+          "remainingIds": 0,
+          "abortMs": 4.101832999999999
+        },
+        "after": {
+          "moves": 1000,
+          "abortListeners": 1,
+          "abortPublications": 1,
+          "remainingIds": 0,
+          "abortMs": 0.11508299999997007
+        }
+      },
+      "limits": [
+        "Measured time is local session-abort CPU, not live logout/render latency. Per-move initial Set copying still exists; this pass optimizes grouped retirement only.",
+        "The earlier shared-refresh listener change is not recounted: this pass batches UI lease removals into one immutable Set/publication and removes quadratic retirement copies, with listener reuse as part of that implementation."
+      ],
+      "changedPaths": [
+        "frontend/src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts",
+        "frontend/src/components/wiki-sidebar/use-in-flight-moves.ts"
+      ],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010",
+        "pairedCommand": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-optimistic-probe.mjs",
+        "focusedTestsCommand": "node node_modules/vitest/vitest.mjs run src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts",
+        "focusedTestsCwd": "/private/tmp/sarj-wiki-performance-20261010/frontend",
+        "measurementLabel": "round6-optimistic-06"
+      },
+      "validation": {
+        "result": "passed",
+        "qualification": "One listener and one retirement publication remove all 1000 IDs. End/reset release groups correctly; replacement owners survive old abort/end callbacks, and already-aborted sessions cannot acquire a move.",
+        "testPaths": [
+          "frontend/src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts"
+        ]
+      }
+    },
+    {
+      "id": "round6-optimistic-07",
+      "candidate": "Publish confirmed rename fields immediately to bounded existing caches before read reconciliation",
+      "outcome": "accepted",
+      "status": "retained",
+      "method": "Paired synthetic single-ack fixture holds the baseline name until a later read, then executes the retained confirmed cache update. A mounted rename hook separates deferred provider acknowledgment from deferred read reconciliation and verifies permission/shortcut invariants.",
+      "workload": {
+        "acknowledgments": 1,
+        "readResponse": "deferred",
+        "existingCaches": ["parent listing", "drive tree", "file detail"]
+      },
+      "evidence": {
+        "before": {
+          "providerWrites": 1,
+          "priorName": "moving",
+          "nameAtProviderAckBeforeReadResponse": "moving",
+          "shortcutTarget": "target"
+        },
+        "after": {
+          "providerWrites": 1,
+          "priorName": "moving",
+          "nameAtProviderAckBeforeReadResponse": "confirmed provider name",
+          "shortcutTarget": "target"
+        }
+      },
+      "limits": [
+        "This publishes confirmed provider data only. There is no fabricated optimistic name success and no inferred new edit permission. Original fresh read invalidations remain, so no request-count reduction is claimed.",
+        "The additional bounded cache patches trade some local work for earlier confirmed UI feedback. FileResponse lacks shortcut target fields; existing metadata is preserved."
+      ],
+      "changedPaths": [
+        "frontend/src/hooks/use-wiki-mutations-round6.test.tsx",
+        "frontend/src/hooks/use-wiki-mutations.ts",
+        "frontend/src/lib/wiki-cache.test.ts",
+        "frontend/src/lib/wiki-cache.ts"
+      ],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010",
+        "pairedCommand": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-optimistic-probe.mjs",
+        "focusedTestsCommand": "node node_modules/vitest/vitest.mjs run src/lib/wiki-cache.test.ts src/hooks/use-wiki-mutations-round6.test.tsx",
+        "focusedTestsCwd": "/private/tmp/sarj-wiki-performance-20261010/frontend",
+        "measurementLabel": "round6-optimistic-07"
+      },
+      "validation": {
+        "result": "passed",
+        "qualification": "Name remains unchanged before provider acknowledgment, changes before the fresh read returns, shortcut metadata/breadcrumb/filesComplete survive, and cached FileDetail.canEdit=false remains false even when a name response carries canEdit=true. Confirmed upserts remove duplicate physical IDs while preserving shortcut metadata, original position, untouched sibling object identity and filesComplete.",
+        "testPaths": [
+          "frontend/src/lib/wiki-cache.test.ts",
+          "frontend/src/hooks/use-wiki-mutations-round6.test.tsx"
+        ]
+      }
+    },
+    {
+      "id": "round6-optimistic-08",
+      "candidate": "Evict active file metadata and folder nodes before destructive trash acknowledgment",
+      "outcome": "rejected",
+      "status": "prototype_not_retained",
+      "method": "Paired fixture-only executable prototype calls the real removeFileFromCaches before a synthetic 403 and naively reinserts file metadata on denial; the control waits for admission/acknowledgment. Compare metadata availability, incomplete-tree descendants and exact query identity.",
+      "workload": {
+        "activeFileQuery": true,
+        "folderChildren": 1,
+        "filesComplete": false,
+        "syntheticDenialStatus": 403
+      },
+      "evidence": {
+        "baseline": {
+          "providerDenialStatus": 403,
+          "missingFileMetadataBeforeDeniedAck": false,
+          "orphanedCachedChildren": 0,
+          "originalFileQueryIdentityAfterRollback": true
+        },
+        "prototype": {
+          "providerDenialStatus": 403,
+          "missingFileMetadataBeforeDeniedAck": true,
+          "orphanedCachedChildren": 1,
+          "originalFileQueryIdentityAfterRollback": false
+        }
+      },
+      "limits": [
+        "The result rejects this eviction/naive-rollback design, not every possible pending-trash affordance. Incomplete trees cannot prove complete descendant ownership; destroyed query identity is not restored by reinserting data.",
+        "Prototype exists only in the disposable measurement harness. No production trash mutation or user data mutation was called."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010",
+        "pairedCommand": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-optimistic-probe.mjs",
+        "focusedTestsCommand": null,
+        "focusedTestsCwd": null,
+        "measurementLabel": "round6-optimistic-08"
+      },
+      "validation": {
+        "result": "passed",
+        "qualification": "The prototype hides active metadata, leaves an orphan cached child and replaces the original query after denial. No speculative trash behavior is retained in production.",
+        "testPaths": []
+      }
+    },
+    {
+      "id": "round6-optimistic-09",
+      "candidate": "Navigate to a fabricated optimistic provider ID for newly created or copied documents",
+      "outcome": "rejected",
+      "status": "prototype_not_retained",
+      "method": "Paired fixture-only executable prototype injects a locally fabricated pending file ID and records a route before synthetic provider acknowledgment; then both sides inject the actual provider ID through the real cache helper. Compare unconfirmed routes and retained physical IDs.",
+      "workload": {
+        "newFile": 1,
+        "syntheticProviderId": "provider-confirmed-id",
+        "prototypeId": "pending-local-id"
+      },
+      "evidence": {
+        "baseline": {
+          "unconfirmedProviderIdentitiesNavigated": 0,
+          "retainedIdsAfterProviderAck": ["provider-confirmed-id"]
+        },
+        "prototype": {
+          "unconfirmedProviderIdentitiesNavigated": 1,
+          "retainedIdsAfterProviderAck": [
+            "pending-local-id",
+            "provider-confirmed-id"
+          ]
+        }
+      },
+      "limits": [
+        "A synthetic local ID cannot represent a provider-owned document route. The prototype leaves two physical identities after acknowledgment. Pending visual placeholders without navigation could be considered separately.",
+        "There was no real navigation or production create/copy call; the rejected executable prototype is fixture-only."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010",
+        "pairedCommand": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-optimistic-probe.mjs",
+        "focusedTestsCommand": null,
+        "focusedTestsCwd": null,
+        "measurementLabel": "round6-optimistic-09"
+      },
+      "validation": {
+        "result": "passed",
+        "qualification": "The control records zero unconfirmed routes and one final provider ID; the prototype records one unconfirmed route and retains a phantom local ID. Production creation/copy continues to await provider identity.",
+        "testPaths": []
+      }
+    },
+    {
+      "id": "round6-optimistic-10",
+      "candidate": "Skip an icon/settings provider write when the desired value equals the cached value",
+      "outcome": "rejected",
+      "status": "prototype_not_retained",
+      "method": "Paired executable semantic model seeds a desired value in cache while the provider fixture has an externally changed value. The control performs its authorized write; the proposed equality shortcut omits it. Count writes and compare the final provider value with user intent.",
+      "workload": {
+        "cachedDesiredValue": "cached-desired",
+        "externalProviderValue": "externally-changed",
+        "requestedWrites": 1
+      },
+      "evidence": {
+        "baseline": {
+          "authorizedWrites": 1,
+          "requestedValueApplied": true,
+          "providerValue": "cached-desired"
+        },
+        "prototype": {
+          "authorizedWrites": 0,
+          "requestedValueApplied": false,
+          "providerValue": "externally-changed"
+        }
+      },
+      "limits": [
+        "This is a controlled stale-cache semantic witness, not a measured production provider endpoint. Cache equality does not establish current provider state, authorization or version.",
+        "The write-elision prototype is fixture-only. No bypass of server admission, fresh access checks or current write permissions is retained."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010",
+        "pairedCommand": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-optimistic-probe.mjs",
+        "focusedTestsCommand": null,
+        "focusedTestsCwd": null,
+        "measurementLabel": "round6-optimistic-10"
+      },
+      "validation": {
+        "result": "passed",
+        "qualification": "The shortcut eliminates the write but fails to apply the requested value; the normal authorized path applies it. Production hooks continue invoking their provider actions even for cache-equal intent.",
+        "testPaths": []
+      }
+    }
+  ],
+  "validation": {
+    "result": "passed",
+    "runtime": {
+      "node": "26.7.0",
+      "python": "3.14.7",
+      "dependencies": "existing locked installation; unchanged"
+    },
+    "tests": {
+      "command": "node node_modules/vitest/vitest.mjs run src/lib/optimistic-cache.test.ts src/lib/wiki-cache.test.ts src/hooks/use-wiki-mutations-round6.test.tsx src/hooks/use-session-mutation.test.tsx src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts src/components/wiki-sidebar/preferences-dialog.test.tsx src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx src/hooks/use-wiki-icon-mutations.test.tsx src/components/wiki-sidebar/tree-node-observers.test.tsx",
+      "cwd": "/private/tmp/sarj-wiki-performance-20261010/frontend",
+      "filesPassed": 9,
+      "testsPassed": 94,
+      "exitCode": 0,
+      "followup": "After the final duplicate-ID witness added untouched sibling identity assertions, the 29-test wiki-cache suite passed again."
+    },
+    "types": {
+      "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node_modules/.bin/tsc --noEmit --pretty false",
+      "cwd": "/private/tmp/sarj-wiki-performance-20261010/frontend",
+      "exitCode": 0
+    },
+    "eslint": {
+      "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node_modules/.bin/eslint --suppressions-location eslint-suppressions.json src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts src/components/wiki-sidebar/preferences-dialog.test.tsx src/components/wiki-sidebar/preferences-dialog.tsx src/components/wiki-sidebar/use-in-flight-moves.ts src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx src/components/wiki-sidebar/use-wiki-reorder.ts src/hooks/use-wiki-mutations-round6.test.tsx src/hooks/use-wiki-mutations.ts src/lib/optimistic-cache.test.ts src/lib/optimistic-cache.ts src/lib/wiki-cache.test.ts src/lib/wiki-cache.ts",
+      "cwd": "/private/tmp/sarj-wiki-performance-20261010/frontend",
+      "exitCode": 0,
+      "errors": 0,
+      "existingWarnings": 9,
+      "newSuppressions": 0
+    },
+    "formatting": {
+      "command": "node_modules/.bin/prettier --check src/components/wiki-sidebar/ephemeral-operation-ownership.test.ts src/components/wiki-sidebar/preferences-dialog.test.tsx src/components/wiki-sidebar/preferences-dialog.tsx src/components/wiki-sidebar/use-in-flight-moves.ts src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx src/components/wiki-sidebar/use-wiki-reorder.ts src/hooks/use-wiki-mutations-round6.test.tsx src/hooks/use-wiki-mutations.ts src/lib/optimistic-cache.test.ts src/lib/optimistic-cache.ts src/lib/wiki-cache.test.ts src/lib/wiki-cache.ts",
+      "cwd": "/private/tmp/sarj-wiki-performance-20261010/frontend",
+      "exitCode": 0
+    },
+    "pairedProbe": {
+      "command": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py node /private/tmp/sarj-wiki-perf-round6-optimistic-probe.mjs",
+      "cwd": "/private/tmp/sarj-wiki-performance-20261010",
+      "exitCode": 0,
+      "passIds": [
+        "round6-optimistic-01",
+        "round6-optimistic-02",
+        "round6-optimistic-03",
+        "round6-optimistic-04",
+        "round6-optimistic-05",
+        "round6-optimistic-06",
+        "round6-optimistic-07",
+        "round6-optimistic-08",
+        "round6-optimistic-09",
+        "round6-optimistic-10"
+      ],
+      "finalQualification": "The final dedup repair affects confirmed upsert only. The timed optimisticMoveFile apply path and abort-delivery path are unchanged; scaling fixtures and qualification reruns count zero additional candidates."
+    },
+    "measurementDiscipline": "Guarded measurements, ESLint and typecheck prevent CPU overlap with other agents. Deterministic focused tests are qualification only. Scaling fixtures, warmups, tests, formatting, refactors and reruns add zero candidates.",
+    "boundaries": "No production data calls/mutations; no dependency/config/baseline/suppression edits; no original-checkout edits or protected document-transform edits; no commit/push/build/generation/full check. Root performs integration and release."
+  },
+  "artifacts": [
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round6-optimistic-probe.mjs",
+      "sha256": "d6e76dffee9f5519c8a3aa276bf75c942b8bbf16c09ae1a9a5d12f4cdafb574a"
+    },
+    {
+      "path": "/private/tmp/sarj-wiki-perf-round6-optimistic-measurements.json",
+      "sha256": "8b3c8f9e15111a62657cd0bcb09d232b5d7f9d35ce3249b45cf4cc057cec861c"
+    }
+  ],
+  "priorAudit": {
+    "index": "/private/tmp/sarj-wiki-perf-round6-prior-candidates.json",
+    "entriesReviewed": 309,
+    "relevantPriorIds": [
+      "r3-sidebar-05",
+      "sidebar-round4-03",
+      "sidebar-round4-05",
+      "sidebar-round5-02"
+    ],
+    "sourceRecords": [
+      "docs/performance.json",
+      "docs/performance/round5-20261011.json"
+    ]
+  }
+}
