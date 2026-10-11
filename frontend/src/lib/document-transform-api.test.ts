@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import type { ActionResult } from "@/lib/action-result";
+import { claimBrowserSession, retireBrowserSession } from "@/lib/browser-session";
 
 const ACTION_MOCKS = vi.hoisted(() => ({
   capabilities: vi.fn<() => Promise<ActionResult<string>>>(),
@@ -23,6 +24,37 @@ import { DocumentTransformNeedsReviewError } from "@/lib/document-transform-type
 const TASK_ID = "55555555-5555-4555-8555-555555555555";
 
 describe("documentTransformApi", () => {
+  it("does not poll as the replacement session after the original owner retires during sleep", async () => {
+    vi.useFakeTimers();
+    const owner = {};
+    const next = {};
+    claimBrowserSession(owner);
+    ACTION_MOCKS.getTask.mockResolvedValue({
+      data: JSON.stringify({
+        error_code: "stopped",
+        error_detail: null,
+        id: TASK_ID,
+        status: "failed",
+      }),
+      ok: true,
+    });
+    const pending = DOCUMENT_TRANSFORM_API.waitForCompletion({
+      id: TASK_ID,
+      status: "running",
+    }).catch((error: unknown) => error);
+    try {
+      retireBrowserSession(owner);
+      claimBrowserSession(next);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(ACTION_MOCKS.getTask).not.toHaveBeenCalled();
+      await expect(pending).resolves.toMatchObject({ name: "AbortError" });
+    } finally {
+      retireBrowserSession(next);
+      vi.useRealTimers();
+      await pending;
+    }
+  });
+
   it("keeps an incomplete-copy link on a terminal failure without promoting a result", async () => {
     ACTION_MOCKS.getTask.mockResolvedValue({
       data: JSON.stringify({

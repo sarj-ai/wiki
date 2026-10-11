@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ApiError, SESSION_REFRESH_UNAVAILABLE_MESSAGE } from "@/lib/api-error";
+import { boundedErrorText } from "@/lib/bounded-error-text";
 import { captureBrowserSession } from "@/lib/browser-session";
 import { discardStream } from "@/lib/discard-stream";
 import { deduplicatedRefresh } from "@/lib/session-client";
@@ -44,10 +45,18 @@ export async function wikiReadHttp<S extends z.ZodType>(
     await refreshWikiSession(requestSignal, session);
     response = await read();
   }
-  requestSignal.throwIfAborted();
+  if (requestSignal.aborted) {
+    discardStream(response.body);
+    requestSignal.throwIfAborted();
+  }
   if (!response.ok) {
     if (response.status === 401) notifyTerminalUnauthorized(session);
-    const payload: unknown = await response.json().catch(() => null);
+    let payload: unknown = null;
+    try {
+      payload = JSON.parse(await boundedErrorText(response.body, requestSignal));
+    } catch {
+      // Error bodies are optional; malformed, oversized and stalled bodies stay redacted.
+    }
     requestSignal.throwIfAborted();
     const error = ErrorSchema.safeParse(payload);
     throw new ApiError(

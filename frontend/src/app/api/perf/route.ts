@@ -4,6 +4,7 @@ import { boundedText } from "@/lib/bounded-text";
 import { frontendReleaseSha } from "@/lib/env";
 
 const MAX_BODY_BYTES = 2048;
+const BODY_TIMEOUT_MS = 5_000;
 const PhaseSchema = z.enum(["click", "commit", "toolbarPaint", "iframeMount", "iframeLoad"]);
 const VisibilitySchema = z.enum(["hidden", "visible"]);
 const ZPERF_EVENT = z.strictObject({
@@ -24,10 +25,18 @@ async function post(request: Request): Promise<Response> {
   }
   let decoded: unknown;
   try {
-    const body = await boundedText(request.body, MAX_BODY_BYTES, request.signal);
+    const ingressSignal = AbortSignal.any([request.signal, AbortSignal.timeout(BODY_TIMEOUT_MS)]);
+    const body = await boundedText(request.body, MAX_BODY_BYTES, ingressSignal);
+    ingressSignal.throwIfAborted();
     decoded = JSON.parse(body);
   } catch (error: unknown) {
-    return new Response(null, { status: error instanceof RangeError ? 413 : 400 });
+    const status =
+      error instanceof RangeError
+        ? 413
+        : error instanceof DOMException && error.name === "TimeoutError"
+          ? 408
+          : 400;
+    return new Response(null, { status });
   }
   const parsed = ZPERF_EVENT.safeParse(decoded);
   if (!parsed.success) return new Response(null, { status: 400 });

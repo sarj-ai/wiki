@@ -9,9 +9,37 @@ import { deduplicatedRefresh } from "@/lib/session-client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("session refresh classification", () => {
+  it("releases discarded waiters' listeners before the shared refresh settles", async () => {
+    const owner = {};
+    claimBrowserSession(owner);
+    const session = captureBrowserSession();
+    const response = Promise.withResolvers<Response>();
+    const fetchMock = vi.fn<typeof fetch>().mockReturnValue(response.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    const removed = vi.spyOn(session, "removeEventListener");
+    const controllers = Array.from({ length: 100 }, () => new AbortController());
+    const discarded = controllers.map(
+      async (controller) =>
+        await deduplicatedRefresh(controller.signal, session).catch((error: unknown) => error),
+    );
+    const retained = deduplicatedRefresh(undefined, session);
+    try {
+      for (const controller of controllers) controller.abort();
+      await expect(Promise.all(discarded)).resolves.toHaveLength(100);
+      expect(removed).toHaveBeenCalledTimes(100);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
+    } finally {
+      response.resolve(new Response(null));
+      await expect(retained).resolves.toBe("refreshed");
+      retireBrowserSession(owner);
+    }
+  });
+
   it("retires the shared refresh without reusing it or clearing a new owner's pending refresh", async () => {
     const previous = {};
     const next = {};

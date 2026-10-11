@@ -106,6 +106,62 @@ describe("request bodies", () => {
 });
 
 describe("error mapping", () => {
+  it("retires error decoding without aborting a dispatched mutation", async () => {
+    const owner = {};
+    claimBrowserSession(owner);
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("{"));
+      },
+      cancel,
+    });
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 502 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = wikiApi.renameFile("file-1", "Retired title").catch((error: unknown) => error);
+    await vi.waitFor(() => {
+      expect(body.locked).toBe(true);
+    });
+    const request = fetchMock.mock.calls[0]?.[0];
+    if (!(request instanceof Request)) throw new Error("Expected the generated mutation request");
+    retireBrowserSession(owner);
+    expect(request.signal.aborted).toBe(false);
+    await expect(pending).resolves.toMatchObject({ name: "AbortError" });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("stops reading oversized API errors and preserves the HTTP fallback", async () => {
+    const encoded = new TextEncoder().encode(JSON.stringify({ detail: "x".repeat(1024 * 1024) }));
+    let received = 0;
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          if (received === encoded.byteLength) {
+            controller.close();
+            return;
+          }
+          const chunk = encoded.subarray(received, received + 8192);
+          received += chunk.byteLength;
+          controller.enqueue(chunk);
+        },
+        cancel,
+      },
+      { highWaterMark: 0 },
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 502 })),
+    );
+    const failure = await wikiApi.getFile("error-body").catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ApiError);
+    if (!(failure instanceof ApiError)) throw new Error("Expected ApiError");
+    expect(failure.message.length).toBe("API error: 502".length);
+    expect(received).toBe(40_960);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it("surfaces the backend detail string as the ApiError message", async () => {
     vi.stubGlobal(
       "fetch",

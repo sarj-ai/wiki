@@ -994,7 +994,7 @@ class PostgresTaskService(TaskService):
                 .where(
                     Task.owner_user_id == owner_user_id,
                     Task.kind == kind,
-                    Task.id.in_(_task_ids_for_key(owner_user_id, kind, idempotency_key)),
+                    Task.id.in_(_task_ids_for_key(UserId(owner_user_id), kind, idempotency_key)),
                     Task.expires_at > func.now(),
                 )
             )
@@ -1115,7 +1115,7 @@ class PostgresTaskService(TaskService):
                     Task.expires_at > func.now(),
                     Task.id.in_(
                         _task_ids_for_key(
-                            owner_user_id, TaskKind.FILE_DOCUMENT_TRANSFORM, idempotency_key
+                            UserId(owner_user_id), TaskKind.FILE_DOCUMENT_TRANSFORM, idempotency_key
                         )
                     ),
                 )
@@ -1243,7 +1243,7 @@ class PostgresTaskService(TaskService):
 
 
 def _task_ids_for_key(
-    owner_user_id: uuid.UUID, kind: TaskKind, idempotency_key: IdempotencyKey
+    owner_user_id: UserId, kind: TaskKind, idempotency_key: IdempotencyKey
 ) -> CompoundSelect[tuple[TaskId]]:
     # Both keys have an owner/kind/key index. Resolve their at-most-two IDs
     # before reading Task rows instead of scanning the owner's retained history.

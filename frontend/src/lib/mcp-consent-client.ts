@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 
+import { discardStream } from "@/lib/discard-stream";
 import { API_URL } from "@/lib/env";
 
 const IntentSchema = z.string().regex(/^wm_intent_[A-Za-z0-9_-]{43}$/);
@@ -60,7 +61,10 @@ async function request(url: string, options?: RequestInit): Promise<unknown> {
     signal: AbortSignal.timeout(15_000),
     ...options,
   });
-  if (!response.ok) throw new McpConsentRequestError(response.status);
+  if (!response.ok) {
+    discardStream(response.body);
+    throw new McpConsentRequestError(response.status);
+  }
   return response.json();
 }
 
@@ -89,6 +93,7 @@ export async function disconnectMcpConnection(grantId: string, csrf: string): Pr
       signal: AbortSignal.timeout(15_000),
     },
   );
+  discardStream(response.body);
   if (response.status !== 204) throw new McpConsentRequestError(response.status);
 }
 

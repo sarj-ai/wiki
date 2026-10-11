@@ -26,7 +26,14 @@ export async function deduplicatedRefresh(
   const shared = pendingRefresh;
   const signals = signal === undefined || signal === session ? [session] : [session, signal];
   return await new Promise<SessionRefreshResult>((resolve, reject) => {
+    let listening = true;
+    const cleanup = () => {
+      if (!listening) return;
+      listening = false;
+      for (const value of signals) value.removeEventListener("abort", onAbort);
+    };
     const onAbort = () => {
+      cleanup();
       const reason: unknown = signals.find((value) => value.aborted)?.reason;
       reject(
         reason instanceof Error
@@ -42,7 +49,7 @@ export async function deduplicatedRefresh(
         for (const value of signals) value.throwIfAborted();
         resolve(result);
       } finally {
-        for (const value of signals) value.removeEventListener("abort", onAbort);
+        cleanup();
       }
     })().catch(reject);
   });

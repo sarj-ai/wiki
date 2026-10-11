@@ -3,6 +3,7 @@ import * as z from "zod";
 import { abortableDelay } from "@/lib/abortable-delay";
 import { runAction, runActionResult } from "@/lib/action-client";
 import { ApiError } from "@/lib/api-error";
+import { captureBrowserSession } from "@/lib/browser-session";
 import { transformHttp } from "@/lib/clients/transform-http";
 import {
   DocumentTransformNeedsReviewError,
@@ -231,9 +232,12 @@ async function waitForTask(
   pollIntervalMs: number,
   maxPolls: number,
 ): Promise<DocumentTransformResult> {
+  const owner = captureBrowserSession();
+  const pollSignal = signal === undefined ? owner : AbortSignal.any([owner, signal]);
   let current = task;
   let transientFailures = 0;
   for (let poll = 0; ; poll += 1) {
+    pollSignal.throwIfAborted();
     switch (current.status) {
       case "cancelled":
         throw new DocumentTransformTerminalError("Document polish was cancelled", {
@@ -274,10 +278,10 @@ async function waitForTask(
           throw new Error("Document polish timed out; check its task status before retrying");
         }
         // eslint-disable-next-line no-await-in-loop -- Polling must wait before issuing the next status request.
-        await abortableDelay(pollIntervalMs, signal);
+        await abortableDelay(pollIntervalMs, pollSignal);
         try {
           // eslint-disable-next-line no-await-in-loop -- Each poll depends on the preceding task status.
-          current = await DOCUMENT_TRANSFORM_API.getTask(current.id, signal);
+          current = await DOCUMENT_TRANSFORM_API.getTask(current.id, pollSignal);
           transientFailures = 0;
         } catch (error: unknown) {
           if (!isTransientPollError(error) || transientFailures >= MAX_TRANSIENT_POLL_FAILURES) {
@@ -285,7 +289,7 @@ async function waitForTask(
           }
           transientFailures += 1;
           // eslint-disable-next-line no-await-in-loop -- Backoff must finish before the next attempt.
-          await abortableDelay(pollIntervalMs * 2 ** transientFailures, signal);
+          await abortableDelay(pollIntervalMs * 2 ** transientFailures, pollSignal);
         }
     }
   }
