@@ -8,7 +8,7 @@ from types import TracebackType
 from typing import NamedTuple, Self
 
 from cryptography.fernet import Fernet
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 import pytest
 from sqlalchemy.sql import ClauseElement
 
@@ -512,3 +512,51 @@ async def test_small_cache_hits_keep_crypto_inline(many: bool) -> None:
         assert await service.get(namespace, "catalog") == value
 
     assert protector.unprotection_threads == {get_ident()}
+
+
+@pytest.mark.parametrize("kind", ["small", "unicode", "wide", "deep"])
+async def test_single_cache_writes_select_crypto_thread_by_bounded_workload(kind: str) -> None:
+    protector = _ObservedProtector()
+    value: JsonValue
+    match kind:
+        case "unicode":
+            value = {"content": "📚" * (256 * 1024)}
+        case "wide":
+            wide: list[JsonValue] = [0] * 80_000
+            value = wide
+        case "deep":
+            value = "x" * (1024 * 1024)
+            for _ in range(200):
+                value = [value]
+        case _:
+            value = {"content": "x" * 1024}
+    session = _Session()
+    service = _service(session, protector=dependency(protector))
+
+    await service.put(CacheNamespace.TEMPLATE_CATALOG, "catalog", value, ttl=timedelta(minutes=1))
+
+    assert bool(get_ident() in protector.protection_threads) is (kind == "small")
+    assert protector.protection_threads
+    assert session.commits == 1
+
+
+@pytest.mark.parametrize("kind", ["invalid", "cyclic"])
+async def test_invalid_or_cyclic_cache_write_values_still_fail_before_opening_transaction(
+    kind: str,
+) -> None:
+    value: JsonValue
+    if kind == "cyclic":
+        cycle: list[JsonValue] = []
+        cycle.append(cycle)
+        value = cycle
+    else:
+        value = dependency(object())
+    session = _Session()
+
+    with pytest.raises(ValidationError):
+        await _service(session).put(
+            CacheNamespace.TEMPLATE_CATALOG, "invalid", value, ttl=timedelta(minutes=1)
+        )
+
+    assert session.statements == []
+    assert session.commits == 0

@@ -3,15 +3,16 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
 import { BrowserUserContext } from "@/lib/browser-user-context";
+import { readRecentDocs } from "@/lib/last-doc";
 import { WIKI_READ_API } from "@/lib/wiki-read-api";
 import type { FileDetail } from "@/types/wiki";
-import { MIME_DOC } from "@/types/wiki";
+import { MIME_DOC, MIME_HTML } from "@/types/wiki";
 
 import { useDocViewerStore } from "./doc-viewer-store";
 import { DocWarmup } from "./doc-warmup";
 
 vi.mock("@/lib/last-doc", () => ({
-  readRecentDocs: () => [{ fileId: "recent", mimeType: MIME_DOC, title: "Recent" }],
+  readRecentDocs: vi.fn(),
 }));
 vi.mock("@/lib/wiki-read-api", () => ({ WIKI_READ_API: { getFile: vi.fn() } }));
 
@@ -41,6 +42,9 @@ describe("idle document warmup ownership", () => {
     root = createRoot(host);
     client = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity, retry: false } } });
     pending = Promise.withResolvers<FileDetail>();
+    vi.mocked(readRecentDocs)
+      .mockReset()
+      .mockReturnValue([{ fileId: "recent", mimeType: MIME_DOC, title: "Recent" }]);
     vi.mocked(WIKI_READ_API.getFile).mockReset().mockReturnValue(pending.promise);
   });
 
@@ -61,6 +65,33 @@ describe("idle document warmup ownership", () => {
     expect(useDocViewerStore.getState().warm).toEqual([
       { fileId: "recent", mimeType: MIME_DOC, reloadKey: 0, title: "Authorized recent" },
     ]);
+  });
+
+  it("does not authorize idle HTML recents that the viewer cannot mount in the background", async () => {
+    vi.mocked(readRecentDocs).mockReturnValue([
+      { fileId: "html-recent", mimeType: MIME_HTML, title: "HTML recent" },
+    ]);
+    renderWarmup(root, client);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(WIKI_READ_API.getFile).not.toHaveBeenCalled();
+    expect(useDocViewerStore.getState().warm).toEqual([]);
+  });
+
+  it("uses the next eligible recent document without increasing the one-document warm limit", async () => {
+    vi.mocked(readRecentDocs).mockReturnValue([
+      { fileId: "html-recent", mimeType: MIME_HTML, title: "HTML recent" },
+      { fileId: "recent", mimeType: MIME_DOC, title: "Recent" },
+      { fileId: "later-recent", mimeType: MIME_DOC, title: "Later recent" },
+    ]);
+    renderWarmup(root, client);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(WIKI_READ_API.getFile).toHaveBeenCalledExactlyOnceWith(
+      "recent",
+      expect.any(AbortSignal),
+    );
+    pending.resolve(FILE);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useDocViewerStore.getState().warm[0]?.fileId).toBe("recent");
   });
 
   it("does not publish a late authorization after navigation, even after leaving that document", async () => {

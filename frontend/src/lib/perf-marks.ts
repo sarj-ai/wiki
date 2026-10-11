@@ -29,8 +29,11 @@ function readPerfFlag(): boolean {
 
 const PERF_ENABLED = readPerfFlag();
 
+type ReportablePhase = "commit" | "iframeLoad" | "iframeMount" | "toolbarPaint";
+
 interface NavigationSample {
   navigationId: string;
+  reportedPhases: Set<ReportablePhase>;
   startedAt: number;
   timeout: number;
 }
@@ -62,8 +65,12 @@ export function markNav(id: string, phase: string, extra: null | PerfExtra = nul
 
 export function markPaint(id: string, phase: string): void {
   if (typeof window === "undefined") return;
+  const sample = NAVIGATION_SAMPLES.get(id);
+  if (!PERF_ENABLED && sample === undefined) return;
   requestAnimationFrame(() => {
+    if (NAVIGATION_SAMPLES.get(id) !== sample) return;
     requestAnimationFrame(() => {
+      if (NAVIGATION_SAMPLES.get(id) !== sample) return;
       markNav(id, phase);
     });
   });
@@ -78,12 +85,18 @@ function startSample(id: string, startedAt: number): void {
   const timeout = window.setTimeout(() => {
     NAVIGATION_SAMPLES.delete(id);
   }, SAMPLE_MAX_AGE_MS);
-  const sample = { navigationId, startedAt, timeout };
+  const sample: NavigationSample = {
+    navigationId,
+    reportedPhases: new Set(),
+    startedAt,
+    timeout,
+  };
   NAVIGATION_SAMPLES.set(id, sample);
 }
 
 function reportPhase(sample: NavigationSample, phase: string, durationMs: number): void {
-  if (!isReportablePhase(phase)) return;
+  if (!isReportablePhase(phase) || sample.reportedPhases.has(phase)) return;
+  sample.reportedPhases.add(phase);
   sendPerformanceEvent({
     durationMs,
     navigationId: sample.navigationId,
@@ -93,9 +106,7 @@ function reportPhase(sample: NavigationSample, phase: string, durationMs: number
   });
 }
 
-function isReportablePhase(
-  phase: string,
-): phase is "commit" | "iframeLoad" | "iframeMount" | "toolbarPaint" {
+function isReportablePhase(phase: string): phase is ReportablePhase {
   return ["commit", "iframeLoad", "iframeMount", "toolbarPaint"].includes(phase);
 }
 

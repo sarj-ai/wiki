@@ -5,11 +5,12 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, override
+from typing import Any, NamedTuple, override
 import uuid
 
+from cryptography.fernet import MultiFernet
 import pytest
-from sqlalchemy.dialects import postgresql
+from sqlalchemy.sql import ClauseElement
 
 from app.auth.encryption import decrypt_cache, encrypt_cache
 from app.config import settings
@@ -55,24 +56,30 @@ class FakeDrive(DriveService):  # sarj-noqa: SARJ428 -- Used only by this module
         self.tree = tree
         self.walks = 0
 
+    @override
     async def list_drives(self) -> list[Any]:
         return []
 
+    @override
     async def walk_drive_folders(self, drive_id: str) -> DriveTree:
         self.walks += 1
         return self.tree
 
+    @override
     async def list_folder_children(self, folder_id: str) -> list[DriveNode]:
         return []
 
+    @override
     async def search_drive(
         self, drive_id: str, query: str, *, limit: int = 50
     ) -> list[SearchResult]:
         return []
 
+    @override
     async def search(self, query: str, *, limit_per_drive: int = 20) -> list[SearchResult]:
         return []
 
+    @override
     async def fetch_snippet(
         self, file_id: str, query: str, *, mime_type: str | None = None
     ) -> SnippetResult:
@@ -85,6 +92,7 @@ class BlockingDrive(FakeDrive):
         self.started = started
         self.release = release
 
+    @override
     async def walk_drive_folders(self, drive_id: str) -> DriveTree:
         self.walks += 1
         self.started.set()
@@ -92,32 +100,37 @@ class BlockingDrive(FakeDrive):
         return self.tree
 
 
+class _SnapshotResult(NamedTuple):
+    refreshed_at: datetime
+    transaction_epoch: int
+    transaction_id: str
+    tuple_location: str
+    tree: str
+
+
 class _ScalarResult:
-    def __init__(self, value: datetime | None) -> None:
+    def __init__(self, value: datetime | None, *, row: DriveTreeCache | None = None) -> None:
         self.value = value
+        self.row = row
 
     def scalar_one_or_none(self) -> datetime | None:
         return self.value
+
+    def one_or_none(self) -> _SnapshotResult | None:
+        if self.row is None:
+            return None
+        return _SnapshotResult(self.row.refreshed_at, 0, "1", "(0,1)", self.row.tree)
 
 
 class FakeSession:  # sarj-noqa: SARJ428 -- Cache transaction recorder used only in this module.
     def __init__(self, row: DriveTreeCache | None = None) -> None:
         self.row = row
-        self.deleted_rows: list[object] = []
-        self.executed: list[Any] = []
-        self.get_keys: list[object] = []
+        self.executed: list[ClauseElement] = []
         self.commits = 0
 
-    async def get(self, model: type[DriveTreeCache], pk: object) -> DriveTreeCache | None:
-        self.get_keys.append(pk)
-        return self.row
-
-    async def delete(self, row: object) -> None:
-        self.deleted_rows.append(row)
-
-    async def execute(self, stmt: Any) -> _ScalarResult:
+    async def execute(self, stmt: ClauseElement) -> _ScalarResult:
         self.executed.append(stmt)
-        return _ScalarResult(self.row.refreshed_at if self.row is not None else None)
+        return _ScalarResult(self.row.refreshed_at if self.row is not None else None, row=self.row)
 
     async def commit(self) -> None:
         self.commits += 1
@@ -131,7 +144,7 @@ def _service(
     drive: FakeDrive,
     save_session: FakeSession,
     *,
-    singleflight: Singleflight | None = None,
+    singleflight: Singleflight[sidebar_cache.SidebarFlightResult] | None = None,
     user: User | None = None,
 ) -> PostgresSidebarCacheService:
     @asynccontextmanager
@@ -161,7 +174,7 @@ def test_warm_row_round_trips_through_encryption() -> None:
 
     assert cached.tree == tree
     assert cached.refreshed_at == row.refreshed_at
-    assert db.deleted_rows == []
+    assert len(db.executed) == 1
 
 
 def test_tree_lookup_uses_principal_and_drive_composite_key() -> None:
@@ -178,7 +191,13 @@ def test_tree_lookup_uses_principal_and_drive_composite_key() -> None:
 
     asyncio.run(service.peek_drive_tree(_db(db), DriveId("drive-1")))
 
-    assert db.get_keys == [(user.id, DriveId("drive-1"))]
+    compiled = db.executed[0].compile()
+    params = compiled.params
+    assert params is not None
+    assert params["user_id_1"] == user.id
+    assert params["drive_id_1"] == "drive-1"
+    assert "user_drive_tree_cache.xmin" in str(compiled)
+    assert "user_drive_tree_cache.ctid" in str(compiled)
 
 
 def test_metadata_lookup_selects_no_encrypted_tree_blob() -> None:
@@ -195,7 +214,7 @@ def test_metadata_lookup_selects_no_encrypted_tree_blob() -> None:
 
     refreshed_at = asyncio.run(service.get_drive_tree_refreshed_at(_db(db), DriveId("drive-1")))
 
-    statement = str(db.executed[0].compile(dialect=postgresql.dialect()))
+    statement = str(db.executed[0].compile())
     assert refreshed_at == row.refreshed_at
     assert "SELECT user_drive_tree_cache.refreshed_at" in statement
     assert "user_drive_tree_cache.tree" not in statement
@@ -215,7 +234,8 @@ def test_undecryptable_row_is_treated_as_cache_miss() -> None:
 
     cached = asyncio.run(service.get_drive_tree(_db(db), DriveId("drive-1")))
 
-    assert db.deleted_rows == [row]
+    assert "DELETE FROM user_drive_tree_cache" in str(db.executed[-1])
+    assert "user_drive_tree_cache.xmin" in str(db.executed[-1])
     assert drive.walks == 1
     assert cached.tree == tree
     assert cached.refreshed_at is None
@@ -230,14 +250,16 @@ def test_save_tree_stores_ciphertext_and_purges_stale_rows() -> None:
     asyncio.run(service.refresh_drive(_db(FakeSession()), DriveId("drive-1")))
 
     upsert, purge = save_session.executed
-    stored = upsert.compile(dialect=postgresql.dialect()).params["tree"]
+    upsert_params = upsert.compile().params
+    assert upsert_params is not None
+    stored = upsert_params["tree"]
     assert stored != tree.model_dump_json()
     assert DriveTree.model_validate_json(decrypt_cache(stored)) == tree
 
-    purge_sql = str(purge.compile(dialect=postgresql.dialect()))
+    purge_sql = str(purge.compile())
     assert "DELETE FROM user_drive_tree_cache" in purge_sql
     assert "refreshed_at <" in purge_sql
-    assert upsert.compile(dialect=postgresql.dialect()).params["user_id"] == user.id
+    assert upsert_params["user_id"] == user.id
 
 
 def test_invalidation_removes_every_principals_row_for_drive() -> None:
@@ -246,7 +268,7 @@ def test_invalidation_removes_every_principals_row_for_drive() -> None:
 
     asyncio.run(service.invalidate_drive(_db(db), DriveId("drive-1")))
 
-    compiled = db.executed[0].compile(dialect=postgresql.dialect())
+    compiled = db.executed[0].compile()
     sql = str(compiled)
     assert "DELETE FROM user_drive_tree_cache" in sql
     assert "user_drive_tree_cache.drive_id" in sql
@@ -268,10 +290,10 @@ def test_decoded_tree_cache_is_scoped_by_principal(monkeypatch: pytest.MonkeyPat
     decode_calls = 0
     original_decode = sidebar_cache._decrypt_and_parse
 
-    def counting_decode(blob: str) -> DriveTree:
+    def counting_decode(blob: str, decoder: MultiFernet) -> DriveTree:
         nonlocal decode_calls
         decode_calls += 1
-        return original_decode(blob)
+        return original_decode(blob, decoder)
 
     monkeypatch.setattr(sidebar_cache, "_decrypt_and_parse", counting_decode)
 
@@ -297,12 +319,12 @@ async def test_concurrent_cold_tree_reads_decode_once() -> None:
 
     class CountingCache(PostgresSidebarCacheService):
         @override
-        async def _decode_tree(self, blob: str) -> DriveTree:
+        async def _decode_tree(self, blob: str, decoder: MultiFernet) -> DriveTree:
             nonlocal calls
             calls += 1
             started.set()
             await release.wait()
-            return await super()._decode_tree(blob)
+            return await super()._decode_tree(blob, decoder)
 
     services = [
         CountingCache(
@@ -336,7 +358,9 @@ async def test_concurrent_cold_tree_reads_decode_once() -> None:
 def test_decoded_cache_bounds_total_nodes_and_skips_oversized_trees() -> None:
     cache = sidebar_cache._DecodedTreeCache(max_entries=32, max_nodes=3)
     user = _user()
-    keys = [(UserId(user.id), DriveId(f"budget-{index}"), "version") for index in range(3)]
+    version = sidebar_cache._TreeVersion(datetime.now(UTC), 0, "1", "(0,1)")
+    decoder = object()
+    keys = [(UserId(user.id), DriveId(f"budget-{index}"), version, decoder) for index in range(3)]
     node = _tree().folders[0]
     tree = DriveTree(
         drive_id=DriveId("budget"), folders=[node, node], files=[], files_complete=True
@@ -362,7 +386,7 @@ class _SingleflightResults:
 
 def test_singleflight_keys_are_scoped_by_principal() -> None:
     async def exercise() -> _SingleflightResults:
-        shared = Singleflight()
+        shared: Singleflight[sidebar_cache.SidebarFlightResult] = Singleflight()
         started = asyncio.Event()
         release = asyncio.Event()
         first_tree = _tree()
@@ -411,7 +435,7 @@ def test_unparseable_row_is_treated_as_cache_miss() -> None:
 
     cached = asyncio.run(service.get_drive_tree(_db(db), DriveId("drive-1")))
 
-    assert db.deleted_rows == [row]
+    assert "DELETE FROM user_drive_tree_cache" in str(db.executed[-1])
     assert drive.walks == 1
     assert cached.tree == tree
     assert cached.refreshed_at is None
@@ -430,7 +454,7 @@ def test_pre_files_complete_row_is_treated_as_cache_miss() -> None:
 
     cached = asyncio.run(service.get_drive_tree(_db(db), DriveId("drive-1")))
 
-    assert db.deleted_rows == [row]
+    assert "DELETE FROM user_drive_tree_cache" in str(db.executed[-1])
     assert drive.walks == 1
     assert cached.tree == tree
 

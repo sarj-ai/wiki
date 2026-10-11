@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET } from "./route";
 
@@ -31,7 +31,44 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
 });
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("authenticated parallel wiki reads", () => {
+  it.each(["disconnect", "deadline"] as const)(
+    "discards a late successful upstream body after %s without exposing it",
+    async (reason) => {
+      const caller = new AbortController();
+      const deadline = new AbortController();
+      vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+      const headers = Promise.withResolvers<Response>();
+      const cleanup = Promise.withResolvers<undefined>();
+      const cancelled = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
+      fetchMock.mockReturnValue(headers.promise);
+      const result = GET(
+        new Request("https://wiki.sarj.ai/api/wiki/files/doc-1", {
+          headers: { "x-wiki-read": "1" },
+          signal: caller.signal,
+        }),
+        context("files/doc-1"),
+      );
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+      if (reason === "disconnect") caller.abort();
+      else deadline.abort(new DOMException("The operation timed out", "TimeoutError"));
+      headers.resolve(new Response(new ReadableStream<Uint8Array>({ cancel: cancelled })));
+      try {
+        const response = await result;
+        expect(response.status).toBe(502);
+        await expect(response.json()).resolves.toEqual({
+          detail: "The request could not be completed",
+        });
+        expect(cancelled).toHaveBeenCalledOnce();
+        expect(fetchMock).toHaveBeenCalledOnce();
+      } finally {
+        cleanup.resolve(undefined);
+      }
+    },
+  );
+
   it("reaches the backend with an expired session under Cloudflare redirect semantics", async () => {
     const unauthorized = Promise.resolve(
       Response.json({ detail: "private provider error" }, { status: 401 }),

@@ -24,7 +24,12 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDrivePermissions } from "@/hooks/use-wiki-tree";
 import { folderUrlFor } from "@/lib/file-urls";
-import type { DrivePermission, DrivePrincipalType, DriveSummary } from "@/types/wiki";
+import type {
+  DrivePermission,
+  DrivePermissionsPage,
+  DrivePrincipalType,
+  DriveSummary,
+} from "@/types/wiki";
 
 const ROLE_ORDER = new Map([
   ["organizer", 0],
@@ -70,18 +75,7 @@ export function DriveAccessSheet({ drive }: { drive: DriveSummary }) {
 
 function DriveAccessContent({ drive, open }: { drive: DriveSummary; open: boolean }) {
   const query = useDrivePermissions(drive.isPersonal ? null : drive.id, open && !drive.isPersonal);
-  const permissions = dedupePermissions(
-    query.data?.pages.flatMap((page) => page.permissions) ?? [],
-  );
-  const generalAccess = permissions.filter(
-    (permission) => permission.principalType === "domain" || permission.principalType === "anyone",
-  );
-  const people = permissions
-    .filter(
-      (permission) =>
-        permission.principalType !== "domain" && permission.principalType !== "anyone",
-    )
-    .toSorted(comparePermissions);
+  const { count, generalAccess, people } = derivePermissions(query.data?.pages ?? []);
 
   return (
     <>
@@ -95,7 +89,7 @@ function DriveAccessContent({ drive, open }: { drive: DriveSummary; open: boolea
             <SheetDescription>
               {drive.isPersonal
                 ? "Sharing is managed on each file and folder."
-                : permissionSummary(permissions.length)}
+                : permissionSummary(count)}
             </SheetDescription>
           </div>
         </div>
@@ -269,8 +263,19 @@ function AccessError({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-function dedupePermissions(permissions: DrivePermission[]): DrivePermission[] {
-  return new Map(permissions.map((permission) => [permission.id, permission])).values().toArray();
+export function derivePermissions(pages: readonly DrivePermissionsPage[]) {
+  const byId = new Map<string, DrivePermission>();
+  for (const page of pages) {
+    for (const permission of page.permissions) byId.set(permission.id, permission);
+  }
+  const generalAccess: DrivePermission[] = [];
+  const people: DrivePermission[] = [];
+  for (const permission of byId.values()) {
+    const type = permission.principalType;
+    if (type === "domain" || type === "anyone") generalAccess.push(permission);
+    else people.push(permission);
+  }
+  return { count: byId.size, generalAccess, people: people.toSorted(comparePermissions) };
 }
 
 function comparePermissions(a: DrivePermission, b: DrivePermission): number {

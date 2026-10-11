@@ -77,14 +77,23 @@ export function SessionRefresh() {
         if (!controller.signal.aborted) releaseMarker(marker);
       });
     };
-    maybeRefresh();
-    const intervalId = window.setInterval(maybeRefresh, CHECK_INTERVAL_MS);
-    document.addEventListener("visibilitychange", maybeRefresh);
+    let intervalId: number | undefined;
+    const syncVisibility = () => {
+      if (document.visibilityState !== "visible") {
+        if (intervalId !== undefined) window.clearInterval(intervalId);
+        intervalId = undefined;
+        return;
+      }
+      maybeRefresh();
+      intervalId ??= window.setInterval(maybeRefresh, CHECK_INTERVAL_MS);
+    };
+    syncVisibility();
+    document.addEventListener("visibilitychange", syncVisibility);
     return () => {
       releaseMarker(pendingMarker);
       controller.abort();
-      window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", maybeRefresh);
+      if (intervalId !== undefined) window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", syncVisibility);
     };
   }, []);
   return null;

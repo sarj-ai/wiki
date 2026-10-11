@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight, Folder, HardDrive, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -35,27 +35,34 @@ export function MoveFileDialog({
   const drivesQuery = useDrives();
   const moveFile = useMoveFile();
   const [selectedId, setSelectedId] = useState<null | string>(null);
+  const admission = useRef({ pending: false });
 
   const handleConfirm = async () => {
-    if (!selectedId) return;
-    await runWithErrorToast(
-      async () => {
-        await moveFile.mutateAsync({
-          fileId,
-          newParentFolderId: selectedId,
-          sourceDriveId: currentDriveId,
-          sourceParentFolderId: currentParentFolderId,
-        });
-        toast.success(`Moved "${fileName}"`);
-        onOpenChange(false);
-        setSelectedId(null);
-      },
+    const owner = admission.current;
+    if (!selectedId || owner.pending) return;
+    owner.pending = true;
+    try {
+      await runWithErrorToast(
+        async () => {
+          await moveFile.mutateAsync({
+            fileId,
+            newParentFolderId: selectedId,
+            sourceDriveId: currentDriveId,
+            sourceParentFolderId: currentParentFolderId,
+          });
+          toast.success(`Moved "${fileName}"`);
+          onOpenChange(false);
+          setSelectedId(null);
+        },
 
-      (err) =>
-        err instanceof ApiError && err.status === 403
-          ? "Drive denied this move — you may not have edit permission on the destination."
-          : toErrorMessage(err, "Move failed"),
-    );
+        (err) =>
+          err instanceof ApiError && err.status === 403
+            ? "Drive denied this move — you may not have edit permission on the destination."
+            : toErrorMessage(err, "Move failed"),
+      );
+    } finally {
+      owner.pending = false;
+    }
   };
 
   const disabledId = currentParentFolderId ?? currentDriveId ?? "";

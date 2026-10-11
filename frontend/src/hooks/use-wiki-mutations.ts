@@ -202,10 +202,14 @@ function dropSortOrderLocally(
 ): SortOrder[] | undefined {
   const previous = qc.getQueryData<SortOrder[]>(wikiKeys.sortOrders);
   if (!previous) return undefined;
-  qc.setQueryData<SortOrder[]>(
-    wikiKeys.sortOrders,
-    previous.filter((s) => s.driveId !== fileId),
-  );
+  const first = previous.findIndex((item) => item.driveId === fileId);
+  if (first === -1) return previous;
+  const next = previous.slice(0, first);
+  for (let index = first + 1; index < previous.length; index += 1) {
+    const item = previous[index];
+    if (item && item.driveId !== fileId) next.push(item);
+  }
+  qc.setQueryData<SortOrder[]>(wikiKeys.sortOrders, next);
   return previous;
 }
 

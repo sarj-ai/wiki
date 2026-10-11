@@ -49,7 +49,7 @@ make standards-check
 `make check` mirrors CI. `make audit` performs network-backed dependency audits, and
 `make standards-check` verifies generated standards configuration, version pins, and code.
 
-See the [229-pass performance record and reproduction commands](docs/performance.json) for
+See the [259-pass performance record and reproduction commands](docs/performance.json) for
 frontend loading and backend latency work.
 
 Original-tranche production-build measurements against the same locked main toolchain:
@@ -91,7 +91,7 @@ changes. Resource and CPU reductions are measured separately from transfer size 
 production page-load time. Rejected regressions and remaining tradeoffs are recorded;
 these passes do not establish a physical performance maximum.
 
-The latest tranche adds 30 distinct candidates across five agents: 26 retained
+The previous tranche added 30 distinct candidates across five agents: 26 retained
 improvements and four measured rejections, bringing the record to 229 passes.
 Against the deployed `1f7fa858` baseline, controlled measurements include:
 
@@ -104,13 +104,40 @@ Against the deployed `1f7fa858` baseline, controlled measurements include:
 | Collapsed tree-index entry reads, 23,000 entries | 23,000    | 0         |
 | Expanded-folder subscriptions, 500 rows          | 1,000     | 500       |
 
-The integrated gate passes 4,251 backend tests and 803 frontend tests. Browser
+That integrated gate passed 4,251 backend tests and 803 frontend tests. Browser
 recovery restores verified user preferences after reload, obsolete polling stops
 at session retirement, and error-body reads have size and time bounds. Final
 compressed client inventories increase about 0.6%: home 179,354 to 180,375 B and
 document 190,761 to 191,806 B. Read, resource and controlled timing reductions
 are separate from this bundle tradeoff and do not establish production page-load
 latency. The record includes candidate-specific methods and rejected regressions.
+
+The newest tranche adds another 30 distinct candidates across five agents: 25
+retained improvements and five measured rejections, bringing the record to 259.
+Against the deployed `edfc6588` baseline, controlled measurements include:
+
+| Measurement                                    | Before    | After     |
+| ---------------------------------------------- | --------- | --------- |
+| Complete search requests, eight shared drives  | 10        | 2         |
+| Collapsed-folder query observers, 500 rows     | 500       | 0         |
+| Warm tree read, 10,000 nodes                   | 4.187 ms  | 1.123 ms  |
+| Encrypted cache hit, 4 MiB plaintext           | 14.320 ms | 10.476 ms |
+| Sidebar overlay read, 20,001 rows              | 68.641 ms | 31.847 ms |
+| Longest event-loop gap, six 4 MiB cache writes | 58.183 ms | 20.808 ms |
+| Sibling ID reads, 100 drag events / 10,000 IDs | 1,000,000 | 0         |
+
+Complete all-drive search avoids unnecessary fallback requests. Partial pages,
+incomplete searches and excessive per-drive results retain the fresh per-drive
+queries; My Drive still uses its separate owner-filtered query. Warm trees retain
+a fresh authenticated PostgreSQL tuple-version read before omitting ciphertext.
+Duplicate move clicks admit one write, retired MCP reads stop, and success-body
+decoding has byte and deadline bounds. Small cache and tree fixtures have explicit
+cost increases of about 0.03–0.07 ms; cold tree timings are essentially unchanged.
+The record preserves sampling methods, rejected regressions and workload limits.
+The integrated gate passes 4,299 backend tests and 870 frontend tests. Final
+compressed app inventories grow about 0.4%: home 180,375 to 181,032 B and document
+191,806 to 192,517 B. Resource and CPU gains are separate from this transfer-size
+tradeoff and do not establish production page-load latency.
 
 The drive-loading regression was reproduced in the compiled Cloudflare Worker:
 server `fetch` rejects `redirect: "error"` before reaching the API. Server clients

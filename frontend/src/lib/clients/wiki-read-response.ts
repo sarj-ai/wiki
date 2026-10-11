@@ -28,11 +28,16 @@ export async function wikiReadResponse(
   const requestId = inboundId && REQUEST_ID.test(inboundId) ? inboundId : crypto.randomUUID();
   try {
     request.signal.throwIfAborted();
+    const upstreamSignal = AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]);
     const upstream = await fetchBackend(`${API_URL}${path}`, {
       cache: "no-store",
       headers: { authorization: `Bearer ${token}`, "x-request-id": requestId },
-      signal: AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]),
+      signal: upstreamSignal,
     });
+    if (upstreamSignal.aborted) {
+      discardStream(upstream.body);
+      return failure(502);
+    }
     if (!upstream.ok) {
       discardStream(upstream.body);
       return failure(upstream.status);

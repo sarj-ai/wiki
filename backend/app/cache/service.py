@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from datetime import datetime, timedelta
 from enum import StrEnum
 from itertools import batched
@@ -32,6 +32,9 @@ _ARRAY_WRITE_THRESHOLD = 8
 _UNNEST_LOOKUP_THRESHOLD = 4_096
 _BULK_CPU_OFFLOAD_THRESHOLD = 256
 _PAYLOAD_CPU_OFFLOAD_BYTES = 512 * 1024
+_WRITE_PAYLOAD_ITEM_BYTES = 16
+_NON_ASCII_PAYLOAD_CHAR_BYTES = 4
+_WRITE_PAYLOAD_ITEM_LIMIT = _PAYLOAD_CPU_OFFLOAD_BYTES // _WRITE_PAYLOAD_ITEM_BYTES
 _MAX_CACHE_TTL = timedelta(minutes=5)
 
 
@@ -49,6 +52,41 @@ def _needs_crypto_offload(envelopes: Iterable[object]) -> bool:
         if ciphertext_bytes >= _PAYLOAD_CPU_OFFLOAD_BYTES:
             return True
     return False
+
+
+def _needs_write_crypto_offload(values: Mapping[str, JsonValue]) -> bool:
+    # A bounded workload estimate avoids serializing large values twice. The
+    # protector still performs the authoritative JSON validation on either path.
+    workload = 0
+    pending: list[Iterator[JsonValue]] = [iter(values), iter(values.values())]
+    while pending:
+        try:
+            value = next(pending[-1])
+        except StopIteration:
+            pending.pop()
+            continue
+        workload += _WRITE_PAYLOAD_ITEM_BYTES
+        match value:
+            case dict() | list() if len(value) >= _WRITE_PAYLOAD_ITEM_LIMIT:
+                return True
+            case str():
+                workload += len(value) * (1 if value.isascii() else _NON_ASCII_PAYLOAD_CHAR_BYTES)
+            case dict():
+                pending.extend((iter(value), iter(value.values())))
+            case list():
+                pending.append(iter(value))
+            case _:
+                pass
+        if workload >= _PAYLOAD_CPU_OFFLOAD_BYTES:
+            return True
+    return False
+
+
+def _cache_envelope_text() -> ColumnElement[str]:
+    # Cache entries are authenticated JSONB string envelopes. Extracting their
+    # scalar text skips a second JSON escaping/decoding of the ciphertext.
+    # Non-string legacy values cannot have the protector's envelope prefix.
+    return CacheEntry.value.op("#>>", return_type=Text)(literal([], type_=ARRAY(Text)))
 
 
 def _cache_insert(
@@ -184,7 +222,7 @@ class CachePSqlService(CacheService):
     @override
     async def get(self, namespace: CacheNamespace, key: str) -> JsonValue | None:
         physical_keys = self._protector.physical_keys(namespace, key)
-        statement = select(CacheEntry.key, CacheEntry.value).where(
+        statement = select(CacheEntry.key, _cache_envelope_text()).where(
             CacheEntry.namespace == namespace,
             CacheEntry.key.in_(physical_keys),
             CacheEntry.expires_at > func.now(),
@@ -237,7 +275,7 @@ class CachePSqlService(CacheService):
         with timed("cache"):
             for offset in range(0, len(queried_keys), _MAX_LOOKUP_KEYS_PER_QUERY):
                 chunk = queried_keys[offset : offset + _MAX_LOOKUP_KEYS_PER_QUERY]
-                statement = select(CacheEntry.key, CacheEntry.value).where(
+                statement = select(CacheEntry.key, _cache_envelope_text()).where(
                     CacheEntry.namespace == namespace,
                     CacheEntry.expires_at > func.now(),
                 )
@@ -292,7 +330,7 @@ class CachePSqlService(CacheService):
         if ttl > _MAX_CACHE_TTL:
             msg = "cache ttl must not exceed five minutes"
             raise ValueError(msg)
-        if len(values) >= _BULK_CPU_OFFLOAD_THRESHOLD:
+        if len(values) >= _BULK_CPU_OFFLOAD_THRESHOLD or _needs_write_crypto_offload(values):
             protected_values = await asyncio.to_thread(
                 self._protect_values, namespace, dict(values)
             )

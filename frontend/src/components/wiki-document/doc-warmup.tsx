@@ -9,7 +9,7 @@ import { useBrowserUserId } from "@/lib/browser-user-context";
 import { isGoogleWorkspaceType } from "@/lib/file-icons";
 import { type LastDoc, readRecentDocs } from "@/lib/last-doc";
 import { wikiKeys } from "@/lib/wiki-keys";
-import type { DriveTree } from "@/types/wiki";
+import { type DriveTree, MIME_HTML } from "@/types/wiki";
 
 import { readNavigatorHints, warmCountFor } from "./doc-warmup-policy";
 
@@ -28,7 +28,9 @@ export function DocWarmup() {
       warmedUser.current = userId;
       const limit = warmCountFor(readNavigatorHints(navigator));
       if (limit === 0) return;
-      const recents = readRecentDocs(userId);
+      // The host mounts HTML only while active; its sandboxed content cannot
+      // benefit from idle authorization or an invisible warmed viewer.
+      const recents = readRecentDocs(userId).filter((doc) => doc.mimeType !== MIME_HTML);
       const targets =
         recents.length > 0 ? recents.slice(0, limit) : firstWorkspaceDocs(queryClient, limit);
       if (targets.length === 0) return;

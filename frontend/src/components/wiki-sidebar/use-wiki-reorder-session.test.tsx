@@ -148,6 +148,129 @@ describe("sidebar mutation session ownership", () => {
     vi.useRealTimers();
   });
 
+  it("derives native same-container hover intent without validating 10,000 sibling IDs per move", () => {
+    renderProvider("user-a");
+    let itemReads = 0;
+    const siblingIds = new Proxy(
+      Array.from({ length: 10_000 }, (_, index) =>
+        index === 0 ? FILE.id : index === 9_999 ? DESTINATION.id : `item-${index}`,
+      ),
+      {
+        get(target, key, receiver) {
+          if (typeof key === "string" && /^\d+$/.test(key)) itemReads += 1;
+          const value: unknown = Reflect.get(target, key, receiver);
+          return value;
+        },
+      },
+    );
+    const event = dragEvent(DESTINATION.id, {
+      driveId: "shared-drive",
+      isFolder: true,
+      sortable: { containerId: "parent:shared-drive", index: 9_999, items: siblingIds },
+    });
+    event.active.data.current = {
+      driveId: "shared-drive",
+      sortable: { containerId: "parent:shared-drive", index: 0, items: siblingIds },
+    };
+    flushSync(() => hooks.reorder.onDragStart(event));
+    for (let index = 0; index < 100; index += 1) hooks.reorder.onDragOver(event);
+    expect(useDragOverStore.getState().intent).toBe("below");
+    expect(itemReads).toBe(0);
+    hooks.reorder.onDragCancel();
+    expect(ACTIONS.bulk).not.toHaveBeenCalled();
+  });
+
+  it("commits native-position drags from the current validated sibling sequence", async () => {
+    renderProvider("user-a");
+    const event = dragEvent(DESTINATION.id, {
+      driveId: "shared-drive",
+      sortable: { containerId: "parent:shared-drive", index: 1, items: [FILE.id, DESTINATION.id] },
+    });
+    event.active.data.current = {
+      driveId: "shared-drive",
+      sortable: { containerId: "parent:shared-drive", index: 0, items: [FILE.id, DESTINATION.id] },
+    };
+    flushSync(() => hooks.reorder.onDragStart(event));
+    hooks.reorder.onDragOver(event);
+    expect(useDragOverStore.getState().intent).toBe("below");
+    event.active.data.current = {
+      driveId: "shared-drive",
+      sortable: { containerId: "parent:shared-drive", index: 0, items: [DESTINATION.id, FILE.id] },
+    };
+    flushSync(() => hooks.reorder.onDragEnd(event));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ACTIONS.bulk).toHaveBeenCalledWith([
+      { driveId: FILE.id, sortOrder: 1 },
+      { driveId: DESTINATION.id, sortOrder: 2 },
+    ]);
+  });
+
+  it("does not copy or publish an unchanged 10,000-entry rank list for an unranked move", async () => {
+    const pending = Promise.withResolvers<ActionResult<unknown>>();
+    ACTIONS.move.mockReturnValue(pending.promise);
+    renderProvider("user-a");
+    client.setQueryData(
+      wikiKeys.sortOrders,
+      Array.from({ length: 10_000 }, (_, index) => ({
+        driveId: `ranked-${index}`,
+        sortOrder: index,
+      })),
+    );
+    const previous = client.getQueryData(wikiKeys.sortOrders);
+    if (!Array.isArray(previous)) throw new TypeError("Rank fixture missing");
+    const filtered = vi.spyOn(previous, "filter");
+    const wrote = vi.spyOn(client, "setQueryData");
+    const rankQuery = client.getQueryCache().find({ queryKey: wikiKeys.sortOrders });
+    const published = vi.fn();
+    const release = client.getQueryCache().subscribe((event) => {
+      if (event.type === "updated" && event.query === rankQuery && event.action.type === "success")
+        published();
+    });
+    const operation = hooks.move.mutateAsync({
+      fileId: FILE.id,
+      newParentFolderId: DESTINATION.id,
+      sourceDriveId: "shared-drive",
+      sourceParentFolderId: undefined,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ACTIONS.move).toHaveBeenCalledOnce();
+    expect(filtered).not.toHaveBeenCalled();
+    expect(wrote).not.toHaveBeenCalled();
+    expect(published).not.toHaveBeenCalled();
+    expect(client.getQueryData(wikiKeys.sortOrders)).toBe(previous);
+    release();
+    pending.resolve({ data: movedFile(), ok: true });
+    await operation;
+  });
+
+  it("removes all matching ranks in order and restores the prior ranks on a current move denial", async () => {
+    const pending = Promise.withResolvers<ActionResult<unknown>>();
+    ACTIONS.move.mockReturnValue(pending.promise);
+    renderProvider("user-a");
+    const leading = { driveId: "leading", sortOrder: 1 };
+    const trailing = { driveId: "trailing", sortOrder: 2 };
+    const ranks = [
+      leading,
+      { driveId: FILE.id, sortOrder: 3 },
+      trailing,
+      { driveId: FILE.id, sortOrder: 4 },
+    ];
+    client.setQueryData(wikiKeys.sortOrders, ranks);
+    const previous = client.getQueryData(wikiKeys.sortOrders);
+    const operation = hooks.move.mutateAsync({
+      fileId: FILE.id,
+      newParentFolderId: DESTINATION.id,
+      sourceDriveId: "shared-drive",
+      sourceParentFolderId: undefined,
+    });
+    const failure = operation.catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.getQueryData(wikiKeys.sortOrders)).toEqual([leading, trailing]);
+    pending.resolve({ error: "Current move denied", ok: false, status: 403 });
+    await expect(failure).resolves.toMatchObject({ status: 403 });
+    expect(client.getQueryData(wikiKeys.sortOrders)).toEqual(previous);
+  });
+
   it("resets ephemeral state and keeps B's same-file move owned when A settles", async () => {
     const oldAction = Promise.withResolvers<ActionResult<unknown>>();
     const currentAction = Promise.withResolvers<ActionResult<unknown>>();

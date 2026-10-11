@@ -27,6 +27,14 @@ def escape_query_value(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
+def has_snippet_terms(query: str) -> bool:
+    return bool(_snippet_terms(query))
+
+
+def _snippet_terms(query: str) -> dict[str, None]:
+    return dict.fromkeys(word for word in query.lower().split() if len(word) >= _PREFIX_MIN_CHARS)
+
+
 def extract_snippet(
     text: str,
     query: str,
@@ -48,11 +56,12 @@ def extract_snippet(
 def _first_match_offset(text: str, query: str) -> _MatchOffset | None:
     if not query or not text:
         return None
+    words = _snippet_terms(query)
+    if not words:
+        return None
     text_lower = text.lower()
     best: _MatchOffset | None = None
-    for w in dict.fromkeys(query.lower().split()):
-        if len(w) < 3:
-            continue
+    for w in words:
         match = _find_with_prefix_fallback(text_lower, w)
         if match is None:
             continue

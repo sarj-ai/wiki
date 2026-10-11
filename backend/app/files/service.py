@@ -503,6 +503,7 @@ class GoogleFilesService(FilesService):
         model: type[Record],
     ) -> dict[FileId, Record]:
         client = self._client()
+        files = client.files()
         responses: dict[FileId, Record] = {}
         failures: list[BaseException] = []
 
@@ -522,7 +523,7 @@ class GoogleFilesService(FilesService):
                 batch = client.new_batch_http_request(callback=collect)
                 for file_id in chunk:
                     batch.add(
-                        client.files().get(
+                        files.get(
                             fileId=file_id,
                             fields=fields,
                             supportsAllDrives=True,

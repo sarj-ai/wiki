@@ -11,6 +11,10 @@ _token_fernet = _multifernet(settings.FERNET_KEY.get_secret_value())
 _cache_fernet = _multifernet((settings.CACHE_FERNET_KEY or settings.FERNET_KEY).get_secret_value())
 
 
+def cache_decoder_identity() -> MultiFernet:
+    return _cache_fernet
+
+
 def encrypt_text(plaintext: str) -> str:
     return _token_fernet.encrypt(plaintext.encode()).decode()
 
@@ -23,5 +27,5 @@ def encrypt_cache(plaintext: str) -> str:
     return _cache_fernet.encrypt(plaintext.encode()).decode()
 
 
-def decrypt_cache(encrypted: str) -> str:
-    return _cache_fernet.decrypt(encrypted.encode()).decode()
+def decrypt_cache(encrypted: str, *, decoder: MultiFernet | None = None) -> str:
+    return (decoder or _cache_fernet).decrypt(encrypted.encode()).decode()

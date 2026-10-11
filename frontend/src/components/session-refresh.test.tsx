@@ -84,6 +84,30 @@ describe("background session refresh ownership", () => {
     flushSync(() => root.render(<SessionRefresh />));
     await vi.advanceTimersByTimeAsync(20 * 60 * 1_000);
     expect(deduplicatedRefresh).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("suspends hidden-tab checks and immediately refreshes on return after expiry", async () => {
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const readMarker = vi.spyOn(localStorage, "getItem");
+    flushSync(() => root.render(<SessionRefresh />));
+    pending.resolve("refreshed");
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    visibility.mockReturnValue("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    const hiddenReads = readMarker.mock.calls.length;
+    const hiddenChecks = visibility.mock.calls.length;
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+    expect(readMarker).toHaveBeenCalledTimes(hiddenReads);
+    expect(visibility).toHaveBeenCalledTimes(hiddenChecks);
+    expect(deduplicatedRefresh).toHaveBeenCalledOnce();
+    visibility.mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(deduplicatedRefresh).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(1);
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(vi.getTimerCount()).toBe(1);
   });
 
   it.each(["getItem", "removeItem"] as const)(

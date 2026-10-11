@@ -211,6 +211,51 @@ function SearchProbe({ enabled }: { enabled: boolean }) {
   return <span>{result.fetchStatus}</span>;
 }
 
+it.each([
+  { expectedCalls: 1, expectedQuery: "roadmap", label: "too short", nextQuery: "x" },
+  { expectedCalls: 1, expectedQuery: "roadmap", label: "too long", nextQuery: "x".repeat(2049) },
+  {
+    expectedCalls: 2,
+    expectedQuery: "new roadmap",
+    label: "replacement",
+    nextQuery: "new roadmap",
+  },
+])(
+  "does not refetch the discarded main-search term while the $label input is unsettled",
+  async ({ expectedCalls, expectedQuery, nextQuery }) => {
+    vi.useFakeTimers();
+    const read = vi.mocked(WIKI_READ_API.driveSearch).mockReset().mockResolvedValue([]);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const root = createRoot(document.createElement("div"));
+    function render(query: string) {
+      flushSync(() =>
+        root.render(
+          <QueryClientProvider client={client}>
+            <CachedSearchProbe query={query} />
+          </QueryClientProvider>,
+        ),
+      );
+    }
+    try {
+      render("roadmap");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(read).toHaveBeenCalledOnce();
+      render(nextQuery);
+      await client.invalidateQueries({ queryKey: wikiKeys.driveSearch("roadmap") });
+      expect(read).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(249);
+      expect(read).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(expectedCalls));
+      expect(read).toHaveBeenLastCalledWith(expectedQuery, 10, expect.any(AbortSignal));
+    } finally {
+      flushSync(() => root.unmount());
+      client.clear();
+      vi.useRealTimers();
+    }
+  },
+);
+
 it("disables closed-palette reads without cancelling a shared foreground consumer", async () => {
   const pending = Promise.withResolvers<[]>();
   const search = vi.mocked(WIKI_READ_API.driveSearch).mockReset().mockReturnValue(pending.promise);

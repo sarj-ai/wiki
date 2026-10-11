@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, NamedTuple, override
 
-from sqlalchemy import Double, Text, bindparam, column, func, literal, select, union_all
+from sqlalchemy import Boolean, Double, Text, bindparam, column, func, literal, select, union_all
 from sqlalchemy.dialects.postgresql import ARRAY, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -93,44 +93,46 @@ class PostgresExtrasService(ExtrasService):
         # paying one database round trip and avoiding ORM entity construction.
         statement = union_all(
             select(
-                literal("preferences"),
-                func.jsonb_build_object(
-                    "show_non_doc_files",
-                    UserPreferences.show_non_doc_files,
-                    "hidden_workspace_ids",
-                    UserPreferences.hidden_workspace_ids,
-                ),
+                literal("preferences").label("kind"),
+                literal(None, type_=Text).label("item_id"),
+                literal(None, type_=Text).label("icon"),
+                literal(None, type_=Double).label("sort_order"),
+                UserPreferences.show_non_doc_files,
+                UserPreferences.hidden_workspace_ids,
             ).where(UserPreferences.user_id == self._user.id),
             select(
                 literal("folder"),
-                func.jsonb_build_object(
-                    "folder_drive_id",
-                    UserFolderIcon.folder_drive_id,
-                    "icon",
-                    UserFolderIcon.icon,
-                ),
+                UserFolderIcon.folder_drive_id,
+                UserFolderIcon.icon,
+                literal(None, type_=Double),
+                literal(None, type_=Boolean),
+                literal(None, type_=ARRAY(Text)),
             ).where(UserFolderIcon.user_id == self._user.id),
             select(
                 literal("sort"),
-                func.jsonb_build_object(
-                    "drive_id",
-                    UserSortOrder.drive_id,
-                    "sort_order",
-                    UserSortOrder.sort_order,
-                ),
+                UserSortOrder.drive_id,
+                literal(None, type_=Text),
+                UserSortOrder.sort_order,
+                literal(None, type_=Boolean),
+                literal(None, type_=ARRAY(Text)),
             ).where(UserSortOrder.user_id == self._user.id),
         )
         preferences = _DEFAULT_PREFS
         folder_icons: list[FolderIconRead] = []
         sort_orders: list[SortOrderRead] = []
-        for kind, payload in (await self._db.execute(statement)).all():
-            match kind:
+        for row in (await self._db.execute(statement)).all():
+            match row.kind:
                 case "preferences":
-                    preferences = PreferencesRead.model_validate(payload)
+                    preferences = PreferencesRead(
+                        show_non_doc_files=row.show_non_doc_files,
+                        hidden_workspace_ids=row.hidden_workspace_ids,
+                    )
                 case "folder":
-                    folder_icons.append(FolderIconRead.model_validate(payload))
+                    folder_icons.append(FolderIconRead(folder_drive_id=row.item_id, icon=row.icon))
                 case "sort":
-                    sort_orders.append(SortOrderRead.model_validate(payload))
+                    sort_orders.append(
+                        SortOrderRead(drive_id=row.item_id, sort_order=row.sort_order)
+                    )
                 case _:
                     msg = "Unexpected sidebar overlay kind"
                     raise ValueError(msg)
