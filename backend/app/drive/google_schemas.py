@@ -31,7 +31,7 @@ class GoogleFile(_GoogleModel):
     name: str
     mime_type: str = Field(alias="mimeType")
     drive_id: DriveId | None = Field(default=None, alias="driveId")
-    parents: list[FileId] = Field(default_factory=list)
+    parents: tuple[FileId, ...] = ()
     modified_time: str | None = Field(default=None, alias="modifiedTime")
     version: str | None = None
     description: str | None = None

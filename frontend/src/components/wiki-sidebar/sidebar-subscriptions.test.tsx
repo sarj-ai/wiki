@@ -88,6 +88,18 @@ describe("sidebar subscriptions", () => {
     expect(ICON_READ).not.toHaveBeenCalled();
   });
 
+  it("provides a focusable logo link back to recent pages from a document route", () => {
+    PATHNAME.mockReturnValue("/d/doc");
+    queryClient.setQueryDefaults(wikiKeys.file("doc"), { staleTime: Infinity });
+    queryClient.setQueryData(wikiKeys.file("doc"), { breadcrumb: [] });
+    flushSync(() => root.render(wrap(<WikiSidebar />)));
+    const home = host.querySelector('a[aria-label="Recent pages"]');
+    expect(home).toBeInstanceOf(HTMLAnchorElement);
+    expect(home).toHaveAttribute("href", "/");
+    expect(home).toHaveClass("focus-visible:ring-2");
+    expect(home?.querySelector('svg[role="img"]')).toHaveAttribute("aria-label", "Sarj");
+  });
+
   it("does not request document icons when all drives are hidden", () => {
     queryClient.removeQueries({ queryKey: wikiKeys.docIcons });
     queryClient.setQueryData(wikiKeys.preferences, {
@@ -174,6 +186,44 @@ describe("sidebar subscriptions", () => {
     expect(view.match(/data-active="true"/g)).toHaveLength(1);
     expect(view).toContain('href="/d/file%20id"');
     expect(view).toContain('href="https://docs.google.com/forms/d/form/edit"');
+  });
+
+  it("formats edited timestamps only for rows that display that timestamp in their title", () => {
+    const format = vi.spyOn(Date.prototype, "valueOf");
+    const view = renderToStaticMarkup(
+      wrap(
+        <>
+          {Array.from({ length: 500 }, (_, index) => (
+            <FileRow
+              activeDriveId={null}
+              depth={0}
+              driveId={undefined}
+              iconOverride={undefined}
+              key={index}
+              node={{
+                ...node(`form-${index}`),
+                mimeType: MIME_FORM,
+                modifiedTime: "2026-10-10T12:00:00Z",
+              }}
+              parentFolderId={undefined}
+              pathname="/"
+            />
+          ))}
+          <FileRow
+            activeDriveId={null}
+            depth={0}
+            driveId={undefined}
+            iconOverride={undefined}
+            node={{ ...node("doc"), modifiedTime: "2026-10-10T12:00:00Z" }}
+            parentFolderId={undefined}
+            pathname="/"
+          />
+        </>,
+      ),
+    );
+    expect(format).toHaveBeenCalledOnce();
+    expect(view).toContain("form-0 — opens in a new tab");
+    expect(view).toContain("doc — edited Oct 10, 2026");
   });
 
   function wrap(children: ReactNode) {

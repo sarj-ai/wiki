@@ -5,6 +5,87 @@ import { smartCreateServerClient } from "@/lib/smart-create-server-client";
 describe("smartCreateServerClient", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("keeps the thirty-second POST deadline through stalled response ingestion without retry", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      const controller = new AbortController();
+      setTimeout(
+        () => controller.abort(new DOMException("Deadline exceeded", "TimeoutError")),
+        milliseconds,
+      );
+      return controller.signal;
+    });
+    const cleanup = Promise.withResolvers<undefined>();
+    const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("{"));
+      },
+      cancel,
+    });
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = smartCreateServerClient(
+      "/document-transforms",
+      "{}",
+      "fixture-token",
+      "same-key",
+    );
+    try {
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(body.locked).toBe(true);
+      expect(cancel).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(pending).resolves.toEqual({
+        body: "",
+        error: "Smart Create could not reach the API",
+        ok: false,
+        status: 502,
+      });
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+      expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("idempotency-key")).toBe(
+        "same-key",
+      );
+    } finally {
+      cleanup.resolve(undefined);
+    }
+  });
+
+  it("preserves a mutation body arriving inside the original total deadline", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      const controller = new AbortController();
+      setTimeout(
+        () => controller.abort(new DOMException("Deadline exceeded", "TimeoutError")),
+        milliseconds,
+      );
+      return controller.signal;
+    });
+    let stream: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        stream = controller;
+      },
+    });
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = smartCreateServerClient(
+      "/document-transforms",
+      "{}",
+      "fixture-token",
+      "same-key",
+    );
+    await vi.advanceTimersByTimeAsync(25_000);
+    stream?.enqueue(new TextEncoder().encode('{"id":"task"}'));
+    stream?.close();
+    await expect(pending).resolves.toEqual({ body: '{"id":"task"}', ok: true, status: 202 });
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("rejects a backend redirect without replaying an authenticated mutation", async () => {

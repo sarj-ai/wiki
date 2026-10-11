@@ -43,14 +43,17 @@ class CloudTasksEnqueuer(TaskEnqueuer):
             if document_transform_queue is not None
             else None
         )
-        self._target_url = target_url
         if document_transform_target_url is not None and not _is_internal_document_transform_url(
             document_transform_target_url
         ):
             msg = "Cloud Tasks target must be the HTTPS internal Document Transform endpoint"
             raise ValueError(msg)
-        self._document_transform_target_url = document_transform_target_url
-        self._invoker_service_account = invoker_service_account
+        self._smart_create_request = _http_request_template(target_url, invoker_service_account)
+        self._document_transform_request = (
+            _http_request_template(document_transform_target_url, invoker_service_account)
+            if document_transform_target_url is not None
+            else None
+        )
 
     @override
     async def enqueue_smart_create(self, task_id: TaskId) -> None:
@@ -58,19 +61,19 @@ class CloudTasksEnqueuer(TaskEnqueuer):
             task_id,
             parent=self._parent,
             prefix="smart-create",
-            target_url=self._target_url,
+            request_template=self._smart_create_request,
         )
 
     @override
     async def enqueue_document_transform(self, task_id: TaskId) -> None:
-        if self._document_transform_parent is None or self._document_transform_target_url is None:
+        if self._document_transform_parent is None or self._document_transform_request is None:
             msg = "Document Transform Cloud Tasks queue is not configured"
             raise RuntimeError(msg)
         await self._enqueue(
             task_id,
             parent=self._document_transform_parent,
             prefix="document-transform",
-            target_url=self._document_transform_target_url,
+            request_template=self._document_transform_request,
         )
 
     async def _enqueue(
@@ -79,21 +82,16 @@ class CloudTasksEnqueuer(TaskEnqueuer):
         *,
         parent: str,
         prefix: str,
-        target_url: str,
+        request_template: bytes,
     ) -> None:
         request = TaskDispatchRequest(task_id=task_id)
+        # The template contains only immutable queue configuration. Each
+        # enqueue owns its protobuf, body, headers, and deterministic task name.
+        http_request = tasks_v2.HttpRequest.deserialize(request_template)
+        http_request.body = request.model_dump_json().encode()
         task = tasks_v2.Task(
             name=f"{parent}/tasks/{prefix}-{task_id.hex}",
-            http_request=tasks_v2.HttpRequest(
-                http_method=tasks_v2.HttpMethod.POST,
-                url=target_url,
-                headers={"Content-Type": "application/json"},
-                body=request.model_dump_json().encode(),
-                oidc_token=tasks_v2.OidcToken(
-                    service_account_email=self._invoker_service_account,
-                    audience=target_url,
-                ),
-            ),
+            http_request=http_request,
         )
         try:
             await self._client.create_task(parent=parent, task=task)
@@ -101,6 +99,21 @@ class CloudTasksEnqueuer(TaskEnqueuer):
             return
         except GoogleAPICallError as exc:
             raise TaskEnqueueError from exc
+
+
+def _http_request_template(target_url: str, service_account: str) -> bytes:
+    return bytes(
+        tasks_v2.HttpRequest.serialize(
+            tasks_v2.HttpRequest(
+                http_method=tasks_v2.HttpMethod.POST,
+                url=target_url,
+                headers={"Content-Type": "application/json"},
+                oidc_token=tasks_v2.OidcToken(
+                    service_account_email=service_account, audience=target_url
+                ),
+            )
+        )
+    )
 
 
 def _is_internal_smart_create_url(target_url: str) -> bool:

@@ -17,11 +17,11 @@ export async function wikiReadHttp<S extends z.ZodType>(
   signal?: AbortSignal,
 ): Promise<z.output<S>> {
   const session = captureBrowserSession();
-  const params = new URLSearchParams();
+  let params: undefined | URLSearchParams;
   for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined) params.set(key, String(value));
+    if (value !== undefined) (params ??= new URLSearchParams()).set(key, String(value));
   }
-  const search = params.size > 0 ? `?${params.toString()}` : "";
+  const search = params === undefined ? "" : `?${params.toString()}`;
   const requestSignal = AbortSignal.any([
     session,
     AbortSignal.timeout(30_000),

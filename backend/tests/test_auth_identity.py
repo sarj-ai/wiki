@@ -47,12 +47,8 @@ class _IdentityAuthService(GoogleAuthService):
         self.email_user = email_user
 
     @override
-    async def _find_user_by_google_id(self, google_id: GoogleUserId) -> User | None:
-        return self.subject_user
-
-    @override
-    async def _find_user_by_email(self, email: str) -> User | None:
-        return self.email_user
+    async def _find_identity_users(self, *, google_id: GoogleUserId, email: str) -> list[User]:
+        return [user for user in (self.subject_user, self.email_user) if user is not None]
 
 
 def _user(*, email: str, google_id: str) -> User:

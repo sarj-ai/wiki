@@ -148,8 +148,12 @@ class DriveTemplateCatalogService(TemplateCatalogService):
         templates: list[TemplateRead] = []
         while pending and len(visited) < _MAX_VISITED_FOLDERS_PER_DRIVE:
             batch = _next_template_batch(pending, visited)
-            groups = await asyncio.gather(
-                *(self._list_folder_children(folder_id) for folder_id, _category in batch)
+            groups = (
+                [await self._list_folder_children(batch[0][0])]
+                if len(batch) == 1
+                else await asyncio.gather(
+                    *(self._list_folder_children(folder_id) for folder_id, _category in batch)
+                )
             )
             for (_folder_id, category), children in zip(batch, groups, strict=True):
                 for child in children:

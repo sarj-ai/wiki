@@ -198,10 +198,8 @@ export function useWikiReorder(): WikiReorder {
       return;
     }
 
-    const activeSortable = sortableData(active.data.current);
-    const overSortable = sortableData(over.data.current);
-    const activeContainerId = activeSortable?.containerId;
-    const overContainerId = overSortable?.containerId;
+    const activeContainerId = sortableContainerId(active.data.current);
+    const overContainerId = sortableContainerId(over.data.current);
     if (!activeContainerId || !overContainerId) return;
 
     const overIsFolder = isFolderTarget(over.data.current);
@@ -223,11 +221,8 @@ export function useWikiReorder(): WikiReorder {
       return;
     }
 
-    const items = activeSortable.items ?? [];
-    const oldIndex = items.indexOf(String(active.id));
-    const overIndex = items.indexOf(String(over.id));
-    if (oldIndex < 0 || overIndex < 0 || oldIndex === overIndex) return;
-    const reordered = arrayMove(items, oldIndex, overIndex);
+    const reordered = validatedSiblingReorder(active, over, activeContainerId);
+    if (!reordered) return;
     commitReorder(activeContainerId, reordered, dragged.session);
   };
 
@@ -345,6 +340,22 @@ export function useWikiReorder(): WikiReorder {
     optimisticByContainer,
     sensors,
   };
+}
+
+function validatedSiblingReorder(
+  active: DragEndEvent["active"],
+  over: NonNullable<DragEndEvent["over"]>,
+  containerId: string,
+): null | string[] {
+  const activeSortable = sortableData(active.data.current);
+  const overSortable = sortableData(over.data.current);
+  if (activeSortable?.containerId !== containerId || overSortable?.containerId !== containerId)
+    return null;
+  const items = activeSortable.items ?? [];
+  const oldIndex = items.indexOf(String(active.id));
+  const overIndex = items.indexOf(String(over.id));
+  if (oldIndex < 0 || overIndex < 0 || oldIndex === overIndex) return null;
+  return arrayMove(items, oldIndex, overIndex);
 }
 
 function parentIdOf(containerId: string): null | string {

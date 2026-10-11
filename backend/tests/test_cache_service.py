@@ -36,8 +36,14 @@ class _Session:
         self.commits = 0
         self.statements: list[object] = []
 
-    async def execute(self, statement: object) -> _Result:
-        self.statements.append(statement)
+    async def execute(
+        self, statement: object, parameters: dict[str, object] | None = None
+    ) -> _Result:
+        self.statements.append(
+            statement.params(parameters)
+            if isinstance(statement, ClauseElement) and parameters is not None
+            else statement
+        )
         return next(self._results, _Result())
 
     async def __aenter__(self) -> Self:

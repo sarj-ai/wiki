@@ -98,9 +98,10 @@ function FileRowContent({
 
   const iconLeft = `${rowIndent(depth) + CHEVRON_OFFSET}px`;
   const linkPadding = `${rowIndent(depth) + CHEVRON_OFFSET + ICON_COLUMN_WIDTH}px`;
-  const edited = node.modifiedTime
-    ? ` — edited ${MODIFIED_DATE_FORMAT.format(new Date(node.modifiedTime))}`
-    : "";
+  const edited =
+    !route.tooltip && !isForm && node.modifiedTime
+      ? ` — edited ${MODIFIED_DATE_FORMAT.format(new Date(node.modifiedTime))}`
+      : "";
   const titleAttr =
     route.tooltip ?? (isForm ? `${displayName} — opens in a new tab` : `${displayName}${edited}`);
 

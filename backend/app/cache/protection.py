@@ -12,7 +12,7 @@ from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
-from pydantic_core import PydanticSerializationError
+from pydantic_core import PydanticSerializationError, to_json
 
 from app.config import parse_fernet_keys
 
@@ -115,7 +115,7 @@ class CacheEntryProtector:
     def protect(self, namespace: str, logical_key: str, value: JsonValue) -> str:
         payload = _CacheEnvelope(key=logical_key, namespace=namespace, value=value)
         try:
-            plaintext = payload.model_dump_json().encode()
+            plaintext = to_json(payload)
         except PydanticSerializationError:
             # The typed serializer's nesting limit is slightly lower than
             # JsonValue validation. Preserve previously supported deep values.

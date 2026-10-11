@@ -42,6 +42,32 @@ describe("navigation performance samples", () => {
     callback?.(performance.now());
   }
 
+  it("does not read the clock for unsampled direct marks with no debug probe", async () => {
+    sampleId = UNSAMPLED_ID;
+    const { markNav } = await import("@/lib/perf-marks");
+    const now = vi.spyOn(performance, "now").mockReturnValue(10);
+    markNav("document", "click");
+    now.mockClear();
+    for (let index = 0; index < 100; index++) {
+      markNav("document", "commit");
+      markNav("document", "iframeMount");
+      markNav("document", "iframeLoad");
+    }
+    expect(now).not.toHaveBeenCalled();
+    expect(DELIVERY).not.toHaveBeenCalled();
+  });
+
+  it("still records direct unsampled marks when the debug probe is enabled", async () => {
+    window.localStorage.setItem("sarj-perf", "1");
+    sampleId = UNSAMPLED_ID;
+    const { markNav } = await import("@/lib/perf-marks");
+    const now = vi.spyOn(performance, "now").mockReturnValue(42);
+    markNav("document", "commit");
+    expect(now).toHaveBeenCalledOnce();
+    expect(window.__sarjPerf).toEqual([{ extra: null, id: "document", phase: "commit", t: 42 }]);
+    expect(DELIVERY).not.toHaveBeenCalled();
+  });
+
   it("does not schedule paint callbacks for an unsampled navigation", async () => {
     sampleId = UNSAMPLED_ID;
     const { markNav, markPaint } = await import("@/lib/perf-marks");

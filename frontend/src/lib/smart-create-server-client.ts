@@ -5,6 +5,7 @@ import * as z from "zod";
 import type { ActionErrorCode } from "@/lib/action-result";
 import { boundedTransformText } from "@/lib/bounded-transform-text";
 import { fetchBackend } from "@/lib/clients/fetch-backend";
+import { discardStream } from "@/lib/discard-stream";
 import { API_URL } from "@/lib/env";
 
 const ErrorResponseSchema = z.object({ detail: z.string().optional() });
@@ -32,14 +33,20 @@ export async function smartCreateServerClient(
   if (idempotencyKey !== undefined) headers.set("idempotency-key", idempotencyKey);
 
   try {
+    const signal = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
     const response = await fetchBackend(`${API_URL}${path}`, {
       body,
       cache: "no-store",
       headers,
       method: "POST",
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      signal,
     });
-    const responseBody = await boundedTransformText(response.body);
+    if (signal.aborted) {
+      discardStream(response.body);
+      signal.throwIfAborted();
+    }
+    const responseBody = await boundedTransformText(response.body, signal);
+    signal.throwIfAborted();
     return smartCreateResponse(response, responseBody);
   } catch {
     return { body: "", error: "Smart Create could not reach the API", ok: false, status: 502 };

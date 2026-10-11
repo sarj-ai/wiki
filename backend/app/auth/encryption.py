@@ -24,8 +24,16 @@ def decrypt_text(encrypted: str) -> str:
 
 
 def encrypt_cache(plaintext: str) -> str:
-    return _cache_fernet.encrypt(plaintext.encode()).decode()
+    return encrypt_cache_bytes(plaintext.encode())
 
 
 def decrypt_cache(encrypted: str, *, decoder: MultiFernet | None = None) -> str:
-    return (decoder or _cache_fernet).decrypt(encrypted.encode()).decode()
+    return decrypt_cache_bytes(encrypted, decoder=decoder).decode()
+
+
+def encrypt_cache_bytes(plaintext: bytes) -> str:
+    return _cache_fernet.encrypt(plaintext).decode()
+
+
+def decrypt_cache_bytes(encrypted: str, *, decoder: MultiFernet | None = None) -> bytes:
+    return (decoder or _cache_fernet).decrypt(encrypted.encode())

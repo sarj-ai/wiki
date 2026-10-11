@@ -12,7 +12,7 @@ import uuid
 import httpx
 from loguru import logger
 from pydantic import ValidationError
-from sqlalchemy import select, update
+from sqlalchemy import select, union_all, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.encryption import decrypt_text, encrypt_text
@@ -260,7 +260,7 @@ class GoogleAuthService(AuthService):
                 "Google token exchange failed: {status_code}", status_code=resp.status_code
             )
             raise AuthFailedError
-        data = GoogleTokenResponse.model_validate(resp.json())
+        data = GoogleTokenResponse.model_validate_json(resp.content)
         return GoogleTokens(
             access_token=data.access_token,
             refresh_token=data.refresh_token,
@@ -275,7 +275,7 @@ class GoogleAuthService(AuthService):
         if resp.status_code != 200:
             raise AuthFailedError
         try:
-            data = GoogleUserInfo.model_validate(resp.json())
+            data = GoogleUserInfo.model_validate_json(resp.content)
         except ValidationError as exc:
             logger.warning("auth: Google returned invalid or unverified userinfo")
             raise AuthFailedError(_IDENTITY_VERIFICATION_FAILED) from exc
@@ -293,10 +293,9 @@ class GoogleAuthService(AuthService):
             raise DomainRestrictedError
 
     async def _upsert_user(self, info: GoogleIdentity, tokens: GoogleTokens) -> User:
+        user = await self._resolve_identity_user(google_id=info.google_id, email=info.email)
         encrypted_access = encrypt_text(tokens.access_token)
         encrypted_refresh = encrypt_text(tokens.refresh_token) if tokens.refresh_token else None
-
-        user = await self._resolve_identity_user(google_id=info.google_id, email=info.email)
         if user is None:
             user = User(
                 email=info.email,
@@ -325,20 +324,26 @@ class GoogleAuthService(AuthService):
         return user
 
     async def _resolve_identity_user(self, *, google_id: GoogleUserId, email: str) -> User | None:
-        subject_user = await self._find_user_by_google_id(google_id)
-        email_user = await self._find_user_by_email(email)
+        users = await self._find_identity_users(google_id=google_id, email=email)
+        subject_user = next((user for user in users if user.google_id == google_id), None)
+        email_user = next((user for user in users if user.email == email), None)
         if email_user is not None and (subject_user is None or email_user.id != subject_user.id):
             logger.warning("auth: email is already bound to another Google identity")
             raise AuthFailedError(_IDENTITY_VERIFICATION_FAILED)
         return subject_user
 
-    async def _find_user_by_google_id(self, google_id: GoogleUserId) -> User | None:
-        result = await self._db.execute(select(User).where(User.google_id == google_id))
-        return result.scalar_one_or_none()
-
-    async def _find_user_by_email(self, email: str) -> User | None:
-        result = await self._db.execute(select(User).where(User.email == email))
-        return result.scalar_one_or_none()
+    async def _find_identity_users(self, *, google_id: GoogleUserId, email: str) -> list[User]:
+        result = await self._db.execute(
+            select(User).where(
+                User.id.in_(
+                    union_all(
+                        select(User.id).where(User.google_id == google_id),
+                        select(User.id).where(User.email == email),
+                    )
+                )
+            )
+        )
+        return list(result.scalars().all())
 
     async def _load_user(self, user_id: UserId) -> User | None:
         result = await self._db.execute(select(User).where(User.id == user_id))

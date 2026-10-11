@@ -1,8 +1,15 @@
 from __future__ import annotations
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, MultiFernet
+import pytest
 
-from app.auth.encryption import decrypt_text, encrypt_text
+from app.auth.encryption import (
+    decrypt_cache,
+    decrypt_cache_bytes,
+    decrypt_text,
+    encrypt_cache_bytes,
+    encrypt_text,
+)
 from app.config import parse_fernet_keys
 
 
@@ -31,10 +38,22 @@ def test_parse_fernet_keys_splits_and_validates() -> None:
 
 
 def test_multifernet_rotation_decrypts_old_ciphertext() -> None:
-    from cryptography.fernet import MultiFernet
-
     old, new = Fernet(Fernet.generate_key()), Fernet(Fernet.generate_key())
     token = old.encrypt(b"refresh-token")
     rotated = MultiFernet([new, old])
     assert rotated.decrypt(token) == b"refresh-token"
     assert MultiFernet([new]).decrypt(rotated.rotate(token)) == b"refresh-token"
+
+
+@pytest.mark.parametrize("plaintext", [b"", "Résumé 📚 知識".encode(), b"\xff\x00\xfe"])
+def test_byte_cache_encryption_preserves_exact_plaintext_and_decoder_snapshot(
+    plaintext: bytes,
+) -> None:
+    encrypted = encrypt_cache_bytes(plaintext)
+    assert decrypt_cache_bytes(encrypted) == plaintext
+    assert encrypt_cache_bytes(plaintext) != encrypted
+    old, new = Fernet(Fernet.generate_key()), Fernet(Fernet.generate_key())
+    old_ciphertext = old.encrypt(plaintext).decode()
+    assert decrypt_cache_bytes(old_ciphertext, decoder=MultiFernet([new, old])) == plaintext
+    if plaintext != b"\xff\x00\xfe":
+        assert decrypt_cache(encrypted) == plaintext.decode()

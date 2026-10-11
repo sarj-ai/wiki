@@ -134,20 +134,23 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
     sortOrderMap,
     treeFilesComplete,
   } = ctx;
-  const { count: childCount } = buildChildItems(
-    node,
-    meta,
-    {
-      childrenByParent,
-      filesByParent,
-      optimisticByContainer,
-      showNonDocFiles,
-      sortOrderMap,
-      treeFilesComplete,
-    },
-    EMPTY_NODES,
-    false,
-  );
+  const itemCount =
+    meta.isFolder && !meta.isFolderShortcut && treeFilesComplete
+      ? buildChildItems(
+          node,
+          meta,
+          {
+            childrenByParent,
+            filesByParent,
+            optimisticByContainer,
+            showNonDocFiles,
+            sortOrderMap,
+            treeFilesComplete,
+          },
+          EMPTY_NODES,
+          false,
+        ).count
+      : undefined;
 
   if (!meta.isFolder) {
     return (
@@ -164,7 +167,6 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
   }
 
   const iconEmoji = ctx.iconOverrides.get(node.id);
-  const itemCount = meta.isFolderShortcut || !ctx.treeFilesComplete ? undefined : childCount;
 
   return (
     <>
@@ -192,7 +194,9 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
         onHoverEnd={() => {
           prefetchChildren.cancel();
         }}
-        onHoverStart={prefetchChildren}
+        onHoverStart={() => {
+          if (needsLazyFiles && !expanded && !meta.inaccessible) prefetchChildren();
+        }}
         onToggle={() => {
           if (meta.inaccessible) return;
           setExpanded(!expanded);

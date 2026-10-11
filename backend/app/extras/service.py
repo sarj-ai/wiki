@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, NamedTuple, override
 
@@ -29,17 +30,31 @@ from app.models.wiki import (
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.engine import Row
+
     from app.files.service import FilesService
 
 
 _DEFAULT_PREFS = PreferencesRead(show_non_doc_files=True, hidden_workspace_ids=[])
 _ARRAY_SORT_ORDER_THRESHOLD = 32
+_DOC_ICON_CPU_OFFLOAD_THRESHOLD = 4_096
 
 
 class SidebarExtras(NamedTuple):
     preferences: PreferencesRead
     folder_icons: list[FolderIconRead]
     sort_orders: list[SortOrderRead]
+
+
+def _doc_icon_models(
+    rows: Sequence[Row[tuple[FileId, str | None, str | None]]],
+) -> list[DocIconRead]:
+    return [
+        DocIconRead(drive_id=drive_id, icon=icon, cover_url=cover_url)
+        for drive_id, icon, cover_url in rows
+    ]
 
 
 async def list_accessible_doc_icons(
@@ -120,19 +135,19 @@ class PostgresExtrasService(ExtrasService):
         preferences = _DEFAULT_PREFS
         folder_icons: list[FolderIconRead] = []
         sort_orders: list[SortOrderRead] = []
-        for row in (await self._db.execute(statement)).all():
-            match row.kind:
+        for kind, item_id, icon, sort_order, show_non_doc_files, hidden_workspace_ids in (
+            await self._db.execute(statement)
+        ).all():
+            match kind:
                 case "preferences":
                     preferences = PreferencesRead(
-                        show_non_doc_files=row.show_non_doc_files,
-                        hidden_workspace_ids=row.hidden_workspace_ids,
+                        show_non_doc_files=show_non_doc_files,
+                        hidden_workspace_ids=hidden_workspace_ids,
                     )
                 case "folder":
-                    folder_icons.append(FolderIconRead(folder_drive_id=row.item_id, icon=row.icon))
+                    folder_icons.append(FolderIconRead(folder_drive_id=item_id, icon=icon))
                 case "sort":
-                    sort_orders.append(
-                        SortOrderRead(drive_id=row.item_id, sort_order=row.sort_order)
-                    )
+                    sort_orders.append(SortOrderRead(drive_id=item_id, sort_order=sort_order))
                 case _:
                     msg = "Unexpected sidebar overlay kind"
                     raise ValueError(msg)
@@ -146,7 +161,9 @@ class PostgresExtrasService(ExtrasService):
         # Permission filtering can open an independent cache session. Release
         # this read transaction before waiting on the provider/cache path.
         await self._db.commit()
-        return [DocIconRead(drive_id=r.drive_id, icon=r.icon, cover_url=r.cover_url) for r in rows]
+        if len(rows) >= _DOC_ICON_CPU_OFFLOAD_THRESHOLD:
+            return await asyncio.to_thread(_doc_icon_models, rows)
+        return _doc_icon_models(rows)
 
     @override
     async def upsert_doc_icon(self, drive_id: FileId, payload: DocIconWrite) -> DocIconRead:
@@ -183,7 +200,10 @@ class PostgresExtrasService(ExtrasService):
                 )
             )
         ).all()
-        return [FolderIconRead(folder_drive_id=r.folder_drive_id, icon=r.icon) for r in rows]
+        return [
+            FolderIconRead(folder_drive_id=folder_drive_id, icon=icon)
+            for folder_drive_id, icon in rows
+        ]
 
     @override
     async def upsert_folder_icon(
@@ -218,7 +238,9 @@ class PostgresExtrasService(ExtrasService):
                 )
             )
         ).all()
-        return [SortOrderRead(drive_id=r.drive_id, sort_order=r.sort_order) for r in rows]
+        return [
+            SortOrderRead(drive_id=drive_id, sort_order=sort_order) for drive_id, sort_order in rows
+        ]
 
     @override
     async def upsert_sort_orders(self, items: list[SortOrderWrite]) -> None:

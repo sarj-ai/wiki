@@ -8,11 +8,16 @@ import { allowsReusableSpeculation, readNavigatorHints } from "@/lib/speculation
 
 export const DRIVE_PREFETCH_DELAY_MS = 150;
 
+interface PreparationOwner {
+  pending: boolean;
+  strongIntent: boolean;
+}
+
 export function useDrivePredictiveLoading(driveId: string, expanded: boolean) {
   const queryClient = useQueryClient();
   const focusedRef = useRef(false);
   const hoveredRef = useRef(false);
-  const ownerRef = useRef<null | object>(null);
+  const ownerRef = useRef<null | PreparationOwner>(null);
   const timerRef = useRef<null | number>(null);
 
   const cancelTimer = () => {
@@ -24,16 +29,24 @@ export function useDrivePredictiveLoading(driveId: string, expanded: boolean) {
   const prepare = async (strongIntent = false) => {
     const owner = ownerRef.current;
     if (expanded || owner === null || (!strongIntent && !ownsSpeculation())) return;
-    const treeOptions = driveTreeQueryOptions(driveId, true);
-    await queryClient.prefetchQuery(treeOptions);
-    const tree = queryClient.getQueryData(treeOptions.queryKey);
-    if (
-      ownerRef.current === owner &&
-      (strongIntent || ownsSpeculation()) &&
-      tree &&
-      !tree.filesComplete
-    ) {
-      await queryClient.prefetchQuery(folderFilesQueryOptions(driveId));
+    owner.strongIntent ||= strongIntent;
+    if (owner.pending) return;
+    owner.pending = true;
+    try {
+      const treeOptions = driveTreeQueryOptions(driveId, true);
+      await queryClient.prefetchQuery(treeOptions);
+      const tree = queryClient.getQueryData(treeOptions.queryKey);
+      if (
+        ownerRef.current === owner &&
+        (owner.strongIntent || ownsSpeculation()) &&
+        tree &&
+        !tree.filesComplete
+      ) {
+        await queryClient.prefetchQuery(folderFilesQueryOptions(driveId));
+      }
+    } finally {
+      owner.pending = false;
+      owner.strongIntent = false;
     }
   };
 
@@ -53,7 +66,7 @@ export function useDrivePredictiveLoading(driveId: string, expanded: boolean) {
   };
 
   useEffect(() => {
-    const owner = {};
+    const owner: PreparationOwner = { pending: false, strongIntent: false };
     ownerRef.current = owner;
     if (timerRef.current !== null) {
       window.clearTimeout(timerRef.current);

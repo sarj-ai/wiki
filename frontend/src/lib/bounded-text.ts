@@ -1,5 +1,3 @@
-import { discardStream } from "@/lib/discard-stream";
-
 export async function boundedText(
   body: null | ReadableStream<Uint8Array>,
   maxBytes: number,
@@ -9,25 +7,35 @@ export async function boundedText(
   signal?.throwIfAborted();
   if (!body) return "";
   const decoder = new TextDecoder("utf-8", { fatal: true });
+  const reader = body.getReader();
   let size = 0;
   const fragments: string[] = [];
-  const options: StreamPipeOptions = { preventCancel: true };
-  if (signal !== undefined) options.signal = signal;
+  let discarded = false;
+  const discard = () => {
+    if (discarded) return;
+    discarded = true;
+    // Cancelling closes pending reads immediately even when source cleanup stalls.
+    void reader.cancel().catch(() => null);
+  };
+  const chunks: AsyncIterable<Uint8Array> = {
+    [Symbol.asyncIterator]: () => ({ next: async () => await reader.read() }),
+  };
+  signal?.addEventListener("abort", discard, { once: true });
   try {
-    await body.pipeTo(
-      new WritableStream<Uint8Array>({
-        write(value) {
-          size += value.byteLength;
-          if (size > maxBytes) throw new RangeError(limitMessage);
-          const text = decoder.decode(value, { stream: true });
-          if (text) fragments.push(text);
-        },
-      }),
-      options,
-    );
+    signal?.throwIfAborted();
+    for await (const value of chunks) {
+      signal?.throwIfAborted();
+      size += value.byteLength;
+      if (size > maxBytes) throw new RangeError(limitMessage);
+      const text = decoder.decode(value, { stream: true });
+      if (text) fragments.push(text);
+    }
+    signal?.throwIfAborted();
     fragments.push(decoder.decode());
     return fragments.join("");
   } finally {
-    discardStream(body);
+    signal?.removeEventListener("abort", discard);
+    discard();
+    reader.releaseLock();
   }
 }

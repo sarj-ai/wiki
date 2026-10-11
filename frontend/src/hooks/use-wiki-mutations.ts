@@ -108,8 +108,13 @@ export function useRefreshDrive() {
     mutationFn: async (driveId: string, _context, session) =>
       await runAction(async () => await refreshDriveAction(driveId), session),
     onSuccess: (tree: DriveTree) => {
+      const previous = qc.getQueryData<DriveTree>(wikiKeys.driveTree(tree.driveId));
       qc.setQueryData<DriveTree>(wikiKeys.driveTree(tree.driveId), tree);
-      void qc.invalidateQueries({ queryKey: wikiKeys.folderFilesPrefix });
+      const unrelated = unrelatedFolderIds(qc, previous, tree);
+      void qc.invalidateQueries({
+        predicate: (query) => !unrelated.has(String(query.queryKey[2])),
+        queryKey: wikiKeys.folderFilesPrefix,
+      });
     },
   });
 }
@@ -194,6 +199,30 @@ export function useSetFolderIcon() {
       await runAction(async () => await setFolderIconAction(folderDriveId, icon), session),
     queryKey: wikiKeys.folderIcons,
   });
+}
+
+function unrelatedFolderIds(
+  qc: ReturnType<typeof useQueryClient>,
+  previous: DriveTree | undefined,
+  refreshed: DriveTree,
+): Set<string> {
+  const unrelated = new Set<string>();
+  for (const [, tree] of qc.getQueriesData<DriveTree>({ queryKey: wikiKeys.driveTreePrefix })) {
+    if (!tree || tree.driveId === refreshed.driveId) continue;
+    unrelated.add(tree.driveId);
+    for (const folder of tree.folders) unrelated.add(folder.id);
+  }
+  // Unknown listings still invalidate. Protect both old and new membership,
+  // including shortcut targets shared with another cached Drive.
+  unrelated.delete(refreshed.driveId);
+  for (const tree of [previous, refreshed]) {
+    if (!tree) continue;
+    for (const folder of tree.folders) {
+      unrelated.delete(folder.id);
+      if (folder.shortcutTargetId) unrelated.delete(folder.shortcutTargetId);
+    }
+  }
+  return unrelated;
 }
 
 function dropSortOrderLocally(

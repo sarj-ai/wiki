@@ -16,37 +16,48 @@ export async function deduplicatedRefresh(
   signal?.throwIfAborted();
   let pendingRefresh = REFRESHES.get(session);
   if (!pendingRefresh) {
-    pendingRefresh = rawRefresh(session).finally(() => {
+    pendingRefresh = waitForRefresh(rawRefresh(session), session).finally(() => {
       REFRESHES.delete(session);
     });
     REFRESHES.set(session, pendingRefresh);
   }
   // A discarded read can stop waiting without cancelling the shared refresh
   // still needed by this session's other reads and background session timer.
-  const shared = pendingRefresh;
-  const signals = signal === undefined || signal === session ? [session] : [session, signal];
-  return await new Promise<SessionRefreshResult>((resolve, reject) => {
+  const result =
+    signal === undefined || signal === session
+      ? await pendingRefresh
+      : await waitForRefresh(pendingRefresh, signal);
+  session.throwIfAborted();
+  signal?.throwIfAborted();
+  return result;
+}
+
+function waitForRefresh(
+  shared: Promise<SessionRefreshResult>,
+  signal: AbortSignal,
+): Promise<SessionRefreshResult> {
+  return new Promise<SessionRefreshResult>((resolve, reject) => {
     let listening = true;
     const cleanup = () => {
       if (!listening) return;
       listening = false;
-      for (const value of signals) value.removeEventListener("abort", onAbort);
+      signal.removeEventListener("abort", onAbort);
     };
     const onAbort = () => {
       cleanup();
-      const reason: unknown = signals.find((value) => value.aborted)?.reason;
+      const reason: unknown = signal.reason;
       reject(
         reason instanceof Error
           ? reason
           : new DOMException("The operation was aborted", "AbortError"),
       );
     };
-    for (const value of signals) value.addEventListener("abort", onAbort, { once: true });
-    if (signals.some((value) => value.aborted)) onAbort();
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
     void (async () => {
       try {
         const result = await shared;
-        for (const value of signals) value.throwIfAborted();
+        signal.throwIfAborted();
         resolve(result);
       } finally {
         cleanup();

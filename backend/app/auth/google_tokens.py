@@ -354,7 +354,7 @@ class GoogleTokenManager:
         if response.status_code != _HTTP_OK:
             await self._handle_refresh_error(user, snapshot, owner, response)
         try:
-            payload = GoogleTokenResponse.model_validate(response.json())
+            payload = GoogleTokenResponse.model_validate_json(response.content)
         except (ValidationError, ValueError) as exc:
             await self._clear_lease(user, snapshot, owner)
             raise GoogleTokenUnavailableError from exc

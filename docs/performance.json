@@ -1,7 +1,7 @@
 {
   "recordedAt": "2026-10-11",
   "baselineRevision": "f63e8f6f342a27d3b3f085e2150417ccd45756bf",
-  "totalPasses": 259,
+  "totalPasses": 309,
   "initialPasses": [
     {
       "pass": 1,
@@ -8329,6 +8329,55 @@
         "Five rejected candidates cover extras batch validation, combined tree save/cleanup, regular-expression whitespace normalization, removal of authoritative MyDrive search, and speculative auth bootstrap.",
         "Homepage compressed app inventory increases 0.364% (180375 to181032 bytes), and document inventory increases 0.371% (191806 to192517 bytes). Observer/read/CPU reductions are separate from this transfer-size tradeoff."
       ]
+    },
+    {
+      "recordedAt": "2026-10-11",
+      "baselineRevision": "040541f1db695e1492d658a7b8d4ba899aa90169",
+      "name": "Fifty additional measured candidates and a recent-pages landing view",
+      "passCount": 50,
+      "agentPassCount": 50,
+      "integrationPassCount": 0,
+      "acceptedCount": 31,
+      "rejectedCount": 19,
+      "counting": "Ten distinct new measured candidates from each of five agents. Each retained improvement or evidenced rejection counts once. Requested landing/navigation feature, repeated tests, builds, formatting, qualification repairs and release administration count zero.",
+      "scopeCounts": [
+        {
+          "scope": "storage",
+          "agent": "/root/backend_storage_round4",
+          "passCount": 10,
+          "acceptedCount": 5,
+          "rejectedCount": 5
+        },
+        {
+          "scope": "provider",
+          "agent": "/root/backend_provider_round5",
+          "passCount": 10,
+          "acceptedCount": 7,
+          "rejectedCount": 3
+        },
+        {
+          "scope": "sidebar",
+          "agent": "/root/frontend_sidebar_round4",
+          "passCount": 10,
+          "acceptedCount": 7,
+          "rejectedCount": 3
+        },
+        {
+          "scope": "cross-stack",
+          "agent": "/root/cross_stack_round4",
+          "passCount": 10,
+          "acceptedCount": 5,
+          "rejectedCount": 5
+        },
+        {
+          "scope": "routes",
+          "agent": "/root/backend_routes_round5",
+          "passCount": 10,
+          "acceptedCount": 7,
+          "rejectedCount": 3
+        }
+      ],
+      "record": "docs/performance/round5-20261011.json"
     }
   ]
 }

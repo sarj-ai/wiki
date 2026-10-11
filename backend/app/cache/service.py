@@ -5,11 +5,12 @@ import asyncio
 from collections.abc import Iterable, Iterator, Mapping
 from datetime import datetime, timedelta
 from enum import StrEnum
+from functools import cache
 from itertools import batched
 from typing import NamedTuple, override
 
 from pydantic import JsonValue
-from sqlalchemy import Text, bindparam, column, delete, func, literal, or_, select
+from sqlalchemy import Select, Text, bindparam, column, delete, func, literal, or_, select
 from sqlalchemy.dialects.postgresql import ARRAY, Insert, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
@@ -87,6 +88,17 @@ def _cache_envelope_text() -> ColumnElement[str]:
     # scalar text skips a second JSON escaping/decoding of the ciphertext.
     # Non-string legacy values cannot have the protector's envelope prefix.
     return CacheEntry.value.op("#>>", return_type=Text)(literal([], type_=ARRAY(Text)))
+
+
+@cache
+def _cache_get_statement() -> Select[tuple[str, str]]:
+    # Reuse only the immutable statement shape. Each execution binds the
+    # current namespace and rotation keys and evaluates its fresh TTL check.
+    return select(CacheEntry.key, _cache_envelope_text()).where(
+        CacheEntry.namespace == bindparam("cache_namespace", type_=Text),
+        CacheEntry.key.in_(bindparam("cache_keys", expanding=True, type_=Text)),
+        CacheEntry.expires_at > func.now(),
+    )
 
 
 def _cache_insert(
@@ -222,14 +234,17 @@ class CachePSqlService(CacheService):
     @override
     async def get(self, namespace: CacheNamespace, key: str) -> JsonValue | None:
         physical_keys = self._protector.physical_keys(namespace, key)
-        statement = select(CacheEntry.key, _cache_envelope_text()).where(
-            CacheEntry.namespace == namespace,
-            CacheEntry.key.in_(physical_keys),
-            CacheEntry.expires_at > func.now(),
-        )
         with timed("cache"):
             async with self._sessionmaker() as db:
-                rows = [(row[0], row[1]) for row in (await db.execute(statement)).all()]
+                rows = [
+                    (row[0], row[1])
+                    for row in (
+                        await db.execute(
+                            _cache_get_statement(),
+                            {"cache_namespace": namespace, "cache_keys": physical_keys},
+                        )
+                    ).all()
+                ]
         rows_by_key = dict(rows)
         for candidate in physical_keys:
             if candidate not in rows_by_key:
