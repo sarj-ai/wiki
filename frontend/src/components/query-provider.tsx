@@ -18,6 +18,7 @@ import {
   clearAuthenticatedSession,
   subscribeToSessionClear,
 } from "@/lib/session-isolation";
+import { readVerifiedBrowserUser } from "@/lib/verified-browser-user";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -91,7 +92,7 @@ export function QueryProvider({
       if (redirecting.current || window.location.pathname === "/login") return;
       redirecting.current = true;
       const safePath = sanitizeRedirectPath(window.location.pathname);
-      clearAuthenticatedSession(queryClient, userId);
+      clearAuthenticatedSession(queryClient, userId ?? readVerifiedBrowserUser(queryClient));
       broadcastSessionClear();
       storeLoginRedirect(safePath);
       window.location.replace(`/login?redirect=${encodeURIComponent(safePath)}`);
@@ -100,7 +101,7 @@ export function QueryProvider({
     const unsubscribe = subscribeToSessionClear(() => {
       if (redirecting.current) return;
       redirecting.current = true;
-      clearAuthenticatedSession(queryClient, userId);
+      clearAuthenticatedSession(queryClient, userId ?? readVerifiedBrowserUser(queryClient));
       window.location.replace("/login");
     });
     return () => {

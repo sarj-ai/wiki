@@ -90,6 +90,9 @@ class _Files:
         self.can_edit_calls += 1
         return self.editable
 
+    async def require_access(self, file_id: str) -> None:
+        await self.get(file_id)
+
     async def get_accessible_many(self, file_ids: list[str]) -> dict[str, FileResponse]:
         self.bulk_calls.append(file_ids)
         accessible: dict[str, FileResponse] = {}

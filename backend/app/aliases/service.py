@@ -67,7 +67,7 @@ class PostgresAliasService(AliasService):
 
     @override
     async def get_for_file(self, file_id: FileId) -> DocumentAliasForFile:
-        await self._files.get(file_id)
+        await self._files.require_access(file_id)
         row = await self._active_for_file(file_id)
         return DocumentAliasForFile(alias=row.alias if row else None)
 
@@ -78,7 +78,7 @@ class PostgresAliasService(AliasService):
             raise AliasNotFoundError
         await self._db.commit()
         try:
-            await self._files.get(row.file_id)
+            await self._files.require_access(row.file_id)
         except FilesError as exc:
             if exc.http_status in {403, 404}:
                 raise AliasNotFoundError from exc

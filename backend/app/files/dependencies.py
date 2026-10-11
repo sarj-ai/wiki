@@ -23,5 +23,5 @@ async def require_accessible_doc(
     drive_id: FileId,
     files: Annotated[FilesService, Depends(files_service_dep)],
 ) -> FileId:
-    await files.get(drive_id)
+    await files.require_access(drive_id)
     return drive_id

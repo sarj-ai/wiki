@@ -74,6 +74,9 @@ class _FakeExtras:
 
 
 class _FakeFiles:
+    async def require_access(self, file_id: str) -> None:
+        await self.get(file_id)
+
     async def get_accessible_ids(self, file_ids: list[FileId]) -> set[FileId]:
         assert file_ids == [ACCESSIBLE_DOC, INACCESSIBLE_DOC]
         return {ACCESSIBLE_DOC}

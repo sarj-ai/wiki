@@ -61,7 +61,20 @@ async function loadRecentForUser(userId: string): Promise<QuickLinkItem[]> {
   );
   const byAlias = new Map(accessible.map((item) => [item.alias, item]));
   const retainedVisits = visits.filter((visit) => byAlias.has(visit.alias));
-  writeRecentAliases(userId, retainedVisits);
+  const deniedVisits = new Map(
+    visits
+      .filter((visit) => !byAlias.has(visit.alias))
+      .map((visit) => [visit.alias, visit.visitedAt]),
+  );
+  if (deniedVisits.size > 0) {
+    // Authorization applies to the visit snapshot. A navigation or another tab
+    // may have added a visit while the request was pending.
+    const currentVisits = readRecentAliases(userId);
+    const nextVisits = currentVisits.filter(
+      (visit) => deniedVisits.get(visit.alias) !== visit.visitedAt,
+    );
+    if (nextVisits.length !== currentVisits.length) writeRecentAliases(userId, nextVisits);
+  }
   return mergeVisits(retainedVisits, byAlias);
 }
 

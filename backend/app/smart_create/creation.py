@@ -97,15 +97,8 @@ class DriveSmartFileCreationService(SmartFileCreationService):
     ) -> TemplateRead | None:
         if isinstance(source, BlankSource):
             return None
-        catalog = await self._templates.list_templates(refresh=True)
-        template = next(
-            (
-                candidate
-                for candidate in catalog.templates
-                if candidate.file_id == source.template_file_id
-                and candidate.drive_id == source.template_drive_id
-            ),
-            None,
+        template = await self._templates.resolve_template(
+            source.template_file_id, source.template_drive_id
         )
         if template is None or destination.drive_id != template.drive_id:
             raise TemplateUnavailableError

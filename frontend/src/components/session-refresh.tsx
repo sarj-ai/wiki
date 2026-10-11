@@ -15,20 +15,56 @@ const LAST_REFRESH_KEY = "sarj-wiki:last-session-refresh";
 export function SessionRefresh() {
   useEffect(() => {
     const controller = new AbortController();
+    let lastRefreshMs = 0;
+    let ownsUnstoredRefresh = false;
+    let failedMarker: string | undefined;
     let pendingMarker: string | undefined;
     const releaseMarker = (marker: string | undefined) => {
       if (marker === undefined || pendingMarker !== marker) return;
       pendingMarker = undefined;
-      if (localStorage.getItem(LAST_REFRESH_KEY) === marker)
-        localStorage.removeItem(LAST_REFRESH_KEY);
+      lastRefreshMs = 0;
+      ownsUnstoredRefresh = false;
+      failedMarker = marker;
+      try {
+        if (localStorage.getItem(LAST_REFRESH_KEY) === marker) {
+          try {
+            localStorage.removeItem(LAST_REFRESH_KEY);
+          } catch {
+            // Some storage policies deny deletion but still allow writes. An
+            // expired owned marker keeps remounts from suppressing failed work.
+            if (localStorage.getItem(LAST_REFRESH_KEY) === marker)
+              localStorage.setItem(LAST_REFRESH_KEY, "0");
+          }
+        }
+        failedMarker = undefined;
+      } catch {
+        // Storage failure must not prevent cancellation and timer cleanup.
+      }
     };
     const maybeRefresh = () => {
       if (document.visibilityState !== "visible") return;
-      const last = LastRefreshMsSchema.parse(localStorage.getItem(LAST_REFRESH_KEY));
-      if (Date.now() - last < REFRESH_INTERVAL_MS) return;
-      const marker = String(Date.now());
+      try {
+        const stored = localStorage.getItem(LAST_REFRESH_KEY);
+        if (stored !== failedMarker) failedMarker = undefined;
+        lastRefreshMs = Math.max(
+          ownsUnstoredRefresh ? lastRefreshMs : 0,
+          stored === failedMarker ? 0 : LastRefreshMsSchema.parse(stored),
+        );
+      } catch {
+        // Keep the normal interval within this mount when storage is denied.
+      }
+      const now = Date.now();
+      if (now - lastRefreshMs < REFRESH_INTERVAL_MS) return;
+      const marker = String(now);
+      lastRefreshMs = now;
       pendingMarker = marker;
-      localStorage.setItem(LAST_REFRESH_KEY, marker);
+      try {
+        localStorage.setItem(LAST_REFRESH_KEY, marker);
+        ownsUnstoredRefresh = false;
+      } catch {
+        ownsUnstoredRefresh = true;
+        // Background refresh still works without cross-tab coordination.
+      }
       void (async () => {
         const result = await deduplicatedRefresh(controller.signal);
         if (controller.signal.aborted) return;

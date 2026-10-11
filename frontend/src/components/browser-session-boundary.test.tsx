@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -8,9 +9,14 @@ import { recentDocsStorageKey, writeActiveBrowserUser } from "@/lib/browser-stor
 import { useBrowserUserId } from "@/lib/browser-user-context";
 import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
+vi.mock("@/lib/wiki-read-api", () => ({
+  WIKI_READ_API: { getMe: vi.fn().mockReturnValue(Promise.withResolvers<never>().promise) },
+}));
+
 describe("browser session identity boundary", () => {
   let container: HTMLDivElement;
   let root: Root;
+  let client: QueryClient;
 
   beforeEach(() => {
     installLocalStorage();
@@ -19,6 +25,7 @@ describe("browser session identity boundary", () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   });
 
   afterEach(() => {
@@ -26,6 +33,7 @@ describe("browser session identity boundary", () => {
       root.unmount();
     });
     container.remove();
+    client.clear();
   });
 
   it("clears the previous user's metadata when immutable bootstrap identity changes", async () => {
@@ -51,9 +59,11 @@ describe("browser session identity boundary", () => {
   it("does not invent a persistence identity when bootstrap identity is unavailable", () => {
     flushSync(() => {
       root.render(
-        <BrowserSessionBoundary initialUserId={null}>
-          <IdentityProbe />
-        </BrowserSessionBoundary>,
+        <QueryClientProvider client={client}>
+          <BrowserSessionBoundary initialUserId={null}>
+            <IdentityProbe />
+          </BrowserSessionBoundary>
+        </QueryClientProvider>,
       );
     });
 
