@@ -26,7 +26,6 @@ from app.identifiers import DriveId, FileId, GoogleUserId, IdempotencyKey, UserI
 from app.models.task import Task
 from app.models.user import User
 from app.models.wiki import CacheEntry, UserSortOrder
-from app.tasks import service as task_service_module
 from app.tasks.schemas import TaskKind
 from app.tasks.service import PostgresTaskService
 from tests.test_task_source_dedupe_postgres import _qa_engine
@@ -290,15 +289,9 @@ async def test_owner_lock_waiters_release_pool_connections_for_fresh_admission_c
 @pytest.mark.parametrize("interruption", ["timeout", "cancel"])
 async def test_owner_lock_interruption_rolls_back_without_committing_caller_writes(
     database: _Database,
-    monkeypatch: pytest.MonkeyPatch,
     writes: str,
     interruption: str,
 ) -> None:
-    # Exercise the production deadline lookup with the actual cancellation path
-    # without waiting two minutes on each intentionally blocked transaction.
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Test production deadline lookup.
-        task_service_module, "_OWNER_LOCK_TIMEOUT_SECONDS", 0.05
-    )
     async with database.sessions() as holder, database.sessions() as db:
         await holder.execute(
             select(func.pg_advisory_xact_lock(func.hashtextextended(str(database.owner), 0)))
@@ -319,7 +312,9 @@ async def test_owner_lock_interruption_rolls_back_without_committing_caller_writ
         event.listen(database.engine.sync_engine, "before_cursor_execute", queries.record)
         try:
             waiting = asyncio.create_task(
-                PostgresTaskService(db=db)._lock_document_transform_owner(database.owner)
+                PostgresTaskService(db=db)._lock_document_transform_owner(
+                    database.owner, timeout_seconds=0.05
+                )
             )
             if interruption == "cancel":
                 await asyncio.sleep(0.02)

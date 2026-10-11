@@ -440,9 +440,14 @@ class PostgresTaskService(TaskService):
         await self._check_document_transform_limits(owner_user_id, payload)
         return None
 
-    async def _lock_document_transform_owner(self, owner_user_id: uuid.UUID) -> None:
+    async def _lock_document_transform_owner(
+        self,
+        owner_user_id: uuid.UUID,
+        *,
+        timeout_seconds: float = _OWNER_LOCK_TIMEOUT_SECONDS,
+    ) -> None:
         try:
-            async with asyncio.timeout(_OWNER_LOCK_TIMEOUT_SECONDS):
+            async with asyncio.timeout(timeout_seconds):
                 await self._wait_for_document_transform_owner(owner_user_id)
         except BaseException:
             await self._db.rollback()
