@@ -1,4 +1,4 @@
-import { dragScopeData, sortableContainerId, sortableData } from "./drag-data";
+import { dragScopeData, sortableContainerId, sortableData, sortablePosition } from "./drag-data";
 
 describe("drag metadata validation", () => {
   it.each([null, undefined, {}, { sortable: null }, { sortable: { containerId: 123 } }])(
@@ -34,4 +34,26 @@ describe("drag metadata validation", () => {
       parentFolderId: "folder",
     });
   });
+
+  it("validates native hover indices without reading items and keeps full commit validation", () => {
+    const readItems = vi.fn(() => [1]);
+    const sortable = {
+      containerId: "parent:folder",
+      index: 123,
+      get items() {
+        return readItems();
+      },
+    };
+    expect(sortablePosition({ sortable })).toEqual({ containerId: "parent:folder", index: 123 });
+    expect(readItems).not.toHaveBeenCalled();
+    expect(sortableData({ sortable })).toBeNull();
+    expect(readItems).toHaveBeenCalledOnce();
+  });
+
+  it.each([-1, 1.5, NaN, Infinity, "2", undefined])(
+    "rejects invalid native hover index %s",
+    (index) => {
+      expect(sortablePosition({ sortable: { containerId: "parent:folder", index } })).toBeNull();
+    },
+  );
 });

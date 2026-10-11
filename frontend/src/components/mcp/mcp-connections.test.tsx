@@ -94,6 +94,48 @@ describe("McpConnections", () => {
     expect(buttons("Disconnect")).toHaveLength(0);
   });
 
+  it.each(["initial", "refresh"] as const)(
+    "aborts the %s read on unmount and leaves its late result unpublished",
+    async (kind) => {
+      const pending = deferred<ConnectionData>();
+      if (kind === "initial") read.mockReturnValueOnce(pending.promise);
+      else read.mockResolvedValueOnce(INITIAL).mockReturnValueOnce(pending.promise);
+      render();
+      if (kind === "refresh") {
+        await loaded();
+        button("Refresh status").click();
+      }
+      const signal = read.mock.lastCall?.[0];
+      expect(signal?.aborted).toBe(false);
+
+      flushSync(() => root.render(null));
+
+      expect(signal?.aborted).toBe(true);
+      pending.resolve(INITIAL);
+      await pending.promise;
+      await Promise.resolve();
+      expect(container).toBeEmptyDOMElement();
+      expect(disconnect).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps an already-dispatched disconnect separate from read cleanup", async () => {
+    const pending = deferred<undefined>();
+    disconnect.mockReturnValueOnce(pending.promise);
+    render();
+    await loaded();
+    button("Disconnect").click();
+    const readSignal = read.mock.calls[0]?.[0];
+
+    flushSync(() => root.render(null));
+
+    expect(readSignal?.aborted).toBe(true);
+    expect(disconnect).toHaveBeenCalledExactlyOnceWith(READ_ID, INITIAL.csrf);
+    pending.resolve(undefined);
+    await pending.promise;
+    expect(disconnect).toHaveBeenCalledOnce();
+  });
+
   it("labels read-only versus edit grants and includes real expiry elements", async () => {
     render();
     await loaded();

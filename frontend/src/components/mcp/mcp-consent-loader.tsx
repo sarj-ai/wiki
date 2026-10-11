@@ -14,23 +14,25 @@ import {
 } from "@/lib/mcp-consent-client";
 
 type LoadState =
-  | { kind: "loading" }
-  | { kind: "ready"; view: McpConsentView }
-  | { kind: "signin" }
-  | { kind: "unavailable" };
+  | { intent: string; kind: "loading" }
+  | { intent: string; kind: "ready"; signal: AbortSignal; view: McpConsentView }
+  | { intent: string; kind: "signin" }
+  | { intent: string; kind: "unavailable" };
 
 export function McpConsentLoader({ intent }: { intent: string }) {
-  const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const [state, setState] = useState<LoadState>({ intent, kind: "loading" });
 
   useEffect(() => {
     let current = true;
+    const controller = new AbortController();
     const load = async () => {
-      const view = await getMcpConsent(intent);
-      if (current) setState({ kind: "ready", view });
+      const view = await getMcpConsent(intent, controller.signal);
+      if (current) setState({ intent, kind: "ready", signal: controller.signal, view });
     };
     void load().catch((error: unknown) => {
       if (current)
         setState({
+          intent,
           kind:
             error instanceof McpConsentRequestError && error.status === 401
               ? "signin"
@@ -39,11 +41,19 @@ export function McpConsentLoader({ intent }: { intent: string }) {
     });
     return () => {
       current = false;
+      controller.abort();
     };
   }, [intent]);
 
+  if (
+    state.intent !== intent ||
+    state.kind === "loading" ||
+    (state.kind === "ready" && state.signal.aborted)
+  )
+    return <p role="status">Checking this connection request…</p>;
+
   if (state.kind === "ready") {
-    const { view } = state;
+    const { signal, view } = state;
     return (
       <McpConsent
         accountEmail={view.account_email}
@@ -56,15 +66,13 @@ export function McpConsentLoader({ intent }: { intent: string }) {
           return decision.approve ? "approved" : "denied";
         }}
         onRecover={async () => {
-          const recovered = await recoverMcpConsent(intent);
+          const recovered = await recoverMcpConsent(intent, signal);
           return recovered.status;
         }}
         requestsTransform={view.scopes.includes("wiki:transform")}
       />
     );
   }
-
-  if (state.kind === "loading") return <p role="status">Checking this connection request…</p>;
 
   return (
     <section className="bg-card mx-auto w-full max-w-lg space-y-4 rounded-xl border p-6">

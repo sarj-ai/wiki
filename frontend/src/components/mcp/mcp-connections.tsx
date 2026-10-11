@@ -18,12 +18,15 @@ export function McpConnections() {
   const [signin, setSignin] = useState(false);
   const [busy, setBusy] = useState(true);
   const locked = useRef(true);
+  const reads = useRef<AbortController | null>(null);
   const [copyMessage, setCopyMessage] = useState("Copy setup command");
 
   useEffect(() => {
     let current = true;
+    const controller = new AbortController();
+    reads.current = controller;
     const load = async () => {
-      const result = await getMcpConnections();
+      const result = await getMcpConnections(controller.signal);
       if (current) {
         setConnections(result);
         setMessage(
@@ -48,6 +51,8 @@ export function McpConnections() {
       });
     return () => {
       current = false;
+      controller.abort();
+      if (reads.current === controller) reads.current = null;
     };
   }, []);
 
@@ -57,18 +62,25 @@ export function McpConnections() {
   }
 
   async function refresh(): Promise<void> {
-    if (locked.current) return;
+    const controller = reads.current;
+    if (locked.current || !controller) return;
+    const current = () => reads.current === controller && !controller.signal.aborted;
+    if (!current()) return;
     locked.current = true;
     setBusy(true);
     try {
-      const result = await getMcpConnections();
+      const result = await getMcpConnections(controller.signal);
+      if (!current()) return;
       setConnections(result);
       setSignin(false);
       setMessage("Connection status refreshed.");
     } catch {
-      setMessage("Could not confirm connection status. Check again before retrying a disconnect.");
+      if (current())
+        setMessage(
+          "Could not confirm connection status. Check again before retrying a disconnect.",
+        );
     } finally {
-      unlock();
+      if (current()) unlock();
     }
   }
 

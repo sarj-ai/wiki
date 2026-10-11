@@ -60,7 +60,7 @@ from app.drive.schemas import (
     ShortcutProbe,
     SnippetResult,
 )
-from app.drive.snippets import escape_query_value, extract_snippet
+from app.drive.snippets import escape_query_value, extract_snippet, has_snippet_terms
 from app.identifiers import DriveId, FileId
 from app.models.user import User
 from app.sidebar.singleflight import Singleflight
@@ -538,11 +538,16 @@ class GoogleDriveService(DriveService):
         )
         if not drives:
             return []
-        if hits is None:
+        shared_hits = (
+            _known_drive_hits(hits, drives, limit_per_drive=limit_per_drive)
+            if hits is not None
+            else None
+        )
+        if shared_hits is None:
             merged = await self._search_per_drive(drives, stripped, limit_per_drive)
         else:
             my_drive = next((d for d in drives if d.is_personal), None)
-            merged = _known_drive_hits(hits, drives)
+            merged = shared_hits
             if my_drive is not None:
                 personal = await self.search_drive(my_drive.id, stripped, limit=limit_per_drive)
                 merged.extend(
@@ -799,6 +804,7 @@ class GoogleDriveService(DriveService):
 
     def _probe_targets_sync(self, target_ids: list[FileId]) -> dict[FileId, ShortcutProbe | None]:
         client = self._client()
+        files = client.files()
         probes: dict[FileId, ShortcutProbe | None] = {}
 
         def _collect(request_id: str, response: Any, exception: BaseException | None) -> None:
@@ -809,7 +815,7 @@ class GoogleDriveService(DriveService):
             batch = client.new_batch_http_request(callback=_collect)
             for tid in chunk:
                 batch.add(
-                    client.files().get(
+                    files.get(
                         fileId=tid,
                         fields="id,driveId,trashed",
                         supportsAllDrives=True,
@@ -1141,7 +1147,7 @@ class GoogleDriveService(DriveService):
             "supportsAllDrives": True,
             "pageSize": page_size,
             "fields": (
-                "incompleteResults,files(id,name,mimeType,parents,modifiedTime,driveId,"
+                "incompleteSearch,nextPageToken,files(id,name,mimeType,parents,modifiedTime,driveId,"
                 "shortcutDetails(targetId,targetMimeType))"
             ),
         }
@@ -1150,7 +1156,7 @@ class GoogleDriveService(DriveService):
         except HttpError as exc:
             _log_provider_failure("search_all_drives", exc)
             return None
-        if resp.get("incompleteResults"):
+        if resp.get("incompleteSearch") or resp.get("nextPageToken"):
             return None
         return [_search_result_from_api(raw) for raw in resp.get("files", [])]
 
@@ -1169,7 +1175,7 @@ class GoogleDriveService(DriveService):
                 return SnippetResult(file_id=file_id, mime_type="", snippet=None, match_term=None)
             mime_type = GoogleFileMetadata.model_validate(meta).mime_type
 
-        if mime_type not in _TEXT_EXPORTABLE_MIME_TYPES:
+        if mime_type not in _TEXT_EXPORTABLE_MIME_TYPES or not has_snippet_terms(query):
             return SnippetResult(
                 file_id=file_id, mime_type=mime_type, snippet=None, match_term=None
             )
@@ -1687,13 +1693,23 @@ def _shared_member_drives(
     }
 
 
-def _known_drive_hits(hits: list[SearchResult], drives: list[DriveSummary]) -> list[SearchResult]:
-    names = {drive.id: drive.name for drive in drives}
-    return [
-        hit.model_copy(update={"drive_name": names[drive_id]})
-        for hit in hits
-        if (drive_id := hit.drive_id) is not None and drive_id in names
-    ]
+def _known_drive_hits(
+    hits: list[SearchResult], drives: list[DriveSummary], *, limit_per_drive: int
+) -> list[SearchResult] | None:
+    names = {drive.id: drive.name for drive in drives if not drive.is_personal}
+    counts: dict[DriveId, int] = {}
+    results: list[SearchResult] = []
+    for hit in hits:
+        drive_id = hit.drive_id
+        if drive_id is None or drive_id not in names:
+            continue
+        count = counts.get(drive_id, 0) + 1
+        if count > limit_per_drive:
+            # Preserve the per-drive query's result selection when its limit matters.
+            return None
+        counts[drive_id] = count
+        results.append(hit.model_copy(update={"drive_name": names[drive_id]}))
+    return results
 
 
 def _node_shortcut_update(

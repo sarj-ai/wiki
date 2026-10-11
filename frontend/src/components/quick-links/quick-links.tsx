@@ -33,17 +33,21 @@ const VISITED_AT_FORMAT = new Intl.DateTimeFormat("en", {
   timeZoneName: "short",
 });
 
+interface SearchableQuickLink {
+  alias: string;
+  driveName: string;
+  item: QuickLinkItem;
+  name: string;
+}
+
+const SEARCHABLE_ALIASES = new WeakMap<QuickLinkItem[], SearchableQuickLink[]>();
+
 export function QuickLinks({ aliases, error = false, loading = false }: QuickLinksProps) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredAliases = aliases.filter((item) => {
-    if (normalizedQuery.length === 0) return true;
-    return [item.name, item.alias, item.driveName ?? ""].some((value) =>
-      value.toLocaleLowerCase().includes(normalizedQuery),
-    );
-  });
+  const filteredAliases = filterQuickLinks(aliases, normalizedQuery);
   const activeIndex = Math.min(selectedIndex, Math.max(filteredAliases.length - 1, 0));
 
   useEffect(() => {
@@ -152,6 +156,31 @@ export function QuickLinks({ aliases, error = false, loading = false }: QuickLin
       ) : null}
     </section>
   );
+}
+
+function filterQuickLinks(aliases: QuickLinkItem[], query: string): QuickLinkItem[] {
+  if (query.length === 0) return aliases;
+  let searchable = SEARCHABLE_ALIASES.get(aliases);
+  if (!searchable) {
+    searchable = aliases.map((item) => ({
+      alias: item.alias.toLocaleLowerCase(),
+      driveName: (item.driveName ?? "").toLocaleLowerCase(),
+      item,
+      name: item.name.toLocaleLowerCase(),
+    }));
+    SEARCHABLE_ALIASES.set(aliases, searchable);
+  }
+  const matches: QuickLinkItem[] = [];
+  for (const entry of searchable) {
+    if (
+      entry.name.includes(query) ||
+      entry.alias.includes(query) ||
+      entry.driveName.includes(query)
+    ) {
+      matches.push(entry.item);
+    }
+  }
+  return matches;
 }
 
 interface QuickLinkRowProps {

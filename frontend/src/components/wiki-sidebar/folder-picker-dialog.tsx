@@ -146,7 +146,7 @@ function FolderRow({
 }: FolderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const descendants = childrenByParent.get(folder.id) ?? EMPTY_NODES;
-  const path = [...ancestors, folder.name];
+  const path = expanded ? [...ancestors, folder.name] : ancestors;
   return (
     <>
       <div className="flex items-center gap-1">
@@ -170,7 +170,12 @@ function FolderRow({
         <Button
           className="h-8 flex-1 justify-start gap-2 px-2 font-normal"
           onClick={() => {
-            onSelect({ driveId, driveName, folderId: folder.id, folderPath: path });
+            onSelect({
+              driveId,
+              driveName,
+              folderId: folder.id,
+              folderPath: expanded ? path : [...ancestors, folder.name],
+            });
           }}
           size="sm"
           type="button"

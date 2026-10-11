@@ -33,7 +33,6 @@ function ReorganizeDocumentForFile({
   fileName,
   parentFolderId,
 }: ReorganizeDocumentProps) {
-  const moveFile = useMoveFile();
   const [checking, setChecking] = useState(false);
   const [proposalState, setProposalState] = useState<{
     fileId: string;
@@ -41,7 +40,6 @@ function ReorganizeDocumentForFile({
   } | null>(null);
   const mounted = useRef(true);
   const proposeLatch = useRef<null | object>(null);
-  const moveLatch = useRef<null | object>(null);
   const proposal = proposalState?.fileId === fileId ? proposalState.proposal : null;
 
   useEffect(() => {
@@ -49,7 +47,6 @@ function ReorganizeDocumentForFile({
     return () => {
       mounted.current = false;
       proposeLatch.current = null;
-      moveLatch.current = null;
     };
   }, []);
 
@@ -77,32 +74,6 @@ function ReorganizeDocumentForFile({
     }
   };
 
-  const move = async () => {
-    if (moveLatch.current) return;
-    const destination = proposal?.suggestedDestination;
-    if (destination === undefined) return;
-    const latch = {};
-    moveLatch.current = latch;
-    const requestedFileId = fileId;
-    try {
-      await moveFile.mutateAsync({
-        fileId: requestedFileId,
-        newParentFolderId: destination.folderId,
-        sourceDriveId: driveId,
-        sourceParentFolderId: parentFolderId,
-      });
-      if (!mounted.current) return;
-      toast.success(`Moved “${fileName}” to ${destinationLabel(destination)}`);
-      setProposalState(null);
-    } catch (error: unknown) {
-      if (mounted.current && !isAbortError(error)) {
-        toast.error(toErrorMessage(error, "Couldn’t move this document"));
-      }
-    } finally {
-      releaseLatch(moveLatch, latch);
-    }
-  };
-
   return (
     <>
       <Button
@@ -122,55 +93,113 @@ function ReorganizeDocumentForFile({
         )}
         <span className="hidden sm:inline">{checking ? "Checking…" : "Re-organize"}</span>
       </Button>
-      <AlertDialog
-        onOpenChange={(open) => {
-          if (!open && !moveFile.isPending) setProposalState(null);
-        }}
-        open={proposal !== null}
-      >
-        <AlertDialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto">
-          <AlertDialogHeader>
-            <div className="bg-destructive/10 text-destructive flex size-9 items-center justify-center rounded-full">
-              <TriangleAlert className="size-4" />
-            </div>
-            <AlertDialogTitle>Move this document?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Re-organize found a better location within {proposal?.currentDestination.driveName}.
-              Moving it changes where teammates find it in Google Drive.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {proposal?.suggestedDestination === undefined ? null : (
-            <div className="bg-muted/50 grid grid-cols-1 gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-3">
-              <Location destination={proposal.currentDestination} label="Current" />
-              <ArrowRight className="text-muted-foreground mx-auto size-4 rotate-90 sm:rotate-0" />
-              <Location destination={proposal.suggestedDestination} label="Recommended" />
-            </div>
-          )}
-          {proposal?.reason === undefined ? null : (
-            <p className="text-muted-foreground text-sm">{proposal.reason}</p>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={moveFile.isPending}>Keep it here</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={moveFile.isPending}
-              onClick={(event) => {
-                event.preventDefault();
-                void move();
-              }}
-            >
-              {moveFile.isPending ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Moving…
-                </>
-              ) : (
-                "Move document"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {proposal === null ? null : (
+        <ReorganizationConfirmation
+          driveId={driveId}
+          fileId={fileId}
+          fileName={fileName}
+          onClose={() => setProposalState(null)}
+          parentFolderId={parentFolderId}
+          proposal={proposal}
+        />
+      )}
     </>
+  );
+}
+
+function ReorganizationConfirmation({
+  driveId,
+  fileId,
+  fileName,
+  onClose,
+  parentFolderId,
+  proposal,
+}: ReorganizationConfirmationProps) {
+  const moveFile = useMoveFile();
+  const mounted = useRef(true);
+  const moveLatch = useRef<null | object>(null);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      moveLatch.current = null;
+    };
+  }, []);
+
+  const move = async () => {
+    if (moveLatch.current) return;
+    const destination = proposal.suggestedDestination;
+    if (destination === undefined) return;
+    const latch = {};
+    moveLatch.current = latch;
+    try {
+      await moveFile.mutateAsync({
+        fileId,
+        newParentFolderId: destination.folderId,
+        sourceDriveId: driveId,
+        sourceParentFolderId: parentFolderId,
+      });
+      if (!mounted.current) return;
+      toast.success(`Moved “${fileName}” to ${destinationLabel(destination)}`);
+      onClose();
+    } catch (error: unknown) {
+      if (mounted.current && !isAbortError(error)) {
+        toast.error(toErrorMessage(error, "Couldn’t move this document"));
+      }
+    } finally {
+      releaseLatch(moveLatch, latch);
+    }
+  };
+
+  return (
+    <AlertDialog
+      onOpenChange={(open) => {
+        if (!open && !moveFile.isPending) onClose();
+      }}
+      open
+    >
+      <AlertDialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto">
+        <AlertDialogHeader>
+          <div className="bg-destructive/10 text-destructive flex size-9 items-center justify-center rounded-full">
+            <TriangleAlert className="size-4" />
+          </div>
+          <AlertDialogTitle>Move this document?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Re-organize found a better location within {proposal.currentDestination.driveName}.
+            Moving it changes where teammates find it in Google Drive.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {proposal.suggestedDestination === undefined ? null : (
+          <div className="bg-muted/50 grid grid-cols-1 gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-3">
+            <Location destination={proposal.currentDestination} label="Current" />
+            <ArrowRight className="text-muted-foreground mx-auto size-4 rotate-90 sm:rotate-0" />
+            <Location destination={proposal.suggestedDestination} label="Recommended" />
+          </div>
+        )}
+        {proposal.reason === undefined ? null : (
+          <p className="text-muted-foreground text-sm">{proposal.reason}</p>
+        )}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={moveFile.isPending}>Keep it here</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={moveFile.isPending}
+            onClick={(event) => {
+              event.preventDefault();
+              void move();
+            }}
+          >
+            {moveFile.isPending ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Moving…
+              </>
+            ) : (
+              "Move document"
+            )}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -179,6 +208,11 @@ interface ReorganizeDocumentProps {
   fileId: string;
   fileName: string;
   parentFolderId: string | undefined;
+}
+
+interface ReorganizationConfirmationProps extends ReorganizeDocumentProps {
+  onClose: () => void;
+  proposal: ReorganizationProposal;
 }
 
 function Location({

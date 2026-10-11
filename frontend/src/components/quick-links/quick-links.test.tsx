@@ -55,6 +55,37 @@ describe("QuickLinks", () => {
     expect(host.querySelector("a")).toHaveAttribute("href", "/d/file-launch?go=launch-plan");
   });
 
+  it("reuses case normalization across typing and refreshes it when accessible aliases change", () => {
+    const aliases = RECENT_ALIASES.map((item) => ({ ...item }));
+    const fields = new Set(
+      aliases.flatMap((item) => [item.name, item.alias, item.driveName ?? ""]),
+    );
+    const normalize = vi.spyOn(String.prototype, "toLocaleLowerCase");
+    render(root, <QuickLinks aliases={aliases} />);
+    const input = getSearchInput(host);
+    for (const query of ["pro", "produ", "product", "launch", "hand", "handbook"]) {
+      typeInto(input, query);
+    }
+    const fieldCalls = normalize.mock.contexts.filter((value) => fields.has(String(value)));
+    expect(fieldCalls).toHaveLength(6);
+    expect(host).toHaveTextContent("Team Handbook");
+    expect(host).not.toHaveTextContent("Launch Plan");
+    render(
+      root,
+      <QuickLinks
+        aliases={aliases.map((item) => ({
+          ...item,
+          alias: "current-page",
+          name: "Current page",
+        }))}
+      />,
+    );
+    expect(host).toHaveTextContent("No matching quick links");
+    typeInto(getSearchInput(host), "CURRENT");
+    expect(host.querySelectorAll("a")).toHaveLength(2);
+    expect(host).toHaveTextContent("Current page");
+  });
+
   it("supports arrow-key selection and Enter to open", () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => null);
     render(root, <QuickLinks aliases={RECENT_ALIASES} />);

@@ -1597,7 +1597,7 @@ async def test_search_combines_shared_drives_with_owned_my_drive_results(
     assert len(search_calls) == 2
     assert search_calls[0]["corpora"] == "allDrives"
     assert "driveId" not in search_calls[0]
-    assert "incompleteResults" in search_calls[0]["fields"]
+    assert "incompleteSearch" in search_calls[0]["fields"]
     assert search_calls[1]["corpora"] == "user"
     assert "'me' in owners" in search_calls[1]["q"]
 
@@ -1609,7 +1609,7 @@ async def test_search_falls_back_to_per_drive_on_incomplete_results(
         drives_pages=[
             {"drives": [{"id": "d1", "name": "D1"}, {"id": "d2", "name": "D2"}]},
         ],
-        files_pages=[{"incompleteResults": True, "files": []}],
+        files_pages=[{"incompleteSearch": True, "files": []}],
     )
     patch_drive_client(client)
     svc = _svc()

@@ -24,7 +24,7 @@ import type { DriveNode } from "@/types/wiki";
 import { MIME_FOLDER } from "@/types/wiki";
 
 import { CreateFileMenu } from "./create-file-menu";
-import { useDriveSectionContext } from "./drive-context";
+import { type DriveSectionValue, useDriveSectionContext } from "./drive-context";
 import { EmptyDropZone } from "./empty-drop-zone";
 import { FileRow } from "./file-row";
 import { ItemMenu } from "./item-menu";
@@ -106,10 +106,6 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
   const meta = resolveShortcutMeta(node);
   const [expanded, setExpanded] = useExpandedFolder(node.id);
   const needsLazyFiles = meta.isFolderShortcut || !ctx.treeFilesComplete;
-  const { data: lazyFiles, isLoading: filesLoading } = useFolderFiles(
-    meta.isFolder && needsLazyFiles && !meta.inaccessible ? meta.expandFolderId : null,
-    expanded,
-  );
   const queryClient = useQueryClient();
   const prefetchChildren = useDebouncedCallback(() => {
     const folderId = meta.expandFolderId;
@@ -138,7 +134,7 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
     sortOrderMap,
     treeFilesComplete,
   } = ctx;
-  const { count: childCount, items: childItems } = buildChildItems(
+  const { count: childCount } = buildChildItems(
     node,
     meta,
     {
@@ -149,8 +145,8 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
       sortOrderMap,
       treeFilesComplete,
     },
-    lazyFiles ?? EMPTY_NODES,
-    expanded && meta.isFolder,
+    EMPTY_NODES,
+    false,
   );
 
   if (!meta.isFolder) {
@@ -167,7 +163,6 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
     );
   }
 
-  const sortableItems = childItems.map((c) => c.node.id);
   const iconEmoji = ctx.iconOverrides.get(node.id);
   const itemCount = meta.isFolderShortcut || !ctx.treeFilesComplete ? undefined : childCount;
 
@@ -203,56 +198,72 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
           setExpanded(!expanded);
         }}
       />
-      {expanded ? (
-        <SidebarMenuSub className="mx-0 gap-0.5 border-l-0 px-0">
-          <SortableContext
-            id={`parent:${node.id}`}
-            items={sortableItems}
-            strategy={verticalListSortingStrategy}
-          >
-            {childItems.map(({ node: child, type }) => (
-              <SortableItem
-                data={{
-                  driveId: ctx.driveId,
-                  isFolder: type === "folder",
-                  parentFolderId: node.id,
-                }}
-                id={child.id}
-                key={child.id}
-                variant="subitem"
-              >
-                {type === "folder" ? (
-                  <TreeNode depth={depth + 1} node={child} parentFolderId={node.id} />
-                ) : (
-                  <FileRow
-                    activeDriveId={ctx.activeDriveId}
-                    depth={depth + 1}
-                    driveId={ctx.driveId}
-                    iconOverride={ctx.docIconOverrides.get(child.id)}
-                    node={child}
-                    parentFolderId={node.id}
-                    pathname={ctx.pathname}
-                  />
-                )}
-              </SortableItem>
-            ))}
-          </SortableContext>
-          {filesLoading ? (
-            <SidebarMenuSubItem>
-              <span className="text-muted-foreground px-2 py-1 text-xs">Loading files…</span>
-            </SidebarMenuSubItem>
-          ) : null}
-          {!filesLoading && childItems.length === 0 && (
-            <EmptyDropZone
-              driveId={ctx.driveId}
-              label="Empty"
-              parentId={node.id}
-              variant="subitem"
-            />
-          )}
-        </SidebarMenuSub>
-      ) : null}
+      {expanded ? <ExpandedFolderContents ctx={ctx} depth={depth} meta={meta} node={node} /> : null}
     </>
+  );
+}
+
+function ExpandedFolderContents({
+  ctx,
+  depth,
+  meta,
+  node,
+}: {
+  ctx: DriveSectionValue;
+  depth: number;
+  meta: ShortcutMeta;
+  node: DriveNode;
+}) {
+  const needsLazyFiles = meta.isFolderShortcut || !ctx.treeFilesComplete;
+  const { data: lazyFiles, isLoading: filesLoading } = useFolderFiles(
+    needsLazyFiles && !meta.inaccessible ? meta.expandFolderId : null,
+    true,
+  );
+  const { items: childItems } = buildChildItems(node, meta, ctx, lazyFiles ?? EMPTY_NODES, true);
+  const sortableItems = childItems.map((child) => child.node.id);
+  return (
+    <SidebarMenuSub className="mx-0 gap-0.5 border-l-0 px-0">
+      <SortableContext
+        id={`parent:${node.id}`}
+        items={sortableItems}
+        strategy={verticalListSortingStrategy}
+      >
+        {childItems.map(({ node: child, type }) => (
+          <SortableItem
+            data={{
+              driveId: ctx.driveId,
+              isFolder: type === "folder",
+              parentFolderId: node.id,
+            }}
+            id={child.id}
+            key={child.id}
+            variant="subitem"
+          >
+            {type === "folder" ? (
+              <TreeNode depth={depth + 1} node={child} parentFolderId={node.id} />
+            ) : (
+              <FileRow
+                activeDriveId={ctx.activeDriveId}
+                depth={depth + 1}
+                driveId={ctx.driveId}
+                iconOverride={ctx.docIconOverrides.get(child.id)}
+                node={child}
+                parentFolderId={node.id}
+                pathname={ctx.pathname}
+              />
+            )}
+          </SortableItem>
+        ))}
+      </SortableContext>
+      {filesLoading ? (
+        <SidebarMenuSubItem>
+          <span className="text-muted-foreground px-2 py-1 text-xs">Loading files…</span>
+        </SidebarMenuSubItem>
+      ) : null}
+      {!filesLoading && childItems.length === 0 && (
+        <EmptyDropZone driveId={ctx.driveId} label="Empty" parentId={node.id} variant="subitem" />
+      )}
+    </SidebarMenuSub>
   );
 }
 

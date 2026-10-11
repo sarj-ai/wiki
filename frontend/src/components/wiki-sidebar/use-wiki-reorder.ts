@@ -26,7 +26,7 @@ import { EMPTY_NODES, EMPTY_SORT_ORDERS } from "@/lib/wiki-indexes";
 import type { DriveNode, DriveTree, SortOrder } from "@/types/wiki";
 import { MIME_SHORTCUT } from "@/types/wiki";
 
-import { dragScopeData, sortableContainerId, sortableData } from "./drag-data";
+import { dragScopeData, sortableContainerId, sortableData, sortablePosition } from "./drag-data";
 import { type DropIntent, useDragOverStore } from "./use-drag-over-store";
 import { useInFlightMovesStore } from "./use-in-flight-moves";
 
@@ -137,9 +137,16 @@ export function useWikiReorder(): WikiReorder {
 
     let intent: DropIntent | null;
     if (sameContainer) {
-      const sortableItems = sortableData(active.data.current)?.items ?? [];
-      const oldIdx = sortableItems.indexOf(String(active.id));
-      const overIdx = sortableItems.indexOf(String(over.id));
+      const activePosition = sortablePosition(active.data.current);
+      const overPosition = sortablePosition(over.data.current);
+      const positionsMatch =
+        activePosition?.containerId === activeContainer &&
+        overPosition?.containerId === overContainer;
+      const sortableItems = positionsMatch ? [] : (sortableData(active.data.current)?.items ?? []);
+      const oldIdx = positionsMatch
+        ? activePosition.index
+        : sortableItems.indexOf(String(active.id));
+      const overIdx = positionsMatch ? overPosition.index : sortableItems.indexOf(String(over.id));
       intent = oldIdx === overIdx ? null : oldIdx < overIdx ? "below" : "above";
     } else {
       const overEligibleForInto = overIsFolder && !overIsOwnParent;

@@ -17,9 +17,14 @@ const SEARCH_GC_TIME_MS = 10 * 60 * 1000;
 const SEARCH_DEBOUNCE_MS = 250;
 
 export function useDriveSearch(query: string, enabled = true) {
-  const [debouncedQuery] = useDebounce(query.trim(), SEARCH_DEBOUNCE_MS);
+  const currentQuery = query.trim();
+  const [debouncedQuery] = useDebounce(currentQuery, SEARCH_DEBOUNCE_MS);
   return useQuery<DriveSearchResult[]>({
-    enabled: enabled && debouncedQuery.length >= 2 && debouncedQuery.length <= 2048,
+    enabled:
+      enabled &&
+      currentQuery === debouncedQuery &&
+      currentQuery.length >= 2 &&
+      currentQuery.length <= 2048,
     gcTime: SEARCH_GC_TIME_MS,
     queryFn: async ({ signal }) => await WIKI_READ_API.driveSearch(debouncedQuery, 10, signal),
     queryKey: wikiKeys.driveSearch(debouncedQuery),

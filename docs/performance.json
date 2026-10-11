@@ -1,7 +1,7 @@
 {
   "recordedAt": "2026-10-11",
   "baselineRevision": "f63e8f6f342a27d3b3f085e2150417ccd45756bf",
-  "totalPasses": 229,
+  "totalPasses": 259,
   "initialPasses": [
     {
       "pass": 1,
@@ -5432,6 +5432,2903 @@
       ],
       "acceptedCount": 26,
       "rejectedCount": 4
+    },
+    {
+      "recordedAt": "2026-10-11",
+      "baselineRevision": "edfc65884dba11ac401989c6d71e56fbe3c6da46",
+      "name": "Thirty additional measured provider, storage, sidebar and lifecycle candidates",
+      "passCount": 30,
+      "agentPassCount": 30,
+      "integrationPassCount": 0,
+      "counting": "Six distinct new candidates from each of five agents. Controlled measured improvements and evidenced rejections count; repeated tests, builds, formatting, qualification repairs and release administration count zero.",
+      "acceptedCount": 25,
+      "rejectedCount": 5,
+      "scopes": [
+        {
+          "scope": "backend-storage",
+          "agent": "backend_storage_round4",
+          "recordedAt": "2026-10-11T14:11:59.987151+00:00",
+          "localDate": "2026-10-11",
+          "checkout": "/private/tmp/sarj-wiki-performance-20261010",
+          "branch": "codex/wiki-performance-round4-20261011",
+          "baseRevision": "edfc65884dba11ac401989c6d71e56fbe3c6da46",
+          "passCount": 6,
+          "acceptedCount": 4,
+          "rejectedCount": 2,
+          "priorPassesRecounted": 0,
+          "administrativeOrGateRerunsCounted": 0,
+          "passes": [
+            {
+              "id": "storage-r4-01",
+              "candidate": "Project authenticated JSONB cache envelopes as scalar SQL text before driver materialization",
+              "outcome": "accepted",
+              "evidence": "Single and bulk cache SELECTs use value #>> an empty typed text-array path. Valid JSONB string envelopes become unchanged f1 ciphertext text without SQL JSON escaping and driver JSON parsing. Non-string legacy JSONB values still cannot satisfy the authenticated envelope prefix. Fresh namespace/key/TTL predicates, rotation fallback order, collision rejection, read-session release and authenticated logical binding remain unchanged.",
+              "method": "Interleaved actual before/after service calls, three warmups then stated samples; each call uses an independent request AsyncSession. Same private PostgreSQL18.6 DB, same stored ciphertext/user/payload. No network or Google latency claim. Cache measurements include database lookup, session close and unchanged decrypt/validation paths; one or one-item bulk hit per call, 31 interleaved pairs per size.",
+              "measurements": {
+                "1024": {
+                  "single": {
+                    "before": {
+                      "medianMs": 0.5253748968243599,
+                      "p95Ms": 0.6939580198377371,
+                      "samples": 31
+                    },
+                    "after": {
+                      "medianMs": 0.5769170820713043,
+                      "p95Ms": 0.7238751277327538,
+                      "samples": 31
+                    }
+                  },
+                  "bulkOne": {
+                    "before": {
+                      "medianMs": 0.5332920700311661,
+                      "p95Ms": 0.6484161131083965,
+                      "samples": 31
+                    },
+                    "after": {
+                      "medianMs": 0.5584580358117819,
+                      "p95Ms": 0.7524588145315647,
+                      "samples": 31
+                    }
+                  }
+                },
+                "65536": {
+                  "single": {
+                    "before": {
+                      "medianMs": 0.7264998275786638,
+                      "p95Ms": 1.0037501342594624,
+                      "samples": 31
+                    },
+                    "after": {
+                      "medianMs": 0.7214162033051252,
+                      "p95Ms": 0.8397081401199102,
+                      "samples": 31
+                    }
+                  },
+                  "bulkOne": {
+                    "before": {
+                      "medianMs": 0.7582500111311674,
+                      "p95Ms": 0.8859580848366022,
+                      "samples": 31
+                    },
+                    "after": {
+                      "medianMs": 0.7534162141382694,
+                      "p95Ms": 0.8957500103861094,
+                      "samples": 31
+                    }
+                  }
+                },
+                "1048576": {
+                  "single": {
+                    "before": {
+                      "medianMs": 4.3074998538941145,
+                      "p95Ms": 4.75066713988781,
+                      "samples": 31
+                    },
+                    "after": {
+                      "medianMs": 3.3869161270558834,
+                      "p95Ms": 4.232167033478618,
+                      "samples": 31
+                    }
+                  },
+                  "bulkOne": {
+                    "before": {
+                      "medianMs": 4.203666001558304,
+                      "p95Ms": 4.752791952341795,
+                      "samples": 31
+                    },
+                    "after": {
+                      "medianMs": 3.3637078013271093,
+                      "p95Ms": 3.7359579000622034,
+                      "samples": 31
+                    }
+                  }
+                },
+                "4194304": {
+                  "single": {
+                    "before": {
+                      "medianMs": 14.32000007480383,
+                      "p95Ms": 15.298583079129457,
+                      "samples": 31
+                    },
+                    "after": {
+                      "medianMs": 10.476249968633056,
+                      "p95Ms": 11.227166978642344,
+                      "samples": 31
+                    }
+                  },
+                  "bulkOne": {
+                    "before": {
+                      "medianMs": 14.54050000756979,
+                      "p95Ms": 15.198915963992476,
+                      "samples": 31
+                    },
+                    "after": {
+                      "medianMs": 10.687415953725576,
+                      "p95Ms": 11.4845409989357,
+                      "samples": 31
+                    }
+                  }
+                }
+              },
+              "limits": [
+                "No claim of production or Google/WAN latency reduction.",
+                "At 1KiB, scalar extraction and statement construction cost about 0.052ms for single get and 0.025ms for one-item bulk in the final run; 64KiB is roughly unchanged. Large values give the useful reduction.",
+                "Controlled stress fixtures are 1KiB,64KiB,1MiB,4MiB plaintext; no claim that present production values have these sizes."
+              ],
+              "changedPaths": [
+                "backend/app/cache/service.py",
+                "backend/tests/test_storage_read_projection_postgres.py"
+              ],
+              "validation": "Real-PG old-key rotation and malformed/null/object/array/number/boolean JSONB cases pass for both get and get_many; existing cache corruption, TTL, collision, newest-key and atomic-batch tests pass.",
+              "reproduction": {
+                "context": "Run in /private/tmp/sarj-wiki-performance-20261010/backend with PYTHONPATH=. and WIKI_POLISH29_QA_DATABASE_URL set to the private disposable loopback PostgreSQL18.6 database wiki_polish29_qa_round4_storage. Use .venv/bin/python; scripts use tests.conftest to supply random offline keys. Before source copies are in /private/tmp/sarj-wiki-perf-round4-storage-baseline and are from edfc65884dba11ac401989c6d71e56fbe3c6da46.",
+                "script": "/private/tmp/sarj-wiki-perf-round4-storage-service-bench.py",
+                "artifact": "/private/tmp/sarj-wiki-perf-round4-storage-service-bench-final.json",
+                "initialRawProbe": "/private/tmp/sarj-wiki-perf-round4-storage-probes.json"
+              }
+            },
+            {
+              "id": "storage-r4-02",
+              "candidate": "Offload large single/few-value cache write protection using a bounded payload workload estimate",
+              "outcome": "accepted",
+              "evidence": "Small batches now check a bounded workload estimate before HMAC/encryption/JSON validation. Strings use codepoint length with a conservative fourfold UTF-8 weight for non-ASCII strings; scalar/container visits use a fixed workload allowance. Wide containers cross the estimate in O(1), avoiding a measured initial list-traversal regression. No preliminary JSON serialization is performed. The existing 256-key rule stays intact; authoritative strict protection/validation and atomic writes are unchanged.",
+              "method": "Six concurrent writes, real protection/HMAC/Pydantic/Fernet, immediate database recorder, 1ms asyncio heartbeat, eleven interleaved pairs after three warmups. No SQL latency claim.",
+              "measurements": {
+                "method": "Six concurrent writes, real protection/HMAC/Pydantic/Fernet, immediate database recorder, 1ms asyncio heartbeat, eleven interleaved pairs after three warmups. No SQL latency claim.",
+                "fixtures": {
+                  "1KiB": {
+                    "before": {
+                      "medianBatchMs": 1.0227079037576914,
+                      "medianLongestLoopGapMs": 1.0582080576568842,
+                      "cryptoOnWorker": false,
+                      "samples": 11
+                    },
+                    "after": {
+                      "medianBatchMs": 1.0187081061303616,
+                      "medianLongestLoopGapMs": 1.0430419351905584,
+                      "cryptoOnWorker": false,
+                      "samples": 11
+                    }
+                  },
+                  "64KiB": {
+                    "before": {
+                      "medianBatchMs": 1.9443330820649862,
+                      "medianLongestLoopGapMs": 1.9557911437004805,
+                      "cryptoOnWorker": false,
+                      "samples": 11
+                    },
+                    "after": {
+                      "medianBatchMs": 1.9290409982204437,
+                      "medianLongestLoopGapMs": 1.9395831041038036,
+                      "cryptoOnWorker": false,
+                      "samples": 11
+                    }
+                  },
+                  "1MiB": {
+                    "before": {
+                      "medianBatchMs": 15.266292029991746,
+                      "medianLongestLoopGapMs": 15.279666054993868,
+                      "cryptoOnWorker": false,
+                      "samples": 11
+                    },
+                    "after": {
+                      "medianBatchMs": 11.613082839176059,
+                      "medianLongestLoopGapMs": 5.130375036969781,
+                      "cryptoOnWorker": true,
+                      "samples": 11
+                    }
+                  },
+                  "4MiB": {
+                    "before": {
+                      "medianBatchMs": 58.171499986201525,
+                      "medianLongestLoopGapMs": 58.18345816805959,
+                      "cryptoOnWorker": false,
+                      "samples": 11
+                    },
+                    "after": {
+                      "medianBatchMs": 42.484208941459656,
+                      "medianLongestLoopGapMs": 20.8082920871675,
+                      "cryptoOnWorker": true,
+                      "samples": 11
+                    }
+                  },
+                  "Unicode1MiB": {
+                    "before": {
+                      "medianBatchMs": 17.877666978165507,
+                      "medianLongestLoopGapMs": 17.889166017994285,
+                      "cryptoOnWorker": false,
+                      "samples": 11
+                    },
+                    "after": {
+                      "medianBatchMs": 14.763209037482738,
+                      "medianLongestLoopGapMs": 6.629833020269871,
+                      "cryptoOnWorker": true,
+                      "samples": 11
+                    }
+                  },
+                  "scalarList": {
+                    "before": {
+                      "medianBatchMs": 47.39937512204051,
+                      "medianLongestLoopGapMs": 47.4182500038296,
+                      "cryptoOnWorker": false,
+                      "samples": 11
+                    },
+                    "after": {
+                      "medianBatchMs": 44.880625093355775,
+                      "medianLongestLoopGapMs": 39.431249955669045,
+                      "cryptoOnWorker": true,
+                      "samples": 11
+                    }
+                  }
+                },
+                "workloadEstimate": {
+                  "small": {
+                    "medianMs": 0.001250067725777626,
+                    "decision": false
+                  },
+                  "unicode": {
+                    "medianMs": 0.0004998873919248581,
+                    "decision": true
+                  },
+                  "list": {
+                    "medianMs": 0.00045821070671081543,
+                    "decision": true
+                  }
+                }
+              },
+              "limits": [
+                "The write cutoff estimates workload; it is not an exact serialized/ciphertext byte threshold. Unicode weighting can overestimate mostly-ASCII strings with a non-ASCII member; escaped ASCII characters and unusual large scalar encodings need not exactly match the estimate.",
+                "Real CPU work and purposeful immediate database recorders isolate event-loop responsiveness; this is not a PostgreSQL write-latency measurement.",
+                "Wide scalar lists still retain significant GIL contention: longest gap47.42\u219239.43ms despite offload. The shared existing thread pool is unchanged.",
+                "The first scalar-list estimator regressed batch46.92\u219259.08ms because it scanned32k items per write; the final O(1) wide-container check measures about0.00046ms, and final batch47.40\u219244.88ms. This refinement is part of this one pass, not an additional counted pass."
+              ],
+              "changedPaths": [
+                "backend/app/cache/service.py",
+                "backend/tests/test_cache_service.py"
+              ],
+              "validation": "Small writes stay on the request thread; large Unicode, wide lists and a200-level nested large value protect on a worker. Invalid/cyclic values preserve ValidationError and open no transaction. Existing TTL, key rotation, collision, chunk atomicity and lock-order suites pass.",
+              "reproduction": {
+                "context": "Run in /private/tmp/sarj-wiki-performance-20261010/backend with PYTHONPATH=. and WIKI_POLISH29_QA_DATABASE_URL set to the private disposable loopback PostgreSQL18.6 database wiki_polish29_qa_round4_storage. Use .venv/bin/python; scripts use tests.conftest to supply random offline keys. Before source copies are in /private/tmp/sarj-wiki-perf-round4-storage-baseline and are from edfc65884dba11ac401989c6d71e56fbe3c6da46.",
+                "script": "/private/tmp/sarj-wiki-perf-round4-storage-write-cpu.py",
+                "artifact": "/private/tmp/sarj-wiki-perf-round4-storage-write-cpu-final.json",
+                "initialRejectedEstimatorArtifact": "/private/tmp/sarj-wiki-perf-round4-storage-write-cpu.json"
+              }
+            },
+            {
+              "id": "storage-r4-03",
+              "candidate": "Return native typed sidebar UNION columns instead of building and parsing a JSONB object for every overlay",
+              "outcome": "accepted",
+              "evidence": "The existing one-round-trip indexed user-scoped UNION ALL now projects a discriminator, item ID, nullable icon, float rank, boolean preference and typed hidden-workspace array. It no longer calls jsonb_build_object or parses each row payload. Public response models still validate their exact fields, defaults, nullable values and finite sort ranks.",
+              "method": "Interleaved actual before/after service calls, three warmups then stated samples; each call uses an independent request AsyncSession. Same private PostgreSQL18.6 DB, same stored ciphertext/user/payload. No network or Google latency claim. Twenty-one pairs per fixture with1,32,1000,10000 folders and the same count of sort rows, plus one preferences row. Full validated output is equal.",
+              "measurements": {
+                "1": {
+                  "before": {
+                    "medianMs": 0.5999170243740082,
+                    "p95Ms": 0.7656251545995474,
+                    "samples": 21
+                  },
+                  "after": {
+                    "medianMs": 0.628042034804821,
+                    "p95Ms": 0.7870830595493317,
+                    "samples": 21
+                  }
+                },
+                "32": {
+                  "before": {
+                    "medianMs": 0.7102079689502716,
+                    "p95Ms": 0.9102921467274427,
+                    "samples": 21
+                  },
+                  "after": {
+                    "medianMs": 0.6875412072986364,
+                    "p95Ms": 0.7932498119771481,
+                    "samples": 21
+                  }
+                },
+                "1000": {
+                  "before": {
+                    "medianMs": 3.947458928450942,
+                    "p95Ms": 5.384583026170731,
+                    "samples": 21
+                  },
+                  "after": {
+                    "medianMs": 3.836332820355892,
+                    "p95Ms": 5.679541965946555,
+                    "samples": 21
+                  }
+                },
+                "10000": {
+                  "before": {
+                    "medianMs": 68.64129193127155,
+                    "p95Ms": 76.02308411151171,
+                    "samples": 21
+                  },
+                  "after": {
+                    "medianMs": 31.84695797972381,
+                    "p95Ms": 72.12141714990139,
+                    "samples": 21
+                  }
+                }
+              },
+              "limits": [
+                "A one-folder/one-sort/preferences fixture has an extra~0.028ms in the final run. At32 rows per family it improves~0.023ms, and at1000 per family~0.111ms.",
+                "The20,001-row stress fixture improves median68.64\u219231.85ms, while p95 varies with object allocation/GC; no promise of a similar production distribution.",
+                "Preserves one database query; this pass does not recount the previously implemented sidebar UNION round-trip reduction."
+              ],
+              "changedPaths": [
+                "backend/app/extras/service.py",
+                "backend/tests/test_storage_read_projection_postgres.py"
+              ],
+              "validation": "Actual PostgreSQL defaults/no rows, preferences-only and mixed row cases include another user with identical folder/drive IDs, nullable icons, negative finite float and multiple hidden-workspace IDs. Existing one-query/user-scope and bootstrap membership tests pass.",
+              "reproduction": {
+                "context": "Run in /private/tmp/sarj-wiki-performance-20261010/backend with PYTHONPATH=. and WIKI_POLISH29_QA_DATABASE_URL set to the private disposable loopback PostgreSQL18.6 database wiki_polish29_qa_round4_storage. Use .venv/bin/python; scripts use tests.conftest to supply random offline keys. Before source copies are in /private/tmp/sarj-wiki-perf-round4-storage-baseline and are from edfc65884dba11ac401989c6d71e56fbe3c6da46.",
+                "script": "/private/tmp/sarj-wiki-perf-round4-storage-service-bench.py",
+                "artifact": "/private/tmp/sarj-wiki-perf-round4-storage-service-bench-final.json"
+              }
+            },
+            {
+              "id": "storage-r4-04",
+              "candidate": "Suppress warm sidebar ciphertext transfer only when a freshly read exact PostgreSQL tuple version matches the decoded tree",
+              "outcome": "accepted",
+              "evidence": "Every peek makes a fresh user/drive-scoped SELECT. It reads refreshed_at,xmin,ctid and current snapshot xid8 epoch; CASE omits ciphertext only when all four match a bounded LRU decoded entry bound to the actual immutable MultiFernet object. A different row/tuple/ciphertext update, user, epoch or decoder forces the encrypted payload to load. The decoder object is captured through the worker parse, preventing identity recycling and rotation-during-decode ambiguity. Older versions for the same user/drive are evicted. Corrupt-snapshot deletion compares the same tuple/version fields and cannot delete a concurrently replaced row. Read transactions still release before decode/provider work.",
+              "method": "Interleaved actual before/after service calls, three warmups then stated samples; each call uses an independent request AsyncSession. Same private PostgreSQL18.6 DB, same stored ciphertext/user/payload. No network or Google latency claim. Twenty-one cold and warm pairs for10,1000,10000 valid nodes. Before and after perform one fresh SELECT and return equal trees/timestamps. Cold calls clear the respective decoded cache; warm calls retain it. Only immutable SQL expression objects were reused in the final refinement; PostgreSQL evaluates snapshot functions afresh on every query without assigning a transaction ID.",
+              "measurements": {
+                "final": {
+                  "10": {
+                    "plaintextBytes": 5306,
+                    "ciphertextBytes": 7160,
+                    "cold": {
+                      "before": {
+                        "medianMs": 0.6881249137222767,
+                        "p95Ms": 0.7918339688330889,
+                        "samples": 21
+                      },
+                      "after": {
+                        "medianMs": 0.6787918973714113,
+                        "p95Ms": 0.7911249995231628,
+                        "samples": 21
+                      }
+                    },
+                    "warm": {
+                      "before": {
+                        "medianMs": 0.5103340372443199,
+                        "p95Ms": 0.7087909616529942,
+                        "samples": 21
+                      },
+                      "after": {
+                        "medianMs": 0.5766248796135187,
+                        "p95Ms": 0.6964579224586487,
+                        "samples": 21
+                      }
+                    }
+                  },
+                  "1000": {
+                    "plaintextBytes": 525888,
+                    "ciphertextBytes": 701284,
+                    "cold": {
+                      "before": {
+                        "medianMs": 3.9114579558372498,
+                        "p95Ms": 4.322708817198873,
+                        "samples": 21
+                      },
+                      "after": {
+                        "medianMs": 3.9257919415831566,
+                        "p95Ms": 4.137292038649321,
+                        "samples": 21
+                      }
+                    },
+                    "warm": {
+                      "before": {
+                        "medianMs": 0.8803328964859247,
+                        "p95Ms": 1.1897908989340067,
+                        "samples": 21
+                      },
+                      "after": {
+                        "medianMs": 0.666207866743207,
+                        "p95Ms": 0.8649579249322414,
+                        "samples": 21
+                      }
+                    }
+                  },
+                  "10000": {
+                    "plaintextBytes": 5287889,
+                    "ciphertextBytes": 7050616,
+                    "cold": {
+                      "before": {
+                        "medianMs": 32.635875046253204,
+                        "p95Ms": 33.43333303928375,
+                        "samples": 21
+                      },
+                      "after": {
+                        "medianMs": 32.760542118921876,
+                        "p95Ms": 38.758750073611736,
+                        "samples": 21
+                      }
+                    },
+                    "warm": {
+                      "before": {
+                        "medianMs": 4.187291022390127,
+                        "p95Ms": 4.667334025725722,
+                        "samples": 21
+                      },
+                      "after": {
+                        "medianMs": 1.1229158844798803,
+                        "p95Ms": 1.2842090800404549,
+                        "samples": 21
+                      }
+                    }
+                  }
+                },
+                "preExpressionReuse": {
+                  "10": {
+                    "plaintextBytes": 5306,
+                    "ciphertextBytes": 7160,
+                    "cold": {
+                      "before": {
+                        "medianMs": 0.7868329994380474,
+                        "p95Ms": 1.1902081314474344,
+                        "samples": 21
+                      },
+                      "after": {
+                        "medianMs": 0.9131669066846371,
+                        "p95Ms": 1.5298749785870314,
+                        "samples": 21
+                      }
+                    },
+                    "warm": {
+                      "before": {
+                        "medianMs": 0.6056667771190405,
+                        "p95Ms": 0.8264170028269291,
+                        "samples": 21
+                      },
+                      "after": {
+                        "medianMs": 0.7510841824114323,
+                        "p95Ms": 1.203583087772131,
+                        "samples": 21
+                      }
+                    }
+                  },
+                  "1000": {
+                    "plaintextBytes": 525888,
+                    "ciphertextBytes": 701284,
+                    "cold": {
+                      "before": {
+                        "medianMs": 4.3779159896075726,
+                        "p95Ms": 4.59291716106236,
+                        "samples": 21
+                      },
+                      "after": {
+                        "medianMs": 4.479916067793965,
+                        "p95Ms": 5.256458884105086,
+                        "samples": 21
+                      }
+                    },
+                    "warm": {
+                      "before": {
+                        "medianMs": 1.0122079402208328,
+                        "p95Ms": 1.2867499608546495,
+                        "samples": 21
+                      },
+                      "after": {
+                        "medianMs": 0.8605001494288445,
+                        "p95Ms": 0.9736670181155205,
+                        "samples": 21
+                      }
+                    }
+                  },
+                  "10000": {
+                    "plaintextBytes": 5287889,
+                    "ciphertextBytes": 7050616,
+                    "cold": {
+                      "before": {
+                        "medianMs": 34.31495791301131,
+                        "p95Ms": 41.73533292487264,
+                        "samples": 21
+                      },
+                      "after": {
+                        "medianMs": 34.059833036735654,
+                        "p95Ms": 41.609957814216614,
+                        "samples": 21
+                      }
+                    },
+                    "warm": {
+                      "before": {
+                        "medianMs": 4.188125021755695,
+                        "p95Ms": 4.731707973405719,
+                        "samples": 21
+                      },
+                      "after": {
+                        "medianMs": 1.217458164319396,
+                        "p95Ms": 1.4027080032974482,
+                        "samples": 21
+                      }
+                    }
+                  }
+                }
+              },
+              "limits": [
+                "Initial small warm-tree construction cost was~0.145ms (0.606\u21920.751ms). Reusing immutable SQL expressions reduced the final extra cost to~0.066ms (0.510\u21920.577ms). It remains an explicit tradeoff.",
+                "Final10k-node cold medians32.636\u219232.761ms are essentially unchanged; cold p95 is noisy. Final warm medians4.187\u21921.123ms;1000-node warm0.880\u21920.666ms.",
+                "The xid epoch boundary is injected with a purpose-built subclass rather than executing four billion PostgreSQL transactions. Actual read-only pg_snapshot_xmax/pg_current_snapshot expression and no assigned transaction ID are verified on PostgreSQL18.6.",
+                "The bounded cache remains32 entries/40000 nodes. A late older decode may replace a newer retained hint; the next fresh tuple read must re-load the current ciphertext and cannot publish that old hint as a matching current row.",
+                "Production decoder objects are process-immutable. Controlled rotation tests select new real MultiFernet objects through a purpose-built override while queued decoding uses its original captured decoder; no ambient monkeypatch/suppression is introduced.",
+                "No production warm-hit frequency, workspace size or browser-loading improvement is claimed."
+              ],
+              "changedPaths": [
+                "backend/app/auth/encryption.py",
+                "backend/app/sidebar/cache.py",
+                "backend/tests/test_sidebar_cache.py",
+                "backend/tests/test_storage_read_projection_postgres.py"
+              ],
+              "validation": "Actual PostgreSQL same-timestamp update, delete/reinsert, principal isolation, injected epoch change, no-xid allocation, pool=1 connection release, queued decoder rotation, corrupt-row concurrent replacement and old-version eviction regressions pass. Existing coalesced cold decoding, stale refresh, invalidation, node/entry budget and cold-provider-save tests pass. Helper extension in auth/encryption.py was approved by root; keys/decoder objects never appear in report or logs.",
+              "reproduction": {
+                "context": "Run in /private/tmp/sarj-wiki-performance-20261010/backend with PYTHONPATH=. and WIKI_POLISH29_QA_DATABASE_URL set to the private disposable loopback PostgreSQL18.6 database wiki_polish29_qa_round4_storage. Use .venv/bin/python; scripts use tests.conftest to supply random offline keys. Before source copies are in /private/tmp/sarj-wiki-perf-round4-storage-baseline and are from edfc65884dba11ac401989c6d71e56fbe3c6da46.",
+                "script": "/private/tmp/sarj-wiki-perf-round4-storage-service-bench.py",
+                "artifact": "/private/tmp/sarj-wiki-perf-round4-storage-service-bench-final.json",
+                "regressionCommand": ".venv/bin/pytest -q tests/test_storage_read_projection_postgres.py tests/test_sidebar_cache.py tests/test_provider_performance_postgres.py::test_cold_sidebar_load_releases_read_connection_before_saving_tree"
+              }
+            },
+            {
+              "id": "storage-r4-05",
+              "candidate": "Batch extras read-model validation through a shared Pydantic TypeAdapter",
+              "outcome": "rejected",
+              "evidence": "Rows loaded from real PostgreSQL were compared with existing per-row constructors, list validation from attributes and list validation from mappings. Attribute validation regresses the single-row fixture~18% and saves only~2.8% at10000 rows. Mapping validation saves~9.2% at10000 rows but adds~14.3% peak traced allocations and also regresses a single row. No implementation was retained.",
+              "method": "Forty interleaved samples after three warmups for1,8,32,256,1024,10000 actual SQLAlchemy rows; ten conversions per small sample and one at10000. Separate tracemalloc peaks; outputs and selected finite-rank error type/location match.",
+              "measurements": {
+                "candidate": "batch-extra-model-validation",
+                "database": "wiki_polish29_qa_round4_storage",
+                "interleaved": true,
+                "sizes": {
+                  "1": {
+                    "construct": {
+                      "medianMs": 0.0010499963536858559,
+                      "samples": 40,
+                      "peakTracedBytes": 352
+                    },
+                    "adapterAttributes": {
+                      "medianMs": 0.001237494871020317,
+                      "samples": 40,
+                      "peakTracedBytes": 320
+                    },
+                    "adapterMappings": {
+                      "medianMs": 0.0011479482054710388,
+                      "samples": 40,
+                      "peakTracedBytes": 416
+                    }
+                  },
+                  "8": {
+                    "construct": {
+                      "medianMs": 0.0076978933066129684,
+                      "samples": 40,
+                      "peakTracedBytes": 2600
+                    },
+                    "adapterAttributes": {
+                      "medianMs": 0.00770204933360219,
+                      "samples": 40,
+                      "peakTracedBytes": 2560
+                    },
+                    "adapterMappings": {
+                      "medianMs": 0.006666709668934345,
+                      "samples": 40,
+                      "peakTracedBytes": 3136
+                    }
+                  },
+                  "32": {
+                    "construct": {
+                      "medianMs": 0.029910390730947256,
+                      "samples": 40,
+                      "peakTracedBytes": 10280
+                    },
+                    "adapterAttributes": {
+                      "medianMs": 0.029425008688122034,
+                      "samples": 40,
+                      "peakTracedBytes": 10240
+                    },
+                    "adapterMappings": {
+                      "medianMs": 0.02545210300013423,
+                      "samples": 40,
+                      "peakTracedBytes": 12544
+                    }
+                  },
+                  "256": {
+                    "construct": {
+                      "medianMs": 0.24531875969842076,
+                      "samples": 40,
+                      "peakTracedBytes": 114808
+                    },
+                    "adapterAttributes": {
+                      "medianMs": 0.24118961300700903,
+                      "samples": 40,
+                      "peakTracedBytes": 114304
+                    },
+                    "adapterMappings": {
+                      "medianMs": 0.20415005274116993,
+                      "samples": 40,
+                      "peakTracedBytes": 132832
+                    }
+                  },
+                  "1024": {
+                    "construct": {
+                      "medianMs": 1.0960083338432014,
+                      "samples": 40,
+                      "peakTracedBytes": 502392
+                    },
+                    "adapterAttributes": {
+                      "medianMs": 1.0578583576716483,
+                      "samples": 40,
+                      "peakTracedBytes": 501376
+                    },
+                    "adapterMappings": {
+                      "medianMs": 0.9737270418554544,
+                      "samples": 40,
+                      "peakTracedBytes": 575712
+                    }
+                  },
+                  "10000": {
+                    "construct": {
+                      "medianMs": 11.63556263782084,
+                      "samples": 40,
+                      "peakTracedBytes": 5030880
+                    },
+                    "adapterAttributes": {
+                      "medianMs": 11.307958979159594,
+                      "samples": 40,
+                      "peakTracedBytes": 5025280
+                    },
+                    "adapterMappings": {
+                      "medianMs": 10.566124925389886,
+                      "samples": 40,
+                      "peakTracedBytes": 5750400
+                    }
+                  }
+                },
+                "validationErrorsEqual": {
+                  "constructor": [["finite_number", "sort_order"]],
+                  "adapter": [["finite_number", "sort_order"]]
+                }
+              },
+              "limits": [
+                "Only local conversion/allocation costs; no request/Google latency claim.",
+                "The mapping prototype has measured speed gains at larger sizes, but its allocation tradeoff and tiny common-path savings do not justify an added response path under this scope.",
+                "Error parity verifies a selected finite-number failure, not an exhaustive proof of all hypothetical malformed database values. The production constructors remain unchanged."
+              ],
+              "changedPaths": [],
+              "validation": "Equal nullable/Unicode document-icon outputs at each fixture size, matching finite-rank rejection, and independent peak allocation captures. All temporary fixture rows are rolled back.",
+              "reproduction": {
+                "context": "Run in /private/tmp/sarj-wiki-performance-20261010/backend with PYTHONPATH=. and WIKI_POLISH29_QA_DATABASE_URL set to the private disposable loopback PostgreSQL18.6 database wiki_polish29_qa_round4_storage. Use .venv/bin/python; scripts use tests.conftest to supply random offline keys. Before source copies are in /private/tmp/sarj-wiki-perf-round4-storage-baseline and are from edfc65884dba11ac401989c6d71e56fbe3c6da46.",
+                "script": "/private/tmp/sarj-wiki-perf-round4-storage-adapter.py",
+                "artifact": "/private/tmp/sarj-wiki-perf-round4-storage-adapter.json"
+              }
+            },
+            {
+              "id": "storage-r4-06",
+              "candidate": "Merge encrypted sidebar save and global aged-tree cleanup into one data-modifying CTE",
+              "outcome": "rejected",
+              "evidence": "A viable CTE must exclude its current(user,drive) row so cleanup and upsert do not both target one preexisting expired tuple under a shared statement snapshot. That safe prototype saves~0.088ms with no unrelated expired rows, but regresses50000-row cleanup median5.252\u21926.169ms (~17.5%). Controlled writer-lock witnesses preserve observed current-row CAS and different-key cleanup recheck/lock ordering in both implementations; no correctness regression is claimed from those witnesses. The original sequential save and purge remain unchanged.",
+              "method": "Real PostgreSQL temporary tables with primary/expiry indexes and rolled-back deletes/upserts:21 interleaved samples at0/5000 unrelated expired rows and9 pairs at50000. Separate owned table/PIDs test current/different-key locks held by an independently persisted fresher row; NOWAIT probes record the other-row lock and final commit verifies CAS/retention rechecks.",
+              "measurements": {
+                "smallAndMediumBacklogs": {
+                  "database": "wiki_polish29_qa_round4_storage",
+                  "candidate": "merge-sidebar-save-and-expiry-purge-with-delete-CTE",
+                  "fixtureOnly": true,
+                  "backlogs": {
+                    "0": {
+                      "sequential": {
+                        "medianMs": 0.1882920041680336,
+                        "samples": 21,
+                        "witness": {
+                          "rowPresent": true,
+                          "freshCiphertextStored": true,
+                          "remainingRows": 1,
+                          "error": null
+                        }
+                      },
+                      "cteNaive": {
+                        "medianMs": 0.10495795868337154,
+                        "samples": 21,
+                        "witness": {
+                          "rowPresent": true,
+                          "freshCiphertextStored": true,
+                          "remainingRows": 1,
+                          "error": null
+                        }
+                      },
+                      "cteExcludeCurrent": {
+                        "medianMs": 0.10050018317997456,
+                        "samples": 21,
+                        "witness": {
+                          "rowPresent": true,
+                          "freshCiphertextStored": true,
+                          "remainingRows": 1,
+                          "error": null
+                        }
+                      }
+                    },
+                    "5000": {
+                      "sequential": {
+                        "medianMs": 1.7220829613506794,
+                        "samples": 21,
+                        "witness": {
+                          "rowPresent": true,
+                          "freshCiphertextStored": true,
+                          "remainingRows": 1,
+                          "error": null
+                        }
+                      },
+                      "cteNaive": {
+                        "medianMs": 1.6757920384407043,
+                        "samples": 21,
+                        "witness": {
+                          "rowPresent": true,
+                          "freshCiphertextStored": true,
+                          "remainingRows": 1,
+                          "error": null
+                        }
+                      },
+                      "cteExcludeCurrent": {
+                        "medianMs": 1.5984580386430025,
+                        "samples": 21,
+                        "witness": {
+                          "rowPresent": true,
+                          "freshCiphertextStored": true,
+                          "remainingRows": 1,
+                          "error": null
+                        }
+                      }
+                    }
+                  }
+                },
+                "largeBacklog": {
+                  "database": "wiki_polish29_qa_round4_storage",
+                  "candidate": "merge-sidebar-save-and-expiry-purge-with-delete-CTE",
+                  "fixtureOnly": true,
+                  "backlogs": {
+                    "50000": {
+                      "sequential": {
+                        "medianMs": 5.252165952697396,
+                        "samples": 9,
+                        "witness": {
+                          "rowPresent": true,
+                          "freshCiphertextStored": true,
+                          "remainingRows": 1,
+                          "error": null
+                        }
+                      },
+                      "cteExcludeCurrent": {
+                        "medianMs": 6.169250002130866,
+                        "samples": 9,
+                        "witness": {
+                          "rowPresent": true,
+                          "freshCiphertextStored": true,
+                          "remainingRows": 1,
+                          "error": null
+                        }
+                      }
+                    }
+                  }
+                },
+                "controlledWriterLocks": {
+                  "database": "wiki_polish29_qa_round4_storage",
+                  "method": "Actual sequential versus safe excluded-current DELETE-CTE statements. A separate transaction persists a fresher A or B value while retaining its row lock; blocked writer/probe use its owned backend PID and NOWAIT on the other row. After locker commit, verify CAS and retention recheck preserve that fresh value.",
+                  "witnesses": {
+                    "A-sequential": {
+                      "writerBlockedOnFreshRow": true,
+                      "otherRowAlreadyLockedByWriter": false,
+                      "freshCASOrCleanupRecheckPreserved": true,
+                      "rowValues": {
+                        "A": "other-A"
+                      }
+                    },
+                    "A-cteExcludeCurrent": {
+                      "writerBlockedOnFreshRow": true,
+                      "otherRowAlreadyLockedByWriter": false,
+                      "freshCASOrCleanupRecheckPreserved": true,
+                      "rowValues": {
+                        "A": "other-A"
+                      }
+                    },
+                    "B-sequential": {
+                      "writerBlockedOnFreshRow": true,
+                      "otherRowAlreadyLockedByWriter": true,
+                      "freshCASOrCleanupRecheckPreserved": true,
+                      "rowValues": {
+                        "B": "other-B",
+                        "A": "writer-A"
+                      }
+                    },
+                    "B-cteExcludeCurrent": {
+                      "writerBlockedOnFreshRow": true,
+                      "otherRowAlreadyLockedByWriter": true,
+                      "freshCASOrCleanupRecheckPreserved": true,
+                      "rowValues": {
+                        "B": "other-B",
+                        "A": "writer-A"
+                      }
+                    }
+                  }
+                }
+              },
+              "limits": [
+                "The lock witness covers four concrete scenarios on PostgreSQL18.6 and is not a universal lock-order proof.",
+                "The naive unexcluded CTE happened to preserve the refreshed row in the tested plan; that does not establish a safe same-row double-modification contract. Only the excluded-current variant is considered viable.",
+                "The temporary cleanup benchmark omits tree encryption and WAN/provider time; it isolates query/cleanup cost. Large backlog is a stress fixture, not an asserted production backlog."
+              ],
+              "changedPaths": [],
+              "validation": "Every successful timing fixture retains the fresh current row and removes the expected old rows. All four lock witnesses finish, preserve the independently persisted fresh value, and drop their uniquely owned table. No cleanup/CAS/retention code was changed.",
+              "reproduction": {
+                "context": "Run in /private/tmp/sarj-wiki-performance-20261010/backend with PYTHONPATH=. and WIKI_POLISH29_QA_DATABASE_URL set to the private disposable loopback PostgreSQL18.6 database wiki_polish29_qa_round4_storage. Use .venv/bin/python; scripts use tests.conftest to supply random offline keys. Before source copies are in /private/tmp/sarj-wiki-perf-round4-storage-baseline and are from edfc65884dba11ac401989c6d71e56fbe3c6da46.",
+                "scripts": [
+                  "/private/tmp/sarj-wiki-perf-round4-storage-save.py",
+                  "/private/tmp/sarj-wiki-perf-round4-storage-save-backlog.py",
+                  "/private/tmp/sarj-wiki-perf-round4-storage-save-locks.py"
+                ],
+                "artifacts": [
+                  "/private/tmp/sarj-wiki-perf-round4-storage-save.json",
+                  "/private/tmp/sarj-wiki-perf-round4-storage-save-backlog.json",
+                  "/private/tmp/sarj-wiki-perf-round4-storage-save-locks.json"
+                ]
+              }
+            }
+          ],
+          "changedPaths": [
+            "backend/app/auth/encryption.py",
+            "backend/app/cache/service.py",
+            "backend/app/extras/service.py",
+            "backend/app/sidebar/cache.py",
+            "backend/tests/test_cache_service.py",
+            "backend/tests/test_sidebar_cache.py",
+            "backend/tests/test_storage_read_projection_postgres.py"
+          ],
+          "validation": {
+            "focusedPytest": {
+              "passed": 167,
+              "seconds": 5.52,
+              "warning": "Existing Google genai _UnionGenericAlias deprecation warning.",
+              "modules": [
+                "tests/test_cache_protection.py",
+                "tests/test_cache_service.py",
+                "tests/test_sidebar_cache.py",
+                "tests/test_bootstrap.py",
+                "tests/test_membership_gating.py",
+                "tests/test_route_performance_postgres.py",
+                "tests/test_storage_performance_postgres.py",
+                "tests/test_storage_hot_paths_postgres.py",
+                "tests/test_storage_read_projection_postgres.py",
+                "tests/test_provider_performance_postgres.py::test_cold_sidebar_load_releases_read_connection_before_saving_tree"
+              ]
+            },
+            "finalDeltaPytest": {
+              "passed": 51,
+              "seconds": 1.1,
+              "modules": [
+                "tests/test_cache_service.py",
+                "tests/test_sidebar_cache.py",
+                "tests/test_storage_read_projection_postgres.py"
+              ],
+              "reason": "Final exhaustive-match/type/SQL-compiler test refinements."
+            },
+            "ruff": "Passed on seven owned files.",
+            "formatting": "Seven owned files already formatted.",
+            "mypy": "Seven owned source/test files pass; cache-dir=/dev/null.",
+            "basedpyright": "Seven owned files pass; zero errors,warnings,notes.",
+            "ty": "Seven owned files pass.",
+            "scopedNativeStandards": "Passed on seven files with no blocking diagnostics. Existing SARJ468 protector default warning remains unsuppressed. No baseline/suppression changes.",
+            "diffCheck": "Passed.",
+            "wholeRepositoryGates": "Not run by this agent; root owns integration/full qualification."
+          },
+          "limits": [
+            "Private disposable PostgreSQL18.6 only; no production database or real Google credentials.",
+            "No claim that uncontrolled production doc-icons~3147ms/bootstrap~1155ms observations are causal before/after evidence.",
+            "No Git writes, full gates/build/audit/deploy, new suppressions, baseline changes, managed configuration changes, dependency changes, or original workspace edits.",
+            "No edits to protected executor.py,google_gateway.py,test_document_transform.py,test_document_transform_tab_metadata.py.",
+            "Root owns ledger/docs,integration,final qualification,Git,release and original-workspace synchronization."
+          ],
+          "reproduction": {
+            "context": "Run in /private/tmp/sarj-wiki-performance-20261010/backend with PYTHONPATH=. and WIKI_POLISH29_QA_DATABASE_URL set to the private disposable loopback PostgreSQL18.6 database wiki_polish29_qa_round4_storage. Use .venv/bin/python; scripts use tests.conftest to supply random offline keys. Before source copies are in /private/tmp/sarj-wiki-perf-round4-storage-baseline and are from edfc65884dba11ac401989c6d71e56fbe3c6da46.",
+            "baselineCopies": "/private/tmp/sarj-wiki-perf-round4-storage-baseline",
+            "reportScript": "/private/tmp/sarj-wiki-perf-round4-storage-report.py"
+          },
+          "ownership": "Released to root after this report; no further tracked edits planned.",
+          "report": "/private/tmp/sarj-wiki-perf-round4-storage.json"
+        },
+        {
+          "scope": "backend provider / routes round4",
+          "report": "/private/tmp/sarj-wiki-perf-round4-provider.json",
+          "checkout": "/private/tmp/sarj-wiki-performance-20261010",
+          "branch": "codex/wiki-performance-round4-20261011",
+          "baselineRevision": "edfc65884dba11ac401989c6d71e56fbe3c6da46",
+          "recordedAt": "2026-10-11",
+          "passCount": 6,
+          "acceptedCount": 4,
+          "rejectedCount": 2,
+          "priorPassesRecounted": 0,
+          "administrativeOrGateRerunsCounted": 0,
+          "counting": "Six distinct new candidates beyond the prior 229, each supported by a controlled measurement or causal provider regression. Prior chunk concurrency, scope projections, response-ID binding, template filtering, and ancestry work are not recounted. Routine checks, fixture repair, formatting and integration count zero.",
+          "changedPaths": [
+            "backend/app/drive/service.py",
+            "backend/app/drive/snippets.py",
+            "backend/app/drive/google_schemas.py",
+            "backend/app/files/service.py",
+            "backend/tests/test_drive_modules.py",
+            "backend/tests/test_provider_round4.py"
+          ],
+          "measurementArtifacts": [
+            "/private/tmp/sarj-wiki-perf-round4-provider-core-measurements.json",
+            "/private/tmp/sarj-wiki-perf-round4-provider-paths-measurements.json"
+          ],
+          "measurementScripts": [
+            "/private/tmp/sarj-wiki-perf-round4-provider-core.py",
+            "/private/tmp/sarj-wiki-perf-round4-provider-paths.py"
+          ],
+          "originalWorkspaceTouched": false,
+          "protectedDocumentTransformFilesTouched": false,
+          "managedConfigOrBaselineTouched": false,
+          "newSuppressions": 0,
+          "gitMetadataTouched": false,
+          "passes": [
+            {
+              "id": "provider-round4-01",
+              "candidate": "Correct the Google allDrives completeness field to prevent invalid-projection failures and unnecessary per-drive searches",
+              "outcome": "accepted",
+              "evidence": "The deployed field projection and response check used incompleteResults. The bundled official Drive v3 FileList schema and current Google reference expose incompleteSearch. Google documents invalid field projections as HTTP 400. Correcting both request and response handling preserves the intended complete-search fast path and the incomplete-search fallback.",
+              "method": "Exact baseline module loaded with git show; current module and baseline execute actual Google discovery-generated HttpRequests against an offline transport that validates the selected top-level field against the official bundled FileList schema. Public root GET and drives.list discovery establish personal ownership context in both versions.",
+              "measurements": [
+                {
+                  "sharedDrives": 8,
+                  "incompleteSearch": false,
+                  "before": {
+                    "searchRequests": 10,
+                    "invalidField400s": 1,
+                    "allDrivesRequests": 1,
+                    "sharedDriveRequests": 8,
+                    "ownedPersonalRequests": 1,
+                    "inventoryReads": 2,
+                    "returnedIds": [
+                      "document-0",
+                      "document-1",
+                      "document-2",
+                      "document-3",
+                      "document-4",
+                      "document-5",
+                      "document-6",
+                      "document-7",
+                      "owned"
+                    ],
+                    "outsidePersonalResultReturned": false
+                  },
+                  "after": {
+                    "searchRequests": 2,
+                    "invalidField400s": 0,
+                    "allDrivesRequests": 1,
+                    "sharedDriveRequests": 0,
+                    "ownedPersonalRequests": 1,
+                    "inventoryReads": 2,
+                    "returnedIds": [
+                      "document-0",
+                      "document-1",
+                      "document-2",
+                      "document-3",
+                      "document-4",
+                      "document-5",
+                      "document-6",
+                      "document-7",
+                      "owned"
+                    ],
+                    "outsidePersonalResultReturned": false
+                  },
+                  "method": "real Google discovery-generated HttpRequests; offline transport checks FileList projection against bundled official discovery schema"
+                },
+                {
+                  "sharedDrives": 8,
+                  "incompleteSearch": true,
+                  "before": {
+                    "searchRequests": 10,
+                    "invalidField400s": 1,
+                    "allDrivesRequests": 1,
+                    "sharedDriveRequests": 8,
+                    "ownedPersonalRequests": 1,
+                    "inventoryReads": 2,
+                    "returnedIds": [
+                      "document-0",
+                      "document-1",
+                      "document-2",
+                      "document-3",
+                      "document-4",
+                      "document-5",
+                      "document-6",
+                      "document-7",
+                      "owned"
+                    ],
+                    "outsidePersonalResultReturned": false
+                  },
+                  "after": {
+                    "searchRequests": 10,
+                    "invalidField400s": 0,
+                    "allDrivesRequests": 1,
+                    "sharedDriveRequests": 8,
+                    "ownedPersonalRequests": 1,
+                    "inventoryReads": 2,
+                    "returnedIds": [
+                      "document-0",
+                      "document-1",
+                      "document-2",
+                      "document-3",
+                      "document-4",
+                      "document-5",
+                      "document-6",
+                      "document-7",
+                      "owned"
+                    ],
+                    "outsidePersonalResultReturned": false
+                  },
+                  "method": "real Google discovery-generated HttpRequests; offline transport checks FileList projection against bundled official discovery schema"
+                }
+              ],
+              "changedPaths": [
+                "backend/app/drive/service.py",
+                "backend/tests/test_drive_modules.py",
+                "backend/tests/test_provider_round4.py"
+              ],
+              "validation": [
+                "Complete eight-shared-drive inventory: search requests 10 to 2, invalid field 400s 1 to 0, returned IDs equal, explicit owned-personal request retained, foreign personal result excluded.",
+                "incompleteSearch=true: all eight shared per-drive searches and one owned-personal search still run with the existing per-drive limit; total ten searches and equal results remain.",
+                "A subsequent personal visibility change is freshly requested and removes the owned result.",
+                "Updated existing search tests use the documented provider field."
+              ],
+              "limits": [
+                "Request counts are controlled causal evidence, not production WAN timing. The earlier ~2539 ms sampled search is uncontrolled and cannot quantify this fix.",
+                "A truly incomplete allDrives response still pays the necessary fallback provider cost."
+              ],
+              "sources": [
+                "https://developers.google.com/workspace/drive/api/reference/rest/v3/files/list",
+                "https://developers.google.com/workspace/drive/api/guides/fields-parameter"
+              ],
+              "commands": [
+                "UV_CACHE_DIR=/tmp/sarj-docs-uv-cache PYTHONPATH=. /Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin/uv run --frozen python /private/tmp/sarj-wiki-perf-round4-provider-paths.py"
+              ]
+            },
+            {
+              "id": "provider-round4-02",
+              "candidate": "Build one Google files resource per synchronous metadata/probe worker instead of rebuilding it for each GET subrequest",
+              "outcome": "accepted",
+              "evidence": "googleapiclient rebuilds its dynamic files Resource every time client.files() is invoked. Bulk metadata and shortcut target probe loops now reuse that resource locally while constructing a new GET for every requested ID. No HTTP request, user authority or response is cached.",
+              "method": "Alternating 20-sample measurement of real googleapiclient discovery-generated request construction. Request URI, method, body and headers are compared exactly. Focused runtime fixtures additionally exercise the changed metadata reader with six, 100 and 205 IDs.",
+              "measurements": [
+                {
+                  "subrequests": 6,
+                  "discoveryResourceBuilds": {
+                    "before": 6,
+                    "candidate": 1
+                  },
+                  "medianMs": {
+                    "before": 4.3808955,
+                    "candidate": 0.723583
+                  },
+                  "samplesPerVersion": 20,
+                  "requestUriMethodBodyHeadersEqual": true,
+                  "httpCalls": 0,
+                  "method": "actual googleapiclient discovery-generated request construction"
+                },
+                {
+                  "subrequests": 100,
+                  "discoveryResourceBuilds": {
+                    "before": 100,
+                    "candidate": 1
+                  },
+                  "medianMs": {
+                    "before": 73.524354,
+                    "candidate": 1.597083
+                  },
+                  "samplesPerVersion": 20,
+                  "requestUriMethodBodyHeadersEqual": true,
+                  "httpCalls": 0,
+                  "method": "actual googleapiclient discovery-generated request construction"
+                }
+              ],
+              "changedPaths": [
+                "backend/app/files/service.py",
+                "backend/app/drive/service.py",
+                "backend/tests/test_provider_round4.py"
+              ],
+              "validation": [
+                "For six, 100 and 205 records, one worker builds one resource while issuing six, 100 and 205 fresh GET subrequests in the same batch partition and input order.",
+                "Existing thread-affine client, four-slot admission, cancellation, refresh ownership, denial/404, malformed response binding and upstream failure regressions pass.",
+                "Existing shortcut grouping, fresh probe cache scoping and target classification cases pass."
+              ],
+              "limits": [
+                "This measures local request construction CPU: six subrequests 4.380896 to 0.723583 ms; 100 subrequests 73.524354 to 1.597083 ms. There are no network calls in the CPU fixture.",
+                "The six-icon production samples near 3.1 seconds include provider/auth/cache work and are not equivalent to this construction measurement.",
+                "Per-worker Google HTTP clients, subrequest count, retry budget, projections and final membership checks remain unchanged."
+              ],
+              "commands": [
+                "UV_CACHE_DIR=/tmp/sarj-docs-uv-cache PYTHONPATH=. /Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin/uv run --frozen python /private/tmp/sarj-wiki-perf-round4-provider-core.py"
+              ]
+            },
+            {
+              "id": "provider-round4-03",
+              "candidate": "Skip snippet exports when every normalized query term is shorter than the existing four-character matching minimum",
+              "outcome": "accepted",
+              "evidence": "The existing prefix matcher cannot return any match for a term shorter than four normalized characters, yet short search queries still exported document text and lowercased it. A shared term predicate lets snippet reads return their established empty result before export; the extractor also checks terms before lowercasing document text. Unknown MIME still makes its existing fresh validated metadata read so the returned MIME contract is preserved.",
+              "method": "Exact baseline snippet/service modules compared against current service using controlled export counters and alternating ten-sample labeled 10 ms export-delay fixtures on 1.8 million text characters; all SnippetResult values are equal.",
+              "measurements": [
+                {
+                  "query": "a",
+                  "knownMime": true,
+                  "providerReads": {
+                    "before": {
+                      "metadataGets": 0,
+                      "textExports": 1
+                    },
+                    "after": {
+                      "metadataGets": 0,
+                      "textExports": 0
+                    }
+                  },
+                  "medianMs": {
+                    "before": 12.200521,
+                    "after": 0.0056454999999999995
+                  },
+                  "samplesPerVersion": 10,
+                  "simulatedExportDelayMs": 10,
+                  "textCharacters": 1800000,
+                  "snippetResultsEqual": true
+                },
+                {
+                  "query": "a",
+                  "knownMime": false,
+                  "providerReads": {
+                    "before": {
+                      "metadataGets": 1,
+                      "textExports": 1
+                    },
+                    "after": {
+                      "metadataGets": 1,
+                      "textExports": 0
+                    }
+                  },
+                  "medianMs": {
+                    "before": 12.976833,
+                    "after": 0.0505835
+                  },
+                  "samplesPerVersion": 10,
+                  "simulatedExportDelayMs": 10,
+                  "textCharacters": 1800000,
+                  "snippetResultsEqual": true
+                },
+                {
+                  "query": "abc",
+                  "knownMime": true,
+                  "providerReads": {
+                    "before": {
+                      "metadataGets": 0,
+                      "textExports": 1
+                    },
+                    "after": {
+                      "metadataGets": 0,
+                      "textExports": 0
+                    }
+                  },
+                  "medianMs": {
+                    "before": 12.717165999999999,
+                    "after": 0.004875
+                  },
+                  "samplesPerVersion": 10,
+                  "simulatedExportDelayMs": 10,
+                  "textCharacters": 1800000,
+                  "snippetResultsEqual": true
+                },
+                {
+                  "query": "abc",
+                  "knownMime": false,
+                  "providerReads": {
+                    "before": {
+                      "metadataGets": 1,
+                      "textExports": 1
+                    },
+                    "after": {
+                      "metadataGets": 1,
+                      "textExports": 0
+                    }
+                  },
+                  "medianMs": {
+                    "before": 12.9836875,
+                    "after": 0.060354
+                  },
+                  "samplesPerVersion": 10,
+                  "simulatedExportDelayMs": 10,
+                  "textCharacters": 1800000,
+                  "snippetResultsEqual": true
+                },
+                {
+                  "query": "the doc",
+                  "knownMime": true,
+                  "providerReads": {
+                    "before": {
+                      "metadataGets": 0,
+                      "textExports": 1
+                    },
+                    "after": {
+                      "metadataGets": 0,
+                      "textExports": 0
+                    }
+                  },
+                  "medianMs": {
+                    "before": 12.925708,
+                    "after": 0.004979
+                  },
+                  "samplesPerVersion": 10,
+                  "simulatedExportDelayMs": 10,
+                  "textCharacters": 1800000,
+                  "snippetResultsEqual": true
+                },
+                {
+                  "query": "the doc",
+                  "knownMime": false,
+                  "providerReads": {
+                    "before": {
+                      "metadataGets": 1,
+                      "textExports": 1
+                    },
+                    "after": {
+                      "metadataGets": 1,
+                      "textExports": 0
+                    }
+                  },
+                  "medianMs": {
+                    "before": 12.962104,
+                    "after": 0.06608349999999999
+                  },
+                  "samplesPerVersion": 10,
+                  "simulatedExportDelayMs": 10,
+                  "textCharacters": 1800000,
+                  "snippetResultsEqual": true
+                },
+                {
+                  "query": "document",
+                  "knownMime": true,
+                  "providerReads": {
+                    "before": {
+                      "metadataGets": 0,
+                      "textExports": 1
+                    },
+                    "after": {
+                      "metadataGets": 0,
+                      "textExports": 1
+                    }
+                  },
+                  "medianMs": {
+                    "before": 12.699104,
+                    "after": 12.944833
+                  },
+                  "samplesPerVersion": 10,
+                  "simulatedExportDelayMs": 10,
+                  "textCharacters": 1800000,
+                  "snippetResultsEqual": true
+                },
+                {
+                  "query": "document",
+                  "knownMime": false,
+                  "providerReads": {
+                    "before": {
+                      "metadataGets": 1,
+                      "textExports": 1
+                    },
+                    "after": {
+                      "metadataGets": 1,
+                      "textExports": 1
+                    }
+                  },
+                  "medianMs": {
+                    "before": 13.007458499999998,
+                    "after": 13.031187500000001
+                  },
+                  "samplesPerVersion": 10,
+                  "simulatedExportDelayMs": 10,
+                  "textCharacters": 1800000,
+                  "snippetResultsEqual": true
+                },
+                {
+                  "query": "a document",
+                  "knownMime": true,
+                  "providerReads": {
+                    "before": {
+                      "metadataGets": 0,
+                      "textExports": 1
+                    },
+                    "after": {
+                      "metadataGets": 0,
+                      "textExports": 1
+                    }
+                  },
+                  "medianMs": {
+                    "before": 12.92975,
+                    "after": 12.9455
+                  },
+                  "samplesPerVersion": 10,
+                  "simulatedExportDelayMs": 10,
+                  "textCharacters": 1800000,
+                  "snippetResultsEqual": true
+                },
+                {
+                  "query": "a document",
+                  "knownMime": false,
+                  "providerReads": {
+                    "before": {
+                      "metadataGets": 1,
+                      "textExports": 1
+                    },
+                    "after": {
+                      "metadataGets": 1,
+                      "textExports": 1
+                    }
+                  },
+                  "medianMs": {
+                    "before": 12.9128545,
+                    "after": 12.9758545
+                  },
+                  "samplesPerVersion": 10,
+                  "simulatedExportDelayMs": 10,
+                  "textCharacters": 1800000,
+                  "snippetResultsEqual": true
+                },
+                {
+                  "query": "\u0130\u0130",
+                  "knownMime": true,
+                  "providerReads": {
+                    "before": {
+                      "metadataGets": 0,
+                      "textExports": 1
+                    },
+                    "after": {
+                      "metadataGets": 0,
+                      "textExports": 1
+                    }
+                  },
+                  "medianMs": {
+                    "before": 12.7006875,
+                    "after": 12.923479
+                  },
+                  "samplesPerVersion": 10,
+                  "simulatedExportDelayMs": 10,
+                  "textCharacters": 1800000,
+                  "snippetResultsEqual": true
+                },
+                {
+                  "query": "\u0130\u0130",
+                  "knownMime": false,
+                  "providerReads": {
+                    "before": {
+                      "metadataGets": 1,
+                      "textExports": 1
+                    },
+                    "after": {
+                      "metadataGets": 1,
+                      "textExports": 1
+                    }
+                  },
+                  "medianMs": {
+                    "before": 11.8954585,
+                    "after": 13.004541499999998
+                  },
+                  "samplesPerVersion": 10,
+                  "simulatedExportDelayMs": 10,
+                  "textCharacters": 1800000,
+                  "snippetResultsEqual": true
+                }
+              ],
+              "changedPaths": [
+                "backend/app/drive/service.py",
+                "backend/app/drive/snippets.py",
+                "backend/tests/test_provider_round4.py"
+              ],
+              "validation": [
+                "Sixteen short-query/MIME cases preserve MIME, no snippet and no match term with zero exports; unknown MIME retains exactly one metadata GET.",
+                "Four-character exact matches, mixed short/long terms, plural-prefix fallback, long valid query text and Unicode lowercase expansion still export and match.",
+                "Existing longest-prefix/earliest-offset, context collapse and empty/no-match correctness tests pass."
+              ],
+              "limits": [
+                "The change benefits only queries without a matchable normalized term; matchable queries keep one export and show ordinary timing noise in the simulated fixture.",
+                "The ten-millisecond export delay is synthetic. Export work counts and result equivalence are causal; measured milliseconds are not production speed estimates.",
+                "The existing two-MiB export parsing cap, 2048-character endpoint limit and case/prefix semantics remain intact."
+              ],
+              "commands": [
+                "UV_CACHE_DIR=/tmp/sarj-docs-uv-cache PYTHONPATH=. /Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin/uv run --frozen python /private/tmp/sarj-wiki-perf-round4-provider-paths.py"
+              ]
+            },
+            {
+              "id": "provider-round4-04",
+              "candidate": "Reuse an immutable absent-capabilities model for validated Google file inventories",
+              "outcome": "accepted",
+              "evidence": "Search, template and tree projections omit capabilities. GoogleFile previously constructed a separate default GoogleFileCapabilities model for every row. The two-boolean capabilities model is now frozen, and an omitted field reuses one immutable empty instance. Explicit provider capabilities continue to validate into independent models. Public FileResponse values still contain copied booleans, while model_dump returns independent dictionaries.",
+              "method": "Alternating 20-sample baseline-versus-candidate Pydantic validation for 10,000 records with capabilities omitted and explicitly provided, with independent tracemalloc peak measurements and equal serialized outputs. Candidate is the production schema change; no model_construct or validation bypass is used.",
+              "measurements": {
+                "workloads": [
+                  {
+                    "files": 10000,
+                    "capabilitiesSupplied": false,
+                    "medianMs": {
+                      "before": 14.483917,
+                      "candidate": 10.096479
+                    },
+                    "peakAllocatedBytes": {
+                      "before": 18565616,
+                      "candidate": 13605672
+                    },
+                    "distinctCapabilitiesInstances": {
+                      "before": 10000,
+                      "candidate": 1
+                    },
+                    "samplesPerVersion": 20,
+                    "validatedOutputsEqual": true
+                  },
+                  {
+                    "files": 10000,
+                    "capabilitiesSupplied": true,
+                    "medianMs": {
+                      "before": 13.677020500000001,
+                      "candidate": 13.8438335
+                    },
+                    "peakAllocatedBytes": {
+                      "before": 18565552,
+                      "candidate": 18565552
+                    },
+                    "distinctCapabilitiesInstances": {
+                      "before": 10000,
+                      "candidate": 10000
+                    },
+                    "samplesPerVersion": 20,
+                    "validatedOutputsEqual": true
+                  }
+                ],
+                "directDefaultMutationRejected": true,
+                "serializedDictionaryMutationDoesNotAffectAnyModel": true
+              },
+              "changedPaths": [
+                "backend/app/drive/google_schemas.py",
+                "backend/tests/test_provider_round4.py"
+              ],
+              "validation": [
+                "Both capability fields reject direct runtime mutation of absent defaults.",
+                "Changing a serialized capabilities dictionary or mutable public FileResponse cannot affect either original or another file model.",
+                "Explicit canEdit=true remains true without changing omitted defaults; malformed explicit capabilities still raise ValidationError.",
+                "All provider/files/template/Smart Create tests and scoped static types pass."
+              ],
+              "limits": [
+                "The large omitted-field fixture improves 14.483917 to 10.096479 ms and peak allocation 18,565,616 to 13,605,672 bytes; the provided-field fixture is effectively unchanged in CPU and exactly unchanged in peak allocation.",
+                "This is validated-model bookkeeping and memory, not a provider request reduction or production latency claim.",
+                "Only the internal two-boolean capabilities schema is frozen; other file models and public responses retain their existing mutability."
+              ],
+              "commands": [
+                "UV_CACHE_DIR=/tmp/sarj-docs-uv-cache PYTHONPATH=. /Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin/uv run --frozen python /private/tmp/sarj-wiki-perf-round4-provider-core.py"
+              ]
+            },
+            {
+              "id": "provider-round4-05",
+              "candidate": "Replace full-document split/join whitespace collapse with one compiled regex substitution before bounded reorganization text extraction",
+              "outcome": "rejected",
+              "evidence": "The isolated regex prototype preserves collapsed output, including representative Unicode whitespace, but takes substantially more CPU and retains more peak allocation in a wordy two-MiB document. Existing split/join is retained.",
+              "method": "Alternating 20-sample split/join-versus-compiled-regex measurements for plain two-MiB text, wordy two-MiB text and Unicode whitespace; independent tracemalloc peaks; no production source change.",
+              "measurements": [
+                {
+                  "fixture": "plain-two-MiB",
+                  "textCharacters": 2097152,
+                  "collapsedOutputsEqual": true,
+                  "medianMs": {
+                    "before": 0.610125,
+                    "candidate": 11.1346455
+                  },
+                  "peakAllocatedBytes": {
+                    "before": 96,
+                    "candidate": 1126
+                  },
+                  "samplesPerVersion": 20
+                },
+                {
+                  "fixture": "wordy-two-MiB",
+                  "textCharacters": 2097152,
+                  "collapsedOutputsEqual": true,
+                  "medianMs": {
+                    "before": 4.788104000000001,
+                    "candidate": 22.5973755
+                  },
+                  "peakAllocatedBytes": {
+                    "before": 14113898,
+                    "candidate": 15987594
+                  },
+                  "samplesPerVersion": 20
+                },
+                {
+                  "fixture": "unicode-whitespace",
+                  "textCharacters": 11,
+                  "collapsedOutputsEqual": true,
+                  "medianMs": {
+                    "before": 0.000167,
+                    "candidate": 0.000417
+                  },
+                  "peakAllocatedBytes": {
+                    "before": 102,
+                    "candidate": 1158
+                  },
+                  "samplesPerVersion": 20
+                }
+              ],
+              "changedPaths": [],
+              "validation": [
+                "Collapsed outputs are exactly equal in all three fixtures.",
+                "Plain text 0.610125 to 11.134646 ms; wordy text 4.788104 to 22.597376 ms. Wordy peak allocation rises 14,113,898 to 15,987,594 bytes."
+              ],
+              "limits": [
+                "CPU/memory fixtures contain no provider I/O; they isolate the candidate collapse step.",
+                "This is a new collapse candidate, not a recount of prior snippet prefix scans or prior deferred preload conversion rejection."
+              ],
+              "commands": [
+                "UV_CACHE_DIR=/tmp/sarj-docs-uv-cache PYTHONPATH=. /Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin/uv run --frozen python /private/tmp/sarj-wiki-perf-round4-provider-core.py"
+              ]
+            },
+            {
+              "id": "provider-round4-06",
+              "candidate": "Use unscoped personal hits in the allDrives result to remove the separate owned-MyDrive search request",
+              "outcome": "rejected",
+              "evidence": "An isolated prototype avoids one request by assigning the personal drive to all hits without driveId. The actual discovery-backed provider fixture also includes a visible unowned file in another users folder. The prototype publishes that outside-MyDrive result; the current owner-filtered user-corpus query excludes it. The separate personal request is retained.",
+              "method": "Compare the corrected complete-search implementation after provider-round4-01 against a no-owned-request prototype using the same offline allDrives corpus and actual generated requests. Measure provider request count and returned result identities; causal authority regression, not timing.",
+              "measurements": {
+                "sharedDrives": 8,
+                "before": {
+                  "searchRequests": 2,
+                  "returnedIds": [
+                    "document-0",
+                    "document-1",
+                    "document-2",
+                    "document-3",
+                    "document-4",
+                    "document-5",
+                    "document-6",
+                    "document-7",
+                    "owned"
+                  ]
+                },
+                "candidate": {
+                  "searchRequests": 1,
+                  "returnedIds": [
+                    "document-0",
+                    "document-1",
+                    "document-2",
+                    "document-3",
+                    "document-4",
+                    "document-5",
+                    "document-6",
+                    "document-7",
+                    "owned",
+                    "shared-with-me"
+                  ]
+                },
+                "candidateProviderRequestsAvoided": 1,
+                "candidateAdmitsVisibleUnownedFileOutsideMyDrive": true,
+                "outcome": "rejected: the separate owner-filtered user-corpus request is the authority boundary for personal results"
+              },
+              "changedPaths": [],
+              "validation": [
+                "Current complete path makes two searches and returns nine permitted IDs.",
+                "Prototype makes one search but returns ten IDs, including shared-with-me under another users folder.",
+                "Current complete/incomplete search tests explicitly retain the owner predicate, personal root and per-drive limits."
+              ],
+              "limits": [
+                "The candidate saves one provider request but weakens the established personal scope. No source or tests are changed to relax that boundary.",
+                "The comparator intentionally uses the accepted projection correction from this tranche so the failure is not obscured by the old invalid-field fallback.",
+                "This is a distinct measured rejection of personal-query elimination; prior HTML membership recheck and provider snapshot rejections are not recounted."
+              ],
+              "commands": [
+                "UV_CACHE_DIR=/tmp/sarj-docs-uv-cache PYTHONPATH=. /Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin/uv run --frozen python /private/tmp/sarj-wiki-perf-round4-provider-paths.py"
+              ]
+            }
+          ],
+          "validation": {
+            "focusedTests": {
+              "status": "passed",
+              "passed": 266,
+              "skipped": 0,
+              "includesRealPostgres": true,
+              "database": "wiki_polish29_qa_round4_provider",
+              "log": "/private/tmp/sarj-wiki-perf-round4-provider-tests.log",
+              "command": "UV_CACHE_DIR=/tmp/sarj-docs-uv-cache WIKI_POLISH29_QA_DATABASE_URL=postgresql+asyncpg://postgres:wiki-perf-local-only@127.0.0.1:15488/wiki_polish29_qa_round4_provider /Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin/uv run --frozen pytest tests/test_provider_round4.py tests/test_provider_round3.py tests/test_provider_hot_paths.py tests/test_provider_performance_postgres.py tests/test_drive_modules.py tests/test_files_service.py tests/test_templates.py tests/test_aliases.py tests/test_membership_gating.py tests/test_smart_create.py tests/test_smart_create_executor.py tests/test_smart_create_router_tasks.py"
+            },
+            "mypy": {
+              "status": "passed",
+              "log": "/private/tmp/sarj-wiki-perf-round4-provider-mypy.log",
+              "command": "UV_CACHE_DIR=/tmp/sarj-docs-uv-cache MYPY_CACHE_DIR=/dev/null /Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin/uv run --frozen mypy app/drive/service.py app/drive/snippets.py app/drive/google_schemas.py app/files/service.py tests/test_provider_round4.py"
+            },
+            "basedpyright": {
+              "status": "passed",
+              "log": "/private/tmp/sarj-wiki-perf-round4-provider-pyright.log",
+              "command": "UV_CACHE_DIR=/tmp/sarj-docs-uv-cache /Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin/uv run --frozen basedpyright app/drive/service.py app/drive/snippets.py app/drive/google_schemas.py app/files/service.py tests/test_provider_round4.py"
+            },
+            "ty": {
+              "status": "passed",
+              "log": "/private/tmp/sarj-wiki-perf-round4-provider-ty.log",
+              "command": "UV_CACHE_DIR=/tmp/sarj-docs-uv-cache /Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin/uv run --frozen ty check app/drive/service.py app/drive/snippets.py app/drive/google_schemas.py app/files/service.py tests/test_provider_round4.py"
+            },
+            "ruff": {
+              "status": "passed",
+              "log": "/private/tmp/sarj-wiki-perf-round4-provider-ruff.log",
+              "command": "UV_CACHE_DIR=/tmp/sarj-docs-uv-cache /Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin/uv run --frozen ruff check app/drive/service.py app/drive/snippets.py app/drive/google_schemas.py app/files/service.py tests/test_provider_round4.py tests/test_drive_modules.py"
+            },
+            "format": {
+              "status": "passed",
+              "log": "/private/tmp/sarj-wiki-perf-round4-provider-format.log",
+              "command": "UV_CACHE_DIR=/tmp/sarj-docs-uv-cache /Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin/uv run --frozen ruff format --check app/drive/service.py app/drive/snippets.py app/drive/google_schemas.py app/files/service.py tests/test_provider_round4.py tests/test_drive_modules.py"
+            },
+            "gitDiffCheck": {
+              "status": "passed",
+              "command": "git diff --check -- backend/app/drive/service.py backend/app/drive/snippets.py backend/app/drive/google_schemas.py backend/app/files/service.py backend/tests/test_drive_modules.py",
+              "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010"
+            },
+            "resolvedConcurrentDependency": "The first shared-checkout PostgreSQL run exposed storage-owned sidebar/cache.py transaction_epoch bigint >> bigint SQL. Storage owner corrected the shift operand to SQL Integer; the final provider suite then passes all 266 tests. No provider-owned edit or additional pass is attributed to that integration dependency.",
+            "libraryWarning": "One existing google.genai.types Python 3.17 deprecation warning; no new owned-source diagnostics.",
+            "fullGates": "Root-owned integration and normal gates; this worker ran no full suite, build, audit or deploy."
+          },
+          "reproduce": {
+            "workingDirectory": "/private/tmp/sarj-wiki-performance-20261010/backend",
+            "coreMeasurementCommand": "UV_CACHE_DIR=/tmp/sarj-docs-uv-cache PYTHONPATH=. /Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin/uv run --frozen python /private/tmp/sarj-wiki-perf-round4-provider-core.py",
+            "pathsMeasurementCommand": "UV_CACHE_DIR=/tmp/sarj-docs-uv-cache PYTHONPATH=. /Users/nasrmaswood/.local/share/mise/installs/uv/0.12.24/uv-aarch64-apple-darwin/uv run --frozen python /private/tmp/sarj-wiki-perf-round4-provider-paths.py",
+            "requires": "Existing frozen backend uv environment and private loopback PostgreSQL clone for the PostgreSQL tests. Benchmark HTTP transport is offline; no live Google or production database calls."
+          },
+          "sharedLimits": [
+            "Fresh user identity, user/workspace scope, provider refresh/CAS/rotation, admission and cancellation semantics, per-worker HTTP clients and fresh permission checks remain unchanged.",
+            "The production doc-icons/files/search latency samples are uncontrolled observations and cannot be converted into causal gains from these fixtures.",
+            "The resource and schema benchmarks measure local CPU/allocation. The snippet milliseconds include explicitly simulated provider delay. Search and personal-query evidence measure actual generated request counts and result correctness."
+          ],
+          "ownershipReleased": true
+        },
+        {
+          "scope": "frontend loading, search, document, quick links and query lifecycle; six new candidates beyond the prior 229",
+          "report": "/private/tmp/sarj-wiki-perf-round4-loading.json",
+          "date": "2026-10-11",
+          "baseRevision": "edfc65884dba11ac401989c6d71e56fbe3c6da46",
+          "branch": "codex/wiki-performance-round4-20261011",
+          "repository": "/private/tmp/sarj-wiki-performance-20261010",
+          "passCount": 6,
+          "acceptedCount": 5,
+          "rejectedCount": 1,
+          "priorPassesRecounted": 0,
+          "administrativeOrGateRerunsCounted": 0,
+          "counting": "Exactly six distinct causes/prototypes. Tests, lint/type checking, formatting, measurements and administrative work count zero additional passes. Prior snippet debounce/MIME skips/search GC, quick-link storage race, storage-denied cleanup, verified identity recovery, lazy dialogs and iframe callback memoization were excluded.",
+          "passes": [
+            {
+              "id": "loading-round4-01",
+              "candidate": "Keep the main-search observer disabled while the current input has departed from its debounced term, preventing invalidation from rereading a discarded term.",
+              "outcome": "accepted",
+              "evidence": {
+                "discardedTermRequestsPerInvalidation": {
+                  "before": 1,
+                  "after": 0
+                },
+                "cases": [
+                  "live term too short",
+                  "live term exceeds 2048 characters",
+                  "live replacement term still inside 250 ms debounce"
+                ],
+                "validReplacement": "No replacement read before 250 ms; one new-term read once the debounce settles.",
+                "proofArtifacts": [
+                  "/private/tmp/sarj-wiki-round4-loading-before-search-refresh.json",
+                  "/private/tmp/sarj-wiki-round4-loading-focused-tests.json"
+                ]
+              },
+              "method": "New real QueryClient/useDriveSearch regression cases ran against the unchanged source before editing: all three saw a second roadmap GET after invalidation. The current source keeps the observer disabled until the live trimmed input equals the debounced query.",
+              "limits": [
+                "A shared in-flight read continues to serve foreground consumers; disabling admission does not forcibly abort that shared read.",
+                "No provider or production page-load latency claim."
+              ],
+              "changedPaths": [
+                "frontend/src/hooks/use-drive-search.ts",
+                "frontend/src/hooks/use-drive-search.test.tsx"
+              ],
+              "validation": [
+                "Main-search invalidation cases pass.",
+                "Existing snippet 250 ms debounce, unsupported MIME, query-length, ten-minute GC and shared foreground-consumer cases pass."
+              ],
+              "reproduction": "cd /private/tmp/sarj-wiki-performance-20261010/frontend && node_modules/.bin/vitest run src/hooks/use-drive-search.test.tsx -t \"discarded main-search\""
+            },
+            {
+              "id": "loading-round4-02",
+              "candidate": "Suspend the background session-refresh minute interval while the tab is hidden and resume with an immediate due check when it becomes visible.",
+              "outcome": "accepted",
+              "evidence": {
+                "hiddenActiveIntervals": {
+                  "before": 1,
+                  "after": 0
+                },
+                "afterReturn": "A visible session refreshes immediately after thirty hidden minutes; repeated visibility events retain exactly one minute interval.",
+                "hiddenWork": "The thirty-minute current-source fixture adds zero marker reads and zero visibility checks after the hidden transition.",
+                "proofArtifacts": [
+                  "/private/tmp/sarj-wiki-round4-loading-before-search-refresh.json",
+                  "/private/tmp/sarj-wiki-round4-loading-focused-tests.json"
+                ]
+              },
+              "method": "Controlled fake-clock lifecycle cases compare the baseline hidden interval with the current zero-timer state, advance thirty hidden minutes, and then deliver the actual visibilitychange event.",
+              "limits": [
+                "The existing visible minute check still notices marker removal by another owner and retries transient failures.",
+                "No refresh transport changes; hidden transitions leave already-started shared refreshes and their owned cleanup intact."
+              ],
+              "changedPaths": [
+                "frontend/src/components/session-refresh.tsx",
+                "frontend/src/components/session-refresh.test.tsx"
+              ],
+              "validation": [
+                "Immediate visible return and single-timer invariant pass.",
+                "Current-owner terminal denial, unmounted denial, replacement marker retention, StrictMode replay, denied storage cleanup, failed-marker retry, and twenty-minute storage-denied fallback cases all pass."
+              ],
+              "reproduction": "cd /private/tmp/sarj-wiki-performance-20261010/frontend && node_modules/.bin/vitest run src/components/session-refresh.test.tsx"
+            },
+            {
+              "id": "loading-round4-03",
+              "candidate": "Reuse case-normalized quick-link search fields across typing over one immutable authorized alias array.",
+              "outcome": "accepted",
+              "evidence": {
+                "actualComponentSixQueriesTwoRowsFieldFolds": {
+                  "before": 30,
+                  "after": 6
+                },
+                "fiftyRowTypingSequenceFieldFolds": {
+                  "before": 1100,
+                  "after": 150
+                },
+                "fiftyRowTypingSequenceCpu": {
+                  "before": {
+                    "medianMs": 0.029838340000000015,
+                    "p95Ms": 0.033005419999999785,
+                    "samples": 101,
+                    "iterationsPerSample": 100
+                  },
+                  "after": {
+                    "medianMs": 0.010404999999999519,
+                    "p95Ms": 0.011234579999999994,
+                    "samples": 101,
+                    "iterationsPerSample": 100
+                  }
+                },
+                "coldAllNameMatchCpu": {
+                  "before": {
+                    "medianMs": 0.002351249999999254,
+                    "p95Ms": 0.0053849999999999905,
+                    "samples": 101,
+                    "iterationsPerSample": 100
+                  },
+                  "after": {
+                    "medianMs": 0.004047080000000278,
+                    "p95Ms": 0.009193339999999352,
+                    "samples": 101,
+                    "iterationsPerSample": 100
+                  }
+                },
+                "deepOutputEquality": true,
+                "immutableReplacementEquality": true,
+                "proofArtifacts": [
+                  "/private/tmp/sarj-wiki-round4-loading-before-quicklinks.json",
+                  "/private/tmp/sarj-wiki-round4-loading-measurements.json",
+                  "/private/tmp/sarj-wiki-round4-loading-focused-tests.json"
+                ]
+              },
+              "method": "A WeakMap keyed by the authorized array holds three normalized fields per item. The real component regression counts folds across changing queries and verifies fresh array replacement. The standalone script extracts the exact baseline filter expression and current helper from source, compares complete outputs, then alternates 101 samples of 100 iterations at the real MAX_RECENT_ALIASES=50 bound.",
+              "limits": [
+                "Requires immutable array/items, as supplied by QuickLinksLoader state updates; replacing the array invalidates naturally. No in-place mutation support is claimed.",
+                "The cold all-name-match fixture regresses from median 0.00235125 to 0.00404708 ms because the first query folds all three fields. Kept for the measured typing workload: median 0.02983834 to 0.010405 ms per twelve-query batch, approximately 65.1% less local CPU.",
+                "Cache entries are weak, bounded by at most fifty authorized items per array, and contain no persistence or new authorization bypass.",
+                "CPU fixtures do not measure browser paint, DOM rendering or provider latency."
+              ],
+              "changedPaths": [
+                "frontend/src/components/quick-links/quick-links.tsx",
+                "frontend/src/components/quick-links/quick-links.test.tsx"
+              ],
+              "validation": [
+                "Page, alias and Drive matching, order, keyboard navigation, full-row links, global search focus, non-disclosing empty/error states and replacement-array behavior pass.",
+                "Source-derived output equality and cold/hot measurements completed."
+              ],
+              "reproduction": [
+                "node /private/tmp/sarj-wiki-round4-loading-measure.mjs",
+                "cd /private/tmp/sarj-wiki-performance-20261010/frontend && node_modules/.bin/vitest run src/components/quick-links/quick-links.test.tsx"
+              ]
+            },
+            {
+              "id": "loading-round4-04",
+              "candidate": "Admit the ReorganizeDocument move mutation observer only when a proposed destination needs confirmation.",
+              "outcome": "accepted",
+              "evidence": {
+                "unopenedActualMutationObserverSubscriptions": {
+                  "before": 1,
+                  "after": 0
+                },
+                "openedProposalObserverSubscriptions": 1,
+                "admittedMoveAfterNavigation": "One move action remains dispatched and reaches mutation success; unmounted confirmation produces no late toast.",
+                "retiredMove": "Late result reaches error after retirement, creates no old-file cache and does not disturb replacement-file data or publish a toast.",
+                "proofArtifacts": [
+                  "/private/tmp/sarj-wiki-round4-loading-before-reorganize.json",
+                  "/private/tmp/sarj-wiki-round4-loading-after-reorganize.json",
+                  "/private/tmp/sarj-wiki-round4-loading-focused-tests.json"
+                ]
+              },
+              "method": "Move the existing useMoveFile and move latch into a confirmation child mounted only for an accepted proposal. A real MutationObserver.prototype.subscribe probe compares the baseline unopened component against the current component; actual useSessionMutation/runAction tests retain action dispatch, session ownership and completion behavior.",
+              "limits": [
+                "No lazy module/import change is counted; this is unused observer admission.",
+                "Proposal authorization and mutation implementation remain the existing clients/hooks; already-admitted moves continue after ordinary view unmount."
+              ],
+              "changedPaths": [
+                "frontend/src/components/wiki-document/reorganize-document.tsx",
+                "frontend/src/components/wiki-document/reorganize-document-observers.test.tsx"
+              ],
+              "validation": [
+                "Zero unopened/pending-proposal subscriptions; one admitted confirmation subscription.",
+                "Existing same-tick proposal/move coalescing and stale proposal navigation tests pass.",
+                "Actual dispatched completion and retired-session UI/cache tests pass."
+              ],
+              "reproduction": "cd /private/tmp/sarj-wiki-performance-20261010/frontend && node_modules/.bin/vitest run src/components/wiki-document/reorganize-document.test.tsx src/components/wiki-document/reorganize-document-observers.test.tsx"
+            },
+            {
+              "id": "loading-round4-05",
+              "candidate": "Skip idle authorization of known HTML recents because the viewer host cannot mount inactive HTML frames.",
+              "outcome": "accepted",
+              "evidence": {
+                "htmlOnlyRecentIdleMetadataReads": {
+                  "before": 1,
+                  "after": 0
+                },
+                "mixedRecents": "The baseline authorizes the first HTML recent, while current source chooses the next eligible document and preserves exactly one authorization.",
+                "proofArtifacts": [
+                  "/private/tmp/sarj-wiki-round4-loading-before-warmup.json",
+                  "/private/tmp/sarj-wiki-round4-loading-focused-tests.json"
+                ]
+              },
+              "method": "Filter known HTML recents before applying the one-document idle warm limit. New real DocWarmup/QueryClient fake-clock fixtures were run against the baseline to establish its unused HTML authorization and wrong first warm target.",
+              "limits": [
+                "Recent MIME metadata is used solely to reduce speculation; foreground HTML navigation still uses the normal fresh file authorization and content/version path.",
+                "When no eligible recent remains, the existing firstWorkspaceDocs fallback can warm a supported workspace document.",
+                "The existing visibility, identity, policy and late-publication guards are unchanged."
+              ],
+              "changedPaths": [
+                "frontend/src/components/wiki-document/doc-warmup.tsx",
+                "frontend/src/components/wiki-document/doc-warmup-lifecycle.test.tsx"
+              ],
+              "validation": [
+                "HTML-only zero-read and next-eligible recent cases pass.",
+                "Existing success-only publication, navigation/return, shared authorization, unmount, hidden tab, absent user and replacement-user cases pass.",
+                "Existing warm-count policy tests pass."
+              ],
+              "reproduction": "cd /private/tmp/sarj-wiki-performance-20261010/frontend && node_modules/.bin/vitest run src/components/wiki-document/doc-warmup-lifecycle.test.tsx src/components/wiki-document/doc-warmup.test.ts"
+            },
+            {
+              "id": "loading-round4-06",
+              "candidate": "Start a speculative fresh /auth/me concurrently with server bootstrap to overlap identity fallback after Drive preload failure.",
+              "outcome": "rejected",
+              "evidence": {
+                "outcome": "rejected",
+                "successfulBootstrap": [
+                  {
+                    "medianMs": 22.01820799999996,
+                    "p95Ms": 22.198082999999997,
+                    "samples": 15,
+                    "requests": {
+                      "bootstrap": 1,
+                      "me": 0
+                    }
+                  },
+                  {
+                    "medianMs": 22.10674999999992,
+                    "p95Ms": 22.243832999999995,
+                    "samples": 15,
+                    "requests": {
+                      "bootstrap": 1,
+                      "me": 1
+                    }
+                  }
+                ],
+                "failedBootstrap": [
+                  {
+                    "medianMs": 43.405250000000024,
+                    "p95Ms": 44.726166999999805,
+                    "samples": 15,
+                    "requests": {
+                      "bootstrap": 1,
+                      "me": 1
+                    }
+                  },
+                  {
+                    "medianMs": 22.125625000000127,
+                    "p95Ms": 22.163542000000007,
+                    "samples": 15,
+                    "requests": {
+                      "bootstrap": 1,
+                      "me": 1
+                    }
+                  }
+                ],
+                "reason": "Successful bootstrap already authenticates the user. Parallel /auth/me doubles success-path request count without improving controlled success latency, and introduces an earlier independent identity result that the fallback otherwise verifies only after preload failure."
+              },
+              "method": "The standalone script transpiles and executes the actual loadSessionBootstrap function against an isolated concurrent-identity prototype. Fifteen alternating samples use controlled twenty-millisecond bootstrap/identity reads on both successful and failed preload paths, checking exact output equality and request counts.",
+              "limits": [
+                "Fallback median 43.40525 to 22.125625 ms demonstrates overlap only in this controlled failure fixture.",
+                "Successful bootstrap median 22.018208 to 22.10675 ms has no win while authorized request count doubles from one to two.",
+                "An identity read that starts before the preload fails is earlier than the existing failure-triggered verification; no identity-freshness shortcut is retained.",
+                "Synthetic waiting is not measured production latency."
+              ],
+              "changedPaths": [],
+              "validation": [
+                "All output-equality and request-count assertions passed.",
+                "Production load-session-bootstrap source remains unchanged."
+              ],
+              "reproduction": "node /private/tmp/sarj-wiki-round4-loading-measure.mjs"
+            }
+          ],
+          "changedPaths": [
+            "frontend/src/components/quick-links/quick-links.test.tsx",
+            "frontend/src/components/quick-links/quick-links.tsx",
+            "frontend/src/components/session-refresh.test.tsx",
+            "frontend/src/components/session-refresh.tsx",
+            "frontend/src/components/wiki-document/doc-warmup-lifecycle.test.tsx",
+            "frontend/src/components/wiki-document/doc-warmup.tsx",
+            "frontend/src/components/wiki-document/reorganize-document-observers.test.tsx",
+            "frontend/src/components/wiki-document/reorganize-document.tsx",
+            "frontend/src/hooks/use-drive-search.test.tsx",
+            "frontend/src/hooks/use-drive-search.ts"
+          ],
+          "measurementArtifacts": [
+            "/private/tmp/sarj-wiki-round4-loading-measurements.json",
+            "/private/tmp/sarj-wiki-round4-loading-measure.mjs",
+            "/private/tmp/sarj-wiki-loading-round4-baseline",
+            "/private/tmp/sarj-wiki-round4-loading-before-search-refresh.json",
+            "/private/tmp/sarj-wiki-round4-loading-before-warmup.json",
+            "/private/tmp/sarj-wiki-round4-loading-before-quicklinks.json",
+            "/private/tmp/sarj-wiki-round4-loading-before-reorganize.json"
+          ],
+          "validation": {
+            "scopedVitest": {
+              "passed": 55,
+              "failed": 0,
+              "files": 7,
+              "artifact": "/private/tmp/sarj-wiki-round4-loading-focused-tests.json"
+            },
+            "typescript": "node_modules/.bin/tsc --noEmit --incremental false: passed",
+            "scopedEslint": "Passed with zero errors and eleven pre-existing warnings from unchanged UI classes/fallback style. No new suppressions or baseline changes.",
+            "prettier": "All ten changed/new files formatted.",
+            "fullBuildSuiteAuditDeployment": "Owned by root and intentionally not run here."
+          },
+          "originalWorkspaceTouched": false,
+          "backendTouched": false,
+          "protectedDocumentTransformFilesTouched": false,
+          "gitMetadataTouched": false,
+          "managedConfigTouched": false,
+          "ownershipReleased": true,
+          "ownership": "Released to root after focused checks. No further tracked edits planned; root owns ledger, full integrated gates, build/bundle measurements, Git and deployment.",
+          "limitations": [
+            "Controlled before/after work counts and local CPU measurements do not establish real signed-in UI or production/provider latency. Root will perform the full integrated build and signed-in verification.",
+            "Quick-link normalization has an explicit cold-query tradeoff and depends on immutable authorized arrays; both are recorded in pass 03."
+          ]
+        },
+        {
+          "scope": "frontend-sidebar",
+          "report": "/private/tmp/sarj-wiki-perf-round4-sidebar.json",
+          "agent": "frontend_sidebar_round4",
+          "recordedAt": "2026-10-11T14:17:23.612871+00:00",
+          "repository": "/private/tmp/sarj-wiki-performance-20261010",
+          "branch": "codex/wiki-performance-round4-20261011",
+          "baselineRevision": "edfc65884dba11ac401989c6d71e56fbe3c6da46",
+          "passCount": 6,
+          "acceptedCount": 6,
+          "rejectedCount": 0,
+          "counting": {
+            "priorLedgerPassesRead": 229,
+            "priorPassesRecounted": 0,
+            "gateOrRepeatedTestRunsCounted": 0,
+            "basis": "Six new distinct causal candidates; extra lifecycle proofs and expanded-render audit qualify the candidates and count as zero additional passes."
+          },
+          "changedPaths": [
+            "frontend/src/components/wiki-sidebar/tree-node.tsx",
+            "frontend/src/components/wiki-sidebar/tree-node-observers.test.tsx",
+            "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+            "frontend/src/components/wiki-sidebar/move-file-dialog.test.tsx",
+            "frontend/src/components/wiki-sidebar/drag-data.ts",
+            "frontend/src/components/wiki-sidebar/drag-data.test.ts",
+            "frontend/src/components/wiki-sidebar/use-wiki-reorder.ts",
+            "frontend/src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx",
+            "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
+            "frontend/src/components/wiki-sidebar/drive-permission-derivation.test.ts",
+            "frontend/src/components/wiki-sidebar/folder-picker-dialog.tsx",
+            "frontend/src/components/wiki-sidebar/folder-picker-paths.test.tsx",
+            "frontend/src/hooks/use-wiki-mutations.ts"
+          ],
+          "originalWorkspaceTouched": false,
+          "protectedDocumentTransformFilesTouched": false,
+          "gitMetadataTouched": false,
+          "managedConfigOrBaselineChanges": false,
+          "passes": [
+            {
+              "id": "sidebar-round4-01",
+              "candidate": "Mount the folder-list query observer only with expanded folder contents, preserving the stable folder header and the same expanded contents component through complete/incomplete transitions.",
+              "outcome": "accepted",
+              "evidence": "The actual TreeNode with a real QueryClient retained 500 disabled lazy-list observers for 500 collapsed complete folders. The expanded contents boundary removes all 500 cold observers while keeping counts and direct expansion intact. This is new observer work, distinct from the prior collapsed-index deferral.",
+              "measurements": {
+                "collapsedFolderRows": 500,
+                "lazyListObservers": {
+                  "before": 500,
+                  "after": 0
+                },
+                "providerReadsWhileCompleteCollapsed": {
+                  "before": 0,
+                  "after": 0
+                },
+                "completeFolderCountRetained": 1,
+                "expandedStaticRenderAudit": {
+                  "node": "v26.7.0",
+                  "method": "Baseline and current actual TreeNode sources rendered to identical static markup, cached complete trees, 5 warmup pairs and 11 alternating samples of 20 renders; UI leaves and read/expansion hooks stubbed equally, no DOM/network timing claim",
+                  "cases": [
+                    {
+                      "size": 100,
+                      "iterations": 20,
+                      "samples": 11,
+                      "beforeReads": {
+                        "childrenBucketReads": 1,
+                        "fileBucketReads": 1,
+                        "comparisons": 528
+                      },
+                      "afterReads": {
+                        "childrenBucketReads": 2,
+                        "fileBucketReads": 2,
+                        "comparisons": 528
+                      },
+                      "beforeMedianMs": 9.328666000000112,
+                      "afterMedianMs": 9.128832999999986,
+                      "beforeSamplesMs": [
+                        9.17533400000002, 8.719832999999994, 9.704875000000015,
+                        9.645833000000039, 8.538832999999954, 66.188625,
+                        25.10566700000004, 9.357958000000053, 8.903958000000102,
+                        9.328666000000112, 8.558291999999938
+                      ],
+                      "afterSamplesMs": [
+                        9.470041999999921, 8.842209000000025, 8.899457999999981,
+                        9.057290999999964, 9.360708999999929, 9.418042000000014,
+                        9.697292000000061, 9.25304099999994, 9.128832999999986,
+                        8.707625000000007, 8.65099999999984
+                      ]
+                    },
+                    {
+                      "size": 1000,
+                      "iterations": 20,
+                      "samples": 11,
+                      "beforeReads": {
+                        "childrenBucketReads": 1,
+                        "fileBucketReads": 1,
+                        "comparisons": 8638
+                      },
+                      "afterReads": {
+                        "childrenBucketReads": 2,
+                        "fileBucketReads": 2,
+                        "comparisons": 8638
+                      },
+                      "beforeMedianMs": 82.7027079999998,
+                      "afterMedianMs": 82.7024580000002,
+                      "beforeSamplesMs": [
+                        82.64120799999955, 82.7027079999998, 83.28787499999999,
+                        81.7518329999998, 83.11608399999977, 152.6049170000001,
+                        82.14537500000006, 82.13187499999958, 81.96624999999995,
+                        83.53583299999991, 85.25033299999996
+                      ],
+                      "afterSamplesMs": [
+                        82.59712500000023, 82.92524999999978, 82.42050000000017,
+                        82.7024580000002, 82.27104199999985, 81.93608399999994,
+                        82.81208400000014, 82.91187499999978, 82.85270899999978,
+                        80.51279199999999, 83.574208
+                      ]
+                    }
+                  ]
+                }
+              },
+              "measurementMethod": "Native React/QueryClient TreeNode fixture, aggregate real query.getObserversCount(), run against the unchanged source before implementation and retained source after. A separate actual-source static-render audit compares complete expanded folders with 100/1000 file children, five warmup pairs and eleven alternating samples of 20 renders.",
+              "changedPaths": [
+                "frontend/src/components/wiki-sidebar/tree-node.tsx",
+                "frontend/src/components/wiki-sidebar/tree-node-observers.test.tsx"
+              ],
+              "validation": [
+                "Cold collapsed observer/count and complete expansion checks.",
+                "Last-reader collapse aborts the query signal and removes the observer; a separately retained foreground reader remains un-aborted.",
+                "Strict Mode replay/collapse/reopen retains the current shared request and cached children.",
+                "Actual useDriveTreeIndex/QueryClient fixture preserves cached lazy children, injected creation, optimistic move/rollback, complete refresh and replacement incomplete listing with no extra reads."
+              ],
+              "limitations": "Expanded folders retain their existing lazy-list hook, including the disabled complete-tree query. No expanded-observer reduction is claimed. Expanded complete derivation adds one constant-time children bucket and one files bucket lookup (1 to 2 each); collation is unchanged (528/8638 comparisons). Static render medians are essentially unchanged at 1000 children (82.702708 to 82.702458 ms per 20 renders); this audit stubs UI leaves and read/expansion hooks equally and is not a native DOM, compiler, provider or page-load benchmark."
+            },
+            {
+              "id": "sidebar-round4-02",
+              "candidate": "Use validated native DnD container/index metadata for same-container hover intent instead of parsing every sibling ID for each hover event.",
+              "outcome": "accepted",
+              "evidence": "The actual useWikiReorder hook read 1,000,000 sibling IDs during 100 same-container hover events over a 10,000-ID list. Native useSortable indices now determine hover direction through a finite nonnegative integer/container schema; the full current sibling parser remains at drop and is the fallback when native positions are unavailable.",
+              "measurements": {
+                "siblingIds": 10000,
+                "hoverEvents": 100,
+                "siblingIdReads": {
+                  "before": 1000000,
+                  "after": 0
+                },
+                "hoverIntent": "below",
+                "fullCommitParserRetained": true,
+                "updatedSiblingSequenceAtCommitUsed": true
+              },
+              "measurementMethod": "Actual QueryProvider/useWikiReorder/useDragOverStore fixture, with a Proxy counting numeric ID-list reads and unchanged native DnD metadata shape. The before fixture failed with exactly 1,000,000 reads; the retained after fixture records zero.",
+              "changedPaths": [
+                "frontend/src/components/wiki-sidebar/drag-data.ts",
+                "frontend/src/components/wiki-sidebar/drag-data.test.ts",
+                "frontend/src/components/wiki-sidebar/use-wiki-reorder.ts",
+                "frontend/src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx"
+              ],
+              "validation": [
+                "Hover schema does not read items and rejects negative, fractional, nonfinite, missing and string indices.",
+                "Full commit metadata still rejects nonstring siblings.",
+                "A native-position drag whose sibling sequence changes before drop commits the current validated sequence rather than stale hover indices.",
+                "Existing movement, permissions, destination ordering, retired-session and Strict Mode mutations pass."
+              ],
+              "limitations": "Savings apply to native same-container hover metadata that supplies valid indices. Missing/invalid positions retain the prior full-list fallback. Scope, shortcut, cross-drive and final order validation are unchanged; no browser frame-time percentage is claimed."
+            },
+            {
+              "id": "sidebar-round4-03",
+              "candidate": "Synchronously latch MoveFileDialog admission before asynchronous TanStack pending state can rerender.",
+              "outcome": "accepted",
+              "evidence": "Two actual Move button clicks in one React batch dispatched two moveFileAction calls through the real useMoveFile/useSessionMutation path. The per-dialog admission owner now admits exactly one until that move settles.",
+              "measurements": {
+                "sameBatchClicks": 2,
+                "serverActionCalls": {
+                  "before": 2,
+                  "after": 1
+                },
+                "retryAfter403ActionCallsTotal": 2,
+                "ordinaryUnmountedAdmittedCompletionPreserved": true,
+                "retiredSessionSuccessToasts": 0,
+                "retiredSessionErrorToasts": 0,
+                "retiredSessionCloseCallbacks": 0
+              },
+              "measurementMethod": "Actual Radix MoveFileDialog, Strict Mode, real QueryClient/useMoveFile/useSessionMutation/runAction, delayed synthetic server action. Only the server boundary is mocked; no provider writes or Google credentials.",
+              "changedPaths": [
+                "frontend/src/components/wiki-sidebar/move-file-dialog.tsx",
+                "frontend/src/components/wiki-sidebar/move-file-dialog.test.tsx"
+              ],
+              "validation": [
+                "Two same-batch clicks admit one pending server action.",
+                "Normal already-admitted work completes after ordinary unmount.",
+                "Current 403 keeps permission guidance and releases admission for successful retry.",
+                "Retiring the mutation session suppresses close/cache UI/toast publication after admitted work settles."
+              ],
+              "limitations": "This is a duplicate-admission reduction for one mounted dialog, not a server idempotency or network-latency change. Backend permission checks and admitted mutation completion remain unchanged."
+            },
+            {
+              "id": "sidebar-round4-04",
+              "candidate": "Derive paginated Drive access lists without flattening, tuple mapping and separate general/people filters.",
+              "outcome": "accepted",
+              "evidence": "Direct page/map insertion retains last-value/first-position deduplication. One classification pass reads each surviving principal type once, then uses the unchanged role/name comparator. Actual baseline declarations and retained helper have exact output equality, including duplicates.",
+              "measurements": {
+                "node": "v26.7.0",
+                "method": "Actual baseline component declarations and current helper transpiled without UI imports; five warmup pairs and eleven alternating samples per size; no provider/network/render work",
+                "principalTypeReads1000": {
+                  "before": 3894,
+                  "after": 1000
+                },
+                "equalOutput": true,
+                "equalDuplicateOutput": true,
+                "cases": [
+                  {
+                    "size": 100,
+                    "iterations": 200,
+                    "samples": 11,
+                    "beforeMedianMs": 5.937999999999988,
+                    "afterMedianMs": 4.7631669999999815,
+                    "beforeSamplesMs": [
+                      5.500541999999996, 5.943250000000006, 5.928082999999987,
+                      5.5625, 5.5699579999999855, 6.188125000000014,
+                      5.937999999999988, 6.129958000000045, 5.941874999999982,
+                      5.892750000000035, 6.086583999999959
+                    ],
+                    "afterSamplesMs": [
+                      4.689666999999986, 5.045540999999986, 4.773833000000025,
+                      4.5245000000000175, 4.7631669999999815, 4.896582999999993,
+                      4.493916000000013, 4.533957999999984, 4.928665999999964,
+                      5.018750000000011, 4.560292000000004
+                    ]
+                  },
+                  {
+                    "size": 1000,
+                    "iterations": 200,
+                    "samples": 11,
+                    "beforeMedianMs": 97.03054199999997,
+                    "afterMedianMs": 85.10224999999991,
+                    "beforeSamplesMs": [
+                      98.14383399999997, 96.22500000000014, 96.46800000000007,
+                      98.40429099999983, 97.0032920000001, 98.31462499999998,
+                      97.51820799999996, 96.68437500000027, 96.4665,
+                      97.15516700000035, 97.03054199999997
+                    ],
+                    "afterSamplesMs": [
+                      83.35279200000014, 87.95912500000009, 89.89433299999996,
+                      84.17220799999996, 85.10224999999991, 85.28033300000016,
+                      83.64458299999978, 83.65650000000005, 86.23245799999995,
+                      84.50304099999994, 85.34179200000017
+                    ]
+                  }
+                ]
+              },
+              "measurementMethod": "Actual baseline DriveAccessContent declarations and current derivePermissions helper transpiled without UI imports under Node 26.7.0. Ten 100-entry pages form the 1000-record mixed user/domain fixture. Eleven alternating samples of 200 derivations after five warmup pairs at 100 and 1000 entries; a getter supplies exact principal-type read counts.",
+              "changedPaths": [
+                "frontend/src/components/wiki-sidebar/drive-access-sheet.tsx",
+                "frontend/src/components/wiki-sidebar/drive-permission-derivation.test.ts"
+              ],
+              "validation": [
+                "Latest duplicate value, stable broad-access order, unchanged role/name ordering, unknown role, empty pages and replacement page values.",
+                "Existing access sheet presentation and first-open permission query checks pass."
+              ],
+              "limitations": "The 3894 to 1000 type-read reduction uses a mixed user/domain fixture; the all-user test reads 1000 fields after. The 200-derivation aggregate medians improve 5.938 to 4.763167 ms at 100 records and 97.030542 to 85.102250 ms at 1000 records. These isolate CPU/array work, not Google permission latency or UI rendering. Fresh permission query behavior is unchanged."
+            },
+            {
+              "id": "sidebar-round4-05",
+              "candidate": "Avoid copying and publishing the sort-order cache when moving an ID that has no rank.",
+              "outcome": "accepted",
+              "evidence": "The actual baseline useMoveFile onMutate filtered a 10,000-rank array and called setQueryData even for an unranked ID; TanStack structural sharing retained the same final data reference but still published a success update. The miss path now returns the original context without allocation or cache publication.",
+              "measurements": {
+                "method": "Actual baseline/current useMoveFile and useSessionMutation, real fresh QueryClients, 10,000 rank entries, delayed synthetic action; cache setter, filter and success notification probes",
+                "records": [
+                  {
+                    "version": "before",
+                    "entries": 10000,
+                    "arrayFilterCalls": 1,
+                    "cacheWrites": 1,
+                    "successNotifications": 1,
+                    "sameQueryData": true
+                  },
+                  {
+                    "version": "after",
+                    "entries": 10000,
+                    "arrayFilterCalls": 0,
+                    "cacheWrites": 0,
+                    "successNotifications": 0,
+                    "sameQueryData": true
+                  }
+                ]
+              },
+              "measurementMethod": "Actual baseline/current useMoveFile and shared useSessionMutation in separate fresh QueryClients, a delayed synthetic move action and 10,000 rank entries. Spies count array filtering and the cache setter; the real QueryCache subscription counts success updates.",
+              "changedPaths": [
+                "frontend/src/hooks/use-wiki-mutations.ts",
+                "frontend/src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx"
+              ],
+              "validation": [
+                "Zero filtering, setQueryData calls and success notifications on an unranked miss; existing reference retained.",
+                "Matching duplicate ranks all removed in original unaffected order.",
+                "Current 403 restores prior ranks; existing move rollback and retired-session mutations pass."
+              ],
+              "limitations": "The miss path still scans to establish absence. The already-shared query data reference is unchanged before and after; no React rerender reduction is inferred from the cache notification count. Provider move/action count and ordinary onSuccess invalidation are unchanged."
+            },
+            {
+              "id": "sidebar-round4-06",
+              "candidate": "Build destination folder-path arrays only when a row expands or is selected.",
+              "outcome": "accepted",
+              "evidence": "The actual open FolderPickerDialog with an expanded Drive and 1000 collapsed folder rows read each folder name three times: accessibility label, visible label and an unused eager path. Deferring the path expression removes the third read and its per-row path array.",
+              "measurements": {
+                "openDialogCollapsedFolderRows": 1000,
+                "folderNameReads": {
+                  "before": 3000,
+                  "after": 2000
+                },
+                "unusedPathExpressionsEvaluated": {
+                  "before": 1000,
+                  "after": 0
+                },
+                "closedDialogNameReadsAfter": 0,
+                "rootAndNestedDestinationOutputsUnchanged": true
+              },
+              "measurementMethod": "Actual native Radix dialog and real cached Drive/tree TanStack hooks. Getter-backed names count row derivation reads in the unchanged source before implementation and retained source after. The 1000 eliminated array constructions follow from eliminating the measured once-per-row path expression; this is not a heap allocation profiler.",
+              "changedPaths": [
+                "frontend/src/components/wiki-sidebar/folder-picker-dialog.tsx",
+                "frontend/src/components/wiki-sidebar/folder-picker-paths.test.tsx"
+              ],
+              "validation": [
+                "1000 visible collapsed destination rows use 2000 name reads and selecting the final row supplies its complete path.",
+                "Root, three-level nested and collapse-then-select destinations preserve exact folderPath output.",
+                "Actual closed dialog mounts no destination content and performs zero path/name work."
+              ],
+              "limitations": "This applies to unused paths on mounted open-dialog rows. Closed-dialog query activity is unchanged and the prior rejected closed-query gating candidate is not recounted. Expanded branches and explicit selection still allocate their required path arrays."
+            }
+          ],
+          "validation": {
+            "scopedVitest": {
+              "command": "npx vitest run src/components/wiki-sidebar/tree-node-observers.test.tsx src/components/wiki-sidebar/move-file-dialog.test.tsx src/components/wiki-sidebar/drag-data.test.ts src/components/wiki-sidebar/use-wiki-reorder-session.test.tsx src/components/wiki-sidebar/drive-permission-derivation.test.ts src/components/wiki-sidebar/folder-picker-paths.test.tsx src/components/wiki-sidebar/deferred-sidebar-content.test.tsx src/components/wiki-sidebar/use-drive-tree-index.test.tsx src/components/wiki-sidebar/sidebar-subscriptions.test.tsx src/lib/wiki-tree.test.ts src/lib/wiki-cache.test.ts src/lib/build-destination-sort-orders.test.ts src/hooks/use-wiki-icon-mutations.test.tsx --no-file-parallelism",
+              "files": 13,
+              "passedInGroup": 112,
+              "addedProofsAfterGroup": [
+                "Current sibling sequence at native-position commit: final two-file mutation gate passes 26 tests.",
+                "Closed picker topology: final picker gate passes 3 tests."
+              ],
+              "currentUniqueTestsQualified": 114,
+              "testRerunsCountAsPasses": false
+            },
+            "typescript": {
+              "command": "npx tsc --noEmit --incremental false",
+              "exitCode": 0
+            },
+            "eslint": {
+              "files": 13,
+              "exitCode": 0,
+              "errors": 0,
+              "existingWarnings": 90,
+              "artifact": "/private/tmp/sarj-wiki-round4-sidebar-eslint.json",
+              "finalAddedTestChecks": [
+                "/private/tmp/sarj-wiki-round4-sidebar-last-eslint.json",
+                "/private/tmp/sarj-wiki-round4-sidebar-path-eslint.json"
+              ],
+              "baselineGrowth": 0,
+              "newSuppressions": 0
+            },
+            "prettier": {
+              "files": 13,
+              "exitCode": 0,
+              "latestAddedTestsFormatted": true
+            },
+            "diffCheck": {
+              "command": "git diff --check -- frontend/src/components/wiki-sidebar frontend/src/hooks/use-wiki-mutations.ts",
+              "exitCode": 0
+            },
+            "fullBuildOrGlobalGatesRun": false,
+            "productionWrites": false,
+            "rejectedPrototypesLeft": false,
+            "temporaryAuditModules": "Before-source audit modules/tests are removed by script finally blocks; only the three /private/tmp reproduction scripts and JSON artifacts remain."
+          },
+          "measurementArtifacts": [
+            "/private/tmp/sarj-wiki-round4-permission-measurements.json",
+            "/private/tmp/sarj-wiki-round4-expanded-measurements.json",
+            "/private/tmp/sarj-wiki-round4-sort-measurements.json"
+          ],
+          "reproduce": [
+            "Run the scopedVitest.command from /private/tmp/sarj-wiki-performance-20261010/frontend; it now includes both added proof tests (114 tests).",
+            "From /private/tmp/sarj-wiki-performance-20261010: node /private/tmp/sarj-wiki-round4-permission-benchmark.mjs",
+            "From /private/tmp/sarj-wiki-performance-20261010: node /private/tmp/sarj-wiki-round4-expanded-audit.mjs",
+            "From /private/tmp/sarj-wiki-performance-20261010: node /private/tmp/sarj-wiki-round4-sort-audit.mjs",
+            "The permission benchmark reads /private/tmp/sarj-wiki-round4-drive-access-before.tsx, captured from the baseline before editing; recreate it with git show edfc65884dba11ac401989c6d71e56fbe3c6da46:frontend/src/components/wiki-sidebar/drive-access-sheet.tsx > /private/tmp/sarj-wiki-round4-drive-access-before.tsx if needed.",
+            "The other two audit scripts generate and remove their temporary baseline modules from the exact deployed baseline, using read-only git show.",
+            "For causal pre-change observer/admission/hover/path counts, run the corresponding retained fixture against the exact deployed baseline sources in a separate writable checkout; assertions report the recorded before costs."
+          ],
+          "sharedLimitations": [
+            "Controlled fixtures/read counts and static rendering do not establish production page-load or native drag frame latency.",
+            "Fresh identity, user-scoped persistence, permission/query ownership, cancellation, tree completeness, folders, shortcuts, sorting, drag/drop and admitted mutation completion are preserved.",
+            "Root owns README/performance ledger integration, build/bundle inventory, global gates, Git actions, deployment and production UI proof. No physical performance maximum is claimed."
+          ],
+          "ownershipReleased": true
+        },
+        {
+          "scope": "Cross-stack HTTP/BFF, MCP management read lifecycle and browser performance instrumentation; six distinct candidates beyond the prior 229 passes",
+          "report": "/private/tmp/sarj-wiki-perf-round4-cross-stack.json",
+          "agent": "cross_stack_round4",
+          "checkout": "/private/tmp/sarj-wiki-performance-20261010",
+          "branch": "codex/wiki-performance-round4-20261011",
+          "baselineRevision": "edfc65884dba11ac401989c6d71e56fbe3c6da46",
+          "recordedAt": "2026-10-11T14:21:54.318414+00:00",
+          "passCount": 6,
+          "acceptedCount": 6,
+          "rejectedCount": 0,
+          "priorPassesRecounted": 0,
+          "administrativeOrGateRerunsCounted": 0,
+          "passes": [
+            {
+              "id": "round4-cross-stack-01",
+              "candidate": "Dispose a successful BFF upstream response that arrives after the caller or existing upstream deadline lost ownership.",
+              "outcome": "accepted",
+              "evidence": "The shared BFF previously forwarded an acquired successful body even when fetch completed after cancellation. It now rechecks the exact composed request/deadline signal after headers, discards the acquired body without awaiting cancellation and returns the existing redacted 502. Ordinary streaming, manual redirect inspection, header filtering, fresh cookie lookup and upstream statuses remain unchanged.",
+              "measurements": {
+                "before": {
+                  "requests": 1,
+                  "status": 200,
+                  "cancelledBodies": 0,
+                  "successBodyEscaped": true
+                },
+                "after": {
+                  "requests": 1,
+                  "status": 502,
+                  "cancelledBodies": 1,
+                  "successBodyEscaped": false,
+                  "redactedBody": {
+                    "detail": "The request could not be completed"
+                  }
+                }
+              },
+              "method": "The frozen/current helper is given one pending authenticated synthetic GET. Its caller is aborted before an intentionally late successful Response resolves. A zero-prefetch body records cancellation and identity comparison proves whether its body escapes. A scoped route test also exercises the equivalent existing-deadline abort with cancellation deliberately left pending.",
+              "limits": [
+                "The late-response fixture deliberately models a transport completion race; native fetch may already abort some such bodies. This measures ownership enforcement and disposal, not successful-request latency.",
+                "No buffering or new upstream read deadline is added."
+              ],
+              "changedPaths": [
+                "frontend/src/lib/clients/wiki-read-response.ts",
+                "frontend/src/app/api/wiki/[...path]/route.test.ts"
+              ],
+              "validation": [
+                "Disconnect and deadline late-success cases return redacted 502 and cancel once without waiting.",
+                "Existing open-body streaming, expired-session Cloudflare semantics, redirects, allowlist, no-store and credential/header filtering regressions pass."
+              ],
+              "reproduce": [
+                "node /private/tmp/sarj-wiki-perf-round4-cross-stack-measure.mjs",
+                "From frontend: node_modules/.bin/vitest run 'src/app/api/wiki/[...path]/route.test.ts' 'src/app/api/document-transforms/[[...path]]/route.test.ts' src/lib/clients/fetch-backend.test.ts"
+              ]
+            },
+            {
+              "id": "round4-cross-stack-02",
+              "candidate": "Release unused performance-beacon fallback response bodies.",
+              "outcome": "accepted",
+              "evidence": "When sendBeacon declines an event, the fallback POST previously ignored every resolved Response body. The delivery continuation now uses the existing nonblocking discard helper. It issues no retry and retains the five-second keepalive delivery policy and accepted-beacon fast path.",
+              "measurements": {
+                "before": {
+                  "requests": 1,
+                  "status": 503,
+                  "cancelledBodies": 0,
+                  "cleanupNeverSettles": true
+                },
+                "after": {
+                  "requests": 1,
+                  "status": 503,
+                  "cancelledBodies": 1,
+                  "cleanupNeverSettles": true
+                }
+              },
+              "method": "One synthetic fallback POST resolves HTTP 503 with an unused stream whose cancellation promise never settles. Actual delivery source is run under the same fixture before/after; cancellation calls and request count are observed after promise continuations complete.",
+              "limits": [
+                "The normal ingestion route returns bodyless 204, so the benefit applies to unexpected or failure response bodies.",
+                "No delivery success, production response latency or page-load gain is claimed."
+              ],
+              "changedPaths": [
+                "frontend/src/lib/clients/send-performance-event.ts",
+                "frontend/src/lib/clients/send-performance-event.test.ts"
+              ],
+              "validation": [
+                "Both unused HTTP 200 and 503 bodies cancel once without waiting or retrying.",
+                "An accepted beacon makes zero fallback fetches."
+              ],
+              "reproduce": [
+                "node /private/tmp/sarj-wiki-perf-round4-cross-stack-measure.mjs",
+                "From frontend: node_modules/.bin/vitest run src/lib/clients/send-performance-event.test.ts"
+              ]
+            },
+            {
+              "id": "round4-cross-stack-03",
+              "candidate": "Bound successful MCP consent/management JSON ingestion before parsing unused response fields.",
+              "outcome": "accepted",
+              "evidence": "Successful MCP requests previously used unbounded json() before their small public schemas stripped unknown fields. They now read at most 256 KiB of strictly decoded UTF-8 using the existing helper and retain the existing fifteen-second request signal through body ingestion. Malformed/oversized bodies return the stable redacted management error; existing failure-body disposal and no-retry decisions are preserved.",
+              "measurements": {
+                "before": {
+                  "oversized": {
+                    "fixtureBytes": 1048793,
+                    "deliveredBytes": 1048793,
+                    "chunks": 129,
+                    "cancelledBodies": 0,
+                    "result": "validated"
+                  },
+                  "maximumConnections": {
+                    "count": 100,
+                    "clientIdCharacters": 255,
+                    "bytes": 41691,
+                    "validated": true
+                  },
+                  "conservativeJsonEscapeStress": {
+                    "count": 100,
+                    "bytes": 169191,
+                    "validated": true
+                  }
+                },
+                "after": {
+                  "oversized": {
+                    "fixtureBytes": 1048793,
+                    "deliveredBytes": 270336,
+                    "chunks": 33,
+                    "cancelledBodies": 1,
+                    "result": {
+                      "name": "McpConsentRequestError",
+                      "status": 502
+                    }
+                  },
+                  "maximumConnections": {
+                    "count": 100,
+                    "clientIdCharacters": 255,
+                    "bytes": 41691,
+                    "validated": true
+                  },
+                  "conservativeJsonEscapeStress": {
+                    "count": 100,
+                    "bytes": 169191,
+                    "validated": true
+                  }
+                },
+                "decodedByteLimit": 262144,
+                "streamBytesAvoidedPercent": 74.224084
+              },
+              "method": "A valid consent envelope plus an ignored one-MiB ASCII field is streamed in 8-KiB chunks with highWaterMark 0. The actual frozen/current transport counts bytes/chunks consumed, cancellation and schema outcome. Maximum registered-ID connections (100 x 255 ASCII characters) and an additional conservative six-byte-JSON-escape stress shape are validated with the actual client.",
+              "limits": [
+                "The backend limits active connections to 100 (native_core.py _MAX_USER_GRANTS) and registered client IDs to 255 ASCII characters (redirect_policy.py _CLIENT_ID). The maximum-shaped supported inventory fixture is 41,691 B.",
+                "The 169,191-B escape stress exceeds the registered-client character contract deliberately and proves ample decoder margin; it is not described as a supported backend inventory.",
+                "Registered callback paths are capped at 2048 characters; scoped tests retain large consent fields and a long callback with bounded OAuth parameters.",
+                "A stream can deliver one over-limit chunk before the guard stops; at most 256 KiB are stored/decoded. The measured 74.22% reduction is fixture stream work, not normal-response latency."
+              ],
+              "changedPaths": [
+                "frontend/src/lib/mcp-consent-client.ts",
+                "frontend/src/lib/mcp-consent-client.test.ts"
+              ],
+              "validation": [
+                "Maximum supported 100-connection inventory, conservative escape stress, exact 256-KiB boundary, one-byte excess, large consent/callback and malformed UTF-8/JSON cases pass.",
+                "Stalled successful body decoding stops on caller/deadline abort without awaiting stream cancellation.",
+                "Existing credential/CSRF, safe callback validation, confirmed-204 disconnect and no-replay cases pass."
+              ],
+              "reproduce": [
+                "node /private/tmp/sarj-wiki-perf-round4-cross-stack-measure.mjs",
+                "From frontend: node_modules/.bin/vitest run src/lib/mcp-consent-client.test.ts"
+              ]
+            },
+            {
+              "id": "round4-cross-stack-04",
+              "candidate": "Admit delayed paint metrics only for a sampled navigation or the explicit debug probe, and keep callbacks under their captured sample.",
+              "outcome": "accepted",
+              "evidence": "Every unsampled FilePageBody paint previously registered two animation-frame callbacks, even though no RUM sample existed. markPaint now returns immediately unless a sample or the existing opt-in probe needs the mark. Its callbacks retain the exact captured sample, so a replacement/completed/expired navigation cannot receive an obsolete paint metric.",
+              "measurements": {
+                "unsampled": {
+                  "before": {
+                    "animationFrameCallbacks": 2,
+                    "beacons": 0
+                  },
+                  "after": {
+                    "animationFrameCallbacks": 0,
+                    "beacons": 0
+                  }
+                },
+                "replacementBetweenFrames": {
+                  "before": {
+                    "animationFrameCallbacks": 2,
+                    "beaconsForReplacement": 1
+                  },
+                  "after": {
+                    "animationFrameCallbacks": 2,
+                    "beaconsForReplacement": 0
+                  }
+                }
+              },
+              "method": "The actual perf module is loaded with the probe disabled and a deterministic UUID outside its existing sampling threshold; an explicit queue counts each animation-frame callback. A separate sampled case replaces the same document navigation between its first and second frame and counts beacons incorrectly attributed to the replacement.",
+              "limits": [
+                "The sampled foreground path keeps its two-frame paint definition. This removes callbacks only for unsampled or obsolete marks.",
+                "A callback already scheduled before ownership loss can still run its inexpensive owner check; the measurement does not claim cancellation of browser queue entries or a production frame-time gain.",
+                "The opt-in window probe continues recording unsampled paint marks."
+              ],
+              "changedPaths": [
+                "frontend/src/lib/perf-marks.ts",
+                "frontend/src/lib/perf-marks.test.ts"
+              ],
+              "validation": [
+                "Unsampled callback count is zero. Active sampled paint retains its exact duration.",
+                "Replacement before either frame, completion, expiry and opt-in unsampled debug recording pass.",
+                "A new foreground paint after replacement emits under the new navigation ID."
+              ],
+              "reproduce": [
+                "node /private/tmp/sarj-wiki-perf-round4-cross-stack-measure.mjs",
+                "From frontend: node_modules/.bin/vitest run src/lib/perf-marks.test.ts"
+              ]
+            },
+            {
+              "id": "round4-cross-stack-05",
+              "candidate": "Emit each RUM phase once per captured navigation sample.",
+              "outcome": "accepted",
+              "evidence": "Repeated commit/toolbar-paint/iframe-mount notifications emitted duplicate beacons for the same navigation. Each sampled navigation now owns a set of its at-most-four reported phases. First observed duration is retained; each later click creates a fresh navigation ID and phase set. The opt-in raw probe is unchanged.",
+              "measurements": {
+                "before": {
+                  "notifications": 7,
+                  "beacons": 7,
+                  "phases": [
+                    "commit",
+                    "commit",
+                    "toolbarPaint",
+                    "toolbarPaint",
+                    "iframeMount",
+                    "iframeMount",
+                    "iframeLoad"
+                  ]
+                },
+                "after": {
+                  "notifications": 7,
+                  "beacons": 4,
+                  "phases": [
+                    "commit",
+                    "toolbarPaint",
+                    "iframeMount",
+                    "iframeLoad"
+                  ]
+                }
+              },
+              "method": "The actual perf module receives two notifications for each of commit, toolbarPaint and iframeMount, followed by iframeLoad, under one sampled navigation. A delivery stub counts only real calls from that source. Scoped tests then start another visit to the same document and verify its phase is emitted with the new ID.",
+              "limits": [
+                "The fixture models repeated effect/mount notifications, not their frequency in production.",
+                "RUM now records the first observation of each phase; repeated remounts in that same click sample are not separate navigation measurements. The bounded set adds at most four entries to a sampled navigation."
+              ],
+              "changedPaths": [
+                "frontend/src/lib/perf-marks.ts",
+                "frontend/src/lib/perf-marks.test.ts"
+              ],
+              "validation": [
+                "Seven notifications produce exactly four beacons, preserving the four allowed phases and first paint duration.",
+                "Terminal iframeLoad still releases the timeout; later visits to the same document emit fresh metrics."
+              ],
+              "reproduce": [
+                "node /private/tmp/sarj-wiki-perf-round4-cross-stack-measure.mjs",
+                "From frontend: node_modules/.bin/vitest run src/lib/perf-marks.test.ts"
+              ]
+            },
+            {
+              "id": "round4-cross-stack-06",
+              "candidate": "Cancel discarded MCP initial/status/connection reads while preserving admitted consent and disconnect decisions.",
+              "outcome": "accepted",
+              "evidence": "Consent loading and connection listing previously used only UI publication flags, leaving their GETs and JSON decoding live after unmount. Read APIs now accept caller ownership signals. Initial consent, status recovery, initial connection list and explicit refresh share their component read owner, cancelled on cleanup. Late headers are discarded before decoding. Consent state carries its exact intent and signal, preventing old views from remaining paired with replacement callbacks or being reused when returning A-to-B-to-A. POST consent decisions and DELETE disconnects keep their independent deadlines and existing admission/no-retry behavior.",
+              "measurements": {
+                "before": {
+                  "consent": {
+                    "requests": 1,
+                    "abortedAfterUnmount": false,
+                    "decodedStreamBytes": 204,
+                    "cancelledBodies": 0
+                  },
+                  "connections": {
+                    "requests": 1,
+                    "abortedAfterUnmount": false,
+                    "decodedStreamBytes": 92,
+                    "cancelledBodies": 0
+                  },
+                  "refresh": {
+                    "requests": 2,
+                    "abortedAfterUnmount": false,
+                    "decodedStreamBytes": 92,
+                    "cancelledBodies": 0
+                  },
+                  "recovery": {
+                    "requests": 2,
+                    "abortedAfterUnmount": false,
+                    "decodedStreamBytes": 45,
+                    "cancelledBodies": 0
+                  },
+                  "replacement": {
+                    "requests": 2,
+                    "abortedAfterUnmount": false,
+                    "decodedStreamBytes": 204,
+                    "cancelledBodies": 0,
+                    "staleViewVisible": true,
+                    "originalRequestAborted": false
+                  }
+                },
+                "after": {
+                  "consent": {
+                    "requests": 1,
+                    "abortedAfterUnmount": true,
+                    "decodedStreamBytes": 0,
+                    "cancelledBodies": 1
+                  },
+                  "connections": {
+                    "requests": 1,
+                    "abortedAfterUnmount": true,
+                    "decodedStreamBytes": 0,
+                    "cancelledBodies": 1
+                  },
+                  "refresh": {
+                    "requests": 2,
+                    "abortedAfterUnmount": true,
+                    "decodedStreamBytes": 0,
+                    "cancelledBodies": 1
+                  },
+                  "recovery": {
+                    "requests": 2,
+                    "abortedAfterUnmount": true,
+                    "decodedStreamBytes": 0,
+                    "cancelledBodies": 1
+                  },
+                  "replacement": {
+                    "requests": 2,
+                    "abortedAfterUnmount": true,
+                    "decodedStreamBytes": 0,
+                    "cancelledBodies": 1,
+                    "staleViewVisible": false,
+                    "originalRequestAborted": true
+                  }
+                },
+                "returnToRetiredIntentRegression": "A-to-B-to-A retains no approval controls until the latest A read completes; three GET owners, previous two aborted."
+              },
+              "method": "Actual frozen/current MCP loader/connections code is mounted into actual local React roots with only child markup stubs. Synthetic fetches deliberately deliver Responses after unmount, using zero-prefetch streams. Captured network signals, request counts, consumed bytes and cancellations are observed for initial consent, initial connections, explicit refresh, consent status recovery and intent replacement. Full UI regression tests separately exercise intent replacement, A-to-B-to-A and pending recovery controls.",
+              "limits": [
+                "An already-dispatched provider/backend read may still complete; the owner signal stops browser waiting and prevents late body/schema/publication work.",
+                "MCP retains its existing no-auto-refresh/no-retry policy. Shared Wiki refresh/session transports are unchanged.",
+                "Already-admitted consent/disconnect mutations remain independent of read cleanup and may finish after the UI disappears. No backend grant/admission semantics or authority caching is changed.",
+                "Promise continuations may remain until an already-bounded transport settles; zero late-body bytes is not a claim of zero allocations."
+              ],
+              "changedPaths": [
+                "frontend/src/lib/mcp-consent-client.ts",
+                "frontend/src/lib/mcp-consent-client.test.ts",
+                "frontend/src/components/mcp/mcp-consent-loader.tsx",
+                "frontend/src/components/mcp/mcp-consent-loader.test.tsx",
+                "frontend/src/components/mcp/mcp-connections.tsx",
+                "frontend/src/components/mcp/mcp-connections.test.tsx"
+              ],
+              "validation": [
+                "Actual-source mounted read fixtures change the late decoded byte count to zero and cancel one body for all five read flows, with unchanged request counts.",
+                "Pre-aborted reads, caller cancellation during body ingestion, late read headers, initial unmount, refresh unmount, pending recovery, replacement intent and A-to-B-to-A regressions pass.",
+                "An admitted POST consent decision stays live and resolves after its earlier read owner aborts; a dispatched disconnect stays a single original two-argument call."
+              ],
+              "reproduce": [
+                "node /private/tmp/sarj-wiki-perf-round4-cross-stack-measure.mjs",
+                "From frontend: node_modules/.bin/vitest run src/lib/mcp-consent-client.test.ts src/components/mcp/mcp-consent-loader.test.tsx src/components/mcp/mcp-connections.test.tsx src/components/mcp/mcp-consent.test.tsx src/components/mcp/mcp-pages.test.tsx"
+              ]
+            }
+          ],
+          "changedPaths": [
+            "frontend/src/lib/clients/wiki-read-response.ts",
+            "frontend/src/app/api/wiki/[...path]/route.test.ts",
+            "frontend/src/lib/clients/send-performance-event.ts",
+            "frontend/src/lib/clients/send-performance-event.test.ts",
+            "frontend/src/lib/perf-marks.ts",
+            "frontend/src/lib/perf-marks.test.ts",
+            "frontend/src/lib/mcp-consent-client.ts",
+            "frontend/src/lib/mcp-consent-client.test.ts",
+            "frontend/src/components/mcp/mcp-consent-loader.tsx",
+            "frontend/src/components/mcp/mcp-consent-loader.test.tsx",
+            "frontend/src/components/mcp/mcp-connections.tsx",
+            "frontend/src/components/mcp/mcp-connections.test.tsx"
+          ],
+          "measurementArtifact": "/private/tmp/sarj-wiki-perf-round4-cross-stack-measurements.json",
+          "measurementScript": "/private/tmp/sarj-wiki-perf-round4-cross-stack-measure.mjs",
+          "frozenBaselineDirectory": "/private/tmp/sarj-wiki-perf-round4-cross-stack-baseline",
+          "method": "The standalone local harness transpiles actual frozen edfc6588 source and actual current source with the same TypeScript transformer. Controlled Node streams have zero prefetch; a simulated animation-frame queue counts callbacks and a delivery stub counts events. Actual React roots mount the actual MCP loader/connections source, with child UI stubs only; actual transport and schema validation run against synthetic responses. No browser or provider requests are made.",
+          "validation": {
+            "scopedVitest": {
+              "exitCode": 0,
+              "files": 10,
+              "testsPassed": 158,
+              "command": "node_modules/.bin/vitest run src/lib/clients/send-performance-event.test.ts src/lib/perf-marks.test.ts src/lib/mcp-consent-client.test.ts src/components/mcp/mcp-consent-loader.test.tsx src/components/mcp/mcp-connections.test.tsx src/components/mcp/mcp-consent.test.tsx src/components/mcp/mcp-pages.test.tsx 'src/app/api/wiki/[...path]/route.test.ts' 'src/app/api/document-transforms/[[...path]]/route.test.ts' src/lib/clients/fetch-backend.test.ts --no-file-parallelism",
+              "log": "/private/tmp/sarj-wiki-perf-round4-cross-stack-tests.log",
+              "report": "/private/tmp/sarj-wiki-perf-round4-cross-stack-tests.json"
+            },
+            "finalLoaderAfterLastOwnershipGuard": {
+              "exitCode": 0,
+              "files": 1,
+              "testsPassed": 9,
+              "newTestsInThisLastRun": 1,
+              "command": "node_modules/.bin/vitest run src/components/mcp/mcp-consent-loader.test.tsx",
+              "log": "/private/tmp/sarj-wiki-perf-round4-cross-stack-loader-final.log",
+              "report": "/private/tmp/sarj-wiki-perf-round4-cross-stack-loader-final.json",
+              "qualification": "After adding the A-to-B-to-A active-owner guard, only the affected loader suite was repeated; the other nine scoped files remained qualified by the earlier 158-test run."
+            },
+            "scopedEslint": {
+              "exitCode": 0,
+              "errors": 0,
+              "warnings": 37,
+              "warningBasis": "Existing unquoted/bracketless wire-format properties; new fixtures use field constants and introduce no additional naming warnings. No baseline/config/suppression changes.",
+              "log": "/private/tmp/sarj-wiki-perf-round4-cross-stack-eslint.log",
+              "finalLoaderLog": "/private/tmp/sarj-wiki-perf-round4-cross-stack-eslint-final-loader.log",
+              "finalLoaderErrors": 0,
+              "finalLoaderWarnings": 5
+            },
+            "scopedTypecheck": {
+              "exitCode": 0,
+              "command": "node_modules/.bin/tsc --noEmit --project /private/tmp/sarj-wiki-perf-round4-cross-stack-tsconfig.json",
+              "config": "/private/tmp/sarj-wiki-perf-round4-cross-stack-tsconfig.json",
+              "log": "/private/tmp/sarj-wiki-perf-round4-cross-stack-types.log",
+              "basis": "Temporary external config includes twelve changed sources/tests, next-env and the existing Vitest setup, inheriting the unchanged strict frontend config; incremental writes disabled."
+            },
+            "sourceReview": "Scoped git diff --check passes. All four protected document-transform files and fetch-backend.ts have empty diffs. No original-workspace, Git, managed standards/configuration, credential, deployment or browser mutations were performed.",
+            "rootQualification": "Root owns integrated build/full gates, exact-head CI and release verification; none counted as optimization candidates."
+          },
+          "reproduce": [
+            "node /private/tmp/sarj-wiki-perf-round4-cross-stack-measure.mjs",
+            "From frontend: node_modules/.bin/vitest run src/lib/clients/send-performance-event.test.ts src/lib/perf-marks.test.ts src/lib/mcp-consent-client.test.ts src/components/mcp/mcp-consent-loader.test.tsx src/components/mcp/mcp-connections.test.tsx src/components/mcp/mcp-consent.test.tsx src/components/mcp/mcp-pages.test.tsx 'src/app/api/wiki/[...path]/route.test.ts' 'src/app/api/document-transforms/[[...path]]/route.test.ts' src/lib/clients/fetch-backend.test.ts --no-file-parallelism",
+            "From frontend: node_modules/.bin/tsc --noEmit --project /private/tmp/sarj-wiki-perf-round4-cross-stack-tsconfig.json"
+          ],
+          "limitations": [
+            "All measurements are controlled stream/React/clock work counts, not production latency, real provider quota traffic or page-load improvement.",
+            "No bundle build/inventory was run by this agent; root will record the integrated bundle tradeoff.",
+            "Fresh identity, user-bound persistence, cancellation/terminal clear, response validation/redacted errors, transaction/permission/CAS and admitted mutations remain unchanged outside this explicit read-owner work."
+          ],
+          "ownership": {
+            "released": true,
+            "message": "All twelve changed files are released to root integration; this agent has no further edits planned."
+          }
+        }
+      ],
+      "measurements": {
+        "inventoryBaselineRevision": "edfc65884dba11ac401989c6d71e56fbe3c6da46",
+        "basis": "Same locked local production-build toolchain. App client-reference inventory excludes framework and deferred chunks; controlled service and resource measurements do not establish live page-load latency.",
+        "homeClientInventory": {
+          "before": {
+            "bytes": 554465,
+            "gzipBytes": 180375
+          },
+          "after": {
+            "bytes": 555956,
+            "gzipBytes": 181032
+          },
+          "gzipChangePercent": 0.364
+        },
+        "documentClientInventory": {
+          "before": {
+            "bytes": 586823,
+            "gzipBytes": 191806
+          },
+          "after": {
+            "bytes": 588577,
+            "gzipBytes": 192517
+          },
+          "gzipChangePercent": 0.371
+        }
+      },
+      "validation": {
+        "initialIntegratedLocalGate": {
+          "command": "make check",
+          "result": "passed",
+          "log": "/private/tmp/sarj-wiki-perf-round4-full-check.log",
+          "backendTestsPassed": 4299,
+          "backendCoveragePercent": 88.79,
+          "backendPostgresFixture": "Disposable loopback PostgreSQL18.6; fixture-backed suites included without skips and no production data.",
+          "frontendTestsPassed": 870,
+          "frontendTestFiles": 111,
+          "frontendSecurityScriptTestsPassed": 13,
+          "frontendTypeCoveragePercent": 99.71,
+          "repositoryTestsPassed": 323,
+          "terraformTestsPassed": 11,
+          "nativeStandardsErrors": 0,
+          "nativeStandardsExecutionIssues": 0,
+          "pythonBaseline": "Unchanged: 1808 blocking diagnostics in 200 files; 294 nonblocking warnings excluded. Two open-keyword compatibility warnings are in the new provider transport fixtures.",
+          "suppressionRatchet": "Unchanged: 25 suppressions across 11 codes.",
+          "backendTypes": "mypy: 193 source files clean; basedpyright: zero errors, warnings and notes; ty passed.",
+          "frontendProductionBuild": "Next.js16.3.8 production webpack build passed.",
+          "earlierQualificationAttempts": [
+            "/private/tmp/sarj-wiki-perf-round4-full-check-attempt1.log",
+            "/private/tmp/sarj-wiki-perf-round4-full-check-attempt2.log"
+          ]
+        },
+        "integrationRepairsCountedAsPasses": 0,
+        "integrationChangedPaths": [],
+        "integrationRepairs": [
+          "The newly reachable complete allDrives search path requests nextPageToken and falls back to fresh per-drive queries for a truncated page, an incomplete search, or hits exceeding the per-drive limit. The authoritative owned-MyDrive query remains separate.",
+          "Two new faithful provider paging/limit regressions failed before the root integration repair and passed after it. The focused provider/Drive qualification passed 106 tests; small complete searches retain the measured two search requests.",
+          "The all-files standards gate identified four provider fixture findings. Root introduced an httplib2-compatible named response tuple, separated inventory handling, flattened pagination guarding and exercised capability response isolation through the public FilesService.get API. No suppressions, baseline growth or production-interface widening were added.",
+          "The repository no-consumer docstring rule required a compatibility comment in the named HTTP fixture tuple. The final complete gate then passed. All fixture repairs and gate reruns count zero."
+        ],
+        "agentSourceSnapshots": "Raw provider handoff retains agent source hashes. The final Git revision and exact-head gates qualify integrated sources after the documented repairs; redundant path-keyed digest maps are omitted from this record.",
+        "releaseGate": "Normal pre-push make check and exact-head hosted checks must qualify the final commit. Release Main must pass both deploys and exact-revision health/proxy checks; signed-in production UI verification and guarded workspace synchronization are recorded after deployment in the final receipt."
+      },
+      "reproduce": [
+        "Set WIKI_POLISH29_QA_DATABASE_URL and WIKI_MCP_QA_DATABASE_URL to a disposable loopback postgresql+asyncpg database named wiki_polish29_qa*; run make check.",
+        "uv --directory backend run --locked pytest -q tests/test_provider_round4.py tests/test_storage_read_projection_postgres.py tests/test_cache_service.py tests/test_sidebar_cache.py",
+        "npm --prefix frontend test",
+        "node frontend/scripts/benchmark-bundle.mjs",
+        "node frontend/scripts/benchmark-bundle.mjs frontend/.next \"(app)/d/[driveId]/page\"",
+        "Candidate-specific baselines, sampling methods, causal resource witnesses, reproduction scripts and limits are included in each scope."
+      ],
+      "limitations": [
+        "Controlled fixtures and client inventories do not establish production page-load latency or a physical performance maximum.",
+        "Fresh authenticated user scope, Google permissions, response validation, encryption/rotation and mutation admission remain enforced.",
+        "Warm tree reuse still performs a fresh exact PostgreSQL tuple-version read; 32 entries and 40000 nodes bound its local decoded cache. Cold tree costs are essentially unchanged and a 10-node warm fixture has an extra 0.066ms.",
+        "Scalar JSONB projection improves large cache values but adds about 0.052ms at 1KiB; the typed overlay adds about 0.028ms in its smallest fixture. These are explicit workload tradeoffs.",
+        "Large cache write admission estimates workload rather than exact serialized size. Worker offload reduces measured loop stalls but shared thread-pool and GIL contention remain.",
+        "Complete nonpaginated allDrives search uses the documented incompleteSearch field; incomplete, paginated and over-limit results fall back to the existing fresh per-drive queries. Removing the owner-filtered MyDrive query was rejected for a concrete authority regression.",
+        "Quick-link normalization retains immutable authorized arrays weakly; cold first-query preparation adds about 0.0017ms while repeated typing improves. Expanded folder render timing is essentially unchanged despite removing collapsed query observers.",
+        "MCP success decoding stores at most 256KiB and can receive a final oversized chunk before cancellation. Maximum supported inventory fixtures validate below the bound; admitted decisions and disconnects are neither cancelled nor retried by read lifecycle ownership.",
+        "Five rejected candidates cover extras batch validation, combined tree save/cleanup, regular-expression whitespace normalization, removal of authoritative MyDrive search, and speculative auth bootstrap.",
+        "Homepage compressed app inventory increases 0.364% (180375 to181032 bytes), and document inventory increases 0.371% (191806 to192517 bytes). Observer/read/CPU reductions are separate from this transfer-size tradeoff."
+      ]
     }
   ]
 }

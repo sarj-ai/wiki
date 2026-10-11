@@ -17,8 +17,13 @@ class GoogleShortcutDetails(_GoogleModel):
 
 
 class GoogleFileCapabilities(_GoogleModel):
+    model_config = ConfigDict(frozen=True)
+
     can_edit: bool = Field(default=False, alias="canEdit")
     can_add_children: bool = Field(default=False, alias="canAddChildren")
+
+
+_EMPTY_CAPABILITIES = GoogleFileCapabilities()
 
 
 class GoogleFile(_GoogleModel):
@@ -32,7 +37,7 @@ class GoogleFile(_GoogleModel):
     description: str | None = None
     trashed: bool = False
     shortcut_details: GoogleShortcutDetails | None = Field(default=None, alias="shortcutDetails")
-    capabilities: GoogleFileCapabilities = Field(default_factory=GoogleFileCapabilities)
+    capabilities: GoogleFileCapabilities = Field(default=_EMPTY_CAPABILITIES)
 
 
 class GoogleDrive(_GoogleModel):
