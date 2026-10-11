@@ -20,12 +20,17 @@ export async function wikiReadResponse(
   failure: (status: number) => Response,
   timeoutMs = 25_000,
 ): Promise<Response> {
-  if (request.signal.aborted) return failure(502);
-  const cookieStore = await cookies();
-  const token = cookieStore.get("access_token")?.value;
-  if (!token) return failure(401);
   const inboundId = request.headers.get("x-request-id");
   const requestId = inboundId && REQUEST_ID.test(inboundId) ? inboundId : crypto.randomUUID();
+  const fail = (status: number): Response => {
+    const response = failure(status);
+    response.headers.set("x-request-id", requestId);
+    return response;
+  };
+  if (request.signal.aborted) return fail(502);
+  const cookieStore = await cookies();
+  const token = cookieStore.get("access_token")?.value;
+  if (!token) return fail(401);
   try {
     request.signal.throwIfAborted();
     const upstreamSignal = AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]);
@@ -36,11 +41,11 @@ export async function wikiReadResponse(
     });
     if (upstreamSignal.aborted) {
       discardStream(upstream.body);
-      return failure(502);
+      return fail(502);
     }
     if (!upstream.ok) {
       discardStream(upstream.body);
-      return failure(upstream.status);
+      return fail(upstream.status);
     }
     const headers = new Headers(RESPONSE_HEADERS);
     headers.set("x-request-id", requestId);
@@ -48,6 +53,6 @@ export async function wikiReadResponse(
     if (timing) headers.set("server-timing", timing);
     return new Response(upstream.body, { headers });
   } catch {
-    return failure(502);
+    return fail(502);
   }
 }

@@ -166,9 +166,14 @@ separately from production page-load latency.
 
 The final local CI mirror passes 4,362 backend tests (88.99% coverage), 906 frontend
 tests and 11 infrastructure tests. The new landing UI increases the compressed app
-inventory by 6,343 B on home (181,032 to 187,375 B, 3.50%) and 6,377 B on the
-document route (192,517 to 198,894 B, 3.31%). These inventories exclude framework
+inventory by 6,492 B on home (181,032 to 187,524 B, 3.59%) and 6,497 B on the
+document route (192,517 to 199,014 B, 3.37%). These inventories exclude framework
 and deferred chunks; they do not establish live load time.
+
+Production qualification also found configured HTML headers overriding private
+API response headers. An API-specific header preserves private/no-store caching,
+and redacted read failures retain request IDs. This repair adds zero passes; its
+complete frontend gate passes 911 tests.
 
 The drive-loading regression was reproduced in the compiled Cloudflare Worker:
 server `fetch` rejects `redirect: "error"` before reaching the API. Server clients

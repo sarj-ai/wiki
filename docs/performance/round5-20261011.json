@@ -7418,7 +7418,7 @@
       },
       {
         "path": "frontend/src/app/api/wiki/[...path]/route.test.ts",
-        "sha256": "1f623bafd3beaf164867ca18cccac9dcfd03fe5f24d6ec6ae786eb9ec0be1bd7"
+        "sha256": "e5f66fdf147b14b7f9270182fb11a000128f9e868331bdda8d026840b7db4f9c"
       },
       {
         "path": "frontend/src/components/wiki-sidebar/wiki-sidebar.tsx",
@@ -7459,7 +7459,7 @@
       "integrationReview": "Cross-stack agent read-only review found Forms policy mismatch; corrected with existing external URL/tab behavior, validated in a new regression and re-reviewed with no remaining findings. Count zero.",
       "requalification": "After the named response repair: 51 frontend tests across five files and 13 backend route tests passed; generated API artifacts refreshed."
     },
-    "productionValidation": "Pending merged exact-revision release and signed-in landing/link/drive/search/document checks.",
+    "productionValidation": "Initial deployment verified the five-page landing and eight live drives. Final live verification follows the private API cache/tracing qualification repair.",
     "generatedArtifacts": [
       "frontend/src/lib/generated/types.gen.ts",
       "frontend/src/lib/generated/sdk.gen.ts",
@@ -7533,7 +7533,11 @@
     "frontend/src/lib/wiki-read-client.test.ts",
     "frontend/src/lib/wiki-schemas.ts"
   ],
-  "integrationChangedPaths": [],
+  "integrationChangedPaths": [
+    "frontend/next.config.ts",
+    "frontend/src/lib/clients/wiki-read-response.ts",
+    "frontend/src/lib/private-api-headers.test.ts"
+  ],
   "measurements": {
     "inventoryBaselineRevision": "040541f1db695e1492d658a7b8d4ba899aa90169",
     "basis": "Same locked local production-build toolchain. App client-reference inventory excludes framework and deferred chunks. Paired CPU, PostgreSQL, resource and controlled DOM fixtures do not establish production page-load latency.",
@@ -7717,7 +7721,7 @@
         "gzipBytes": 192517
       }
     },
-    "finalBuild": "Passed the locked local Next16.3.8 webpack production build after final landing-row repair. Client-reference inventories use the same script/toolchain and exclude framework/deferred chunks; they are not measured live network/LCP.",
+    "finalBuild": "Final frontend gate and locked local Next16.3.8 webpack build passed after the API cache/tracing repair; actual rebuilt app client inventory is recorded. Separate from live load latency.",
     "homeAfter": {
       "files": [
         {
@@ -7781,14 +7785,14 @@
           "gzipBytes": 9346
         },
         {
-          "file": "static/chunks/52-f830a805bc3ab4b9.js",
-          "bytes": 18997,
-          "gzipBytes": 6658
+          "file": "static/chunks/7463-c6c648d31d366bf0.js",
+          "bytes": 18999,
+          "gzipBytes": 6661
         },
         {
-          "file": "static/chunks/app/(app)/layout-650db7208448d4ea.js",
-          "bytes": 121519,
-          "gzipBytes": 40856
+          "file": "static/chunks/app/(app)/layout-7eb031597b035cc3.js",
+          "bytes": 121521,
+          "gzipBytes": 41002
         },
         {
           "file": "static/chunks/app/(app)/page-299019a6e8fbc0cd.js",
@@ -7796,21 +7800,21 @@
           "gzipBytes": 6665
         }
       ],
-      "bytes": 572299,
-      "gzipBytes": 187375
+      "bytes": 572303,
+      "gzipBytes": 187524
     },
     "homeDelta": {
       "bytes": {
         "before": 555956,
-        "after": 572299,
-        "delta": 16343,
+        "after": 572303,
+        "delta": 16347,
         "deltaPercent": 2.94
       },
       "gzipBytes": {
         "before": 181032,
-        "after": 187375,
-        "delta": 6343,
-        "deltaPercent": 3.504
+        "after": 187524,
+        "delta": 6492,
+        "deltaPercent": 3.586
       }
     },
     "documentAfter": {
@@ -7871,19 +7875,19 @@
           "gzipBytes": 9346
         },
         {
-          "file": "static/chunks/52-f830a805bc3ab4b9.js",
-          "bytes": 18997,
-          "gzipBytes": 6658
+          "file": "static/chunks/7463-c6c648d31d366bf0.js",
+          "bytes": 18999,
+          "gzipBytes": 6661
         },
         {
-          "file": "static/chunks/4606-630aa3618b64e7e6.js",
+          "file": "static/chunks/4429-24205f1fe7bb120c.js",
           "bytes": 30467,
-          "gzipBytes": 10515
+          "gzipBytes": 10485
         },
         {
-          "file": "static/chunks/app/(app)/d/%5BdriveId%5D/page-01ae74a76c286ba7.js",
-          "bytes": 2153,
-          "gzipBytes": 1004
+          "file": "static/chunks/app/(app)/d/%5BdriveId%5D/page-5ff6e99776dd62d0.js",
+          "bytes": 2155,
+          "gzipBytes": 1005
         },
         {
           "file": "static/chunks/504-210a10656fbc47a9.js",
@@ -7891,9 +7895,9 @@
           "gzipBytes": 46875
         },
         {
-          "file": "static/chunks/app/(app)/layout-650db7208448d4ea.js",
-          "bytes": 121519,
-          "gzipBytes": 40856
+          "file": "static/chunks/app/(app)/layout-7eb031597b035cc3.js",
+          "bytes": 121521,
+          "gzipBytes": 41002
         },
         {
           "file": "static/chunks/app/(app)/page-299019a6e8fbc0cd.js",
@@ -7901,22 +7905,205 @@
           "gzipBytes": 6665
         }
       ],
-      "bytes": 604919,
-      "gzipBytes": 198894
+      "bytes": 604925,
+      "gzipBytes": 199014
     },
     "documentDelta": {
       "bytes": {
         "before": 588577,
-        "after": 604919,
-        "delta": 16342,
-        "deltaPercent": 2.777
+        "after": 604925,
+        "delta": 16348,
+        "deltaPercent": 2.778
       },
       "gzipBytes": {
         "before": 192517,
-        "after": 198894,
-        "delta": 6377,
-        "deltaPercent": 3.312
+        "after": 199014,
+        "delta": 6497,
+        "deltaPercent": 3.375
       }
+    },
+    "firstFeatureBuild": {
+      "home": {
+        "files": [
+          {
+            "file": "static/chunks/3549-0962241baa87ed46.js",
+            "bytes": 8663,
+            "gzipBytes": 3583
+          },
+          {
+            "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+            "bytes": 1278,
+            "gzipBytes": 742
+          },
+          {
+            "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+            "bytes": 4433,
+            "gzipBytes": 2009
+          },
+          {
+            "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+            "bytes": 1221,
+            "gzipBytes": 741
+          },
+          {
+            "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+            "bytes": 75365,
+            "gzipBytes": 20750
+          },
+          {
+            "file": "static/chunks/6325-d67c0ff50280111f.js",
+            "bytes": 27319,
+            "gzipBytes": 8606
+          },
+          {
+            "file": "static/chunks/5047-dd811c71717cadff.js",
+            "bytes": 34311,
+            "gzipBytes": 11455
+          },
+          {
+            "file": "static/chunks/3508-8807ce197bd83e94.js",
+            "bytes": 12398,
+            "gzipBytes": 4500
+          },
+          {
+            "file": "static/chunks/1045-0e37935b27741cab.js",
+            "bytes": 72353,
+            "gzipBytes": 21893
+          },
+          {
+            "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+            "bytes": 7170,
+            "gzipBytes": 2696
+          },
+          {
+            "file": "static/chunks/504-210a10656fbc47a9.js",
+            "bytes": 140132,
+            "gzipBytes": 46875
+          },
+          {
+            "file": "static/chunks/8254-e283dcd5056dbd01.js",
+            "bytes": 30517,
+            "gzipBytes": 9346
+          },
+          {
+            "file": "static/chunks/52-f830a805bc3ab4b9.js",
+            "bytes": 18997,
+            "gzipBytes": 6658
+          },
+          {
+            "file": "static/chunks/app/(app)/layout-650db7208448d4ea.js",
+            "bytes": 121519,
+            "gzipBytes": 40856
+          },
+          {
+            "file": "static/chunks/app/(app)/page-299019a6e8fbc0cd.js",
+            "bytes": 16623,
+            "gzipBytes": 6665
+          }
+        ],
+        "bytes": 572299,
+        "gzipBytes": 187375
+      },
+      "document": {
+        "files": [
+          {
+            "file": "static/chunks/3549-0962241baa87ed46.js",
+            "bytes": 8663,
+            "gzipBytes": 3583
+          },
+          {
+            "file": "static/chunks/app/(app)/not-found-d06f6d83539247ca.js",
+            "bytes": 1278,
+            "gzipBytes": 742
+          },
+          {
+            "file": "static/chunks/app/layout-6c764b2a87e4fcac.js",
+            "bytes": 4433,
+            "gzipBytes": 2009
+          },
+          {
+            "file": "static/chunks/app/global-error-4699291d9cd6a8b0.js",
+            "bytes": 1221,
+            "gzipBytes": 741
+          },
+          {
+            "file": "static/chunks/9577-0467d7ff5a01f9b0.js",
+            "bytes": 75365,
+            "gzipBytes": 20750
+          },
+          {
+            "file": "static/chunks/6325-d67c0ff50280111f.js",
+            "bytes": 27319,
+            "gzipBytes": 8606
+          },
+          {
+            "file": "static/chunks/5047-dd811c71717cadff.js",
+            "bytes": 34311,
+            "gzipBytes": 11455
+          },
+          {
+            "file": "static/chunks/3508-8807ce197bd83e94.js",
+            "bytes": 12398,
+            "gzipBytes": 4500
+          },
+          {
+            "file": "static/chunks/1045-0e37935b27741cab.js",
+            "bytes": 72353,
+            "gzipBytes": 21893
+          },
+          {
+            "file": "static/chunks/3616-fa2885bd8d5e9229.js",
+            "bytes": 7170,
+            "gzipBytes": 2696
+          },
+          {
+            "file": "static/chunks/8254-e283dcd5056dbd01.js",
+            "bytes": 30517,
+            "gzipBytes": 9346
+          },
+          {
+            "file": "static/chunks/52-f830a805bc3ab4b9.js",
+            "bytes": 18997,
+            "gzipBytes": 6658
+          },
+          {
+            "file": "static/chunks/4606-630aa3618b64e7e6.js",
+            "bytes": 30467,
+            "gzipBytes": 10515
+          },
+          {
+            "file": "static/chunks/app/(app)/d/%5BdriveId%5D/page-01ae74a76c286ba7.js",
+            "bytes": 2153,
+            "gzipBytes": 1004
+          },
+          {
+            "file": "static/chunks/504-210a10656fbc47a9.js",
+            "bytes": 140132,
+            "gzipBytes": 46875
+          },
+          {
+            "file": "static/chunks/app/(app)/layout-650db7208448d4ea.js",
+            "bytes": 121519,
+            "gzipBytes": 40856
+          },
+          {
+            "file": "static/chunks/app/(app)/page-299019a6e8fbc0cd.js",
+            "bytes": 16623,
+            "gzipBytes": 6665
+          }
+        ],
+        "bytes": 604919,
+        "gzipBytes": 198894
+      },
+      "qualifiedRevision": "76f7bdd57acb964c606f82e523a299bc883ca3ad"
+    },
+    "homeRebuildDelta": {
+      "bytes": 4,
+      "gzipBytes": 149
+    },
+    "documentRebuildDelta": {
+      "bytes": 6,
+      "gzipBytes": 120
     }
   },
   "validation": {
@@ -8075,6 +8262,10 @@
         "sha256": "2ad08d4eb493948bddd5ba3e5d4a3c591c7814e0dd70b109c49a04f57fce7cad"
       },
       {
+        "path": "frontend/next.config.ts",
+        "sha256": "f5afe751e3047b2bd31ea9baf0c2679e90ac139fa8436c88eb284900d0948436"
+      },
+      {
         "path": "frontend/openapi.json",
         "sha256": "c54425bb4a5c790968d17ee284de117068d98638471288df1a505e208fc4f137"
       },
@@ -8088,7 +8279,7 @@
       },
       {
         "path": "frontend/src/app/api/wiki/[...path]/route.test.ts",
-        "sha256": "1f623bafd3beaf164867ca18cccac9dcfd03fe5f24d6ec6ae786eb9ec0be1bd7"
+        "sha256": "e5f66fdf147b14b7f9270182fb11a000128f9e868331bdda8d026840b7db4f9c"
       },
       {
         "path": "frontend/src/components/recent-pages/recent-pages-loader.test.tsx",
@@ -8171,6 +8362,10 @@
         "sha256": "975cc1c5c5e590a86566aacff25c081b80f327690b532055a42c7ef796a6a488"
       },
       {
+        "path": "frontend/src/lib/clients/wiki-read-response.ts",
+        "sha256": "2e1da3cd3ef07824403600bc58cc56493817c7d01439c72c94b699af04a2a3ec"
+      },
+      {
         "path": "frontend/src/lib/last-doc.test.ts",
         "sha256": "8cdc4df539314dfb8ca767070c6651455432e62d8bf0ddf7340d940ac992ac69"
       },
@@ -8181,6 +8376,10 @@
       {
         "path": "frontend/src/lib/perf-marks.ts",
         "sha256": "03f5d515c722f96df5bc3892794aaca7ebc13fabea1f505369ef622f56e62e12"
+      },
+      {
+        "path": "frontend/src/lib/private-api-headers.test.ts",
+        "sha256": "c5ed636277223eebceeb5a4c72edbd2badc26435d0dfae1a2af590a5fbb00f52"
       },
       {
         "path": "frontend/src/lib/session-client.test.ts",
@@ -8234,7 +8433,23 @@
       "countedAsPasses": 0
     },
     "artifactNormalization": "Source-digest maps keyed by paths were serialized as path/sha256 records after the normal secret scanner interpreted token-related filenames as credential labels. Every path and SHA256 value is unchanged and the maps are reversible; no scanner exclusion, configuration change or suppression. Count zero.",
-    "normalCommitArtifactRepairLog": "/private/tmp/sarj-wiki-perf-round5-commit-final.log"
+    "normalCommitArtifactRepairLog": "/private/tmp/sarj-wiki-perf-round5-commit-final.log",
+    "productionQualificationRepair": {
+      "countedAsPasses": 0,
+      "initialMergedRevision": "4a17b93b8ab74c886a8a161329225989f75888a4",
+      "initialPullRequest": "https://github.com/sarj-ai/wiki/pull/518",
+      "observed": "The signed-in deployed homepage correctly showed five freshly authorized pages and all eight drives. Stronger expired-session HTTP probes found configured broad HTML headers overriding API private/no-store headers to no-cache,must-revalidate; failed reads also lacked request IDs.",
+      "repair": "Add a later API-specific private/no-store configured header and preserve sanitized/generated request IDs on redacted wiki-read failures. Auth, access checks, no-follow redirect handling, cancellation and response bodies are preserved.",
+      "newPaths": [
+        "frontend/next.config.ts",
+        "frontend/src/lib/clients/wiki-read-response.ts",
+        "frontend/src/lib/private-api-headers.test.ts"
+      ],
+      "tests": "40 focused tests, tsc and ESLint passed. Complete frontend gate passes 911 tests in 116 files, 13 security script tests, all format/types/lint/knip/type coverage and production build.",
+      "frontendLog": "/private/tmp/sarj-wiki-perf-round5-production-repair-frontend.log",
+      "remaining": "Normal amended commit, complete pre-push, exact-head hosted CI, authorized admin squash merge, exact-revision release, stronger five-endpoint HTTP probes and signed-in final UI verification.",
+      "bundle": "Server-path repair; rebuilt inventories differ by +4 raw/+149 gzip B on home and +6 raw/+120 gzip B on document. Final measured totals and deltas are retained rather than assuming byte equality."
+    }
   },
   "reproduce": [
     "Set WIKI_POLISH29_QA_DATABASE_URL and WIKI_MCP_QA_DATABASE_URL to an owned disposable loopback postgresql+asyncpg database named wiki_polish29_qa*; run make check.",

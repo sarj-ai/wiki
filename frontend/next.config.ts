@@ -90,6 +90,12 @@ const nextConfig: NextConfig = {
       source: "/health",
     },
     {
+      // Keep private API reads and expired-session errors out of all caches.
+      // Cloudflare applies configured headers after route response headers.
+      headers: [{ key: "Cache-Control", value: "private, no-store" }],
+      source: "/api/:path*",
+    },
+    {
       headers: [
         ...SECURITY_HEADERS.filter(
           (header) =>
