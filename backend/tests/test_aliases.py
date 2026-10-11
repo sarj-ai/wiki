@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Self
+from typing import Self, override
 import uuid
 
 from pydantic import ValidationError
@@ -103,6 +103,9 @@ class _Files:
                 continue
         return accessible
 
+    async def get_search_metadata_many(self, file_ids: list[str]) -> dict[str, FileResponse]:
+        return await self.get_accessible_many(file_ids)
+
 
 class _Result:
     def __init__(
@@ -148,7 +151,7 @@ class _Session:
     async def get(self, _model: type[DocumentAlias], _key: str) -> DocumentAlias | None:
         return self.by_alias
 
-    async def execute(self, _statement: object) -> _Result:
+    async def execute(self, _statement: object, _parameters: object | None = None) -> _Result:
         self.execute_calls += 1
         self.statements.append(_statement)
         if self.recent_rows is not None:
@@ -186,7 +189,8 @@ class _EnsureSession(_Session):
         super().__init__()
         self.responses = iter(responses)
 
-    async def execute(self, _statement: object) -> _Result:
+    @override
+    async def execute(self, _statement: object, _parameters: object | None = None) -> _Result:
         self.execute_calls += 1
         return _Result(next(self.responses))
 

@@ -24,8 +24,17 @@ vi.mock("@/lib/file-urls", () => ({ embedUrlFor: () => "about:blank" }));
 let nextFrameId = 0;
 let reducedMotion = false;
 const ANIMATION_FRAMES = new Map<number, FrameRequestCallback>();
-const subscribeToMotion = vi.fn();
-const unsubscribeFromMotion = vi.fn();
+const subscribeToMotion = vi.fn<(event: string, callback: () => void) => void>();
+const unsubscribeFromMotion = vi.fn<(event: string, callback: () => void) => void>();
+const readMotionPreference = vi.fn(() => ({
+  addEventListener: subscribeToMotion,
+  get matches() {
+    return reducedMotion;
+  },
+  media: "(prefers-reduced-motion: reduce)",
+  onchange: null,
+  removeEventListener: unsubscribeFromMotion,
+}));
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -33,6 +42,7 @@ beforeEach(() => {
   ANIMATION_FRAMES.clear();
   subscribeToMotion.mockClear();
   unsubscribeFromMotion.mockClear();
+  readMotionPreference.mockClear();
   useDocViewerStore.getState().reset();
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
     nextFrameId += 1;
@@ -42,13 +52,7 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", (id: number) => {
     ANIMATION_FRAMES.delete(id);
   });
-  vi.stubGlobal("matchMedia", () => ({
-    addEventListener: subscribeToMotion,
-    matches: reducedMotion,
-    media: "(prefers-reduced-motion: reduce)",
-    onchange: null,
-    removeEventListener: unsubscribeFromMotion,
-  }));
+  vi.stubGlobal("matchMedia", readMotionPreference);
 });
 
 afterEach(() => {
@@ -97,6 +101,63 @@ describe("pooled viewer identity", () => {
     expect(subscribeToMotion).toHaveBeenCalledOnce();
     view.unmount();
     expect(unsubscribeFromMotion).toHaveBeenCalledOnce();
+  });
+
+  it("reuses one live media query until the mounted viewer subscription retires", () => {
+    const view = renderViewer(doc("a"));
+    activate(doc("b"));
+    activate(doc("c"));
+    advance(DOCUMENT_LOADING_DELAY_MS);
+    reducedMotion = true;
+    flushSync(() => {
+      subscribeToMotion.mock.calls[0]?.[1]();
+    });
+    loadIframe("c");
+    advance(DOCUMENT_LOADING_MIN_MS);
+    runFrame();
+    runFrame();
+
+    expect(iframe("c")?.parentElement?.querySelector("[data-document-loading-overlay]")).toBeNull();
+    expect(readMotionPreference).toHaveBeenCalledOnce();
+    expect(subscribeToMotion).toHaveBeenCalledOnce();
+    view.unmount();
+    expect(unsubscribeFromMotion).toHaveBeenCalledOnce();
+
+    const utils = renderViewer(doc("d"));
+    expect(readMotionPreference).toHaveBeenCalledTimes(2);
+    utils.unmount();
+  });
+
+  it("preserves pool priority and fills the bounded viewer list after overlapping sources", () => {
+    const view = renderViewer(doc("a"), doc("b"));
+    activate(doc("c"));
+    flushSync(() => {
+      useDocViewerStore.getState().setWarm([doc("a"), doc("e"), doc("f")]);
+    });
+
+    expect([...document.querySelectorAll("iframe")].map((entry) => entry.title)).toEqual([
+      "c",
+      "a",
+      "b",
+      "e",
+    ]);
+    view.unmount();
+  });
+
+  it("fills permitted background viewers after skipping a formerly active HTML frame", () => {
+    const html = { ...doc("html"), mimeType: MIME_HTML, version: "v1" };
+    useDocViewerStore.getState().setActive(html, Symbol("previous"));
+    const view = renderViewer(doc("a"), doc("b"));
+    flushSync(() => {
+      useDocViewerStore.getState().setWarm([doc("c")]);
+    });
+
+    expect([...document.querySelectorAll("iframe")].map((entry) => entry.title)).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+    view.unmount();
   });
 
   it("does not subscribe to motion preferences until a viewer is mounted", () => {

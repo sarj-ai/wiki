@@ -37,11 +37,11 @@ describe("ephemeral sidebar operation leases", () => {
     store.start("first", session.signal);
     store.start("second", session.signal);
     store.reset();
-    expect(remove).toHaveBeenCalledTimes(2);
+    expect(remove).toHaveBeenCalledOnce();
     expect(useInFlightMovesStore.getState().ids.size).toBe(0);
     session.abort();
     expect(store.start("retired", session.signal)).toBeNull();
-    expect(add).toHaveBeenCalledTimes(2);
+    expect(add).toHaveBeenCalledOnce();
   });
 
   it("lets provider retirement release its move even without explicit session clear", () => {
@@ -51,6 +51,34 @@ describe("ephemeral sidebar operation leases", () => {
     session.abort();
     expect(useInFlightMovesStore.getState().ids.size).toBe(0);
     expect(remove).toHaveBeenCalledWith("abort", expect.any(Function));
+  });
+
+  it("rejects a second same-session file move and admits retry once the first settles", () => {
+    const session = new AbortController();
+    const store = useInFlightMovesStore.getState();
+    const owner = store.start("file", session.signal);
+    if (!owner) throw new Error("Expected first admission");
+    expect(store.start("file", session.signal)).toBeNull();
+    expect(useInFlightMovesStore.getState().ids.has("file")).toBe(true);
+    store.end("file", owner);
+    const retry = store.start("file", session.signal);
+    expect(retry).toBeTypeOf("symbol");
+  });
+
+  it("retires a thousand same-session moves with one listener and one publication", () => {
+    const session = new AbortController();
+    const add = vi.spyOn(session.signal, "addEventListener");
+    const remove = vi.spyOn(session.signal, "removeEventListener");
+    const store = useInFlightMovesStore.getState();
+    for (let index = 0; index < 1_000; index++) store.start(`file-${index}`, session.signal);
+    const published = vi.fn<() => void>();
+    const release = useInFlightMovesStore.subscribe(published);
+    session.abort();
+    expect(add).toHaveBeenCalledOnce();
+    expect(remove).toHaveBeenCalledWith("abort", expect.any(Function));
+    expect(published).toHaveBeenCalledOnce();
+    expect(useInFlightMovesStore.getState().ids.size).toBe(0);
+    release();
   });
 
   it("ignores old drag updates and finalizers while releasing their listeners", () => {

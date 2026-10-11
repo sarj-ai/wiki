@@ -1,0 +1,1339 @@
+{
+  "scope": "bulk queries",
+  "baselineRevision": "fdc479beea4488ad5869e8957be8c646fc470527",
+  "passCount": 10,
+  "acceptedCount": 4,
+  "rejectedCount": 6,
+  "changedPaths": [
+    "backend/app/aliases/service.py",
+    "backend/app/drive/service.py",
+    "backend/app/files/service.py",
+    "backend/tests/test_aliases.py",
+    "backend/tests/bulk_round6_support.py",
+    "backend/tests/test_bulk_round6.py",
+    "backend/tests/test_bulk_round6_postgres.py"
+  ],
+  "sourceHashes": [
+    {
+      "path": "backend/app/aliases/service.py",
+      "sha256": "1d175db333308eff63e04f7480ce81857e1513e2e99615a9ef4060233f6179e1"
+    },
+    {
+      "path": "backend/app/drive/service.py",
+      "sha256": "b63df9c49a0bb79bcaa321d029532c747ee8471faedc1e81bf2234f068a8a16e"
+    },
+    {
+      "path": "backend/app/files/service.py",
+      "sha256": "2c8afe381908f05e8779ebc05e372ad6d2a622050715bf7bdac1d08f27836f79"
+    },
+    {
+      "path": "backend/tests/test_aliases.py",
+      "sha256": "2ff1cd1eb075376691ed337bd9a05594964e47518942016c8126d3d8ac632190"
+    },
+    {
+      "path": "backend/tests/bulk_round6_support.py",
+      "sha256": "cd45265beb48699e4c1ad3f0a31087f2ec120db4e44750c318a665ee27ac2676"
+    },
+    {
+      "path": "backend/tests/test_bulk_round6.py",
+      "sha256": "1da6632396d97a464cbdf4add7bef53019e7572ed648a0237a8702ba08f4b2e5"
+    },
+    {
+      "path": "backend/tests/test_bulk_round6_postgres.py",
+      "sha256": "7176c8b7e4a15b021773cd51816d06ba02e250882e4df8da331e912344af8695"
+    }
+  ],
+  "passes": [
+    {
+      "id": "round6-bulk-01",
+      "candidate": "Defer full FileResponse construction until final membership filtering",
+      "outcome": "rejected",
+      "status": "prototype_reverted",
+      "method": "Isolated baseline versus executable deferred-conversion prototype; three equal-output warmups then 31 alternating paired public get_accessible_many calls per fixture; one independent tracemalloc peak run each.",
+      "workload": {
+        "records": 2000,
+        "fixtures": [
+          "shared in scope",
+          "personal under one root",
+          "shared outside current scope"
+        ],
+        "provider": "read-only injected batch fixture; equal GET count"
+      },
+      "evidence": {
+        "deferred-shared-2000": {
+          "before": {
+            "samples": 31,
+            "medianMs": 15.57925,
+            "p95Ms": 44.286333
+          },
+          "after": {
+            "samples": 31,
+            "medianMs": 15.832,
+            "p95Ms": 18.048625
+          },
+          "peakBytes": {
+            "before": 3188628,
+            "after": 6850331
+          }
+        },
+        "deferred-personal-2000": {
+          "before": {
+            "samples": 31,
+            "medianMs": 17.048334,
+            "p95Ms": 19.022584
+          },
+          "after": {
+            "samples": 31,
+            "medianMs": 15.782041,
+            "p95Ms": 45.042584
+          },
+          "peakBytes": {
+            "before": 4849134,
+            "after": 6330111
+          }
+        },
+        "deferred-outside-2000": {
+          "before": {
+            "samples": 31,
+            "medianMs": 14.132416,
+            "p95Ms": 44.171917
+          },
+          "after": {
+            "samples": 31,
+            "medianMs": 11.943708,
+            "p95Ms": 13.216708
+          },
+          "peakBytes": {
+            "before": 2771483,
+            "after": 4237488
+          }
+        }
+      },
+      "limits": [
+        "Reject: shared median regresses 15.579 to 15.832 ms and shared peak allocations increase 3,188,628 to 6,850,331 bytes. Personal/outside CPU savings do not justify retaining every richer GoogleFile model.",
+        "Fixture CPU and Python allocations only; p95 has thread scheduling/GC outliers. No live latency estimate.",
+        "Production deferred-conversion edits and related fixture adaptation were fully restored; temp prototype remains evidence only."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "env PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-cpu.py",
+        "script": "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-cpu.py",
+        "isolatedSources": [
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/baseline-files.py",
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/candidate-files-deferred.py"
+        ],
+        "baselineSourceExtraction": "git show fdc479beea4488ad5869e8957be8c646fc470527:backend/app/<owned-module>/service.py"
+      },
+      "validation": [
+        "Public result equality includes response fields and scope; validation still precedes membership. Retained code excludes this idea."
+      ]
+    },
+    {
+      "id": "round6-bulk-02",
+      "candidate": "Validate Drive inventory metadata in bounded 64-record RootModel buffers",
+      "outcome": "accepted",
+      "status": "retained",
+      "method": "Isolated baseline versus final named RootModel prototype; public walk_drive_folders equality; three warmups and 31 alternating paired measurements, plus single tracemalloc peak per side. Full-page and TypeAdapter variants were tuning attempts within this single candidate, not counted passes.",
+      "workload": {
+        "pages": "one folder page plus one document page",
+        "pageSizes": [50, 1000],
+        "requests": "same two list calls per side",
+        "validationBufferRecords": 64
+      },
+      "evidence": {
+        "inventory-pages-50-each": {
+          "before": {
+            "samples": 31,
+            "medianMs": 0.432417,
+            "p95Ms": 0.481417
+          },
+          "after": {
+            "samples": 31,
+            "medianMs": 0.411125,
+            "p95Ms": 1.355375
+          },
+          "peakBytes": {
+            "before": 225813,
+            "after": 255836
+          }
+        },
+        "inventory-pages-1000-each": {
+          "before": {
+            "samples": 31,
+            "medianMs": 5.844166,
+            "p95Ms": 7.613333
+          },
+          "after": {
+            "samples": 31,
+            "medianMs": 5.261292,
+            "p95Ms": 6.373375
+          },
+          "peakBytes": {
+            "before": 4264355,
+            "after": 4267707
+          }
+        }
+      },
+      "limits": [
+        "Large-page fixture median 5.844 to 5.261 ms; peak 4,264,355 to 4,267,707 bytes. Small pages add about 30 KB peak and noisy p95 (0.481 to 1.355 ms), despite slightly faster median.",
+        "Bounded buffers preserve schema validation, order, personal/shared filtering, pagination and incomplete/error behavior. Invalid metadata may be reported at a bounded buffer location; exception type remains ValidationError.",
+        "No network saving or live latency claim; only model validation dispatch is batched."
+      ],
+      "changedPaths": [
+        "backend/app/drive/service.py",
+        "backend/tests/bulk_round6_support.py",
+        "backend/tests/test_bulk_round6.py"
+      ],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "env PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-pages-rootmodel.py",
+        "script": "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-pages-rootmodel.py",
+        "isolatedSources": [
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/baseline-drive.py",
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/candidate-drive-pages-rootmodel.py"
+        ],
+        "baselineSourceExtraction": "git show fdc479beea4488ad5869e8957be8c646fc470527:backend/app/<owned-module>/service.py"
+      },
+      "validation": [
+        "129 folders plus 129 files preserve order, complete field values and normalized parents.",
+        "Invalid folder/file metadata in record 65 fails schema validation.",
+        "Focused Drive suites and three typecheckers pass."
+      ]
+    },
+    {
+      "id": "round6-bulk-03",
+      "candidate": "Bypass multipart batching for a singleton metadata request",
+      "outcome": "rejected",
+      "status": "prototype_reverted",
+      "method": "Actual googleapiclient discovery/resource and BatchHttpRequest serializer/parser on a read-only local SDK HTTP fixture; 31 alternating paired public singleton calls after three warmups, plus paired sustained HTTP 500 error witness.",
+      "workload": {
+        "idsPerCall": 1,
+        "cases": ["successful metadata", "sustained provider 500"],
+        "network": "none"
+      },
+      "evidence": {
+        "before": {
+          "samples": 31,
+          "medianMs": 1.286209,
+          "p95Ms": 1.599958
+        },
+        "after": {
+          "samples": 31,
+          "medianMs": 0.901625,
+          "p95Ms": 1.266209
+        },
+        "successWitness": {
+          "before": {
+            "outerHttpCalls": 34,
+            "freshGetSubrequests": 34,
+            "responseBytes": 10846,
+            "jsonBytes": 4216,
+            "fields": [
+              "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,capabilities(canEdit,canAddChildren)"
+            ]
+          },
+          "after": {
+            "outerHttpCalls": 34,
+            "freshGetSubrequests": 34,
+            "responseBytes": 4216,
+            "jsonBytes": 4216,
+            "fields": [
+              "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,capabilities(canEdit,canAddChildren)"
+            ]
+          }
+        },
+        "transientFailureWitness": {
+          "before": {
+            "outerHttpCalls": 1,
+            "freshGetSubrequests": 1,
+            "responseBytes": 244,
+            "jsonBytes": 49,
+            "fields": [
+              "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,capabilities(canEdit,canAddChildren)"
+            ],
+            "error": {
+              "type": "DriveUpstreamError",
+              "status": 502,
+              "code": "drive_upstream",
+              "reason": "fixtureReason"
+            },
+            "elapsedMs": 3.545417
+          },
+          "after": {
+            "outerHttpCalls": 3,
+            "freshGetSubrequests": 3,
+            "responseBytes": 147,
+            "jsonBytes": 147,
+            "fields": [
+              "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,capabilities(canEdit,canAddChildren)"
+            ],
+            "error": {
+              "type": "DriveUpstreamError",
+              "status": 502,
+              "code": "drive_upstream",
+              "reason": "fixtureReason"
+            },
+            "elapsedMs": 4344.978458
+          }
+        }
+      },
+      "limits": [
+        "Success median improves 1.286 to 0.902 ms and multipart response bytes shrink. Reject because public direct retry scope changes: one fresh GET becomes three and fixture failure grows from 3.545 ms to 4,344.978 ms including real configured retry backoff.",
+        "Both variants end in the same 502 DriveUpstreamError/reason, but added requests and backoff weaken the existing bounded behavior. No change retained; redirect, deadline and token-refresh paths are preserved by keeping batching.",
+        "Failure is one deterministic paired resource witness, not a latency distribution."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "env PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-resources.py",
+        "script": "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-resources.py",
+        "isolatedSources": [
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/baseline-files.py",
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/prototype-files-single.py"
+        ],
+        "baselineSourceExtraction": "git show fdc479beea4488ad5869e8957be8c646fc470527:backend/app/<owned-module>/service.py"
+      },
+      "validation": [
+        "Actual SDK resource paths exercised, same fields and successful public result.",
+        "Transient-failure request counts and typed errors recorded."
+      ]
+    },
+    {
+      "id": "round6-bulk-04",
+      "candidate": "Bound metadata chunk ownership to four long-lived scheduling tasks",
+      "outcome": "accepted",
+      "status": "retained",
+      "method": "Isolated baseline versus bounded scheduler; public get_accessible_ids equality with 31 alternating paired fixture measurements after warmups; blocked provider witness measures task owners/active threads and single tracemalloc peaks.",
+      "workload": {
+        "ids": [201, 5001, 10001],
+        "batchLimit": 100,
+        "providerConcurrency": 4,
+        "noGETsRemoved": true
+      },
+      "evidence": {
+        "scheduler-201": {
+          "before": {
+            "samples": 31,
+            "medianMs": 1.78325,
+            "p95Ms": 1.957208
+          },
+          "after": {
+            "samples": 31,
+            "medianMs": 1.827625,
+            "p95Ms": 2.14025
+          },
+          "blockedWitness": {
+            "before": {
+              "retainedWorkers": 3,
+              "activeProviderThreads": 3,
+              "peakProviderThreads": 3,
+              "admittedBatches": 3,
+              "totalBatches": 3,
+              "subrequests": 201,
+              "inventoryReads": 1
+            },
+            "after": {
+              "retainedWorkers": 3,
+              "activeProviderThreads": 3,
+              "peakProviderThreads": 3,
+              "admittedBatches": 3,
+              "totalBatches": 3,
+              "subrequests": 201,
+              "inventoryReads": 1
+            }
+          },
+          "peakBytes": {
+            "before": 494087,
+            "after": 494458
+          }
+        },
+        "scheduler-5001": {
+          "before": {
+            "samples": 31,
+            "medianMs": 36.874334,
+            "p95Ms": 69.248167
+          },
+          "after": {
+            "samples": 31,
+            "medianMs": 36.956334,
+            "p95Ms": 67.896458
+          },
+          "blockedWitness": {
+            "before": {
+              "retainedWorkers": 51,
+              "activeProviderThreads": 4,
+              "peakProviderThreads": 4,
+              "admittedBatches": 4,
+              "totalBatches": 51,
+              "subrequests": 5001,
+              "inventoryReads": 1
+            },
+            "after": {
+              "retainedWorkers": 4,
+              "activeProviderThreads": 4,
+              "peakProviderThreads": 4,
+              "admittedBatches": 4,
+              "totalBatches": 51,
+              "subrequests": 5001,
+              "inventoryReads": 1
+            }
+          },
+          "peakBytes": {
+            "before": 7857523,
+            "after": 7618018
+          }
+        },
+        "scheduler-10001": {
+          "before": {
+            "samples": 31,
+            "medianMs": 74.311667,
+            "p95Ms": 112.414
+          },
+          "after": {
+            "samples": 31,
+            "medianMs": 74.733625,
+            "p95Ms": 107.482583
+          },
+          "blockedWitness": {
+            "before": {
+              "retainedWorkers": 101,
+              "activeProviderThreads": 4,
+              "peakProviderThreads": 4,
+              "admittedBatches": 4,
+              "totalBatches": 101,
+              "subrequests": 10001,
+              "inventoryReads": 1
+            },
+            "after": {
+              "retainedWorkers": 4,
+              "activeProviderThreads": 4,
+              "peakProviderThreads": 4,
+              "admittedBatches": 4,
+              "totalBatches": 101,
+              "subrequests": 10001,
+              "inventoryReads": 1
+            }
+          },
+          "peakBytes": {
+            "before": 15657415,
+            "after": 15191109
+          }
+        }
+      },
+      "limits": [
+        "Retain for resource bound, not speed: at 10,001 IDs owners fall 101 to 4 and peak allocations 15,657,415 to 15,191,109 bytes; median slightly regresses 74.312 to 74.734 ms.",
+        "Each concurrent public operation retains four owners; ordered chunk result slots still scale with chunk count. Provider thread concurrency remains four and provider GET/batch counts remain unchanged.",
+        "Same fresh validation/permission filtering, provider_refresh_scope ownership and semaphore lifetime. Cancellation stops queued provider work while admitted threads retain slots.",
+        "High-volume fixture is service-level bulk search/preload, not the recent-alias endpoint."
+      ],
+      "changedPaths": [
+        "backend/app/files/service.py",
+        "backend/tests/bulk_round6_support.py",
+        "backend/tests/test_bulk_round6.py"
+      ],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "env PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-cpu.py",
+        "script": "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-cpu.py",
+        "isolatedSources": [
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/baseline-files.py",
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/candidate-files-window.py"
+        ],
+        "baselineSourceExtraction": "git show fdc479beea4488ad5869e8957be8c646fc470527:backend/app/<owned-module>/service.py"
+      },
+      "validation": [
+        "5,001 IDs admit four threads and 51 total batches on success.",
+        "Cancelled waiter retains active slots and stops remaining 47 batches.",
+        "Competing provider failures retain earlier input-chunk error/reason.",
+        "Prior provider refresh/cancellation suites pass."
+      ]
+    },
+    {
+      "id": "round6-bulk-05",
+      "candidate": "Eagerly batch the first personal-ancestry parent frontier",
+      "outcome": "rejected",
+      "status": "prototype_reverted",
+      "method": "Executable PrimedDrive/PrimedReads prototype behind the public resolve_member_drives call; paired actual SDK fixture HTTP/GET counts, with equal membership outputs.",
+      "workload": {
+        "parents": [32, 256],
+        "commonAncestor": "one shared parent immediately below personal root",
+        "memoCapacity": 256
+      },
+      "evidence": {
+        "ancestry-prime-32": {
+          "before": {
+            "publishedFiles": 32,
+            "outerHttpCalls": 33,
+            "freshAncestorGets": 33,
+            "commonAncestorGets": 1,
+            "memoLimit": 256
+          },
+          "after": {
+            "publishedFiles": 32,
+            "outerHttpCalls": 2,
+            "freshAncestorGets": 33,
+            "commonAncestorGets": 1,
+            "memoLimit": 256
+          }
+        },
+        "ancestry-prime-256": {
+          "before": {
+            "publishedFiles": 256,
+            "outerHttpCalls": 257,
+            "freshAncestorGets": 257,
+            "commonAncestorGets": 1,
+            "memoLimit": 256
+          },
+          "after": {
+            "publishedFiles": 256,
+            "outerHttpCalls": 259,
+            "freshAncestorGets": 512,
+            "commonAncestorGets": 256,
+            "memoLimit": 256
+          }
+        }
+      },
+      "limits": [
+        "32-parent case reduces outer HTTP calls 33 to 2 while leaving 33 fresh ancestor GETs. Reject because at the existing 256-entry memo boundary, priming fills the memo before the common ancestor is visited: fresh GETs increase 257 to 512; common ancestor GETs 1 to 256; HTTP calls 257 to 259.",
+        "This is independent resource evidence from a new frontier-priming prototype. It is not another scaling pass for the previously retained ancestry deduplication.",
+        "Keep current bounded on-demand memo behavior; no production helper changed."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "env PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-resources.py",
+        "script": "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-resources.py",
+        "isolatedSources": [
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/baseline-drive.py"
+        ],
+        "baselineSourceExtraction": "git show fdc479beea4488ad5869e8957be8c646fc470527:backend/app/<owned-module>/service.py"
+      },
+      "validation": [
+        "Both personal-membership outputs match; authority is freshly read in the same call.",
+        "Quota/resource amplification is sufficient rejection evidence; no speed claim."
+      ]
+    },
+    {
+      "id": "round6-bulk-06",
+      "candidate": "Use fresh search-metadata projection for recent aliases",
+      "outcome": "accepted",
+      "status": "retained",
+      "method": "Isolated alias baseline versus projection-only candidate; actual Google SDK multipart serializer/parser on local HTTP responses. 31 alternating paired public resolve_recent calls after three equality warmups.",
+      "workload": {
+        "totalAliases": 50,
+        "publishedAliases": 46,
+        "description": "Unicode-heavy description repeated 800 times per successful fixture document",
+        "negativeCases": ["403", "404", "trashed", "mismatched ID"],
+        "freshGETs": 50
+      },
+      "evidence": {
+        "before": {
+          "samples": 31,
+          "medianMs": 17.069041,
+          "p95Ms": 18.178208
+        },
+        "after": {
+          "samples": 31,
+          "medianMs": 7.370917,
+          "p95Ms": 7.935333
+        },
+        "oneReadWitness": {
+          "before": {
+            "outerHttpCalls": 1,
+            "freshGetSubrequests": 50,
+            "responseBytes": 942072,
+            "jsonBytes": 933461,
+            "fields": [
+              "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,capabilities(canEdit,canAddChildren)"
+            ],
+            "publishedAliases": 46
+          },
+          "after": {
+            "outerHttpCalls": 1,
+            "freshGetSubrequests": 50,
+            "responseBytes": 17016,
+            "jsonBytes": 8405,
+            "fields": ["id,name,mimeType,parents,driveId,modifiedTime,trashed"],
+            "publishedAliases": 46
+          }
+        }
+      },
+      "limits": [
+        "Fixture response bytes 942,072 to 17,016; fixture public-call median 17.069 to 7.371 ms. This measures local SDK serialization/decode CPU and a deliberately description-heavy response, not WAN or production latency.",
+        "Name/MIME/scope/parents/modifiedTime/trashed remain freshly fetched. RecentDocumentAlias exposes neither edit capabilities nor descriptions. Provider 403/404 and current user scope still filter each requested file.",
+        "Projection is distinct from prior search projections: the recent-alias endpoint previously invoked full capability/description reads."
+      ],
+      "changedPaths": [
+        "backend/app/aliases/service.py",
+        "backend/tests/test_aliases.py",
+        "backend/tests/bulk_round6_support.py",
+        "backend/tests/test_bulk_round6_postgres.py"
+      ],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "env PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-resources.py",
+        "script": "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-resources.py",
+        "isolatedSources": [
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/baseline-aliases.py",
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/candidate-aliases-projection.py"
+        ],
+        "baselineSourceExtraction": "git show fdc479beea4488ad5869e8957be8c646fc470527:backend/app/<owned-module>/service.py"
+      },
+      "validation": [
+        "Owned PostgreSQL plus provider fixture verifies retirement, missing alias, duplicate ordering, 403/404, wrong ID, foreign drive, trashed filtering and a fresh permission loss on the next call.",
+        "Same test verifies connection released before provider work and no full-description/capability fields requested."
+      ]
+    },
+    {
+      "id": "round6-bulk-07",
+      "candidate": "Reuse one array-bound fresh recent-alias SELECT instead of expanding IN binds",
+      "outcome": "accepted",
+      "status": "retained",
+      "method": "Public PostgresAliasService paired against isolated baseline on owned loopback PostgreSQL 18.6, one connection, 20,000 rows (80% active), three warmups plus 51 alternating paired samples. Driver-phase event timings and explicit custom/generic EXPLAIN ANALYZE BUFFERS captured for both SQL forms.",
+      "workload": {
+        "totalAliases": [1, 6, 50],
+        "largestCase": "49 existing aliases plus one absent alias; some existing aliases retired, leaving 39 output rows",
+        "statementsPerRead": 1,
+        "database": "wiki_round6_bulk_bench only",
+        "provider": "identical fresh read fixture outside SQL phase"
+      },
+      "evidence": {
+        "recent-any-1": {
+          "before": {
+            "samples": 51,
+            "medianMs": 0.51425,
+            "p95Ms": 0.613458
+          },
+          "after": {
+            "samples": 51,
+            "medianMs": 0.457041,
+            "p95Ms": 0.538834
+          },
+          "driverPhase": {
+            "before": {
+              "samples": 51,
+              "medianMs": 0.193458,
+              "p95Ms": 0.258417
+            },
+            "after": {
+              "samples": 51,
+              "medianMs": 0.203292,
+              "p95Ms": 0.268583
+            }
+          },
+          "witness": {
+            "after": {
+              "statementCount": 1,
+              "bindCount": 1,
+              "sqlBytes": 167
+            },
+            "before": {
+              "statementCount": 1,
+              "bindCount": 1,
+              "sqlBytes": 165
+            }
+          },
+          "planSummary": {
+            "after-force_custom_plan": {
+              "node": "Index Scan",
+              "publishedRows": 1.0,
+              "rowsRemovedByFilter": 0,
+              "hitBlocks": 3,
+              "planningMs": 0.017,
+              "executionMs": 0.004,
+              "indexes": [
+                {
+                  "index": "document_aliases_pkey",
+                  "rows": 1.0,
+                  "searches": 1,
+                  "hitBlocks": 3
+                }
+              ]
+            },
+            "before-force_custom_plan": {
+              "node": "Index Scan",
+              "publishedRows": 1.0,
+              "rowsRemovedByFilter": 0,
+              "hitBlocks": 3,
+              "planningMs": 0.019,
+              "executionMs": 0.004,
+              "indexes": [
+                {
+                  "index": "document_aliases_pkey",
+                  "rows": 1.0,
+                  "searches": 1,
+                  "hitBlocks": 3
+                }
+              ]
+            },
+            "after-force_generic_plan": {
+              "node": "Bitmap Heap Scan",
+              "publishedRows": 1.0,
+              "rowsRemovedByFilter": 0,
+              "hitBlocks": 132,
+              "planningMs": 0.021,
+              "executionMs": 0.322,
+              "indexes": [
+                {
+                  "index": "uq_document_aliases_active_file",
+                  "rows": 16000.0,
+                  "searches": 1,
+                  "hitBlocks": 129
+                },
+                {
+                  "index": "document_aliases_pkey",
+                  "rows": 1.0,
+                  "searches": 1,
+                  "hitBlocks": 2
+                }
+              ]
+            },
+            "before-force_generic_plan": {
+              "node": "Index Scan",
+              "publishedRows": 1.0,
+              "rowsRemovedByFilter": 0,
+              "hitBlocks": 3,
+              "planningMs": 0.029,
+              "executionMs": 0.007,
+              "indexes": [
+                {
+                  "index": "document_aliases_pkey",
+                  "rows": 1.0,
+                  "searches": 1,
+                  "hitBlocks": 3
+                }
+              ]
+            }
+          }
+        },
+        "recent-any-6": {
+          "before": {
+            "samples": 51,
+            "medianMs": 0.746333,
+            "p95Ms": 1.026042
+          },
+          "after": {
+            "samples": 51,
+            "medianMs": 0.688417,
+            "p95Ms": 0.89375
+          },
+          "driverPhase": {
+            "before": {
+              "samples": 51,
+              "medianMs": 0.401458,
+              "p95Ms": 0.547375
+            },
+            "after": {
+              "samples": 51,
+              "medianMs": 0.413708,
+              "p95Ms": 0.501792
+            }
+          },
+          "witness": {
+            "after": {
+              "statementCount": 1,
+              "bindCount": 1,
+              "sqlBytes": 167
+            },
+            "before": {
+              "statementCount": 1,
+              "bindCount": 6,
+              "sqlBytes": 230
+            }
+          },
+          "planSummary": {
+            "after-force_custom_plan": {
+              "node": "Bitmap Heap Scan",
+              "publishedRows": 4.0,
+              "rowsRemovedByFilter": 0,
+              "hitBlocks": 142,
+              "planningMs": 0.028,
+              "executionMs": 0.195,
+              "indexes": [
+                {
+                  "index": "uq_document_aliases_active_file",
+                  "rows": 16000.0,
+                  "searches": 1,
+                  "hitBlocks": 129
+                },
+                {
+                  "index": "document_aliases_pkey",
+                  "rows": 5.0,
+                  "searches": 6,
+                  "hitBlocks": 12
+                }
+              ]
+            },
+            "before-force_custom_plan": {
+              "node": "Bitmap Heap Scan",
+              "publishedRows": 4.0,
+              "rowsRemovedByFilter": 0,
+              "hitBlocks": 142,
+              "planningMs": 0.02,
+              "executionMs": 0.197,
+              "indexes": [
+                {
+                  "index": "uq_document_aliases_active_file",
+                  "rows": 16000.0,
+                  "searches": 1,
+                  "hitBlocks": 129
+                },
+                {
+                  "index": "document_aliases_pkey",
+                  "rows": 5.0,
+                  "searches": 6,
+                  "hitBlocks": 12
+                }
+              ]
+            },
+            "after-force_generic_plan": {
+              "node": "Bitmap Heap Scan",
+              "publishedRows": 4.0,
+              "rowsRemovedByFilter": 0,
+              "hitBlocks": 142,
+              "planningMs": 0.018,
+              "executionMs": 0.187,
+              "indexes": [
+                {
+                  "index": "uq_document_aliases_active_file",
+                  "rows": 16000.0,
+                  "searches": 1,
+                  "hitBlocks": 129
+                },
+                {
+                  "index": "document_aliases_pkey",
+                  "rows": 5.0,
+                  "searches": 6,
+                  "hitBlocks": 12
+                }
+              ]
+            },
+            "before-force_generic_plan": {
+              "node": "Bitmap Heap Scan",
+              "publishedRows": 4.0,
+              "rowsRemovedByFilter": 0,
+              "hitBlocks": 142,
+              "planningMs": 0.019,
+              "executionMs": 0.189,
+              "indexes": [
+                {
+                  "index": "uq_document_aliases_active_file",
+                  "rows": 16000.0,
+                  "searches": 1,
+                  "hitBlocks": 129
+                },
+                {
+                  "index": "document_aliases_pkey",
+                  "rows": 5.0,
+                  "searches": 6,
+                  "hitBlocks": 12
+                }
+              ]
+            }
+          }
+        },
+        "recent-any-50": {
+          "before": {
+            "samples": 51,
+            "medianMs": 14.268625,
+            "p95Ms": 15.036417
+          },
+          "after": {
+            "samples": 51,
+            "medianMs": 1.11575,
+            "p95Ms": 2.085375
+          },
+          "driverPhase": {
+            "before": {
+              "samples": 51,
+              "medianMs": 13.461916,
+              "p95Ms": 14.148292
+            },
+            "after": {
+              "samples": 51,
+              "medianMs": 0.646625,
+              "p95Ms": 1.594417
+            }
+          },
+          "witness": {
+            "after": {
+              "statementCount": 1,
+              "bindCount": 1,
+              "sqlBytes": 167
+            },
+            "before": {
+              "statementCount": 1,
+              "bindCount": 50,
+              "sqlBytes": 843
+            }
+          },
+          "planSummary": {
+            "after-force_custom_plan": {
+              "node": "Bitmap Heap Scan",
+              "publishedRows": 39.0,
+              "rowsRemovedByFilter": 15961,
+              "hitBlocks": 362,
+              "planningMs": 0.071,
+              "executionMs": 1.253,
+              "indexes": [
+                {
+                  "index": "uq_document_aliases_active_file",
+                  "rows": 16000.0,
+                  "searches": 1,
+                  "hitBlocks": 129
+                }
+              ]
+            },
+            "before-force_custom_plan": {
+              "node": "Bitmap Heap Scan",
+              "publishedRows": 39.0,
+              "rowsRemovedByFilter": 15961,
+              "hitBlocks": 362,
+              "planningMs": 0.072,
+              "executionMs": 1.067,
+              "indexes": [
+                {
+                  "index": "uq_document_aliases_active_file",
+                  "rows": 16000.0,
+                  "searches": 1,
+                  "hitBlocks": 129
+                }
+              ]
+            },
+            "after-force_generic_plan": {
+              "node": "Bitmap Heap Scan",
+              "publishedRows": 39.0,
+              "rowsRemovedByFilter": 0,
+              "hitBlocks": 191,
+              "planningMs": 0.05,
+              "executionMs": 0.305,
+              "indexes": [
+                {
+                  "index": "uq_document_aliases_active_file",
+                  "rows": 16000.0,
+                  "searches": 1,
+                  "hitBlocks": 129
+                },
+                {
+                  "index": "document_aliases_pkey",
+                  "rows": 49.0,
+                  "searches": 30,
+                  "hitBlocks": 60
+                }
+              ]
+            },
+            "before-force_generic_plan": {
+              "node": "Bitmap Heap Scan",
+              "publishedRows": 39.0,
+              "rowsRemovedByFilter": 15961,
+              "hitBlocks": 362,
+              "planningMs": 0.047,
+              "executionMs": 12.909,
+              "indexes": [
+                {
+                  "index": "uq_document_aliases_active_file",
+                  "rows": 16000.0,
+                  "searches": 1,
+                  "hitBlocks": 129
+                }
+              ]
+            }
+          }
+        }
+      },
+      "limits": [
+        "Primary case respects the public max_length=50 cap. One/six-key medians 0.514 to 0.457 / 0.746 to 0.688 ms; 50-total medians 14.269 to 1.116 ms. One bind remains for every count; 50-key SQL bytes 843 to 167.",
+        "The large gap is planner/statistics-dependent: the fixture generic IN plan scans 16,000 active rows and filters 15,961 (~12.909 ms); generic ANY intersects alias/active indexes (~0.305 ms). Custom plans are similar and ANY custom is slightly slower (1.253 versus 1.067 ms). Forced one-key generic ANY also costs more than IN (0.322 versus 0.007 ms). Do not extrapolate these plans to live latency.",
+        "No alias result cache introduced; retirement checked in fresh SQL, aliases remain globally unique, original input order/deduplication and transaction release remain.",
+        "Earlier stress evidence sql-results.json/sql-phase-results.json uses 50 existing aliases plus one miss and one duplicate: 51 unique, 52 total service inputs, beyond the public cap. It is not the primary retained claim; smaller initial cases remain within the cap."
+      ],
+      "changedPaths": [
+        "backend/app/aliases/service.py",
+        "backend/tests/test_aliases.py",
+        "backend/tests/test_bulk_round6_postgres.py"
+      ],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "env PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-sql-bounded-phase.py",
+        "script": "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-sql-bounded-phase.py",
+        "isolatedSources": [
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/baseline-aliases.py",
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/prototype-aliases-any.py"
+        ],
+        "baselineSourceExtraction": "git show fdc479beea4488ad5869e8957be8c646fc470527:backend/app/<owned-module>/service.py"
+      },
+      "validation": [
+        "Owned-PG focused test uses public alias service, real SELECT, one pool connection, current provider results and schema-valid public request.",
+        "No generated SQL or ORM identity state serves as authorization.",
+        "Mypy, basedpyright and ty pass without suppression or baseline growth."
+      ]
+    },
+    {
+      "id": "round6-bulk-08",
+      "candidate": "Prefetch reserved alias candidates before conflict-safe insertion",
+      "outcome": "rejected",
+      "status": "prototype_reverted",
+      "method": "Executable PostgreSQL service prototype versus baseline ensure_for_file, 31 alternating paired samples in each reservation condition; reset only fixture-owned rows before each write. Same public output and fresh provider permission fixture.",
+      "workload": {
+        "candidateCount": 4,
+        "reservedCount": [0, 3],
+        "isolation": "READ COMMITTED; same uniqueness/conflict checks; owned local database only"
+      },
+      "evidence": {
+        "collision-prefetch-0-reserved": {
+          "before": {
+            "samples": 31,
+            "medianMs": 1.240208,
+            "p95Ms": 1.474542
+          },
+          "after": {
+            "samples": 31,
+            "medianMs": 1.586541,
+            "p95Ms": 2.298625
+          },
+          "witness": {
+            "after": {
+              "statementCount": 3
+            },
+            "before": {
+              "statementCount": 2
+            }
+          }
+        },
+        "collision-prefetch-3-reserved": {
+          "before": {
+            "samples": 31,
+            "medianMs": 3.384209,
+            "p95Ms": 3.843667
+          },
+          "after": {
+            "samples": 31,
+            "medianMs": 1.433541,
+            "p95Ms": 1.79525
+          },
+          "witness": {
+            "after": {
+              "statementCount": 3
+            },
+            "before": {
+              "statementCount": 8
+            }
+          }
+        }
+      },
+      "limits": [
+        "Collision-heavy case improves 3.384 to 1.434 ms and statements 8 to 3. Reject because ordinary no-collision path grows two statements to three and median 1.240 to 1.587 ms (+27.9%). No evidence that collision-heavy behavior dominates real traffic.",
+        "Prototype retained uniqueness arbitration and fresh permission preflight. Rejection is measured common-path cost, not unimplemented speculation.",
+        "No production mutation/query ordering change retained."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "env PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-sql.py",
+        "script": "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-sql.py",
+        "isolatedSources": [
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/baseline-aliases.py",
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/prototype-aliases-collision-prefetch.py"
+        ],
+        "baselineSourceExtraction": "git show fdc479beea4488ad5869e8957be8c646fc470527:backend/app/<owned-module>/service.py"
+      },
+      "validation": [
+        "Equal successful public alias results; retired candidates remain reserved; measured local writes cleaned by owned UUID."
+      ]
+    },
+    {
+      "id": "round6-bulk-09",
+      "candidate": "Batch mutation source/destination preflights through filtering bulk reads",
+      "outcome": "rejected",
+      "status": "prototype_reverted",
+      "method": "Executable files-service move/copy_template prototype replaces two public metadata preflights with one bulk filtering read; paired actual SDK fixture resource/error witnesses.",
+      "workload": {
+        "cases": [
+          "move source 403",
+          "move source 404",
+          "copy-template source 403",
+          "copy-template source 404"
+        ],
+        "productionMutationCalls": 0
+      },
+      "evidence": {
+        "move-403": {
+          "before": {
+            "error": {
+              "type": "DriveUpstreamError",
+              "status": 403,
+              "code": "drive_upstream",
+              "reason": "fixtureReason"
+            },
+            "outerHttpCalls": 2,
+            "freshGetSubrequests": 2,
+            "responseBytes": 217,
+            "jsonBytes": 217,
+            "fields": [
+              "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,capabilities(canEdit,canAddChildren)"
+            ],
+            "mutationHttpCalls": 0
+          },
+          "after": {
+            "error": {
+              "type": "FileNotInScopeError",
+              "status": 404,
+              "code": "file_not_in_scope",
+              "reason": null
+            },
+            "outerHttpCalls": 1,
+            "freshGetSubrequests": 2,
+            "responseBytes": 587,
+            "jsonBytes": 217,
+            "fields": [
+              "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,capabilities(canEdit,canAddChildren)"
+            ],
+            "mutationHttpCalls": 0
+          }
+        },
+        "move-404": {
+          "before": {
+            "error": {
+              "type": "DriveUpstreamError",
+              "status": 404,
+              "code": "drive_upstream",
+              "reason": "fixtureReason"
+            },
+            "outerHttpCalls": 2,
+            "freshGetSubrequests": 2,
+            "responseBytes": 217,
+            "jsonBytes": 217,
+            "fields": [
+              "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,capabilities(canEdit,canAddChildren)"
+            ],
+            "mutationHttpCalls": 0
+          },
+          "after": {
+            "error": {
+              "type": "FileNotInScopeError",
+              "status": 404,
+              "code": "file_not_in_scope",
+              "reason": null
+            },
+            "outerHttpCalls": 1,
+            "freshGetSubrequests": 2,
+            "responseBytes": 587,
+            "jsonBytes": 217,
+            "fields": [
+              "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,capabilities(canEdit,canAddChildren)"
+            ],
+            "mutationHttpCalls": 0
+          }
+        },
+        "copy-template-403": {
+          "before": {
+            "error": {
+              "type": "DriveUpstreamError",
+              "status": 403,
+              "code": "drive_upstream",
+              "reason": "fixtureReason"
+            },
+            "outerHttpCalls": 2,
+            "freshGetSubrequests": 2,
+            "responseBytes": 217,
+            "jsonBytes": 217,
+            "fields": [
+              "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,capabilities(canEdit,canAddChildren)"
+            ],
+            "mutationHttpCalls": 0
+          },
+          "after": {
+            "error": {
+              "type": "FileNotInScopeError",
+              "status": 404,
+              "code": "file_not_in_scope",
+              "reason": null
+            },
+            "outerHttpCalls": 1,
+            "freshGetSubrequests": 2,
+            "responseBytes": 587,
+            "jsonBytes": 217,
+            "fields": [
+              "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,capabilities(canEdit,canAddChildren)"
+            ],
+            "mutationHttpCalls": 0
+          }
+        },
+        "copy-template-404": {
+          "before": {
+            "error": {
+              "type": "DriveUpstreamError",
+              "status": 404,
+              "code": "drive_upstream",
+              "reason": "fixtureReason"
+            },
+            "outerHttpCalls": 2,
+            "freshGetSubrequests": 2,
+            "responseBytes": 217,
+            "jsonBytes": 217,
+            "fields": [
+              "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,capabilities(canEdit,canAddChildren)"
+            ],
+            "mutationHttpCalls": 0
+          },
+          "after": {
+            "error": {
+              "type": "FileNotInScopeError",
+              "status": 404,
+              "code": "file_not_in_scope",
+              "reason": null
+            },
+            "outerHttpCalls": 1,
+            "freshGetSubrequests": 2,
+            "responseBytes": 587,
+            "jsonBytes": 217,
+            "fields": [
+              "id,name,mimeType,parents,driveId,modifiedTime,description,trashed,capabilities(canEdit,canAddChildren)"
+            ],
+            "mutationHttpCalls": 0
+          }
+        }
+      },
+      "limits": [
+        "Outer metadata HTTP calls fall two to one, with two fresh GET subrequests. Reject because filtering converts the source 403 DriveUpstreamError into 404 FileNotInScopeError and drops provider reason; even 404 code/type changes.",
+        "No mutation was admitted for either side. Keeping original preflight calls preserves the richer authority/error contract and supported destination/capability validation.",
+        "Prototype exists only as an evidence artifact; no production move/copy edits remain."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "env PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-resources.py",
+        "script": "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-resources.py",
+        "isolatedSources": [
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/baseline-files.py",
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/prototype-files-pair.py"
+        ],
+        "baselineSourceExtraction": "git show fdc479beea4488ad5869e8957be8c646fc470527:backend/app/<owned-module>/service.py"
+      },
+      "validation": [
+        "All four error/status/code/reason witnesses recorded; no fake mutation transport invoked."
+      ]
+    },
+    {
+      "id": "round6-bulk-10",
+      "candidate": "Overlap drive inventory with the recent-alias database read",
+      "outcome": "rejected",
+      "status": "prototype_reverted",
+      "method": "Executable alias-service prototype starts inventory before SQL resolves rows; paired public resolve_recent fixture behavior with all requested aliases absent and an optional failing inventory.",
+      "workload": {
+        "cases": [
+          "all aliases absent; inventory available",
+          "all aliases absent; inventory unavailable"
+        ],
+        "sql": "identical completed empty alias result"
+      },
+      "evidence": {
+        "all-missing": {
+          "before": {
+            "publishedAliases": 0,
+            "error": null,
+            "inventoryCalls": 0
+          },
+          "after": {
+            "publishedAliases": 0,
+            "error": null,
+            "inventoryCalls": 1
+          }
+        },
+        "unavailable": {
+          "before": {
+            "publishedAliases": 0,
+            "error": null,
+            "inventoryCalls": 0
+          },
+          "after": {
+            "publishedAliases": null,
+            "error": "Fixture inventory unavailable",
+            "inventoryCalls": 1
+          }
+        }
+      },
+      "limits": [
+        "Reject: absent history adds one unrelated inventory read instead of zero. Unavailable inventory changes the baseline empty response into an error despite SQL resolving no aliases.",
+        "Current inventory remains gated by actual authorized file results. No eager task, cache, transaction ownership or cancellation change retained.",
+        "Resource/semantic evidence, not a timing distribution or live inventory claim."
+      ],
+      "changedPaths": [],
+      "repro": {
+        "cwd": "/private/tmp/sarj-wiki-performance-20261010/backend",
+        "command": "env PYTHONPATH=. python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/python /private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-resources.py",
+        "script": "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/benchmark-resources.py",
+        "isolatedSources": [
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/baseline-aliases.py",
+          "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/prototype-aliases-eager.py"
+        ],
+        "baselineSourceExtraction": "git show fdc479beea4488ad5869e8957be8c646fc470527:backend/app/<owned-module>/service.py"
+      },
+      "validation": [
+        "Paired public outputs and inventory-call counts recorded for both availability states."
+      ]
+    }
+  ],
+  "validation": {
+    "focusedTests": {
+      "status": "passed",
+      "count": 207,
+      "seconds": 1.11,
+      "command": "env WIKI_ROUND6_BULK_DATABASE_URL=<owned-loopback-url> .venv/bin/pytest tests/test_bulk_round6.py tests/test_bulk_round6_postgres.py tests/test_provider_round3.py tests/test_provider_round5.py tests/test_provider_hot_paths.py tests/test_files_service.py tests/test_aliases.py tests/test_drive_modules.py -q"
+    },
+    "ruff": {
+      "check": "passed",
+      "formatCheck": "7 files already formatted"
+    },
+    "mypy": {
+      "status": "passed",
+      "sourceFileCount": 7,
+      "cache": "/dev/null"
+    },
+    "basedpyright": {
+      "status": "passed",
+      "errors": 0,
+      "warnings": 0,
+      "notes": 0
+    },
+    "ty": {
+      "status": "passed"
+    },
+    "customStandards": {
+      "status": "passed",
+      "errors": 0,
+      "warnings": "four pre-existing constructor/contract warnings in aliases/drive; no new support/test warning and no baseline edits"
+    },
+    "diffCheck": "passed",
+    "protectedPathsUnchanged": true,
+    "timingIsolation": "All timing probes and typechecker CPU blocks use shared round6 benchmark guard. No build/full gate/commit/push performed by this worker.",
+    "scopeSafety": "All Google requests use read-only fixtures, all SQL writes target the owned new bulk database, only UUID-owned rows cleaned, no external production mutation and no protected/original workspace edit.",
+    "qualificationCommands": {
+      "cwd": "/private/tmp/sarj-wiki-performance-20261010/backend",
+      "files": [
+        "app/aliases/service.py",
+        "app/drive/service.py",
+        "app/files/service.py",
+        "tests/test_aliases.py",
+        "tests/bulk_round6_support.py",
+        "tests/test_bulk_round6.py",
+        "tests/test_bulk_round6_postgres.py"
+      ],
+      "mypy": "env MYPY_CACHE_DIR=/dev/null python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/mypy <listed-files>",
+      "basedpyright": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/basedpyright -p pyrightconfig.json <listed-files>",
+      "ty": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py .venv/bin/ty check <listed-files>",
+      "standards": "python3 /private/tmp/sarj-wiki-perf-round6-benchmark-guard.py backend/.venv/bin/python scripts/check_standards.py <repo-relative-listed-files> (from worktree root)"
+    },
+    "candidateAccounting": "Expanded index of all 309 prior candidates and performance records reviewed. Ten independent new ideas; internal prototype tuning, correctness fixes, scaling fixtures and qualification checks count zero additional passes.",
+    "rawArtifacts": [
+      "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/cpu-raw.json",
+      "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/pages-rootmodel-raw.json",
+      "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/resource-raw.json",
+      "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/sql-raw.json",
+      "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/sql-bounded-phase-raw.json",
+      "/private/tmp/sarj-wiki-perf-round6-bulk-artifacts/sql-bounded-phase-results.json"
+    ],
+    "limits": "Measurements are controlled local CPU/SDK/SQL or deterministic resource/semantic comparisons. No live latency claim. Full integrated gate, production read-only qualification and release belong to root."
+  }
+}

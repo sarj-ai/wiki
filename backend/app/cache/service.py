@@ -10,10 +10,22 @@ from itertools import batched
 from typing import NamedTuple, override
 
 from pydantic import JsonValue
-from sqlalchemy import Select, Text, bindparam, column, delete, func, literal, or_, select
+from sqlalchemy import (
+    Interval,
+    Select,
+    Text,
+    bindparam,
+    column,
+    delete,
+    func,
+    literal,
+    or_,
+    select,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, Insert, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
+from sqlalchemy.sql.selectable import CTE
 
 from app.cache.protection import CacheEntryProtector, InvalidCacheEntryError
 from app.config import settings
@@ -101,49 +113,90 @@ def _cache_get_statement() -> Select[tuple[str, str]]:
     )
 
 
+@cache
+def _cache_bulk_get_statement(*, large: bool) -> Select[tuple[str, str]]:
+    if not large:
+        return _cache_get_statement()
+    lookup = (
+        func.unnest(bindparam("cache_keys", type_=ARRAY(Text)))
+        .table_valued(column("key", Text))
+        .render_derived()
+    )
+    return (
+        select(CacheEntry.key, _cache_envelope_text())
+        .join(lookup, CacheEntry.key == lookup.c.key)
+        .where(
+            CacheEntry.namespace == bindparam("cache_namespace", type_=Text),
+            CacheEntry.expires_at > func.now(),
+        )
+    )
+
+
 def _cache_insert(
     namespace: CacheNamespace,
     chunk: tuple[_ProtectedCacheValue, ...],
     expires_at: ColumnElement[datetime],
 ) -> Insert:
-    if len(chunk) >= _ARRAY_WRITE_THRESHOLD:
-        rows = (
-            func.unnest(
-                bindparam("cache_keys", [value.key for value in chunk], type_=ARRAY(Text)),
-                bindparam(
-                    "cache_envelopes",
-                    [value.envelope for value in chunk],
-                    type_=ARRAY(Text),
-                ),
-            )
-            .table_valued(column("key", Text), column("envelope", Text))
-            .render_derived()
-        )
-        return pg_insert(CacheEntry).from_select(
+    return (
+        pg_insert(CacheEntry)
+        .execution_options(dml_strategy="raw")
+        .values(
             [
-                CacheEntry.namespace,
-                CacheEntry.key,
-                CacheEntry.value,
-                CacheEntry.expires_at,
-            ],
+                {
+                    "namespace": namespace,
+                    "key": value.key,
+                    "value": value.envelope,
+                    "expires_at": expires_at,
+                }
+                for value in chunk
+            ]
+        )
+    )
+
+
+@cache
+def _cache_write_cleanup_statement() -> CTE:
+    return (
+        delete(CacheEntry)
+        .where(
+            or_(
+                CacheEntry.expires_at <= func.now(),
+                (CacheEntry.namespace == bindparam("cache_namespace", type_=Text))
+                & CacheEntry.key.op("!~")(literal(r"^h[0-9]+\.", literal_execute=True)),
+            )
+        )
+        .cte("delete_expired_cache_entries")
+    )
+
+
+@cache
+def _cache_array_write_statement(*, cleanup: bool) -> Insert:
+    rows = (
+        func.unnest(
+            bindparam("cache_keys", type_=ARRAY(Text)),
+            bindparam("cache_envelopes", type_=ARRAY(Text)),
+        )
+        .table_valued(column("key", Text), column("envelope", Text))
+        .render_derived()
+    )
+    insert = (
+        pg_insert(CacheEntry)
+        .execution_options(dml_strategy="raw")
+        .from_select(
+            [CacheEntry.namespace, CacheEntry.key, CacheEntry.value, CacheEntry.expires_at],
             select(
-                literal(namespace),
+                bindparam("cache_namespace", type_=Text),
                 rows.c.key,
                 func.to_jsonb(rows.c.envelope),
-                expires_at,
+                func.now() + bindparam("cache_ttl", type_=Interval),
             ),
         )
-    return pg_insert(CacheEntry).values(
-        [
-            {
-                "namespace": namespace,
-                "key": value.key,
-                "value": value.envelope,
-                "expires_at": expires_at,
-            }
-            for value in chunk
-        ]
     )
+    statement = insert.on_conflict_do_update(
+        index_elements=[CacheEntry.namespace, CacheEntry.key],
+        set_={"value": insert.excluded.value, "expires_at": insert.excluded.expires_at},
+    )
+    return statement.add_cte(_cache_write_cleanup_statement()) if cleanup else statement
 
 
 class CacheService(ABC):
@@ -290,21 +343,17 @@ class CachePSqlService(CacheService):
         with timed("cache"):
             for offset in range(0, len(queried_keys), _MAX_LOOKUP_KEYS_PER_QUERY):
                 chunk = queried_keys[offset : offset + _MAX_LOOKUP_KEYS_PER_QUERY]
-                statement = select(CacheEntry.key, _cache_envelope_text()).where(
-                    CacheEntry.namespace == namespace,
-                    CacheEntry.expires_at > func.now(),
-                )
-                if len(chunk) >= _UNNEST_LOOKUP_THRESHOLD:
-                    lookup = (
-                        func.unnest(bindparam("cache_lookup_keys", chunk, type_=ARRAY(Text)))
-                        .table_valued(column("key", Text))
-                        .render_derived()
-                    )
-                    statement = statement.join(lookup, CacheEntry.key == lookup.c.key)
-                else:
-                    statement = statement.where(CacheEntry.key.in_(chunk))
+                statement = _cache_bulk_get_statement(large=len(chunk) >= _UNNEST_LOOKUP_THRESHOLD)
                 async with self._sessionmaker() as db:
-                    rows = [(row[0], row[1]) for row in (await db.execute(statement)).all()]
+                    rows = [
+                        (row[0], row[1])
+                        for row in (
+                            await db.execute(
+                                statement,
+                                {"cache_namespace": namespace, "cache_keys": chunk},
+                            )
+                        ).all()
+                    ]
                 rows_by_key.update(rows)
         if len(physical_by_logical) >= _BULK_CPU_OFFLOAD_THRESHOLD or _needs_crypto_offload(
             rows_by_key.values()
@@ -353,36 +402,33 @@ class CachePSqlService(CacheService):
             protected_values = self._protect_values(namespace, values)
         if protected_values is None:
             return
-        # A consistent row-lock order prevents overlapping batches from
-        # deadlocking when callers supply the same keys in different orders.
+        # Keep a consistent row-lock order across every atomic write chunk.
         protected_values.sort(key=lambda value: value.key)
         expires_at = func.now() + ttl
-        expired = (
-            delete(CacheEntry)
-            .where(
-                or_(
-                    CacheEntry.expires_at <= func.now(),
-                    (CacheEntry.namespace == namespace)
-                    & CacheEntry.key.op("!~")(literal(r"^h[0-9]+\.", literal_execute=True)),
-                )
-            )
-            .cte("delete_expired_cache_entries")
-        )
         async with self._sessionmaker() as db, db.begin():
             for index, chunk in enumerate(
                 batched(protected_values, _MAX_WRITE_ROWS_PER_QUERY, strict=False)
             ):
-                insert = _cache_insert(namespace, chunk, expires_at)
-                statement = insert.on_conflict_do_update(
-                    index_elements=[CacheEntry.namespace, CacheEntry.key],
-                    set_={
-                        "value": insert.excluded.value,
-                        "expires_at": insert.excluded.expires_at,
-                    },
-                )
-                if index == 0:
-                    statement = statement.add_cte(expired)
-                await db.execute(statement)
+                parameters: dict[str, object] = {"cache_namespace": namespace}
+                if len(chunk) >= _ARRAY_WRITE_THRESHOLD:
+                    statement = _cache_array_write_statement(cleanup=index == 0)
+                    parameters.update(
+                        cache_keys=[value.key for value in chunk],
+                        cache_envelopes=[value.envelope for value in chunk],
+                        cache_ttl=ttl,
+                    )
+                else:
+                    insert = _cache_insert(namespace, chunk, expires_at)
+                    statement = insert.on_conflict_do_update(
+                        index_elements=[CacheEntry.namespace, CacheEntry.key],
+                        set_={
+                            "value": insert.excluded.value,
+                            "expires_at": insert.excluded.expires_at,
+                        },
+                    )
+                    if index == 0:
+                        statement = statement.add_cte(_cache_write_cleanup_statement())
+                await db.execute(statement, parameters)
 
     @override
     async def delete(self, namespace: CacheNamespace, key: str) -> None:

@@ -41,11 +41,16 @@ export const DocViewerHost = () => {
   const [rect, setRect] = useState<null | SlotRect>(null);
 
   const mounted: ActiveDoc[] = [];
-  const seen = new Set<string>();
-  for (const entry of docCandidates(pool, prewarm, warm)) {
-    if (entry.mimeType === MIME_HTML && entry.fileId !== active?.fileId) continue;
-    if (seen.has(entry.fileId)) continue;
-    seen.add(entry.fileId);
+  const prewarmCount = prewarm === null ? 0 : 1;
+  const count = pool.length + prewarmCount + warm.length;
+  for (let index = 0; index < count; index += 1) {
+    let entry: ActiveDoc | undefined;
+    if (index < pool.length) entry = pool[index];
+    else if (index === pool.length && prewarm !== null) entry = prewarm;
+    else entry = warm[index - pool.length - prewarmCount];
+    if (entry === undefined || (entry.mimeType === MIME_HTML && entry.fileId !== active?.fileId))
+      continue;
+    if (mounted.some((existing) => existing.fileId === entry.fileId)) continue;
     mounted.push(entry);
     if (mounted.length >= MAX_MOUNTED) break;
   }
@@ -202,16 +207,6 @@ function attachIframeLoadListener(onLoaded: () => void, iframe: HTMLIFrameElemen
 function markIframeLoaded(fileId: string, setIsLoading: (isLoading: boolean) => void): void {
   markNav(fileId, "iframeLoad");
   setIsLoading(false);
-}
-
-function* docCandidates(
-  pool: ActiveDoc[],
-  prewarm: ActiveDoc | null,
-  warm: ActiveDoc[],
-): Generator<ActiveDoc> {
-  yield* pool;
-  if (prewarm) yield prewarm;
-  yield* warm;
 }
 
 function HtmlIframe({
@@ -401,14 +396,24 @@ function useReducedMotion(): boolean {
   return useSyncExternalStore(subscribeToReducedMotion, reducedMotionSnapshot, () => false);
 }
 
+let reducedMotionQuery: MediaQueryList | null = null;
+let reducedMotionSubscribers = 0;
+
+function currentReducedMotionQuery(): MediaQueryList {
+  return (reducedMotionQuery ??= window.matchMedia("(prefers-reduced-motion: reduce)"));
+}
+
 function subscribeToReducedMotion(callback: () => void): () => void {
-  const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const query = currentReducedMotionQuery();
+  reducedMotionSubscribers += 1;
   query.addEventListener("change", callback);
   return () => {
     query.removeEventListener("change", callback);
+    reducedMotionSubscribers -= 1;
+    if (reducedMotionSubscribers === 0) reducedMotionQuery = null;
   };
 }
 
 function reducedMotionSnapshot(): boolean {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return currentReducedMotionQuery().matches;
 }

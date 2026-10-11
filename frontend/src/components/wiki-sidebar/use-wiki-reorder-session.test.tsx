@@ -235,6 +235,25 @@ describe("sidebar mutation session ownership", () => {
     expect(ACTIONS.move).toHaveBeenCalledExactlyOnceWith(FILE.id, DESTINATION.id);
   });
 
+  it("admits one provider move for repeated same-file gestures and permits retry after denial", async () => {
+    const pending = Promise.withResolvers<ActionResult<unknown>>();
+    ACTIONS.move.mockReturnValueOnce(pending.promise);
+    renderProvider("user-a");
+    move();
+    await vi.advanceTimersByTimeAsync(0);
+    move(`parent:${NESTED_FOLDER.id}`);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ACTIONS.move).toHaveBeenCalledOnce();
+    pending.resolve({ error: "Denied", ok: false, status: 403 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useInFlightMovesStore.getState().ids.size).toBe(0);
+    ACTIONS.move.mockResolvedValueOnce({ data: movedFile(), ok: true });
+    move();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ACTIONS.move).toHaveBeenCalledTimes(2);
+    expect(toast.success).toHaveBeenCalledOnce();
+  });
+
   it("rejects malformed same-container commit arrays", async () => {
     renderProvider("user-a");
     const event = dragEvent(DESTINATION.id, {
@@ -466,7 +485,7 @@ describe("sidebar mutation session ownership", () => {
 
       await expect(mutate(kind, hooks)).rejects.toMatchObject({ status: 403 });
       expect(client.getQueryData(key)).toEqual(previous);
-      expect(invalidate).toHaveBeenCalledWith({ queryKey: key });
+      expect(invalidate).toHaveBeenCalledWith({ exact: true, queryKey: key });
     },
   );
 

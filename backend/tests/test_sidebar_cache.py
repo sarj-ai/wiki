@@ -128,8 +128,10 @@ class FakeSession:  # sarj-noqa: SARJ428 -- Cache transaction recorder used only
         self.executed: list[ClauseElement] = []
         self.commits = 0
 
-    async def execute(self, stmt: ClauseElement) -> _ScalarResult:
-        self.executed.append(stmt)
+    async def execute(
+        self, stmt: ClauseElement, parameters: dict[str, object] | None = None
+    ) -> _ScalarResult:
+        self.executed.append(stmt.params(parameters) if parameters is not None else stmt)
         return _ScalarResult(self.row.refreshed_at if self.row is not None else None, row=self.row)
 
     async def commit(self) -> None:
@@ -194,8 +196,8 @@ def test_tree_lookup_uses_principal_and_drive_composite_key() -> None:
     compiled = db.executed[0].compile()
     params = compiled.params
     assert params is not None
-    assert params["user_id_1"] == user.id
-    assert params["drive_id_1"] == "drive-1"
+    assert params["tree_user_id"] == user.id
+    assert params["tree_drive_id"] == "drive-1"
     assert "user_drive_tree_cache.xmin" in str(compiled)
     assert "user_drive_tree_cache.ctid" in str(compiled)
 

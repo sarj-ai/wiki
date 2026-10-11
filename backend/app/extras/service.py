@@ -3,11 +3,24 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import asyncio
 from datetime import UTC, datetime
+from functools import cache
 from typing import TYPE_CHECKING, NamedTuple, override
 
-from sqlalchemy import Boolean, Double, Text, bindparam, column, func, literal, select, union_all
+from sqlalchemy import (
+    Boolean,
+    Double,
+    Text,
+    Uuid,
+    bindparam,
+    column,
+    func,
+    literal,
+    select,
+    union_all,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.selectable import CompoundSelect
 
 from app.extras.schemas import (
     DocIconRead,
@@ -97,6 +110,37 @@ class ExtrasService(ABC):
     async def upsert_preferences(self, payload: PreferencesWrite) -> PreferencesRead: ...
 
 
+@cache
+def _sidebar_read_statement() -> CompoundSelect[tuple[object, ...]]:
+    user_id = bindparam("sidebar_user_id", type_=Uuid)
+    return union_all(
+        select(
+            literal("preferences").label("kind"),
+            literal(None, type_=Text).label("item_id"),
+            literal(None, type_=Text).label("icon"),
+            literal(None, type_=Double).label("sort_order"),
+            UserPreferences.show_non_doc_files,
+            UserPreferences.hidden_workspace_ids,
+        ).where(UserPreferences.user_id == user_id),
+        select(
+            literal("folder"),
+            UserFolderIcon.folder_drive_id,
+            UserFolderIcon.icon,
+            literal(None, type_=Double),
+            literal(None, type_=Boolean),
+            literal(None, type_=ARRAY(Text)),
+        ).where(UserFolderIcon.user_id == user_id),
+        select(
+            literal("sort"),
+            UserSortOrder.drive_id,
+            literal(None, type_=Text),
+            UserSortOrder.sort_order,
+            literal(None, type_=Boolean),
+            literal(None, type_=ARRAY(Text)),
+        ).where(UserSortOrder.user_id == user_id),
+    )
+
+
 class PostgresExtrasService(ExtrasService):
     def __init__(self, *, db: AsyncSession, user: User) -> None:
         self._db = db
@@ -106,37 +150,11 @@ class PostgresExtrasService(ExtrasService):
     async def load_sidebar(self) -> SidebarExtras:
         # UNION ALL keeps each indexed user-scoped lookup independent while
         # paying one database round trip and avoiding ORM entity construction.
-        statement = union_all(
-            select(
-                literal("preferences").label("kind"),
-                literal(None, type_=Text).label("item_id"),
-                literal(None, type_=Text).label("icon"),
-                literal(None, type_=Double).label("sort_order"),
-                UserPreferences.show_non_doc_files,
-                UserPreferences.hidden_workspace_ids,
-            ).where(UserPreferences.user_id == self._user.id),
-            select(
-                literal("folder"),
-                UserFolderIcon.folder_drive_id,
-                UserFolderIcon.icon,
-                literal(None, type_=Double),
-                literal(None, type_=Boolean),
-                literal(None, type_=ARRAY(Text)),
-            ).where(UserFolderIcon.user_id == self._user.id),
-            select(
-                literal("sort"),
-                UserSortOrder.drive_id,
-                literal(None, type_=Text),
-                UserSortOrder.sort_order,
-                literal(None, type_=Boolean),
-                literal(None, type_=ARRAY(Text)),
-            ).where(UserSortOrder.user_id == self._user.id),
-        )
         preferences = _DEFAULT_PREFS
         folder_icons: list[FolderIconRead] = []
         sort_orders: list[SortOrderRead] = []
         for kind, item_id, icon, sort_order, show_non_doc_files, hidden_workspace_ids in (
-            await self._db.execute(statement)
+            await self._db.execute(_sidebar_read_statement(), {"sidebar_user_id": self._user.id})
         ).all():
             match kind:
                 case "preferences":

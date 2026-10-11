@@ -4,8 +4,8 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import override
 
-from sqlalchemy import select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import Text, any_, bindparam, select, update
+from sqlalchemy.dialects.postgresql import ARRAY, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.aliases.errors import (
@@ -29,6 +29,12 @@ from app.files.service import FilesService
 from app.identifiers import FileId
 from app.models.user import User
 from app.models.wiki import DocumentAlias
+
+
+_RECENT_ALIASES = select(DocumentAlias.alias, DocumentAlias.file_id).where(
+    DocumentAlias.alias == any_(bindparam("aliases", type_=ARRAY(Text))),
+    DocumentAlias.retired_at.is_(None),
+)
 
 
 class AliasService(ABC):
@@ -186,18 +192,13 @@ class PostgresAliasService(AliasService):
         if not aliases:
             return []
         unique_aliases = list(dict.fromkeys(aliases))
-        result = await self._db.execute(
-            select(DocumentAlias.alias, DocumentAlias.file_id).where(
-                DocumentAlias.alias.in_(unique_aliases),
-                DocumentAlias.retired_at.is_(None),
-            )
-        )
+        result = await self._db.execute(_RECENT_ALIASES, {"aliases": unique_aliases})
         files_by_alias = dict(result.tuples().all())
         ordered_aliases = [alias for alias in unique_aliases if alias in files_by_alias]
         # Provider membership resolution uses independent cache sessions.
         # Do not retain a connection for this completed alias read during it.
         await self._db.commit()
-        files_by_id = await self._files.get_accessible_many(
+        files_by_id = await self._files.get_search_metadata_many(
             [files_by_alias[alias] for alias in ordered_aliases]
         )
 

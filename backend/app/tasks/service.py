@@ -895,7 +895,7 @@ class PostgresTaskService(TaskService):
         return SmartCreateTaskRecord.model_validate(
             {
                 "owner_user_id": task.owner_user_id,
-                "task": _to_read(task),
+                "task": _task_read_payload(task),
                 "payload": task.payload,
             }
         )
@@ -970,7 +970,7 @@ class PostgresTaskService(TaskService):
         return DocumentTransformTaskRecord.model_validate(
             {
                 "owner_user_id": task.owner_user_id,
-                "task": _to_read(task),
+                "task": _task_read_payload(task),
                 "payload": payload,
                 "checkpoint": (
                     _deserialize_checkpoint(task.checkpoint)
@@ -1422,9 +1422,7 @@ def _terminal_payload() -> object:
 def _serialize_checkpoint(checkpoint: DocumentTransformCheckpoint) -> dict[str, JsonValue]:
     serialized = checkpoint.model_dump(mode="json")
     if isinstance(checkpoint, CopyCheckpoint | WordCopyCheckpoint):
-        plaintext = json.dumps(
-            serialized, ensure_ascii=False, separators=(",", ":"), sort_keys=True
-        )
+        plaintext = json.dumps(serialized, ensure_ascii=False, separators=(",", ":"))
         if len(plaintext.encode()) > _MAX_CHECKPOINT_PLAN_BYTES:
             raise CheckpointTooLargeError
         return {
@@ -1433,7 +1431,7 @@ def _serialize_checkpoint(checkpoint: DocumentTransformCheckpoint) -> dict[str, 
             _COPY_CHECKPOINT_CIPHERTEXT_FIELD: encrypt_cache(plaintext),
         }
     plan = {field: serialized.pop(field) for field in _CHECKPOINT_PLAN_FIELDS}
-    plaintext = json.dumps(plan, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    plaintext = json.dumps(plan, ensure_ascii=False, separators=(",", ":"))
     if len(plaintext.encode()) > _MAX_CHECKPOINT_PLAN_BYTES:
         raise CheckpointTooLargeError
     serialized["plan_ciphertext"] = encrypt_cache(plaintext)
@@ -1476,23 +1474,25 @@ def _request_hash(payload: dict[str, JsonValue]) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def _to_read(task: Task) -> TaskRead:
+def _task_read_payload(task: Task) -> dict[str, object]:
     result = task.result
     if task.kind == TaskKind.FILE_DOCUMENT_TRANSFORM and isinstance(result, dict):
         result = dict(result)
         result.pop("qa_permission_evidence", None)
-    return _TaskReadPayload.model_validate(
-        {
-            "id": task.id,
-            "kind": task.kind,
-            "status": task.status,
-            "result": result,
-            "resource_id": task.resource_id,
-            "error_code": task.error_code,
-            "error_detail": task.error_detail,
-            "attempt_count": task.attempt_count,
-            "started_at": task.started_at,
-            "finished_at": task.finished_at,
-            "created_at": task.created_at,
-        }
-    ).root
+    return {
+        "id": task.id,
+        "kind": task.kind,
+        "status": task.status,
+        "result": result,
+        "resource_id": task.resource_id,
+        "error_code": task.error_code,
+        "error_detail": task.error_detail,
+        "attempt_count": task.attempt_count,
+        "started_at": task.started_at,
+        "finished_at": task.finished_at,
+        "created_at": task.created_at,
+    }
+
+
+def _to_read(task: Task) -> TaskRead:
+    return _TaskReadPayload.model_validate(_task_read_payload(task)).root

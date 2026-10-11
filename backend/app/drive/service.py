@@ -72,6 +72,7 @@ if TYPE_CHECKING:
 _DRIVE_HTTP_TIMEOUT = timedelta(seconds=10)
 
 _PROBE_BATCH_SIZE = 100
+_INVENTORY_VALIDATION_BATCH_SIZE = 64
 
 _SEARCH_PAGE_SIZE = 50
 
@@ -132,6 +133,10 @@ _DRIVE_LIST_FLIGHTS = Singleflight[list[DriveSummary]]()
 
 class _DriveList(RootModel[list[DriveSummary]]):
     """Validate cached drive summaries before returning them to callers."""
+
+
+class _InventoryFiles(RootModel[list[GoogleFile]]):
+    """Validate bounded buffers of inventory metadata without per-row dispatch."""
 
 
 class _CachedShortcutProbe(RootModel[ShortcutProbe | None]):
@@ -942,8 +947,7 @@ class GoogleDriveService(DriveService):
             except HttpError as exc:
                 _log_provider_failure("walk_drive_folders", exc)
                 return out
-            for raw in resp.get("files", []):
-                file = GoogleFile.model_validate(raw)
+            for file in _inventory_files(resp.get("files", [])):
                 if is_personal and file.drive_id is not None:
                     continue
                 node = _node_from_api(file, drive_id)
@@ -1086,10 +1090,8 @@ class GoogleDriveService(DriveService):
             except HttpError as exc:
                 _log_provider_failure("list_drive_files", exc)
                 return _DriveFilesResult(files=out, complete=False)
-            for raw in resp.get("files", []):
-                node = _preload_file_node(
-                    GoogleFile.model_validate(raw), drive_id, is_personal=is_personal
-                )
+            for file in _inventory_files(resp.get("files", [])):
+                node = _preload_file_node(file, drive_id, is_personal=is_personal)
                 if node is not None:
                     out.append(node)
             page_token = resp.get("nextPageToken")
@@ -1700,6 +1702,11 @@ def _folder_member_node(
 
 def _named_folders(nodes: Iterable[DriveNode], *, name: str) -> list[DriveNode]:
     return [node for node in nodes if node.mime_type == MIME_FOLDER and node.name == name]
+
+
+def _inventory_files(raw_files: Iterable[Any]) -> Iterable[GoogleFile]:
+    for chunk in batched(raw_files, _INVENTORY_VALIDATION_BATCH_SIZE, strict=False):
+        yield from _InventoryFiles.model_validate(chunk).root
 
 
 def _shared_member_drives(

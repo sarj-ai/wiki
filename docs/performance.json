@@ -1,7 +1,7 @@
 {
   "recordedAt": "2026-10-11",
   "baselineRevision": "f63e8f6f342a27d3b3f085e2150417ccd45756bf",
-  "totalPasses": 309,
+  "totalPasses": 359,
   "initialPasses": [
     {
       "pass": 1,
@@ -237,7 +237,7 @@
         },
         {
           "pass": 10,
-          "result": "Remove repeated bootstrap validation and DRY transforms. `zBootstrapRead` already validates every nested resource. Extracted shared pure transforms for Drive summaries, icons, preferences, profile, and sort order; standalone resource schemas retain their wire validation while bootstrap maps its already-validated data directly. This extends the first tranche's nested-tree improvement to the other metadata arrays. Tests preserve default values, nullable fields, and rejection of malformed nested data. A 1,409,370-byte fixture with 100 drives and 10,000 each of document icons, folder icons, and sort orders has deeply equal before/after output: median 4.190 \u2192 1.407 ms (66.4% less CPU), p95 7.302 \u2192 3.365 ms, 100 samples. The fixture has no tree, so the result isolates this additional metadata improvement. Converted wire-property reads to bracket access and constant-backed test/query keys so strict lint and Prettier agree without additional suppressions."
+          "result": "Remove repeated bootstrap validation and DRY transforms. `zBootstrapRead` already validates every nested resource. Extracted shared pure transforms for Drive summaries, icons, preferences, profile, and sort order; standalone resource schemas retain their wire validation while bootstrap maps its already-validated data directly. This extends the first tranche's nested-tree improvement to the other metadata arrays. Tests preserve default values, nullable fields, and rejection of malformed nested data. A 1,409,370-byte fixture with 100 drives and 10,000 each of document icons, folder icons, and sort orders has deeply equal before/after output: median 4.190 → 1.407 ms (66.4% less CPU), p95 7.302 → 3.365 ms, 100 samples. The fixture has no tree, so the result isolates this additional metadata improvement. Converted wire-property reads to bracket access and constant-backed test/query keys so strict lint and Prettier agree without additional suppressions."
         }
       ]
     },
@@ -3017,7 +3017,7 @@
                     "after_median": 10.63
                   }
                 },
-                "tradeoff": "Two-parent zero-I/O fixtures add about 15\u201321 microseconds of memo bookkeeping. Retained because repeated real provider reads/quotas are eliminated, fan-out CPU improves, and memo retention is bounded. Simulated latency is explicitly not production timing.",
+                "tradeoff": "Two-parent zero-I/O fixtures add about 15–21 microseconds of memo bookkeeping. Retained because repeated real provider reads/quotas are eliminated, fan-out CPU improves, and memo retention is bounded. Simulated latency is explicitly not production timing.",
                 "regression_coverage": [
                   "200 distinct parents use one shared-ancestor GET in normal and bounded modes.",
                   "Next-call parent revocation produces a new GET and drops personal files while retaining the permitted shared file.",
@@ -3042,7 +3042,7 @@
               "evidence": {
                 "issue": "Typed cache codec rejected valid deep JsonValue payloads accepted by the legacy implementation.",
                 "classification": "Round-two compatibility regression",
-                "proof": "At nested-list depths 200\u2013253, 80b6e095 round-tripped while ba129bb unprotect raised InvalidCacheEntryError. At 254 ba129bb protect raised PydanticSerializationError. Both implementations already reject 255 in JsonValue validation.",
+                "proof": "At nested-list depths 200–253, 80b6e095 round-tripped while ba129bb unprotect raised InvalidCacheEntryError. At 254 ba129bb protect raised PydanticSerializationError. Both implementations already reject 255 in JsonValue validation.",
                 "fix": "Keep typed serialization/validation as the common path. Fall back to legacy json.dumps only on typed serialization failure and to json.loads plus strict _CacheEnvelope.model_validate on typed parse/validation failure. Namespace/key binding, extra-field rejection, authenticated ciphertext, legacy envelopes, NaN/Infinity/-0.0, Unicode and large integers remain tested.",
                 "tests": "Five new depth cases (199, 200, 210, 253, 254), each covering legacy and new envelopes plus wrong namespace/key rejection.",
                 "proof_artifact": "/private/tmp/sarj-wiki-storage-audit-nesting.json",
@@ -3770,7 +3770,7 @@
       "limitations": [
         "Added ownership/compatibility checks are retained for their proved behavior; no CPU speedup is claimed for those guards.",
         "Final homepage compressed app inventory grows 0.9% (177697 to 179354 bytes); document inventory shrinks 0.5% (191766 to 190761 bytes). Both include the completed ownership guards.",
-        "The two-parent zero-I/O ancestor fixture adds 15\u201321 microseconds; bounded per-call reuse eliminates repeated provider requests and retains independent branch concurrency and next-call freshness.",
+        "The two-parent zero-I/O ancestor fixture adds 15–21 microseconds; bounded per-call reuse eliminates repeated provider requests and retains independent branch concurrency and next-call freshness.",
         "Synthetic provider latency, local SQL/codec measurements, bundle inventories and resource counts are not live end-to-end page latency.",
         "The deployed Cloudflare compatibility date remains unchanged; the installed local workerd supports 2026-08-18 for the loopback fixture.",
         "Fresh authority, encryption/key rotation, task locks, quotas, idempotency and admitted mutation semantics remain enforced.",
@@ -3991,7 +3991,7 @@
               ],
               "validation": "Four new cases prove single and small-key large values decrypt on a worker while small hits stay on the request thread. Existing bulk, collision, rotation, corrupt entry, null value, TTL and atomic-write tests pass. Native complexity remains within its gate using the shared early-exit workload predicate.",
               "limitations": [
-                "Large valid generic cache values are controlled stress fixtures; this is not a claim that current production catalogs are 1\u20134 MiB.",
+                "Large valid generic cache values are controlled stress fixtures; this is not a claim that current production catalogs are 1–4 MiB.",
                 "The shared default thread pool can still contend under sustained CPU load; no new pool or background infrastructure was added.",
                 "Large-write offload continues to use the existing batch rule; this candidate changes reads only."
               ]
@@ -5160,7 +5160,7 @@
           "passes": [
             {
               "id": "round3-cross-stack-01",
-              "candidate": "Release a cancelled shared-refresh waiter\u2019s other abort listeners immediately instead of retaining them until the refresh settles.",
+              "candidate": "Release a cancelled shared-refresh waiter’s other abort listeners immediately instead of retaining them until the refresh settles.",
               "outcome": "accepted",
               "evidence": "Existing shared refresh retained cancelled waiter listeners on the live browser-session signal. The new cleanup runs on waiter cancellation or shared completion, once only; it does not cancel the shared refresh needed by other waiters.",
               "measurements": {
@@ -5182,7 +5182,7 @@
                 "frontend/src/lib/session-client.test.ts"
               ],
               "validation": [
-                "releases discarded waiters\u2019 listeners before the shared refresh settles",
+                "releases discarded waiters’ listeners before the shared refresh settles",
                 "Existing concurrent refresh, prior-owner handoff, timeout/classification and independent caller cancellation cases pass."
               ],
               "limitations": "Promise continuations can remain until the already bounded ten-second shared refresh settles; the measured improvement is immediate listener release, not proof of zero retained allocations."
@@ -5699,8 +5699,8 @@
               "limits": [
                 "The write cutoff estimates workload; it is not an exact serialized/ciphertext byte threshold. Unicode weighting can overestimate mostly-ASCII strings with a non-ASCII member; escaped ASCII characters and unusual large scalar encodings need not exactly match the estimate.",
                 "Real CPU work and purposeful immediate database recorders isolate event-loop responsiveness; this is not a PostgreSQL write-latency measurement.",
-                "Wide scalar lists still retain significant GIL contention: longest gap47.42\u219239.43ms despite offload. The shared existing thread pool is unchanged.",
-                "The first scalar-list estimator regressed batch46.92\u219259.08ms because it scanned32k items per write; the final O(1) wide-container check measures about0.00046ms, and final batch47.40\u219244.88ms. This refinement is part of this one pass, not an additional counted pass."
+                "Wide scalar lists still retain significant GIL contention: longest gap47.42→39.43ms despite offload. The shared existing thread pool is unchanged.",
+                "The first scalar-list estimator regressed batch46.92→59.08ms because it scanned32k items per write; the final O(1) wide-container check measures about0.00046ms, and final batch47.40→44.88ms. This refinement is part of this one pass, not an additional counted pass."
               ],
               "changedPaths": [
                 "backend/app/cache/service.py",
@@ -5772,7 +5772,7 @@
               },
               "limits": [
                 "A one-folder/one-sort/preferences fixture has an extra~0.028ms in the final run. At32 rows per family it improves~0.023ms, and at1000 per family~0.111ms.",
-                "The20,001-row stress fixture improves median68.64\u219231.85ms, while p95 varies with object allocation/GC; no promise of a similar production distribution.",
+                "The20,001-row stress fixture improves median68.64→31.85ms, while p95 varies with object allocation/GC; no promise of a similar production distribution.",
                 "Preserves one database query; this pass does not recount the previously implemented sidebar UNION round-trip reduction."
               ],
               "changedPaths": [
@@ -5967,8 +5967,8 @@
                 }
               },
               "limits": [
-                "Initial small warm-tree construction cost was~0.145ms (0.606\u21920.751ms). Reusing immutable SQL expressions reduced the final extra cost to~0.066ms (0.510\u21920.577ms). It remains an explicit tradeoff.",
-                "Final10k-node cold medians32.636\u219232.761ms are essentially unchanged; cold p95 is noisy. Final warm medians4.187\u21921.123ms;1000-node warm0.880\u21920.666ms.",
+                "Initial small warm-tree construction cost was~0.145ms (0.606→0.751ms). Reusing immutable SQL expressions reduced the final extra cost to~0.066ms (0.510→0.577ms). It remains an explicit tradeoff.",
+                "Final10k-node cold medians32.636→32.761ms are essentially unchanged; cold p95 is noisy. Final warm medians4.187→1.123ms;1000-node warm0.880→0.666ms.",
                 "The xid epoch boundary is injected with a purpose-built subclass rather than executing four billion PostgreSQL transactions. Actual read-only pg_snapshot_xmax/pg_current_snapshot expression and no assigned transaction ID are verified on PostgreSQL18.6.",
                 "The bounded cache remains32 entries/40000 nodes. A late older decode may replace a newer retained hint; the next fresh tuple read must re-load the current ciphertext and cannot publish that old hint as a matching current row.",
                 "Production decoder objects are process-immutable. Controlled rotation tests select new real MultiFernet objects through a purpose-built override while queued decoding uses its original captured decoder; no ambient monkeypatch/suppression is introduced.",
@@ -6124,7 +6124,7 @@
               "id": "storage-r4-06",
               "candidate": "Merge encrypted sidebar save and global aged-tree cleanup into one data-modifying CTE",
               "outcome": "rejected",
-              "evidence": "A viable CTE must exclude its current(user,drive) row so cleanup and upsert do not both target one preexisting expired tuple under a shared statement snapshot. That safe prototype saves~0.088ms with no unrelated expired rows, but regresses50000-row cleanup median5.252\u21926.169ms (~17.5%). Controlled writer-lock witnesses preserve observed current-row CAS and different-key cleanup recheck/lock ordering in both implementations; no correctness regression is claimed from those witnesses. The original sequential save and purge remain unchanged.",
+              "evidence": "A viable CTE must exclude its current(user,drive) row so cleanup and upsert do not both target one preexisting expired tuple under a shared statement snapshot. That safe prototype saves~0.088ms with no unrelated expired rows, but regresses50000-row cleanup median5.252→6.169ms (~17.5%). Controlled writer-lock witnesses preserve observed current-row CAS and different-key cleanup recheck/lock ordering in both implementations; no correctness regression is claimed from those witnesses. The original sequential save and purge remain unchanged.",
               "method": "Real PostgreSQL temporary tables with primary/expiry indexes and rolled-back deletes/upserts:21 interleaved samples at0/5000 unrelated expired rows and9 pairs at50000. Separate owned table/PIDs test current/different-key locks held by an independently persisted fresher row; NOWAIT probes record the other-row lock and final commit verifies CAS/retention rechecks.",
               "measurements": {
                 "smallAndMediumBacklogs": {
@@ -6792,7 +6792,7 @@
                   "snippetResultsEqual": true
                 },
                 {
-                  "query": "\u0130\u0130",
+                  "query": "İİ",
                   "knownMime": true,
                   "providerReads": {
                     "before": {
@@ -6814,7 +6814,7 @@
                   "snippetResultsEqual": true
                 },
                 {
-                  "query": "\u0130\u0130",
+                  "query": "İİ",
                   "knownMime": false,
                   "providerReads": {
                     "before": {
@@ -8378,6 +8378,55 @@
         }
       ],
       "record": "docs/performance/round5-20261011.json"
+    },
+    {
+      "recordedAt": "2026-10-11",
+      "baselineRevision": "fdc479beea4488ad5869e8957be8c646fc470527",
+      "name": "Fifty additional bulk-query, caching, optimistic UI, preloading and advanced candidates",
+      "passCount": 50,
+      "agentPassCount": 50,
+      "integrationPassCount": 0,
+      "acceptedCount": 26,
+      "rejectedCount": 24,
+      "counting": "Ten distinct new measured candidates from each of five agents. A retained improvement or evidenced rejection counts once. Prototype tuning, correctness repairs, tests, builds, qualification, documentation and release administration count zero.",
+      "scopeCounts": [
+        {
+          "scope": "bulk",
+          "agent": "/root/bulk_queries_round6",
+          "passCount": 10,
+          "acceptedCount": 4,
+          "rejectedCount": 6
+        },
+        {
+          "scope": "cache",
+          "agent": "/root/backend_caching_round6",
+          "passCount": 10,
+          "acceptedCount": 6,
+          "rejectedCount": 4
+        },
+        {
+          "scope": "optimistic",
+          "agent": "/root/optimistic_ui_round6",
+          "passCount": 10,
+          "acceptedCount": 7,
+          "rejectedCount": 3
+        },
+        {
+          "scope": "preload",
+          "agent": "/root/preloading_round6",
+          "passCount": 10,
+          "acceptedCount": 3,
+          "rejectedCount": 7
+        },
+        {
+          "scope": "advanced",
+          "agent": "/root/advanced_round6",
+          "passCount": 10,
+          "acceptedCount": 6,
+          "rejectedCount": 4
+        }
+      ],
+      "record": "docs/performance/round6-20261011.json"
     }
   ]
 }
