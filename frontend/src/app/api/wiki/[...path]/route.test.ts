@@ -32,6 +32,63 @@ beforeEach(() => {
 });
 
 describe("authenticated parallel wiki reads", () => {
+  it("reaches the backend with an expired session under Cloudflare redirect semantics", async () => {
+    const unauthorized = Promise.resolve(
+      Response.json({ detail: "private provider error" }, { status: 401 }),
+    );
+    fetchMock.mockImplementation(async (_input, init) => {
+      if (init?.redirect === "error") throw new TypeError("Invalid redirect value");
+      return await unauthorized;
+    });
+    const response = await GET(request("sidebar/drives"), context("sidebar/drives"));
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ detail: "Your session has expired" });
+  });
+
+  it("redacts an upstream redirect instead of following it", async () => {
+    fetchMock.mockResolvedValue(
+      new Response("private redirect body", {
+        headers: { location: "https://other-origin.test/private" },
+        status: 302,
+      }),
+    );
+    const response = await GET(request("sidebar/drives"), context("sidebar/drives"));
+    expect(response.status).toBe(502);
+    expect(response.headers.get("location")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      detail: "The request could not be completed",
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("preserves the HTTP failure without waiting for stream cleanup", async () => {
+    const cleanup = Promise.withResolvers<undefined>();
+    const body = new ReadableStream<Uint8Array>({ cancel: async () => await cleanup.promise });
+    fetchMock.mockResolvedValue(new Response(body, { status: 429 }));
+    try {
+      const response = await GET(request("files/doc-1"), context("files/doc-1"));
+      expect(response.status).toBe(429);
+      await expect(response.json()).resolves.toEqual({
+        detail: "Too many requests. Try again in a minute.",
+      });
+    } finally {
+      cleanup.resolve(undefined);
+    }
+  });
+
+  it("does not send an upstream request after the caller has already disconnected", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const response = await GET(
+      new Request("https://wiki.sarj.ai/api/wiki/files/doc-1", {
+        headers: { "x-wiki-read": "1" },
+        signal: controller.signal,
+      }),
+      context("files/doc-1"),
+    );
+    expect(response.status).toBe(502);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it("streams authorized JSON and timing without exposing credentials or provider headers", async () => {
     fetchMock.mockResolvedValue(
       new Response('[{"id":"drive-1"}]', {
@@ -45,7 +102,7 @@ describe("authenticated parallel wiki reads", () => {
     expect(response.headers.get("set-cookie")).toBeNull();
     const [url, options] = fetchMock.mock.calls[0] ?? [];
     expect(url).toContain("/sidebar/drives");
-    expect(options?.redirect).toBe("error");
+    expect(options?.redirect).toBe("manual");
     expect(options?.headers).toMatchObject({ authorization: "Bearer private-session-token" });
   });
 

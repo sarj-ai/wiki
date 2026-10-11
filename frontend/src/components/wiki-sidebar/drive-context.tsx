@@ -14,6 +14,7 @@ export interface DriveSectionValue {
   filesByParent: Map<string, DriveNode[]>;
   iconOverrides: Map<string, string | undefined>;
   optimisticByContainer: Map<string, string[]>;
+  pathname?: string;
   showNonDocFiles: boolean;
   sortOrderMap: Map<string, number>;
   treeFilesComplete: boolean;

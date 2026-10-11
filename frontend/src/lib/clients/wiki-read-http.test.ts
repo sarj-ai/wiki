@@ -14,9 +14,41 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("authenticated wiki read recovery", () => {
+  it("refreshes a known expiring session once before concurrent GETs", async () => {
+    vi.spyOn(document, "cookie", "get").mockReturnValue(`session_exp=${Date.now() - 1}`);
+    const refresh = Promise.withResolvers<Response>();
+    fetchMock.mockImplementation(async (input) => {
+      const url = requestUrl(input);
+      return url.endsWith("/auth/refresh") ? await refresh.promise : Response.json({ value: url });
+    });
+    const first = wikiReadHttp("/files/first", PayloadSchema);
+    const second = wikiReadHttp("/files/second", PayloadSchema);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    refresh.resolve(new Response(null));
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("starts refresh without waiting for a stalled 401 body cleanup", async () => {
+    const cleanup = Promise.withResolvers<undefined>();
+    const body = new ReadableStream<Uint8Array>({ cancel: async () => await cleanup.promise });
+    fetchMock
+      .mockResolvedValueOnce(new Response(body, { status: 401 }))
+      .mockResolvedValueOnce(new Response(null))
+      .mockResolvedValueOnce(Response.json({ value: "ready" }));
+    try {
+      await expect(wikiReadHttp("/files/first", PayloadSchema)).resolves.toEqual({
+        value: "ready",
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      cleanup.resolve(undefined);
+    }
+  });
   it("refreshes one expired session for concurrent reads and replays each GET once", async () => {
     const refresh = Promise.withResolvers<Response>();
     const attempts = new Map<string, number>();

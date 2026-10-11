@@ -73,6 +73,9 @@ class Services:
     async def get_accessible_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
         return {file_id: await self.get(file_id) for file_id in file_ids} if self.allowed else {}
 
+    async def get_search_metadata_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
+        return await self.get_accessible_many(file_ids)
+
     async def get_for_owner(self, task_id: TaskId, owner: uuid.UUID) -> Any:
         self.owners.append(owner)
         raise TaskNotFoundError

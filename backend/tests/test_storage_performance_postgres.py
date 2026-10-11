@@ -14,7 +14,6 @@ from app.cache.service import CacheNamespace, CachePSqlService
 from app.document_transform.schemas import TransformMode
 from app.extras.schemas import PreferencesWrite
 from app.extras.service import PostgresExtrasService, list_accessible_doc_icons
-from app.files.schemas import FileResponse
 from app.identifiers import DriveId, FileId, GoogleUserId, IdempotencyKey, TaskId, UserId
 from app.models.task import Task
 from app.models.user import User
@@ -68,24 +67,15 @@ class _PermissionReader:
         self.db = db
         self.database = database
 
-    async def get_accessible_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
+    async def get_accessible_ids(self, file_ids: list[FileId]) -> set[FileId]:
         assert not self.db.in_transaction()
         # An independent cache checkout reproduces the provider permission path.
         await CachePSqlService(self.database.sessions).get(
             CacheNamespace.TEMPLATE_CATALOG, str(self.database.owner)
         )
         if self.database.icon_id not in file_ids:
-            return {}
-        return {
-            self.database.icon_id: FileResponse(
-                id=self.database.icon_id,
-                name="Accessible document",
-                mime_type="application/vnd.google-apps.document",
-                parent_folder_id=None,
-                drive_id=None,
-                modified_time=None,
-            )
-        }
+            return set()
+        return {self.database.icon_id}
 
 
 async def test_document_icon_read_releases_connection_before_permission_cache_checkout(

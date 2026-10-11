@@ -13,15 +13,15 @@ import { renderNodeIcon } from "@/lib/file-icons";
 import { resolveShortcutTarget } from "@/lib/shortcut-resolver";
 import { allowsReusableSpeculation, readNavigatorHints } from "@/lib/speculation-policy";
 import { cn } from "@/lib/utils";
-import { EMPTY_NODES } from "@/lib/wiki-indexes";
+import { EMPTY_NODES, indexSidebarNodes, indexVisibleDocuments } from "@/lib/wiki-indexes";
 import {
   applyOptimisticOrder,
+  buildSiblingItems,
   compareNodeOrder,
-  isFolderLikeNode,
   type KindedNode,
 } from "@/lib/wiki-tree";
 import type { DriveNode } from "@/types/wiki";
-import { MIME_DOC, MIME_FOLDER, MIME_HTML } from "@/types/wiki";
+import { MIME_FOLDER } from "@/types/wiki";
 
 import { CreateFileMenu } from "./create-file-menu";
 import { useDriveSectionContext } from "./drive-context";
@@ -162,6 +162,7 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
         iconOverride={ctx.docIconOverrides.get(node.id)}
         node={node}
         parentFolderId={parentFolderId}
+        pathname={ctx.pathname}
       />
     );
   }
@@ -230,6 +231,7 @@ function TreeNodeImpl({ depth, node, parentFolderId }: TreeNodeProps) {
                     iconOverride={ctx.docIconOverrides.get(child.id)}
                     node={child}
                     parentFolderId={node.id}
+                    pathname={ctx.pathname}
                   />
                 )}
               </SortableItem>
@@ -263,22 +265,17 @@ function buildChildItems(
 ): ChildListing {
   const rawFiles =
     meta.isFolderShortcut || !ctx.treeFilesComplete
-      ? lazyAll.filter((n) => !isFolderLikeNode(n))
-      : (ctx.filesByParent.get(node.id) ?? []);
-  const filteredFiles = ctx.showNonDocFiles
-    ? rawFiles
-    : rawFiles.filter((n) => n.mimeType === MIME_DOC || n.mimeType === MIME_HTML);
+      ? indexSidebarNodes(lazyAll).files
+      : (ctx.filesByParent.get(node.id) ?? EMPTY_NODES);
+  const filteredFiles = ctx.showNonDocFiles ? rawFiles : indexVisibleDocuments(rawFiles);
   const folderChildren = meta.isFolderShortcut
-    ? lazyAll.filter(isFolderLikeNode)
-    : (ctx.childrenByParent.get(node.id) ?? []);
+    ? indexSidebarNodes(lazyAll).folders
+    : (ctx.childrenByParent.get(node.id) ?? EMPTY_NODES);
 
   const count = folderChildren.length + filteredFiles.length;
   if (!expanded) return { count, items: EMPTY_CHILD_ITEMS };
 
-  const raw: KindedNode[] = [
-    ...folderChildren.map((n): KindedNode => ({ node: n, type: "folder" })),
-    ...filteredFiles.map((n): KindedNode => ({ node: n, type: "file" })),
-  ];
+  const raw = buildSiblingItems(folderChildren, filteredFiles);
 
   const optimisticOrder = ctx.optimisticByContainer.get(`parent:${node.id}`) ?? null;
   const sorted = optimisticOrder

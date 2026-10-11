@@ -43,7 +43,7 @@ class McpReadService:
         async with self._context.drive.search_bounded(request.query, limit=request.limit) as found:
             hits = found.files
             selected = list(dict.fromkeys(hit.id for hit in hits))[: request.limit]
-            accessible = await self._context.files.get_accessible_many(selected)
+            accessible = await self._context.files.get_search_metadata_many(selected)
         results: list[SearchResult] = []
         used_bytes = 1024
         for file_id in selected:

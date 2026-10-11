@@ -95,3 +95,7 @@ class GoogleFileLocation(_GoogleModel):
     id: FileId
     drive_id: DriveId | None = Field(default=None, alias="driveId")
     parents: list[FileId] = Field(default_factory=list)
+
+
+class GoogleFileAccessLocation(GoogleFileLocation):
+    trashed: bool = False

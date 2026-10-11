@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { boundedText } from "@/lib/bounded-text";
 import { frontendReleaseSha } from "@/lib/env";
 
 const MAX_BODY_BYTES = 2048;
@@ -21,15 +22,12 @@ async function post(request: Request): Promise<Response> {
   if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
     return new Response(null, { status: 413 });
   }
-  const body = await request.text();
-  if (new TextEncoder().encode(body).byteLength > MAX_BODY_BYTES) {
-    return new Response(null, { status: 413 });
-  }
   let decoded: unknown;
   try {
+    const body = await boundedText(request.body, MAX_BODY_BYTES, request.signal);
     decoded = JSON.parse(body);
-  } catch {
-    return new Response(null, { status: 400 });
+  } catch (error: unknown) {
+    return new Response(null, { status: error instanceof RangeError ? 413 : 400 });
   }
   const parsed = ZPERF_EVENT.safeParse(decoded);
   if (!parsed.success) return new Response(null, { status: 400 });

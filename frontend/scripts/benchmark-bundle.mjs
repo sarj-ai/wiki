@@ -4,8 +4,9 @@ import vm from "node:vm";
 import zlib from "node:zlib";
 
 const buildRoot = path.resolve(process.argv[2] ?? path.resolve(import.meta.dirname, "../.next"));
+const appRoute = process.argv[3] ?? "(app)/page";
 const context = {};
-const manifestPath = path.join(buildRoot, "server/app/(app)/page_client-reference-manifest.js");
+const manifestPath = path.join(buildRoot, `server/app/${appRoute}_client-reference-manifest.js`);
 vm.runInNewContext(await readFile(manifestPath, "utf8"), context);
 const chunks = new Set(
   Object.values(context.__RSC_MANIFEST).flatMap((entry) =>
@@ -16,7 +17,7 @@ const chunks = new Set(
 );
 const files = await Promise.all(
   [...chunks].map(async (file) => {
-    const bytes = await readFile(path.join(buildRoot, file));
+    const bytes = await readFile(path.join(buildRoot, decodeURIComponent(file)));
     return { file, bytes: bytes.length, gzipBytes: zlib.gzipSync(bytes).length };
   }),
 );

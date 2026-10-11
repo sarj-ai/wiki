@@ -4,8 +4,8 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, NamedTuple, override
 
-from sqlalchemy import func, literal, select, union_all
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import Double, Text, bindparam, column, func, literal, select, union_all
+from sqlalchemy.dialects.postgresql import ARRAY, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.extras.schemas import (
@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 
 
 _DEFAULT_PREFS = PreferencesRead(show_non_doc_files=True, hidden_workspace_ids=[])
+_ARRAY_SORT_ORDER_THRESHOLD = 32
 
 
 class SidebarExtras(NamedTuple):
@@ -46,7 +47,7 @@ async def list_accessible_doc_icons(
     files: FilesService,
 ) -> list[DocIconRead]:
     icons = await extras.list_doc_icons()
-    accessible = await files.get_accessible_many([icon.drive_id for icon in icons])
+    accessible = await files.get_accessible_ids([icon.drive_id for icon in icons])
     return [icon for icon in icons if icon.drive_id in accessible]
 
 
@@ -221,19 +222,43 @@ class PostgresExtrasService(ExtrasService):
     async def upsert_sort_orders(self, items: list[SortOrderWrite]) -> None:
         if not items:
             return
-        stmt = pg_insert(UserSortOrder).values(
-            [
-                {
-                    "user_id": self._user.id,
-                    "drive_id": item.drive_id,
-                    "sort_order": item.sort_order,
-                }
-                for item in items
-            ]
-        )
+        ordered = sorted(items, key=lambda item: item.drive_id)
+        if len(ordered) >= _ARRAY_SORT_ORDER_THRESHOLD:
+            rows = (
+                func.unnest(
+                    bindparam(
+                        "sort_order_drive_ids",
+                        [item.drive_id for item in ordered],
+                        type_=ARRAY(Text),
+                    ),
+                    bindparam(
+                        "sort_order_values",
+                        [item.sort_order for item in ordered],
+                        type_=ARRAY(Double),
+                    ),
+                )
+                .table_valued(column("drive_id", Text), column("sort_order", Double))
+                .render_derived()
+            )
+            stmt = pg_insert(UserSortOrder).from_select(
+                [UserSortOrder.user_id, UserSortOrder.drive_id, UserSortOrder.sort_order],
+                select(literal(self._user.id), rows.c.drive_id, rows.c.sort_order),
+            )
+        else:
+            stmt = pg_insert(UserSortOrder).values(
+                [
+                    {
+                        "user_id": self._user.id,
+                        "drive_id": item.drive_id,
+                        "sort_order": item.sort_order,
+                    }
+                    for item in ordered
+                ]
+            )
         stmt = stmt.on_conflict_do_update(
             index_elements=["user_id", "drive_id"],
             set_={"sort_order": stmt.excluded.sort_order},
+            where=UserSortOrder.sort_order.is_distinct_from(stmt.excluded.sort_order),
         )
         await self._db.execute(stmt)
         await self._db.commit()

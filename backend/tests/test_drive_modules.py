@@ -1841,6 +1841,28 @@ def test_extract_snippet_no_match_returns_none() -> None:
     assert extract_snippet(text, "missing") is None
 
 
+@pytest.mark.parametrize(
+    ("text", "query", "expected", "snippet"),
+    [
+        ("abcd elsewhere abcdef then abcdef again", "abcdefghijk", "abcdef", "…abcdef…"),
+        ("abcd elsewhere abcdefghijk", "abcdefghijk", "abcdefghijk", "…abcdefghijk"),
+        ("abcd only", "abcdefghijk", "abcd", "abcd…"),
+        ("unrelated content", "abcdefghijk", None, None),
+        ("abc only", "abcd", None, None),
+    ],
+    ids=["longest-prefix", "exact-match", "minimum-prefix", "absent-prefix", "four-letters"],
+)
+def test_extract_snippet_preserves_longest_prefix_before_earliest_match(
+    text: str,
+    query: str,
+    expected: str | None,
+    snippet: str | None,
+) -> None:
+    result = extract_snippet(text, query, context_chars=0)
+    assert (result.matched_word if result else None) == expected
+    assert (result.text if result else None) == snippet
+
+
 def test_extract_snippet_empty_inputs() -> None:
     assert extract_snippet("", "hello") is None
     assert extract_snippet("hello world", "") is None

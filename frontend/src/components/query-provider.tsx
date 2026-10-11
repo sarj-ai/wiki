@@ -4,7 +4,7 @@ import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@ta
 import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "@/lib/api-error";
-import { purgeLegacyBrowserStorage, storeLoginRedirect } from "@/lib/browser-storage";
+import { storeLoginRedirect } from "@/lib/browser-storage";
 import { sanitizeRedirectPath } from "@/lib/sanitize-redirect-path";
 import { notifyTerminalUnauthorized, TERMINAL_UNAUTHORIZED_EVENT } from "@/lib/session-events";
 import {
@@ -25,7 +25,6 @@ export function QueryProvider({
   const redirecting = useRef(false);
 
   const [queryClient] = useState(() => {
-    if (typeof window !== "undefined") purgeLegacyBrowserStorage();
     const handle401 = (err: unknown): void => {
       if (err instanceof ApiError && err.status === 401) notifyTerminalUnauthorized();
     };

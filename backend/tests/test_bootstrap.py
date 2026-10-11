@@ -19,7 +19,6 @@ from app.extras.schemas import (
     SortOrderWrite,
 )
 from app.extras.service import ExtrasService
-from app.files.schemas import FileResponse
 from app.identifiers import DriveId, FileId, GoogleUserId, UserId
 from app.models.user import User
 from app.sidebar.cache import CachedDriveTree, SidebarCacheService
@@ -112,18 +111,9 @@ class _FakeFilesService:
     def __init__(self) -> None:
         self.requested: list[FileId] = []
 
-    async def get_accessible_many(self, file_ids: list[FileId]) -> dict[FileId, FileResponse]:
+    async def get_accessible_ids(self, file_ids: list[FileId]) -> set[FileId]:
         self.requested = file_ids
-        return {
-            FileId("doc-1"): FileResponse(
-                id=FileId("doc-1"),
-                name="Accessible",
-                mime_type="application/vnd.google-apps.document",
-                parent_folder_id=None,
-                drive_id=DriveId("d1"),
-                modified_time=None,
-            )
-        }
+        return {FileId("doc-1")} & set(file_ids)
 
 
 _NO_DB = None

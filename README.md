@@ -49,7 +49,7 @@ make standards-check
 `make check` mirrors CI. `make audit` performs network-backed dependency audits, and
 `make standards-check` verifies generated standards configuration, version pins, and code.
 
-See the [104-pass performance record and reproduction commands](docs/performance.json) for
+See the [189-pass performance record and reproduction commands](docs/performance.json) for
 frontend loading and backend latency work.
 
 Local production-build measurements against the same locked main toolchain:
@@ -67,6 +67,30 @@ size grows 3.9%. These measurements isolate application costs, not overall live
 page-load time. Backend responses expose request timing and byte metrics for
 production follow-up. PostgreSQL CI covers connection release, task projections,
 bounded result reads, and large encrypted cache batches.
+
+The follow-up tranche adds 85 new passes, including 78 across five agents. Against
+the deployed `80b6e095` baseline, controlled measurements include:
+
+| Measurement | Before | After |
+| ---------------------------------- | --------- | --------- |
+| Document app JavaScript, gzip | 191,766 B | 189,001 B |
+| SQL construction/write, 1,000 cache entries | 31.586 ms | 10.812 ms |
+| Cache envelope decrypt, 10,000-item fixture | 9.694 ms | 4.276 ms |
+| Document-icon observers, 20 drives | 20 | 1 |
+| Geometry reads, 100 resize events | 100 | 1 |
+
+Small cache batches retain the faster `VALUES`/`IN` paths. New indexes cover legacy
+cache cleanup, task expiry, and pending dispatch. Fresh permissions, encryption,
+key rotation, idempotency, and task admission locks remain enforced. Homepage gzip
+inventory is effectively unchanged in this tranche; resource and CPU reductions
+are measured separately from transfer size and production page-load time.
+
+The drive-loading regression was reproduced in the compiled Cloudflare Worker:
+server `fetch` rejects `redirect: "error"` before reaching the API. Server clients
+now inspect manual redirects and reject them without following or exposing their
+destination. Deployment verification checks both the exact health revision and
+the real authentication/drive proxies with an invalid synthetic session, requiring
+their expected redacted `401` responses.
 
 ## Saudi production topology
 

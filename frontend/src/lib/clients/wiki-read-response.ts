@@ -2,6 +2,8 @@ import "server-only";
 
 import { cookies } from "next/headers";
 
+import { fetchBackend } from "@/lib/clients/fetch-backend";
+import { discardStream } from "@/lib/discard-stream";
 import { API_URL } from "@/lib/env";
 
 const REQUEST_ID = /^[A-Za-z0-9._:-]{1,64}$/u;
@@ -18,20 +20,21 @@ export async function wikiReadResponse(
   failure: (status: number) => Response,
   timeoutMs = 25_000,
 ): Promise<Response> {
+  if (request.signal.aborted) return failure(502);
   const cookieStore = await cookies();
   const token = cookieStore.get("access_token")?.value;
   if (!token) return failure(401);
   const inboundId = request.headers.get("x-request-id");
   const requestId = inboundId && REQUEST_ID.test(inboundId) ? inboundId : crypto.randomUUID();
   try {
-    const upstream = await fetch(`${API_URL}${path}`, {
+    request.signal.throwIfAborted();
+    const upstream = await fetchBackend(`${API_URL}${path}`, {
       cache: "no-store",
       headers: { authorization: `Bearer ${token}`, "x-request-id": requestId },
-      redirect: "error",
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]),
     });
     if (!upstream.ok) {
-      await upstream.body?.cancel();
+      discardStream(upstream.body);
       return failure(upstream.status);
     }
     const headers = new Headers(RESPONSE_HEADERS);

@@ -1,8 +1,10 @@
 import { z } from "zod";
 
 import { ApiError, SESSION_REFRESH_UNAVAILABLE_MESSAGE } from "@/lib/api-error";
+import { discardStream } from "@/lib/discard-stream";
 import { deduplicatedRefresh } from "@/lib/session-client";
 import { notifyTerminalUnauthorized } from "@/lib/session-events";
+import { sessionNeedsRefresh } from "@/lib/session-needs-refresh";
 
 const ErrorSchema = z.object({ detail: z.string().optional() });
 
@@ -21,6 +23,7 @@ export async function wikiReadHttp<S extends z.ZodType>(
     ? AbortSignal.any([signal, AbortSignal.timeout(30_000)])
     : AbortSignal.timeout(30_000);
   requestSignal.throwIfAborted();
+  if (sessionNeedsRefresh()) await refreshWikiSession(requestSignal);
   const read = async () =>
     await fetch(`/api/wiki${path}${search}`, {
       cache: "no-store",
@@ -29,14 +32,8 @@ export async function wikiReadHttp<S extends z.ZodType>(
     });
   let response = await read();
   if (response.status === 401) {
-    await response.body?.cancel();
-    const refresh = await deduplicatedRefresh(requestSignal);
-    requestSignal.throwIfAborted();
-    if (refresh === "unavailable") throw new ApiError(503, SESSION_REFRESH_UNAVAILABLE_MESSAGE);
-    if (refresh === "unauthorized") {
-      notifyTerminalUnauthorized();
-      throw new ApiError(401, "Your session has expired");
-    }
+    discardStream(response.body);
+    await refreshWikiSession(requestSignal);
     response = await read();
   }
   requestSignal.throwIfAborted();
@@ -54,4 +51,14 @@ export async function wikiReadHttp<S extends z.ZodType>(
   const payload: unknown = await response.json();
   requestSignal.throwIfAborted();
   return schema.parse(payload);
+}
+
+async function refreshWikiSession(signal: AbortSignal): Promise<void> {
+  const refresh = await deduplicatedRefresh(signal);
+  signal.throwIfAborted();
+  if (refresh === "unavailable") throw new ApiError(503, SESSION_REFRESH_UNAVAILABLE_MESSAGE);
+  if (refresh === "unauthorized") {
+    notifyTerminalUnauthorized();
+    throw new ApiError(401, "Your session has expired");
+  }
 }

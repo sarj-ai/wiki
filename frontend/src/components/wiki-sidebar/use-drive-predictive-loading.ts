@@ -12,6 +12,7 @@ export function useDrivePredictiveLoading(driveId: string, expanded: boolean) {
   const queryClient = useQueryClient();
   const focusedRef = useRef(false);
   const hoveredRef = useRef(false);
+  const ownerRef = useRef<null | object>(null);
   const timerRef = useRef<null | number>(null);
 
   const cancelTimer = () => {
@@ -20,15 +21,24 @@ export function useDrivePredictiveLoading(driveId: string, expanded: boolean) {
     timerRef.current = null;
   };
 
-  const prepare = async () => {
-    if (expanded) return;
+  const prepare = async (strongIntent = false) => {
+    const owner = ownerRef.current;
+    if (expanded || owner === null || (!strongIntent && !ownsSpeculation())) return;
     const treeOptions = driveTreeQueryOptions(driveId, true);
     await queryClient.prefetchQuery(treeOptions);
     const tree = queryClient.getQueryData(treeOptions.queryKey);
-    if (tree && !tree.filesComplete) {
+    if (
+      ownerRef.current === owner &&
+      (strongIntent || ownsSpeculation()) &&
+      tree &&
+      !tree.filesComplete
+    ) {
       await queryClient.prefetchQuery(folderFilesQueryOptions(driveId));
     }
   };
+
+  const ownsSpeculation = () =>
+    (focusedRef.current || hoveredRef.current) && allowsDriveSpeculation();
 
   const schedule = () => {
     if (expanded || timerRef.current !== null || !allowsDriveSpeculation()) return;
@@ -43,14 +53,20 @@ export function useDrivePredictiveLoading(driveId: string, expanded: boolean) {
   };
 
   useEffect(() => {
-    if (expanded && timerRef.current !== null) {
+    const owner = {};
+    ownerRef.current = owner;
+    if (timerRef.current !== null) {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
     return () => {
-      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      if (ownerRef.current === owner) ownerRef.current = null;
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
     };
-  }, [driveId, expanded]);
+  }, [driveId, expanded, queryClient]);
 
   return {
     onBlur: () => {
@@ -66,7 +82,7 @@ export function useDrivePredictiveLoading(driveId: string, expanded: boolean) {
         return;
       }
       cancelTimer();
-      void prepare();
+      void prepare(true);
     },
     onPointerEnter: (event: ReactPointerEvent<HTMLButtonElement>) => {
       if (event.pointerType !== "mouse" && event.pointerType !== "pen") return;

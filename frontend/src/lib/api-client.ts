@@ -1,11 +1,13 @@
 import { z } from "zod";
 
 import { ApiError, RATE_LIMIT_MESSAGE, SESSION_REFRESH_UNAVAILABLE_MESSAGE } from "@/lib/api-error";
+import { discardStream } from "@/lib/discard-stream";
 import { API_URL } from "@/lib/env";
 import type { Client } from "@/lib/generated/client";
 import { client } from "@/lib/generated/client.gen";
 import { deduplicatedRefresh } from "@/lib/session-client";
 import { notifyTerminalUnauthorized } from "@/lib/session-events";
+import { sessionNeedsRefresh } from "@/lib/session-needs-refresh";
 
 type AnyOperation = (options: never) => Promise<unknown>;
 
@@ -22,8 +24,6 @@ client.setConfig({
   throwOnError: true,
 });
 
-const SESSION_EXP_SKEW_MS = 30_000;
-const SESSION_EXP_COOKIE = /(?:^|;\s*)session_exp=(\d+)/;
 const ErrorDetailSchema = z.object({
   detail: z
     .union([
@@ -38,19 +38,14 @@ const ErrorDetailSchema = z.object({
 });
 const OperationResultSchema = z.object({ data: z.unknown().optional() });
 
-function sessionExpiresAt(): null | number {
-  if (typeof document === "undefined") return null;
-  const match = SESSION_EXP_COOKIE.exec(document.cookie);
-  return match ? Number(match[1]) : null;
-}
-
 client.interceptors.request.use(async (request) => {
+  request.signal.throwIfAborted();
   if (!request.headers.has("X-Request-ID")) {
     request.headers.set("X-Request-ID", crypto.randomUUID());
   }
-  const exp = sessionExpiresAt();
-  if (exp !== null && Date.now() > exp - SESSION_EXP_SKEW_MS) {
-    const refresh = await deduplicatedRefresh();
+  if (sessionNeedsRefresh()) {
+    const refresh = await deduplicatedRefresh(request.signal);
+    request.signal.throwIfAborted();
     if (refresh === "unavailable") {
       throw new ApiError(503, SESSION_REFRESH_UNAVAILABLE_MESSAGE);
     }
@@ -66,19 +61,30 @@ client.interceptors.request.use(async (request) => {
 });
 
 client.interceptors.response.use(async (response, request) => {
+  request.signal.throwIfAborted();
   let settled = response;
   if (settled.status === 401 && !request.url.endsWith("/auth/refresh")) {
-    const refresh = await deduplicatedRefresh();
-    if (refresh === "refreshed") {
-      settled = await fetch(REPLAY_CACHE.get(request) ?? request);
-    }
-    if (refresh === "unavailable") {
-      throw new ApiError(503, SESSION_REFRESH_UNAVAILABLE_MESSAGE);
+    try {
+      const refresh = await deduplicatedRefresh(request.signal);
+      request.signal.throwIfAborted();
+      if (refresh === "refreshed") {
+        discardStream(settled.body);
+        settled = await fetch(REPLAY_CACHE.get(request) ?? request);
+      }
+      if (refresh === "unavailable") {
+        throw new ApiError(503, SESSION_REFRESH_UNAVAILABLE_MESSAGE);
+      }
+    } catch (error: unknown) {
+      discardStream(settled.body);
+      throw error;
     }
   }
   if (!settled.ok) {
     if (settled.status === 401) notifyTerminalUnauthorized();
-    if (settled.status === 429) throw new ApiError(429, RATE_LIMIT_MESSAGE);
+    if (settled.status === 429) {
+      discardStream(settled.body);
+      throw new ApiError(429, RATE_LIMIT_MESSAGE);
+    }
     const message = await readErrorMessage(settled);
     throw new ApiError(settled.status, message ?? `API error: ${settled.status}`);
   }
@@ -116,7 +122,7 @@ export { ApiError } from "@/lib/api-error";
 
 async function readErrorMessage(response: Response): Promise<null | string> {
   try {
-    const text = await response.clone().text();
+    const text = await response.text();
     if (!text) return null;
     const parsed: unknown = JSON.parse(text);
     const payload = ErrorDetailSchema.safeParse(parsed);

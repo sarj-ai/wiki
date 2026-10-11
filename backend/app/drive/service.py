@@ -42,8 +42,10 @@ from app.drive.google_schemas import (
 )
 from app.drive.retry import execute_batch_with_retry, execute_with_retry, provider_http_status
 from app.drive.schemas import (
+    MIME_DOC,
     MIME_FOLDER,
     MIME_SHORTCUT,
+    MIME_SLIDE,
     NAVIGATOR_SUPPORTED_MIME_TYPES,
     BoundedFolderMembers,
     DriveNode,
@@ -80,6 +82,9 @@ _NAVIGATOR_FOLDER_FIELDS = (
     "nextPageToken,files(id,name,mimeType,parents,modifiedTime,description,"
     "shortcutDetails(targetId,targetMimeType))"
 )
+
+_TEMPLATE_FOLDER_FIELDS = "nextPageToken,files(id,name,mimeType,modifiedTime,description)"
+_TEMPLATE_MIME_TYPES = (MIME_FOLDER, MIME_DOC, MIME_SLIDE)
 
 _DRIVE_TREE_FIELDS = (
     "nextPageToken,files(id,name,mimeType,parents,modifiedTime,driveId,"
@@ -184,6 +189,9 @@ class DriveService(ABC):
 
     @abstractmethod
     async def list_folder_children(self, folder_id: FileId) -> list[DriveNode]: ...
+
+    async def list_template_children(self, folder_id: FileId) -> list[DriveNode]:
+        return await self.list_folder_children(folder_id)
 
     async def list_folder_children_bounded(
         self,
@@ -343,36 +351,58 @@ class GoogleDriveService(DriveService):
         personal = next((drive for drive in drives if drive.is_personal), None)
         if personal is None:
             return resolved
-        personal_ids = [file_id for file_id, drive_id in files.items() if drive_id is None]
+        root_id = FileId(personal.id)
         parents = parent_ids or {}
+        personal_parents: dict[FileId, FileId] = {}
+        for file_id, drive_id in files.items():
+            if drive_id is not None:
+                continue
+            if file_id == root_id:
+                resolved[file_id] = personal.id
+                continue
+            if (parent_id := parents.get(file_id)) is not None:
+                personal_parents[file_id] = parent_id
+        member_parents = await self._member_personal_parents(
+            list(dict.fromkeys(personal_parents.values())), root_id=root_id
+        )
+        resolved.update(
+            (file_id, personal.id)
+            for file_id, parent_id in personal_parents.items()
+            if parent_id in member_parents
+        )
+        return resolved
+
+    async def _member_personal_parents(
+        self, parent_ids: list[FileId], *, root_id: FileId
+    ) -> set[FileId]:
         if self._bounded_drives.get() is not None:
-            for file_id in personal_ids:
+            members: set[FileId] = set()
+            for parent_id in parent_ids:
                 if await asyncio.to_thread(
                     self._is_personal_descendant_sync,
-                    file_id=file_id,
-                    root_id=FileId(personal.id),
-                    parent_id=parents.get(file_id),
+                    file_id=parent_id,
+                    root_id=root_id,
+                    parent_id=parent_id,
                     strict=True,
                 ):
-                    resolved[file_id] = personal.id
-            return resolved
+                    members.add(parent_id)
+            return members
         descendants = await asyncio.gather(
             *(
                 asyncio.to_thread(
                     self._is_personal_descendant_sync,
-                    file_id=file_id,
-                    root_id=FileId(personal.id),
-                    parent_id=parents.get(file_id),
+                    file_id=parent_id,
+                    root_id=root_id,
+                    parent_id=parent_id,
                 )
-                for file_id in personal_ids
+                for parent_id in parent_ids
             )
         )
-        resolved.update(
-            (file_id, personal.id)
-            for file_id, is_descendant in zip(personal_ids, descendants, strict=True)
+        return {
+            parent_id
+            for parent_id, is_descendant in zip(parent_ids, descendants, strict=True)
             if is_descendant
-        )
-        return resolved
+        }
 
     @override
     async def walk_drive_folders(self, drive_id: DriveId) -> DriveTree:
@@ -394,6 +424,20 @@ class GoogleDriveService(DriveService):
     async def list_folder_children(self, folder_id: FileId) -> list[DriveNode]:
         nodes = await asyncio.to_thread(self._list_children_sync, folder_id)
         return await self._resolve_shortcut_nodes(nodes)
+
+    @override
+    async def list_template_children(self, folder_id: FileId) -> list[DriveNode]:
+        parsed = await asyncio.to_thread(
+            self._list_members_sync,
+            folder_id,
+            max_pages=None,
+            max_children=None,
+            fail_closed=False,
+            include_unsupported=False,
+            navigator_mime_types=_TEMPLATE_MIME_TYPES,
+            navigator_fields=_TEMPLATE_FOLDER_FIELDS,
+        )
+        return parsed.members
 
     @override
     async def list_folder_children_bounded(
@@ -920,6 +964,8 @@ class GoogleDriveService(DriveService):
         fail_closed: bool,
         include_unsupported: bool,
         max_metadata_bytes: int | None = None,
+        navigator_mime_types: tuple[str, ...] = (*NAVIGATOR_SUPPORTED_MIME_TYPES, MIME_SHORTCUT),
+        navigator_fields: str = _NAVIGATOR_FOLDER_FIELDS,
     ) -> BoundedFolderMembers:
         client = self._client()
         out: list[DriveNode] = []
@@ -928,9 +974,9 @@ class GoogleDriveService(DriveService):
         pages = 0
         metadata_bytes = 0
         query = f"'{folder_id}' in parents and trashed=false"
-        fields = _QA_CORPUS_FOLDER_FIELDS if include_unsupported else _NAVIGATOR_FOLDER_FIELDS
+        fields = _QA_CORPUS_FOLDER_FIELDS if include_unsupported else navigator_fields
         if not include_unsupported:
-            query += f" and {_build_mime_clause()}"
+            query += f" and {_build_mime_clause(navigator_mime_types)}"
         while True:
             if max_pages is not None and pages >= max_pages:
                 raise DriveTraversalIncompleteError
@@ -1441,10 +1487,11 @@ def drive_discovery_document() -> dict[str, Any]:
     return parsed
 
 
-def _build_mime_clause() -> str:
-    quoted = " or ".join(
-        f"mimeType='{m}'" for m in (*NAVIGATOR_SUPPORTED_MIME_TYPES, MIME_SHORTCUT)
-    )
+@cache
+def _build_mime_clause(
+    mime_types: tuple[str, ...] = (*NAVIGATOR_SUPPORTED_MIME_TYPES, MIME_SHORTCUT),
+) -> str:
+    quoted = " or ".join(f"mimeType='{m}'" for m in mime_types)
     return f"({quoted})"
 
 

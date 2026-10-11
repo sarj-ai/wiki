@@ -65,10 +65,28 @@ def _first_match_offset(text: str, query: str) -> _MatchOffset | None:
 
 
 def _find_with_prefix_fallback(text_lower: str, word: str) -> _MatchPosition | None:
-    candidate = word
-    while len(candidate) >= _PREFIX_MIN_CHARS:
-        idx = text_lower.find(candidate)
-        if idx >= 0:
-            return _MatchPosition(idx, len(candidate))
-        candidate = candidate[:-1]
-    return None
+    if len(word) < _PREFIX_MIN_CHARS:
+        return None
+    exact = text_lower.find(word)
+    if exact >= 0:
+        return _MatchPosition(exact, len(word))
+    if len(word) == _PREFIX_MIN_CHARS:
+        return None
+    best_offset = text_lower.find(word[:_PREFIX_MIN_CHARS])
+    if best_offset < 0:
+        return None
+    best_length = _PREFIX_MIN_CHARS
+    lower = best_length + 1
+    upper = len(word) - 1
+    # Every matching prefix implies that all shorter prefixes also match.
+    # Find the longest match without rescanning for each missing suffix.
+    while lower <= upper:
+        length = (lower + upper) // 2
+        offset = text_lower.find(word[:length])
+        if offset >= 0:
+            best_offset = offset
+            best_length = length
+            lower = length + 1
+        else:
+            upper = length - 1
+    return _MatchPosition(best_offset, best_length)

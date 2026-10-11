@@ -146,9 +146,46 @@ describe("error mapping", () => {
       status: 429,
     });
   });
+
+  it("releases a discarded rate-limit body without waiting for stream cleanup", async () => {
+    const cleanup = Promise.withResolvers<undefined>();
+    const cancel = vi.fn(async () => await cleanup.promise);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(new ReadableStream({ cancel }), { status: 429 })),
+    );
+
+    await expect(wikiApi.getDrives()).rejects.toMatchObject({
+      message: "Too many requests. Try again in a minute.",
+      status: 429,
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    cleanup.resolve(undefined);
+  });
 });
 
 describe("401 refresh-and-replay", () => {
+  it("cancels a discarded generated read waiting for refresh without replaying it", async () => {
+    const refresh = Promise.withResolvers<Response>();
+    const cancel = vi.fn();
+    const expired = new Response(new ReadableStream({ cancel }), { status: 401 });
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : "href" in input ? input.href : input.url;
+      return url.endsWith("/auth/refresh") ? await refresh.promise : expired;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+    const pending = wikiApi.getFile("file-1", controller.signal);
+    const outcome = pending.catch((error: unknown) => error);
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    controller.abort();
+    await expect(outcome).resolves.toMatchObject({ name: "AbortError" });
+    expect(cancel).toHaveBeenCalledOnce();
+    refresh.resolve(new Response(null));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
   it("refreshes once, replays the original request, and resolves", async () => {
     const calls: string[] = [];
     const fetchMock = vi.fn((input: Request | string | URL) => {
@@ -205,7 +242,7 @@ describe("401 refresh-and-replay", () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(wikiApi.getDrives()).rejects.toMatchObject({ status: 401 });
+    await expect(wikiApi.getDrives()).rejects.toMatchObject({ message: "expired", status: 401 });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(listener).toHaveBeenCalledOnce();
     window.removeEventListener(TERMINAL_UNAUTHORIZED_EVENT, listener);

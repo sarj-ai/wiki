@@ -29,8 +29,9 @@ _VALID_REQUEST_ID = re.compile(r"[A-Za-z0-9._:-]{1,64}")
 
 
 class RequestIDMiddleware:
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, *, static_routes: frozenset[str]) -> None:
         self._app = app
+        self._static_routes = static_routes
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -64,7 +65,7 @@ class RequestIDMiddleware:
             logger.bind(
                 duration_ms=round((time.perf_counter() - started_at) * 1000, 1),
                 request_method=scope["method"],
-                request_route=_route_template(scope),
+                request_route=_route_template(scope, self._static_routes),
                 status_code=status_code,
                 **snapshot(),
             ).info("request.complete")
@@ -80,6 +81,9 @@ def _inbound_request_id(scope: Scope) -> str | None:
     return None
 
 
-def _route_template(scope: Scope) -> str:
+def _route_template(scope: Scope, static_routes: frozenset[str]) -> str:
     route = scope.get("route")
-    return route.path_format if isinstance(route, Route) else "unmatched"
+    if isinstance(route, Route):
+        return route.path_format
+    path = scope["path"]
+    return path if path in static_routes else "unmatched"

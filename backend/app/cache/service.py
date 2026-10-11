@@ -3,15 +3,16 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import Mapping
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import StrEnum
 from itertools import batched
-from typing import override
+from typing import NamedTuple, override
 
 from pydantic import JsonValue
-from sqlalchemy import delete, func, or_, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import Text, bindparam, column, delete, func, literal, or_, select
+from sqlalchemy.dialects.postgresql import ARRAY, Insert, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.cache.protection import CacheEntryProtector, InvalidCacheEntryError
 from app.config import settings
@@ -27,8 +28,60 @@ class CacheNamespace(StrEnum):
 
 _MAX_LOOKUP_KEYS_PER_QUERY = 10_000
 _MAX_WRITE_ROWS_PER_QUERY = 1_000
+_ARRAY_WRITE_THRESHOLD = 8
+_UNNEST_LOOKUP_THRESHOLD = 4_096
 _BULK_CPU_OFFLOAD_THRESHOLD = 256
 _MAX_CACHE_TTL = timedelta(minutes=5)
+
+
+class _ProtectedCacheValue(NamedTuple):
+    key: str
+    envelope: str
+
+
+def _cache_insert(
+    namespace: CacheNamespace,
+    chunk: tuple[_ProtectedCacheValue, ...],
+    expires_at: ColumnElement[datetime],
+) -> Insert:
+    if len(chunk) >= _ARRAY_WRITE_THRESHOLD:
+        rows = (
+            func.unnest(
+                bindparam("cache_keys", [value.key for value in chunk], type_=ARRAY(Text)),
+                bindparam(
+                    "cache_envelopes",
+                    [value.envelope for value in chunk],
+                    type_=ARRAY(Text),
+                ),
+            )
+            .table_valued(column("key", Text), column("envelope", Text))
+            .render_derived()
+        )
+        return pg_insert(CacheEntry).from_select(
+            [
+                CacheEntry.namespace,
+                CacheEntry.key,
+                CacheEntry.value,
+                CacheEntry.expires_at,
+            ],
+            select(
+                literal(namespace),
+                rows.c.key,
+                func.to_jsonb(rows.c.envelope),
+                expires_at,
+            ),
+        )
+    return pg_insert(CacheEntry).values(
+        [
+            {
+                "namespace": namespace,
+                "key": value.key,
+                "value": value.envelope,
+                "expires_at": expires_at,
+            }
+            for value in chunk
+        ]
+    )
 
 
 class CacheService(ABC):
@@ -169,9 +222,17 @@ class CachePSqlService(CacheService):
                 chunk = queried_keys[offset : offset + _MAX_LOOKUP_KEYS_PER_QUERY]
                 statement = select(CacheEntry.key, CacheEntry.value).where(
                     CacheEntry.namespace == namespace,
-                    CacheEntry.key.in_(chunk),
                     CacheEntry.expires_at > func.now(),
                 )
+                if len(chunk) >= _UNNEST_LOOKUP_THRESHOLD:
+                    lookup = (
+                        func.unnest(bindparam("cache_lookup_keys", chunk, type_=ARRAY(Text)))
+                        .table_valued(column("key", Text))
+                        .render_derived()
+                    )
+                    statement = statement.join(lookup, CacheEntry.key == lookup.c.key)
+                else:
+                    statement = statement.where(CacheEntry.key.in_(chunk))
                 async with self._sessionmaker() as db:
                     rows = [(row[0], row[1]) for row in (await db.execute(statement)).all()]
                 rows_by_key.update(rows)
@@ -220,15 +281,17 @@ class CachePSqlService(CacheService):
             protected_values = self._protect_values(namespace, values)
         if protected_values is None:
             return
+        # A consistent row-lock order prevents overlapping batches from
+        # deadlocking when callers supply the same keys in different orders.
+        protected_values.sort(key=lambda value: value.key)
         expires_at = func.now() + ttl
-        for row in protected_values:
-            row["expires_at"] = expires_at
         expired = (
             delete(CacheEntry)
             .where(
                 or_(
                     CacheEntry.expires_at <= func.now(),
-                    (CacheEntry.namespace == namespace) & CacheEntry.key.op("!~")(r"^h[0-9]+\."),
+                    (CacheEntry.namespace == namespace)
+                    & CacheEntry.key.op("!~")(literal(r"^h[0-9]+\.", literal_execute=True)),
                 )
             )
             .cte("delete_expired_cache_entries")
@@ -237,7 +300,7 @@ class CachePSqlService(CacheService):
             for index, chunk in enumerate(
                 batched(protected_values, _MAX_WRITE_ROWS_PER_QUERY, strict=False)
             ):
-                insert = pg_insert(CacheEntry).values(list(chunk))
+                insert = _cache_insert(namespace, chunk, expires_at)
                 statement = insert.on_conflict_do_update(
                     index_elements=[CacheEntry.namespace, CacheEntry.key],
                     set_={
@@ -270,7 +333,7 @@ class CachePSqlService(CacheService):
     def _physical_keys_by_logical(
         self, namespace: CacheNamespace, keys: list[str]
     ) -> dict[str, tuple[str, ...]]:
-        return {key: self._protector.physical_keys(namespace, key) for key in keys}
+        return self._protector.physical_keys_many(namespace, keys, include_rotation=True)
 
     def _unprotect_rows(
         self,
@@ -294,19 +357,19 @@ class CachePSqlService(CacheService):
 
     def _protect_values(
         self, namespace: CacheNamespace, values: Mapping[str, JsonValue]
-    ) -> list[dict[str, object]] | None:
+    ) -> list[_ProtectedCacheValue] | None:
         physical_key_owners: dict[str, str] = {}
-        active_physical_keys: dict[str, str] = {}
-        for logical_key in values:
-            physical_key = self._protector.physical_keys(namespace, logical_key)[0]
+        physical_by_logical = self._protector.physical_keys_many(
+            namespace, list(values), include_rotation=False
+        )
+        for logical_key, candidates in physical_by_logical.items():
+            physical_key = candidates[0]
             if physical_key_owners.setdefault(physical_key, logical_key) != logical_key:
                 return None
-            active_physical_keys[logical_key] = physical_key
         return [
-            {
-                "namespace": namespace,
-                "key": active_physical_keys[logical_key],
-                "value": self._protector.protect(namespace, logical_key, value),
-            }
+            _ProtectedCacheValue(
+                physical_by_logical[logical_key][0],
+                self._protector.protect(namespace, logical_key, value),
+            )
             for logical_key, value in values.items()
         ]

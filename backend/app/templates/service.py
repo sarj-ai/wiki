@@ -143,7 +143,7 @@ class DriveTemplateCatalogService(TemplateCatalogService):
 
     async def _list_folder_children(self, folder_id: FileId) -> list[DriveNode]:
         async with self._folder_reads:
-            return await self._drive.list_folder_children(folder_id)
+            return await self._drive.list_template_children(folder_id)
 
 
 def _next_template_batch(

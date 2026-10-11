@@ -5,7 +5,6 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 
 import { ThemeProvider } from "@/components/theme-provider";
-import { Toaster } from "@/components/ui/sonner";
 import { API_URL } from "@/lib/env";
 
 const GOOGLE_DOC_ORIGINS = [
@@ -96,7 +95,6 @@ export default function RootLayout({
           enableSystem
         >
           {children}
-          <Toaster position="bottom-right" />
         </ThemeProvider>
       </body>
     </html>

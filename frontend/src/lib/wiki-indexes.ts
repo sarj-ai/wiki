@@ -1,8 +1,11 @@
-import { buildChildrenIndex } from "@/lib/wiki-tree";
+import { buildChildrenIndex, isFolderLikeNode } from "@/lib/wiki-tree";
 import type { DocIcon, DriveNode, FolderIcon, SortOrder } from "@/types/wiki";
+import { MIME_DOC, MIME_HTML, MIME_SHORTCUT } from "@/types/wiki";
 
 export const EMPTY_NODES: readonly DriveNode[] = [];
 export const EMPTY_DOC_ICONS: readonly DocIcon[] = [];
+export const EMPTY_FOLDER_ICONS: readonly FolderIcon[] = [];
+export const EMPTY_SORT_ORDERS: readonly SortOrder[] = [];
 
 // Query data is immutable. Weak keys let every Drive share the same index while
 // session/query eviction releases the arrays and their indexes together.
@@ -28,6 +31,28 @@ function mapByKey<T, V>(
 }
 
 export const indexChildren = memoizeIndex(buildChildrenIndex);
+export const indexNodes = memoizeIndex((items: readonly DriveNode[]) =>
+  mapByKey(
+    items,
+    (item) => item.id,
+    (item) => item,
+  ),
+);
+export const indexDestinationFolders = memoizeIndex((items: readonly DriveNode[]) =>
+  buildChildrenIndex(items.filter((node) => node.mimeType !== MIME_SHORTCUT)),
+);
+export const indexSidebarNodes = memoizeIndex((items: readonly DriveNode[]) => {
+  const files: DriveNode[] = [];
+  const folders: DriveNode[] = [];
+  for (const node of items) {
+    if (isFolderLikeNode(node)) folders.push(node);
+    else files.push(node);
+  }
+  return { files, folders };
+});
+export const indexVisibleDocuments = memoizeIndex((items: readonly DriveNode[]) =>
+  items.filter((node) => node.mimeType === MIME_DOC || node.mimeType === MIME_HTML),
+);
 export const indexFolderIcons = memoizeIndex((items: readonly FolderIcon[]) =>
   mapByKey(
     items,

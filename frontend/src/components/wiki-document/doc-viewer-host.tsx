@@ -52,7 +52,12 @@ export const DocViewerHost = () => {
 
   useLayoutEffect(() => {
     if (!slot) return;
+    let resizeFrame: number | undefined;
     const sync = () => {
+      if (resizeFrame !== undefined) {
+        window.cancelAnimationFrame(resizeFrame);
+        resizeFrame = undefined;
+      }
       const r = slot.getBoundingClientRect();
       const next = { height: r.height, left: r.left, top: r.top, width: r.width };
       setRect((previous) =>
@@ -64,13 +69,17 @@ export const DocViewerHost = () => {
           : next,
       );
     };
+    const scheduleSync = () => {
+      resizeFrame ??= window.requestAnimationFrame(sync);
+    };
     sync();
     const observer = new ResizeObserver(sync);
     observer.observe(slot);
-    window.addEventListener("resize", sync);
+    window.addEventListener("resize", scheduleSync);
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", sync);
+      window.removeEventListener("resize", scheduleSync);
+      if (resizeFrame !== undefined) window.cancelAnimationFrame(resizeFrame);
     };
   }, [slot]);
 
@@ -82,25 +91,32 @@ export const DocViewerHost = () => {
       className={cn("fixed z-10", !visible && "pointer-events-none invisible")}
       style={visible ? { ...rect } : { height: 0, left: 0, top: 0, width: 0 }}
     >
-      {mounted.map((entry) => (
-        <div
-          aria-hidden={viewerKey(entry) !== (active === null ? null : viewerKey(active))}
-          className={cn("absolute inset-0", entry.fileId !== active?.fileId && "hidden")}
-          key={entry.fileId}
-        >
-          <PooledIframe
-            active={viewerKey(entry) === (active === null ? null : viewerKey(active))}
-            fileId={entry.fileId}
-            key={viewerKey(entry)}
-            mimeType={entry.mimeType}
-            title={entry.title}
-            {...(entry.version === undefined ? {} : { version: entry.version })}
-          />
-        </div>
-      ))}
+      {mounted.length > 0 ? <PooledFrames active={active} mounted={mounted} /> : null}
     </div>
   );
 };
+
+function PooledFrames({ active, mounted }: { active: ActiveDoc | null; mounted: ActiveDoc[] }) {
+  const reducedMotion = useReducedMotion();
+  const activeKey = active === null ? null : viewerKey(active);
+  return mounted.map((entry) => (
+    <div
+      aria-hidden={viewerKey(entry) !== activeKey}
+      className={cn("absolute inset-0", entry.fileId !== active?.fileId && "hidden")}
+      key={entry.fileId}
+    >
+      <PooledIframe
+        active={viewerKey(entry) === activeKey}
+        fileId={entry.fileId}
+        key={viewerKey(entry)}
+        mimeType={entry.mimeType}
+        reducedMotion={reducedMotion}
+        title={entry.title}
+        {...(entry.version === undefined ? {} : { version: entry.version })}
+      />
+    </div>
+  ));
+}
 
 export function viewerKey(entry: ActiveDoc): string {
   const contentVersion = entry.mimeType === MIME_HTML ? (entry.version ?? "current") : "stable";
@@ -111,18 +127,48 @@ interface PooledIframeProps {
   active: boolean;
   fileId: string;
   mimeType: string;
+  reducedMotion: boolean;
   title: string;
   version?: string;
 }
 
-const PooledIframe = ({ active, fileId, mimeType, title, version }: PooledIframeProps) => {
+const PooledIframe = ({
+  active,
+  fileId,
+  mimeType,
+  reducedMotion,
+  title,
+  version,
+}: PooledIframeProps) => {
   if (mimeType === MIME_HTML) {
-    return <HtmlIframe active={active} fileId={fileId} title={title} version={version} />;
+    return (
+      <HtmlIframe
+        active={active}
+        fileId={fileId}
+        reducedMotion={reducedMotion}
+        title={title}
+        version={version}
+      />
+    );
   }
-  return <DrivePreviewIframe active={active} fileId={fileId} mimeType={mimeType} title={title} />;
+  return (
+    <DrivePreviewIframe
+      active={active}
+      fileId={fileId}
+      mimeType={mimeType}
+      reducedMotion={reducedMotion}
+      title={title}
+    />
+  );
 };
 
-const DrivePreviewIframe = ({ active, fileId, mimeType, title }: PooledIframeProps) => {
+const DrivePreviewIframe = ({
+  active,
+  fileId,
+  mimeType,
+  reducedMotion,
+  title,
+}: PooledIframeProps) => {
   const src = embedUrlFor(mimeType, fileId);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -131,7 +177,7 @@ const DrivePreviewIframe = ({ active, fileId, mimeType, title }: PooledIframePro
   }, [fileId]);
 
   return (
-    <DocumentFrame active={active} loading={isLoading}>
+    <DocumentFrame active={active} loading={isLoading} reducedMotion={reducedMotion}>
       <iframe
         allow="clipboard-read; clipboard-write"
         className="block size-full border-0"
@@ -171,17 +217,19 @@ function* docCandidates(
 function HtmlIframe({
   active,
   fileId,
+  reducedMotion,
   title,
   version,
 }: {
   active: boolean;
   fileId: string;
+  reducedMotion: boolean;
   title: string;
   version: string | undefined;
 }) {
   const [isLoading, setIsLoading] = useState(true);
   return (
-    <DocumentFrame active={active} loading={isLoading}>
+    <DocumentFrame active={active} loading={isLoading} reducedMotion={reducedMotion}>
       <iframe
         className={HTML_IFRAME_CLASS_NAME}
         ref={attachIframeLoadListener.bind(undefined, () => {
@@ -202,12 +250,14 @@ function DocumentFrame({
   active,
   children,
   loading,
+  reducedMotion,
 }: {
   active: boolean;
   children: React.ReactNode;
   loading: boolean;
+  reducedMotion: boolean;
 }) {
-  const { phase, slow } = useDocumentLoading(active, loading);
+  const { phase, slow } = useDocumentLoading(active, loading, reducedMotion);
   const announced = active && (phase === "exiting" || phase === "visible");
 
   return (
@@ -252,8 +302,8 @@ function DocumentFrame({
 function useDocumentLoading(
   active: boolean,
   loading: boolean,
+  reducedMotion: boolean,
 ): { phase: LoadingOverlayPhase; slow: boolean } {
-  const reducedMotion = useReducedMotion();
   const [phaseState, setPhaseState] = useState<LoadingOverlayPhase>("masked");
   const [slow, setSlow] = useState(false);
   const generationRef = useRef(0);

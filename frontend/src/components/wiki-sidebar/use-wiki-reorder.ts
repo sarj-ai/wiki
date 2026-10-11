@@ -12,18 +12,20 @@ import { arrayMove } from "@dnd-kit/sortable";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { z } from "zod";
 
 import { expandPath } from "@/hooks/use-expanded-folders";
 import { useBulkSetSortOrders, useMoveFile } from "@/hooks/use-wiki-mutations";
 import { wikiKeys } from "@/hooks/use-wiki-tree";
 import { ApiError } from "@/lib/api-error";
 import { useBrowserUserId } from "@/lib/browser-user-context";
+import { buildDestinationSortOrders } from "@/lib/build-destination-sort-orders";
 import { validateCrossDriveMove } from "@/lib/validate-cross-drive-move";
 import { optimisticMoveFile } from "@/lib/wiki-cache";
+import { EMPTY_NODES, EMPTY_SORT_ORDERS } from "@/lib/wiki-indexes";
 import type { DriveNode, DriveTree, SortOrder } from "@/types/wiki";
-import { MIME_FOLDER, MIME_SHORTCUT } from "@/types/wiki";
+import { MIME_SHORTCUT } from "@/types/wiki";
 
+import { dragScopeData, sortableContainerId, sortableData } from "./drag-data";
 import { type DropIntent, useDragOverStore } from "./use-drag-over-store";
 import { useInFlightMovesStore } from "./use-in-flight-moves";
 
@@ -48,16 +50,6 @@ const CONTAINER_PREFIX = "parent:";
 
 const FOLDER_ABOVE_BAND = 0.3;
 const FOLDER_BELOW_BAND = 0.7;
-
-const ZSortableData = z.object({
-  containerId: z.string().optional(),
-  items: z.array(z.string()).optional(),
-});
-
-const ZDragScopeData = z.object({
-  driveId: z.string(),
-  parentFolderId: z.string().optional(),
-});
 
 export function useWikiReorder(): WikiReorder {
   const qc = useQueryClient();
@@ -138,7 +130,7 @@ export function useWikiReorder(): WikiReorder {
       intent = computeDropIntent(active, over, delta, overEligibleForInto);
     }
     useDragOverStore.getState().setOver({
-      containerId: sortableContainerId(over.data.current),
+      containerId: overContainer,
       id: String(over.id),
       intent,
     });
@@ -252,7 +244,8 @@ export function useWikiReorder(): WikiReorder {
       return;
     }
 
-    if (lookupNodeMimeType(qc, destinationDriveId, newParentFolderId) === MIME_SHORTCUT) {
+    const destinationNode = lookupFolder(qc, destinationDriveId, newParentFolderId);
+    if (destinationNode?.mimeType === MIME_SHORTCUT) {
       toast.error("Can't drop into a shortcut. Open it and drop into the target's folder instead.");
       return;
     }
@@ -271,7 +264,7 @@ export function useWikiReorder(): WikiReorder {
       expandPath(userId, destinationDriveId, [newParentFolderId]);
     }
 
-    const destinationName = lookupFolderName(qc, destinationDriveId, newParentFolderId);
+    const destinationName = destinationNode?.name ?? "folder";
 
     void (async () => {
       await moveFile.mutateAsync({
@@ -319,22 +312,6 @@ function parentIdOf(containerId: string): null | string {
     : null;
 }
 
-function sortableContainerId(data: null | Record<string, unknown> | undefined): null | string {
-  return sortableData(data)?.containerId ?? null;
-}
-
-function dragScopeData(
-  data: null | Record<string, unknown> | undefined,
-): null | z.output<typeof ZDragScopeData> {
-  const parsed = ZDragScopeData.safeParse(data);
-  return parsed.success ? parsed.data : null;
-}
-
-function sortableData(data: null | Record<string, unknown> | undefined) {
-  const parsed = ZSortableData.safeParse(data?.["sortable"]);
-  return parsed.success ? parsed.data : null;
-}
-
 function isFolderTarget(data: null | Record<string, unknown> | undefined): boolean {
   return data?.["isFolder"] === true;
 }
@@ -365,53 +342,25 @@ function buildDestinationOrder(
   positionHint: { rowId: string; intent: "above" | "below" },
 ): null | SortOrder[] {
   const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
-  const isAtDriveRoot = newParentFolderId === driveId;
-  const folders = (tree?.folders ?? []).filter((f) =>
-    isAtDriveRoot ? f.parentId === undefined : f.parentId === newParentFolderId,
-  );
-  const filesCache =
-    isAtDriveRoot && (tree?.filesComplete ?? true)
-      ? tree?.files
-      : qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles(newParentFolderId));
-  const files = (filesCache ?? []).filter((f) => f.mimeType !== MIME_FOLDER);
-
-  const baseline = [...folders, ...files]
-    .filter((c) => c.id !== movedNode.id)
-    .toSorted((a, b) => {
-      const aIsFolder = a.mimeType === MIME_FOLDER;
-      const bIsFolder = b.mimeType === MIME_FOLDER;
-      if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-
-  const overIndex = baseline.findIndex((c) => c.id === positionHint.rowId);
-  if (overIndex < 0) return null;
-  const insertIdx = positionHint.intent === "below" ? overIndex + 1 : overIndex;
-  const finalOrder = [...baseline];
-  finalOrder.splice(insertIdx, 0, movedNode);
-  return finalOrder.map((node, i) => ({ driveId: node.id, sortOrder: i + 1 }));
+  return buildDestinationSortOrders({
+    driveId,
+    folderFiles:
+      qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles(newParentFolderId)) ?? EMPTY_NODES,
+    folderId: newParentFolderId,
+    movedNode,
+    positionHint,
+    sortOrders: qc.getQueryData<SortOrder[]>(wikiKeys.sortOrders) ?? EMPTY_SORT_ORDERS,
+    tree,
+  });
 }
 
-function lookupFolderName(
+function lookupFolder(
   qc: ReturnType<typeof useQueryClient>,
   driveId: string,
   folderId: string,
-): string {
-  const tree = qc.getQueryData<{ folders: { id: string; name: string }[] }>(
-    wikiKeys.driveTree(driveId),
-  );
-  return tree?.folders.find((f) => f.id === folderId)?.name ?? "folder";
-}
-
-function lookupNodeMimeType(
-  qc: ReturnType<typeof useQueryClient>,
-  driveId: string,
-  folderId: string,
-): null | string {
-  const tree = qc.getQueryData<{ folders: { id: string; mimeType: string }[] }>(
-    wikiKeys.driveTree(driveId),
-  );
-  return tree?.folders.find((f) => f.id === folderId)?.mimeType ?? null;
+): DriveNode | undefined {
+  const tree = qc.getQueryData<DriveTree>(wikiKeys.driveTree(driveId));
+  return tree?.folders.find((folder) => folder.id === folderId);
 }
 
 function translateMoveError(err: unknown): string {

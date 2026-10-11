@@ -7,6 +7,21 @@ afterEach(() => {
 });
 
 describe("session refresh classification", () => {
+  it("drops unused refresh bodies without waiting and prohibits cached/redirected recovery", async () => {
+    const cleanup = Promise.withResolvers<undefined>();
+    const cancel = vi.fn<() => Promise<undefined>>().mockReturnValue(cleanup.promise);
+    const body = new ReadableStream<Uint8Array>({ cancel });
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(body));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(deduplicatedRefresh()).resolves.toBe("refreshed");
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(fetchMock.mock.calls[0]?.[1]?.cache).toBe("no-store");
+      expect(fetchMock.mock.calls[0]?.[1]?.redirect).toBe("error");
+    } finally {
+      cleanup.resolve(undefined);
+    }
+  });
   it.each([
     [200, "refreshed"],
     [401, "unauthorized"],

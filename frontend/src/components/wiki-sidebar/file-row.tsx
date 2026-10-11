@@ -34,6 +34,7 @@ interface FileRowProps {
   iconOverride: string | undefined;
   node: DriveNode;
   parentFolderId: string | undefined;
+  pathname?: string | undefined;
 }
 
 interface RowButtonProps {
@@ -49,15 +50,25 @@ interface RowButtonProps {
   titleAttr: string;
 }
 
-function FileRowImpl({
+function FileRowImpl(props: FileRowProps) {
+  if (props.pathname === undefined) return <FileRowWithPathname {...props} />;
+  return <FileRowContent {...props} pathname={props.pathname} />;
+}
+
+function FileRowWithPathname(props: FileRowProps) {
+  const pathname = usePathname();
+  return <FileRowContent {...props} pathname={pathname} />;
+}
+
+function FileRowContent({
   activeDriveId,
   depth,
   driveId,
   iconOverride,
   node,
   parentFolderId,
-}: FileRowProps) {
-  const pathname = usePathname();
+  pathname,
+}: FileRowProps & { pathname: string }) {
   const route = resolveShortcutTarget(node);
 
   const isForm = route.targetMimeType === MIME_FORM;

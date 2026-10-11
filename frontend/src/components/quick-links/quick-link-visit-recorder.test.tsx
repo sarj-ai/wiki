@@ -1,7 +1,9 @@
+import { StrictMode } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
 import { QuickLinkVisitRecorder } from "@/components/quick-links/quick-link-visit-recorder";
+import { recentAliasesStorageKey } from "@/lib/browser-storage";
 import { readRecentAliases } from "@/lib/recent-aliases";
 import { installLocalStorage } from "@/test-stubs/install-local-storage";
 
@@ -27,6 +29,7 @@ describe("QuickLinkVisitRecorder", () => {
       root.unmount();
     });
     host.remove();
+    vi.restoreAllMocks();
   });
 
   it("records the alias for the current user and removes the handoff query", async () => {
@@ -39,4 +42,24 @@ describe("QuickLinkVisitRecorder", () => {
 
     expect(window.location.pathname + window.location.search).toBe("/d/file-id?view=outline");
   });
+
+  it("writes a visit once across Strict Mode replay and profile-object updates", () => {
+    const write = vi.spyOn(localStorage, "setItem");
+    renderVisit(root);
+    renderVisit(root);
+    expect(
+      write.mock.calls.filter(([key]) => key === recentAliasesStorageKey("user-1")),
+    ).toHaveLength(1);
+    expect(readRecentAliases("user-1")).toHaveLength(1);
+  });
 });
+
+function renderVisit(root: Root) {
+  flushSync(() => {
+    root.render(
+      <StrictMode>
+        <QuickLinkVisitRecorder alias="team-handbook" />
+      </StrictMode>,
+    );
+  });
+}

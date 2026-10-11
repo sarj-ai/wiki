@@ -8,6 +8,7 @@ import { QueryProvider } from "@/components/query-provider";
 import { RedirectAfterLogin } from "@/components/redirect-after-login";
 import { SessionRefresh } from "@/components/session-refresh";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Toaster } from "@/components/ui/sonner";
 import { DocViewerHost } from "@/components/wiki-document/doc-viewer-host";
 import { DocWarmup } from "@/components/wiki-document/doc-warmup";
 import { CommandPaletteMount } from "@/components/wiki-search/command-palette-mount";
@@ -108,6 +109,7 @@ async function AuthenticatedLayout({ children }: { children: React.ReactNode }) 
               <DocViewerHost />
             </ErrorBoundary>
             <DocWarmup />
+            <Toaster position="bottom-right" />
           </SidebarProvider>
         </BrowserSessionBoundary>
       </HydrationBoundary>

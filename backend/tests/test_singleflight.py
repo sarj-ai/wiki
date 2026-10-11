@@ -128,3 +128,26 @@ async def test_cancelled_follower_does_not_cancel_leader_or_other_followers() ->
     assert await asyncio.gather(leader, survivor) == ["done", "done"]
     assert calls == 1
     assert await sf.do("shared", work) == "done"
+
+
+async def test_cancelled_leader_releases_waiters_and_allows_a_fresh_retry() -> None:
+    sf = Singleflight[str]()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def work() -> str:
+        started.set()
+        await release.wait()
+        return "done"
+
+    leader = asyncio.create_task(sf.do("shared", work))
+    await started.wait()
+    follower = asyncio.create_task(sf.do("shared", work))
+    await asyncio.sleep(0)
+    leader.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await leader
+    with pytest.raises(asyncio.CancelledError):
+        await follower
+    release.set()
+    assert await sf.do("shared", work) == "done"

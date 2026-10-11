@@ -183,17 +183,19 @@ class PostgresAliasService(AliasService):
             return []
         unique_aliases = list(dict.fromkeys(aliases))
         result = await self._db.execute(
-            select(DocumentAlias).where(
+            select(DocumentAlias.alias, DocumentAlias.file_id).where(
                 DocumentAlias.alias.in_(unique_aliases),
                 DocumentAlias.retired_at.is_(None),
             )
         )
-        rows_by_alias = {row.alias: row for row in result.scalars().all()}
-        ordered_rows = [rows_by_alias[alias] for alias in unique_aliases if alias in rows_by_alias]
+        files_by_alias = dict(result.tuples().all())
+        ordered_aliases = [alias for alias in unique_aliases if alias in files_by_alias]
         # Provider membership resolution uses independent cache sessions.
         # Do not retain a connection for this completed alias read during it.
         await self._db.commit()
-        files_by_id = await self._files.get_accessible_many([row.file_id for row in ordered_rows])
+        files_by_id = await self._files.get_accessible_many(
+            [files_by_alias[alias] for alias in ordered_aliases]
+        )
 
         drive_names = (
             {drive.id: drive.name for drive in await self._drive.list_drives()}
@@ -202,14 +204,14 @@ class PostgresAliasService(AliasService):
         )
         return [
             RecentDocumentAlias(
-                alias=row.alias,
+                alias=alias,
                 file_id=file.id,
                 name=file.name,
                 mime_type=file.mime_type,
                 drive_name=(drive_names.get(file.drive_id) if file.drive_id is not None else None),
             )
-            for row in ordered_rows
-            if (file := files_by_id.get(row.file_id)) is not None
+            for alias in ordered_aliases
+            if (file := files_by_id.get(files_by_alias[alias])) is not None
         ]
 
     async def _active_for_file(self, file_id: FileId) -> DocumentAlias | None:

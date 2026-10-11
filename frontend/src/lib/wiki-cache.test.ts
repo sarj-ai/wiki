@@ -41,6 +41,23 @@ function makeNode(overrides: Partial<DriveNode> = {}): DriveNode {
   };
 }
 
+it("keeps unrelated cached arrays intact when removing a missing item", () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { structuralSharing: false } } });
+  const tree: DriveTree = {
+    driveId: "drive-1",
+    files: [makeNode({ id: "other" })],
+    folders: [],
+    filesComplete: true,
+  };
+  qc.setQueryData(wikiKeys.driveTree("drive-1"), tree);
+  qc.setQueryData(wikiKeys.folderFiles("folder-a"), tree.files);
+
+  removeFileFromCaches(qc, "missing", "folder-a", "drive-1");
+
+  expect(qc.getQueryData(wikiKeys.driveTree("drive-1"))).toBe(tree);
+  expect(qc.getQueryData(wikiKeys.folderFiles("folder-a"))).toBe(tree.files);
+});
+
 describe("fileToNode", () => {
   it("projects FileResponse fields onto DriveNode shape", () => {
     const node = fileToNode(makeFile({ id: "f", name: "Doc", parentFolderId: "p" }));
@@ -251,17 +268,19 @@ describe("findCachedNodeMeta", () => {
 });
 
 describe("removeFileFromCaches", () => {
-  it("filters the deleted file out of folder-files", () => {
+  it("filters every deleted entry out of folder-files", () => {
     const qc = new QueryClient();
     qc.setQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"), [
-      makeNode({ id: "keep" }),
+      makeNode({ id: "before" }),
+      makeNode({ id: "drop" }),
+      makeNode({ id: "after" }),
       makeNode({ id: "drop" }),
     ]);
 
     removeFileFromCaches(qc, "drop", "folder-a", "drive-1");
 
     const remaining = qc.getQueryData<DriveNode[]>(wikiKeys.folderFiles("folder-a"));
-    expect(remaining?.map((n) => n.id)).toEqual(["keep"]);
+    expect(remaining?.map((n) => n.id)).toEqual(["before", "after"]);
   });
 
   it("filters the deleted folder out of the drive tree", () => {

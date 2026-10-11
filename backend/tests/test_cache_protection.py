@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import math
+
 from cryptography.fernet import Fernet
 from pydantic import JsonValue
 import pytest
@@ -105,3 +108,93 @@ def test_repr_never_exposes_key_material() -> None:
     key = _key()
 
     assert key not in repr(CacheEntryProtector((key,)))
+
+
+@pytest.mark.parametrize(
+    "plaintext",
+    [
+        b"[]",
+        b'{"key":123,"namespace":"drive.list","value":true}',
+        b'{"key":"user","namespace":null,"value":true}',
+        b'{"key":"user","namespace":"drive.list"}',
+        b'{"key":"user","namespace":"drive.list","value":true,"extra":true}',
+        b'{"key":"user","namespace":"drive.list","value":',
+        b"\xff",
+    ],
+)
+def test_authenticated_envelope_still_requires_a_strict_complete_json_shape(
+    plaintext: bytes,
+) -> None:
+    key = _key()
+    envelope = "f1." + Fernet(key.encode()).encrypt(plaintext).decode()
+
+    with pytest.raises(InvalidCacheEntryError):
+        CacheEntryProtector((key,)).unprotect("drive.list", "user", envelope)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf"), -0.0])
+def test_envelope_serialization_preserves_existing_nonfinite_and_negative_zero_values(
+    value: float,
+) -> None:
+    key = _key()
+    fernet = Fernet(key.encode())
+    protector = CacheEntryProtector((key,))
+    legacy_plaintext = json.dumps(
+        {"key": "user", "namespace": "drive.list", "value": value},
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    legacy = "f1." + fernet.encrypt(legacy_plaintext).decode()
+    current = protector.protect("drive.list", "user", value)
+    assert fernet.decrypt(current[3:].encode()) == legacy_plaintext
+    read_value = protector.unprotect("drive.list", "user", legacy)
+    assert isinstance(read_value, float)
+    if math.isnan(value):
+        assert math.isnan(read_value)
+    else:
+        assert read_value == value
+        assert math.copysign(1, read_value) == math.copysign(1, value)
+
+
+def test_typed_envelope_and_legacy_json_reader_are_compatible_for_nested_json() -> None:
+    key = _key()
+    fernet = Fernet(key.encode())
+    protector = CacheEntryProtector((key,))
+    value: JsonValue = {"z": [None, True, 9223372036854775809], "a": {"title": "Résumé ⚡"}}
+    legacy_plaintext = json.dumps(
+        {"key": "user", "namespace": "drive.list", "value": value},
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    assert (
+        protector.unprotect("drive.list", "user", "f1." + fernet.encrypt(legacy_plaintext).decode())
+        == value
+    )
+    current = protector.protect("drive.list", "user", value)
+    decoded = json.loads(fernet.decrypt(current[3:].encode()))
+    assert decoded == {"key": "user", "namespace": "drive.list", "value": value}
+
+
+@pytest.mark.parametrize("count", [1, 8, 512])
+@pytest.mark.parametrize("rotation_count", [1, 3])
+def test_bulk_lookup_derivation_preserves_existing_key_bytes_and_rotation_order(
+    count: int, rotation_count: int
+) -> None:
+    protector = CacheEntryProtector(tuple(_key() for _ in range(rotation_count)))
+    logical_keys = [f"permission-{index}-Résumé ⚡" for index in range(count)]
+    expected = {key: protector.physical_keys("drive.list", key) for key in logical_keys}
+
+    assert (
+        protector.physical_keys_many("drive.list", logical_keys, include_rotation=True) == expected
+    )
+    assert protector.physical_keys_many("drive.list", logical_keys, include_rotation=False) == {
+        key: candidates[:1] for key, candidates in expected.items()
+    }
+    other_namespace = protector.physical_keys_many(
+        "template.catalog",
+        logical_keys,
+        include_rotation=True,
+    )
+    assert all(other_namespace[key] != expected[key] for key in logical_keys)

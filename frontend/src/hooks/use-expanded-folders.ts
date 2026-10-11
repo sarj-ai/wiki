@@ -10,6 +10,7 @@ import { PersistedDriveExpansionSchema, PersistedExpansionSchema } from "@/lib/s
 
 interface FolderExpansionState {
   expanded: Record<string, true>;
+  expandMany: (ids: readonly string[]) => void;
   setExpanded: (id: string, next: boolean) => void;
 }
 
@@ -23,33 +24,44 @@ type PersistedDriveExpansionState = Pick<DriveExpansionState, "expanded" | "init
 
 const DRIVE_EXPANSION_VERSION = 1;
 
-const folderInitializer: StateCreator<FolderExpansionState> = (set) => ({
+const folderInitializer: StateCreator<FolderExpansionState> = (set, get) => ({
+  expandMany: (ids) => {
+    const previous = get().expanded;
+    let expanded: null | Record<string, true> = null;
+    for (const id of ids) {
+      if (previous[id] === true) continue;
+      expanded ??= { ...previous };
+      expanded[id] = true;
+    }
+    if (expanded) set({ expanded });
+  },
   expanded: {},
-  setExpanded: (id: string, next: boolean) =>
+  setExpanded: (id: string, next: boolean) => {
+    if ((get().expanded[id] === true) === next) return;
     set((state) => {
       if (next) {
-        if (state.expanded[id]) return state;
         return { expanded: { ...state.expanded, [id]: true } };
       }
-      if (!state.expanded[id]) return state;
       const { [id]: _removed, ...rest } = state.expanded;
       return { expanded: rest };
-    }),
+    });
+  },
 });
 
-const driveInitializer: StateCreator<DriveExpansionState> = (set) => ({
+const driveInitializer: StateCreator<DriveExpansionState> = (set, get) => ({
   expanded: {},
   initialized: false,
-  setExpanded: (id: string, next: boolean) =>
+  setExpanded: (id: string, next: boolean) => {
+    const previous = get();
+    if (previous.initialized && (previous.expanded[id] === true) === next) return;
     set((state) => {
       if (next) {
-        if (state.initialized && state.expanded[id]) return state;
         return { expanded: { ...state.expanded, [id]: true }, initialized: true };
       }
-      if (state.initialized && !state.expanded[id]) return state;
       const { [id]: _removed, ...rest } = state.expanded;
       return { expanded: rest, initialized: true };
-    }),
+    });
+  },
 });
 
 const folderStores = new Map<string, ReturnType<typeof createFolderStore>>();
@@ -154,10 +166,7 @@ export function expandPath(
 ): void {
   if (!userId) return;
   driveStore(userId).getState().setExpanded(driveId, true);
-  const setExpanded = folderStore(userId).getState().setExpanded;
-  for (const folderId of folderIds) {
-    setExpanded(folderId, true);
-  }
+  folderStore(userId).getState().expandMany(folderIds);
 }
 
 export function resetExpansionState(userId: null | string): void {

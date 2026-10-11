@@ -24,11 +24,15 @@ vi.mock("@/lib/file-urls", () => ({ embedUrlFor: () => "about:blank" }));
 let nextFrameId = 0;
 let reducedMotion = false;
 const ANIMATION_FRAMES = new Map<number, FrameRequestCallback>();
+const subscribeToMotion = vi.fn();
+const unsubscribeFromMotion = vi.fn();
 
 beforeEach(() => {
   vi.useFakeTimers();
   reducedMotion = false;
   ANIMATION_FRAMES.clear();
+  subscribeToMotion.mockClear();
+  unsubscribeFromMotion.mockClear();
   useDocViewerStore.getState().reset();
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
     nextFrameId += 1;
@@ -39,11 +43,11 @@ beforeEach(() => {
     ANIMATION_FRAMES.delete(id);
   });
   vi.stubGlobal("matchMedia", () => ({
-    addEventListener: vi.fn(),
+    addEventListener: subscribeToMotion,
     matches: reducedMotion,
     media: "(prefers-reduced-motion: reduce)",
     onchange: null,
-    removeEventListener: vi.fn(),
+    removeEventListener: unsubscribeFromMotion,
   }));
 });
 
@@ -83,6 +87,33 @@ describe("pooled viewer identity", () => {
     expect(viewerKey({ ...base, mimeType: MIME_DOC, reloadKey: 0 })).not.toBe(
       viewerKey({ ...base, mimeType: MIME_DOC, reloadKey: 1 }),
     );
+  });
+
+  it("shares one reduced-motion subscription across four mounted viewers", () => {
+    const view = renderViewer(doc("a"), doc("d"));
+    activate(doc("b"));
+    activate(doc("c"));
+    expect(document.querySelectorAll("iframe")).toHaveLength(4);
+    expect(subscribeToMotion).toHaveBeenCalledOnce();
+    view.unmount();
+    expect(unsubscribeFromMotion).toHaveBeenCalledOnce();
+  });
+
+  it("does not subscribe to motion preferences until a viewer is mounted", () => {
+    const view = renderViewer(null);
+    expect(subscribeToMotion).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it("coalesces a window resize burst into one geometry read before the next paint", () => {
+    const view = renderViewer(doc("a"));
+    const initialReads = view.readRect.mock.calls.length;
+    for (let index = 0; index < 100; index += 1) window.dispatchEvent(new Event("resize"));
+    expect(view.readRect).toHaveBeenCalledTimes(initialReads);
+    runFrame();
+    expect(view.readRect).toHaveBeenCalledTimes(initialReads + 1);
+    view.unmount();
+    expect(ANIMATION_FRAMES.size).toBe(0);
   });
 });
 
@@ -256,9 +287,15 @@ function renderViewer(active: ActiveDoc | null, prewarm: ActiveDoc | null = null
   const container = document.createElement("div");
   const slot = document.createElement("div");
   document.body.append(container, slot);
-  Object.defineProperty(slot, "getBoundingClientRect", {
-    value: () => ({ bottom: 640, height: 600, left: 0, right: 800, top: 40, width: 800 }),
-  });
+  const readRect = vi.fn(() => ({
+    bottom: 640,
+    height: 600,
+    left: 0,
+    right: 800,
+    top: 40,
+    width: 800,
+  }));
+  Object.defineProperty(slot, "getBoundingClientRect", { value: readRect });
   const store = useDocViewerStore.getState();
   store.setSlot(slot, Symbol("slot"));
   if (prewarm) store.setPrewarm(prewarm);
@@ -276,6 +313,7 @@ function renderViewer(active: ActiveDoc | null, prewarm: ActiveDoc | null = null
     );
   });
   return {
+    readRect,
     unmount: () => {
       flushSync(() => root.unmount());
       container.remove();

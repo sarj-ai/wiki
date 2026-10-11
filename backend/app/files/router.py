@@ -108,8 +108,12 @@ async def read_file(
 ) -> FileDetail:
     file, drives = await asyncio.gather(files.get(file_id), drive.list_drives())
     drive_name = next((d.name for d in drives if d.id == file.drive_id), None)
-    cached = await cache.peek_drive_tree(db, file.drive_id) if file.drive_id else None
-    increment("file_tree_cache_hit" if cached is not None else "file_tree_cache_miss")
+    cached = None
+    if file.drive_id and file.parent_folder_id and file.parent_folder_id != FileId(file.drive_id):
+        cached = await cache.peek_drive_tree(db, file.drive_id)
+        increment("file_tree_cache_hit" if cached is not None else "file_tree_cache_miss")
+    else:
+        increment("file_tree_cache_not_needed")
     tree = cached.tree if cached else None
     breadcrumb = build_breadcrumb(tree, file.drive_id, drive_name, file.parent_folder_id)
     return FileDetail(
